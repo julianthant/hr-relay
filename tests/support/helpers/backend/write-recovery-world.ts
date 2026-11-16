@@ -1,12 +1,14 @@
+import { unusedWorkerPool } from "./unused-worker-pool.js";
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
+import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService,runContinuationPort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { type WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createWriteRecoveryService,createWriteResolutionExecutor,type WriteRecoveryService } from "../../../../src/backend/runtime/writes/write-recovery.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+
 import { type RunRecord } from "../../../../src/models/run/record.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
@@ -15,14 +17,16 @@ import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safet
 import { NO_INTAKE_PROJECTIONS,UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { CONFIG_SNAPSHOT,UUID_5,UUID_6,UUID_7,UUID_8 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { testRunContinuation } from "../../fixtures/run-lifecycle-fixtures.js";
-import { WRITE_FIXTURE_IMPL_FINGERPRINT,WRITE_FIXTURE_ITEM_ID,WRITE_FIXTURE_KEY,WRITE_FIXTURE_KEY_DIGEST,WRITE_FIXTURE_NODE_ID,WRITE_FIXTURE_NOW,WRITE_FIXTURE_OBSERVATION,WRITE_FIXTURE_RUN_ID,WRITE_FIXTURE_STAGED_STATE,WRITE_FIXTURE_WORKER_ID,WRITE_FIXTURE_WORKFLOW_ID,buildWriteFixtureRegistry,createWriteFixtureWorld,writeFixtureDescriptor,writeFixtureQueuedRun,writeFixtureSessionManager,writeFixtureSessions,type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
+import { testRunContinuation, testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
+import {WRITE_FIXTURE_ITEM_ID,WRITE_FIXTURE_KEY,WRITE_FIXTURE_KEY_DIGEST,WRITE_FIXTURE_NODE_ID,WRITE_FIXTURE_NOW,WRITE_FIXTURE_OBSERVATION,WRITE_FIXTURE_RUN_ID,WRITE_FIXTURE_STAGED_STATE,WRITE_FIXTURE_WORKER_ID,WRITE_FIXTURE_WORKFLOW_ID,buildWriteFixtureRegistry,createWriteFixtureWorld,writeFixtureDescriptor,writeFixtureQueuedRun,writeFixtureSessionManager,writeFixtureSessions,type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
 import { ManualScheduler,recordingLogger,type SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import { boundFixtureWorker, detachBoundFixtureWorkers } from "../synthetic-database-admission.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 
 interface Harness {
   readonly world: WriteFixtureWorld;
+  readonly workerId: string;
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly manager: WorkerSessionManager;
@@ -35,45 +39,57 @@ interface Harness {
 
 
 
-export function createWriteRecoveryTestWorld() {
-  const disposers: (() => void)[] = [];
+const retainedWriteRecoveryOwners = new Set<object>();
+
+export function createWriteRecoveryTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  const disposers: (() => void | Promise<void>)[] = [];
 
   const SIGNAL = new AbortController().signal;
 
-  function harness(refuseContinuation = false): Harness {
+  async function harness(refuseContinuation = false): Promise<Harness> {
+    const held: { profile?: BoundProfileStorageFixture; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; manager?: WorkerSessionManager; world?: WriteFixtureWorld; recovery?: WriteRecoveryService; primary?: unknown; failure?: Error } = {};
+    retainedWriteRecoveryOwners.add(held);
+    try {
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-write-recovery-"));
-    const open=()=>AuthorityDatabase.open({path:join(root,"authority.sqlite"),busyTimeoutMs:250,migrationOwner:"write-recovery-test"},clock);
-    let database=open();
-    disposers.push(() => {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
+    const profile = await profileFixture(); held.profile = profile;
+
+    const open=()=>AuthorityDatabase.open({path:profile.path,busyTimeoutMs:250,migrationOwner:"write-recovery-test"},clock);
+    let database=open(); held.database = database;
+    let disposeAttempted = false, disposeFailure: Error | undefined;
+    disposers.push(async () => {
+      if (held.failure !== undefined) throw held.failure;
+      if (disposeAttempted) { if (disposeFailure !== undefined) throw disposeFailure; return; }
+      disposeAttempted = true;
+      try { await held.manager?.closeAll("worker-stop"); detachBoundFixtureWorkers(database); database.close(); await profile.close(); }
+      catch (error) { held.primary = error; disposeFailure = retainAuthoritySourceClosure([error], { admission: held }); held.failure = disposeFailure; retainedWriteRecoveryOwners.add(held); throw disposeFailure; }
     });
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-    database.withAuthorityTransaction(repositories => {
-      const slot = admitDirectWorker(repositories, {commandId: "10000000-0000-4000-8000-000000000001",
-        workflow: WRITE_FIXTURE_WORKFLOW_ID, poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
-        processAcquisitionId: "10000000-0000-4000-8000-000000000002", authorityPath: join(root,"authority.sqlite"),
-        processLockRoot: join(root,"locks"), now: WRITE_FIXTURE_NOW}, "10000000-0000-4000-8000-000000000003");
-      assert.equal(slot.workerId, WRITE_FIXTURE_WORKER_ID);
-      assert.equal(repositories.workerLeases.start({workerId: slot.workerId,workflow: WRITE_FIXTURE_WORKFLOW_ID,
-        browserSystems: ["ucpath"],processId: process.pid,requestedBy:"local-operator",now: WRITE_FIXTURE_NOW}).state,"started");
-    });
-    const world = createWriteFixtureWorld();
+    const admitted = testAdmittedWorker(database, clock, { path: profile.path, workflow: WRITE_FIXTURE_WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath"] });
+    held.worker = admitted;
+    const slot = admitted.member;
+    assert.equal(slot.workerId, WRITE_FIXTURE_WORKER_ID);
+    assert.ok(boundFixtureWorker(database, profile.path, slot.workerId));
+    assert.equal(slot.workflow, WRITE_FIXTURE_WORKFLOW_ID);
+    assert.equal(slot.poolIndex, 1);
+    assert.equal(slot.ordinal, 1);
+    const world = createWriteFixtureWorld(); held.world = world;
     const registry = buildWriteFixtureRegistry(world);
     const inner = writeFixtureSessions(world);
     // Record the session-open fingerprint to prove recovery leases the target run snapshot.
     const opened: string[] = [];
     const spied: SessionFactoryHarness = {
       ...inner,
-      factory: {
+      factory: { probeProfile: async () => undefined,
         open: (input) => {
           opened.push(String(input.configFingerprint));
           return inner.factory.open(input);
         },
       },
     };
-    const manager = writeFixtureSessionManager(spied, registry, clock);
+    const scheduler = new ManualScheduler(clock);
+    const manager = await writeFixtureSessionManager(spied, registry, clock, {
+      openGate: input => duoCeremonyGatesOver(database, clock, scheduler).openGate(input),
+    }); held.manager = manager;
     const ids = sequentialIdFactory("c");
     const recovery = createWriteRecoveryService({
       continuation: { transition: (input) => {
@@ -91,14 +107,15 @@ export function createWriteRecoveryTestWorld() {
       scheduler: new ManualScheduler(clock),
       taskDeadlineMs: 60_000,
       operator: "local-operator",
-      log: recordingLogger().log,
-      resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
-    });
+      log: recordingLogger().log
+    }); held.recovery = recovery;
+    retainedWriteRecoveryOwners.delete(held);
     return {
-      world, get database(){return database;}, clock, manager, ids, recovery,
-      restart:()=>{database.close();database=open();},
+      world, workerId: slot.workerId, get database(){return database;}, clock, manager, ids, recovery,
+      restart:()=>{try { database.close(); database=open(); held.database=database; } catch(error) { held.primary=error; retainedWriteRecoveryOwners.add(held); held.failure=retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }},
       openedFingerprints: () => Object.freeze([...opened]),
     };
+  } catch(error) { held.primary=error; held.failure=retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
   }
 
   function ownBindingProof() {
@@ -126,14 +143,15 @@ export function createWriteRecoveryTestWorld() {
   } {
     const now = h.clock.now().toISOString();
     assert.equal(h.database.authority.runs.enqueue(queued).state, "inserted");
+    const lifetime = testWorkerLifetime(h.database, WRITE_FIXTURE_WORKFLOW_ID, 1);
+    assert.equal(lifetime.workerId, WRITE_FIXTURE_WORKER_ID);
     const claimed = h.database.authority.runs.claimNext({
       workflow: WRITE_FIXTURE_WORKFLOW_ID,
-      workerId: WRITE_FIXTURE_WORKER_ID,
-      now,
-    });
+      workerId: h.workerId,
+      now });
     if (claimed.state !== "claimed") throw new Error("claim failed");
-    const claim = { workerId: WRITE_FIXTURE_WORKER_ID, claimGeneration: claimed.run.claimGeneration };
-    const base = { workerId: WRITE_FIXTURE_WORKER_ID, claimedAt: now, heartbeatAt: now };
+    const claim = { workerId: h.workerId, claimGeneration: claimed.run.claimGeneration };
+    const base = { workerId: h.workerId, claimedAt: now, heartbeatAt: now };
     assert.equal(h.database.authority.runs.transition({
       runId: WRITE_FIXTURE_RUN_ID, expectedVersion: claimed.run.version, claim,
       lifecycle: { state: "validating", ...base }, now,
@@ -197,8 +215,8 @@ export function createWriteRecoveryTestWorld() {
     if (parked.state !== "applied") throw new Error("park transition failed");
     return { run: parked.run, writeIntentId: UUID_8 };
   }
-  function resolutionHarness(descriptor = writeFixtureDescriptor) {
-    const h = harness();
+  async function resolutionHarness(descriptor = writeFixtureDescriptor) {
+    const h = await harness();
     const executor = createWriteResolutionExecutor({
       continuation: testRunContinuation(h.database, h.clock),
       descriptors: {
@@ -206,8 +224,7 @@ export function createWriteRecoveryTestWorld() {
           String(descriptor.id) === workflowId ? descriptor : undefined,
       },
       authority: h.database,
-      ids: h.ids,
-      resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+      ids: h.ids
     });
     const makeKernel=()=>{
     const lifecycle = new RunRecordService({database:h.database,clock:h.clock,ids:h.ids,publishQueued:()=>{}});
@@ -216,17 +233,15 @@ export function createWriteRecoveryTestWorld() {
       descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},
       configIdentity:{configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,configFingerprint:CONFIG_SNAPSHOT.fingerprint},
       intakeParser:UNWIRED_INTAKE_PARSER,intakeProjections:NO_INTAKE_PROJECTIONS,
-      workerRuntime:{pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,
-        stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}},
+      workerRuntime:{pool:unusedWorkerPool(unused)},
       writeResolution:createWriteResolutionExecutor({authority:h.database,continuation:runContinuationPort(lifecycle),
-        descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},ids:h.ids,
-        resolveImplFingerprint:()=>WRITE_FIXTURE_IMPL_FINGERPRINT})});
+        descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},ids:h.ids })});
     return kernel;
     };
     return { h, executor, kernel:makeKernel(),makeKernel };
   }
 
-  function commandFor(type: "resolve-write-present" | "resolve-write-absent", run: RunRecord, payload: Record<string, unknown>) {
+  function commandFor(type: "recheck-write" | "resolve-write-absent", run: RunRecord, payload: Record<string, unknown>) {
     return CommandRequestSchema.parse({
       commandId: UUID_7,
       requestedAt: WRITE_FIXTURE_NOW,
@@ -244,8 +259,10 @@ export function createWriteRecoveryTestWorld() {
     });
   }
 
-  const cleanup = () => {
-    for (const dispose of disposers.splice(0)) dispose();
+  const cleanup = async () => {
+    const failures: unknown[] = [];
+    for (const dispose of disposers.splice(0)) { try { await dispose(); } catch (error) { failures.push(error); } }
+    if (failures.length > 0) throw new AggregateError(failures, 'Write recovery fixture cleanup failed', { cause: failures[0] });
   };
   return { disposers, SIGNAL, harness, ownBindingProof, parkedAttemptingWrite, resolutionHarness, commandFor, cleanup };
 }

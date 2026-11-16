@@ -1,8 +1,7 @@
+import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { RunRecordService, type RunRecordServiceDependencies } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import {
   createCommandKernel,
   type CommandKernel,
@@ -27,17 +26,15 @@ export interface KernelStubHarness {
 export function createKernelStubCommandFixtures(input: {
   readonly roots: string[];
   readonly openDatabases: AuthorityDatabase[];
+  readonly profiles: { close(): Promise<void> }[];
   readonly prefix: string;
   readonly migrationOwner: string;
   readonly resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined;
 }) {
   let commandSequence = 0;
   const unrelated = (): never => { throw new Error("unrelated kernel effect reached"); };
-  const workerRuntime: CommandKernelDependencies["workerRuntime"] = { pool: {
-    planPoolWorkerCount: unrelated, spawnPoolWorker: unrelated,
-    refreshPoolBrowser: unrelated, reopenPoolBrowser: unrelated, stopPoolWorker: unrelated, pausePoolWorker: unrelated, resumePoolWorker: unrelated,
-  } };
-  const writeResolution: CommandKernelDependencies["writeResolution"] = { resolvePresent: unrelated, resolveAbsent: unrelated };
+  const workerRuntime: CommandKernelDependencies["workerRuntime"] = { pool: unusedWorkerPool(unrelated) };
+  const writeResolution: CommandKernelDependencies["writeResolution"] = { recheck: unrelated, resolveAbsent: unrelated };
 
   function nextCommandId(): string {
     commandSequence += 1;
@@ -57,14 +54,15 @@ export function createKernelStubCommandFixtures(input: {
     } as const;
   }
 
-  function createHarness(options: { publishQueued?: RunRecordServiceDependencies["publishQueued"] } = {}): KernelStubHarness {
+  async function createHarness(options: { publishQueued?: RunRecordServiceDependencies["publishQueued"] } = {}): Promise<KernelStubHarness> {
     const clock = manualClock(new Date(NOW));
-    const root = mkdtempSync(join(realpathSync(tmpdir()), input.prefix));
-    input.roots.push(root);
+    const profile = await createBoundProfileFixture();
     const database = AuthorityDatabase.open(
-      { path: join(root, "kernel.sqlite"), busyTimeoutMs: 250, migrationOwner: input.migrationOwner },
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: input.migrationOwner },
       clock,
     );
+    input.profiles.push(profile);
+    input.roots.push(profile.workspace);
     input.openDatabases.push(database);
     seedSyntheticRuntimeConfig(database);
     const active = database.authority.runtimeConfig.get();
@@ -80,9 +78,6 @@ export function createKernelStubCommandFixtures(input: {
       clock,
       ids: sequentialIdFactory("d"),
       descriptors: { resolve: (workflowId) => input.resolve(workflowId) },
-      explorerEdits: {
-        apply: (): never => { throw new Error("this harness composes no explorer edit executor"); },
-      },
       writeResolution,
       workerRuntime,
       settings: {

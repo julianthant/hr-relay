@@ -9,6 +9,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 const databases: DatabaseSync[] = [];
+const rootParentage: Parameters<typeof createRunSummaries>[2] = envelopes => new Map(envelopes.map(envelope => [envelope.runId, null]));
 afterEach(() => { for (const db of databases.splice(0)) db.close(); });
 function fixture() {
   const db = new DatabaseSync(":memory:", { enableForeignKeyConstraints: false });
@@ -22,7 +23,7 @@ function fixture() {
     db.prepare(`INSERT INTO runs (${Object.keys(row).join(",")}) VALUES (${Object.keys(row).map(() => "?").join(",")})`).run(...Object.values(row));
     return row.id;
   };
-  return { db, add, summaries: createRunSummaries(db) };
+  return { db, add, summaries: createRunSummaries(db, () => null, rootParentage) };
 }
 
 describe("native summary snapshots", () => {
@@ -103,10 +104,38 @@ describe("native summary snapshots", () => {
     expect(()=>other.summaries.read(1)).toThrow(/row-code-mismatch/u);
   });
 
+  it("serves the stored failure resolution on the summary row", () => {
+    const f = fixture(); const runId = f.add(1, "2026-10-01T12:00:00.000Z");
+    const failure = FailureRecordSchema.parse({ failureId: "30000000-0000-4000-8000-000000000004", fingerprint: "c".repeat(64), runId,
+      traceId: QUEUED_RUN.envelope.traceId, attempt: 1, workflowId: QUEUED_RUN.envelope.workflow, code: "SUBJECT_MISMATCH", summary: "Offline mismatch", transient: false,
+      writeState: "not-attempted", causeChain: [{ code: "SUBJECT_MISMATCH", summary: "Offline mismatch", role: "primary", transient: false }],
+      remediation: [{ kind: "operator-action", message: "Review offline evidence" }], occurredAt: "2026-10-01T12:00:00.000Z" });
+    f.db.prepare("INSERT INTO run_failures(id,run_id,fingerprint,code,payload_json,resolution_json,resolution_version,created_at) VALUES(?,?,?,?,?,?,1,?)")
+      .run(failure.failureId, runId, failure.fingerprint, failure.code, canonicalJsonStringify(failure), '{"status":"resolved","version":1,"by":"local-operator","at":"2026-10-01T12:00:00.000Z"}', failure.occurredAt);
+    expect(f.summaries.read(1).map(summary => summary.resolution)).toEqual([{ status: "resolved", version: 1, by: "local-operator", at: "2026-10-01T12:00:00.000Z" }]);
+  });
+
   it("rejects a source whose physical run scalar disagrees with its JSON", () => {
     const f = fixture();
     const row = { ...runRecordColumns(RunRecordSchema.parse(QUEUED_RUN)), trace_id: "corrupt" };
     f.db.prepare(`INSERT INTO runs (${Object.keys(row).join(",")}) VALUES (${Object.keys(row).map(() => "?").join(",")})`).run(...Object.values(row));
     expect(() => f.summaries.read(1)).toThrow(/trace_id/u);
+  });
+
+  it("filters authenticated waiting states before pagination without skipping matching rows", () => {
+    const f = fixture();
+    const ids = Array.from({ length: 12 }, (_, index) => f.add(index + 1, "2026-10-01T12:00:00.000Z"));
+    const running = new Set([ids[3], ids[8], ids[11]]), blocked = new Set([ids[1], ids[9]]);
+    const summaries = createRunSummaries(f.db, run => running.has(run.envelope.runId) ? { nodeId: "children", state: "running" }
+      : blocked.has(run.envelope.runId) ? { nodeId: "children", state: "blocked" } : null, rootParentage);
+    const query = { workflow: QUEUED_RUN.envelope.workflow, status: "running", limit: 2 } as const;
+    const first = summaries.query(1, query);
+    expect(first.items.map(row => row.runId)).toEqual([ids[3], ids[8]]);
+    const second = summaries.query(1, { ...query, after: first.next ?? undefined });
+    expect(second.items.map(row => row.runId)).toEqual([ids[11]]);
+    expect(second.next).toBeNull();
+    expect(summaries.query(1, { ...query, status: "blocked" }).items.map(row => row.runId)).toEqual([ids[1], ids[9]]);
+    expect(summaries.query(1, { ...query, status: "queued", limit: 20 }).items.map(row => row.runId))
+      .toEqual(ids.filter(id => !running.has(id) && !blocked.has(id)));
   });
 });

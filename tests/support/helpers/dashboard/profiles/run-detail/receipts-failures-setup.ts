@@ -1,3 +1,5 @@
+import { failureDecision } from "../../../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
+import { FailureDetailWireSchema } from "../../../../../../src/models/dashboard/run-detail.js";
 import { uuidOf } from "../../../../fixtures/dashboard/fixture-identity.js";
 import { sectionResponse } from "../../../../fixtures/dashboard/run-detail/section-wire.js";
 import type * as FixtureIdentityTypes from "../../../../fixtures/dashboard/fixture-identity.js";
@@ -23,7 +25,6 @@ FIXTURE_DIAGNOSTIC_BUNDLE: typeof FixtureDiagnosticTypes.FIXTURE_DIAGNOSTIC_BUND
       failureId,
       native: { eventId: uuidOf(seed * 100 + 9900), order: 50, runId, attempt: 1, traceId: traceOf(seed), nodeId: "cross-verify" },
       resolution: {
-        capability: { state: "available" },
         capture: { runId, failureId, resolution: { status: "unresolved", version: 1 } },
       },
       traceId: traceOf(seed),
@@ -59,13 +60,15 @@ FIXTURE_DIAGNOSTIC_BUNDLE: typeof FixtureDiagnosticTypes.FIXTURE_DIAGNOSTIC_BUND
     };
   }
 
+  const withFailureDecision = (value: ReturnType<typeof failureDetail>) => ({ ...value, decision: failureDecision(FailureDetailWireSchema.parse(value)) });
+
   const runIds = [
     FIXTURE_IDS.queuedRun,
     FIXTURE_IDS.runningRun,
     FIXTURE_IDS.doneRun,
     FIXTURE_IDS.failedRun,
     FIXTURE_IDS.openGateRun,
-    FIXTURE_IDS.gateTypedEidRun,
+    FIXTURE_IDS.gateNameMismatchRun,
     FIXTURE_IDS.parkedRun,
     FIXTURE_IDS.memberRun,
     FIXTURE_IDS.groupOf13,
@@ -80,7 +83,7 @@ FIXTURE_DIAGNOSTIC_BUNDLE: typeof FixtureDiagnosticTypes.FIXTURE_DIAGNOSTIC_BUND
     [FIXTURE_IDS.failedRun]: Object.freeze({
       failure: sectionResponse({
         section: "failure",
-        payload: { state: "available", value: failureDetail(FIXTURE_IDS.failedRun, FIXTURE_IDS.failureId, 4) },
+        payload: { state: "available", value: withFailureDecision(failureDetail(FIXTURE_IDS.failedRun, FIXTURE_IDS.failureId, 4)) },
       }),
     }),
   });

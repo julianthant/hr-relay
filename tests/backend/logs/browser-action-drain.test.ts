@@ -2,16 +2,13 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
 import { drainBrowserActionNotes,type BrowserActionDrainStatus } from "../../../src/backend/logs/browser-action-drain.js";
-import { createConfirmedActionPublisher } from "../../../src/backend/logs/confirmed-action-publisher.js";
 import { completeProtectedWrite,runMandatorySavedVerification } from "../../../src/backend/runtime/writes/mandatory-saved-verification.js";
 import { recordBrowserAction,withBrowserActionNotes } from "../../../src/backend/systems/browser-shared/action-notes.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 
 describe("browser action note drain after protected settlement", () => {
-  it("keeps commit, saved verification and settlement despite append, warning and health callback failures", async () => {
+  it("keeps commit, saved verification and settlement despite append and warning failures", async () => {
     const clock = manualClock(new Date("2026-10-02T12:00:00.000Z"));
-    const publisher = createConfirmedActionPublisher({ workerId: "fixture-worker-1", streamId: "drain-stream-1", clock,
-      capacity: 4, append: () => {}, onHealth: () => { throw new Error("health callback failed"); } });
     const order: string[] = [];
     let commitCalls = 0;
     let emitCalls = 0;
@@ -31,7 +28,7 @@ describe("browser action note drain after protected settlement", () => {
       onSettled: () => { order.push("notified"); }, reportDeliveryFailure: () => {},
       projectSettled: settlement => settlement,
     }), actions => {
-      status = drainBrowserActionNotes({ actions, publisher,
+      status = drainBrowserActionNotes({ actions,
         emitAction: () => { emitCalls += 1; throw new Error("append failed"); },
         warn: () => { throw new Error("warning logger failed"); } });
       order.push("drain");
@@ -40,28 +37,18 @@ describe("browser action note drain after protected settlement", () => {
     assert.deepEqual(order, ["commit", "verify", "settle", "notified", "drain"]);
     assert.equal(commitCalls, 1);
     assert.equal(emitCalls, 2);
-    assert.deepEqual(status && { ...status, health: status.health.state }, {
-      attempted: 2, failed: 2, state: "append-failed", warningFailed: true, health: "append-failed",
-    });
-    assert.equal(publisher.health().diagnosticFailure, true);
+    assert.deepEqual(status, { attempted: 2, failed: 2, state: "append-failed", warningFailed: true });
   });
 
-  it("keeps schema faults distinct and exposes a failed health fallback", () => {
+  it("keeps schema faults distinct from append failures", () => {
     const clock = manualClock(new Date("2026-10-02T12:00:00.000Z"));
     let schemaError: unknown;
     try { z.string().parse(1); } catch (error) { schemaError = error; }
     const action = { kind: "read" as const, targetId: "fixture.read", at: clock.now().toISOString() };
-    const publisher = createConfirmedActionPublisher({ workerId: "fixture-worker-1", streamId: "drain-stream-2", clock,
-      capacity: 4, append: () => {} });
-    const program = drainBrowserActionNotes({ actions: [action], emitAction: () => { throw schemaError; },
-      warn: () => {}, publisher });
+    const program = drainBrowserActionNotes({ actions: [action], emitAction: () => { throw schemaError; }, warn: () => {} });
     assert.equal(program.state, "program-error");
-    assert.equal(program.health.state, "program-error");
-    const fallback = drainBrowserActionNotes({ actions: [action], emitAction: () => { throw new Error("append failed"); },
-      warn: () => { throw new Error("warn failed"); },
-      publisher: { reportAppendFailure: () => { throw new Error("health failed"); },
-        reportProgramError: () => { throw new Error("health failed"); } } });
-    assert.deepEqual(fallback, { attempted: 1, failed: 1, state: "append-failed", warningFailed: true,
-      health: { state: "report-failed" } });
+    const failed = drainBrowserActionNotes({ actions: [action], emitAction: () => { throw new Error("append failed"); },
+      warn: () => { throw new Error("warn failed"); } });
+    assert.deepEqual(failed, { attempted: 1, failed: 1, state: "append-failed", warningFailed: true });
   });
 });

@@ -18,7 +18,7 @@ it('renders all eight mounted seed Search and Match outcomes in completed Queue 
     ['search', 'Active'], ['search', 'Inactive'], ['search', 'CRM only'], ['search', 'Multiple matches'], ['search', 'Not found'], ['search', 'Undetermined'], ['match', 'Found'], ['match', 'Not found in UCPath'],
   ]);
   for (const run of runs) {
-    const surface = mockQueueSurface(run, '2026-08-03');
+    const surface = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
     const html = renderToStaticMarkup(createElement(QueueRow, { outcome: run.businessOutcome, surface, state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>() }, handlers: { onSelect() {} }, workflowLabelOf: () => 'Person Lookup' }));
     const host = document.createElement('div'); host.innerHTML = html;
     assert.equal(surface.status, 'done'); assert(host.textContent?.includes(run.businessOutcome!.label));
@@ -32,10 +32,27 @@ it('preserves every other lifecycle badge even when supplied a business outcome'
   }
 });
 
+it('describes the lifecycle done count as completed without claiming receipt verification', async () => {
+  Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
+  const run = seedMockRuns().find(run => run.workflowId === 'person-lookup'); assert(run);
+  const surface = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+  assert.equal(surface.status, 'done');
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+  const selected: string[] = [];
+  try {
+    await act(async () => root.render(createElement(QueuePanel, { surfaces: [surface], state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>() }, handlers: { onSelect(id) { selected.push(id); } }, workflowLabelOf: () => 'Person Lookup', panelLabel: 'Person Lookup', day: '2026-08-03', isToday: true })));
+    assert.match(host.textContent ?? '', /Today:\s*1 completed/u);
+    assert.doesNotMatch(host.textContent ?? '', /1 verified/u);
+    assert.equal(host.querySelectorAll('[data-demo-row-id]').length, 1);
+    await act(async () => host.querySelector<HTMLElement>('[data-demo-row-id]')?.click());
+    assert.deepEqual(selected, [surface.runId]);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
 it('updates an outcome-only QueuePanel change and preserves partial warning facts', async () => {
   Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
   const parent = seedMockRuns().find(run => run.workflowId === 'person-lookup'); assert(parent);
-  const surface = QueueSurfaceWireSchema.parse({ ...mockQueueSurface(parent, '2026-08-03'), status: 'partial', warnings: { state: 'present', count: 3, first: 'Three observations need review' } });
+  const surface = QueueSurfaceWireSchema.parse({ ...mockQueueSurface(parent, '2026-08-03T16:10:00.000Z'), status: 'partial', warnings: { state: 'present', count: 3, first: 'Three observations need review' } });
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
   const props = { surfaces: [surface], state: { nowIso: '2026-08-03T20:00:00.000Z', openWells: new Set<string>() }, handlers: { onSelect() {} }, workflowLabelOf: () => 'Person Lookup', panelLabel: 'Person Lookup', day: '2026-08-03' };
   try {

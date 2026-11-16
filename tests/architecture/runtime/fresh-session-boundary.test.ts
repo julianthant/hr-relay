@@ -68,6 +68,17 @@ describe("fresh session boundary", () => {
       /need\.session === "fresh"/u,
       "the authored-fresh branch must exist for the scans above to mean anything",
     );
+    const resetCallers = sourceFiles()
+      .filter(({ content }) => content.includes("\"profile-reset\""))
+      .map(({ path }) => path)
+      .sort();
+    assert.deepEqual(resetCallers, [
+      "src/backend/runtime/browser/native-browser.ts",
+      "src/workflow-kit/session.ts",
+    ]);
+    const loop = readFileSync(join(REPO_ROOT, "src/backend/runtime/workers/worker-loop.ts"), "utf8");
+    assert.doesNotMatch(loop, /profile-reset/u);
+    assert.match(loop, /event\.reason === "fresh-boundary"/u);
   });
 
   it("authors every session need as a literal, never a computed one", () => {
@@ -93,7 +104,7 @@ describe("fresh session boundary", () => {
   it("never mints a boundary for repeated reuse-worker needs", async () => {
     const harness = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver() });
     const events: WorkerSessionEvent[] = [];
-    const sessions = sessionManagerFor(
+    const sessions = await sessionManagerFor(
       harness,
       manualClock(new Date("2026-08-03T09:00:00.000Z")),
       (event) => events.push(event),
@@ -113,7 +124,7 @@ describe("fresh session boundary", () => {
   it("closes with proof before the replacement starts on an authored fresh need", async () => {
     const harness = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver() });
     const events: WorkerSessionEvent[] = [];
-    const sessions = sessionManagerFor(
+    const sessions = await sessionManagerFor(
       harness,
       manualClock(new Date("2026-08-03T09:00:00.000Z")),
       (event) => events.push(event),
@@ -142,7 +153,7 @@ describe("fresh session boundary", () => {
   it("forces the same proven boundary when the reuse identity drifts", async () => {
     const harness = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver() });
     const events: WorkerSessionEvent[] = [];
-    const sessions = sessionManagerFor(
+    const sessions = await sessionManagerFor(
       harness,
       manualClock(new Date("2026-08-03T09:00:00.000Z")),
       (event) => events.push(event),

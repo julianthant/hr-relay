@@ -228,12 +228,11 @@ function createOwnedNominatimAdapter(
   });
 }
 
-export function createNominatimGeocodeAdapter(dependencies: GeocodeAdapterDependencies & Readonly<{ processLockRoot: string }>) {
+export function createNominatimGeocodeAdapter(dependencies: GeocodeAdapterDependencies) {
   const service = createNominatimService({
-    processLockRoot: dependencies.processLockRoot,
     clock: dependencies.clock,
     fetchFn: dependencies.fetchFn,
     adapter: fetchFn => createOwnedNominatimAdapter({ clock: dependencies.clock, fetchFn }),
   });
-  return Object.freeze({ capability: "geocode.nominatim" as const, invoke: service.invoke, stop: service.stop });
+  return Object.freeze({ capability: "geocode.nominatim" as const, invoke: service.invoke, stop: service.stop, attach: service.attach });
 }

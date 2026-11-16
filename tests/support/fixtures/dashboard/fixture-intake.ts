@@ -160,7 +160,7 @@ const FIXTURE_MANIFEST_ID = "7b92095b-bb90-4ca2-b373-8402790fb7f8";
 const FIXTURE_MANIFEST_CREATED_AT = "2026-08-03T10:04:00.000-07:00";
 const [FIRST_VALID, SECOND_VALID, THIRD_VALID] = VALIDATION.valid;
 if (FIRST_VALID === undefined || SECOND_VALID === undefined || THIRD_VALID === undefined) {
-  throw new Error("the intake parity fixture requires three valid rows for the manifest and rerun stages");
+  throw new Error("the intake mock fixture requires three valid rows for the manifest and rerun stages");
 }
 
 const FIXTURE_MANIFEST = {

@@ -87,10 +87,12 @@ function expectedKinds(formType: OcrFormType): readonly OcrPageKind[] {
   return ocrForm(formType).pageKinds;
 }
 
+type GroupingPage = Pick<ClassifiedPage, "sourcePage" | "pageKind" | "subjectName">;
+
 /** Assign every page to one bucket so the classified stack reconciles with the paper. */
-export function groupStack(stack: ClassifiedStack, formType: OcrFormType): StackGrouping {
+export function groupStack(stack: { readonly pages: readonly GroupingPage[] }, formType: OcrFormType): StackGrouping {
   const wanted = new Set(expectedKinds(formType));
-  const subjects = new Map<string, { displayName: string; pages: ClassifiedPage[] }>();
+  const subjects = new Map<string, { displayName: string; pages: GroupingPage[] }>();
   const unidentified: number[] = [];
   const otherForms: { sourcePage: number; pageKind: OcrPageKind }[] = [];
   const dataless: { sourcePage: number; pageKind: OcrPageKind }[] = [];

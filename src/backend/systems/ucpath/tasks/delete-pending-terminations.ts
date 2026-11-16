@@ -49,7 +49,7 @@ export const deletePendingTerminationsTask = defineTask(
         throw new Error(
           `UCPath Delete Selected Transactions was clicked for EID ${directIdentifierDisplay(input.emplId)} and the post-delete `
           + `read answered ${verdict.state}. Refusing to report the sweep complete; rows may already `
-          + "be gone, so this parks for an operator (docs/rebuild/reference/write-safety.md §4.1).",
+          + "be gone, so this parks for an operator (docs/reference/write-safety.md §4.1).",
         );
       }
       ctx.recordData([

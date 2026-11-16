@@ -112,7 +112,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
       { label: "Selection", valueRedacted: "ambiguous (2 candidates)", fieldPath: "startsOn.value" },
       { label: "Active status", valueRedacted: "pending", fieldPath: "invitedOn.value" },
     ]),
-    [FIXTURE_IDS.gateTypedEidRun]: sectionsOf(44, [
+    [FIXTURE_IDS.gateNameMismatchRun]: sectionsOf(44, [
       { label: "Selection", valueRedacted: "name mismatch", fieldPath: "startsOn.value" },
       { label: "Active status", valueRedacted: "pending", fieldPath: "invitedOn.value" },
     ]),

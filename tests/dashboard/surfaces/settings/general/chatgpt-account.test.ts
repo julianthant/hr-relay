@@ -1,10 +1,15 @@
+import { chatGptStatusFixture } from "../../../../support/helpers/chatgpt-status-fixture.js";
+import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act,createElement } from "react";
-import { type Root } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach,beforeEach,describe,it,vi } from "vitest";
-import { ChatGptAccountContext,type ChatGptAccountPort,type ChatGptAccountSnapshot } from "../../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
+import { createServedChatGptAccountPort,ChatGptAccountContext,type ChatGptAccountPort,type ChatGptAccountSnapshot } from "../../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
+import type { ChatGptAccountQueries } from "../../../../../src/dashboard/client/queries/chatgpt-account-queries.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
+import { ChatGptAccountStateSchema, ChatGptSignInStartSchema, type ChatGptSignInCompletion } from "../../../../../src/models/dashboard/chatgpt-account.js";
 import { ChatGptAccountSettings } from "../../../../../src/dashboard/surfaces/settings/general/chatgpt-account.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -13,9 +18,9 @@ let host: HTMLElement | undefined;
 beforeEach(() => { vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; vi.unstubAllGlobals(); });
 
-function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut">> = {}): ChatGptAccountPort {
+function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn">> = {}): ChatGptAccountPort {
   return { mode: "live", getSnapshot: () => snapshot, subscribe: () => () => undefined,
-    signIn: () => Promise.resolve(), signOut: () => Promise.resolve(), ...operations };
+    signIn: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
 }
 
 describe("General ChatGPT account", () => {
@@ -27,16 +32,84 @@ describe("General ChatGPT account", () => {
     assert.doesNotMatch(html, /Preview|Jordan Lee/u);
   });
 
-  it("renders loading, expired, unavailable and usage-limit states distinctly", () => {
+  it("retains the exact verified account while a refresh is unavailable without inventing a command lock", () => {
+    const port = controlledPort({ state: "unavailable", message: "Account read failed", account: { state: "connected", name: "Held operator", email: "held@example.com", expiresAt: IsoInstantSchema.parse("2099-01-01T00:00:00.000Z"), planUsage: "enabled" } });
+    const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port }));
+    assert.match(html, /Held operator.*held@example\.com/u);
+    assert.match(html, /ChatGPT account unavailable.*Account read failed/u);
+    assert.doesNotMatch(html, /Disconnect/u);
+    assert.doesNotMatch(html, /Connect ChatGPT/u);
+  });
+
+  it("renders loading, unavailable and usage-limit states distinctly", () => {
     const render = (snapshot: ChatGptAccountSnapshot) => renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) }));
     const loading = render({ state: "loading" });
-    assert.match(loading, /Loading ChatGPT account/u);
-    assert.doesNotMatch(loading, /Continue with ChatGPT/u);
-    assert.match(render({ state: "expired" }), /Your ChatGPT session expired/u);
+    assert.doesNotMatch(loading, /aria-busy="true"/u);
+    assert.doesNotMatch(loading, /Connect ChatGPT/u);
     assert.match(render({ state: "unavailable", message: "Account read failed" }), /ChatGPT account unavailable.*Account read failed/u);
     const limited = render({ state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "limit-reached" });
     assert.match(limited, /Usage limit reached/u);
     assert.match(limited, /Manage usage/u);
-    assert.doesNotMatch(limited, /Using ChatGPT plan|Continue with ChatGPT/u);
+    assert.doesNotMatch(limited, /Using ChatGPT plan|Connect ChatGPT/u);
   });
+});
+
+
+it("places a rejected account port action outside the field group with its original failure copy", async () => {
+  const port = controlledPort({ state: "signed-out" }, { signIn: async () => { throw new Error("synthetic action failure"); } });
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
+  const action = [...host.querySelectorAll("button")].find(button => button.textContent === "Connect ChatGPT");
+  assert.ok(action); await act(async () => action.click());
+  const banner = [...host.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes("ChatGPT connection failed"));
+  assert.ok(banner); assert.equal(banner.closest(".ds-form-group"), null);
+  assert.match(banner.textContent ?? "", /ChatGPT sign-in could not be completed. Try again./);
+});
+
+
+it("recovers through Continue after an initial read failure without restarting a pending ceremony", async () => {
+  const account = ChatGptAccountStateSchema.parse({ state: "connected", name: "Exact held operator", email: "exact@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" });
+  const started = ChatGptSignInStartSchema.parse({ state: "started", attemptId: "00000000-0000-4000-8000-000000000001", authorizationUrl: "https://auth.openai.com/api/accounts/authorize?state=synthetic", expiresAt: "2099-01-01T00:05:00.000Z" });
+  const completion = Promise.withResolvers<ChatGptSignInCompletion>();
+  let starts = 0, reads = 0;
+  const queries: ChatGptAccountQueries = { chatGptAccount: async () => { reads++; if (reads === 1) throw new Error("synthetic failed read"); return chatGptStatusFixture(account); },
+    startChatGptSignIn: async () => { starts++; return started; },
+    completeChatGptSignIn: () => completion.promise,
+    cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId: started.attemptId }),
+    testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }),
+  };
+  const port = createServedChatGptAccountPort(queries, { open: () => ({ navigate() {}, close() {} }) });
+  const button = (label: string) => { const found = [...host!.querySelectorAll("button")].find(node => node.textContent === label); assert.ok(found); return found; };
+  try {
+    host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
+    assert.equal(port.getResource().state, "failed");
+    const message = ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text;
+    assert.ok(host.textContent?.includes(message));
+    const recovery = button("Connect ChatGPT"); assert.equal(recovery.disabled, false);
+    await act(async () => { recovery.click(); recovery.click(); });
+    assert.equal(starts, 1); assert.equal(button("Cancel").disabled, false);
+    assert.match(host.textContent ?? "", /Waiting for you to finish signing in in your browser/u);
+    assert.equal(host.textContent?.includes(message), false);
+    await act(async () => { await port.signIn({ usePlan: true }); });
+    assert.equal(starts, 1);
+    await act(async () => { completion.resolve({ state: "completed", attemptId: started.attemptId, account }); });
+    assert.match(host.textContent ?? "", /Exact held operator.*exact@example.com/u);
+    assert.equal(host.textContent?.includes(message), false); assert.equal(reads, 2); assert.equal(starts, 1);
+  } finally { port.dispose(); }
+});
+
+
+for (const snapshot of [{ state: "signed-out" }, { state: "expired" }] as const)
+  it(`shows the one not-connected row for a ${snapshot.state} account`, async () => {
+    host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) })));
+    const row = host.querySelector('[data-settings-path="chatgpt.account"]'); assert.ok(row);
+    assert.equal(row.textContent, "Use your ChatGPT plan" + "Not connected. Connect your ChatGPT account to Relay." + "Connect ChatGPT");
+    assert.deepEqual([...row.querySelectorAll("button")].map(button => button.textContent), ["Connect ChatGPT"]);
+  });
+
+it("keeps OCR diagnostics out of the account panel", () => {
+  const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "connected", name: "Operator", email: "operator@example.com", planUsage: "enabled" }) }));
+  assert.doesNotMatch(html, /Test OCR|OCR test/u);
 });

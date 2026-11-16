@@ -1,4 +1,3 @@
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { z } from "zod";
 import type {
 WorkerCardWireSchema,
@@ -8,6 +7,7 @@ import { type SubscriptionState } from "../../client/subscriptions/subscription.
 import { dsClip,dsRadius,dsText } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { elapsedSecondsBetween } from "../shared/status/format.js";
+import { stepInterruptLabel } from "../shared/status/status-model.js";
 import type { QueueSurfaceWire } from "../shell/shell-model.js";
 
 
@@ -34,6 +34,7 @@ export type WorkerSessionMembership =
 
 export type WorkerBrowserSlot =
   | Readonly<{ state: "open"; browser: WorkerCardWire["browsers"][number] }>
+  | Readonly<{ state: "closed"; system: WorkerCardWire["browsers"][number]["system"] }>
   | Readonly<{ state: "required"; system: WorkerCardWire["browsers"][number]["system"] }>;
 
 
@@ -43,7 +44,11 @@ export function workerBrowserView(card: WorkerCardWire): Readonly<{
   slots: readonly WorkerBrowserSlot[];
   unavailableReason?: string;
 }> {
-  if (card.state === "failed") return { slots: [] };
+  if (card.state === "failed") {
+    // A settled worker keeps the sessions it had; without them, the systems its workflow needs read Closed.
+    const systems = card.lastBrowsers?.length ? card.lastBrowsers.map(browser => browser.system) : card.browserRequirements?.state === "present" ? card.browserRequirements.systems : [];
+    return { slots: [...new Set(systems)].map(system => ({ state: "closed" as const, system })) };
+  }
   const open = [...card.browsers];
   const requirements = card.browserRequirements;
   if (requirements === undefined) {
@@ -62,7 +67,7 @@ export function workerBrowserView(card: WorkerCardWire): Readonly<{
   const consumed = new Set<number>();
   const slots: WorkerBrowserSlot[] = requirements.systems.map((system) => {
     const index = open.findIndex((browser, candidate) => !consumed.has(candidate) && browser.system === system);
-    if (index === -1) return { state: "required", system };
+    if (index === -1) return { state: card.closedBrowserSystems?.includes(system) ? "closed" : "required", system };
     consumed.add(index);
     const browser = open[index];
     if (browser === undefined) throw new Error(`browser requirement ${system} resolved to a missing observed session`);
@@ -73,31 +78,6 @@ export function workerBrowserView(card: WorkerCardWire): Readonly<{
   });
   return { slots };
 }
-
-
-/** The claimed run's already-served queue pipeline is the worker's step authority. */
-export function workerTimelineView(
-  card: WorkerCardWire,
-  queueSurfaces: readonly QueueSurfaceWire[],
-): Readonly<{ state: "present"; steps: QueueSurfaceWire["pipeline"] }>
-  | Readonly<{ state: "absent"; reason: string }> {
-  const currentRun = card.currentRun;
-  if (currentRun.state === "absent") return { state: "absent", reason: currentRun.reason };
-  const row = queueSurfaces.find((surface) => String(surface.runId) === String(currentRun.runId));
-  if (row === undefined) return { state: "absent", reason: "Run timeline is not served on this day" };
-  if (row.pipeline.length === 0) return { state: "absent", reason: "No steps are served for this run" };
-  return { state: "present", steps: row.pipeline };
-}
-
-export const WORKER_TIMELINE_TONE: Record<QueueSurfaceWire["pipeline"][number]["state"], string> = {
-  done: "border-[color:var(--ds-success-mark)] bg-[var(--ds-success-mark)]",
-  active: "border-[color:var(--ds-status-running-mark)] bg-[var(--ds-status-running-mark)]",
-  pending: "border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-1)]",
-  failed: "border-[color:var(--ds-danger)] bg-[var(--ds-danger)]",
-  blocked: "border-[color:var(--ds-status-waiting-mark)] bg-[var(--ds-status-waiting-mark)]",
-  skipped: "border-[color:var(--ds-border-subtle)] bg-[var(--ds-surface-1)]",
-  cancelled: "border-[color:var(--ds-status-cancelled-mark)] bg-[var(--ds-status-cancelled-mark)]",
-};
 
 
 /** Separate desired pool declarations from served live leases; terminal records do not count as capacity. */
@@ -353,26 +333,14 @@ export const WORKER_TONE: Record<WorkerState, { dot: string; label: string; text
 export const WORKER_STATE_ORDER: WorkerState[] = ["running", "starting", "idle", "waiting", "paused", "failed"];
 
 
-/** How a settled lease ended, in the operator's words rather than the enum's. */
-export const WORKER_STOP_REASON_LABEL: Record<NonNullable<WorkerCardWire["stopReason"]>, string> = {
-  operator: "stopped by you",
-  shutdown: "shut down",
-  crashed: formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_CRASHED", {})).text,
-  "lease-expired": formatErrorCatalogFailure(createErrorCatalogFailure("WORKER_LEASE_EXPIRED", {})).text,
-};
-
-
-/** Directives describe intent, not state; pause waits for the current item to finish. */
+/** A served step interrupt names what happens to the current step. A directive alone does not. */
 export function workerDirectiveNote(card: WorkerCardWire): string | undefined {
   if (card.state === "failed") return undefined;
-  if (card.directive === "pause" && card.state !== "paused") return "Pausing after this item";
-  if (card.directive === "run" && card.state === "paused") return "Resume requested";
-  if (card.directive === "stop") return "Stopping after this item";
-  return undefined;
+  return stepInterruptLabel(card.interrupt);
 }
 
 
-/** Settled leases take no directives; stopping twice must not offer another command. */
+/** An exited member takes no directives; stopping twice must not offer another command. */
 export function canStopWorker(card: WorkerCardWire): boolean {
   return card.state !== "failed" && card.directive !== "stop";
 }
@@ -380,7 +348,7 @@ export function canStopWorker(card: WorkerCardWire): boolean {
 
 /** Settled worker duration uses its recorded end; elapsed-to-now would grow after death. */
 export function workerElapsedSeconds(card: WorkerCardWire, nowIso: string): number {
-  return elapsedSecondsBetween(card.startedAt, card.endedAt ?? nowIso);
+  return elapsedSecondsBetween(card.startedAt, card.endedAt ?? (card.state === "failed" ? card.startedAt : nowIso));
 }
 
 

@@ -5,8 +5,8 @@ import { uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
 const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
-it("links a child with its canonical day across midnight while keeping each row in its own partition", () => {
-  const w = world();
+it("links a child with its canonical day across midnight while keeping each row in its own partition", async () => {
+  const w = await world();
   queuedEventOf(w, { seed: 1, enqueuedAt: new Date(2026, 7, 3, 23, 59).toISOString() });
   queuedEventOf(w, { seed: 2, parentSeed: 1, enqueuedAt: new Date(2026, 7, 4, 0, 1).toISOString() });
   const parentDay = w.projection.buildDashboardDayWire("2026-08-03");

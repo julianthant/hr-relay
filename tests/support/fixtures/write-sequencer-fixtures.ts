@@ -1,6 +1,8 @@
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
 import { sourceBoundReadContract } from "./source-bound-read-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
+import type { DuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import { z } from "zod";
 import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkerSessionProvider } from "../../../src/workflow-kit/session.js";
@@ -15,6 +17,7 @@ import { defineWorkflowDescriptor, descriptorRuntimeNodes } from "../../../src/w
 import type { AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import type { TestClock } from "../../../src/rules/time/clock.js";
 import { defineTaskContract } from "../../../src/models/task/task-contract.js";
+import { taskImplFingerprint } from "../../../src/workflow-kit/fingerprints.js";
 import { ContractFieldPathSchema } from "../../../src/models/task/task-contract.js";
 import {
   EidSchema,
@@ -33,9 +36,9 @@ import { defineCanonicalInput } from "../../../src/models/workflow/canonical-inp
 import type { RuntimeFlowNode } from "../../../src/models/workflow/graph.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
 import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
-import { WorkerSessionManager } from "../../../src/backend/runtime/workers/worker-sessions.js";
+import { WorkerSessionManager, type WorkerSessionManagerOptions } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import { assertSequencerMintedMutationCapability } from "../../../src/backend/runtime/writes/write-sequencer.js";
-import { recordBrowserAction, runDeclaredAction } from "../../../src/backend/systems/browser-shared/action-notes.js";
+import { recordBrowserAction } from "../../../src/backend/systems/browser-shared/action-notes.js";
 import { CONFIG_SNAPSHOT, HASH_C, UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
@@ -58,7 +61,6 @@ export const WRITE_FIXTURE_RUN_ID = UUID_2;
 export const WRITE_FIXTURE_ITEM_ID = UUID_3;
 export const WRITE_FIXTURE_WORKER_ID = "write-fixture-worker-1";
 export const WRITE_FIXTURE_FINGERPRINT = FingerprintSchema.parse("e".repeat(64));
-export const WRITE_FIXTURE_IMPL_FINGERPRINT = FingerprintSchema.parse("d".repeat(64));
 export const WRITE_FIXTURE_SECRET_CANARY = "RAW_TRANSACTION_SECRET_CANARY";
 
 const SubjectInput = z.strictObject({ eid: EidSchema });
@@ -193,6 +195,8 @@ export const WriteFixtureCommit = defineTaskContract({
 });
 
 /** Save-verify sibling: proof comes from a post-click read-back, and its recovery absence is operator-only. */
+export const WRITE_FIXTURE_IMPL_FINGERPRINT = taskImplFingerprint(WriteFixtureCommit);
+
 export const WriteFixtureVerify = defineTaskContract({
   id: taskId("ucpath/read-write-fixture-verify"),
   title: "Read Write Fixture Verify",
@@ -280,12 +284,14 @@ export interface WriteFixtureWorld {
   lastCapability?: unknown;
   /** Called during prepare, before it returns (budget-expiry injection). */
   onPrepare?: () => void;
+  prepareSteps?: (captureScreenshot: () => Promise<void>) => Promise<void>;
   /** When true the served driver has NO read() method. */
   omitDriverRead: boolean;
   /** When set, driver.read throws it. */
   subjectReadThrows?: Error;
   /** Throw only after the probe has recorded its observation. */
   probeThrowsAfterRecord?: Error;
+  probeWait?: Promise<void>;
   /** Mutation control: author one unclassified point and require a loud refusal. */
   recordUndeclaredProbeField: boolean;
   /** Mutation control: author one unclassified commit point after the click. */
@@ -338,18 +344,20 @@ export interface WriteFixtureRegistry {
   readonly world: WriteFixtureWorld;
 }
 
-export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRegistry {
+export function buildWriteFixtureRegistry(world: WriteFixtureWorld, commitContract: Omit<typeof WriteFixtureCommit, "input"> & {
+  readonly input: z.ZodType<{ eid: z.output<typeof EidSchema>; memo?: string | undefined }>;
+} = WriteFixtureCommit): TaskStoreRegistry {
   const probe = defineTask(writeFixtureDriverDeclaration, WriteFixtureProbe, {
     sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
     async run({ input, ctx }) {
       world.events.push("probe");
+      await world.probeWait;
       const next = world.probeResults.shift();
       if (next === undefined) {
         throw new Error("write fixture probe was invoked with no queued result; the test under-provisioned it");
       }
       if (next instanceof Error) throw next;
-      const verdict = await runDeclaredAction({ id: "probe-state", kind: "read", targetId: "ucpath.write-fixture.probe-state" },
-        async () => ProbeOutputSchema.parse(next), (value) => value.state);
+      const verdict = ProbeOutputSchema.parse(next);
       ctx.recordData([
         { direction: "read", field: "state", value: verdict.state },
         { direction: "read", field: "eid", value: input.eid },
@@ -368,6 +376,7 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
       world.events.push("prepare");
       world.onPrepare?.();
       await ctx.driver.prepare("ucpath.write-fixture.eid-input");
+      await world.prepareSteps?.(ctx.captureScreenshot);
       const staged = { staged: true as const, stagedPageState: WRITE_FIXTURE_STAGED_STATE };
       ctx.recordData([
         { direction: "write", field: "staged", value: staged.staged },
@@ -376,7 +385,7 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
       return staged;
     },
   });
-  const commit = defineTask(writeFixtureDriverDeclaration, WriteFixtureCommit, {
+  const commit = defineTask(writeFixtureDriverDeclaration, commitContract, {
     sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
     async run({ ctx }) {
       if (world.commitThrows !== undefined) throw world.commitThrows;
@@ -419,8 +428,7 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
         throw new Error("write fixture verify was invoked with no queued result; the test under-provisioned it");
       }
       if (next instanceof Error) throw next;
-      const verdict = await runDeclaredAction({ id: "verify-state", kind: "read", targetId: "ucpath.write-fixture.verify-state" },
-        async () => ProbeOutputSchema.parse(next), (value) => value.state);
+      const verdict = ProbeOutputSchema.parse(next);
       ctx.recordData([
         { direction: "read", field: "state", value: verdict.state },
         { direction: "read", field: "eid", value: input.eid },
@@ -465,6 +473,7 @@ interface FixtureDescriptorOptions {
   readonly commitEid?: string;
 
   readonly dryRun?: "stop-after-prepare" | "unsupported";
+  readonly traversal?: boolean;
 }
 
 function buildDescriptor(
@@ -492,6 +501,17 @@ function buildDescriptor(
     });
   const omittedFlow = () => fixtureGraph.step("read", sourceBoundReadContract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
     .build({ schema: z.strictObject({ eid: EidSchema }), dependsOn: [], derive: ({ input }) => ({ eid: input.eid }) });
+  const traversalFlow = () => fixtureGraph.transaction("second-write", {
+    dependsOn: [WRITE_FIXTURE_NODE_ID], prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
+    commit: { uses: commitContract, bind: ({ input }) => ({ eid: input.eid }) },
+    previewBind: ({ input }) => ({ prepare: { eid: input.eid }, commit: { eid: input.eid }, samples: [] }),
+    dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000,
+  }).gate("not-required", { dependsOn: [], label: "Not required", resolvedBy: "operator",
+    result: z.strictObject({ approved: z.boolean() }),
+    when: { kind: "not-equals", of: { from: "input", path: "eid" }, value: WRITE_FIXTURE_EID },
+  }).step("after-write", WriteFixtureProbe, { dependsOn: ["second-write"], replay: "always-rerun",
+    bind: ({ input }) => ({ eid: input.eid }) }).build({ schema: z.strictObject({ transactionId: z.string().min(1) }),
+      dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => ({ transactionId: outputs[WRITE_FIXTURE_NODE_ID].output.transactionId }) });
   const fixtureFlow = () => fixtureGraph.build({
     schema: z.strictObject({ transactionId: z.string().min(1) }), dependsOn: [WRITE_FIXTURE_NODE_ID],
     derive: ({ outputs }) => ({ transactionId: outputs[WRITE_FIXTURE_NODE_ID].output.transactionId }),
@@ -518,10 +538,12 @@ function buildDescriptor(
       omission: { form: { fields: [{ key: "reason", label: "Reason", kind: "text" as const }] }, produces: {} } }] } : {}),
   } as const;
   return options.omittable === true ? defineWorkflowDescriptor({ ...definition, flow: omittedFlow() })
+    : options.traversal === true ? defineWorkflowDescriptor({ ...definition, flow: traversalFlow() })
     : defineWorkflowDescriptor({ ...definition, flow: fixtureFlow() });
 }
 
 export const writeFixtureDescriptor = buildDescriptor("receipt");
+export const writeFixtureTraversalDescriptor = buildDescriptor("receipt", { traversal: true });
 export const writeFixtureOmittableDescriptor = buildDescriptor("receipt", { omittable: true });
 export const writeFixtureMemoDescriptor = buildDescriptor("receipt", { memo: true });
 export const writeFixtureDocumentDescriptor = buildDescriptor("receipt", { documentNumber: true });
@@ -597,6 +619,9 @@ export const writeFixtureDescriptorWithMovedKey = buildDescriptor("receipt", {
   contractFingerprint: WRITE_FIXTURE_MOVED_FINGERPRINT,
   commitEid: WRITE_FIXTURE_MOVED_EID,
 });
+
+/** Same contract fingerprint as the base fixture, but the commit bind derives another permanent key. */
+export const writeFixtureDescriptorWithMovedKeySameContract = buildDescriptor("receipt", { commitEid: WRITE_FIXTURE_MOVED_EID });
 
 /** Moved closure plus a durable task dependency whose checkpoint recovery must require. */
 export const writeFixtureDescriptorWithDependencyAfterUnrelatedEdit = defineWorkflowDescriptor({
@@ -675,7 +700,7 @@ export function writeFixtureQueuedRun(options: Readonly<{
       itemId: options.itemId ?? WRITE_FIXTURE_ITEM_ID,
       traceId: "wf-090000-2222",
       descriptorVersion: 1,
-      contractFingerprint: WRITE_FIXTURE_FINGERPRINT,
+      contractFingerprint: WRITE_FIXTURE_FINGERPRINT, buildId: currentBuildId(),
       resolvedInstance: { ucpath: "prod" },
       configFingerprint: CONFIG_SNAPSHOT.fingerprint,
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
@@ -703,23 +728,32 @@ export function writeFixtureQueuedRun(options: Readonly<{
 }
 
 export function writeFixtureSessions(world: WriteFixtureWorld): SessionFactoryHarness {
-  return sessionFactoryHarness({ ucpath: () => createFixtureDriver(world) });
+  const harness = sessionFactoryHarness({ ucpath: () => createFixtureDriver(world) });
+  return { ...harness, factory: { ...harness.factory, open: async input => {
+    const resource = await harness.factory.open(input);
+    return { ...resource, screenshot: async () => ({ state: "available" as const, sessionId: resource.sessionId,
+      pageVersion: 1, observedAt: WRITE_FIXTURE_NOW, bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720 }) };
+  } } };
 }
 
-export function writeFixtureSessionManager(
+export async function writeFixtureSessionManager(
   harness: SessionFactoryHarness,
   registry: TaskStoreRegistry,
   clock: TestClock,
-): WorkerSessionManager {
+  duoCeremony?: DuoCeremonyGateFactory,
+  browserScreenshotCapture?: WorkerSessionManagerOptions["browserScreenshotCapture"],
+): Promise<WorkerSessionManager> {
+  duoCeremony ??= await fixtureDuoCeremonyGates(clock);
   return new WorkerSessionManager({
     workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
     workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
     stores: registry,
+    browserScreenshotCapture: browserScreenshotCapture ?? { capture: async () => undefined },
     factory: harness.factory,
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-    duoCeremony: fixtureDuoCeremonyGates(clock),
+    duoCeremony,
   });
 }
 

@@ -10,10 +10,7 @@ export class MeasurementFreeResizeObserver {
 
 export function createSettingsStorageDoctorFixtures() {
   const STORAGE = StorageHealthSummaryWireSchema.parse({
-    authority: "healthy",
-    backup: "current",
-    checkedAt: "2026-08-31T16:00:00.000Z",
-  });
+    authority: "healthy" });
 
   const REPORT_BASE = {
     recovery: { state: "clear" },
@@ -32,7 +29,6 @@ export function createSettingsStorageDoctorFixtures() {
       values: {
         pendingCommands: 0,
         unresolvedWriteIntents: 0,
-        leases: 0,
         providerReservations: 0,
         artifactOutbox: 0,
       },

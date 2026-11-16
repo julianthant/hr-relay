@@ -1,3 +1,4 @@
+import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
 /** The ONE workflow builder API (ref workflow-model ): it accumulates `S` (per-node output/conditional/contracts) and `Nodes`, so reading an undeclared output fails `tsc`. */
 import { z } from "zod";
@@ -8,12 +9,13 @@ import type {
   AnyTaskContract,
 } from "../models/task/task-contract.js";
 import { NodeIdSchema } from "../rules/identity/ids.js";
-import type { DelegationEdgeId, ItemId, NodeId } from "../rules/identity/ids.js";
+import type { DelegationEdgeId, ItemId, NodeId, StableRecordId } from "../rules/identity/ids.js";
 import type { RetryPolicy } from "../models/sessions/session.js";
 import { parseNodeCondition } from "../models/workflow/node-condition.js";
 import type { NodeConditionSpec } from "../models/workflow/node-condition.js";
 import type {
   AnyWorkflowRef,
+  ChildRunIdentityContext,
   BranchNode,
   ChildRunNode,
   ChildRunOutcome,
@@ -52,6 +54,7 @@ export type OutputsOf<S> = {
 };
 
 export interface FlowScope<InputSchema extends z.ZodType, S> {
+  readonly dryRun?: DryRunScope;
   readonly input: z.output<InputSchema>;
   readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: OutputsOf<S>;
@@ -90,6 +93,7 @@ export interface StepOpts<
   readonly when?: NodeConditionSpec;
   /** REQUIRED — no default (ref workflow-model ). */
   readonly replay: "checkpoint" | "always-rerun";
+  readonly dryRun?: "stop-before-publish";
 }
 
 export interface TransactionOpts<
@@ -105,6 +109,7 @@ export interface TransactionOpts<
   /** Never sees prepare output — the durable key is stable before page mutation. */
   readonly commit: Readonly<{ uses: C; bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<C["input"]> }>;
   readonly dryRun: "stop-after-prepare" | "unsupported";
+  readonly previewBind?: (scope: ScopeFor<InputSchema, S, D>) => DryRunBinding | undefined;
   readonly probePolicy: "always" | "retries-and-recovery-only";
   readonly probeToFenceMaxMs: number;
   readonly retryBeforeFence?: RetryPolicy;
@@ -139,10 +144,11 @@ export type ChildRunOpts<
   | Readonly<{
     label?: string;
     dependsOn: D;
+    sourceRecordIds?: (scope: ScopeFor<InputSchema, S, D>) => readonly (readonly StableRecordId[])[];
     edgeId: DelegationEdgeId;
     cardinality: "one";
     bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<Target["input"]>;
-    deriveChildItemId: (input: z.output<Target["input"]>) => ItemId;
+    deriveChildItemId: (input: z.output<Target["input"]>, context: ChildRunIdentityContext) => ItemId;
     await: "terminal";
     join: "one";
     policy: DelegationPolicy;
@@ -150,10 +156,11 @@ export type ChildRunOpts<
   | Readonly<{
     label?: string;
     dependsOn: D;
+    sourceRecordIds?: (scope: ScopeFor<InputSchema, S, D>) => readonly (readonly StableRecordId[])[];
     edgeId: DelegationEdgeId;
     cardinality: "many";
     bind: (scope: ScopeFor<InputSchema, S, D>) => readonly z.input<Target["input"]>[];
-    deriveChildItemId: (input: z.output<Target["input"]>) => ItemId;
+    deriveChildItemId: (input: z.output<Target["input"]>, context: ChildRunIdentityContext) => ItemId;
     await: "terminal";
     join: "all" | "all-settled";
     policy: DelegationPolicy;
@@ -161,11 +168,12 @@ export type ChildRunOpts<
   | Readonly<{
     label?: string;
     dependsOn: D;
+    sourceRecordIds?: (scope: ScopeFor<InputSchema, S, D>) => readonly (readonly StableRecordId[])[];
     edgeId: DelegationEdgeId;
     cardinality: "one" | "many";
     bind: (scope: ScopeFor<InputSchema, S, D>) =>
       z.input<Target["input"]> | readonly z.input<Target["input"]>[];
-    deriveChildItemId: (input: z.output<Target["input"]>) => ItemId;
+    deriveChildItemId: (input: z.output<Target["input"]>, context: ChildRunIdentityContext) => ItemId;
     await: "none";
     join: "none";
     policy: DelegationPolicy;
@@ -355,7 +363,7 @@ export interface FlowBuilder<
   parallel<Id extends string, const B extends ParallelBranches>(
     id: Id,
     branches: B,
-    opts: Readonly<{ join: "all" | "all-settled" }>,
+    opts: Readonly<{ join: "all" | "all-settled"; dependsOn?: readonly (keyof S & string)[] }>,
   ): FlowBuilder<
     InputSchema,
     S & { readonly [K in Id]: NodeEntry<ParallelOutput<B>, false, readonly []> },
@@ -518,6 +526,7 @@ function makeBuilder(state: MutableFlowState): unknown {
       bind: (scope: never) => unknown;
       when?: NodeConditionSpec;
       replay: "checkpoint" | "always-rerun";
+      dryRun?: "stop-before-publish";
     }): unknown {
       push({
         kind: "task",
@@ -528,6 +537,7 @@ function makeBuilder(state: MutableFlowState): unknown {
         bind: opts.bind,
         ...(opts.when === undefined ? {} : { when: parseNodeCondition(opts.when) }),
         replay: opts.replay,
+        ...(opts.dryRun === undefined ? {} : { dryRun: opts.dryRun }),
       } as GraphNodeBase);
       return builder;
     },
@@ -536,6 +546,7 @@ function makeBuilder(state: MutableFlowState): unknown {
       dependsOn: readonly string[];
       prepare: { uses: AnyPrepareTaskContract; bind: (scope: never) => unknown };
       commit: { uses: AnyCommitTaskContract; bind: (scope: never) => unknown };
+      previewBind?: (scope: never) => DryRunBinding | undefined;
       dryRun: "stop-after-prepare" | "unsupported";
       probePolicy: "always" | "retries-and-recovery-only";
       probeToFenceMaxMs: number;
@@ -553,6 +564,7 @@ function makeBuilder(state: MutableFlowState): unknown {
         commit: Object.freeze({ uses: pair.commit.uses, bind: pair.commit.bind }),
         leaseScope: "transaction",
         dryRun: pair.dryRun,
+        ...(pair.previewBind === undefined ? {} : { previewBind: pair.previewBind }),
         probePolicy: pair.probePolicy,
         probeToFenceMaxMs: pair.probeToFenceMaxMs,
         ...(pair.retryBeforeFence === undefined ? {} : { retryBeforeFence: pair.retryBeforeFence }),
@@ -582,7 +594,7 @@ function makeBuilder(state: MutableFlowState): unknown {
     parallel(
       id: string,
       branches: readonly { id: string; nodes: readonly string[] }[],
-      opts: { join: "all" | "all-settled" },
+      opts: { join: "all" | "all-settled"; dependsOn?: readonly string[] },
     ): unknown {
       const branchIds = branches.map((branch) => branch.id);
       if (new Set(branchIds).size !== branchIds.length) {
@@ -592,7 +604,7 @@ function makeBuilder(state: MutableFlowState): unknown {
       push({
         kind: "parallel",
         id: nodeId(id),
-        dependsOn: nodeIds([]),
+        dependsOn: nodeIds(opts.dependsOn ?? []),
         branches: Object.freeze(branches.map((branch) =>
           Object.freeze({ id: branch.id, nodes: nodeIds(branch.nodes) }))),
         join: opts.join,
@@ -602,10 +614,11 @@ function makeBuilder(state: MutableFlowState): unknown {
     childRun(id: string, target: AnyWorkflowRef, opts: {
       label?: string;
       dependsOn: readonly string[];
+      sourceRecordIds?: (scope: never) => readonly (readonly StableRecordId[])[];
       edgeId: DelegationEdgeId;
       cardinality: "one" | "many";
       bind: (scope: never) => unknown;
-      deriveChildItemId: (input: never) => ItemId;
+      deriveChildItemId: (input: never, context: ChildRunIdentityContext) => ItemId;
       await: "none" | "terminal";
       join: "one" | "all" | "all-settled" | "none";
       policy: DelegationPolicy;
@@ -619,6 +632,7 @@ function makeBuilder(state: MutableFlowState): unknown {
         target,
         cardinality: opts.cardinality,
         bind: opts.bind,
+        ...(opts.sourceRecordIds === undefined ? {} : { sourceRecordIds: opts.sourceRecordIds }),
         deriveChildItemId: opts.deriveChildItemId,
         await: opts.await,
         join: opts.join,

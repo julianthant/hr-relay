@@ -11,7 +11,7 @@ import {
 } from "../../rules/identity/ids.js";
 
 /** Which door the operator used. The cascade is the same; the admission is not. */
-export const DeletedRunOriginSchema = z.literal("queue");
+export const DeletedRunOriginSchema = z.enum(["queue", "storage"]);
 
 export const DeletedRunTableSchema = z.enum([
   "delegation_dependencies", "run_delegations", "diagnostic_files", "diagnostic_snapshots",

@@ -1,5 +1,9 @@
-import { cellText, columnName, type EditableSheet, type EditableWorkbook } from './spreadsheet-editor-model.js';
-import { fieldForSpreadsheetHeader, spreadsheetField, spreadsheetValueMatches, suggestSpreadsheetField } from './spreadsheet-fields-model.js';
+import { columnName } from './spreadsheet-editor-model.js';
+import { cellText, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
+import { fieldForSpreadsheetHeader, spreadsheetField } from '../../../models/fields/workbook-fields.js';
+import { spreadsheetEditorField, spreadsheetValueMatches, suggestSpreadsheetField } from './spreadsheet-fields-model.js';
+import { CustomRosterFieldIdSchema } from '../../../models/dashboard/workbooks.js';
+import { wholeCellEid } from '../../../models/fields/cell-coercion.js';
 
 export function spreadsheetHeaderRow(sheet: EditableSheet): number {
   const row = sheet.headerRow ?? 1;
@@ -26,7 +30,7 @@ export function prepareSpreadsheetColumns(document: EditableWorkbook): EditableW
   }) };
 }
 export function setSpreadsheetColumnField(sheet: EditableSheet, column: number, fieldId: string | null): EditableSheet {
-  if (fieldId !== null) spreadsheetField(fieldId);
+  if (fieldId !== null && !CustomRosterFieldIdSchema.safeParse(fieldId).success) spreadsheetField(fieldId);
   if (!sheet.columnBindings || column < 0 || column >= sheet.width) throw new Error('SPREADSHEET_COLUMN_BINDING_UNAVAILABLE');
   return { ...sheet, columnBindings: sheet.columnBindings.map((binding, index) => index === column ? { ...binding, fieldId, basis: fieldId === null ? 'unmapped' : 'manual' } : binding) };
 }
@@ -45,16 +49,31 @@ export function spreadsheetColumnErrors(document: EditableWorkbook): readonly st
       if (hidden.has(column)) continue;
       selected++;
       const binding = sheet.columnBindings?.[column];
-      if (!binding?.fieldId) { errors.push(`${sheet.name}: choose a field for column ${columnName(column)} or deselect it.`); continue; }
-      const field = spreadsheetField(binding.fieldId);
+      if (!binding?.fieldId) continue;
+      const field = spreadsheetEditorField(binding.fieldId, binding.sourceHeader || cellText(sheet.rows[spreadsheetHeaderRow(sheet) - 1].cells[column]));
       if (fields.has(field.id)) errors.push(`${sheet.name}: ${field.label} is mapped more than once.`);
       fields.add(field.id);
-      const invalid = spreadsheetColumnValueErrors(sheet, column);
-      if (invalid) errors.push(`${sheet.name}, column ${columnName(column)}: ${invalid} ${invalid === 1 ? 'value does' : 'values do'} not match ${field.label} (${field.format}).`);
     }
   }
   if (!selected) errors.push('Select at least one column to import.');
   return errors;
+}
+export function spreadsheetColumnValueIssues(document: EditableWorkbook): readonly string[] {
+  return document.sheets.flatMap(sheet => sheet.columnBindings?.flatMap((binding, column) => {
+    if (sheet.hidden.includes(column) || !binding.fieldId) return [];
+    const field = spreadsheetEditorField(binding.fieldId, binding.sourceHeader || cellText(sheet.rows[spreadsheetHeaderRow(sheet) - 1].cells[column]));
+    return sheet.rows.slice(spreadsheetHeaderRow(sheet)).flatMap((row, index) => spreadsheetValueMatches(field.id, cellText(row.cells[column])) ? []
+      : [`${sheet.name}, ${row.sourceRow === undefined ? 'current row' : 'row'} ${row.sourceRow ?? spreadsheetHeaderRow(sheet) + index + 1}, column ${columnName(binding.sourceColumn ?? column)}: does not match ${field.label}.`]);
+  }) ?? []);
+}
+/** Non-empty rows whose kept Employee ID is blank or unusable; a roster reads those IDs as missing. */
+export function spreadsheetRowsWithoutEid(document: EditableWorkbook): number {
+  return document.sheets.reduce((total, sheet) => {
+    const column = sheet.columnBindings?.findIndex((binding, index) => binding.fieldId === 'eid' && !sheet.hidden.includes(index)) ?? -1;
+    if (column < 0) return total;
+    return total + sheet.rows.slice(spreadsheetHeaderRow(sheet)).filter(row => row.cells.some(cell => cellText(cell).trim())
+      && wholeCellEid(cellText(row.cells[column])) === null).length;
+  }, 0);
 }
 export function selectSpreadsheetColumns(document: EditableWorkbook): EditableWorkbook {
   const errors = spreadsheetColumnErrors(document);

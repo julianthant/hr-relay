@@ -43,15 +43,8 @@ type AppRouteState as AppRouteState_m7
 } from "../../../../src/dashboard/app/navigation/url-state.js";
 import type { DashboardClient as DashboardClient_m7 } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider as DashboardClientProvider_m7 } from "../../../../src/dashboard/state/client-context.js";
-import {
-SETTINGS_KEYBOARD_SECTION_ID as SETTINGS_KEYBOARD_SECTION_ID_m7,
-type SettingsSection as SettingsSection_m7
-} from "../../../../src/dashboard/surfaces/settings/settings-model.js";
+import { SETTINGS_KEYBOARD_SECTION_ID as SETTINGS_KEYBOARD_SECTION_ID_m7 } from "../../../../src/dashboard/surfaces/settings/settings-model.js";
 import { SettingsPage as SettingsPage_m7 } from "../../../../src/dashboard/surfaces/settings/settings.js";
-import {
-SettingsSectionPrimitiveSchema as SettingsSectionPrimitiveSchema_m7,
-StorageHealthSummaryWireSchema as StorageHealthSummaryWireSchema_m7
-} from "../../../../src/models/dashboard/bootstrap.js";
 // @vitest-environment jsdom
 import assert_m8 from "node:assert/strict";
 import { act as act_m8,createElement as createElement_m8,useRef as useRef_m8,useState as useState_m8 } from "react";
@@ -364,17 +357,6 @@ it_m6("opens today's queue after a start, clearing an older run and takeover", (
 {
 
 
-/** Parsed, so a case cannot express a section the bootstrap would refuse. */
-function section(id: string, label: string): SettingsSection_m7 {
-  return SettingsSectionPrimitiveSchema_m7.parse({ id, label, revision: 1 });
-}
-
-const STORAGE = section("storage", "Storage checks");
-const HEALTHY_STORAGE = StorageHealthSummaryWireSchema_m7.parse({
-  authority: "healthy",
-  backup: "current",
-  checkedAt: "2026-08-26T16:00:00.000Z",
-});
 const STATIC_SETTINGS_CLIENT = {} as DashboardClient_m7;
 
 describe_m7("the settings route", () => {
@@ -447,17 +429,11 @@ describe_m7("history push on re-press (unit F4b finding 2)", () => {
 describe_m7("the settings nav renders real navigation, not buttons (unit F4b finding 4)", () => {
   const markup = renderToStaticMarkup_m7(createElement_m7(DashboardClientProvider_m7, {
     client: STATIC_SETTINGS_CLIENT,
-    children: createElement_m7(SettingsPage_m7, { onClose: () => undefined,
-      storage: HEALTHY_STORAGE,
-      sections: [STORAGE],
+    children: createElement_m7(SettingsPage_m7, { profileName: "Synthetic Operator", onClose: () => undefined,
 
     section: SETTINGS_KEYBOARD_SECTION_ID_m7,
     actorId: "local-operator",
     descriptorFingerprint: "a".repeat(64),
-    preflight: [],
-    // Capabilities is not the open section in any render here, so the join map
-    // is empty rather than a fixture nothing reads.
-    workflowLabels: new Map<string, string>(),
     onSection: () => undefined,
     }),
   }));
@@ -528,3 +504,16 @@ afterEach_m8(_afterEachFixture0);
 
 });
 }
+
+it_m0("round trips HUB onboarding and mock setup through the one URL owner", () => {
+  for (const onboarding of ["login", "signup", "duo", "ready"] as const) {
+    const route = { start: false, onboarding };
+    assert_m0.deepEqual(parseRoute_m0(routeToSearch_m0(route)), route);
+  }
+  for (const onboardingSetup of ["fast", "duo"] as const) {
+    const route = { start: false, onboardingSetup };
+    assert_m0.deepEqual(parseRoute_m0(routeToSearch_m0(route)), route);
+  }
+  assert_m0.equal(parseRoute_m0("?onboarding=unknown").viewInvalid, true);
+  assert_m0.equal(parseRoute_m0("?onboardingSetup=unknown").viewInvalid, true);
+});

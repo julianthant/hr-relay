@@ -5,10 +5,10 @@ import { formatErrorCatalogFailure, createErrorCatalogFailure } from '../../../.
 import { afterEach,describe,it,vi } from 'vitest';
 import { mountSettingsHarness,syntheticSettingsAuthority } from '../../../../support/helpers/dashboard/settings-harness.js';
 
-const cleanups: (() => void)[] = [];
-afterEach(() => { vi.useRealTimers(); for (const close of cleanups.splice(0).reverse()) close(); });
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { vi.useRealTimers(); for (const close of cleanups.splice(0).reverse()) await close(); });
 async function setup() {
-  const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+  const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
   const mounted = await mountSettingsHarness(authority); cleanups.push(mounted.close);
   vi.useFakeTimers();
   return { ...mounted, authority };
@@ -246,7 +246,7 @@ describe('confirmed Settings feedback through the current editor', () => {
   it('withholds a protected toast on conflict and readback failure', async () => {
     const { controller, authority, ports, notices, problems } = await setup();
     await act(async () => controller().protectedEditor.update('ucpathPassword', 'secret-toast-sentinel'));
-    assert.equal(authority.protectedApply({ timekeeperName: { set: 'Other operator' } }).state, 'applied');
+    assert.equal(authority.protectedApply({ ucpathUserId: { set: 'Other operator' } }).state, 'applied');
     await act(async () => controller().protectedEditor.submit());
     assert.equal(controller().protectedEditor.save.state, 'conflict');
     assert.deepEqual(notices, []);

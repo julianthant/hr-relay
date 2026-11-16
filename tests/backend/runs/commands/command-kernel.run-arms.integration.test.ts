@@ -1,3 +1,10 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
+import { childMixedPolicyRoot, childMixedPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
+import { plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
+import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { join } from "node:path";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createKernelStubCommandFixtures } from "../../../support/helpers/backend/kernel-stub-command-fixtures.js";
@@ -9,10 +16,9 @@ import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema, ErrorCodeSchema } from "../../../../src/rules/identity/ids.js";
 import { failureStatus } from "../../../../src/backend/transports/http/routes/failure-status.js";
 import { projectFailureDisplay } from "../../../../src/models/dashboard/failure-display.js";
-import { ErrorCodeSchema } from "../../../../src/rules/identity/ids.js";
 import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 import { localDatePart } from "../../../../src/rules/time/clock.js";
@@ -20,17 +26,22 @@ import { kernelRejectMemberRecord } from "../../../support/helpers/backend/kerne
 import { createCommandKernelTestWorld, type Harness } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { afterEach, describe, it } from "vitest";
-import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
-import { HASH_A, HASH_B, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, rejectActiveDescriptor, createHarness, createPlan, startCommand, runCommand } = createCommandKernelTestWorld();
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+
+const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, createPlan, startCommand, runCommand } = createCommandKernelTestWorld(profileFixtures.create);
 
 
-afterEach(() => {
-  for (const database of openDatabases.splice(0)) database.close();
+const delegationWorld = createRunExecutorTestWorld();
+afterEach(delegationWorld.cleanup);
+
+afterEach(async () => {
+  for (const database of openDatabases.splice(0)) { releaseSeededWriteOwners(database, NOW); database.close(); }
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -42,8 +53,8 @@ describe("run arms", () => {
     return singleAppliedRunId(result);
   }
 
-  it("retries a terminal run into a fresh linked run and refuses an active item", () => {
-    const harness = createHarness();
+  it("retries a terminal run into a fresh linked run and refuses an active item", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
 
     const active = harness.kernel.execute(runCommand("retry", runId, 1));
@@ -77,49 +88,23 @@ describe("run arms", () => {
     );
   });
 
-  it("cancel is CAS-scoped and cascades through authority dependency edges only", () => {
-    const harness = createHarness();
-    const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
-    const parent = harness.database.authority.runs.get(parentId);
-    assert.ok(parent !== undefined);
-
-    const cascadeChildId = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
-    const independentChildId = "aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa";
-    assert.equal(harness.database.authority.runs.enqueue(kernelRejectMemberRecord(parent, parentId, cascadeChildId, "child:aaaa", "kr-170000-aaaa", "cascade-edge", NOW)).state, "inserted");
-    assert.equal(harness.database.authority.runs.enqueue(kernelRejectMemberRecord(parent, parentId, independentChildId, "child:bbbb", "kr-170000-bbbb", "independent-edge", NOW)).state, "inserted");
-
-    const manifest = (manifestId: string, edgeId: string, childRunId: string, childItemId: string, cascadeCancel: string) => ({
-      manifestId,
-      parentRunId: parentId,
-      edgeId,
-      inputSchemaHash: HASH_A,
-      resultSchemaHash: HASH_B,
-      cardinality: "one",
-      join: "one",
-      policy: { onChildFailed: "fail-parent", cascadeCancel, afterChildRetry: "resume-parent", visibility: "inline" },
-      children: [{ dependencyId: `${manifestId.slice(0, 8)}-3333-4333-8333-333333333333`, childRunId, childItemId, canonicalInputFingerprint: HASH_A }],
-      createdAt: NOW,
-      manifestFingerprint: HASH_A,
-    });
-    const dependency = (dependencyId: string, manifestId: string, edgeId: string, childRunId: string, childItemId: string, cascadeCancel: string) => ({
-      dependencyId,
-      manifestId,
-      edgeId,
-      parentRunId: parentId,
-      childRunId,
-      childItemId,
-      policy: { onChildFailed: "fail-parent", cascadeCancel, afterChildRetry: "resume-parent", visibility: "inline" },
-      state: "active",
-      version: 1,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    const cascadeItem = deriveItemId("kernel-reject", "child:aaaa");
-    const independentItem = deriveItemId("kernel-reject", "child:bbbb");
-    harness.database.authority.delegationManifests.insert(manifest("dddddddd-1111-4111-8111-dddddddddddd", "cascade-edge", cascadeChildId, cascadeItem, "cascade"));
-    harness.database.authority.delegationManifests.insert(manifest("dddddddd-2222-4222-8222-dddddddddddd", "independent-edge", independentChildId, independentItem, "independent"));
-    harness.database.authority.dependencies.insert(dependency("dddddddd-3333-4333-8333-dddddddddddd", "dddddddd-1111-4111-8111-dddddddddddd", "cascade-edge", cascadeChildId, cascadeItem, "cascade"));
-    harness.database.authority.dependencies.insert(dependency("dddddddd-4444-4444-8444-dddddddddddd", "dddddddd-2222-4222-8222-dddddddddddd", "independent-edge", independentChildId, independentItem, "independent"));
+  it("cancel is CAS-scoped and cascades through authority dependency edges only", async () => {
+    const h = await delegationWorld.executorHarness({ descriptor: childMixedPolicyRoot.descriptor, stores: plan1Stores });
+    const { database, path } = h.authority;
+    const execution = canonicalChildExecution(h.deps, database, path,
+      id => childMixedPolicyModules.find(module => module.descriptor.id === id)?.descriptor);
+    const root = execution.start(childMixedPolicyRoot.descriptor,
+      { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
+    assert.equal((await execution.step(root, delegationWorld.SIGNAL)).outcome.state, "yielded-delegation");
+    const parentId = root.envelope.runId;
+    const parent = database.authority.runs.get(parentId);
+    assert.ok(parent);
+    const children = database.authority.runs.listChildren(parentId);
+    const cascadeChildId = children.find(child => child.envelope.parent?.edgeId === "cascade")?.envelope.runId;
+    const independentChildId = children.find(child => child.envelope.parent?.edgeId === "independent")?.envelope.runId;
+    assert.ok(cascadeChildId);
+    assert.ok(independentChildId);
+    const harness = { database, kernel: execution.kernel };
 
     const stale = harness.kernel.execute(runCommand("cancel", parentId, parent.version + 7));
     assert.equal(stale.state, "conflict");
@@ -135,8 +120,8 @@ describe("run arms", () => {
     assert.equal(independent?.lifecycle.state, "queued");
   });
 
-  it("cancels nothing when a child has no dependency edge in authority", () => {
-    const harness = createHarness();
+  it("cancels nothing when a child has no dependency edge in authority", async () => {
+    const harness = await createHarness();
     const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
     const parent = harness.database.authority.runs.get(parentId);
     assert.ok(parent !== undefined);
@@ -152,8 +137,8 @@ describe("run arms", () => {
   });
 
 
-  it("bump elevates a queued run to interactive at the live version, and refuses a stale one", () => {
-    const harness = createHarness();
+  it("bump elevates a queued run to interactive at the live version, and refuses a stale one", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
     const version = () => harness.database.authority.runs.get(runId)?.version ?? 0;
 
@@ -175,18 +160,18 @@ describe("run arms", () => {
     const again = harness.kernel.execute(runCommand("bump", runId, version()));
     assert.equal(again.state, "applied");
 
-    const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
-      path: join(harness.stateRoot, "kernel.sqlite"), workflow: rejectActiveDescriptor.id, poolIndex: 1, browserSystems: [],
+    const { workerId } = testAdmittedWorker(harness.database, harness.clock, {
+      path: join(harness.stateRoot, "state.db"), workflow: rejectActiveDescriptor.id, poolIndex: 1, browserSystems: [],
     });
-    const claimed = harness.database.authority.runs.claimNext({ workflow: rejectActiveDescriptor.id, workerId, workerLifetime, now: NOW });
+    const claimed = harness.database.authority.runs.claimNext({ workflow: rejectActiveDescriptor.id, workerId, now: NOW });
     assert.equal(claimed.state, "claimed");
     const busy = harness.kernel.execute(runCommand("bump", runId, version()));
     assert.equal(busy.state, "rejected");
     if (busy.state === "rejected") assert.equal(busy.code, "invalid-state");
   });
 
-  it("rename is presentation-only and changes no lifecycle", () => {
-    const harness = createHarness();
+  it("rename is presentation-only and changes no lifecycle", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
     const version = () => {
       const run = harness.database.authority.runs.get(runId);
@@ -204,9 +189,36 @@ describe("run arms", () => {
     assert.equal(run?.lifecycle.state, "queued");
   });
 
+  it("an empty or blank rename clears the name, and every clear bumps the version", async () => {
+    const harness = await createHarness();
+    const runId = startOne(harness, rejectActiveDescriptor, "10800002");
+    const current = () => {
+      const run = harness.database.authority.runs.get(runId);
+      assert.ok(run);
+      return run;
+    };
+    const rename = (displayName: string) => harness.kernel.execute(runCommand("rename", runId, current().version, { payload: { displayName } }));
 
-  it("refuses a stale rename with the live version", () => {
-    const harness = createHarness();
+    for (const blank of ["", "   "]) {
+      assert.equal(rename("  Kernel case ").state, "applied");
+      assert.equal(current().displayName, "Kernel case", "the kernel trims the name");
+      const before = current().version;
+      assert.equal(rename(blank).state, "applied");
+      assert.equal(Object.hasOwn(current(), "displayName"), false, `${JSON.stringify(blank)} leaves no displayName key`);
+      assert.equal(current().version, before + 1);
+    }
+    const unnamed = current().version;
+    assert.equal(rename("").state, "applied");
+    assert.equal(current().version, unnamed + 1, "clearing an unnamed run still bumps the version");
+
+    const tooLong = rename("x".repeat(121));
+    assert.equal(tooLong.state, "rejected");
+    if (tooLong.state === "rejected") assert.equal(tooLong.code, "invalid-value");
+  });
+
+
+  it("refuses a stale rename with the live version", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800001");
     const live = harness.database.authority.runs.get(runId)?.version ?? 0;
     assert.ok(live > 0);
@@ -231,17 +243,17 @@ describe("run arms", () => {
 });
 
 
-const protectedFixtures = createKernelStubCommandFixtures({ roots, openDatabases,
+const protectedFixtures = createKernelStubCommandFixtures({ profiles, roots, openDatabases,
   prefix: "hrauto-protected-recovery-", migrationOwner: "protected-recovery-test",
   resolve: workflow => [personLookupDescriptor, separationsDescriptor].find(descriptor => descriptor.id === workflow) });
 const SUBJECT_BINDING = { kind: "test-data-local" as const, inputPath: "emplId" as const,
   name: "personLookupCanaryEid" as const, sourceId: "44444444-4444-4444-8444-444444444444" };
 const SYNTHETIC_EID = "10873698";
 
-function recoverySource(harness: ReturnType<typeof protectedFixtures.createHarness>, protection: "subject" | "ordinary" | "timekeeper") {
+function recoverySource(harness: Awaited<ReturnType<typeof protectedFixtures.createHarness>>, protection: "subject" | "ordinary" | "timekeeper") {
   if (protection === "timekeeper") {
     const plan = planStart({ authority: harness.database, clock: harness.clock, ids: harness.plannerIds,
-      planTtlMs: 600_000, protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic signer" }) },
+      planTtlMs: 600_000, protectedSecrets: protectedSecretSource({ profileName: "Synthetic signer" }) },
     { descriptor: separationsDescriptor, submissions: [{ documentNumber: "12345678" }],
       dryRun: true, priority: "bulk", shape: "single", ...harness.configIdentity, plannedBy: "local-operator" });
     assert.deepEqual(plan.refused, []);
@@ -264,10 +276,10 @@ function recoverySource(harness: ReturnType<typeof protectedFixtures.createHarne
 }
 
 describe("protected subject recovery publication", () => {
-  for (const type of ["retry", "restart"] as const) {
+  for (const type of ["retry"] as const) {
     for (const protection of ["subject", "ordinary", "timekeeper"] as const) {
-      it(`${type} retains safe queue display for ${protection} input`, () => {
-        const harness = protectedFixtures.createHarness({ publishQueued: (run, publication) => {
+      it(`${type} retains safe queue display for ${protection} input`, async () => {
+        const harness = await protectedFixtures.createHarness({ publishQueued: (run, publication) => {
           assert.ok(publication);
           createTimelineEmitter({ repository: harness.database.authority.timelineEvents, clock: harness.clock }).emit(
             runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -299,7 +311,7 @@ describe("protected subject recovery publication", () => {
           assert.equal(event.subtitle, undefined);
           assert.equal(JSON.stringify(rows).includes(SYNTHETIC_EID), false);
         }
-        const world = makeWorld({ reader: sqliteRunReader(harness.database, harness.clock),
+        const world = await makeWorld({ profileFixture: profileFixtures.create, reader: sqliteRunReader(harness.database, harness.clock),
           timeline: harness.database.authority.timelineEvents,
           descriptors: { resolve: workflow => [personLookupDescriptor, separationsDescriptor].find(descriptor => descriptor.id === workflow) } });
         try {
@@ -308,13 +320,16 @@ describe("protected subject recovery publication", () => {
           const day = world.projection.buildDashboardDayWire(localDatePart(harness.clock.now()));
           const row = day.queueSurfaces.find(row => row.runId === next.envelope.runId);
           assert.ok(row);
-          assert.equal(row.title, expectedTitle);
-          if (protection === "subject") assert.equal(JSON.stringify(day.queueSurfaces).includes(SYNTHETIC_EID), false);
-        } finally { world.dispose(); }
+          assert.equal(row.title, protection === "subject" ? SYNTHETIC_EID : expectedTitle);
+          if (protection === "subject") {
+            for (const surface of day.queueSurfaces) assert.equal(surface.title, SYNTHETIC_EID);
+            assert.equal(JSON.stringify(day.queueSurfaces.map(({ title: _title, ...surface }) => surface)).includes(SYNTHETIC_EID), false);
+          }
+        } finally { await world.dispose(); }
       });
     }
-    it(`${type} rolls back a corrupt unmasked producer and exposes the mapped refusal`, () => {
-      const harness = protectedFixtures.createHarness({ publishQueued: (run, publication) => {
+    it(`${type} rolls back a corrupt unmasked producer and exposes the mapped refusal`, async () => {
+      const harness = await protectedFixtures.createHarness({ publishQueued: (run, publication) => {
         assert.ok(publication);
         createTimelineEmitter({ repository: harness.database.authority.timelineEvents, clock: harness.clock }).emit(
           runQueuedSpanEvent({ run, ...publication, title: "synthetic-unmasked-subject-proof", actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -339,7 +354,7 @@ describe("protected subject recovery publication", () => {
       assert.deepEqual(harness.database.authority.runs.listByWorkflow(personLookupDescriptor.id), [terminal]);
       assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeTimeline);
       assert.equal(JSON.stringify(beforeTimeline).includes("synthetic-unmasked-subject-proof"), false);
-      const world = makeWorld({ reader: sqliteRunReader(harness.database, harness.clock),
+      const world = await makeWorld({ profileFixture: profileFixtures.create, reader: sqliteRunReader(harness.database, harness.clock),
         timeline: harness.database.authority.timelineEvents,
         descriptors: { resolve: workflow => workflow === personLookupDescriptor.id ? personLookupDescriptor : undefined } });
       try {
@@ -348,9 +363,9 @@ describe("protected subject recovery publication", () => {
         const rows = world.projection.buildDashboardDayWire(localDatePart(harness.clock.now())).queueSurfaces;
         assert.equal(rows.length, 1);
         assert.equal(rows[0].runId, terminal.envelope.runId);
-        assert.equal(rows[0].title, "Protected test subject");
+        assert.equal(rows[0].title, SYNTHETIC_EID);
         assert.equal(JSON.stringify(rows).includes("synthetic-unmasked-subject-proof"), false);
-      } finally { world.dispose(); }
+      } finally { await world.dispose(); }
     });
   }
 });

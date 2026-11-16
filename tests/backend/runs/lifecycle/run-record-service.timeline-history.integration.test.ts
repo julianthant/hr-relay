@@ -1,8 +1,7 @@
 import { openConfirmedRetentionDatabase } from "../../../support/helpers/storage/confirmed-retention-fixtures.js";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { afterEach,describe,expect,it } from "vitest";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
@@ -12,20 +11,22 @@ import { atomicWriteCheckpoint,currentAtomicWriteFixture } from "../../../suppor
 
 const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
-const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function root(): string {
-  const path = mkdtempSync(join(realpathSync(tmpdir()), "timeline-"));
-  roots.push(path);
-  return path;
-}
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+const databases: AuthorityDatabase[] = [];
+afterEach(async () => {
+  for (const database of databases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
+});
 const ts = "2026-09-08T12:00:00.000Z";
 describe("retained confirmed history and shared retry deletion", () => {
-  function committed() {
-    return openConfirmedRetentionDatabase(root, ts, ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT);
+  async function committed() {
+    const profile = await createBoundProfileFixture(); profiles.push(profile);
+    const fixture = openConfirmedRetentionDatabase(profile.path, ts, ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT);
+    databases.push(fixture.database);
+    return fixture;
   }
-  it("preserves permanent ancestor proof across intermediate and descendant deletion", () => {
-    const { database, run } = committed();
+  it("preserves permanent ancestor proof across intermediate and descendant deletion", async () => {
+    const { database, run } = await committed();
     const permanent = {
       intent: database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
       attempt: database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId),

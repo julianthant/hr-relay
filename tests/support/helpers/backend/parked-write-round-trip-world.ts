@@ -1,49 +1,68 @@
+import { unusedWorkerPool } from "./unused-worker-pool.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
+import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { CONFIG_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
 import { createCommandKernel, type CommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { runWorkerLoop, type WorkerLoopReport } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { createWriteSequencer, type WriteSequencerHooks } from "../../../../src/backend/runtime/writes/write-sequencer.js";
-import { WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { LOCAL_OPERATOR_ACTOR_ID, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_KEY, WRITE_FIXTURE_NOW, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions, type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
-import { fixtureDuoCeremonyGates } from "../duo-ceremony-fixtures.js";
-import { ManualScheduler, recordingEmitter, recordingLogger } from "../phase1f-executor-harness.js";
+import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_KEY, WRITE_FIXTURE_NOW, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions, type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
+import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
+import { ManualScheduler, recordingEmitter, recordingLogger, type RecordingEmitter } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 
 interface RoundTrip {
+  readonly profile: Awaited<ReturnType<typeof createBoundProfileFixture>>;
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly world: WriteFixtureWorld;
   readonly kernel: CommandKernel;
   readonly park: (failCommit?: boolean) => Promise<WorkerLoopReport>;
+  readonly resume: () => Promise<WorkerLoopReport>;
+  readonly spans: RecordingEmitter["events"];
 }
 
 
 
 export function createParkedWriteRoundTripTestWorld() {
   const roots: string[] = [];
+  const profiles = new Map<AuthorityDatabase, Awaited<ReturnType<typeof createBoundProfileFixture>>>();
 
   const openDatabases: AuthorityDatabase[] = [];
 
-  function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, resolutionHooks?: WriteSequencerHooks): RoundTrip {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-parked-write-"));
-    roots.push(root);
+  async function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, resolutionHooks?: WriteSequencerHooks): Promise<RoundTrip> {
+    const profile = await createBoundProfileFixture();
+    roots.push(profile.workspace);
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const database = AuthorityDatabase.open(
-      { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-      clock,
-    );
-    const active = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    let database: AuthorityDatabase;
+    try {
+      database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
+        clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+    } catch (error) {
+      const failures: unknown[] = [error];
+      try { await profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
+      if (failures.length > 1) throw new AggregateError(failures, "parked fixture opening cleanup failed", { cause: error });
+      throw error;
+    }
+    profiles.set(database, profile);
     openDatabases.push(database);
+    const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, hostConfigFacts({}), clock,
+      { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot });
+    const active = database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, config: resolved.config,
+      fingerprint: resolved.fingerprint, provenance: resolved.provenance });
 
     const world = createWriteFixtureWorld();
     const stores = buildWriteFixtureRegistry(world);
@@ -51,7 +70,7 @@ export function createParkedWriteRoundTripTestWorld() {
     const scheduler = new ManualScheduler(clock);
     const ids = sequentialIdFactory("c");
     const log = recordingLogger().log;
-    const emitter = recordingEmitter().emitter;
+    const recorded = recordingEmitter(), emitter = recorded.emitter;
 
     const kernel = createCommandKernel({
       lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
@@ -74,20 +93,26 @@ export function createParkedWriteRoundTripTestWorld() {
           resolve: (workflowId) => (workflowId === WRITE_FIXTURE_WORKFLOW_ID ? resolutionDescriptor : undefined),
         },
         authority: database,
-        ids,
-        resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+        ids
       }),
-      workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
+      workerRuntime: { pool: unusedWorkerPool() },
     });
 
     const park = async (failCommit = true) => {
-      assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun()).state, "inserted");
+      const queued = RunRecordSchema.parse(writeFixtureQueuedRun());
+      const run = RunRecordSchema.parse({ ...queued, envelope: { ...queued.envelope,
+        configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } });
+      assert.equal(database.authority.runs.enqueue(run).state, "inserted");
+      createTimelineEmitter({ repository: database.authority.timelineEvents, clock }).emit(
+        runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Synthetic write-resolution rehearsal" }));
       // The write lands nowhere provable: probe says absent, then the click
       // throws AFTER the fence — the canonical post-fence unknown.
       world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
       if (failCommit) world.commitThrows = new Error("browser crashed mid-click");
-      return runWorkerLoop({
-        ...testWorkerPorts(database, clock, { path: join(root, "state.db"), descriptor: writeFixtureDescriptor, poolIndex: 1 }),
+      return resume();
+    };
+    const resume = () => runWorkerLoop({
+        ...testWorkerPorts(database, clock, { path: profile.path, descriptor: writeFixtureDescriptor, poolIndex: 1 }),
         workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
         workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
         descriptor: writeFixtureDescriptor,
@@ -100,7 +125,7 @@ export function createParkedWriteRoundTripTestWorld() {
         scheduler,
         taskDeadlineMs: 60_000,
         sessionAcquireMs: 20_000,
-        duoCeremony: fixtureDuoCeremonyGates(clock),
+        duoCeremony: duoCeremonyGatesOver(database, clock, scheduler),
         heartbeatIntervalMs: 600_000,
         idleRepollMs: 1_000,
         log,
@@ -117,13 +142,11 @@ export function createParkedWriteRoundTripTestWorld() {
           scheduler,
           taskDeadlineMs: 60_000,
           operator: "local-operator",
-          log,
-          resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+          log
         }),
       });
-    };
 
-    return { database, clock, world, kernel, park };
+    return { profile, database, clock, world, kernel, park, resume, spans: recorded.events };
   }
 
   function parkedIntent(database: AuthorityDatabase) {
@@ -141,7 +164,7 @@ export function createParkedWriteRoundTripTestWorld() {
   }
 
   function resolutionCommand(
-    type: "resolve-write-present" | "resolve-write-absent",
+    type: "recheck-write" | "resolve-write-absent",
     target: Readonly<{
       runId: string;
       expectedVersion: number;
@@ -164,9 +187,14 @@ export function createParkedWriteRoundTripTestWorld() {
       payload: { ...payload, occurrenceKeyDigest: intent.idempotencyKeyDigest },
     };
   }
-  function cleanup(): void {
-    for (const database of openDatabases.splice(0)) database.close();
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  async function cleanup(): Promise<void> {
+    const failures: unknown[] = [];
+    for (const database of openDatabases.splice(0)) {
+      try { database.close(); await profiles.get(database)?.close(); profiles.delete(database); }
+      catch (error) { failures.push(error); }
+    }
+    roots.splice(0);
+    if (failures.length > 0) throw new AggregateError(failures, "parked write fixture cleanup failed");
   }
   return { roots, openDatabases, cleanup, roundTrip, parkedIntent, resolutionCommand, nextCommandId };
 }

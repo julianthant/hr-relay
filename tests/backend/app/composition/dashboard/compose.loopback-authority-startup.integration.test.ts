@@ -1,29 +1,88 @@
+import { assertRuntimeLifetimeHeld, runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
+import type { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
+import { composeProfileClosureInventory } from "../../../../../src/backend/app/composition/profile-credential-inventory.js";
+import type { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
+import { createCredentialStore } from "../../../../../src/backend/storage/configuration/credential-store.js";
+import { AuthorityDatabase as CanonicalAuthorityDatabase, AuthorityDatabaseOptionsSchema, AuthoritySchemaVersionError } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import type { Clock } from "../../../../../src/rules/time/clock.js";
+import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { composeDashboardApplication, type DashboardComposeInput } from "../../../../../src/backend/app/composition/dashboard/compose.js";
+import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
+import { storageTree } from "../../../../support/helpers/integration/storage-recovery-fixture.js";
+import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { createBoundProfileFixture, syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
 import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
 import { spawnSync } from "node:child_process";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../../src/backend/storage/sqlite/migrations.js";
 import { SettingsCurrentRecordSchema } from "../../../../../src/models/config/settings-current.js";
-import { fixtureAdmission, installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { WorkerProcessLockFileSchema, readRuntimeProcessLock } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/settings.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS, persistCorruptJournaledSettings } from "../../../../support/fixtures/integration/settings-runtime-corruption-fixtures.js";
-import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
 
-const { cleanups, composeDashboardRuntime, copyRuntimePackageFixture, cleanup } = createDashboardPortTestWorld(() => {
+const { cleanups, composeDashboardRuntime: composeFixtureDashboardRuntime, copyRuntimePackageFixture, cleanup } = createDashboardPortTestWorld(() => {
       vi.mocked(fsyncSync).mockReset();
       vi.mocked(readFileSync).mockReset();
       vi.mocked(openSync).mockReset();
       vi.mocked(mkdirSync).mockReset();
       vi.restoreAllMocks();
     }, () => releaseAdmissionFixtures());
+
+
+const readyProfiles = new Map<string, { fixture: Awaited<ReturnType<typeof createBoundProfileFixture>>; selected: ReturnType<typeof selectedProfile> }>();
+function selectedProfile(fixture: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
+  const machine = acquireEntrypointAdmission(fixture.workspace, "shared", fixture.lifetime);
+  const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+  const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
+  const storage: { admission?: RuntimeAdmission } = {};
+  const cleanup = async () => { await runtime.close(); storage.admission?.release(); machine.release(); };
+  cleanups.push(cleanup);
+  const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+  assert.equal(active.state, "active");
+  if (active.state !== "active") throw new Error("startup fixture sign-in refused");
+  const admission = machine.admitProfile(active.profileId);
+  storage.admission = admission;
+  const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot,
+    });
+  return { machine, runtime, token: active.token, admission, credentials, cleanup };
+}
+async function readyRoot(lifetime: RuntimeLifetimeLock) {
+  const fixture = await createBoundProfileFixture({ sharedMachine: true, lifetime });
+  cleanups.push(async () => { readyProfiles.delete(fixture.workspace); await fixture.close(); });
+  copyRuntimePackageFixture(fixture.workspace);
+  readyProfiles.set(fixture.workspace, { fixture, selected: selectedProfile(fixture) });
+  return fixture.workspace;
+}
+function profileStateRoot(repoRoot: string) {
+  const entry = readyProfiles.get(repoRoot); assert.ok(entry);
+  return entry.fixture.stateRoot;
+}
+function restartSelectedProfile(repoRoot: string) {
+  const entry = readyProfiles.get(repoRoot); assert.ok(entry);
+  entry.selected = selectedProfile(entry.fixture);
+}
+function openFixtureDatabase(input: unknown, clock?: Clock) {
+  const options = AuthorityDatabaseOptionsSchema.parse(input);
+  const owner = [...readyProfiles.values()].find(entry => join(entry.fixture.stateRoot, "state.db") === options.path)?.selected;
+  assert.ok(owner);
+  return CanonicalAuthorityDatabase.open(owner.admission, options, clock, undefined, undefined, undefined, owner.credentials);
+}
+async function composeDashboardRuntime(input: DashboardComposeInput) {
+  if (input.profile !== undefined) return composeFixtureDashboardRuntime(input);
+  assert.ok(input.repoRoot);
+  const entry = readyProfiles.get(input.repoRoot); assert.ok(entry);
+  return composeFixtureDashboardRuntime({ ...input, admission: entry.selected.machine,
+    profile: { runtime: entry.selected.runtime, token: entry.selected.token } });
+}
+
 
 
 vi.mock("node:fs", async (importOriginal) => {
@@ -40,52 +99,48 @@ vi.mock("node:fs", async (importOriginal) => {
 afterEach(cleanup);
 
 describe("composed dashboard runtime over an owned loopback socket", () => {
-  it("unwinds an initial preflight refresh rejection and keeps authority admission recoverable", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-preflight-unwind-"));
+  it("unwinds a failure at the initial preflight and keeps authority admission recoverable", async () => {
+  const controllerLock=await runtimeLifetimeLock();
+    const repoRoot = await readyRoot(controllerLock);
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    mkdirSync(join(repoRoot, rebuildRuntimeIsolation.stateRoot), { recursive: true });
-    const path = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db");
-    const primary = new Error("injected preflight clock failure");
+    mkdirSync(profileStateRoot(repoRoot), { recursive: true });
+    const path = join(profileStateRoot(repoRoot), "state.db");
+    const primary = new Error("injected initial preflight failure");
     const baseClock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const clock = { ...baseClock, monotonicMs: () => { throw primary; } };
 
-    await assert.rejects(composeDashboardRuntime({
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: controllerLock,
       isolation: rebuildRuntimeIsolation,
       env: {},
-      clock,
+      clock: baseClock,
       repoRoot,
-    }), (error: unknown) => error instanceof AggregateError && error.errors.includes(primary));
+      onInitialPreflight: () => { throw primary; },
+    }), (error: unknown) => error === primary);
 
-    const lock = readRuntimeProcessLock(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "server");
-    assert.ok(lock);
-    assert.equal(typeof lock.releasedAt, "string", "the server record releases after startup cleanup closes authority");
-    const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "startup-unwind-test" }, baseClock);
+    await assertRuntimeLifetimeHeld(controllerLock);
+    const database = openFixtureDatabase({ path, busyTimeoutMs: 250, migrationOwner: "startup-unwind-test" }, baseClock);
     try {
-      assert.ok(database.getMeta().schemaVersion >= CURRENT_AUTHORITY_SCHEMA_VERSION);
+      assert.equal(database.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     } finally {
       database.close();
     }
   });
 
   it("preserves an HTTP bind rejection while unwinding the constructed dashboard", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-listen-unwind-"));
+  const controllerLock=await runtimeLifetimeLock();
+    const repoRoot = await readyRoot(controllerLock);
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const primary = new Error("injected HTTP listen failure");
 
-    await assert.rejects(composeDashboardRuntime({
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: controllerLock,
       isolation: rebuildRuntimeIsolation,
       env: {},
       repoRoot,
       httpServerStarter: async () => { throw primary; },
     }), (error: unknown) => error === primary);
 
-    const lock = readRuntimeProcessLock(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "server");
-    assert.ok(lock);
-    assert.equal(typeof lock.releasedAt, "string");
-    const database = AuthorityDatabase.open({
-      path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
+    await assertRuntimeLifetimeHeld(controllerLock);
+    const database = openFixtureDatabase({
+      path: join(profileStateRoot(repoRoot), "state.db"),
       busyTimeoutMs: 250,
       migrationOwner: "startup-unwind-test",
     });
@@ -93,14 +148,15 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("refuses a missing saved settings singleton when active revision proves one existed", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-evidence-"));
+  const controllerLock=await runtimeLifetimeLock();
+    const repoRoot = await readyRoot(controllerLock);
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
+    const stateRoot = profileStateRoot(repoRoot);
     mkdirSync(stateRoot, { recursive: true });
     const path = join(stateRoot, "state.db");
-    const initial = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot });
+    const initial = await composeDashboardRuntime({ lifetimeLock: controllerLock, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot });
     await initial.stop();
+    restartSelectedProfile(repoRoot);
     const raw = new DatabaseSync(path);
     try {
       raw.exec("DELETE FROM settings");
@@ -108,129 +164,172 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       raw.close();
     }
 
-    await assert.rejects(composeDashboardRuntime({
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: controllerLock,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
       repoRoot,
     }), /settings-current-missing-with-history/u);
-    const lock = readRuntimeProcessLock(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "server");
-    assert.ok(lock);
-    assert.equal(typeof lock.releasedAt, "string");
+    await assertRuntimeLifetimeHeld(controllerLock);
   });
 
-  it("admits an empty pre-created state root as a virgin authority", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-virgin-root-"));
+  it("serves a virgin public shell without flat authority, then creates one genuinely coupled selected profile", async () => {
+    const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "public-virgin-root-")));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    mkdirSync(join(repoRoot, rebuildRuntimeIsolation.stateRoot), { recursive: true });
-    const runtime = await composeDashboardRuntime({
-      isolation: rebuildRuntimeIsolation,
-      backendPortOverride: 0,
-      env: {},
-      repoRoot,
-    });
-    await runtime.stop();
-    assert.ok(existsSync(join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db")));
-  });
-
-  it("refuses an established state root with no authority database before taking the server lock", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-missing-authority-"));
-    copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
-    mkdirSync(stateRoot, { recursive: true });
-    writeFileSync(join(stateRoot, "retained-evidence"), "evidence");
-    const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
-
-    await assert.rejects(composeDashboardRuntime({ admission: fixtureAdmission(repoRoot),
-      isolation: rebuildRuntimeIsolation,
-      backendPortOverride: 0,
-      env: {},
-      repoRoot,
-    }), /state root is established but its authority database is missing/u);
-
-    assert.equal(existsSync(lockPath), false, "missing established authority is refused before process-lock admission");
-    assert.equal(existsSync(join(stateRoot, "state.db")), false);
-  });
-
-  it("refuses a settings-family-only root instead of regenerating its missing authority", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-only-root-"));
-    copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
-    mkdirSync(join(stateRoot, "settings"), { recursive: true });
-    const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
-
-    await assert.rejects(composeDashboardRuntime({ admission: fixtureAdmission(repoRoot),
-      isolation: rebuildRuntimeIsolation,
-      backendPortOverride: 0,
-      env: {},
-      repoRoot,
-    }), /state root is established but its authority database is missing/u);
-
-    assert.equal(existsSync(join(stateRoot, "state.db")), false);
-    assert.equal(existsSync(lockPath), false, "a non-virgin settings family blocks before process-lock admission");
-  });
-
-  it("recovers after genuine abandoned server custody and retains dead worker evidence", async () => {
-    const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-compose-crash-")));
-    copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    installationAdmission(repoRoot);
-    const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
-    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const abandon = (worker: boolean) => {
-      const modulePath = join(process.cwd(), "src/backend/storage/sqlite/runtime-process-locks.ts");
-      const code = `import { acquireRuntimeProcessLock } from ${JSON.stringify(modulePath)}; const root=${JSON.stringify(processLockRoot)}; const server=acquireRuntimeProcessLock({processLockRoot:root,name:"server",pid:process.pid}); if(${String(worker)})acquireRuntimeProcessLock({processLockRoot:root,name:"workers",workerId:"orphan-worker",pid:process.pid}); console.log(server.acquisitionId); process.exit(23);`;
-      const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", code], { cwd: process.cwd(), encoding: "utf8", timeout: 10_000 });
-      assert.equal(child.status, 23, child.stderr);
-      const record = readRuntimeProcessLock(processLockRoot, "server");
-      assert.ok(record); assert.equal(record.acquisitionId, child.stdout.trim());
-      assert.equal(record.releasedAt, null);
-      const claim = join(processLockRoot, "server-claims", `${String(record.generation)}.claim.json`);
-      return { record, claim, bytes: readFileSync(claim) };
-    };
-    const crashed = abandon(false);
-    const recovered = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, clock, repoRoot });
-    assert.deepEqual(readFileSync(crashed.claim), crashed.bytes);
-    await recovered.stop();
-    const stopped = readRuntimeProcessLock(processLockRoot, "server");
-    assert.ok(stopped); assert.equal(stopped.pid, process.pid); assert.equal(typeof stopped.releasedAt, "string");
-    const secondCrash = abandon(true);
-    const orphanFiles = readdirSync(join(processLockRoot, "workers")).filter(name => name.endsWith(".lock.json"));
-    assert.equal(orphanFiles.length, 1);
-    const orphanPath = join(processLockRoot, "workers", orphanFiles[0] ?? "");
-    const orphan = WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(orphanPath, "utf8")));
-    assert.ok("workerId" in orphan); assert.equal(orphan.workerId, "orphan-worker"); assert.equal(orphan.releasedAt, null);
-    const orphanBytes = readFileSync(orphanPath);
-    const second = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, clock, repoRoot });
+    const controllerLock = await runtimeLifetimeLock();
+    const machine = acquireEntrypointAdmission(repoRoot, "exclusive", controllerLock);
+    mkdirSync(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
+    let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
     try {
-      const readiness = await createDashboardClient({ baseUrl: `http://127.0.0.1:${String(second.port)}` }).readiness();
-      assert.equal(readiness.state, "present");
-      if (readiness.state === "present") {
-        const check = readiness.checks.find(({ id }) => id === "process.orphans");
-        assert.equal(check?.verdict, "warning"); assert.match(check?.detail ?? "", /1 unreleased dead process owner record/u);
+      vi.mocked(readFileSync).mockClear();
+      application = await composeDashboardApplication({ lifetimeLock: controllerLock, admission: machine, isolation: rebuildRuntimeIsolation,
+        repoRoot, backendPortOverride: 0, frontendPortOverride: 0, env: {}, onboardingDuo: syntheticOnboardingDuo() });
+      assert.equal(existsSync(join(machine.stateRoot, "state.db")), false);
+      assert.equal(machine.readProfileRegistry().profiles.length, 0);
+      assert.equal(vi.mocked(readFileSync).mock.calls.filter(([path]) => typeof path === "string" && path.includes("/credentials/")).length, 0);
+      const origin = `http://127.0.0.1:${String(application.port)}`;
+      const response = await fetch(`${origin}/api/v1/profile/sign-up`, { method: "POST", headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" }) });
+      const draft = PublicProfileStateSchema.parse(await response.json()); assert.equal(draft.state, "onboarding");
+      if (draft.state !== "onboarding") throw new Error("actual onboarding required");
+      let cookie = response.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+      const onboarding = async (path: string, body: unknown) => {
+        assert.ok(cookie);
+        const result = await fetch(`${origin}/api/v1/profile/onboarding/${path}`, { method: "POST",
+          headers: { origin, cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+        assert.equal(result.status, 200);
+        cookie = result.headers.get("set-cookie")?.split(";", 1)[0] ?? cookie;
+        return PublicProfileStateSchema.parse(await result.json());
+      };
+      for (const method of ["key", "touch"] as const) {
+        const started = await onboarding("duo/start", { operationId: draft.operationId, method });
+        assert.equal(started.state, "onboarding");
+        if (started.state !== "onboarding") throw new Error("onboarding method did not start");
+        const attemptId = started.methods[method].attemptId; assert.ok(attemptId);
+        const confirmed = await onboarding("duo/confirm", { operationId: draft.operationId, method, attemptId, operatorConfirmed: true });
+        assert.equal(confirmed.state, "onboarding");
       }
-    } finally { await second.stop(); }
-    assert.deepEqual(readFileSync(orphanPath), orphanBytes);
-    assert.deepEqual(readFileSync(crashed.claim), crashed.bytes);
-    assert.deepEqual(readFileSync(secondCrash.claim), secondCrash.bytes);
-    const current = readRuntimeProcessLock(processLockRoot, "server");
-    assert.ok(current); assert.equal(current.pid, process.pid); assert.equal(typeof current.releasedAt, "string");
+      const active = await onboarding("complete", { operationId: draft.operationId }); assert.equal(active.state, "active");
+      if (active.state !== "active") throw new Error("actual signup required");
+      assert.equal(machine.readProfileRegistry().profiles.length, 1);
+      assert.equal(existsSync(join(machine.stateRoot, "profiles", active.profileId, "state.db")), true);
+      assert.equal(existsSync(join(machine.stateRoot, "state.db")), false);
+      assert.ok(cookie);
+      assert.equal((await fetch(`${origin}/api/v1/bootstrap`, { headers: { cookie } })).status, 200);
+    } finally { await application?.stop(); machine.release(); rmSync(repoRoot, { recursive: true, force: true }); }
+  });
+
+  it("refuses an established selected profile with no authority database under the held controller", async () => {
+  const controllerLock=await runtimeLifetimeLock();
+    const repoRoot = await readyRoot(controllerLock);
+    copyRuntimePackageFixture(repoRoot);
+    const stateRoot = profileStateRoot(repoRoot);
+    mkdirSync(stateRoot, { recursive: true });
+    rmSync(join(stateRoot, "state.db"));
+    const evidencePath = join(stateRoot, "retained-evidence");
+    writeFileSync(evidencePath, "evidence", { mode: 0o600 });
+    const planted = statSync(evidencePath), evidenceBytes = readFileSync(evidencePath);
+    const before = storageTree(stateRoot);
+
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: controllerLock,
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      repoRoot,
+    }), /profile-database-binding-required/u);
+
+    await assertRuntimeLifetimeHeld(controllerLock);
+    assert.equal(existsSync(join(stateRoot, "state.db")), false);
+    assert.deepEqual(storageTree(stateRoot), before);
+    const selected = readyProfiles.get(repoRoot)?.selected; assert.ok(selected);
+    await selected.runtime.close();
+    assert.deepEqual(storageTree(stateRoot), before);
+    const retained = statSync(evidencePath);
+    for (const key of ["dev", "ino", "mode"] as const) assert.equal(retained[key], planted[key]);
+    assert.equal(readFileSync(evidencePath).equals(evidenceBytes), true);
+    selected.machine.assertLive(); selected.admission.assertLive();
+  });
+
+  it("refuses missing native authority beside its surviving canonical protected credentials without repairing either half", async () => {
+  const controllerLock=await runtimeLifetimeLock();
+    const repoRoot = await readyRoot(controllerLock), stateRoot = profileStateRoot(repoRoot);
+    assert.equal(existsSync(join(stateRoot, "credentials", "protected.json")), true);
+    rmSync(join(stateRoot, "state.db"));
+    const before = storageTree(stateRoot);
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: controllerLock, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot }),
+      error => error instanceof Error && error.message === "profile-database-binding-required");
+    await assertRuntimeLifetimeHeld(controllerLock);
+    assert.equal(existsSync(join(stateRoot, "state.db")), false);
+    assert.deepEqual(storageTree(stateRoot), before);
+  });
+
+  it("refuses the missing database beside an unowned legacy settings directory without repairing either half", async () => {
+  const controllerLock=await runtimeLifetimeLock();
+    const repoRoot = await readyRoot(controllerLock), stateRoot = profileStateRoot(repoRoot);
+    const selected = readyProfiles.get(repoRoot)?.selected; assert.ok(selected);
+    rmSync(join(stateRoot, "state.db"));
+    const legacyPath = join(stateRoot, "settings");
+    mkdirSync(legacyPath, { mode: 0o700 });
+    const planted = statSync(legacyPath), before = storageTree(stateRoot);
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: controllerLock, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot }),
+      error => error instanceof Error && error.message === "profile-database-binding-required");
+    await assertRuntimeLifetimeHeld(controllerLock);
+    assert.equal(existsSync(join(stateRoot, "state.db")), false);
+    assert.deepEqual(storageTree(stateRoot), before);
+    await selected.runtime.close();
+    assert.deepEqual(storageTree(stateRoot), before);
+    const retained = statSync(legacyPath);
+    for (const key of ["dev", "ino", "mode"] as const) assert.equal(retained[key], planted[key]);
+    assert.deepEqual(readdirSync(legacyPath), []);
+    selected.machine.assertLive(); selected.admission.assertLive();
+  });
+
+  it.each(["file", "directory"] as const)("refuses an unowned %s through actual inventory while retaining the opened profile owner", async kind => {
+    const controllerLock = await runtimeLifetimeLock();
+    const repoRoot = await readyRoot(controllerLock), stateRoot = profileStateRoot(repoRoot);
+    const selected = readyProfiles.get(repoRoot)?.selected; assert.ok(selected);
+    const context = selected.runtime.selectedContext(selected.token);
+    assert.equal(context.database.getMeta().profileId, selected.admission.profileBinding.profileId);
+    const path = join(stateRoot, kind === "file" ? "retained-evidence" : "settings");
+    if (kind === "file") writeFileSync(path, "evidence", { mode: 0o600 });
+    else mkdirSync(path, { mode: 0o700 });
+    const planted = statSync(path), bytes = kind === "file" ? readFileSync(path) : undefined;
+    const before = storageTree(stateRoot);
+    await assert.rejects(composeProfileClosureInventory({ admission: context.admission,
+      database: context.database, hostFacts: { primaryDisplay: null }, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")) }).prepare(),
+      error => error instanceof Error && error.message === "profile-inventory-unowned-entry");
+    context.assertCurrent();
+    selected.machine.assertLive(); selected.admission.assertLive();
+    assert.doesNotThrow(() => context.database.getMeta());
+    assert.deepEqual(storageTree(stateRoot), before);
+    const retained = statSync(path);
+    for (const key of ["dev", "ino", "mode"] as const) assert.equal(retained[key], planted[key]);
+    if (bytes !== undefined) {
+      assert.equal(readFileSync(path).equals(bytes), true);
+      unlinkSync(path);
+    } else {
+      assert.deepEqual(readdirSync(path), []);
+      rmdirSync(path);
+    }
+    await selected.runtime.close();
+    const descriptors = spawnSync("lsof", ["-nP", "-a", "-p", String(process.pid), "-Fn"], { encoding: "utf8" });
+    assert.equal(descriptors.status, 0); assert.equal(descriptors.stderr, "");
+    const sourcePath = join(stateRoot, "state.db");
+    assert.deepEqual(descriptors.stdout.split("\n").filter(line => [sourcePath, `${sourcePath}-wal`, `${sourcePath}-shm`]
+      .some(file => line === `n${file}` || line === `n${file} (deleted)`)), []);
   });
 
   it("refuses a newer authority under the current build before settings opens or config resolution", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "relay-compose-newer-authority-"));
+  const controllerLock=await runtimeLifetimeLock();
+    const repoRoot = await readyRoot(controllerLock);
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
-    const artifactRoot = join(repoRoot, rebuildRuntimeIsolation.artifactRoot);
-    const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
+    const stateRoot = profileStateRoot(repoRoot);
+    const artifactRoot = join(profileStateRoot(repoRoot), "artifacts");
     mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
     const path = join(stateRoot, "state.db");
-    AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "native-schema-refusal-fixture" }).close();
-    const admission = installationAdmission(repoRoot);
+    openFixtureDatabase({ path, busyTimeoutMs: 250, migrationOwner: "native-schema-refusal-fixture" }).close();
+    const selected = readyProfiles.get(repoRoot)?.selected; assert.ok(selected);
+    const admission = selected.machine;
     const artifactBefore = statSync(artifactRoot);
     const newer = new DatabaseSync(path);
     newer.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`);
@@ -256,10 +355,11 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       vi.mocked(openSync).mockClear();
       vi.mocked(mkdirSync).mockClear();
       try {
-        await assert.rejects(composeCurrentBuild({ admission,
+        await assert.rejects(composeCurrentBuild({ lifetimeLock: controllerLock, admission, profile: { runtime: selected.runtime, token: selected.token },
           isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
           env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
-        }), new RegExp(`authority schema ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`, "u"));
+        }), error => error instanceof AuthoritySchemaVersionError && error.code === "authority-schema-mismatch"
+          && error.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION + 1);
 
         const isSettingsPath = (value: unknown): boolean => typeof value === "string"
           && (value.startsWith(join(stateRoot, "settings", "settings.json"))
@@ -270,13 +370,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
           0, "zero settings-family readFileSync calls before downgrade refusal");
         assert.equal(resolveSpy.mock.calls.length, 0, "zero resolveConfigWithProvenance calls before downgrade refusal");
         assert.equal(vi.mocked(mkdirSync).mock.calls.filter(([target]) => target === stateRoot).length,
-          1, "native open verifies its admitted existing directory before schema refusal");
+          0, "profile binding refuses before native mutable directory validation");
         assert.equal(vi.mocked(openSync).mock.calls.filter(([target]) => target === artifactRoot).length,
-          1, "native open validates its admitted artifact directory before schema refusal");
+          0, "profile binding refuses before native mutable artifact validation");
         const artifactAfter = statSync(artifactRoot);
         assert.equal(artifactAfter.mode & 0o777, 0o700);
         for (const key of ["dev", "ino", "mode", "mtimeMs", "ctimeMs"] as const) assert.equal(artifactAfter[key], artifactBefore[key], `artifact directory ${key} unchanged`);
-        assert.equal(existsSync(lockPath), false, "native schema refusal acquires no server process record");
         assert.deepEqual(readFileSync(path), before);
       } finally {
         resolveSpy.mockRestore();
@@ -284,30 +383,29 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     }
   });
 
-  it.each([29, CURRENT_AUTHORITY_SCHEMA_VERSION + 1])("releases the acquired server process record after unsupported native authority %s refuses open", async version => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-unsupported-"));
+  it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1])("refuses unsupported selected-profile authority %s before acquiring a server process record", async version => {
+    const controllerLock = await runtimeLifetimeLock();
+    const repoRoot = await readyRoot(controllerLock);
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    installationAdmission(repoRoot);
-    const path = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db");
-    AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "unsupported-schema-fixture" }).close();
+    const path = join(profileStateRoot(repoRoot), "state.db");
+    openFixtureDatabase({ path, busyTimeoutMs: 250, migrationOwner: "unsupported-schema-fixture" }).close();
     const raw = new DatabaseSync(path);
     try { raw.exec(`UPDATE database_states SET schema_version=${String(version)} WHERE id=1; PRAGMA user_version=${String(version)}`); } finally { raw.close(); }
     const before = readFileSync(path);
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    await assert.rejects(composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot, clock }), new RegExp(`authority schema ${String(version)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`, "u"));
-    const released = readRuntimeProcessLock(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "server");
-    assert.ok(released); assert.equal(released.pid, process.pid); assert.equal(released.releasedAt, "2026-08-28T12:00:00.000Z");
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: controllerLock, isolation: rebuildRuntimeIsolation, env: {}, repoRoot, clock }),
+      error => error instanceof AuthoritySchemaVersionError && error.code === "authority-schema-mismatch" && error.schemaVersion === version);
+    await assertRuntimeLifetimeHeld(controllerLock);
     assert.deepEqual(readFileSync(path), before);
     const unchanged = new DatabaseSync(path, { readOnly: true });
     try { assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), version); } finally { unchanged.close(); }
   });
 
   it("serves the exact editable settings command schema hash", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-schema-"));
+    const controllerLock = await runtimeLifetimeLock();
+    const repoRoot = await readyRoot(controllerLock);
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    const runtime = await composeDashboardRuntime({
+    const runtime = await composeDashboardRuntime({ lifetimeLock: controllerLock,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
@@ -323,15 +421,15 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("ignores retired malformed file authority and serves the SQLite baseline", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-retired-settings-"));
+    const controllerLock = await runtimeLifetimeLock();
+    const repoRoot = await readyRoot(controllerLock);
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    const authorityPath = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db");
+    const authorityPath = join(profileStateRoot(repoRoot), "state.db");
     mkdirSync(dirname(authorityPath), { recursive: true });
-    AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 250, migrationOwner: "retired-settings-fixture" }).close();
+    openFixtureDatabase({ path: authorityPath, busyTimeoutMs: 250, migrationOwner: "retired-settings-fixture" }).close();
     const path = join(repoRoot, ".tracker", "settings", "settings.json");
     mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, "retired malformed file");
-    const runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot });
+    const runtime = await composeDashboardRuntime({ lifetimeLock: controllerLock, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, env: {}, repoRoot });
     try {
       const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
       const editor = await client.editableSettings();
@@ -343,24 +441,34 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it.each(SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS)(
     "refuses valid settings bytes with corrupt $label on dashboard boot",
     async (corruption) => {
-      const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-corrupt-settings-"));
-      writeFileSync(
-        join(repoRoot, "package.json"),
-        JSON.stringify({ name: "probe", version: "0.1.0" }),
-      );
-      cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-      const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+      const owner = await createBoundProfileFixture({ sharedMachine: true });
+      const repoRoot = owner.workspace;
+      cleanups.push(async () => await owner.close());
+      copyRuntimePackageFixture(repoRoot);
+      const clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
+      const profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null } });
+      const storage: { admission?: RuntimeAdmission } = {};
+      cleanups.push(async () => { await profile.close(); storage.admission?.release(); });
+      const signedIn = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password",
+        at: clock.now().toISOString() });
+      assert.equal(signedIn.state, "active");
+      if (signedIn.state !== "active") throw new Error("corruption-fixture-signin-refused");
+      const admission = owner.machine.admitProfile(signedIn.profileId);
+      storage.admission = admission;
+      const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot,
+        });
       const fixture = persistCorruptJournaledSettings({
         repoRoot,
-        stateRoot: join(repoRoot, rebuildRuntimeIsolation.stateRoot),
+        stateRoot: owner.stateRoot,
         clock,
         corruption,
         activateRuntime: false,
-        admission: installationAdmission(repoRoot),
+        admission, credentials,
       });
 
       await assert.rejects(async () => {
-        const runtime = await composeDashboardRuntime({
+        const runtime = await composeDashboardRuntime({ lifetimeLock: owner.lifetime,
+          admission: owner.machine, profile: { runtime: profile, token: signedIn.token },
           isolation: rebuildRuntimeIsolation,
           backendPortOverride: 0,
           env: {},
@@ -370,7 +478,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         await runtime.stop();
       }, corruption.id === "command-envelope" ? /command-row-identity-mismatch/u : /command-audit-settlement-mismatch/u);
 
-      const raw = new DatabaseSync(join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"), { readOnly: true });
+      const raw = new DatabaseSync(owner.path, { readOnly: true });
       try {
         const row = raw.prepare("SELECT payload_json FROM settings WHERE id='current'").get();
         assert.equal(typeof row?.payload_json, "string");

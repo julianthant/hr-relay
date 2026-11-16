@@ -1,5 +1,6 @@
 import type { createFailureResolutionQuery } from "./failure-resolution.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import type { OperatorFieldDisplay } from "../../../models/workflow/presentation.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -56,6 +57,7 @@ export interface RunDetailDataOriginView {
     override: "forbidden" | "audited";
   }>[];
   /** Commit nodes this node's facts can statically reach (ref workflow-model ). */
+  readonly operatorFields?: readonly Readonly<{ label: string; kind: "input" | "output"; fieldPath: string; declaration?: string; display?: OperatorFieldDisplay }>[];
   readonly feeds: readonly Readonly<{ nodeId: string; label: string }>[];
 }
 
@@ -64,9 +66,11 @@ export interface RunDetailDescriptorView {
   readonly version?: number;
   readonly contractFingerprint?: string;
   /** Ref dashboard-surfaces: where the RUN resolves the subject's name, if it ever does. */
-  readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
+  readonly subjectProjection?: AnyWorkflowDescriptor["subjectProjection"];
+  readonly titleProjection?: AnyWorkflowDescriptor["titleProjection"];
 
   readonly timeline?: readonly Readonly<{
+    system?: string;
     key?: string;
     label: string;
     nodes: readonly Readonly<{ id: string; label: string }>[];
@@ -89,6 +93,10 @@ export interface RunDetailDescriptorView {
 export type CanonicalRunReader = Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
 
 export interface RunDetailQueryDeps {
+  readonly authorityIdentity?: Readonly<{ installationId: string; profileId: string }>;
+  readonly workerMembers?: () => readonly import("../../runtime/workers/worker-pool.js").WorkerMemberView[];
+  /** The local profile's display name, which names who answered a decision. */
+  readonly operatorName?: () => string;
   /** Bounded, versioned same-item history read, composed only with lifecycle authority. */
   readonly itemAttemptHistory?: Readonly<{
     read(runId: string, request: ItemAttemptHistoryRequest): ItemAttemptHistoryResponse;
@@ -98,7 +106,7 @@ export interface RunDetailQueryDeps {
   /** Explicit canonical backing for consumers that require retained authority reads. */
   readonly canonical?: {
     readonly reader: Pick<RunRecordService, "read" | "list">;
-    readonly database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot">;
+    readonly database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot"> & Partial<Pick<AuthorityDatabase, "evidenceSchemaHash">>;
     readonly descriptors: {
       resolve(workflowId: string): AnyWorkflowDescriptor | undefined;
     };
@@ -107,6 +115,7 @@ export interface RunDetailQueryDeps {
   readonly stateRoot: string;
   readonly projection: RunQueueProjection;
   readonly authority: {
+    delegationWait?(runId: string): import("../../../models/run/summary.js").DelegationWaitState | null;
     getRun(runId: string): RunRecord | undefined;
     /** Ref workflow-model's "latest compatible attempt wins" read, for edit values. */
     latestCheckpoint(

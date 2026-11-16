@@ -26,7 +26,7 @@ export function createStaticAssetFixture() {
       const type = CONTENT_TYPES[extname(target)];
       res.writeHead(200, type === undefined ? {} : { "content-type": type }).end(body);
     } catch {
-      // A missing asset is a 404, never a silent empty 200 — the parity spec
+      // A missing asset is a 404, never a silent empty 200 — the mock spec
       // fails loudly on a blank page rather than capturing one.
       res.writeHead(404).end("not found");
     }

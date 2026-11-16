@@ -1,10 +1,11 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunIntegrationTestWorld } from "../../../support/helpers/run-integration-world.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach,describe,it } from "vitest";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 
 
@@ -25,19 +26,19 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const CLOCK = manualClock(new Date(LATER));
-const { roots, databases, WORKER_ID, CLAIM, openDatabase, startRunning, failure, failureAuthorization, resultRequest } =
-  createRunIntegrationTestWorld(CLOCK);
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
 
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+const CLOCK = manualClock(new Date(LATER));
+const { roots, cleanup, WORKER_ID, CLAIM, openDatabase, startRunning, failure, failureAuthorization, resultRequest } =
+  createRunIntegrationTestWorld(CLOCK, profileFixtures.create);
+
+afterEach(cleanup);
 
 describe("atomic failure terminal authority", () => {
 
-  it("copies a failure's diagnostic admission stamp exactly when terminalizing", () => {
-    const database = openDatabase();
+  it("copies a failure's diagnostic admission stamp exactly when terminalizing", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const record = { ...failure(running), diagnosticSafetyVersion: 1 as const };
     const applied = database.terminalizeFailure(personLookupDescriptor, {
@@ -54,8 +55,8 @@ describe("atomic failure terminal authority", () => {
     );
   });
 
-  it("rejects identity, execution, version, claim, and generic failed bypasses", () => {
-    const database = openDatabase();
+  it("rejects identity, execution, version, claim, and generic failed bypasses", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const record = failure(running);
     assert.throws(() => database.terminalizeFailure(personLookupDescriptor, {
@@ -88,8 +89,8 @@ describe("atomic failure terminal authority", () => {
   });
 
   for (const injectedStep of ["failure", "run"] as const) {
-    it(`rolls back every failure terminal write when ${injectedStep} persistence fails`, () => {
-      const database = openDatabase({
+    it(`rolls back every failure terminal write when ${injectedStep} persistence fails`, async () => {
+      const database = await openDatabase({
         afterFailureStorageStep: (step) => {
           if (step === injectedStep) throw new Error(`injected ${step} failure`);
         },
@@ -111,15 +112,18 @@ describe("atomic failure terminal authority", () => {
 
 describe("atomic success terminal authority", () => {
 
-  it("rejects an authenticated result whose exact checkpoint was never stored", () => {
-    const database = openDatabase();
+  it("rejects an authenticated result whose exact checkpoint was never stored", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const { result, authorization, factoryAuthorization } = resultRequest(database, running);
     // A second connection corrupts the exact checkpoint while this authority
     // remains open: terminal settlement must independently reject the absence.
-    const path = join(roots.at(-1) ?? "", "authority.sqlite");
+    const path = syntheticDatabasePath(database);
+    assert.equal(path, join(roots.at(-1) ?? "", "state.db"));
     const raw = new DatabaseSync(path);
+    const checkpoints = raw.prepare("SELECT * FROM run_checkpoints").all();
     try {
+      assert.equal(raw.prepare("PRAGMA database_list").all().find(row => row.name === "main")?.file, path);
       const guard = raw.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='run_checkpoints_owner_delete'").get();
       if (guard === undefined || typeof guard.sql !== "string") throw new Error("missing checkpoint ownership guard");
       raw.exec("BEGIN; DROP TRIGGER run_checkpoints_owner_delete; DELETE FROM run_checkpoints");
@@ -133,12 +137,19 @@ describe("atomic success terminal authority", () => {
     assert.throws(() => AuthorityDatabase.open(
       { path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, CLOCK,
     ), /timeline-checkpoint-reference-mismatch/);
+    const repair = new DatabaseSync(path);
+    try {
+      for (const row of checkpoints) {
+        const columns = Object.keys(row);
+        repair.prepare(`INSERT INTO run_checkpoints(${columns.join(",")}) VALUES(${columns.map(() => "?").join(",")})`).run(...Object.values(row));
+      }
+    } finally { repair.close(); }
 
   });
 
   for (const injectedStep of ["result", "run"] as const) {
-    it(`rolls back every success terminal write when ${injectedStep} persistence fails`, () => {
-      const database = openDatabase({
+    it(`rolls back every success terminal write when ${injectedStep} persistence fails`, async () => {
+      const database = await openDatabase({
         afterSuccessStorageStep: (step) => {
           if (step === injectedStep) throw new Error(`injected ${step} failure`);
         },
@@ -163,15 +174,18 @@ describe("atomic success terminal authority", () => {
 describe("public settlement write boundaries", () => {
   for (const kind of ["success", "failure"] as const) {
     for (const table of [kind === "success" ? "run_results" : "run_failures", "runs", "timeline_events", "commands", "command_audits"]) {
-      it(`${kind} rolls back completion, consequence, timeline and journal after ${table} write`, () => {
-        const database = openDatabase(); const running = startRunning(database);
+      it(`${kind} rolls back completion, consequence, timeline and journal after ${table} write`, async () => {
+        const database = await openDatabase(); const running = startRunning(database);
         const built = kind === "success" ? resultRequest(database, running) : undefined;
         const request = { kind, commandId: "99000000-0000-4000-8000-000000000011",
           terminal: built === undefined ? { failure: failure(running), authorization: failureAuthorization(running) }
             : { result: built.result, authorization: built.authorization } };
         const service = new RunRecordService({ database, clock: CLOCK, publishQueued: () => { throw new Error("unexpected queue publication"); }, ids: { uuid: () => UUID_7 } });
-        const raw = new DatabaseSync(join(roots.at(-1) ?? "", "authority.sqlite"));
+        const path = syntheticDatabasePath(database);
+        assert.equal(path, join(roots.at(-1) ?? "", "state.db"));
+        const raw = new DatabaseSync(path);
         try {
+          assert.equal(raw.prepare("PRAGMA database_list").all().find(row => row.name === "main")?.file, path);
           const before = database.getMeta(); const events = database.authority.timelineEvents.page({});
           raw.exec(`CREATE TRIGGER injected_completion AFTER ${table === "runs" ? "UPDATE" : "INSERT"} ON ${table} BEGIN SELECT RAISE(ABORT, 'C-write-fault'); END`);
           assert.throws(() => service.terminalize(request, personLookupDescriptor, built?.factoryAuthorization), /C-write-fault/);
@@ -186,7 +200,7 @@ describe("public settlement write boundaries", () => {
           assert.equal(service.terminalize(request, personLookupDescriptor, built?.factoryAuthorization).state, "applied");
           const settled = database.authority.runs.get(RUN_ID); assert.ok(settled?.completion);
           // Discard the acknowledgement and replay through an independently opened connection.
-          const reopened = AuthorityDatabase.open({ path: join(roots.at(-1) ?? "", "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "c-replay" }, CLOCK);
+          const reopened = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "c-replay" }, CLOCK);
           try {
             const replay = new RunRecordService({ database: reopened, clock: CLOCK, publishQueued: () => { throw new Error("unexpected queue publication"); }, ids: { uuid: () => UUID_7 } });
             const generation = reopened.getMeta().authorityGeneration;

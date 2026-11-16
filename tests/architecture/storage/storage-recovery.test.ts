@@ -1,35 +1,29 @@
+import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
+import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
+import ts from "typescript";
+import { cpSync, mkdtempSync, realpathSync, appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { OldBuildRuntimeArtifactsError } from "../../../src/backend/storage/admission/process-root.js";
+import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, OfflineMaintenanceOperationUnavailableError, isOfflineMaintenanceOperationActive } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import * as readonlySnapshots from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../support/helpers/admission-fixture.js";
+import { AuthorityDatabase as FixtureAuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../../support/helpers/run-integration-world.js";
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
-
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
+import { initialSettingsFileRecord } from "../../../src/models/config/settings.js";
+import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
+import { CONFIG_SNAPSHOT, ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, COMMAND_FIXTURES, HASH_A, HASH_B, NOTIFICATION, NOW, UUID_1, UUID_2, UUID_3, UUID_7, UUID_8, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { completionFromAuthorization } from "../../../src/models/run/completion.js";
-import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
+import { currentAtomicWriteFixture, atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import {
-  appendFileSync,
-  copyFileSync,
-  existsSync,
-  mkdtempSync,
-  realpathSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  statSync,
-  symlinkSync,
-  truncateSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it, vi } from "vitest";
+import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { buildRunResult } from "../../../src/backend/runs/lifecycle/run-result.js";
 import type { MonotonicDeadlineScheduler } from "../../../src/backend/runtime/scheduling/deadline-scheduler.js";
 import { executePreflightRunner } from "../../../src/models/preflight/preflight.js";
@@ -47,39 +41,8 @@ import { SpanEventWireSchema } from "../../../src/models/events/types.js";
 import { TimelineEventRecordSchema } from "../../../src/models/events/timeline.js";
 import { RUN_RECORD_JSON_SQL } from "../../../src/backend/storage/sqlite/run-record-row.js";
 import { AuthorityDatabase as RealAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import {
-  AuthorityBackupService,
-  AuthorityBootStore,
-  AuthorityDatabase,
-  AuthorityHealthPreflightRunner,
-  AuthorityMutationUnavailableError,
-  OfflineAuthorityRestoreService,
-  OfflineRestoreFailure,
-  RecoveryStopProofStore,
-  SpanAuthorityRunRootSchema,
-  doctorAuthorityStorage,
-  verifyBackupManifestAtPath,
-} from "../../../src/backend/storage/sqlite/index.js";
-import {
-  acquireRuntimeProcessLock,
-  acquireRuntimeRestoreAdmission,
-  observeRuntimeLockSnapshot,
-} from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import {
-  ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
-  COMMAND_FIXTURES,
-  HASH_A,
-  HASH_B,
-  NOTIFICATION,
-  NOW,
-  UUID_1,
-  UUID_2,
-  UUID_3,
-  UUID_7,
-  UUID_8,
-  WRITE_ATTEMPT,
-  WRITE_INTENT_ATTEMPTING,
-} from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { AuthorityBackupService, AuthorityBootStore, AuthorityDatabase, AuthorityHealthPreflightRunner, AuthorityMutationUnavailableError, OfflineAuthorityRestoreService, OfflineRestoreFailure, SpanAuthorityRunRootSchema, doctorAuthorityStorage, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/index.js";
+import { plantOldBuildArtifact } from "../../support/helpers/storage/old-build-artifact.js";
 import {
   QUEUED_RUN,
 } from "../../support/fixtures/phase1f-run-fixtures.js";
@@ -93,6 +56,8 @@ import { personLookupDescriptor } from "../../support/helpers/registered-workflo
 const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
 const roots: string[] = [];
+const profiles = new Map<string, Awaited<ReturnType<typeof createBoundProfileFixture>>>();
+const initialGenerations = new Map<string, number>();
 const databases: AuthorityDatabase[] = [];
 const bootStores: AuthorityBootStore[] = [];
 const CLOCK = manualClock(new Date(NOW));
@@ -132,12 +97,14 @@ function runningTerminalFixture(
   const member = database.authority.workerSlots.list().find((slot) => slot.poolIndex === poolIndex);
   assert.ok(member);
   const workerId = member.workerId;
-  const lease = database.authority.workerLeases.get(workerId);
-  assert.ok(lease);
+  const activeConfig = database.authority.runtimeConfig.get();
+  assert.ok(activeConfig);
   database.authority.runs.enqueue({
     ...QUEUED_RUN,
     envelope: {
       ...QUEUED_RUN.envelope,
+      configSnapshotId: activeConfig.configSnapshotId,
+      configFingerprint: activeConfig.configFingerprint,
       runId,
       itemId,
       traceId,
@@ -157,20 +124,17 @@ function runningTerminalFixture(
   const claimed = database.authority.runs.claimNext({
     workflow: personLookupDescriptor.id,
     workerId,
-    workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
     now: NOW,
   });
   if (claimed.state !== "claimed" || claimed.run.envelope.runId !== runId) {
     throw new Error(`terminal recovery fixture did not claim ${runId}`);
   }
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-  assert.ok("workerLifetime" in claimed.run.lifecycle && claimed.run.lifecycle.workerLifetime !== undefined);
-  const workerLifetime = claimed.run.lifecycle.workerLifetime;
   const validating = database.authority.runs.transition({
     runId,
     expectedVersion: claimed.run.version,
     claim,
-    lifecycle: { state: "validating", workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW },
+    lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW },
     now: NOW,
   });
   if (validating.state !== "applied") throw new Error(`terminal recovery fixture did not validate ${runId}`);
@@ -181,7 +145,6 @@ function runningTerminalFixture(
     lifecycle: {
       state: "running",
       workerId,
-      workerLifetime,
       claimedAt: NOW,
       heartbeatAt: NOW,
       currentNodeId: nodeId,
@@ -292,12 +255,110 @@ function seedTerminalAuthority(database: AuthorityDatabase) {
   return { failure, failureAuthorization, result: built.record, successAuthorization };
 }
 
-function testRoot(): string {
-  const workspace = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-storage-recovery-"));
-  roots.push(workspace);
-  const admission = acquireEntrypointAdmission(workspace, "exclusive");
-  admissions.set(admission.stateRoot, admission);
-  return admission.stateRoot;
+type AuthorityTemplate = {
+  readonly profile: Awaited<ReturnType<typeof createBoundProfileFixture>>;
+  readonly snapshotRoot: string;
+  readonly generation: number;
+};
+const authorityTemplates = new Map<"global" | "profile", AuthorityTemplate>();
+const templateRoots = new Set<string>();
+const heldTemplates = new Set<"global" | "profile">();
+
+async function openInitializedProfile(configScope: "global" | "profile") {
+  const profile = await createBoundProfileFixture();
+  const database = FixtureAuthorityDatabase.open(databaseOptions(profile.path), CLOCK);
+  try {
+    const resolved = configScope === "profile" ? resolveConfigWithProvenance(initialSettingsFileRecord().settings,
+      { primaryDisplay: null }, CLOCK, { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot }) : undefined;
+    const snapshot = resolved === undefined ? CONFIG_SNAPSHOT : ConfigSnapshotRecordSchema.parse({
+      ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint, provenance: resolved.provenance,
+    });
+    if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(snapshot);
+    return { profile, generation: database.getMeta().authorityGeneration };
+  } finally { database.close(); }
+}
+
+function rememberProfile(profile: Awaited<ReturnType<typeof createBoundProfileFixture>>, generation: number): string {
+  profiles.set(profile.stateRoot, profile);
+  roots.push(profile.workspace);
+  admissions.set(profile.stateRoot, profile.admission);
+  initialGenerations.set(profile.stateRoot, generation);
+  return profile.stateRoot;
+}
+
+function restoreWorkspace(live: string, snapshot: string): void {
+  const extras = new Set(readdirSync(live));
+  for (const name of readdirSync(snapshot)) {
+    extras.delete(name);
+    const from = join(snapshot, name), to = join(live, name);
+    if (statSync(from).isDirectory()) {
+      if (!existsSync(to)) mkdirSync(to);
+      restoreWorkspace(to, from);
+    } else writeFileSync(to, readFileSync(from));
+  }
+  for (const name of extras) rmSync(join(live, name), { recursive: true, force: true });
+}
+
+function adoptAuthorityRoot(template: AuthorityTemplate): string {
+  restoreWorkspace(template.profile.workspace, template.snapshotRoot);
+  template.profile.renewAfterRestore();
+  return rememberProfile(template.profile, template.generation);
+}
+
+async function testRoot(configScope: "global" | "profile" = "global"): Promise<string> {
+  if (!heldTemplates.has(configScope)) {
+    let template = authorityTemplates.get(configScope);
+    if (template === undefined) {
+      const created = await openInitializedProfile(configScope);
+      const snapshotRoot = mkdtempSync(join(tmpdir(), "authority-template-"));
+      cpSync(created.profile.workspace, snapshotRoot, { recursive: true });
+      template = { profile: created.profile, snapshotRoot, generation: created.generation };
+      authorityTemplates.set(configScope, template);
+      templateRoots.add(template.profile.stateRoot);
+    }
+    heldTemplates.add(configScope);
+    return adoptAuthorityRoot(template);
+  }
+  const disposable = await openInitializedProfile(configScope);
+  return rememberProfile(disposable.profile, disposable.generation);
+}
+function fixtureFor(path: string) {
+  const entry = [...profiles.entries()].find(([root]) => path === root || path.startsWith(root + "/"));
+  if (entry === undefined) throw new Error("recovery fixture profile owner missing");
+  return entry[1];
+}
+function processLockRoot(root: string): string { return join(fixtureFor(root).workspace, rebuildRuntimeIsolation.processLockRoot); }
+function baselineGeneration(path: string): number {
+  const generation = initialGenerations.get(fixtureFor(path).stateRoot);
+  assert.ok(generation !== undefined);
+  return generation;
+}
+function renewAfterRestore(path: string): void {
+  const profile = fixtureFor(path), old = profile.admission;
+  const fresh = profile.renewAfterRestore();
+  assert.throws(() => old.assertLive(), /profile-restore-context-expired|released admission/u);
+  admissions.set(profile.stateRoot, fresh.admission);
+}
+
+function discardTemplate(stateRoot: string): void {
+  if (!templateRoots.delete(stateRoot)) return;
+  for (const [scope, template] of authorityTemplates) {
+    if (template.profile.stateRoot === stateRoot) {
+      rmSync(template.snapshotRoot, { recursive: true, force: true });
+      authorityTemplates.delete(scope);
+    }
+  }
+}
+
+function inspectFencedAuthority(path: string) {
+  assert.equal(existsSync(join(fixtureFor(path).workspace, ".tracker", "control", "journal.json")), true);
+  assert.throws(() => admissionFor(path).assertProfileRuntime(), OfflineMaintenanceOperationUnavailableError);
+  const copy = fixtureFor(path).machine.verifiedReadOnlyCopy(path, createHash("sha256").update(readFileSync(path)).digest("hex"));
+  try {
+    const inspection = AuthorityDatabase.inspectExistingReadOnly(copy, path);
+    assert.equal(inspection.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    return inspection;
+  } finally { copy.release(); }
 }
 
 function databaseOptions(path: string) {
@@ -316,7 +377,7 @@ const timelineFixtureOwners = new Map<string, AuthorityDatabase>();
 
 function openDatabase(path: string): AuthorityDatabase {
   timelineFixturePaths.set(resolve(dirname(path)), path);
-  const database = AuthorityDatabase.open(admissionFor(path), databaseOptions(path), CLOCK);
+  const database = FixtureAuthorityDatabase.open(databaseOptions(path), CLOCK);
   databases.push(database);
   timelineFixtureOwners.set(resolve(dirname(path)),database);
   if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -326,7 +387,7 @@ function openDatabase(path: string): AuthorityDatabase {
 function corruptTerminalRun(
   path: string,
   runId: string,
-  mutate: (run: RunRecord) => unknown,
+  mutate: ((run: RunRecord) => unknown) | RunRecord,
 ): void {
   const raw = new DatabaseSync(path);
   const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger'").all();
@@ -337,8 +398,9 @@ function corruptTerminalRun(
     const row = raw.prepare(`SELECT ${RUN_RECORD_JSON_SQL} AS record_json FROM runs WHERE id = ?`)
       .get(runId) as { record_json: string } | undefined;
     if (row === undefined) throw new Error(`run ${runId} is absent from corruption fixture`);
-    const current = RunRecordSchema.parse(JSON.parse(row.record_json));
-    const corrupted = mutate(current) as RunRecord;
+    const corrupted = typeof mutate === "function"
+      ? mutate(RunRecordSchema.parse(JSON.parse(row.record_json))) as RunRecord
+      : RunRecordSchema.parse(mutate);
     const ownerWorkerId = "workerId" in corrupted.lifecycle ? corrupted.lifecycle.workerId : null;
     const heartbeatAt = "heartbeatAt" in corrupted.lifecycle ? corrupted.lifecycle.heartbeatAt : null;
     const { envelope, ...lifecycle } = corrupted;
@@ -466,22 +528,12 @@ function restoreOptions(root: string, authorityPath: string, suspects = join(roo
     authorityPath,
     suspectDirectory: suspects,
     busyTimeoutMs: 100,
-    processLockRoot: join(root, "locks"),
-    stoppedProofMaxAgeMs: 60_000,
-  };
+    processLockRoot: processLockRoot(root),
+    };
 }
 
-function stoppedProof(root: string, authorityPath: string, clock = CLOCK) {
-  const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
-  const store = new RecoveryStopProofStore({
-    processLockRoot: join(root, "locks"),
-    maxProofAgeMs: 60_000,
-  }, clock);
-  store.recordRuntimeState(observeRuntimeLockSnapshot({
-    processLockRoot: join(root, "locks"),
-    sourceDatabaseIdentity,
-  }, clock));
-  return store.issue({ observedBy: "local-operator", sourceDatabaseIdentity });
+function maintenanceOperation(root: string) {
+  return admissionFor(root).acquireOfflineMaintenance();
 }
 
 async function createBackup(database: AuthorityDatabase, directory: string) {
@@ -495,20 +547,44 @@ async function createBackup(database: AuthorityDatabase, directory: string) {
   return { report, manifestPath: paths.at(-1) ?? "" };
 }
 
-afterEach(() => {
+afterEach(async () => {
   timelineFixturePaths.clear();
   timelineFixtureOwners.clear();
   for (const store of bootStores.splice(0)) store.close();
-  for (const database of databases.splice(0)) database.close();
-  for (const admission of admissions.values()) admission.release();
+  for (const database of databases.splice(0)) {
+    try { releaseSeededWriteOwners(database, CLOCK.now().toISOString()); }
+    catch (error) { if (!(error instanceof Error) || error.message !== "database is not open") throw error; }
+    database.close();
+  }
   admissions.clear();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const template of [...authorityTemplates.values()]) {
+    try {
+      restoreWorkspace(template.profile.workspace, template.snapshotRoot);
+      try { template.profile.admission.assertProfileRuntime(); }
+      catch { template.profile.renewAfterRestore(); }
+      template.profile.admission.assertProfileRuntime();
+    } catch { discardTemplate(template.profile.stateRoot); }
+  }
+  for (const profile of profiles.values()) {
+    if (!templateRoots.has(profile.stateRoot)) await profile.close();
+  }
+  profiles.clear(); initialGenerations.clear(); roots.splice(0);
+  heldTemplates.clear();
+});
+
+afterAll(async () => {
+  for (const template of authorityTemplates.values()) {
+    await template.profile.close();
+    rmSync(template.snapshotRoot, { recursive: true, force: true });
+  }
+  authorityTemplates.clear();
+  templateRoots.clear();
 });
 
 describe("verified native online backups", () => {
 
   it("backs up through the private native handle and self-observes the completed copy", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -516,24 +592,23 @@ describe("verified native online backups", () => {
 
     const { report, manifestPath } = await createBackup(database, directory);
     assert.equal(report.followUpPerformed, false);
-    assert.equal(report.finalGeneration, 2);
+    assert.equal(report.finalGeneration, baselineGeneration(root) + 1);
     assert.equal(report.manifests[0].verification.observedFrom, "backup-copy");
-    assert.equal(report.manifests[0].verification.authorityGeneration, 2);
+    assert.equal(report.manifests[0].verification.authorityGeneration, baselineGeneration(root) + 1);
     const verified = await verifyBackupManifestAtPath(
       admissionFor(manifestPath), manifestPath,
-      database.getSourceDatabaseIdentity(),
     );
     assert.equal(verified.manifest.sha256.length, 64);
     assert.equal(verified.manifest.byteSize > 0, true);
-    assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(verified.backupPath), verified.backupPath).authorityGeneration, 2);
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(verified.backupPath), verified.backupPath).authorityGeneration, baselineGeneration(root) + 1);
 
     database.authority.notifications.create(NOTIFICATION);
-    assert.equal(database.getMeta().authorityGeneration, 3);
-    assert.equal((await verifyBackupManifestAtPath(admissionFor(manifestPath), manifestPath)).manifest.authorityGeneration, 2);
+    assert.equal(database.getMeta().authorityGeneration, baselineGeneration(root) + 2);
+    assert.equal((await verifyBackupManifestAtPath(admissionFor(manifestPath), manifestPath)).manifest.authorityGeneration, baselineGeneration(root) + 1);
   });
 
   it("coalesces concurrent requests and performs one generation follow-up", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -557,13 +632,13 @@ describe("verified native online backups", () => {
     assert.equal(report.coalescedRequests, 2);
     assert.equal(report.followUpPerformed, true);
     assert.equal(report.manifests.length, 2);
-    assert.equal(report.manifests[0].authorityGeneration, 2);
-    assert.equal(report.manifests[1].authorityGeneration, 3);
+    assert.equal(report.manifests[0].authorityGeneration, baselineGeneration(root) + 1);
+    assert.equal(report.manifests[1].authorityGeneration, baselineGeneration(root) + 2);
     assert.equal(copies, 2);
   });
 
   it("fails loud and removes its unique temporary target when native backup fails", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -585,7 +660,7 @@ describe("verified native online backups", () => {
   });
 
   it("rejects tampered backup bytes and a tampered manifest", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -596,7 +671,7 @@ describe("verified native online backups", () => {
     appendFileSync(backupPath, "tamper");
     await assert.rejects(verifyBackupManifestAtPath(admissionFor(manifestPath), manifestPath), /byte size does not match/);
 
-    const secondRoot = testRoot();
+    const secondRoot = await testRoot();
     const secondPath = join(secondRoot, "state.db");
     const secondDirectory = backupDirectory(secondRoot);
     const secondDatabase = openDatabase(secondPath);
@@ -610,7 +685,7 @@ describe("verified native online backups", () => {
   });
 
   it("rejects a native backup whose JSON-valid command record fails its strict schema", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -626,8 +701,8 @@ describe("verified native online backups", () => {
 });
 
 describe("fail-closed degraded boot and read-only doctor", () => {
-  it("returns span resolutions with the authority identity from their read snapshot", () => {
-    const root = testRoot();
+  it("returns span resolutions with the authority identity from their read snapshot", async () => {
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -650,8 +725,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     });
   });
 
-  it("uses native run and tombstone queries without retired archive SQL", () => {
-    const root = testRoot();
+  it("uses native run and tombstone queries without retired archive SQL", async () => {
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     const secondRun = RunRecordSchema.parse({
@@ -693,8 +768,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.deepEqual(snapshot.resolutions.map(({ state }) => state), ["live", "live"]);
   });
 
-  it("resolves a span root whose run carries a tombstone as deleted", () => {
-    const root = testRoot();
+  it("resolves a span root whose run carries a tombstone as deleted", async () => {
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -728,8 +803,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     }]);
   });
 
-  it("refuses a tombstone whose stored record fails its strict schema", () => {
-    const root = testRoot();
+  it("refuses a tombstone whose stored record fails its strict schema", async () => {
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -765,36 +840,46 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     }]);
   });
 
-  it("refuses a source commit during read-only snapshot inspection", () => {
-    const root = testRoot();
+  it("refuses a source commit during read-only snapshot inspection", async () => {
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     const baseline = AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath);
     // Capture the unbound method before the probe; invoke it with its actual database receiver.
     // eslint-disable-next-line @typescript-eslint/unbound-method
     const nativePrepare = DatabaseSync.prototype.prepare;
+    const observation = fixtureFor(root).machine.verifiedReadOnlyCopy(authorityPath, createHash("sha256").update(readFileSync(authorityPath)).digest("hex"));
+    const createSnapshot = readonlySnapshots.createReadonlyAuthoritySnapshot;
+    let targetSnapshotPath: string | undefined;
+    const snapshotProbe = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
+      const snapshot = createSnapshot(path);
+      if (path === authorityPath && targetSnapshotPath === undefined) targetSnapshotPath = snapshot.path;
+      return snapshot;
+    });
     let injected = false;
     const probe = vi.spyOn(DatabaseSync.prototype, "prepare").mockImplementation(function prepareWithCommit(
       this: DatabaseSync,
       sql: string,
     ) {
-      if (!injected && sql.includes("SELECT schema_version,authority_generation,updated_at FROM database_states")) {
+      if (!injected && targetSnapshotPath !== undefined && sql.startsWith("SELECT schema_version,authority_generation,updated_at")) {
+        const source = nativePrepare.call(this, "PRAGMA database_list").all().find(row => row.name === "main");
+        if (source?.file !== targetSnapshotPath) return nativePrepare.call(this, sql);
         injected = true;
         database.authority.notifications.create(NOTIFICATION);
       }
       return nativePrepare.call(this, sql);
     });
     try {
-      assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath), /authority-readonly-source-changed/);
+      assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(observation, authorityPath), /authority-readonly-source-changed/);
       assert.equal(injected, true);
       assert.equal(database.getMeta().authorityGeneration, baseline.authorityGeneration + 1);
     } finally {
-      probe.mockRestore();
+      probe.mockRestore(); snapshotProbe.mockRestore(); observation.release();
     }
   });
 
   it("refuses a missing span corpus when exact authority proves runs already exist", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -815,7 +900,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("accepts a missing span corpus only for the exact never-produced authority baseline", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     openDatabase(authorityPath);
 
@@ -838,22 +923,24 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("refuses a symlinked state-root parent before native evidence inspection", async () => {
-    const root = testRoot(); const admission = admissionFor(root);
+    const root = await testRoot(); const admission = admissionFor(root);
     const authorityPath = join(root, "state.db"); openDatabase(authorityPath).close();
     const parent = dirname(root); const retained = parent + "-retained";
     renameSync(parent, retained); symlinkSync(retained, parent);
+    const evidence = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    const bytes = readFileSync(join(retained, root.slice(parent.length + 1), "state.db"));
     try {
-      const report = await doctorAuthorityStorage(admission, {
+      await assert.rejects(doctorAuthorityStorage(admission, {
         stateRootTrustAnchor: dirname(parent), stateRoot: root, authorityPath,
         backupDirectory: backupDirectory(root), busyTimeoutMs: 100,
-      }, CLOCK);
-      assert.equal(report.authority.state,"degraded");
-      assert.equal(report.spanAuthority.state,"unavailable");
-    } finally { rmSync(parent); renameSync(retained,parent); }
+      }, CLOCK), /directory-integrity: credential path ancestry contains a symbolic link/u);
+      assert.equal(evidence.mock.calls.length, 0);
+      assert.equal(readFileSync(authorityPath).equals(bytes), true);
+    } finally { evidence.mockRestore(); rmSync(parent); renameSync(retained,parent); }
   });
 
   it("refuses an intermediate state-root component replaced by a symlink while the doctor awaits", async () => {
-    const root = testRoot(); const admission = admissionFor(root);
+    const root = await testRoot(); const admission = admissionFor(root);
     const authorityPath = join(root, "state.db"); const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN); emitQueuedSpan(root);
     await createBackup(database, backupDirectory(root)); database.close();
@@ -868,7 +955,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("refuses a doctor report assembled across different authority snapshots", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -892,7 +979,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("performs one broad authority inspection and one span snapshot per doctor run", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     openDatabase(authorityPath);
     const broadProbe = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
@@ -926,10 +1013,10 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("refuses a transient A-to-B-to-A authority swap during span resolution", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const originalPath = join(root, "backups", "authority-a.sqlite");
-    const replacementPath = join(testRoot(), "state.db");
+    const replacementPath = join(root, "replacement-authority.sqlite");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -938,9 +1025,15 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     database.close();
     copyFileSync(authorityPath, originalPath);
     copyFileSync(authorityPath, replacementPath);
-    const replacement = openDatabase(replacementPath);
-    replacement.authority.notifications.create(NOTIFICATION);
-    replacement.close();
+    const replacement = new DatabaseSync(replacementPath);
+    try {
+      replacement.exec("BEGIN");
+      replacement.prepare("INSERT INTO notifications(id,actor_id,dedupe_fingerprint,status,seen_count,version,run_id,payload_json,publications_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,'[]',?,?)")
+        .run(NOTIFICATION.notificationId, NOTIFICATION.actorId, NOTIFICATION.dedupeFingerprint, NOTIFICATION.status,
+          NOTIFICATION.count, NOTIFICATION.version, null, JSON.stringify(NOTIFICATION), NOTIFICATION.createdAt, NOTIFICATION.updatedAt);
+      replacement.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(NOW);
+      replacement.exec("COMMIT");
+    } finally { replacement.close(); }
     const inspectSpanAuthority = RealAuthorityDatabase.inspectSpanRunAuthorityReadOnly.bind(RealAuthorityDatabase);
     let restoredOriginal = false;
     const probe = vi.spyOn(RealAuthorityDatabase, "inspectSpanRunAuthorityReadOnly").mockImplementation(
@@ -975,7 +1068,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("refuses when an initially degraded authority changes during external verification", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const healthyPath = join(root, "healthy-authority.sqlite");
     const directory = backupDirectory(root);
@@ -1003,7 +1096,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("preserves a failed final identity read as named transition evidence", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     openDatabase(authorityPath);
     const identityProbe = vi.spyOn(AuthorityDatabase, "inspectAuthorityReadIdentityReadOnly")
@@ -1039,7 +1132,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("preserves both failed identity reads when degraded evidence changes", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     openDatabase(authorityPath);
     const broadProbe = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly")
@@ -1089,7 +1182,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("names a span-known run missing from exact live and archived authority", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     openDatabase(authorityPath);
     emitQueuedSpan(root);
@@ -1114,7 +1207,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("classifies priority drift in the exact live task tuple", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1142,7 +1235,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("classifies a full queued-root tuple that disagrees with its exact live authority", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1179,7 +1272,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("classifies a queued root whose span path is not its frozen trace root", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1224,7 +1317,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("classifies task identity that does not remain beneath its exact queued root", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1263,7 +1356,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("classifies duplicate run.queued roots instead of collapsing them to one live run id", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1293,7 +1386,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("classifies queued roots whose item attempts appear out of authority order", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     const laterRunId = "99999999-0009-4000-8000-999900000099";
@@ -1335,7 +1428,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("accepts a native requeue retaining the immutable run attempt", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1365,7 +1458,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("names malformed exact task authority instead of selecting another row", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
     database.authority.runs.enqueue(QUEUED_RUN);
@@ -1398,7 +1491,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(problem.summary, "runs authority failed its strict native row validation");
   });
 
-  it("rejects NULL/nonterminal partial completion, failure and result settlements read-only", () => {
+  it("rejects NULL/nonterminal partial completion, failure and result settlements read-only", async () => {
     const terminalValue = { schemaHash: HASH_A, value: { complete: true } };
     const partialResult = {
       runId: QUEUED_RUN.envelope.runId,
@@ -1473,24 +1566,20 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       },
       {
         name: "result",
-        insert: (raw: DatabaseSync) => raw.prepare(`
-          INSERT INTO run_results
-            (run_id, workflow, attempt, result_digest, payload_json, created_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          partialResult.runId,
-          partialResult.workflowId,
-          partialResult.attempt,
-          partialResult.resultDigest,
-          JSON.stringify(partialResult),
-          NOW,
-        ),
-        violation: /terminal-evidence-payload-required/,
+        insert: (raw: DatabaseSync) => {
+          const owner = RunRecordSchema.parse({ ...QUEUED_RUN, claimGeneration: 1, version: QUEUED_RUN.version + 1, updatedAt: NOW,
+            lifecycle: { state: "terminal", outcome: "done", endedAt: NOW }, completion: { schemaVersion: 1, kind: "done",
+              expectedVersion: QUEUED_RUN.version, claim: partialAuthorization.claim, authorizedAt: NOW, resultDigest: partialResult.resultDigest } });
+          return raw.prepare(`INSERT INTO run_results (id,run_id,settlement_version,terminal_run_json,workflow,attempt,result_digest,payload_json,created_at)
+            VALUES(?,?,?,?,?,?,?,?,?)`).run(`${partialResult.runId}:${owner.version}`,partialResult.runId,owner.version,
+              canonicalJsonStringify(owner),partialResult.workflowId,partialResult.attempt,partialResult.resultDigest,JSON.stringify(partialResult),NOW);
+        },
+        violation: /run-settlement-owner-mismatch/,
       },
     ] as const;
 
     for (const fixture of cases) {
-      const path = join(testRoot(), "state.db");
+      const path = join(await testRoot(), "state.db");
       const database = openDatabase(path);
       database.authority.runs.enqueue(QUEUED_RUN);
       database.close();
@@ -1507,7 +1596,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     }
   });
 
-  it("degrades read-only for every schema-valid authorization/consequence mismatch in both arms", () => {
+  it("degrades read-only for every schema-valid authorization/consequence mismatch in both arms", async () => {
     const commonCases: ReadonlyArray<readonly [string, (run: RunRecord) => unknown]> = [
       ["version", (run) => ({ ...run, version: run.version + 1 })],
       ["claim-generation", (run) => ({ ...run, claimGeneration: run.claimGeneration + 1 })],
@@ -1542,11 +1631,23 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     ] as const;
 
     for (const arm of arms) {
+      const path = join(await testRoot(), "state.db");
+      const database = openDatabase(path);
+      seedTerminalAuthority(database);
+      const originalRun = database.authority.runs.get(arm.runId);
+      assert.ok(originalRun);
+      database.close();
+      corruptTerminalRun(path, arm.runId, originalRun);
+      const baseline = AuthorityDatabase.inspectExistingReadOnly(admissionFor(path), path);
+      const assertBaseline = (): void => {
+        const current = AuthorityDatabase.inspectExistingReadOnly(admissionFor(path), path);
+        assert.equal(current.authorityGeneration, baseline.authorityGeneration);
+        assert.equal(current.authorityContentFingerprint, baseline.authorityContentFingerprint);
+        assert.deepEqual(current.counts, baseline.counts);
+        assert.deepEqual(current.tables, baseline.tables);
+      };
       for (const [name, mutate] of arm.cases) {
-        const path = join(testRoot(), "state.db");
-        const database = openDatabase(path);
-        seedTerminalAuthority(database);
-        database.close();
+        assertBaseline();
         corruptTerminalRun(path, arm.runId, mutate);
         assert.throws(
           () => AuthorityDatabase.inspectExistingReadOnly(admissionFor(path), path),
@@ -1559,13 +1660,17 @@ describe("fail-closed degraded boot and read-only doctor", () => {
         if (report.state !== "degraded-read-only") throw new Error("expected degraded terminal authority");
         assert.ok(["authority-invariant", "authority-record-invalid"].includes(report.cause.code), `${arm.name}/${name}: ${report.cause.code}`);
         assert.match(report.cause.summary, /completion|strict|schema|native record validation/);
+        store.close();
+        bootStores.splice(bootStores.indexOf(store), 1);
+        corruptTerminalRun(path, arm.runId, originalRun);
+        assertBaseline();
       }
     }
   });
 
-  it("protects every completion field and detects offline consequence corruption", () => {
+  it("protects every completion field and detects offline consequence corruption", async () => {
     for (const arm of [{ runId: UUID_1, kind: "failed" }, { runId: UUID_2, kind: "done" }]) {
-      const path = join(testRoot(), "state.db");
+      const path = join(await testRoot(), "state.db");
       const database = openDatabase(path); const seeded = seedTerminalAuthority(database); database.close();
       const raw = new DatabaseSync(path);
       const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger'").all();
@@ -1591,80 +1696,83 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       const report = openBootStore(path).report();
       assert.equal(report.state, "degraded-read-only");
     }
-    const path = join(testRoot(), "state.db"); const database = openDatabase(path); database.close();
+    const path = join(await testRoot(), "state.db"); const database = openDatabase(path); database.close();
     const raw = new DatabaseSync(path);
     try { for (const table of ["run_terminal_authorizations", "run_terminal_outbox"]) assert.throws(() => raw.prepare(`SELECT * FROM ${table}`), /no such table/); }
     finally { raw.close(); }
   });
 
   it("opens corrupt, truncated, newer, foreign-key-invalid, invariant-invalid, and record-invalid files degraded", async () => {
-    const root = testRoot();
-    const paths: Array<readonly [string, string]> = [];
-
-    const corruptPath = join(testRoot(), "state.db");
-    writeFileSync(corruptPath, "not a sqlite database");
-    paths.push([corruptPath, "authority-not-sqlite"]);
-
-    const truncatedPath = join(testRoot(), "state.db");
-    openDatabase(truncatedPath).close();
-    truncateSync(truncatedPath, 128);
-    paths.push([truncatedPath, "authority-corrupt"]);
-
-    const newerPath = join(testRoot(), "state.db");
-    openDatabase(newerPath).close();
-    const newer = new DatabaseSync(newerPath);
-    newer.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`);
-    newer.close();
-    paths.push([newerPath, "authority-schema-mismatch"]);
-
-    const foreignKeyPath = join(testRoot(), "state.db");
-    openDatabase(foreignKeyPath).close();
-    const badForeignKey = new DatabaseSync(foreignKeyPath, { enableForeignKeyConstraints: false });
-    badForeignKey.prepare(`
-      INSERT INTO command_audits (id, command_id, payload_json, created_at)
-      VALUES (?, ?, ?, ?)
-    `).run(UUID_2, UUID_8, JSON.stringify({ invalid: "but valid JSON" }), NOW);
-    badForeignKey.close();
-    paths.push([foreignKeyPath, "authority-foreign-key"]);
-
-    const invariantPath = join(testRoot(), "state.db");
-    const invariantDatabase = openDatabase(invariantPath);
-    invariantDatabase.authority.commands.insert(COMMAND_FIXTURES[0]);
-    invariantDatabase.close();
-    const badInvariant = new DatabaseSync(invariantPath);
-    badInvariant.prepare("UPDATE commands SET family = ? WHERE id = ?").run("run", UUID_1);
-    badInvariant.close();
-    paths.push([invariantPath, "authority-record-invalid"]);
-
-    const recordSchemaPath = join(testRoot(), "state.db");
-    const recordSchemaDatabase = openDatabase(recordSchemaPath);
-    fenceWriteFixture(recordSchemaDatabase, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }, recordSchemaPath);
-    recordSchemaDatabase.close();
-    const badRecordSchema = new DatabaseSync(recordSchemaPath);
-    badRecordSchema.prepare("UPDATE write_intents SET payload_json = ? WHERE id = ?")
-      .run(JSON.stringify({ status: "attempting" }), WRITE_INTENT_ATTEMPTING.writeIntentId);
-    badRecordSchema.close();
-    paths.push([recordSchemaPath, "authority-record-invalid"]);
-
-    for (const [path, expectedCode] of paths) {
-      const before = readFileSync(path);
-      const store = openBootStore(path);
-      const report = store.report();
-      assert.equal(report.state, "degraded-read-only", path);
-      if (report.state !== "degraded-read-only") throw new Error("expected degraded report");
-      assert.equal(report.cause.code, expectedCode, path);
-      for (const operation of ["enqueue", "claim", "commit", "control"] as const) {
-        assert.throws(
-          () => store.requireWritable(operation),
-          (error: unknown) => error instanceof AuthorityMutationUnavailableError
-            && error.operation === operation
-            && error.health.code === expectedCode,
-        );
-      }
-      assert.deepEqual(readFileSync(path), before, `${path} was modified during degraded boot`);
+    const root = await testRoot(), path = join(root, "state.db");
+    openDatabase(path).close();
+    const baseline = readFileSync(path);
+    const assertClosedCompanions = () => {
+      for (const suffix of ["-wal", "-shm", "-journal"]) assert.equal(existsSync(path + suffix), false);
+    };
+    assertClosedCompanions();
+    const corruptions: ReadonlyArray<readonly [string, () => void]> = [
+      ["authority-not-sqlite", () => { writeFileSync(path, "not a sqlite database"); }],
+      ["authority-corrupt", () => { truncateSync(path, 128); }],
+      ["authority-schema-mismatch", () => {
+        const newer = new DatabaseSync(path);
+        try { newer.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`); }
+        finally { newer.close(); }
+      }],
+      ["authority-foreign-key", () => {
+        const badForeignKey = new DatabaseSync(path, { enableForeignKeyConstraints: false });
+        try {
+          badForeignKey.prepare(`
+            INSERT INTO command_audits (id, command_id, payload_json, created_at)
+            VALUES (?, ?, ?, ?)
+          `).run(UUID_2, UUID_8, JSON.stringify({ invalid: "but valid JSON" }), NOW);
+        } finally { badForeignKey.close(); }
+      }],
+      ["authority-record-invalid", () => {
+        const invariantDatabase = openDatabase(path);
+        try { invariantDatabase.authority.commands.insert(COMMAND_FIXTURES[0]); }
+        finally { invariantDatabase.close(); }
+        const badInvariant = new DatabaseSync(path);
+        try { badInvariant.prepare("UPDATE commands SET family = ? WHERE id = ?").run("run", UUID_1); }
+        finally { badInvariant.close(); }
+      }],
+      ["authority-record-invalid", () => {
+        const recordSchemaDatabase = openDatabase(path);
+        try {
+          fenceWriteFixture(recordSchemaDatabase, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }, path);
+          releaseSeededWriteOwners(recordSchemaDatabase, CLOCK.now().toISOString());
+        } finally { recordSchemaDatabase.close(); }
+        const badRecordSchema = new DatabaseSync(path);
+        try {
+          badRecordSchema.prepare("UPDATE write_intents SET payload_json = ? WHERE id = ?")
+            .run(JSON.stringify({ status: "attempting" }), WRITE_INTENT_ATTEMPTING.writeIntentId);
+        } finally { badRecordSchema.close(); }
+      }],
+    ];
+    for (const [expectedCode, corrupt] of corruptions) {
+      assertClosedCompanions();
+      writeFileSync(path, baseline);
+      assert.deepEqual(readFileSync(path), baseline);
+      corrupt();
+      assertClosedCompanions();
+      const before = readFileSync(path), store = openBootStore(path);
+      try {
+        const report = store.report();
+        assert.equal(report.state, "degraded-read-only", path);
+        if (report.state !== "degraded-read-only") throw new Error("expected degraded report");
+        assert.equal(report.cause.code, expectedCode, path);
+        for (const operation of ["enqueue", "claim", "commit", "control"] as const) {
+          assert.throws(
+            () => store.requireWritable(operation),
+            (error: unknown) => error instanceof AuthorityMutationUnavailableError
+              && error.operation === operation
+              && error.health.code === expectedCode,
+          );
+        }
+        assert.deepEqual(readFileSync(path), before, `${path} was modified during degraded boot`);
+      } finally { store.close(); }
+      assertClosedCompanions();
     }
-    const doctorPath = join(root, "state.db");
-    copyFileSync(recordSchemaPath, doctorPath);
+    const doctorPath = path;
     const beforeDoctor = readFileSync(doctorPath);
     const doctor = await doctorAuthorityStorage(admissionFor(root), {
       stateRootTrustAnchor: root,
@@ -1681,7 +1789,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("reports counts, backup freshness/gap, candidates, and a newer bad manifest without mutation", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -1708,7 +1816,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.deepEqual(report.counts.values, {
       pendingCommands: 1,
       unresolvedWriteIntents: 0,
-      leases: 1,
       providerReservations: 0,
       artifactOutbox: 1,
     });
@@ -1732,7 +1839,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("reports a verified restore candidate even when the live authority becomes corrupt", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -1756,25 +1863,22 @@ describe("fail-closed degraded boot and read-only doctor", () => {
 
 describe("offline exact-backup restore", () => {
   it("consumes the exact issued proof when the wall clock advances before exclusive verification", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     const advancingClock = manualClock(new Date(NOW));
-    const proof = stoppedProof(root, authorityPath, advancingClock);
+    const proof = maintenanceOperation(root);
     advancingClock.advanceWall(1);
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath),
-      async () => undefined,
-      advancingClock,
-    );
-    await assert.doesNotReject(restore.restore({ manifestPath, stoppedSystemProof: proof }));
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, advancingClock, undefined, boundProfileCredentials(admissionFor(root)));
+    await assert.doesNotReject(restore.restore({ manifestPath }, proof));
+    renewAfterRestore(root);
   });
 
   it("preserves nonempty failure, result and immutable same-row completion authority", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -1783,15 +1887,9 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.close();
 
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath),
-      async () => undefined,
-      CLOCK,
-    );
-    const report = await restore.restore({
-      manifestPath,
-      stoppedSystemProof: stoppedProof(root, authorityPath),
-    });
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    const report = await restore.restore({ manifestPath }, maintenanceOperation(root));
+    renewAfterRestore(root);
     assert.equal(report.authorityGeneration, generation);
     const restored = openDatabase(authorityPath);
     assert.deepEqual(restored.authority.failures.get(seeded.failure.failureId), seeded.failure);
@@ -1807,7 +1905,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("preserves the suspect DB and restores authority without resurrecting retired projections", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1816,33 +1914,34 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.authority.notifications.create(NOTIFICATION);
     database.close();
-    writeFileSync(`${authorityPath}-wal`, "suspect wal bytes");
-    writeFileSync(`${authorityPath}-shm`, "suspect shm bytes");
+    writeFileSync(`${authorityPath}-wal`, "suspect wal bytes", { mode: 0o644 });
+    writeFileSync(`${authorityPath}-shm`, "suspect shm bytes", { mode: 0o644 });
 
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async (stagedPath) => {
-      const stagedAdmission = admissionFor(stagedPath).stoppedStagedAuthority(stagedPath);
-      const staged = AuthorityDatabase.open(stagedAdmission, databaseOptions(stagedPath), CLOCK);
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async (stagedPath, restoreAdmission) => {
+      const stagedAdmission = admissionFor(stagedPath).stoppedRestoreProjection(stagedPath, restoreAdmission);
+      const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission, databaseOptions(stagedPath), CLOCK);
       assert.equal("projections" in staged,false);
       assert.deepEqual(staged.authority.commands.get(UUID_1),COMMAND_FIXTURES[0]);
       staged.close();
       stagedAdmission.release();
-    }, CLOCK);
-    const report = await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+    }, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    const report = await restore.restore({ manifestPath }, maintenanceOperation(root));
     assert.equal(report.state, "restored");
-    assert.equal(report.authorityGeneration, 2);
+    assert.equal(report.authorityGeneration, baselineGeneration(root) + 1);
     assert.equal(existsSync(join(suspects, report.suspectFileName)), true);
     assert.equal(readFileSync(join(suspects, `${report.suspectFileName}-wal`), "utf8"), "suspect wal bytes");
     assert.equal(readFileSync(join(suspects, `${report.suspectFileName}-shm`), "utf8"), "suspect shm bytes");
     assert.equal(existsSync(`${authorityPath}-wal`), false);
     assert.equal(existsSync(`${authorityPath}-shm`), false);
+    renewAfterRestore(root);
     const restored = openDatabase(authorityPath);
     assert.deepEqual(restored.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
     assert.equal(restored.authority.notifications.get(UUID_3), undefined);
     assert.equal("projections" in restored,false);
   });
 
-  it("refuses restore without the explicit stopped-system proof before preserving or swapping", async () => {
-    const root = testRoot();
+  it("refuses a copied unissued operation before preserving or swapping", async () => {
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1850,50 +1949,35 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     const before = readFileSync(authorityPath);
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK);
-    const proof = stoppedProof(root, authorityPath);
-    await assert.rejects(restore.restore({
-      manifestPath,
-      stoppedSystemProof: { ...proof, runtimeGeneration: proof.runtimeGeneration + 1 },
-    }), /does not match its issued one-time record/);
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    const proof = maintenanceOperation(root);
+    try { await assert.rejects(restore.restore({ manifestPath }, { ...proof }), /offline-maintenance-unissued/u); }
+    finally { proof.release(); }
     assert.deepEqual(readFileSync(authorityPath), before);
     assert.equal(existsSync(suspects), false);
   });
 
-  it("refuses when a worker starts after the stopped proof was issued", async () => {
-    const root = testRoot();
+  it("refuses old-build worker evidence during a held operation", async () => {
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
     const database = openDatabase(authorityPath);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
-    const proof = stoppedProof(root, authorityPath);
-    const worker = acquireRuntimeProcessLock({
-      processLockRoot: join(root, "locks"),
-      name: "workers",
-      workerId: "person-lookup-worker-2",
-      pid: process.pid,
-    }, CLOCK);
-    try {
-      const restore = new OfflineAuthorityRestoreService(
-        admissionFor(root), restoreOptions(root, authorityPath, suspects),
-        async () => undefined,
-        CLOCK,
-      );
-      await assert.rejects(
-        restore.restore({ manifestPath, stoppedSystemProof: proof }),
-        /workers process lock generation .* is active for pid/u,
-      );
-      assert.equal(existsSync(suspects), false);
-      assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, 1);
-    } finally {
-      worker.release();
-    }
+    const proof = maintenanceOperation(root);
+    plantOldBuildArtifact(processLockRoot(root), "workers");
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    await assert.rejects(
+      restore.restore({ manifestPath }, proof),
+      OldBuildRuntimeArtifactsError,
+    );
+    assert.equal(existsSync(suspects), false);
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, baselineGeneration(root) + 0);
   });
 
-  it("refuses a never-run proof after the first singleton starts and releases", async () => {
-    const root = testRoot();
+  it("refuses released old-build singleton evidence without interpreting its generations", async () => {
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1901,59 +1985,44 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     const authorityBytes = readFileSync(authorityPath);
-    const proof = stoppedProof(root, authorityPath);
-    const server = acquireRuntimeProcessLock({
-      processLockRoot: join(root, "locks"),
-      name: "server",
-      pid: process.pid,
-    }, CLOCK);
-    assert.equal(server.generation, 2);
-    server.release();
+    const proof = maintenanceOperation(root);
+    plantOldBuildArtifact(processLockRoot(root));
 
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath, suspects),
-      async () => undefined,
-      CLOCK,
-    );
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: proof }),
-      /does not match current runtime and process-lock generations/u,
+      restore.restore({ manifestPath }, proof),
+      OldBuildRuntimeArtifactsError,
     );
     assert.deepEqual(readFileSync(authorityPath), authorityBytes);
     assert.equal(existsSync(suspects), false);
   });
 
   it("holds exclusive admission through verification and authority replacement", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
     const database = openDatabase(authorityPath);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
-    const proof = stoppedProof(root, authorityPath);
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath, suspects),
-      async () => {
-        const worker = acquireRuntimeProcessLock({
-          processLockRoot: join(root, "locks"),
-          name: "workers",
-          workerId: "person-lookup-worker-2",
-          pid: process.pid,
-        }, CLOCK);
-        worker.release();
-      },
-      CLOCK,
-    );
-    await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: proof }),
-      /restore admission .* is held by live pid/u,
-    );
-    assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, 1);
+    const proof = maintenanceOperation(root);
+    const lifetime = admissionFor(root).lifetime;
+    assert.ok(lifetime instanceof RuntimeLifetimeLock);
+    let exclusions = 0;
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => {
+      proof.assertHeld();
+      assert.throws(() => admissionFor(root).beginOfflineMaintenance(), /offline-maintenance-busy/u);
+      await assert.rejects(RuntimeLifetimeLock.acquire(lifetime.port), RuntimeAlreadyRunningError);
+      exclusions++;
+      throw new Error("synthetic-root-exclusion-confirmed");
+    }, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    await assert.rejects(restore.restore({ manifestPath }, proof), /synthetic-root-exclusion-confirmed/u);
+    assert.equal(exclusions, 1);
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, baselineGeneration(root) + 0);
   });
 
   it("does not fall back when the exact newest manifest is bad", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1962,17 +2031,17 @@ describe("offline exact-backup restore", () => {
     database.close();
     const badManifestPath = join(directory, "newest-bad.manifest.json");
     writeFileSync(badManifestPath, "{ invalid");
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK);
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath: badManifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      restore.restore({ manifestPath: badManifestPath }, maintenanceOperation(root)),
     );
     assert.equal(manifestPaths(directory).length, 2);
     assert.equal(existsSync(suspects), false);
-    assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, 1);
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, baselineGeneration(root) + 0);
   });
 
   it("keeps live and suspect recoverable when projection rebuild fails", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1982,11 +2051,11 @@ describe("offline exact-backup restore", () => {
     database.authority.notifications.create(NOTIFICATION);
     database.close();
     const liveGeneration = AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration;
-    writeFileSync(`${authorityPath}-wal`, "live wal bytes");
-    writeFileSync(`${authorityPath}-shm`, "live shm bytes");
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), () => Promise.reject(new Error("injected projection rebuild failure")), CLOCK);
+    writeFileSync(`${authorityPath}-wal`, "live wal bytes", { mode: 0o644 });
+    writeFileSync(`${authorityPath}-shm`, "live shm bytes", { mode: 0o644 });
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), () => Promise.reject(new Error("injected projection rebuild failure")), CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      restore.restore({ manifestPath }, maintenanceOperation(root)),
       /injected projection rebuild failure/,
     );
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, liveGeneration);
@@ -1995,7 +2064,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("leaves live authority untouched on an injected atomic-swap failure", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2005,41 +2074,32 @@ describe("offline exact-backup restore", () => {
     database.authority.notifications.create(NOTIFICATION);
     database.close();
     const liveGeneration = AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration;
-    writeFileSync(`${authorityPath}-wal`, "live wal bytes");
-    writeFileSync(`${authorityPath}-shm`, "live shm bytes");
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath, suspects),
-      async () => undefined,
-      CLOCK,
-      {
+    writeFileSync(`${authorityPath}-wal`, "live wal bytes", { mode: 0o644 });
+    writeFileSync(`${authorityPath}-shm`, "live shm bytes", { mode: 0o644 });
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: () => { throw new Error("injected atomic swap failure"); },
-      },
-    );
+      }, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      restore.restore({ manifestPath }, maintenanceOperation(root)),
       /injected atomic swap failure/,
     );
     assert.equal(readFileSync(`${authorityPath}-wal`, "utf8"), "live wal bytes");
     assert.equal(readFileSync(`${authorityPath}-shm`, "utf8"), "live shm bytes");
-    assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, liveGeneration);
+    assert.equal(inspectFencedAuthority(authorityPath).authorityGeneration, liveGeneration);
     assert.equal(readdirSync(suspects).length > 0, true);
   });
 
   it("restores a companion when its displacement rename throws after moving it", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
     database.authority.commands.insert(COMMAND_FIXTURES[0]);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
-    writeFileSync(`${authorityPath}-wal`, "live wal bytes");
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath),
-      async () => undefined,
-      CLOCK,
-      {
+    writeFileSync(`${authorityPath}-wal`, "live wal bytes", { mode: 0o644 });
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: renameSync,
         renamePath: (source, destination) => {
@@ -2048,12 +2108,11 @@ describe("offline exact-backup restore", () => {
             throw new Error("injected displacement error after rename");
           }
         },
-      },
-    );
+      }, boundProfileCredentials(admissionFor(root)));
 
     let failure: unknown;
     try {
-      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+      await restore.restore({ manifestPath }, maintenanceOperation(root));
     } catch (error) {
       failure = error;
     }
@@ -2068,7 +2127,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("reports authority replaced when atomic swap throws after replacing it", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2077,22 +2136,17 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.authority.notifications.create(NOTIFICATION);
     database.close();
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath),
-      async () => undefined,
-      CLOCK,
-      {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: (source, destination) => {
           renameSync(source, destination);
           throw new Error("injected atomic swap error after rename");
         },
-      },
-    );
+      }, boundProfileCredentials(admissionFor(root)));
 
     let failure: unknown;
     try {
-      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+      await restore.restore({ manifestPath }, maintenanceOperation(root));
     } catch (error) {
       failure = error;
     }
@@ -2103,40 +2157,35 @@ describe("offline exact-backup restore", () => {
     assert.ok(failure.cause instanceof Error);
     assert.equal(failure.cause.message, "injected atomic swap error after rename");
     assert.equal(
-      AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration,
+      inspectFencedAuthority(authorityPath).authorityGeneration,
       backupGeneration,
     );
   });
 
   it("reports cleanup-only failure after authority replacement and names the staged path", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     let cleanupPath = "";
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath),
-      async () => undefined,
-      CLOCK,
-      {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: (source, destination) => {
           renameSync(source, destination);
-          cleanupPath = `${source}-wal`;
-          writeFileSync(cleanupPath, "staged cleanup bytes");
+          cleanupPath = source;
+          copyFileSync(destination, cleanupPath);
         },
         removePath: (path) => {
           if (path === cleanupPath) throw new Error("injected staged cleanup failure");
           rmSync(path);
         },
-      },
-    );
+      }, boundProfileCredentials(admissionFor(root)));
 
     let failure: unknown;
     try {
-      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+      await restore.restore({ manifestPath }, maintenanceOperation(root));
     } catch (error) {
       failure = error;
     }
@@ -2149,7 +2198,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("preserves primary failure before staged cleanup failure", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2157,26 +2206,21 @@ describe("offline exact-backup restore", () => {
     database.close();
     let stagedPath = "";
     const primaryError = new Error("injected primary projection failure");
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath),
-      async (path) => {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async (path) => {
         stagedPath = path;
         throw primaryError;
-      },
-      CLOCK,
-      {
+      }, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: renameSync,
         removePath: (path) => {
           if (path === stagedPath) throw new Error("injected cleanup after primary failure");
           rmSync(path);
         },
-      },
-    );
+      }, boundProfileCredentials(admissionFor(root)));
 
     let failure: unknown;
     try {
-      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+      await restore.restore({ manifestPath }, maintenanceOperation(root));
     } catch (error) {
       failure = error;
     }
@@ -2199,7 +2243,7 @@ describe("offline exact-backup restore", () => {
     operation,
     expectedLiveCompanion,
   }) => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2209,14 +2253,10 @@ describe("offline exact-backup restore", () => {
     database.authority.notifications.create(NOTIFICATION);
     database.close();
     const liveAuthorityBytes = readFileSync(authorityPath);
-    writeFileSync(`${authorityPath}-wal`, "live wal bytes");
+    writeFileSync(`${authorityPath}-wal`, "live wal bytes", { mode: 0o644 });
     let swapAttempted = false;
     const rollbackMessage = `injected rollback ${operation} failure`;
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath, suspects),
-      async () => undefined,
-      CLOCK,
-      {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: () => {
           swapAttempted = true;
@@ -2236,12 +2276,11 @@ describe("offline exact-backup restore", () => {
             throw new Error(rollbackMessage);
           }
         },
-      },
-    );
+      }, boundProfileCredentials(admissionFor(root)));
 
     let failure: unknown;
     try {
-      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+      await restore.restore({ manifestPath }, maintenanceOperation(root));
     } catch (error) {
       failure = error;
     }
@@ -2267,7 +2306,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("refuses when verified backup bytes mutate during the staged copy", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2278,11 +2317,7 @@ describe("offline exact-backup restore", () => {
     const liveBytes = readFileSync(authorityPath);
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { backupFileName: string };
     const backupPath = join(directory, manifest.backupFileName);
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath),
-      async () => undefined,
-      CLOCK,
-      {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: (source, destination) => {
           if (source === backupPath) {
             const bytes = readFileSync(source);
@@ -2292,17 +2327,16 @@ describe("offline exact-backup restore", () => {
           copyFileSync(source, destination);
         },
         atomicReplace: renameSync,
-      },
-    );
+      }, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      restore.restore({ manifestPath }, maintenanceOperation(root)),
       /staged restore .* checksum does not match verified manifest/u,
     );
     assert.deepEqual(readFileSync(authorityPath), liveBytes);
   });
 
   it("classifies post-swap directory fsync failure as authority replaced", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2311,11 +2345,7 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     let swapped = false;
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath),
-      async () => undefined,
-      CLOCK,
-      {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: (source, destination) => {
           renameSync(source, destination);
@@ -2324,17 +2354,16 @@ describe("offline exact-backup restore", () => {
         syncPath: () => {
           if (swapped) throw new Error("injected post-swap directory fsync failure");
         },
-      },
-    );
+      }, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      restore.restore({ manifestPath }, maintenanceOperation(root)),
       replacedFailure(/post-swap directory fsync failure/u),
     );
-    assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, generation);
+    assert.equal(inspectFencedAuthority(authorityPath).authorityGeneration, generation);
   });
 
   it("classifies post-swap report validation failure as authority replaced", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2345,133 +2374,83 @@ describe("offline exact-backup restore", () => {
       ...CLOCK,
       now: (): Date => swapped ? new Date(Number.NaN) : CLOCK.now(),
     };
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath),
-      async () => undefined,
-      reportClock,
-      {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, reportClock, {
         copyFile: copyFileSync,
         atomicReplace: (source, destination) => {
           renameSync(source, destination);
           swapped = true;
         },
-      },
-    );
+      }, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath, reportClock) }),
+      restore.restore({ manifestPath }, maintenanceOperation(root)),
       replacedFailure(/Invalid time value/u),
     );
   });
 
-  it("classifies exclusive-admission release failure after swap as authority replaced", async () => {
-    const root = testRoot();
-    const authorityPath = join(root, "state.db");
-    const directory = backupDirectory(root);
-    const database = openDatabase(authorityPath);
-    const { manifestPath } = await createBackup(database, directory);
-    database.close();
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath),
-      async () => undefined,
-      CLOCK,
-      undefined,
-      (input, clock) => {
-        const admission = acquireRuntimeRestoreAdmission(input, clock);
-        return Object.freeze({
-          admissionId: admission.admissionId,
-          release: (): void => {
-            admission.release();
-            throw new Error("injected admission release failure");
-          },
-        });
-      },
-    );
-    await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
-      replacedFailure(/admission release failure/u),
-    );
+  it("classifies exact operation release failure after swap as authority replaced", async () => {
+    const root = await testRoot("profile"), authorityPath = join(root, "state.db"), directory = backupDirectory(root);
+    const owner = admissionFor(root), lifetime = owner.lifetime;
+    assert.ok(lifetime instanceof RuntimeLifetimeLock);
+    const context = owner.readInstallationContext(); assert.ok(context);
+    const journal = join(context.workspace, ".tracker", "control", "journal.json");
+    const database = openDatabase(authorityPath), { manifestPath } = await createBackup(database, directory); database.close();
+    const operation = maintenanceOperation(root), assertHeld = lifetime.assertOfflineMaintenance.bind(lifetime);
+    let replaced = false;
+    const failedRelease = vi.spyOn(lifetime, "assertOfflineMaintenance").mockImplementation((owned, workspace) => {
+      assertHeld(owned, workspace);
+      if (replaced && !existsSync(journal)) throw new Error("synthetic-exact-operation-release-failure");
+    });
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, owner, restoreOptions(root, authorityPath), async () => undefined,
+      CLOCK, { copyFile: copyFileSync, atomicReplace(source, target) { renameSync(source, target); replaced = true; } }, boundProfileCredentials(owner));
+    try {
+      await assert.rejects(restore.restore({ manifestPath }, operation), replacedFailure(/release failed/u));
+      assert.equal(isOfflineMaintenanceOperationActive(operation), true);
+      await assert.rejects(RuntimeLifetimeLock.acquire(lifetime.port), RuntimeAlreadyRunningError);
+      assert.throws(() => lifetime.beginOfflineMaintenance(context.workspace), /offline-maintenance-busy/u);
+      assert.throws(() => owner.beginOfflineMaintenance(), /profile-restore-context-expired/u);
+      assert.throws(() => owner.assertProfileRuntime());
+    } finally { failedRelease.mockRestore(); operation.release(); }
   });
 
-  it("rejects stale, replayed, generation-mismatched, and currently-active process-lock proofs", async () => {
-    const root = testRoot();
-    const authorityPath = join(root, "state.db");
-    const directory = backupDirectory(root);
-    const suspects = join(root, "backups", "suspects");
-    const database = openDatabase(authorityPath);
-    const { manifestPath } = await createBackup(database, directory);
-    database.close();
+  it("rejects expired, copied, foreign and replayed operations before restore effects", async () => {
+    const root = await testRoot("profile"), authorityPath = join(root, "state.db"), directory = backupDirectory(root);
+    const suspects = join(root, "backups", "suspects"), owner = admissionFor(root), lifetime = owner.lifetime;
+    assert.ok(lifetime instanceof RuntimeLifetimeLock);
+    const context = owner.readInstallationContext(); assert.ok(context);
+    const database = openDatabase(authorityPath), { manifestPath } = await createBackup(database, directory); database.close();
+    const before = readFileSync(authorityPath);
+    const service = () => new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects),
+      async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    const expired = maintenanceOperation(root); expired.release();
+    await assert.rejects(service().restore({ manifestPath }, expired), /offline-maintenance-unissued/u);
+    assert.equal(existsSync(suspects), false); assert.deepEqual(readFileSync(authorityPath), before);
 
-    const staleClock = manualClock(new Date(NOW));
-    const staleProof = stoppedProof(root, authorityPath, staleClock);
-    staleClock.advanceWall(60_001);
-    const staleRestore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath, suspects),
-      async () => undefined,
-      staleClock,
-    );
-    await assert.rejects(
-      staleRestore.restore({ manifestPath, stoppedSystemProof: staleProof }),
-      /proof .* is stale/,
-    );
-    assert.equal(existsSync(suspects), false);
+    const current = maintenanceOperation(root);
+    await assert.rejects(service().restore({ manifestPath }, { ...current }), /offline-maintenance-unissued/u);
+    assert.throws(() => RuntimeAdmission.acquireMachine(context.workspace, "shared", lifetime), /offline-maintenance-unissued/u);
+    await assert.rejects(RuntimeLifetimeLock.acquire(lifetime.port), RuntimeAlreadyRunningError);
+    assert.equal(existsSync(suspects), false); assert.deepEqual(readFileSync(authorityPath), before);
+    current.release();
 
-    const currentProof = stoppedProof(root, authorityPath);
-    const startedAndStopped = acquireRuntimeProcessLock({
-      processLockRoot: join(root, "locks"),
-      name: "workers",
-      workerId: "person-lookup-worker-1",
-      pid: process.pid,
-    }, CLOCK);
-    startedAndStopped.release();
-    const mismatchedRestore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath, suspects),
-      async () => undefined,
-      CLOCK,
-    );
-    await assert.rejects(
-      mismatchedRestore.restore({ manifestPath, stoppedSystemProof: currentProof }),
-      /does not match current runtime and process-lock generations/,
-    );
-    assert.equal(existsSync(suspects), false);
-
-    const activeProof = stoppedProof(root, authorityPath);
-    const activeServer = acquireRuntimeProcessLock({
-      processLockRoot: join(root, "locks"),
-      name: "server",
-      pid: process.pid,
-    }, CLOCK);
-    const activeRestore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath, suspects),
-      async () => undefined,
-      CLOCK,
-    );
+    const foreignWorkspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-foreign-operation-")));
+    const foreignRoot = await RuntimeLifetimeLock.acquire(0), foreign = foreignRoot.beginOfflineMaintenance(foreignWorkspace);
     try {
-      await assert.rejects(
-        activeRestore.restore({ manifestPath, stoppedSystemProof: activeProof }),
-        /server process lock generation .* is active for pid/,
-      );
-    } finally {
-      activeServer.release();
-    }
-    assert.equal(existsSync(suspects), false);
+      await assert.rejects(service().restore({ manifestPath }, foreign), /offline-maintenance-unissued/u);
+      assert.equal(existsSync(suspects), false); assert.deepEqual(readFileSync(authorityPath), before);
+    } finally { foreign.release(); await foreignRoot.close(); rmSync(foreignWorkspace, { recursive: true }); }
 
-    const replayProof = stoppedProof(root, authorityPath);
-    const replayRestore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath, suspects),
-      async () => undefined,
-      CLOCK,
-    );
-    await replayRestore.restore({ manifestPath, stoppedSystemProof: replayProof });
-    const suspectsAfterFirstRestore = readdirSync(suspects).length;
-    await assert.rejects(
-      replayRestore.restore({ manifestPath, stoppedSystemProof: replayProof }),
-      /was already consumed/,
-    );
-    assert.equal(readdirSync(suspects).length, suspectsAfterFirstRestore);
+    const once = maintenanceOperation(root), firstService = service(), old = admissionFor(root);
+    await firstService.restore({ manifestPath }, once);
+    renewAfterRestore(root);
+    assert.throws(() => old.assertProfileRuntime(), /released admission/u);
+    await assert.rejects(firstService.restore({ manifestPath }, once), /released admission/u);
+    const after = readdirSync(suspects).length;
+    await assert.rejects(service().restore({ manifestPath }, once), /offline-maintenance-unissued/u);
+    assert.equal(readdirSync(suspects).length, after);
   });
 
   it("rejects a checksum-valid restore copy whose authority record is schema-invalid", async () => {
-    const root = testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2497,13 +2476,9 @@ describe("offline exact-backup restore", () => {
       sha256,
     }));
 
-    const restore = new OfflineAuthorityRestoreService(
-      admissionFor(root), restoreOptions(root, authorityPath, suspects),
-      async () => undefined,
-      CLOCK,
-    );
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      restore.restore({ manifestPath }, maintenanceOperation(root)),
       /settings_snapshots.*native record validation|strict|schema/,
     );
     assert.equal(existsSync(suspects), false);
@@ -2518,7 +2493,7 @@ function replacedFailure(message: RegExp): (error: unknown) => boolean {
 
 describe("authority.health preflight and static recovery boundary", () => {
   it("fails authority.health when a span-known run has no exact authority", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2540,7 +2515,7 @@ describe("authority.health preflight and static recovery boundary", () => {
   });
 
   it("projects doctor health through the registered authority.health runner", async () => {
-    const root = testRoot();
+    const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2552,7 +2527,7 @@ describe("authority.health preflight and static recovery boundary", () => {
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
-    }, CLOCK);
+    }, CLOCK, boundProfileCredentials(admissionFor(authorityPath)));
     const healthy = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
     assert.equal(healthy.state, "healthy");
 
@@ -2560,32 +2535,76 @@ describe("authority.health preflight and static recovery boundary", () => {
     const withoutBackup = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
 
     assert.equal(withoutBackup.state, "healthy");
-    assert.match(withoutBackup.summary, /backup missing/);
+    assert.doesNotMatch(withoutBackup.summary, /backup/i);
+  });
+
+  it("keeps native browser preparation outside stopped backup IO", () => {
+    const sourceFile = (path: string) => ts.createSourceFile(path, readFileSync(join(REPO_ROOT, path), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const nativeCalls = (node: ts.Node) => {
+      const calls: string[] = [];
+      const visit = (child: ts.Node): void => {
+        if (ts.isCallExpression(child)) {
+          const target = child.expression;
+          const name = ts.isIdentifier(target) ? target.text : ts.isPropertyAccessExpression(target) ? target.name.text : "";
+          if (["prepareStoppedBackupClosure", "probeClosed", "assertClosed", "probeStoppedProfileBrowsersClosed",
+            "probeRestoreProfileBrowsersClosed", "probeClosedBrowserProfile", "assertNativeBrowserProfilesClosed", "runNativeProfileProbeChild", "launch", "launchPersistentContext"].includes(name)) calls.push(name);
+        }
+        ts.forEachChild(child, visit);
+      };
+      visit(node); return calls;
+    };
+    for (const [path, names] of [
+      ["src/backend/storage/maintenance/upgrade.ts", ["backupStoppedAuthority"]],
+      ["src/backend/storage/maintenance/existing-data-backup.ts", ["backupFlatStorage"]],
+      ["src/backend/storage/maintenance/existing-data-backup-files.ts", ["captureFlatArchiveSource", "writeFlatArchiveCopies"]],
+      ["src/backend/storage/maintenance/flat-start-clean.ts", ["assertFlatStartCleanCredentials", "flatStartCleanPlan", "readFlatStartCleanSource", "assertFlatStartCleanFiles"]],
+    ] as const) {
+      const source = sourceFile(path);
+      for (const name of names) {
+        const owner = source.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === name);
+        assert.ok(owner && ts.isFunctionDeclaration(owner) && owner.body);
+        assert.deepEqual(nativeCalls(owner.body), [], name);
+      }
+    }
+    for (const method of ["probeClosed", "assertClosed", "prepareStoppedBackupClosure", "assertNativeBrowserProfilesClosed"]) {
+      const control = ts.createSourceFile("bad-backup.ts", `function backup() { browser.${method}(); }`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      assert.deepEqual(nativeCalls(control), [method]);
+    }
   });
 
   it("keeps native SQLite use in the reviewed recovery boundaries and bans copy or VACUUM fallbacks", () => {
     const adapterPath = "src/backend/storage/sqlite/authority-database.ts";
     const sqliteBoundaryPaths = [
+      "src/backend/storage/sqlite/assistant-attachments.ts",
+      "src/backend/storage/sqlite/assistant-authorization.ts",
+      "src/backend/storage/sqlite/assistant-effort-migration.ts",
+      "src/backend/storage/sqlite/assistant-grant-retirement.ts",
+      "src/backend/storage/sqlite/assistant-history.ts",
+      "src/backend/storage/sqlite/assistant-model-preference.ts",
+      "src/backend/storage/sqlite/assistant-proposals.ts",
       "src/backend/storage/sqlite/authority-database.ts",
       "src/backend/storage/sqlite/backup-inspection.ts",
       "src/backend/storage/sqlite/command-record-row.ts",
-      "src/backend/storage/sqlite/explorer-overrides.ts",
+      "src/backend/storage/sqlite/exclusive-session-leases.ts",
       "src/backend/storage/sqlite/failure-resolution.ts",
       "src/backend/storage/sqlite/generated-artifacts.ts",
       "src/backend/storage/sqlite/imported-artifacts.ts",
       "src/backend/storage/sqlite/native-run-deletion.ts",
       "src/backend/storage/sqlite/notification-publications.ts",
-      "src/backend/storage/sqlite/orphan-verification-proof.ts",
+      "src/backend/storage/sqlite/pre-build-run-deletion.ts",
+      "src/backend/storage/sqlite/worker-custody-migration.ts",
+      "src/backend/storage/sqlite/ocr-review.ts",
+      "src/backend/storage/sqlite/profile-local-databases.ts",
       "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
-      "src/backend/storage/sqlite/relocation-restore-candidate.ts",
+      "src/backend/storage/sqlite/run-record-row.ts",
       "src/backend/storage/sqlite/run-search-index.ts",
+      "src/backend/storage/sqlite/run-settlement-row.ts",
       "src/backend/storage/sqlite/run-summaries.ts",
       "src/backend/storage/sqlite/settings-activation.ts",
       "src/backend/storage/sqlite/settings-storage.ts",
       "src/backend/storage/sqlite/timeline-repository.ts",
       "src/backend/storage/sqlite/transaction-selection.ts",
       "src/backend/storage/sqlite/workbook-library-repository.ts",
-      "src/backend/storage/sqlite/worker-control.ts",
       "src/backend/storage/sqlite/worker-slots.ts",
     ].sort();
     const sourceFiles = gitVisibleFiles(["src"]).filter(

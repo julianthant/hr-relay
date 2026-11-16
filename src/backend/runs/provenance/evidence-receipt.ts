@@ -1,82 +1,89 @@
-import { retainedRunProtectedBindings, publicTransactionKeyDigest } from "../../../models/write-safety/protected-input.js";
-import { valueFreeProtectedInput } from "../../../models/write-safety/protected-input.js";
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
+import { ONBOARDING_ROSTER_GATE_ID,OnboardingRosterChoiceSchema } from "../../../models/workflows/onboarding/roster.js";
+import { publicTransactionKeyDigest,retainedRunProtectedBindings,valueFreeProtectedInput } from "../../../models/write-safety/protected-input.js";
+import { continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
 
 import { z } from "zod";
-import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
+import { OcrApprovedSnapshotSchema,ocrSnapshotDigest,type OcrApprovedSnapshot } from "../../../models/ocr/review.js";
+import { RunRecordSchema,type RunRecord } from "../../../models/run/record.js";
 import {
-  idempotencyKeyDigestReference,
-} from "../../../rules/redaction/redaction.js";
-import {
-  descriptorRuntimeNodes,
-  workflowTerminalResultExecution,
-  type AnyWorkflowDescriptor,
-} from "../../../workflow-kit/workflow.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import {
-  ErrorCodeSchema,
-  FingerprintSchema,
-  type EvidenceEntryId,
-} from "../../../rules/identity/ids.js";
-import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
-import {
-  RunDryRunPreviewResultSchema,
-  RunResultRecordSchema,
-  terminalEvidenceResult,
-  deriveTerminalFailureDigest,
-  deriveCheckpointOutputDigest,
-  deriveTerminalDependencyDigest,
-  type RunResultRecord,
-  type TerminalNotRunReason,
+DelegationTerminalEvidenceSchema,
+readRunPreviewResult,
+RunResultRecordSchema,
+deriveCheckpointOutputDigest,
+deriveTerminalDependencyDigest,
+deriveTerminalFailureDigest,
+terminalEvidenceResult,
+type RunResultRecord,
+type TerminalNotRunReason,
 } from "../../../models/run/result.js";
-import { SchemaBoundCanonicalValueSchema, deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
+import type { AnyCommitTaskContract,AnyTaskContract } from "../../../models/task/task-contract.js";
 import {
-  evidenceLeaves,
-  redactEvidenceLeaf,
-  type EvidenceLeaf,
-  type EvidenceValueScope,
+evidenceLeaves,
+redactEvidenceLeaf,
+type EvidenceLeaf,
+type EvidenceValueScope,
 } from "../../../models/trust/evidence-classification.js";
 import {
-  deriveEvidenceEntryId,
-  deriveEvidenceReceiptId,
-  evidenceEntryRef,
+deriveEvidenceEntryId,
+deriveEvidenceReceiptId,
+evidenceEntryRef,
 } from "../../../models/trust/evidence-identity.js";
 import {
-  gateDecisionArm,
-  gateDecisionFor,
-} from "../../../models/trust/gate-decisions.js";
-import { GateResultRecordSchema, type GateResultRecord } from "../../../models/workflow/gates.js";
-import {
-  obligationsFor,
-  type EvidenceObligation,
-  type EvidenceObligationSource,
+obligationsFor,
+type EvidenceObligation,
+type EvidenceObligationSource,
 } from "../../../models/trust/evidence-obligations.js";
 import {
-  ActionWriteProofSchema,
-  RunEvidenceReceiptSchema,
-  type ActionWriteProof,
-  type RunEvidenceReceipt,
+ActionWriteProofSchema,
+RunEvidenceReceiptSchema,
+type ActionWriteProof,
+type RunEvidenceReceipt,
 } from "../../../models/trust/evidence.js";
+import { FailureRecordSchema,type FailureRecord } from "../../../models/trust/failure.js";
 import {
-  evaluateReceiptDerivationBinding,
-  evaluateReceiptRederivation,
-  type ReceiptBindingCheckResult,
-} from "../../runtime/writes/receipt-derivation-binding.js";
-import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
-import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
+findSnapshotApprovalDecision,
+gateDecisionArm,
+gateDecisionFor,
+} from "../../../models/trust/gate-decisions.js";
+import { SchemaBoundCanonicalValueSchema,deriveSchemaHash,schemaBoundValueSchema } from "../../../models/validation/schema-bound-value.js";
 import {
-  RunCheckpointRecordSchema,
-  type FactProvenance,
-  type RunCheckpointRecord,
+RunCheckpointRecordSchema,checkpointRecordKey,
+type FactProvenance,
+type RunCheckpointRecord,
 } from "../../../models/workflow/checkpoint.js";
+import { GateResultRecordSchema,type GateResultRecord,type OperatorGateResultRecord } from "../../../models/workflow/gates.js";
+import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
+import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import {
-  TransactionOutcomeSchema,
-  WriteAttemptRecordSchema,
-  WriteIntentRecordSchema,
-  type WriteAttemptRecord,
-  type WriteIntentRecord,
+ErrorCodeSchema,
+FingerprintSchema,
+type EvidenceEntryId,
+} from "../../../rules/identity/ids.js";
+import {
+idempotencyKeyDigestReference,
+} from "../../../rules/redaction/redaction.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import {
+TransactionOutcomeSchema,
+WriteAttemptRecordSchema,
+WriteIntentRecordSchema,
+type WriteAttemptRecord,
+type WriteIntentRecord,
 } from "../../../rules/write-safety/write-safety.js";
-import type { AnyCommitTaskContract, AnyTaskContract } from "../../../models/task/task-contract.js";
+import {
+descriptorRuntimeNodes,
+workflowDryRunSupport,
+workflowTerminalResultExecution,
+type AnyWorkflowDescriptor,
+} from "../../../workflow-kit/workflow.js";
+import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
+import {
+evaluateReceiptDerivationBinding,
+evaluateReceiptRederivation,
+type ReceiptBindingCheckResult,
+} from "../../runtime/writes/receipt-derivation-binding.js";
 
 /* ── inputs ──────────────────────────────────────────────────────────────── */
 
@@ -86,6 +93,8 @@ export interface ReceiptWriteEvidence {
 }
 
 export interface ReceiptBuildInput {
+  readonly schemaReader?: EvidenceSchemaReader;
+  readonly settlementVersion?: number;
   readonly descriptor: AnyWorkflowDescriptor;
   /** The TERMINAL run record. A non-terminal run has no settled verdict. */
   readonly run: unknown;
@@ -99,6 +108,9 @@ export interface ReceiptBuildInput {
   readonly writes?: readonly ReceiptWriteEvidence[];
 
   readonly gateResults?: readonly unknown[];
+  readonly continuedGateResults?: readonly unknown[];
+  readonly delegations?: readonly unknown[];
+  readonly authenticateSnapshotApproval?: (gate: OperatorGateResultRecord) => OcrApprovedSnapshot;
 }
 
 /* ── node helpers ────────────────────────────────────────────────────────── */
@@ -238,6 +250,7 @@ export function deriveActionWriteProof(input: Readonly<{
   record: unknown;
   intent: WriteIntentRecord | undefined;
   composition?: ReceiptComposition;
+  schemaReader?: EvidenceSchemaReader;
 }>): ActionWriteProof {
   if(input.composition!==undefined)RunEvidenceReceiptSchema.shape.composition.parse(input.composition);
   const { commitContract, intent } = input;
@@ -259,7 +272,11 @@ export function deriveActionWriteProof(input: Readonly<{
     );
   }
   const declaredProofHash = deriveSchemaHash(commitContract.writeSafety.completion.proofSchema, "output");
-  if (outcome.proof.schemaHash !== declaredProofHash) {
+  const admittedProofHash = input.schemaReader?.({ kind: "checkpoint-proof", id: checkpointRecordKey(record) }, record, outcome.proof.schemaHash, declaredProofHash) ?? outcome.proof.schemaHash;
+  const durableProof = intent.status === "committed" ? intent.completionProof : intent.status === "observed-present" ? intent.observedProof : undefined;
+  const durableHash = input.schemaReader === undefined || durableProof === undefined ? declaredProofHash
+    : input.schemaReader({ kind: "write-proof", id: intent.writeIntentId, generation: intent.generation }, intent, durableProof.schemaHash, declaredProofHash);
+  if (admittedProofHash !== declaredProofHash || durableHash !== declaredProofHash) {
     throw new Error(
       `transaction checkpoint ${record.nodeId} stores a completion proof bound to schema `
       + `${outcome.proof.schemaHash}, and ${commitContract.id} now declares ${declaredProofHash}; `
@@ -359,21 +376,38 @@ export function deriveRunEvidenceReceipt(
       );
     }
   }
+  const continuedGateResults = (input.continuedGateResults ?? []).map(row => GateResultRecordSchema.parse(row));
+  for (const row of continuedGateResults) {
+    const reference = envelope.continuation?.gates.find(reference => reference.nodeId === row.nodeId);
+    if (envelope.workflow !== "onboarding" || row.gateId !== ONBOARDING_ROSTER_GATE_ID || row.nodeId !== ONBOARDING_ROSTER_GATE_ID
+      || row.runId === envelope.runId || "source" in row || reference === undefined || reference.runId !== row.runId
+      || reference.gateId !== row.gateId || reference.digest !== continuationEvidenceDigest(row)) {
+      throw new Error("receipt-continued-gate-membership-invalid");
+    }
+    schemaBoundValueSchema(OnboardingRosterChoiceSchema, deriveSchemaHash(OnboardingRosterChoiceSchema, "output")).parse(row.result);
+  }
+  const admittedGateResults = [...gateResults, ...continuedGateResults];
   const gateResultsByNode = new Map<string, GateResultRecord>();
-  for (const row of gateResults) gateResultsByNode.set(String(row.gateId), row);
+  for (const row of admittedGateResults) {
+    if (gateResultsByNode.has(String(row.gateId))) throw new Error("receipt-gate-evidence-duplicate");
+    gateResultsByNode.set(String(row.gateId), row);
+  }
+  const delegations = (input.delegations ?? []).map(row => DelegationTerminalEvidenceSchema.parse(row));
 
 
   const binding = evaluateReceiptDerivationBinding({
+    ...(input.schemaReader === undefined ? {} : { schemaReader: input.schemaReader }),
     descriptor,
     run,
     ...(result === undefined ? {} : { result }),
     checkpoints,
     writes: writes.map((entry) => entry.intent),
-    gateResults,
+    gateResults: admittedGateResults,
+    delegations,
   });
   if (binding.state === "incompatible") throw new Error(binding.message);
 
-  const receiptId = deriveEvidenceReceiptId(envelope.runId, envelope.attempt);
+  const receiptId = deriveEvidenceReceiptId(envelope.runId, envelope.attempt, input.settlementVersion);
   const generatedAt = lifecycle.endedAt;
   const entryId = (
     kind: Parameters<typeof deriveEvidenceEntryId>[1],
@@ -479,7 +513,7 @@ export function deriveRunEvidenceReceipt(
 
   /** The descriptor's OWN declaration of what matters on a surface (ref workflow-model ). */
   const declaredDetails = new Set(
-    descriptor.details.map((detail) => `${detail.source.nodeId}\u0000${detail.source.fieldPath}`),
+    descriptor.details.flatMap((detail) => "nodeId" in detail.source ? [`${detail.source.nodeId}\u0000${detail.source.fieldPath}`] : []),
   );
 
   for (const node of nodes) {
@@ -502,10 +536,16 @@ export function deriveRunEvidenceReceipt(
         if (!evaluateNodeCondition(node.when, { input: run.input.parsed.value, outputs })) {
           if (gateResultsByNode.has(id)) throw new Error(`inapplicable gate ${id} carries an operator result`);
           const decisionId = entryId("decision", `not-run.${id}`);
+          const operand = node.when.of;
+          if (operand.from === "input" && !inputValues.has(String(operand.path))) {
+            throw new Error(`inapplicable gate ${id} reads input field ${String(operand.path)}, which carries no input fact`);
+          }
           decisions.push({
             id: decisionId, kind: "branch", outcome: "not-taken",
             reason: `gate "${id}" was not required by its declared evidence condition; no operator decision was made`,
-            evidence: node.dependsOn.map((dependency) => evidenceEntryRef(entryId("verification", `node.${dependency}`))),
+            evidence: operand.from === "input"
+              ? [evidenceEntryRef(entryId("input", String(operand.path)))]
+              : node.dependsOn.map((dependency) => evidenceEntryRef(entryId("verification", `node.${dependency}`))),
           });
           verification.push({ id: evidence.verificationId, obligation: `node.${id}`, mandatory: false,
             verdict: "absent", evidence: [evidenceEntryRef(decisionId)] });
@@ -516,6 +556,7 @@ export function deriveRunEvidenceReceipt(
       if (stored !== undefined) {
         emitGateEvidence({
           stored,
+          currentRunId: envelope.runId,
           nodeId: id,
           workflowId: descriptor.id,
           verificationId: evidence.verificationId,
@@ -527,9 +568,11 @@ export function deriveRunEvidenceReceipt(
           decisions,
           verification,
           composition,
+          ...(input.authenticateSnapshotApproval === undefined ? {} : { authenticateSnapshotApproval: input.authenticateSnapshotApproval }),
         });
         continue;
       }
+      if (lifecycle.outcome === "done" && findSnapshotApprovalDecision(descriptor.id, id) !== undefined) throw new OcrReviewRefusedError();
     }
 
     if (record === undefined) {
@@ -604,7 +647,7 @@ export function deriveRunEvidenceReceipt(
       evidence.values.set(leaf.path, leaf.value);
       const provenance = provenanceFor(
         record,
-        node.kind === "transaction" ? `output.${leaf.path}` : leaf.path,
+        node.kind === "transaction" ? `output.value.${leaf.path}` : leaf.path,
       );
       const mandatory = declaredDetails.has(`${id}\u0000${leaf.path}`);
       observations.push(observationFact({
@@ -656,6 +699,7 @@ export function deriveRunEvidenceReceipt(
         write,
       });
       commitAction.proved = deriveActionWriteProof({
+        ...(input.schemaReader === undefined ? {} : { schemaReader: input.schemaReader }),
         composition,
         commitContract: node.commit.uses,
         record,
@@ -746,19 +790,15 @@ export function deriveRunEvidenceReceipt(
   /* ── outputs ───────────────────────────────────────────────────────────── */
 
   // Preview envelope and terminal schema must agree; neither alone proves a coherent preview.
-  const previewResultSchemaHash = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
-  const previewed = result !== undefined && result.resultSchemaHash === previewResultSchemaHash;
-  if (previewed !== (envelope.dryRun && lifecycle.outcome === "done" && result !== undefined)) {
-    throw new Error(
-      `run ${envelope.runId} has dryRun=${String(envelope.dryRun)} but its terminal result is bound to `
-      + `${result === undefined ? "no schema" : result.resultSchemaHash}; a receipt cannot describe a run `
-      + "whose envelope and terminal record disagree about whether it committed anything",
-    );
+  const preview = result === undefined ? undefined : readRunPreviewResult(result);
+  const support = workflowDryRunSupport(descriptor);
+  const ordinaryRead = envelope.parent !== undefined && support.state === "unsupported" && support.reason === "no-transaction-node";
+  if (preview !== undefined && (!envelope.dryRun || lifecycle.outcome !== "done")
+    || envelope.dryRun && lifecycle.outcome === "done" && result !== undefined && preview === undefined && !ordinaryRead) {
+    throw new Error(`run ${envelope.runId} has incompatible dry-run and terminal result authority`);
   }
 
-  if (previewed && result !== undefined) {
-    const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
-
+  if (preview !== undefined && result !== undefined) {
     verification.push({
       id: terminalResultVerificationId,
       obligation: "completion.terminal-result",
@@ -768,19 +808,25 @@ export function deriveRunEvidenceReceipt(
       evidence: [],
     });
 
-    const reached = preview.preview.outcome.state === "would-prepare"
-      ? `staged its page and observed subject ${preview.preview.outcome.subject.state}`
-      : `settled ${preview.preview.outcome.state} at its ${preview.preview.probe.state} probe, `
-        + "before anything was staged";
+    const reached = preview.steps.flatMap(step => step.state === "delegation-preview" ? [`child stage "${step.nodeId}" previewed changes without saving`]
+      : step.state === "publication-preview" ? [`publication node "${step.nodeId}" prepared its output without saving`]
+      : step.state !== "transaction-preview" ? [] : [
+      `transaction node "${step.nodeId}" ${step.preview.outcome.state === "would-prepare"
+        ? `staged its page and observed subject ${step.preview.outcome.subject.state}`
+        : `settled already-present at its ${step.preview.probe.state} probe, before anything was staged`}`,
+    ]).join("; ");
+    const unavailable = preview.steps.filter(step => step.state === "unavailable").map(step => step.nodeId);
+    const samples = preview.steps.flatMap(step => step.state === "transaction-preview" ? step.samples : []);
     warnings.push({
-      id: entryId("warning", "dry-run-preview"),
-      code: ErrorCodeSchema.parse("DRY_RUN_PREVIEW"),
-      summary: `this run was a DRY RUN: transaction node "${preview.stoppedAtNodeId}" was previewed `
-        + `(${reached}, observed ${preview.preview.observedAt}) and the run ended `
-        + "there. No external write was attempted — no write intent, no fence, no commit — so this "
-        + "receipt states what WOULD have been written, never what was",
-      loadBearing: true,
-      evidence: [],
+      id: entryId("warning", "dry-run-preview"), code: ErrorCodeSchema.parse("DRY_RUN_PREVIEW"),
+      summary: `this run was a DRY RUN: ${reached || "no preparation was completed"}. `
+        + (preview.coverage.state === "partial" ? preview.coverage.reason === "historical-first-transaction-only"
+          ? "Historical partial preview; later stages were not recorded. " : "Some delegated work was dispatched without waiting for its preview. "
+          : "Every declared stage is accounted for. ")
+        + (unavailable.length === 0 ? "" : `Unavailable stages: ${unavailable.join(", ")}. `)
+        + (samples.length === 0 ? "" : samples.map(sample => `${sample.label}: ${sample.field} = ${canonicalJsonStringify(sample.value)}. `).join(""))
+        + "No external write was attempted — no write intent, no fence, no commit. Samples are preview-only values, never receipts or write authority.",
+      loadBearing: true, evidence: [],
     });
   } else if (result !== undefined && terminalEvidence === undefined) {
     const resultScope: EvidenceValueScope = { kind: "workflow-result", workflowId: descriptor.id };
@@ -838,7 +884,7 @@ export function deriveRunEvidenceReceipt(
       obligationId: entryId("verification", obligation.obligation),
       inputValues,
       resultFacts: outputs,
-      resultValues: result !== undefined && terminalEvidence === undefined && !previewed ? new Map(evidenceLeaves(result.result.value).map(leaf => [leaf.path, leaf.value])) : new Map(),
+      resultValues: result !== undefined && terminalEvidence === undefined && preview === undefined ? new Map(evidenceLeaves(result.result.value).map(leaf => [leaf.path, leaf.value])) : new Map(),
       byNode,
     }));
   }
@@ -979,6 +1025,8 @@ export function assertEvidenceRefsResolve(receipt: RunEvidenceReceipt): void {
 
 /** What the ensure step needs from authority. Reads only, plus the one insert. */
 export interface EvidenceReceiptStore {
+  readonly schemaReader?: EvidenceSchemaReader;
+  refreshedSettlementVersion?(runId: string): number | undefined;
   getRun(runId: string): unknown;
   getResult(runId: string): unknown;
   getFailure(failureId: string): unknown;
@@ -986,6 +1034,9 @@ export interface EvidenceReceiptStore {
   listWritesByRun(runId: string): readonly ReceiptWriteEvidence[];
 
   listGateResultsByRun(runId: string): readonly unknown[];
+  listContinuedGateResultsByRun?(runId: string): readonly unknown[];
+  readonly listDelegationsByRun?: (runId: string) => readonly unknown[];
+  readonly authenticateSnapshotApproval?: ReceiptBuildInput["authenticateSnapshotApproval"];
   findReceiptByRun(runId: string): unknown;
   insertReceipt(receipt: unknown): Readonly<{ state: "inserted" | "existing"; record: RunEvidenceReceipt }>;
 }
@@ -1013,13 +1064,18 @@ export function ensureRunEvidenceReceipt(
     : RunEvidenceReceiptSchema.parse(existingRaw);
   const composition = LATEST_RECEIPT_COMPOSITION;
   const { receipt: derived, checks } = deriveRunEvidenceReceipt({
+    ...(store.schemaReader === undefined ? {} : { schemaReader: store.schemaReader }),
     descriptor,
     run,
     result: store.getResult(runId),
+    ...(store.refreshedSettlementVersion === undefined ? {} : { settlementVersion: store.refreshedSettlementVersion(runId) }),
     ...(lifecycle.failureId === undefined ? {} : { failure: store.getFailure(lifecycle.failureId) }),
     checkpoints: store.listCheckpointsByRun(runId),
     writes: store.listWritesByRun(runId),
     gateResults: store.listGateResultsByRun(runId),
+    continuedGateResults: store.listContinuedGateResultsByRun?.(runId),
+    ...(store.listDelegationsByRun === undefined ? {} : { delegations: store.listDelegationsByRun(runId) }),
+    ...(store.authenticateSnapshotApproval === undefined ? {} : { authenticateSnapshotApproval: store.authenticateSnapshotApproval }),
   }, composition);
   if (existing !== undefined) {
     const rederivation = evaluateReceiptRederivation({
@@ -1042,6 +1098,7 @@ export function ensureRunEvidenceReceipt(
 
 interface GateEvidenceInput {
   readonly stored: GateResultRecord;
+  readonly currentRunId: RunRecord["envelope"]["runId"];
   readonly nodeId: string;
   readonly workflowId: AnyWorkflowDescriptor["id"];
   readonly verificationId: EvidenceEntryId;
@@ -1053,11 +1110,41 @@ interface GateEvidenceInput {
   readonly decisions: Decision[];
   readonly verification: Verification[];
   readonly composition: ReceiptComposition;
+  readonly authenticateSnapshotApproval?: ReceiptBuildInput["authenticateSnapshotApproval"];
 }
 
 
 function emitGateEvidence(input: GateEvidenceInput): void {
   const { stored, nodeId, entryId, evidence } = input;
+  const snapshotDecision = findSnapshotApprovalDecision(input.workflowId, nodeId);
+  if (snapshotDecision !== undefined) {
+    if ("source" in stored || input.authenticateSnapshotApproval === undefined) throw new OcrReviewRefusedError();
+    const reference = snapshotDecision.result.safeParse(stored.result.value);
+    if (!reference.success || stored.nodeId !== nodeId || stored.gateId !== snapshotDecision.gateId
+      || stored.result.schemaHash !== deriveSchemaHash(snapshotDecision.result, "output")
+      || stored.runId !== reference.data.sourceRunId || stored.commandId !== reference.data.snapshotId
+      || stored.resolvedBy !== "local-operator") throw new OcrReviewRefusedError();
+    const snapshot = OcrApprovedSnapshotSchema.parse(input.authenticateSnapshotApproval(stored));
+    if (snapshot.snapshotId !== reference.data.snapshotId || snapshot.sourceRunId !== reference.data.sourceRunId
+      || snapshot.revision !== reference.data.revision || ocrSnapshotDigest(snapshot) !== reference.data.digest
+      || snapshot.approvedBy !== stored.resolvedBy || snapshot.approvedAt !== stored.resolvedAt) throw new OcrReviewRefusedError();
+    const scope: EvidenceValueScope = { kind: "gate-result", workflowId: input.workflowId, gateId: stored.gateId };
+    for (const leaf of evidenceLeaves(stored.result.value)) {
+      const factId = entryId("observation", `${nodeId}.${leaf.path}`);
+      evidence.factIds.set(leaf.path, factId);
+      evidence.values.set(leaf.path, leaf.value);
+      input.observations.push({ id: factId, field: leaf.field, mandatory: input.declaredDetails.has(`${nodeId}\u0000${leaf.path}`),
+        source: { kind: "gate-result", gateId: stored.gateId, resolvedBy: stored.resolvedBy, resolvedAt: stored.resolvedAt },
+        state: "satisfied", value: redactEvidenceLeaf(scope, leaf) });
+    }
+    const refs = [...evidence.factIds.values()].map(evidenceEntryRef);
+    input.decisions.push({ id: entryId("decision", `gate.${nodeId}`), kind: "gate", outcome: "approved",
+      reason: `An authenticated operator approved the selected OCR records at ${stored.resolvedAt}; the retained command, current snapshot and exact digest were verified.`,
+      evidence: [evidenceEntryRef(input.verificationId), ...refs] });
+    input.verification.push({ id: input.verificationId, obligation: `node.${nodeId}`, mandatory: input.mandatory,
+      verdict: "verified", evidence: refs });
+    return;
+  }
   if ("source" in stored) {
     const factId = entryId("observation", `${nodeId}.sourceEvent`);
     input.observations.push({
@@ -1094,7 +1181,11 @@ function emitGateEvidence(input: GateEvidenceInput): void {
     workflowId: input.workflowId,
     gateId: stored.gateId,
   };
-  const source = {
+  const continued = stored.runId !== input.currentRunId;
+  const source = continued ? {
+    kind: "continued-gate-result" as const, sourceRunId: stored.runId, commandId: stored.commandId,
+    gateId: stored.gateId, resolvedBy: stored.resolvedBy, resolvedAt: stored.resolvedAt,
+  } : {
     kind: "gate-result" as const,
     gateId: stored.gateId,
     resolvedBy: stored.resolvedBy,
@@ -1144,6 +1235,7 @@ function emitGateEvidence(input: GateEvidenceInput): void {
     outcome: arm.outcome,
     reason: `${arm.summary}: gate "${nodeId}" was resolved \`${arm.value}\` by `
       + `${stored.resolvedBy} at ${stored.resolvedAt} through command ${stored.commandId}`
+      + (continued ? ` on source run ${stored.runId}, reused through this run's retained continuation` : "")
       + (projectedBound === undefined
         ? ""
         : `, bound to the identity evidence it was granted on `

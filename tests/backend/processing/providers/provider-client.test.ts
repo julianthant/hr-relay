@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "vitest";
@@ -18,17 +19,20 @@ it("constructs disconnected OCR without budget or effects and preserves snapshot
   const snapshotId = "00000000-0000-4000-8000-000000000001";
   const fingerprint = sha256Hex(canonicalJsonStringify(config));
   const effects = new Proxy({}, { get() { throw new Error("disconnected OCR touched an effect"); } });
+  const events: unknown[] = [];
   const dependencies = {
     execution: { runId: snapshotId, attempt: 1, nodeId: "extract", taskId: "ocr/extract-form-page" },
     configSnapshotId: snapshotId, configFingerprint: fingerprint,
-    configSnapshot: { configSnapshotId: snapshotId, revision: 1, fingerprint, config, provenance: {}, capturedAt: "2026-10-07T12:00:00Z", capturedBy: "local-operator" },
+    configSnapshot: { ...PREFERENCES_SNAPSHOT, configSnapshotId: snapshotId, revision: 1, fingerprint, config, provenance: {}, capturedAt: "2026-10-07T12:00:00Z", capturedBy: "local-operator" },
     adapters: {}, clock: effects, idFactory: effects, deadlineScheduler: effects,
     runSignal: new AbortController().signal,
+    observe: (event: unknown) => events.push(event),
   } as unknown as ProviderClientDependencies;
   const client = createProviderClient("ocr.extract", dependencies);
   assert.deepEqual(await client.call({ schemaHash: fingerprint, value: {} } as never), {
     state: "unavailable", reason: { code: "adapter-unavailable", message: "OCR provider not connected" },
   });
+  assert.deepEqual(events, [{ capability: "ocr.extract", state: "adapter-unavailable" }]);
   assert.throws(() => createProviderClient("ocr.extract", { ...dependencies, configFingerprint: "b".repeat(64) }), /inconsistent config snapshot/u);
 });
 }
@@ -50,7 +54,7 @@ function fixture() {
   const deps: ProviderClientDependencies = {
     execution: { runId: id, attempt: 1, nodeId: "search", taskId: "normalization/read-contact-advice" },
     configSnapshotId: id, configFingerprint,
-    configSnapshot: { configSnapshotId: id, revision: 1, fingerprint: configFingerprint, config, provenance: {}, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" },
+    configSnapshot: { ...PREFERENCES_SNAPSHOT, configSnapshotId: id, revision: 1, fingerprint: configFingerprint, config, provenance: {}, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" },
     adapters: { "geocode.census": { capability: "geocode.census", invoke: async () => produced } },
     clock, idFactory: { next: randomUUID }, runSignal: controller.signal,
     deadlineScheduler: { schedule(_at, fire) { expired = fire; return { cancel() { cancellations++; } }; } },
@@ -104,6 +108,6 @@ for (const kind of ["abort", "deadline"] as const) it(`propagates ${kind} during
 it("keeps OCR disconnected and never invokes an injected OCR adapter", async () => {
   const f = fixture();
   assert.equal((await createProviderClient("ocr.extract", { ...f.deps, adapters: {} }).call(payload)).state, "unavailable");
-  assert.throws(() => createProviderClient("ocr.extract", { ...f.deps, adapters: { "ocr.extract": { capability: "ocr.extract", invoke: async () => produced } } }), /OCR provider policy not connected/u);
+  assert.throws(() => createProviderClient("ocr.extract", { ...f.deps, adapters: { "ocr.extract": { capability: "ocr.extract", invoke: async () => produced } } as never }), /OCR provider policy not connected/u);
 });
 }

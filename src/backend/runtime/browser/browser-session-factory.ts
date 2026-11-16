@@ -1,13 +1,25 @@
-import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
+import { readProtectedCredentials } from "../../../models/config/secrets.js";
+import { fileStatus, privateFileNumber } from "../../storage/file-identity.js";
+import type { ExclusiveSessionLease } from "../../../models/sessions/exclusive-session-lease.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { createNativeBrowserProbe, BrowserLaunchUncertainError, chromiumProfileInUse, DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, closeContextWithProof, observeContextLifecycle, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
+import { BrowserProfileStillClosingError, BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
+import { privatePathRejects } from "../../storage/private-path.js";
+import type { BrowserRoots, BrowserRootLaunch, BrowserRootLaunchInput } from "../../storage/browser-roots.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
+import { provisionWorkflowDuo } from "./workflow-duo-provider.js";
+import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
+import { stageFastDuoExtension } from "./fast-duo-extension.js";
+import { ProfileCustodyUnavailableError, profileReservations, assertPrivateProfilePath, workerProfileDirectory } from "../../storage/browser-roots.js";
+export { ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT, workerProfileDirectory } from "../../storage/browser-roots.js";
+export type { BrowserDeadlineScheduler, PersistentContextLauncher } from "./native-browser.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-
-import { lstatSync, mkdirSync, readdirSync, readlinkSync, rmSync, statSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
-import { hostname } from "node:os";
-import { chromium } from "playwright";
-import type { BrowserContext, Page } from "playwright";
+import { lstatSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { dirname, join, sep } from "node:path";
+import type { BrowserContext, Frame, Page } from "playwright";
 import type {
   BrowserSessionCloseProof,
   BrowserSessionCloseReason,
@@ -15,7 +27,7 @@ import type {
   WorkerBrowserSessionFactory,
   BrowserScreenshotEvidence,
 } from "../../../workflow-kit/session.js";
-import type { DuoCeremonyGate } from "../../../workflow-kit/duo-ceremony-lease.js";
+import { assertDuoCeremonyLeaseToken, type DuoCeremonyLeaseToken, type DuoCeremonyGate } from "../../../workflow-kit/duo-ceremony-lease.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { RuntimeInstanceSchema, resolveSystemEntryUrl } from "../../../models/config/instance.js";
@@ -35,8 +47,6 @@ import {
 import type { BrowserSystemId, Fingerprint, WorkerId, WorkflowId } from "../../../rules/identity/ids.js";
 import {
   requireSecret,
-  requireSecretFile,
-  resolveSecretFileIdentity,
   type ProtectedSecretSource,
 } from "../../../models/config/secrets.js";
 import { assertAuthenticatedApplication } from "../../systems/browser-shared/authenticated-application.js";
@@ -44,36 +54,11 @@ import type { AuthenticatedApplicationEvidence } from "../../systems/browser-sha
 import type { SystemLoginContext } from "../../systems/browser-shared/login-contract.js";
 import { BROWSER_SYSTEM_BINDINGS } from "./system-bindings.js";
 import type { BrowserSystemBinding, BrowserSystemBindings } from "./system-bindings.js";
-import { observeProcessIdentity, type ProcessIdentityObservation } from "../../storage/sqlite/runtime-process-locks.js";
 import { attachBrowserDiagnostics } from "./browser-diagnostics.js";
 import type { DebugEvent } from "../../../models/events/timeline.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { ProtectedStoreRecordSchema } from "../../../models/config/protected-settings.js";
 import { captureFullPage, FullPageCaptureRefusedError, FullPageCaptureRestoreError } from "./full-page-capture.js";
-
-// Keep the acquisition scheduler structural so both ports use the same timer without a module cycle.
-export interface BrowserDeadlineScheduler {
-  schedule(deadlineMonotonicMs: number, onDeadline: () => void): { cancel: () => void };
-}
-
-/** The Playwright launch seam, so a unit test can drive open/close without a real browser. */
-export interface PersistentContextLauncher {
-  launch(input: Readonly<{
-    profileDirectory: string;
-    headless: boolean;
-    extensionDirectory: string;
-    acceptDownloads: boolean;
-    downloadsPath: string;
-    viewport: Readonly<{ width: number; height: number }>;
-  }>): Promise<BrowserContext>;
-  observeProcess?(profileDirectory: string, pid?: number): Readonly<{ pid: number; observation: ProcessIdentityObservation }>;
-}
-
-export const PROFILE_CUSTODY_UNAVAILABLE_TEXT = "Browser profile custody is unavailable. The browser cannot open until its current profile revision is admitted.";
-export class ProfileCustodyUnavailableError extends Error {
-  readonly code = "browser-profile-custody-unavailable";
-  constructor() { super(PROFILE_CUSTODY_UNAVAILABLE_TEXT); this.name = "ProfileCustodyUnavailableError"; }
-}
+import { serializeErrorCauses } from "../../../models/failures/error-origins.js";
 
 export const BrowserProfileAdmissionSchema = z.strictObject({
   workerId: WorkerIdSchema, system: BrowserSystemIdSchema, instance: RuntimeInstanceSchema,
@@ -85,22 +70,26 @@ export const BrowserProfileAdmissionSchema = z.strictObject({
 export type BrowserProfileAdmission = z.infer<typeof BrowserProfileAdmissionSchema>;
 
 export interface BrowserSessionFactoryOptions {
+  readonly browserRoots: BrowserRoots;
+  readonly browserOwner: Readonly<{ database: AuthorityDatabase; profileId: string }>;
   readonly config: Config;
+  readonly duo?: DuoSigningSource;
   readonly protectedSecrets: ProtectedSecretSource;
   readonly isolation: RuntimeIsolation;
   readonly clock: Clock;
   readonly scheduler: BrowserDeadlineScheduler;
   readonly newSessionId: () => string;
+  readonly assertCurrent: (workerId: WorkerId) => void;
   readonly slotOrdinal: (workerId: WorkerId, system: BrowserSystemId) => number;
   readonly admitProfile: (input: Readonly<{ workerId: WorkerId; system: BrowserSystemId; instance: RuntimeInstance;
-    configFingerprint: Fingerprint; signInFingerprint: Fingerprint; browserMode: BrowserPresentationMode; profileDirectory: string }>) => Promise<BrowserProfileAdmission>;
+    configFingerprint: Fingerprint; signInFingerprint: Fingerprint; browserMode: BrowserPresentationMode; profileDirectory: string }>, purpose?: "acquire" | "cleanup") => Promise<BrowserProfileAdmission>;
   readonly bindings?: BrowserSystemBindings;
   readonly launcher?: PersistentContextLauncher;
   // Session proof diagnostics name the observed marker, never its sensitive value.
   readonly onAuthenticationEvidence?: (evidence: AuthenticatedApplicationEvidence) => void;
 
   readonly onNavigation?: (url: string) => void;
-  readonly onDebug?: (workerId: WorkerId, event: Pick<DebugEvent, "phase" | "correlationId"> & Partial<Pick<DebugEvent, "code" | "durationMs" | "pinned">>) => void;
+  readonly onDebug?: (workerId: WorkerId, event: Pick<DebugEvent, "phase" | "correlationId"> & Partial<Pick<DebugEvent, "code" | "durationMs" | "pinned" | "message" | "stack" | "reason" | "area">>) => void;
 }
 
 /** Resolved once per authentication; never logged, never interpolated. */
@@ -109,36 +98,7 @@ interface SsoCredentials {
   readonly password: string;
 }
 
-const DEFAULT_LAUNCHER: PersistentContextLauncher = {
-  observeProcess: observeChromiumProcess,
-  async launch(input) {
-    return chromium.launchPersistentContext(input.profileDirectory, {
-      // The extension requires the full bundled Chromium; the headless shell
-      // cannot load one (duo-autopilot/README.md).
-      channel: "chromium",
-      headless: input.headless,
-      acceptDownloads: input.acceptDownloads,
-      downloadsPath: input.downloadsPath,
-      viewport: input.viewport,
-      args: [
-        `--disable-extensions-except=${input.extensionDirectory}`,
-        `--load-extension=${input.extensionDirectory}`,
-      ],
-    });
-  },
-};
 
-
-export function workerProfileDirectory(input: Readonly<{
-  profileRoot: string;
-  slotOrdinal: number;
-  system: BrowserSystemId;
-}>): string {
-  const root = AbsolutePathSchema.parse(input.profileRoot);
-  const ordinal = PositiveIntSchema.parse(input.slotOrdinal);
-  const system = BrowserSystemIdSchema.parse(input.system);
-  return resolve(root, `w${String(ordinal)}`, system);
-}
 
 function browserModeFor(
   requested: BrowserPresentationMode | undefined,
@@ -149,24 +109,24 @@ function browserModeFor(
 }
 
 
-export function assertDuoAutopilotReady(config: Config): void {
+export function assertFastDuoReady(config: Config, duo?: DuoSigningSource): void {
   if (!config.features.duoWebAuthn) return;
-  const manifest = join(config.paths.duoExtensionDir, "manifest.json");
+  const manifest = join(config.paths.duoExtensionDir, "workflow-manifest.json");
   let isFile: boolean;
   try {
     isFile = statSync(manifest).isFile();
   } catch (error) {
     throw new Error(
-      `Duo Autopilot extension is not loadable: ${manifest} is unreadable. Duo cannot clear unattended without it; place the unpacked extension there or set features.duoWebAuthn=false and expect a manual prompt.`,
+      `Fast Duo extension is not loadable: ${manifest} is unreadable. Duo cannot clear unattended without it; place the unpacked extension there or set features.duoWebAuthn=false and expect a manual prompt.`,
       { cause: error },
     );
   }
   if (!isFile) {
-    throw new Error(`Duo Autopilot extension is not loadable: ${manifest} is not a regular file`);
+    throw new Error(`Fast Duo extension is not loadable: ${manifest} is not a regular file`);
   }
-  // `requireSecretFile` is the ONLY credential-file reader; it also enforces
-  // the 0600-or-stricter permission and size limits ref clock-config-secrets requires.
-  requireSecretFile("duoWebauthnCredential", config);
+  if (duo === undefined) throw new DuoProvisioningError();
+  duo.assertCurrent();
+  duo.credentials();
 }
 
 function bindingFor(bindings: BrowserSystemBindings, system: BrowserSystemId): BrowserSystemBinding {
@@ -179,16 +139,49 @@ function bindingFor(bindings: BrowserSystemBindings, system: BrowserSystemId): B
   return binding;
 }
 
+// A Playwright message starts "<object>.<method>: [<Class>: ]", and the page chooses the class text; only these fixed names leave it.
+const PLAYWRIGHT_OBJECTS = new Set(["page", "frame", "locator", "elementHandle", "jsHandle", "browserContext"]);
+const PLAYWRIGHT_METHODS = new Set(["evaluate", "evaluateAll", "evaluateHandle", "screenshot", "setViewportSize", "waitForTimeout", "count",
+  "cookies", "isVisible", "waitFor", "inputValue", "textContent", "frameElement", "goto"]);
+const PAGE_ERROR_CLASSES = new Set(["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "EvalError", "URIError", "AggregateError"]);
+function playwrightCall(error: unknown): string | undefined {
+  const match = error instanceof Error ? /^([A-Za-z]+)\.([A-Za-z]+): (?:([A-Za-z]+): )?/u.exec(error.message) : null;
+  if (match === null) return undefined;
+  const [, object, method, errorClass] = match;
+  const call = PLAYWRIGHT_OBJECTS.has(object) && PLAYWRIGHT_METHODS.has(method) ? `${object}-${method}`.toLowerCase() : "unknown-call";
+  return errorClass === undefined ? call : `${call}-${PAGE_ERROR_CLASSES.has(errorClass) ? errorClass.toLowerCase() : "page-error"}`;
+}
+
 export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFactory {
   readonly #options: BrowserSessionFactoryOptions;
   readonly #bindings: BrowserSystemBindings;
   readonly #launcher: PersistentContextLauncher;
-  readonly #owned = new Map<string, Readonly<{ context: BrowserContext; lifecycle: ContextLifecycle; process: Readonly<{ pid: number; observation: ProcessIdentityObservation }> }>>();
+  readonly #launches = new Map<string, BrowserRootLaunch>();
+  readonly #owned = new Map<string, Readonly<{ context: BrowserContext; lifecycle: ContextLifecycle; duo?: Awaited<ReturnType<typeof provisionWorkflowDuo>> }>>();
 
   constructor(options: BrowserSessionFactoryOptions) {
     this.#options = options;
     this.#bindings = options.bindings ?? BROWSER_SYSTEM_BINDINGS;
     this.#launcher = options.launcher ?? DEFAULT_LAUNCHER;
+  }
+
+  async probeProfile(input: Parameters<WorkerBrowserSessionFactory["probeProfile"]>[0]): Promise<void> {
+    input.signal.throwIfAborted();
+    this.#options.assertCurrent(WorkerIdSchema.parse(input.workerId));
+    const { config, clock, scheduler } = this.#options, system = BrowserSystemIdSchema.parse(input.system);
+    const profileDirectory = workerProfileDirectory({ profileRoot: config.paths.browserProfileRoot,
+      slotOrdinal: this.#options.slotOrdinal(WorkerIdSchema.parse(input.workerId), system), system });
+    assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
+    if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
+    try {
+      await this.#options.browserRoots.probe(this.#rootInput(WorkerIdSchema.parse(input.workerId), profileDirectory, null), createNativeBrowserProbe({
+        launcher: this.#launcher, clock, scheduler, closeProofMs: config.browser.closeProofMs,
+        launchTimeoutMs: config.timeouts.sessionAcquireMs, signal: input.signal }));
+    } catch (error) {
+      if (error instanceof BrowserProfileStillClosingError || error instanceof ProfileCustodyUnavailableError) throw error;
+      throw new BrowserSessionClosureUnprovedError([error], `${system} native profile probe closure is unproved`, { cause: error });
+    }
+    this.#options.assertCurrent(WorkerIdSchema.parse(input.workerId));
   }
 
   async open(input: Readonly<{
@@ -204,69 +197,124 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     duoCeremony: DuoCeremonyGate;
     acquisitionRemainingMs?: () => number;
     claimStaleRequestRecovery?: () => boolean;
+    replacesSessionId?: string;
   }>): Promise<WorkerBrowserResource> {
     const { config } = this.#options;
     const workerId = WorkerIdSchema.parse(input.workerId);
+    let refusal: Readonly<{ error: unknown }> | undefined;
+    const assertCurrent = (): void => {
+      if (refusal !== undefined) throw refusal.error;
+      this.#options.assertCurrent(workerId);
+    };
+    assertCurrent();
     WorkflowIdSchema.parse(input.workflowId);
     const system = BrowserSystemIdSchema.parse(input.system);
     const configFingerprint = FingerprintSchema.parse(input.configFingerprint);
     const browserMode = browserModeFor(input.browserMode, config.browser.headless);
     const instance = RuntimeInstanceSchema.parse(input.instance);
     const binding = bindingFor(this.#bindings, system);
-    if (input.exclusive) {
-      throw new Error(
-        `${system} requested an identity-exclusive session; the exclusive OnBase lease is not landed in this factory`,
-      );
-    }
+    if ((binding.exclusive === true) !== input.exclusive) throw new Error("browser-session-exclusivity-mismatch");
     if (input.signal.aborted) throw new Error(`${system} browser session open was cancelled before launch`);
 
     const profileDirectory = workerProfileDirectory({
       profileRoot: config.paths.browserProfileRoot,
       slotOrdinal: this.#options.slotOrdinal(workerId, system), system,
     });
-    const signInFingerprint = browserSignInFingerprint(config, this.#options.protectedSecrets, system, instance);
+    const signInFingerprint = browserSignInFingerprint(config, this.#options.protectedSecrets, system, instance, this.#options.duo);
     const profileIdentity = { workerId, system, instance, configFingerprint, signInFingerprint, browserMode, profileDirectory };
     const { profileRevision, resetRequired, ...admittedIdentity } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(profileIdentity));
+    assertCurrent();
     if (canonicalJsonStringify(admittedIdentity) !== canonicalJsonStringify(profileIdentity)) throw new ProfileCustodyUnavailableError();
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
-    if (resetRequired) deleteOwnedBrowserProfile(config.paths.browserProfileRoot, profileDirectory);
-    assertDuoAutopilotReady(config);
-    profileReservations.add(profileDirectory);
+    assertFastDuoReady(config, this.#options.duo);
+    const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
+    const exclusiveLease = input.exclusive ? await this.#acquireExclusiveSession({ workerId, sessionId, system, instance,
+      signal: input.signal, assertCurrent, ...(input.replacesSessionId === undefined ? {} : { replacesSessionId: input.replacesSessionId }), ...(input.acquisitionRemainingMs === undefined ? {} : { remainingMs: input.acquisitionRemainingMs }) }) : undefined;
+    let launchStarted = false;
+    let reserved = false;
     let context: BrowserContext;
     try {
-      mkdirSync(dirname(profileDirectory), { recursive: true, mode: 0o700 });
-      context = await this.#launcher.launch({
-        profileDirectory,
-        headless: browserMode === "headless",
-        extensionDirectory: config.paths.duoExtensionDir,
-        acceptDownloads: input.acceptDownloads,
-        downloadsPath: config.paths.downloadsDir,
-        viewport: { width: config.display.screenWidth, height: config.display.screenHeight },
-      });
+      input.signal.throwIfAborted(); assertCurrent();
+      if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
+      profileReservations.add(profileDirectory);
+      reserved = true;
+      const rootOwner = this.#rootInput(workerId, profileDirectory, signInFingerprint);
+      if (resetRequired) {
+        profileReservations.delete(profileDirectory);
+        reserved = false;
+        await this.#unusedProfile(rootOwner, async unused => { assertCurrent(); unused.remove(); });
+        profileReservations.add(profileDirectory);
+        reserved = true;
+      }
+      input.signal.throwIfAborted(); assertCurrent();
+      launchStarted = true;
+      context = await this.#launchProfile(rootOwner, browserMode, input.acceptDownloads, system);
     } catch (error) {
-      throw new BrowserSessionClosureUnprovedError([error], `${system} browser launch failed and its closure is unproved`, { cause: error });
+      if (!launchStarted && !hasUnprovedSourceClosure(error)) {
+        if (reserved) profileReservations.delete(profileDirectory);
+        if (exclusiveLease !== undefined) {
+          try { this.#options.browserOwner.database.authority.exclusiveSessionLeases.release(exclusiveLease, this.#options.clock.now().toISOString()); }
+          catch (releaseError) { throw new AggregateError([error, releaseError], "exclusive session prelaunch cleanup failed", { cause: releaseError }); }
+        }
+      }
+      throw error;
     }
 
     const lifecycle = observeContextLifecycle(context);
+    let signingToken: DuoCeremonyLeaseToken | undefined;
     try {
-      const process = (this.#launcher.observeProcess ?? observeChromiumProcess)(profileDirectory);
-      if (process?.observation.state !== "alive") throw new ProfileCustodyUnavailableError();
-      this.#owned.set(profileDirectory, { context, lifecycle, process });
-      if (config.features.duoWebAuthn) await provisionDuo(context, config);
+      this.#owned.set(profileDirectory, { context, lifecycle });
+      assertCurrent();
+      if (config.features.duoWebAuthn) {
+        const source = this.#options.duo;
+        if (source === undefined) throw new DuoProvisioningError();
+        const duo = await provisionWorkflowDuo({ context, config, source, accountName: requireSecret("ucpathUserId", this.#options.protectedSecrets),
+          assertSigningScope: () => {
+            assertCurrent();
+            assertDuoCeremonyLeaseToken(signingToken, { system });
+            if (signingToken.holder.workerId !== workerId || signingToken.credentialKey !== source.identity()
+              || this.#options.clock.nowMs() >= Date.parse(signingToken.expiresAt)) throw new DuoProvisioningError();
+          },
+          assertOwner: () => { input.signal.throwIfAborted(); assertCurrent();
+            if (lifecycle.closed() || this.#owned.get(profileDirectory)?.context !== context) throw new DuoProvisioningError(); } }).catch(error => { throw new DuoProvisioningError({ cause: error }); });
+        this.#owned.set(profileDirectory, { context, lifecycle, duo });
+      }
+      assertCurrent();
       const existing = context.pages();
       const page = existing[0] ?? await context.newPage();
-      const diagnostics = attachBrowserDiagnostics(page, this.#options.clock);
+      assertCurrent();
+      const recordEvidence = (evidence: AuthenticatedApplicationEvidence): void => { assertCurrent(); this.#options.onAuthenticationEvidence?.(evidence); };
       let pageVersion = 1;
-      const onNavigation = this.#options.onNavigation;
-      page.on("framenavigated", (frame) => {
+      const detach = (): void => {
+        page.off("framenavigated", navigated);
+        page.off("frameattached", frameChanged);
+        page.off("framedetached", frameChanged);
+      };
+      const observeEvent = (): Readonly<{ state: "current" | "revoked" }> => {
+        try { assertCurrent(); return { state: "current" }; }
+        catch (error) {
+          const errors = [error];
+          refusal = { error };
+          try { detach(); } catch (cleanupError) { errors.push(cleanupError); }
+          try { diagnostics.dispose(); } catch (cleanupError) { errors.push(cleanupError); }
+          if (errors.length > 1) refusal = { error: new AggregateError(errors, "Browser event subscription cleanup failed") };
+          return { state: "revoked" };
+        }
+      };
+      const navigated = (frame: Frame): void => {
+        if (observeEvent().state === "revoked") return;
         pageVersion += 1;
-        if (frame === page.mainFrame()) onNavigation?.(frame.url());
-      });
-      page.on("frameattached", () => { pageVersion += 1; });
-      page.on("framedetached", () => { pageVersion += 1; });
-      const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
-      const emit = (phase: DebugEvent["phase"], code?: string): void => this.#options.onDebug?.(workerId, { phase, correlationId: sessionId, ...(code === undefined ? {} : { code }) });
+        if (frame === page.mainFrame()) this.#options.onNavigation?.(frame.url());
+      };
+      const frameChanged = (): void => { if (observeEvent().state === "current") pageVersion += 1; };
+      const diagnostics = attachBrowserDiagnostics(page, this.#options.clock, observeEvent);
+      page.on("framenavigated", navigated);
+      page.on("frameattached", frameChanged);
+      page.on("framedetached", frameChanged);
+      let closeProof: BrowserSessionCloseProof | undefined;
+      let profileReleased = false;
+      const emit = (phase: DebugEvent["phase"], code?: string): void => { assertCurrent(); this.#options.onDebug?.(workerId, { phase, correlationId: sessionId, ...(code === undefined ? {} : { code }) }); };
       const label = `worker ${workerId} ${system} session`;
       const resource: WorkerBrowserResource = {
         sessionId,
@@ -279,47 +327,80 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         profileRevision,
         acceptDownloads: input.acceptDownloads,
         exclusive: input.exclusive,
-        driver: binding.createDriver(page, this.#options.clock),
-        beginDiagnostics: () => diagnostics.begin(),
+        driver: binding.createDriver(page, this.#options.clock, assertCurrent),
+        beginDiagnostics: () => { assertCurrent(); diagnostics.begin(); },
         endDiagnostics: () => diagnostics.end(),
-        screenshot: async (): Promise<BrowserScreenshotEvidence> => {
+        screenshot: async (sampleLabels?: readonly string[]): Promise<BrowserScreenshotEvidence> => {
+          assertCurrent();
           const version = pageVersion;
           const identity = { pageVersion: version, sessionId, observedAt: this.#options.clock.now().toISOString() };
           const unavailable = (reason: Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"]): BrowserScreenshotEvidence => Object.freeze({ ...identity, state: "unavailable", reason });
           if (page.isClosed()) return unavailable("page-closed");
           try {
-            const proof = await binding.verifyAuthenticated({ page, config, recordEvidence: this.#recordEvidence });
+            const proof = await binding.verifyAuthenticated({ page, config, recordEvidence, assertCurrent });
+            assertCurrent();
             if (!proof.authenticated) return unavailable("authentication-unverified");
             const frames = page.frames();
             const secretControls = 'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"], input[autocomplete="new-password"]';
-            for (const frame of frames) if (await frame.locator(secretControls).count() > 0) return unavailable("secret-controls-present");
+            // The capture observer watches only the light DOM, so an unpainted control is tolerated there alone.
+            const secretPresent = async (frame: Frame): Promise<boolean> => {
+              assertCurrent();
+              const painted = await frame.locator(secretControls).filter({ visible: true }).count();
+              assertCurrent();
+              if (painted > 0) return true;
+              const reachable = await frame.locator(secretControls).count();
+              assertCurrent();
+              const watched = await frame.evaluate(selector => document.querySelectorAll(selector).length, secretControls);
+              assertCurrent();
+              return reachable !== watched;
+            };
+            for (const frame of frames) {
+              if (await secretPresent(frame)) return unavailable("secret-controls-present");
+            }
             if (pageVersion !== version) return unavailable("page-changed");
             const capture = await captureFullPage(page, {
+              ...(sampleLabels === undefined ? {} : { sampleLabels }),
+              assertCurrent,
               secretControls,
               afterCapture: async () => {
-                const after = await binding.verifyAuthenticated({ page, config, recordEvidence: this.#recordEvidence });
+                assertCurrent();
+                const after = await binding.verifyAuthenticated({ page, config, recordEvidence, assertCurrent });
+                assertCurrent();
                 if (!after.authenticated || pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
               },
               mask: () => page.frames().map(frame => frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)),
               assertSafe: async () => {
+                assertCurrent();
                 if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
-                for (const frame of page.frames()) if (await frame.locator(secretControls).count() > 0) throw new FullPageCaptureRefusedError("secret-controls-present");
+                for (const frame of page.frames()) {
+                  if (await secretPresent(frame)) throw new FullPageCaptureRefusedError("secret-controls-present");
+                }
                 if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
               },
             });
+            assertCurrent();
             if (pageVersion !== version) return unavailable("page-changed");
-            for (const frame of frames) if (await frame.locator(secretControls).count() > 0) return unavailable("secret-controls-present");
+            for (const frame of frames) {
+              if (await secretPresent(frame)) return unavailable("secret-controls-present");
+            }
             if (pageVersion !== version) return unavailable("page-changed");
             return Object.freeze({ ...identity, state: "available", ...capture, diagnosticAttachments: diagnostics.snapshot() });
           } catch (error) {
             if (error instanceof FullPageCaptureRestoreError) throw error;
+            assertCurrent();
             if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
             if (pageVersion !== version) return unavailable("page-changed");
+            const call = playwrightCall(error);
+            for (const [index, cause] of serializeErrorCauses(error).entries()) {
+              this.#options.onDebug?.(workerId, { phase: "failed", correlationId: sessionId,
+                reason: "capture-cause", code: cause.code, message: cause.name, stack: cause.stack, ...(index === 0 && call !== undefined ? { area: call } : {}) });
+            }
             return unavailable("verification-failed");
           }
         },
         authentication: {
           authenticate: async (requested: BrowserSystemId, options): Promise<"logged-in" | "already-authenticated"> => {
+            assertCurrent();
             if (requested !== system) {
               throw new Error(`${system} browser session cannot authenticate ${requested}`);
             }
@@ -328,36 +409,59 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
                 `${system} browser session was opened for instance ${instance} but login requested ${options.instance}`,
               );
             }
+            const claimStaleRequestRecovery = input.claimStaleRequestRecovery;
+            const acquisitionRemainingMs = input.acquisitionRemainingMs;
             const loginContext: SystemLoginContext = {
               page,
+              assertCurrent,
               config,
               instance,
               label,
               signal: options.signal ?? input.signal,
               credentials: readSsoCredentials(this.#options.protectedSecrets),
-              recordEvidence: this.#recordEvidence,
+              recordEvidence,
               duoCeremony: input.duoCeremony,
-              ...(input.claimStaleRequestRecovery === undefined ? {} : { claimStaleRequestRecovery: input.claimStaleRequestRecovery }),
-              ...(input.acquisitionRemainingMs === undefined ? {} : { acquisitionRemainingMs: input.acquisitionRemainingMs }),
+              withDuoSigningScope: async (token, run) => {
+                assertCurrent();
+                assertDuoCeremonyLeaseToken(token, { system });
+                if (signingToken !== undefined || token.holder.workerId !== workerId) throw new DuoProvisioningError();
+                signingToken = token;
+                try { const result = await run(); assertCurrent(); return result; } finally { signingToken = undefined; }
+              },
+              ...(claimStaleRequestRecovery === undefined ? {} : { claimStaleRequestRecovery: () => { assertCurrent(); return claimStaleRequestRecovery.call(input); } }),
+              ...(acquisitionRemainingMs === undefined ? {} : { acquisitionRemainingMs: () => { assertCurrent(); return acquisitionRemainingMs.call(input); } }),
             };
             emit("started");
             try {
+              this.#owned.get(profileDirectory)?.duo?.assertCurrent();
               const result = await binding.login(loginContext);
+              assertCurrent();
+              this.#owned.get(profileDirectory)?.duo?.assertCurrent();
               emit("settled");
               return result;
             } catch (error) { emit("failed", "session-authentication-failed"); throw error; }
           },
         },
         reset: async (resetInput): Promise<void> => {
-          await this.#resetToNeutralState(binding, page, instance, label, resetInput.signal);
+          assertCurrent();
+          try { await this.#resetToNeutralState(binding, page, instance, label, resetInput.signal, assertCurrent, recordEvidence); }
+          catch (error) { emit("failed", "session-reset-failed"); throw error; }
           emit("reset");
         },
         close: async (closeInput): Promise<BrowserSessionCloseProof> => {
-          await this.#closeWithProof(context, lifecycle, system, closeInput.reason);
-          await this.#releaseProfile(profileDirectory);
+          if (closeProof !== undefined) return closeProof;
+          detach();
+          if (!profileReleased) {
+            await this.#closeWithProof(context, lifecycle, system, closeInput.reason);
+            this.#releaseProfile(profileDirectory);
+            profileReleased = true;
+          }
           diagnostics.dispose();
-          emit("released");
-          return Object.freeze({ sessionId, system, pagesClosed: true, contextClosed: true });
+          if (exclusiveLease !== undefined) this.#options.browserOwner.database.authority.exclusiveSessionLeases.release(exclusiveLease, this.#options.clock.now().toISOString());
+          closeProof = Object.freeze({ sessionId, system, pagesClosed: true, contextClosed: true,
+            ...(exclusiveLease === undefined ? {} : { exclusiveLeaseReleased: true }) });
+          if (observeEvent().state === "current") emit("released");
+          return closeProof;
         },
       };
       return Object.freeze(resource);
@@ -366,7 +470,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       // close it. Prove the cleanup here or surface BOTH failures.
       try {
         await this.#closeWithProof(context, lifecycle, system, "login-failed");
-        await this.#releaseProfile(profileDirectory);
+        this.#releaseProfile(profileDirectory);
+        if (exclusiveLease !== undefined) this.#options.browserOwner.database.authority.exclusiveSessionLeases.release(exclusiveLease, this.#options.clock.now().toISOString());
       } catch (closeError) {
         throw new BrowserSessionClosureUnprovedError(
           [error, closeError],
@@ -387,6 +492,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     browserMode?: BrowserPresentationMode;
   }>): Promise<Readonly<{ profileDirectory: string }>> {
     const { config } = this.#options;
+    this.#options.assertCurrent(input.workerId);
     const browserMode = browserModeFor(input.browserMode, config.browser.headless);
     const profileDirectory = workerProfileDirectory({
       profileRoot: config.paths.browserProfileRoot,
@@ -394,33 +500,72 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       system: input.system,
     });
     const instance = RuntimeInstanceSchema.parse(input.instance);
-    const identity = { ...input, instance, browserMode, profileDirectory, signInFingerprint: browserSignInFingerprint(config, this.#options.protectedSecrets, input.system, instance) };
-    const { profileRevision: _revision, resetRequired: _reset, ...admitted } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(identity));
+    const identity = { ...input, instance, browserMode, profileDirectory, signInFingerprint: browserSignInFingerprint(config, this.#options.protectedSecrets, input.system, instance, this.#options.duo) };
+    const { profileRevision: _revision, resetRequired: _reset, ...admitted } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(identity, "cleanup"));
+    this.#options.assertCurrent(input.workerId);
     if (canonicalJsonStringify(admitted) !== canonicalJsonStringify(identity)) throw new ProfileCustodyUnavailableError();
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
-    deleteOwnedBrowserProfile(config.paths.browserProfileRoot, profileDirectory);
+    await this.#unusedProfile(this.#rootInput(input.workerId, profileDirectory, identity.signInFingerprint), async unused => { unused.remove(); });
     return Object.freeze({ profileDirectory });
   }
 
-  async #releaseProfile(profileDirectory: string): Promise<void> {
+  #rootInput(workerId: WorkerId, profileDirectory: string, credentialFingerprint: string | null): BrowserRootLaunchInput {
+    return { profileId: this.#options.browserOwner.profileId, profileRoot: this.#options.config.paths.browserProfileRoot,
+      profileDirectory, credentialFingerprint, owner: { kind: "worker", database: this.#options.browserOwner.database, workerId } };
+  }
+
+  async #unusedProfile(owner: BrowserRootLaunchInput, body: Parameters<BrowserRoots["withUnused"]>[2]): Promise<void> {
+    const { config, clock, scheduler } = this.#options;
+    await this.#options.browserRoots.withUnused(owner.profileDirectory, createNativeBrowserProbe({ launcher: this.#launcher,
+      clock, scheduler, closeProofMs: config.browser.closeProofMs, launchTimeoutMs: config.timeouts.sessionAcquireMs,
+      signal: new AbortController().signal }), body, owner);
+  }
+
+  async #launchProfile(owner: BrowserRootLaunchInput, browserMode: BrowserPresentationMode, acceptDownloads: boolean, system: BrowserSystemId, timeoutMs?: number): Promise<BrowserContext> {
+    const { config } = this.#options;
+    const profileDirectory = owner.profileDirectory, launch = this.#options.browserRoots.beginLaunch(owner);
+    this.#launches.set(profileDirectory, launch);
+    const extensionDirectory = join(profileDirectory, "relay-extension");
+    try {
+      mkdirSync(dirname(profileDirectory), { recursive: true, mode: 0o700 });
+      if (config.features.duoWebAuthn) {
+        mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
+        deleteOwnedExtension(config.paths.browserProfileRoot, extensionDirectory);
+        stageFastDuoExtension(config.paths.duoExtensionDir, extensionDirectory, "workflow");
+      }
+    } catch (error) {
+      launch.uncertain(error);
+    }
+    let context: BrowserContext | undefined;
+    try {
+      context = await this.#launcher.launch({ profileDirectory, ...(config.features.duoWebAuthn ? {} : { nativeOnly: true }), headless: browserMode === "headless",
+        extensionDirectory, acceptDownloads, downloadsPath: config.paths.downloadsDir,
+        viewport: { width: config.display.screenWidth, height: config.display.screenHeight },
+        ...(timeoutMs === undefined ? {} : { timeoutMs }) });
+      launch.opened();
+      return context;
+    } catch (error) {
+      if (context === undefined && chromiumProfileInUse(error)) {
+        launch.closing(); launch.closed(); this.#launches.delete(profileDirectory); profileReservations.delete(profileDirectory);
+        throw new BrowserProfileStillClosingError(error);
+      }
+      const uncertain = new BrowserLaunchUncertainError([error], `${system} browser launch closure is unproved`, { cause: error });
+      const failure = retainAuthoritySourceClosure([uncertain], { directory: { context, profileDirectory, system } });
+      try { return launch.uncertain(failure); }
+      catch (retained) { throw new BrowserLaunchUncertainError([error, retained], `${system} browser launch closure is unproved`, { cause: error }); }
+    }
+  }
+
+  #releaseProfile(profileDirectory: string): void {
     const owned = this.#owned.get(profileDirectory);
     if (owned === undefined || !owned.lifecycle.closed() || owned.context.pages().length !== 0) throw new ProfileCustodyUnavailableError();
-    const deadline = this.#options.clock.monotonicMs() + this.#options.config.browser.closeProofMs;
-    for (;;) {
-      const current = (this.#launcher.observeProcess ?? observeChromiumProcess)(profileDirectory, owned.process.pid);
-      if (current === undefined || current.pid !== owned.process.pid) throw new ProfileCustodyUnavailableError();
-      if (current.observation.state === "gone") break;
-      if (this.#options.clock.monotonicMs() >= deadline) throw new ProfileCustodyUnavailableError();
-      await new Promise<void>(resolve => { this.#options.scheduler.schedule(Math.min(deadline, this.#options.clock.monotonicMs() + 25), resolve); });
-    }
+    const launch = this.#launches.get(profileDirectory);
+    if (launch === undefined) throw new ProfileCustodyUnavailableError();
+    launch.closed(); this.#launches.delete(profileDirectory);
     this.#owned.delete(profileDirectory);
     profileReservations.delete(profileDirectory);
   }
-
-  readonly #recordEvidence = (evidence: AuthenticatedApplicationEvidence): void => {
-    this.#options.onAuthenticationEvidence?.(evidence);
-  };
 
   // Neutral reset must pass the same authenticated-application proof as login.
   async #resetToNeutralState(
@@ -429,104 +574,103 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     instance: RuntimeInstance,
     label: string,
     signal: AbortSignal,
+    assertCurrent: () => void,
+    recordEvidence: (evidence: AuthenticatedApplicationEvidence) => void,
   ): Promise<void> {
     const { config } = this.#options;
     if (signal.aborted) {
       throw new Error(`${binding.system} neutral reset was cancelled before navigation`);
     }
     const entry = resolveSystemEntryUrl(config, binding.system, instance, label);
+    assertCurrent();
     await page.goto(entry, {
       waitUntil: "domcontentloaded",
       timeout: config.timeouts.navigationMs,
     });
+    assertCurrent();
     await assertAuthenticatedApplication(
       binding.system,
-      { page, config, recordEvidence: this.#recordEvidence },
+      { page, config, recordEvidence, assertCurrent },
       binding.verifyAuthenticated,
       "the neutral reset did not land on the authenticated application; the session is no longer reusable",
     );
   }
 
-  // Playwright close resolution alone is not teardown proof; verify context and process termination.
+  async #acquireExclusiveSession(input: Readonly<{ workerId: WorkerId; sessionId: string; system: BrowserSystemId; instance: RuntimeInstance;
+    signal: AbortSignal; assertCurrent: () => void; remainingMs?: () => number; replacesSessionId?: string }>): Promise<ExclusiveSessionLease> {
+    const entry = new URL(resolveSystemEntryUrl(this.#options.config, input.system, input.instance, `${input.system} identity lease`));
+    const account = requireSecret("ucpathUserId", this.#options.protectedSecrets).trim().toLocaleLowerCase("en-US");
+    if (account.length === 0) throw new Error("onbase-session-identity-unavailable");
+    const identityKey = sha256Hex(canonicalJsonStringify({ application: new URL(".", entry).href, account }));
+    const deadline = this.#options.clock.monotonicMs() + this.#options.config.timeouts.sessionAcquireMs;
+    for (;;) {
+      input.signal.throwIfAborted(); input.assertCurrent();
+      const outcome = this.#options.browserOwner.database.authority.exclusiveSessionLeases.acquire({ identityKey,
+        workerId: input.workerId, sessionId: input.sessionId, now: this.#options.clock.now().toISOString(),
+        ...(input.replacesSessionId === undefined ? {} : { replacesSessionId: input.replacesSessionId }) });
+      if (outcome.state === "acquired") return outcome.lease;
+      const remaining = Math.min(deadline - this.#options.clock.monotonicMs(), input.remainingMs?.() ?? Infinity);
+      if (remaining <= 0) throw new OnbaseSessionHeldError();
+      await new Promise<void>((resolve, reject) => {
+        const timer = this.#options.scheduler.schedule(this.#options.clock.monotonicMs() + Math.min(200, remaining), () => {
+          input.signal.removeEventListener("abort", aborted); resolve();
+        });
+        const aborted = () => {
+          timer.cancel();
+          const cause: unknown = input.signal.reason;
+          reject(cause instanceof Error ? cause : new Error("onbase-session-acquisition-cancelled", { cause }));
+        };
+        input.signal.addEventListener("abort", aborted, { once: true });
+        if (input.signal.aborted) { input.signal.removeEventListener("abort", aborted); aborted(); }
+      });
+    }
+  }
+
   async #closeWithProof(
     context: BrowserContext,
     lifecycle: ContextLifecycle,
     system: BrowserSystemId,
     reason: BrowserSessionCloseReason,
   ): Promise<void> {
-    const { clock, scheduler, config } = this.#options;
-    const deadline = clock.monotonicMs() + config.browser.closeProofMs;
-    let expire = (): void => undefined;
-    const timedOut = new Promise<never>((_resolve, reject) => {
-      const handle = scheduler.schedule(deadline, () => {
-        reject(new Error(
-          `${system} browser session close (${reason}) did not complete within its ${String(config.browser.closeProofMs)}ms proof deadline`,
-        ));
-      });
-      expire = (): void => handle.cancel();
-    });
-    const pages = context.pages();
+    const owned = [...this.#owned.entries()].find(([, owned]) => owned.context === context), duo = owned?.[1].duo;
+    const launch = owned === undefined ? undefined : this.#launches.get(owned[0]);
+    const errors: unknown[] = [];
+    try { if (launch === undefined) throw new ProfileCustodyUnavailableError(); launch.closing(); }
+    catch (error) { errors.push(error); }
+    const deadline = this.#options.clock.monotonicMs() + this.#options.config.browser.closeProofMs;
+    let timer: ReturnType<BrowserDeadlineScheduler["schedule"]> | undefined;
+    const brokerClose = duo === undefined ? undefined : Promise.race([duo.stop(), new Promise<never>((_resolve, reject) => {
+      timer = this.#options.scheduler.schedule(deadline,
+        () => reject(new Error("duo-broker-close-unproved")));
+    })]);
+    if (brokerClose !== undefined) {
+      try { await brokerClose; } catch (error) { errors.push(error); }
+    }
+    timer?.cancel();
     try {
-      await Promise.race([
-        (async (): Promise<void> => {
-          for (const page of pages) await page.close({ runBeforeUnload: false });
-          await context.close();
-        })(),
-        timedOut,
-      ]);
-    } finally {
-      expire();
-    }
-    const openPages = pages.filter((page) => !page.isClosed());
-    if (openPages.length > 0) {
-      throw new Error(
-        `${system} browser session close (${reason}) left ${String(openPages.length)} page(s) open; closure cannot be proven`,
-      );
-    }
-    if (context.pages().length > 0) {
-      throw new Error(
-        `${system} browser session close (${reason}) left new pages open; closure cannot be proven`,
-      );
-    }
-    if (!lifecycle.closed()) {
-      throw new Error(
-        `${system} browser session close (${reason}) never emitted its context close event; closure cannot be proven`,
-      );
+      await closeContextWithProof({ clock: this.#options.clock, scheduler: this.#options.scheduler,
+        closeProofMs: Math.max(0, deadline - this.#options.clock.monotonicMs()) }, context, lifecycle, system, reason);
+    } catch (error) { errors.push(error); }
+    if (errors.length > 0) {
+      const failure = retainAuthoritySourceClosure(errors, { directory: { context, owned, launch } });
+      try { if (launch !== undefined) launch.uncertain(failure); }
+      catch (retained) { errors.push(retained); }
+      throw new BrowserSessionClosureUnprovedError([...errors, failure], `${system} browser session closure is unproved`, { cause: errors[0] });
     }
   }
 }
 
-const profileReservations = new Set<string>();
 
-function observeChromiumProcess(profileDirectory: string, ownedPid?: number): Readonly<{ pid: number; observation: ProcessIdentityObservation }> {
-  if (ownedPid !== undefined) return { pid: ownedPid, observation: observeProcessIdentity(ownedPid) };
-  const owner = readlinkSync(join(profileDirectory, "SingletonLock"));
-  const prefix = `${hostname()}-`;
-  if (!owner.startsWith(prefix)) throw new ProfileCustodyUnavailableError();
-  const pid = PositiveIntSchema.parse(Number(owner.slice(prefix.length)));
-  return { pid, observation: observeProcessIdentity(pid) };
-}
-
-function assertPrivateProfilePath(root: string, path: string): void {
-  if (!path.startsWith(`${root}${sep}`)) throw new ProfileCustodyUnavailableError();
-  for (let cursor = path; cursor !== dirname(cursor); cursor = dirname(cursor)) {
-    const metadata = lstatSync(cursor, { throwIfNoEntry: false });
-    if (metadata !== undefined && (!metadata.isDirectory() || metadata.isSymbolicLink()
-      || metadata.uid !== (process.getuid?.() ?? -1) || (metadata.mode & 0o077) !== 0)) throw new ProfileCustodyUnavailableError();
-    if (cursor === root) return;
-  }
-  throw new ProfileCustodyUnavailableError();
-}
-
-export function deleteOwnedBrowserProfile(profileRoot: string, profileDirectory: string): void {
+function deleteOwnedExtension(profileRoot: string, profileDirectory: string): void {
   const root = AbsolutePathSchema.parse(profileRoot), directory = AbsolutePathSchema.parse(profileDirectory);
+  if (!directory.endsWith(`${sep}relay-extension`)) throw new ProfileCustodyUnavailableError();
   assertPrivateProfilePath(root, directory);
   if ([...profileReservations].some(path => path === directory || path.startsWith(`${directory}${sep}`))) throw new ProfileCustodyUnavailableError();
   const verify = (path: string): void => {
-    const metadata = lstatSync(path, { throwIfNoEntry: false });
+    const metadata = fileStatus(path, true);
     if (metadata === undefined) return;
-    if (metadata.isSymbolicLink() || metadata.uid !== (process.getuid?.() ?? -1) || (metadata.mode & 0o022) !== 0
-      || !(metadata.isDirectory() || metadata.isFile()) || metadata.isFile() && metadata.nlink !== 1) throw new ProfileCustodyUnavailableError();
+    if (metadata.isSymbolicLink() || privatePathRejects(path, metadata, "group-write")
+      || !(metadata.isDirectory() || metadata.isFile()) || metadata.isFile() && privateFileNumber(metadata.nlink) !== 1) throw new ProfileCustodyUnavailableError();
     if (metadata.isDirectory()) for (const name of readdirSync(path)) {
       if (["SingletonLock", "SingletonSocket", "SingletonCookie"].includes(name)) throw new ProfileCustodyUnavailableError();
       verify(join(path, name));
@@ -537,79 +681,19 @@ export function deleteOwnedBrowserProfile(profileRoot: string, profileDirectory:
   if (lstatSync(directory, { throwIfNoEntry: false }) !== undefined) throw new ProfileCustodyUnavailableError();
 }
 
-const DuoCredentialSchema = z.strictObject({
-  rpId: z.literal("duosecurity.com"), credentialId: z.string().min(1), privateKey: z.string().min(1),
-  signCount: z.number().int().nonnegative().max(4294967295), transport: z.enum(["internal", "usb"]),
-  userHandle: z.string().nullable().optional(), isResidentCredential: z.boolean().optional(),
-  deviceName: z.string().optional(), enrolledAt: z.string().optional(),
-});
-const DuoCredentialFileSchema = z.union([DuoCredentialSchema, z.array(DuoCredentialSchema).min(1), z.strictObject({ credentials: z.array(DuoCredentialSchema).min(1) })]);
-
 export class DuoProvisioningError extends Error {
   readonly code = "duo-extension-provisioning-unavailable";
-  constructor() { super("Duo extension session provisioning could not be verified."); this.name = "DuoProvisioningError"; }
+  constructor(options?: ErrorOptions) { super("Duo extension session provisioning could not be verified.", options); this.name = "DuoProvisioningError"; }
 }
 
-export function browserSignInFingerprint(config: Config, secrets: ProtectedSecretSource, system: BrowserSystemId, instance: RuntimeInstance): Fingerprint {
-  const { entries } = ProtectedStoreRecordSchema.parse(secrets.read());
+export function browserSignInFingerprint(config: Config, secrets: ProtectedSecretSource, system: BrowserSystemId, instance: RuntimeInstance, duo?: DuoSigningSource): Fingerprint {
+  const { entries } = readProtectedCredentials(secrets);
   const urls = system === "new-kronos" ? config.urls.newKronos : system === "old-kronos" ? config.urls.oldKronos : config.urls[system];
   return FingerprintSchema.parse(sha256Hex(canonicalJsonStringify({ system, instance, urls,
     credentialIds: { userId: entries.ucpathUserId?.valueId ?? null, password: entries.ucpathPassword?.valueId ?? null },
-    duo: { enabled: config.features.duoWebAuthn, credentialPath: config.paths.duoCredential,
-      extensionPath: config.paths.duoExtensionDir, publicIdentity: config.features.duoWebAuthn ? resolveSecretFileIdentity("duoWebauthnCredential", config) : null },
+    duo: { enabled: config.features.duoWebAuthn, extensionPath: config.paths.duoExtensionDir, publicIdentity: config.features.duoWebAuthn
+      ? (() => { if (duo === undefined) throw new DuoProvisioningError(); duo.assertCurrent(); return duo.identity(); })() : null },
   })));
-}
-
-async function provisionDuo(context: BrowserContext, config: Config): Promise<void> {
-  const ownedWorker = (url: string): boolean => /^chrome-extension:\/\/[a-p]{32}\/src\/background\.js$/u.test(url);
-  try {
-    const parsed = DuoCredentialFileSchema.parse(JSON.parse(requireSecretFile("duoWebauthnCredential", config).toString("utf8")));
-    const credentials = Array.isArray(parsed) ? parsed : "credentials" in parsed ? parsed.credentials : [parsed];
-    const current = context.serviceWorkers().filter(worker => ownedWorker(worker.url()));
-    if (current.length > 1) throw new DuoProvisioningError();
-    const worker = current[0] ?? await context.waitForEvent("serviceworker", { predicate: worker => ownedWorker(worker.url()), timeout: config.timeouts.navigationMs });
-    await worker.evaluate(provisionDuoSession, credentials);
-  } catch { throw new DuoProvisioningError(); }
-}
-
-interface ExtensionStorageArea {
-  get?: (key: string) => unknown;
-  set?: (items: Record<string, unknown>) => unknown;
-  setAccessLevel?: (options: { accessLevel: string }) => unknown;
-}
-
-// Playwright runs this from its source text inside the extension worker, so it declares no inner functions:
-// the runtime compiler wraps those in a module helper the worker does not have.
-async function provisionDuoSession(credentials: readonly z.infer<typeof DuoCredentialSchema>[]): Promise<void> {
-  const storage = (globalThis as { chrome?: { storage?: { session?: ExtensionStorageArea; local?: ExtensionStorageArea } } }).chrome?.storage;
-  const session = storage?.session, local = storage?.local;
-  if (typeof session?.get !== "function" || typeof session.set !== "function" || typeof session.setAccessLevel !== "function"
-    || typeof local?.get !== "function") throw new Error("duo-session-storage-unavailable");
-  const persistent: unknown = await local.get("duoCredentials");
-  if (persistent !== null && typeof persistent === "object" && "duoCredentials" in persistent) throw new Error("duo-persistent-credential-refused");
-  await session.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
-  await session.set({ duoCredentials: credentials });
-  const stored: unknown = await session.get("duoCredentials");
-  const copies: unknown = stored !== null && typeof stored === "object" && "duoCredentials" in stored ? stored.duoCredentials : undefined;
-  if (!Array.isArray(copies) || copies.length !== credentials.length) throw new Error("duo-session-provisioning-unverified");
-  // Chrome storage returns object keys sorted, so compare field by field.
-  for (const [index, original] of credentials.entries()) {
-    const copy: unknown = copies[index];
-    if (copy === null || typeof copy !== "object" || Object.keys(copy).length !== Object.keys(original).length) throw new Error("duo-session-provisioning-unverified");
-    for (const [key, value] of Object.entries(original)) if (Reflect.get(copy, key) !== value) throw new Error("duo-session-provisioning-unverified");
-  }
-}
-
-interface ContextLifecycle {
-  readonly closed: () => boolean;
-}
-
-function observeContextLifecycle(context: BrowserContext): ContextLifecycle {
-  let closed = false;
-  context.on("close", () => {
-    closed = true;
-  });
-  return { closed: () => closed };
 }
 
 // UCSD systems share an SSO realm and credential pair, but hold distinct application sessions.
@@ -618,4 +702,9 @@ function readSsoCredentials(source: ProtectedSecretSource): SsoCredentials {
     userId: requireSecret("ucpathUserId", source),
     password: requireSecret("ucpathPassword", source),
   };
+}
+
+export class OnbaseSessionHeldError extends Error {
+  readonly code = "ONBASE_SESSION_HELD";
+  constructor() { super(ERROR_CATALOG.ONBASE_SESSION_HELD.text); this.name = "OnbaseSessionHeldError"; }
 }

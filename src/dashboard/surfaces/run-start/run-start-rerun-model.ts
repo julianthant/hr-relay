@@ -1,12 +1,17 @@
-import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
+import type { InputRunSurface, TypedInputSurface } from "../../../models/workflow/ingress.js";
+import { previewRunInput, typedInputDefaults, typedInputText, typedControlAvailable, usDateText } from "./run-start-model.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
+import { canonicalJsonStringify, JsonValueSchema, type JsonObject, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
 import type { RunStartWorkflow } from "./run-start.js";
 import type { RerunSource } from "../../../models/run/rerun.js";
 
 export function defaultRerunSteps(snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow): string[] {
-  if (snapshot.source.workflow !== workflow.workflowId || snapshot.source.descriptorVersion !== workflow.version
+  if (snapshot.source.workflow !== workflow.workflowId) throw new Error(formatErrorCatalogFailure(
+    createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text);
+  if (snapshot.source.descriptorVersion !== workflow.version
     || snapshot.steps.length !== workflow.steps.length || workflow.steps.some((step) => !snapshot.steps.some((source) => source.key === step.key))) {
-    throw new Error("RERUN_DESCRIPTOR_MISMATCH");
+    return workflow.steps.map(step => step.key);
   }
   const selected = new Set(workflow.steps.filter((step) => snapshot.source.outcome === "done" || step.control.state === "required"
     || snapshot.steps.find((source) => source.key === step.key)?.state !== "completed").map((step) => step.key));
@@ -21,6 +26,25 @@ export function defaultRerunSteps(snapshot: RerunValuesSnapshot, workflow: RunSt
   return workflow.steps.filter((step) => selected.has(step.key)).map((step) => step.key);
 }
 
+export function partialRerunTypedInput(surface: TypedInputSurface, input: Extract<RerunValuesSnapshot["sourceInput"], { state: "partial" }>) {
+  const mode = surface.submitsMode === false ? surface.modes[0]?.value ?? null
+    : surface.modes.find(mode => input.value[surface.modeField] === mode.value)?.value ?? null;
+  const draft = { ...typedInputDefaults(surface, mode) };
+  if (mode === null) return { draft, text: "", input: JsonValueSchema.parse({}) };
+  for (const control of surface.controls) {
+    const value = input.value[control.field];
+    const text = "kind" in control && typeof value === "string" ? usDateText(value) : value;
+    if (typeof text === typeof draft[control.field] && (typeof text === "boolean" || typeof text === "string")) draft[control.field] = text;
+  }
+  for (const control of surface.controls) if (!typedControlAvailable(surface, draft, control.field)) {
+    const defaults = typedInputDefaults(surface, mode);
+    if (defaults[control.field] !== undefined) draft[control.field] = defaults[control.field];
+  }
+  const submitted = surface.submitsMode === false ? Object.fromEntries(Object.entries(draft).filter(([field]) => field !== surface.modeField)) : draft;
+  const value = JsonValueSchema.parse({ ...input.value, ...submitted });
+  return { draft, text: input.identityCopied ? typedInputText(surface, value) : "", input: value };
+}
+
 export interface RerunValueDraft { readonly text: string; readonly copied: boolean }
 export function initialRerunValueDrafts(snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow): Readonly<Record<number, RerunValueDraft>> {
   if (workflow.inputRun.state !== "present") return {};
@@ -30,6 +54,23 @@ export function initialRerunValueDrafts(snapshot: RerunValuesSnapshot, workflow:
 }
 export function candidateText(value: JsonValue): string {
   return typeof value === "string" ? value : canonicalJsonStringify(value);
+}
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+export function plainRerunInputText(surface: InputRunSurface, source: RerunValuesSnapshot["sourceInput"]): string {
+  if (source.state === "unavailable" || source.state === "partial" && !source.identityCopied) return "";
+  const input = source.value;
+  if (!isJsonObject(input)) return "";
+  for (const rule of surface.parser.rules) {
+    const value = input[rule.emit];
+    if (typeof value !== "string") continue;
+    const preview = previewRunInput(surface, value);
+    const submission = preview.submissions[0];
+    if (preview.entries.length === 1 && preview.entries[0]?.sourceText === value
+      && isJsonObject(submission) && submission[rule.emit] === value) return value;
+  }
+  return "";
 }
 export function readCandidateDraft(candidate: RerunValuesSnapshot["values"][number], text: string): JsonValue {
   if (candidate.state !== "available") throw new Error("RERUN_VALUE_UNAVAILABLE");
@@ -65,4 +106,11 @@ export function rerunSubmission(snapshot: RerunValuesSnapshot, base: JsonValue,
     }
   }
   return { submission, copiedFrom };
+}
+
+export function rerunTypedSourceInput(surface: TypedInputSurface | undefined, source: RerunValuesSnapshot["sourceInput"]): JsonValue | undefined {
+  if (source.state === "unavailable") return undefined;
+  if (source.state === "available") return source.value;
+  if (surface === undefined || !source.identityCopied) return undefined;
+  return partialRerunTypedInput(surface, source).input;
 }

@@ -126,7 +126,7 @@ export function createTimelineSetup({ at, traceOf, uuidOf, WORKFLOW_ID, absent, 
       ],
       sections: ["logs", "receipt", "context-data", "context-attempts", "identity-gate"],
     }),
-    [FIXTURE_IDS.gateTypedEidRun]: detailOf({
+    [FIXTURE_IDS.gateNameMismatchRun]: detailOf({
       seed: 44, panelKind: "member", title: "Morrow, Bea", status: "awaiting-approval",
       gate: { state: "open", gateId: uuidOf(144), nodeId: "identity-approval", label: "identity-review", openedAt: at(24), revision: 44 },
       outcome: STILL_RUNNING,

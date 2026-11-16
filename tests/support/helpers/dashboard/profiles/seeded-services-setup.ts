@@ -1,3 +1,5 @@
+import { resolveWriteCommandTarget } from "../../../../../src/backend/runs/commands/write-command-target.js";
+import { unusedWorkerPool } from "../../backend/unused-worker-pool.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../../fixtures/dashboard-stream-seams.js";
 import { explorerQueryDeps } from "../../../fixtures/explorer-seams.js";
 import { NO_INTAKE_PROJECTIONS } from "../../../fixtures/intake-kernel-seams.js";
@@ -16,15 +18,26 @@ import { CONTRACT_FINGERPRINT } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_APP_VERSION } from "../served-fixtures/seeded-identity.js";
 import { uuidOf } from "../served-fixtures/seeded-lifecycle.js";
 import { join } from "node:path";
+import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
+import { composeNotificationRoutes } from "../../../../../src/backend/app/composition/dashboard/notification-wiring.js";
+import { ocrHostRun } from "../../../../../src/backend/runs/queries/ocr-record-members.js";
+import { createNotificationTargetQuery } from "../../../../../src/backend/runs/queries/notifications.js";
+import { createWorkbookIntakeBridge } from "../../../../../src/backend/runs/commands/workbook-intake-service.js";
+import { createWorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../../../src/backend/workbooks/workbook-library-error.js";
+import type { AssistantService } from "../../../../../src/backend/assistant/service.js";
+import { AssistantHistoryOperationSchema } from "../../../../../src/models/dashboard/assistant.js";
+
 import { composeActivity } from "../../../../../src/backend/app/composition/dashboard/activity.js";
-import { descriptorSetHash } from "../../../../../src/backend/app/composition/dashboard/compose.js";
+import { projectWorkbookCompatibilityFromRepository } from "../../../../../src/backend/workbooks/workbook-library-service.js";
+import { descriptorSetHash, READABLE_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
-import { createRunLogStreamStore } from "../../../../../src/backend/logs/run-log-stream.js";
 import { createCommandKernel } from "../../../../../src/backend/runs/commands/command-kernel.js";
 import { createDashboardCommandService } from "../../../../../src/backend/runs/commands/command-service.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
 import { createStartPlanService } from "../../../../../src/backend/runs/commands/start-plan-service.js";
 import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { createApplicationLifecycle } from "../../../../../src/backend/runs/lifecycle/application-lifecycle.js";
 import { createRunQueueProjection } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createCalendarQuery } from "../../../../../src/backend/runs/queries/calendar.js";
 import { createItemAttemptHistoryQuery } from "../../../../../src/backend/runs/queries/item-attempt-history.js";
@@ -38,7 +51,6 @@ import { createSoloRequestIdentityCheckpoint } from "../../../../../src/backend/
 import type { DashboardAppDeps } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { createDashboardApp } from "../../../../../src/backend/transports/http/routes/api.js";
 import { createDashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
-import { RunLogsStreamHub } from "../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import { hostConfigFacts } from "../../../../../src/models/config/host-display.js";
 import { initialProtectedStoreRecord } from "../../../../../src/models/config/protected-settings.js";
 import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../../../src/models/config/settings.js";
@@ -46,11 +58,12 @@ import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../src/ru
 import type { Clock } from "../../../../../src/rules/time/clock.js";
 import { defineWorkflowRole } from "../../../../../src/workflow-kit/validation/module-role.js";
 
-export function createSeededServicesSetup({ readFixtureRun, createFixtureDashboardApp }: {
-readFixtureRun: (runReader: ReturnType<typeof sqliteRunReader>, runId: string) => Pick<Extract<ReturnType<ReturnType<typeof sqliteRunReader>["read"]>, { state: "present" }>, "disposition" | "run"> | undefined;
-createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<DashboardAppDeps, "runLogsHub" | "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
+export function createSeededServicesSetup({ createFixtureDashboardApp }: {
+createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
 }) {
-  function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices }: {
+  function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices, productWorkflows }: {
+   /** Serve the production catalog (same filter as composeShell) instead of person-lookup alone. */
+   productWorkflows?: boolean;
    selectionServices?: Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports">;
    database: AuthorityDatabase; clock: Clock; stateRoot: string; root: string;
    projection: ReturnType<typeof createRunQueueProjection>; spans: ReturnType<typeof createTimelineEmitter>;
@@ -95,11 +108,12 @@ createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<Dashboard
       trust,
     };
 
-    const kernel = createCommandKernel({
-      lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
+    const lifecycle = new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
         if (publication === undefined) throw new Error("command-created run lacks queue presentation");
         spans.emit(runQueuedSpanEvent({ run, ...publication, actorId: PublicationActorIdSchema.parse(publication.actorId) }));
-      } }),
+      } });
+    const kernel = createCommandKernel({
+      lifecycle: lifecycle,
       appVersion: SEEDED_APP_VERSION,
       configIdentity: UNSTORED_CONFIG_IDENTITY,
       intakeParser: UNWIRED_INTAKE_PARSER,
@@ -110,14 +124,14 @@ createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<Dashboard
       ids: sequentialIdFactory("d"),
       descriptors,
       writeResolution: {
-        resolvePresent: () => {
-          throw new Error("write resolution is not wired in the parity seed");
+        recheck: () => {
+          throw new Error("write resolution is not wired in the mock seed");
         },
         resolveAbsent: () => {
-          throw new Error("write resolution is not wired in the parity seed");
+          throw new Error("write resolution is not wired in the mock seed");
         },
       },
-      workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("worker runtime is not wired in this fixture"); }, spawnPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, refreshPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, reopenPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, stopPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, pausePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, resumePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); } } },
+      workerRuntime: { pool: unusedWorkerPool() },
     });
     const commands = createDashboardCommandService({ kernel, projection });
     const startPlans = createStartPlanService({
@@ -131,18 +145,40 @@ createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<Dashboard
       configSnapshotId: CONFIG_SNAPSHOT_ID,
       plannedBy: "local-operator",
     });
+    // Product-app services: real notification and workbook-library composition; the live-only ones (SharePoint download,
+    // ChatGPT assistant) are the minimum the dashboard's start-up reads need.
+    const productAppDeps = (): Pick<DashboardAppDeps, "notifications" | "workbooks" | "assistant"> => {
+      const { observer } = createTrustNotifications({ database, clock, ids: sequentialIdFactory("n"), reader: lifecycle });
+      const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
+        host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)),
+        command: commandId => database.authority.commands.readForNotice(commandId),
+        bulk: bulkCommandId => { const acceptance = database.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: database.authority.commands.listBulkChildren(bulkCommandId) }; } });
+      const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock,
+        sync: { withDownload: () => { throw new WorkbookLibraryError("WORKBOOK_SYNC_LINK_REQUIRED"); } } });
+      const profileId = "00000000-0000-4000-8000-000000000001";
+      const assistant: AssistantService = {
+        respond: () => Promise.resolve({ kind: "result", result: { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: "The assistant is unavailable. Check the ChatGPT connection." } }),
+        modelPreference: () => ({ profileId, epoch: 1, revision: 1, preference: { slug: "gpt-5.4", effort: "medium" } }),
+        historyView: () => database.authority.assistantHistory.list(clock.now().toISOString()),
+        conversation: id => database.authority.assistantHistory.conversation(id, clock.now().toISOString()),
+        history: input => database.authority.assistantHistory.apply(AssistantHistoryOperationSchema.parse(input), clock.now().toISOString()),
+      };
+      return {
+        notifications: composeNotificationRoutes({ database, clock, lifecycle, runDetailDeps, descriptors: { resolve: id => { const descriptor = descriptors.resolve(id); if (descriptor === undefined) throw new Error(`seeded-descriptor-missing:${id}`); return descriptor; } }, assertCurrent: () => undefined, notificationObserver: observer, notificationTarget }),
+        workbooks: { library, intake: createWorkbookIntakeBridge(library, UNWIRED_INTAKE_SERVICE), workflows: [] },
+        assistant,
+      };
+    };
     const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
-    const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(database.authority.timelineEvents),
-      readRun: runId => {
-        return readFixtureRun(runReader, runId);
-      } });
-
-    const app = createFixtureDashboardApp(runLogsHub, {
+    const productDeps = productWorkflows === true ? productAppDeps() : {};
+    const app = createFixtureDashboardApp({
+      ...productDeps,
       requestIdentity: createSoloRequestIdentityCheckpoint({
         id: "local-operator",
         label: "Local operator",
       }),
       intake: UNWIRED_INTAKE_SERVICE,
+      resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority),
       commandJournal: database.authority.commands,
       protectedCommandAcceptedAt: () => { throw new Error("seeded BFF has no credential command authority"); },
       bulkCommandAcceptances: {
@@ -150,17 +186,24 @@ createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<Dashboard
           work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),
       },
       preflight: healthyDashboardPreflightExecutor(clock),
+      applicationLifecycle: createApplicationLifecycle({ database,
+        requestQuit: () => { throw new Error("seeded fixture cannot quit the process"); },
+        onFailure: error => { throw error; },
+      }),
       bootstrap: {
         appVersion: SEEDED_APP_VERSION,
         clock,
 
-        modules: [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }],
+        modules: productWorkflows === true
+          ? READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module) || module.descriptor.capabilities?.review === true)
+          : [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }],
         descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
         settingsSchemaHash: descriptorSetHash(["settings-schema"]),
         projection,
+        actorLabel: () => "Fixture Operator",
         authorityMeta: () => database.getMeta(),
         // The seeded adapter runs no backup lane; "missing" is its true state.
-        backupSummary: () => "missing",
+        workbookCompatibility: workflows => projectWorkbookCompatibilityFromRepository(database.authority.workbooks, workflows),
         preflightReport: () => healthyDashboardPreflightReport(clock),
       },
       projection,
@@ -217,7 +260,7 @@ createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<Dashboard
     });
 
 
-  return { app, hub, runLogsHub };
+  return { app, hub };
   }
 
   return { composeSeededServices };

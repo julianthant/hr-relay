@@ -12,6 +12,7 @@ import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
 import { UcpathTerminationTemplateSchema } from "../../rules/separations/termination-type.js";
 import type { MutationCapability, UiActionProof } from "./driver.js";
 import { UcpathApprovalStatusSchema, UcpathTransactionReceiptSchema } from "./ucpath-ss-smart-hr.js";
+import type { UcpathTransactionFindings } from "./ucpath-transaction-findings.js";
 
 /* ── Screens ─────────────────────────────────────────────────────────────── */
 
@@ -65,9 +66,6 @@ export const UCPATH_SMART_HR_INITIATOR_COMMENTS_FIELD =
   ElementIdSchema.parse("ucpath.smart-hr.initiator-comments-field");
 export const UCPATH_SMART_HR_TRANSACTION_COMMENTS_FIELD =
   ElementIdSchema.parse("ucpath.smart-hr.transaction-comments-field");
-export const UCPATH_SMART_HR_CONFIRMATION_OK_BUTTON =
-  ElementIdSchema.parse("ucpath.smart-hr.confirmation-ok-button");
-export const UCPATH_SMART_HR_ERROR_BANNER = ElementIdSchema.parse("ucpath.smart-hr.error-banner");
 export const UCPATH_SMART_HR_DELETE_SELECTED_BUTTON =
   ElementIdSchema.parse("ucpath.smart-hr.delete-selected-button");
 export const UCPATH_SS_SMART_HR_SEARCH_EID_INPUT =
@@ -360,9 +358,10 @@ export type UcpathSmartHrObservations = Readonly<{
 
 /** The semantic operations the store's tasks call, declared on the ONE `ucpath` driver declaration the whole store binds; a sibling family extends it, never mints a second. */
 export type UcpathSmartHrTerminationDriver = Readonly<{
+  readTransactionFindings(input: Readonly<{ emplId: Eid }>): Promise<UcpathTransactionFindings>;
     /* The rich read: every transaction this person has, with each row's action, status, start date and displayed name; both probe kinds fold THIS. */
   scanTerminationTransactions(
-    input: Readonly<{ emplId: Eid }>,
+    input: Readonly<{ emplId: Eid; transactionId?: string }>,
   ): Promise<UcpathTransactionScan>;
   /** Stages the whole three-page wizard. Nothing durable — see the crux. */
   stageTermination(input: UcpathTerminationTarget): Promise<UcpathTerminationStaging>;

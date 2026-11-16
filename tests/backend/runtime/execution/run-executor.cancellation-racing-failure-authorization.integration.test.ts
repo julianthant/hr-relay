@@ -1,3 +1,5 @@
+import { afterAll } from "vitest";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -7,13 +9,15 @@ import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld();
+const profiles = createProfileFixtureSet();
+afterAll(() => profiles.close());
+const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld(profiles.create);
 
 afterEach(cleanup);
 
 describe("cancellation racing failure authorization", () => {
   it("settles cancelled when admission commits after the boundary read but before authorization", async () => {
-    const h = executorHarness();
+    const h = await executorHarness();
     const { database, clock } = h.authority;
     const input = RunRecordSchema.parse(personLookupQueuedRun());
     const claimed = enqueueAndClaim(database, { ...input, input: {

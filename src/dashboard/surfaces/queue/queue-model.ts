@@ -1,11 +1,13 @@
 /** The queue's pure half: the band vocabulary and its sort, the row title folds
  * the member ordering, and the visible/attention run-id lists the keyboard */
 import { useEffect, useRef, useState } from "react";
+import { isQueueMember, isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { z } from "zod";
-import type { QueueSurfaceWireSchema } from "../../../models/dashboard/projection.js";
+import type { QueueSurfaceWireSchema, QueueRecordMember, QueueMemberSelection } from "../../../models/dashboard/projection.js";
 import {
   dsStatusOf,
   statusAccessibleName,
+  statusText,
   type ProposedStatus,
 } from "../shared/status/status-model.js";
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
@@ -33,7 +35,6 @@ export function rowInfoFacts(surface: QueueSurfaceWire): readonly RowInfoFact[] 
   }
   if (surface.liveMessage.state === "absent") absent("Live message", surface.liveMessage.reason);
   if (surface.runNumber.state === "absent") absent("Run number", surface.runNumber.reason);
-  /** PRESENT — the workflow ordinal left the footer too. The footer's `#N` chip is the ATTEMPT */
   if (surface.runNumber.state === "present") {
     facts.push({ label: "Run number", state: "present", text: `#${String(surface.runNumber.value)} of this workflow` });
   }
@@ -55,7 +56,6 @@ export const QUEUE_SORTS: readonly { key: QueueSortKey; label: string; note: str
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 
-export type MemberSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "member" }>;
 
 export type OperationSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "operation" }>;
 
@@ -67,13 +67,21 @@ export interface QueueItemGroup {
   readonly key: string;
   readonly attempts: readonly QueueSurfaceWire[];
   readonly representative: QueueSurfaceWire;
+  readonly dayNumberByRunId: ReadonlyMap<string, number>;
 }
 
-function queueItemKey(surface: Pick<QueueSurfaceWire, "workflowId" | "itemId">): string {
-  return JSON.stringify([surface.workflowId, surface.itemId]);
+export function queueItemKey(surface: QueueSurfaceWire): string {
+  const sessionId = surface.session.state === "present" && surface.session.itemScope === "session" ? surface.session.sessionId : undefined;
+  return JSON.stringify([surface.workflowId, surface.itemId, sessionId]);
 }
 
-/** Keep the day's attempts under their served logical item identity. */
+/** The served layout identifies presentation batches. */
+export function lookupBatchId(surface: QueueSurfaceWire): string | undefined {
+  return surface.session.state === "present" && surface.session.presentation?.layout === "batch"
+    ? surface.session.sessionId : undefined;
+}
+
+/** Keep served attempts under their served logical item identity. */
 export function groupQueueAttempts(surfaces: readonly QueueSurfaceWire[]): readonly QueueItemGroup[] {
   const groups = new Map<string, QueueSurfaceWire[]>();
   for (const surface of surfaces) {
@@ -84,16 +92,19 @@ export function groupQueueAttempts(surfaces: readonly QueueSurfaceWire[]): reado
   }
 
   return [...groups].map(([key, unsorted]) => {
-    const attempts = [...unsorted].sort((left, right) =>
-      left.attempt - right.attempt || String(left.runId).localeCompare(String(right.runId)));
-    for (let index = 1; index < attempts.length; index += 1) {
-      if (attempts[index - 1]?.attempt === attempts[index]?.attempt) {
-        throw new Error(`queue item has duplicate attempt: ${key}`);
-      }
+    const backendAttempts = new Set<number>();
+    for (const surface of unsorted) {
+      if (!Number.isFinite(Date.parse(surface.startedAt))) throw new Error(`queue run has no valid start time: ${surface.runId}`);
+      if (backendAttempts.has(surface.attempt)) throw new Error(`queue item has duplicate attempt: ${key}`);
+      backendAttempts.add(surface.attempt);
     }
-    const representative = attempts.at(-1);
+    const chronological = [...unsorted].sort((left, right) =>
+      Date.parse(left.startedAt) - Date.parse(right.startedAt) || (left.runId < right.runId ? -1 : left.runId > right.runId ? 1 : 0));
+    const dayNumberByRunId = new Map(chronological.map((surface, index) => [String(surface.runId), index + 1]));
+    const attempts = chronological.toReversed();
+    const representative = attempts[0];
     if (representative === undefined) throw new Error(`queue item has no attempts: ${key}`);
-    return { key, attempts, representative };
+    return { key, attempts, representative, dayNumberByRunId };
   });
 }
 
@@ -111,6 +122,13 @@ export function filterQueueSurfaces(
     groupQueueAttempts(surfaces.filter(matches)).map((group) => group.key),
   );
 
+  const batches = new Set(surfaces.filter(surface => includedItems.has(queueItemKey(surface)))
+    .map(lookupBatchId).filter(id => id !== undefined));
+  for (const surface of surfaces) {
+    const batchId = lookupBatchId(surface);
+    if (batchId !== undefined && batches.has(batchId)) includedItems.add(queueItemKey(surface));
+  }
+
   // An included operation retains its served child set. A child that matches
   // on its own remains visible and keeps all of its attempts too.
   let changed = true;
@@ -120,10 +138,17 @@ export function filterQueueSurfaces(
       .filter((surface) => includedItems.has(queueItemKey(surface)) && surface.surfaceKind === "operation")
       .map((surface) => String(surface.runId)));
     for (const surface of surfaces) {
-      if (surface.lineage.state !== "child" || !includedParents.has(String(surface.lineage.parentRunId))) continue;
+      if (surface.parent === null || !includedParents.has(String(surface.parent.runId))) continue;
       const key = queueItemKey(surface);
       if (includedItems.has(key)) continue;
       includedItems.add(key);
+      changed = true;
+    }
+    for (const surface of surfaces) {
+      if (!includedItems.has(queueItemKey(surface)) || !isQueueMember(surface)) continue;
+      const parent = surfaces.find(candidate => candidate.runId === surface.parent?.runId);
+      if (parent === undefined || includedItems.has(queueItemKey(parent))) continue;
+      includedItems.add(queueItemKey(parent));
       changed = true;
     }
   }
@@ -141,7 +166,7 @@ export function toggleCheckedByYou(previous: ReadonlySet<string>, runId: string)
 
 /** Only members present in this view count toward its local tally. A saved id
  * from another operation cannot inflate a group it does not belong to. */
-export function checkedByYouCount(members: readonly MemberSurfaceWire[], checkedIds: ReadonlySet<string>): number {
+export function checkedByYouCount(members: readonly QueueSurfaceWire[], checkedIds: ReadonlySet<string>): number {
   return members.filter((member) => checkedIds.has(String(member.runId))).length;
 }
 
@@ -166,7 +191,7 @@ export const BAND_LABEL: Record<QueueBandKey, string> = {
 
 /** Bands count drawn rows; only the served status projection reports day totals. */
 export function bandOf(status: ProposedStatus): QueueBandKey {
-  if (status === "waiting" || status === "parked") return "attention";
+  if (status === "waiting" || status === "parked" || status === "failed") return "attention";
   if (status === "running" || status === "cancelling") return "active";
   if (status === "queued") return "queued";
   return "finished";
@@ -188,7 +213,9 @@ const SORT_STATUS_RANK: Record<ProposedStatus, number> = {
 };
 
 /** Unknown terminal duration sorts by elapsed-to-now; rendering still preserves its unknown end reason. */
-function elapsedMs(surface: QueueSurfaceWire, nowIso: string): number {
+type QueueSortRow = Pick<QueueSurfaceWire, "status" | "startedAt" | "endedAt">;
+
+function elapsedMs(surface: QueueSortRow, nowIso: string): number {
   const started = Date.parse(surface.startedAt);
   const ended = surface.endedAt.state === "present" ? Date.parse(surface.endedAt.value) : Date.parse(nowIso);
   return Math.max(0, ended - started);
@@ -197,6 +224,13 @@ function elapsedMs(surface: QueueSurfaceWire, nowIso: string): number {
 /** Keep operator displayName separate from system title so renamed subjects remain identifiable. */
 export function queueRowTitle(surface: QueueSurfaceWire): string {
   return surface.displayName.state === "present" ? surface.displayName.value : surface.title;
+}
+
+/** What an in-place rename sends. Empty clears a custom name; an unchanged visible name is not a command. */
+export function queueRenameDraft(surface: QueueSurfaceWire, draft: string): string | undefined {
+  const trimmed = draft.trim();
+  if (trimmed.length === 0) return surface.displayName.state === "present" ? "" : undefined;
+  return trimmed === queueRowTitle(surface) ? undefined : trimmed;
 }
 
 /** Renamed rows disclose their original subject; unchanged titles need no explanatory tooltip. */
@@ -213,21 +247,24 @@ export function queueGateAge(surface: QueueSurfaceWire, nowIso: string): string 
     : undefined;
 }
 
-/** Visual and spoken gate age use one fold so they cannot disagree. */
-export function queueRowAccessibleName(surface: QueueSurfaceWire, nowIso: string): string {
-  return `${queueRowTitle(surface)} — ${statusAccessibleName(
-    dsStatusOf(surface.status),
-    queueGateAge(surface, nowIso),
-  ).toLowerCase()}`;
+export function queuePauseLabel(surface: QueueSurfaceWire): "Paused" | "Pausing" | undefined {
+  return surface.pauseControl?.state === "paused" ? "Paused" : surface.pauseControl?.state === "pause-pending" ? "Pausing" : undefined;
 }
 
-export function sortQueueBand(
-  rows: readonly QueueSurfaceWire[],
+export function queueRowAccessibleName(surface: QueueSurfaceWire, nowIso: string): string {
+  return `${queueRowTitle(surface)} — ${(queuePauseLabel(surface) ?? statusAccessibleName(
+    dsStatusOf(surface.status),
+    queueGateAge(surface, nowIso),
+  )).toLowerCase()}`;
+}
+
+export function sortQueueBand<Row extends QueueSortRow>(
+  rows: readonly Row[],
   key: QueueSortKey,
   nowIso: string,
-): readonly QueueSurfaceWire[] {
-  const born = (surface: QueueSurfaceWire): number => Date.parse(surface.startedAt);
-  const rank = (surface: QueueSurfaceWire): number => SORT_STATUS_RANK[dsStatusOf(surface.status)];
+): readonly Row[] {
+  const born = (surface: Row): number => Date.parse(surface.startedAt);
+  const rank = (surface: Row): number => SORT_STATUS_RANK[dsStatusOf(surface.status)];
   return [...rows].sort((a, b) => {
     if (key === "newest") return born(b) - born(a);
     if (key === "oldest") return born(a) - born(b);
@@ -239,7 +276,7 @@ export function sortQueueBand(
 }
 
 /** The view and keyboard navigation share the same row order. */
-export function queueDisplayGroups(rows: readonly QueueSurfaceWire[], sort: QueueSortKey, nowIso: string): readonly { key: QueueBandKey | null; label: string; rows: readonly QueueSurfaceWire[] }[] {
+export function queueDisplayGroups<Row extends QueueSortRow>(rows: readonly Row[], sort: QueueSortKey, nowIso: string): readonly { key: QueueBandKey | null; label: string; rows: readonly Row[] }[] {
   if (sort !== "attention") return [{ key: null, label: "", rows: sortQueueBand(rows, sort, nowIso) }];
   return BAND_ORDER.map(key => ({ key, label: BAND_LABEL[key], rows: sortQueueBand(rows.filter(row => bandOf(dsStatusOf(row.status)) === key), sort, nowIso) }));
 }
@@ -295,7 +332,7 @@ const MEMBER_TIER: Record<ProposedStatus, number> = {
   verifiedDone: 6,
 };
 
-export function orderMembers(members: readonly MemberSurfaceWire[]): MemberSurfaceWire[] {
+export function orderMembers(members: readonly QueueSurfaceWire[]): QueueSurfaceWire[] {
   return [...members]
     .map((surface, index) => ({ surface, index }))
     .sort((a, b) => {
@@ -305,94 +342,155 @@ export function orderMembers(members: readonly MemberSurfaceWire[]): MemberSurfa
     .map(({ surface }) => surface);
 }
 
+export function queueMemberSelection(member: QueueRecordMember): QueueMemberSelection {
+  if (member.kind === "record") return { kind: member.kind, record: member.record };
+  if (member.kind === "reading") return { kind: member.kind, ownerRunId: member.ownerRunId };
+  return { kind: member.kind, ownerRunId: member.ownerRunId, sourcePage: member.sourcePage };
+}
+
+export function queueMemberKey(selection: QueueMemberSelection): string {
+  if (selection.kind === "record") return JSON.stringify([selection.kind, selection.record.runId, selection.record.recordId]);
+  if (selection.kind === "reading") return JSON.stringify([selection.kind, selection.ownerRunId]);
+  return JSON.stringify([selection.kind, selection.ownerRunId, selection.sourcePage]);
+}
+
+export type QueueMemberLine = Readonly<{ kind: "run"; key: string; item: QueueItemGroup }>
+  | Readonly<{ kind: "record"; key: string; member: QueueRecordMember }>;
+
+export function queueMemberLines(surface: OperationSurfaceWire | QueueBatch, members: readonly QueueSurfaceWire[]): readonly QueueMemberLine[] {
+  if ("kind" in surface) return surface.items.map(item => ({ kind: "run" as const, key: item.key, item }))
+    .sort((a, b) => MEMBER_TIER[dsStatusOf(a.item.representative.status)] - MEMBER_TIER[dsStatusOf(b.item.representative.status)]);
+  const covered = new Set(surface.recordMembers?.runIds ?? []);
+  const runs: QueueMemberLine[] = groupQueueAttempts(members.filter(member => !covered.has(member.runId)))
+    .map(item => ({ kind: "run", key: item.key, item }));
+  const records: QueueMemberLine[] = (surface.recordMembers?.members ?? [])
+    .map(member => ({ kind: "record", key: queueMemberKey(queueMemberSelection(member)), member }));
+  const status = (line: QueueMemberLine) => line.kind === "run" ? line.item.representative.status : line.member.status;
+  return [...runs, ...records].sort((a, b) => MEMBER_TIER[dsStatusOf(status(a))] - MEMBER_TIER[dsStatusOf(status(b))]);
+}
+
+export function queueMemberPresentation(line: QueueMemberLine, selectedRunId?: string) {
+  if (line.kind === "record") return { key: line.key, title: line.member.title, status: line.member.status,
+    statusLabel: line.member.statusLabel, statusAccessibleLabel: line.member.statusLabel, paused: false, buttonTitle: line.member.title,
+    accessibleName: `${line.member.title} ${line.member.statusLabel.toLowerCase()}`, native: undefined };
+  const item = line.item;
+  const surface = item.attempts.find(attempt => attempt.runId === selectedRunId) ?? item.representative;
+  const pause = queuePauseLabel(surface), status = dsStatusOf(surface.status), title = queueRowTitle(surface);
+  return { key: String(surface.runId), title, status: surface.status, paused: pause === "Paused",
+    statusLabel: pause ?? surface.outcome?.label ?? statusText(status), statusAccessibleLabel: pause ?? surface.outcome?.label ?? statusAccessibleName(status), buttonTitle: surface.subtitle.state === "present" ? surface.subtitle.value : surface.subtitle.reason,
+    accessibleName: `${title} ${surface.subtitle.state === "present" ? surface.subtitle.value : (pause ?? statusAccessibleName(status)).toLowerCase()}`,
+    native: { surface, item } };
+}
+
+export function queueMemberRollup(surface: OperationSurfaceWire | QueueBatch, members: readonly QueueSurfaceWire[]) {
+  if (!("kind" in surface) && surface.recordMembers === undefined) return surface.memberRollup;
+  const statuses = queueMemberLines(surface, members).map(line => line.kind === "run" ? line.item.representative.status : line.member.status);
+  return { total: statuses.length, terminal: statuses.filter(status => ["done", "failed", "cancelled", "partial"].includes(status)).length,
+    failed: statuses.filter(status => status === "failed").length };
+}
+
+export type QueueKeyboardEntry = Readonly<{ key: string; status: QueueSurfaceWire["status"] } & (
+  { kind: "run"; runId: string } | { kind: "record"; member: QueueRecordMember })>;
+
 /* ── the panel ───────────────────────────────────────────────────────────── */
 
-/** Read served containment; member rows cannot also appear as top-level work. */
+/** Inline and hidden children remain within their parent even when that parent is unloaded. */
 export function partition(surfaces: readonly QueueSurfaceWire[]): {
   top: QueueSurfaceWire[];
-  membersOf: Map<string, MemberSurfaceWire[]>;
+  membersOf: Map<string, QueueSurfaceWire[]>;
 } {
-  const byRunId = new Map<string, MemberSurfaceWire>();
+  const byRunId = new Map<string, QueueSurfaceWire>();
   for (const surface of surfaces) {
-    if (surface.surfaceKind === "member") byRunId.set(surface.runId, surface);
+    if (isQueueMember(surface)) byRunId.set(surface.runId, surface);
   }
-  const claimed = new Set<string>();
-  const membersOf = new Map<string, MemberSurfaceWire[]>();
+  const membersOf = new Map<string, QueueSurfaceWire[]>();
   for (const surface of surfaces) {
     if (surface.surfaceKind !== "operation") continue;
-    const members: MemberSurfaceWire[] = [];
+    const members: QueueSurfaceWire[] = [];
     for (const runId of surface.memberRunIds) {
       const member = byRunId.get(runId);
       if (member === undefined) continue;
+      if (member.parent?.runId !== surface.runId) throw new Error("queue-member-parent-mismatch");
       members.push(member);
-      claimed.add(runId);
     }
     membersOf.set(surface.runId, members);
   }
-  const top = surfaces.filter((surface) => !claimed.has(surface.runId));
+  const top = surfaces.filter(isQueueTopLevel);
   return { top, membersOf };
 }
 
+export function queueScopeWorkflow(selected: QueueSurfaceWire, surfaces: readonly QueueSurfaceWire[]): string {
+  const rows = new Map(surfaces.map(row => [row.runId, row]));
+  const visited = new Set<string>();
+  let current = selected;
+  while (current.parent !== null && current.parent.visibility !== "linked") {
+    if (visited.has(current.runId)) throw new Error("queue-parent-cycle");
+    visited.add(current.runId);
+    const parent = rows.get(current.parent.runId);
+    if (parent === undefined) return current.parent.workflowId;
+    current = parent;
+  }
+  return current.workflowId;
+}
+
 /** Keyboard traversal follows drawn rows, including expanded members. */
-export function visibleRunIds(
-  surfaces: readonly QueueSurfaceWire[],
-  sort: QueueSortKey = "attention",
-  nowIso: string = new Date(0).toISOString(),
-): string[] {
+export function queueKeyboardEntries(
+  surfaces: readonly QueueSurfaceWire[], sort: QueueSortKey = "attention", nowIso: string = new Date(0).toISOString(),
+): readonly QueueKeyboardEntry[] {
   const { top, membersOf } = partition(surfaces);
   const { displayTop, itemByRunId } = queueItemLayout(top);
-  const ids: string[] = [];
-  const addAttempts = (surface: QueueSurfaceWire): void => {
+  const entries: QueueKeyboardEntry[] = [];
+  const append = (surface: QueueSurfaceWire, item: QueueItemGroup): void => {
+    entries.push(...item.attempts.toReversed().map(attempt => ({ kind: "run" as const, key: String(attempt.runId),
+      runId: String(attempt.runId), status: item.representative.status })));
+    if (surface.surfaceKind !== "operation") return;
+    for (const line of queueMemberLines(surface, membersOf.get(surface.runId) ?? [])) {
+      if (line.kind === "run") append(line.item.representative, line.item);
+      else entries.push({ kind: "record", key: line.key, member: line.member, status: line.member.status });
+    }
+  };
+  for (const group of queueDisplayGroups(displayTop, sort, nowIso)) for (const surface of group.rows) {
+    if ("kind" in surface) {
+      for (const line of queueMemberLines(surface, [])) if (line.kind === "run") append(line.item.representative, line.item);
+      continue;
+    }
     const item = itemByRunId.get(String(surface.runId));
     if (item === undefined) throw new Error(`queue keyboard order lost item ${String(surface.itemId)}`);
-    ids.push(...item.attempts.map((attempt) => String(attempt.runId)));
-  };
-  for (const group of queueDisplayGroups(displayTop, sort, nowIso)) {
-    const band = group.rows;
-    for (const surface of band) {
-      addAttempts(surface);
-      const memberGroups = groupQueueAttempts(membersOf.get(surface.runId) ?? []);
-      for (const member of orderMembers(memberGroups.map((group) => group.representative) as MemberSurfaceWire[])) {
-        const item = memberGroups.find((group) => group.representative.runId === member.runId);
-        if (item === undefined) throw new Error(`queue keyboard order lost member item ${String(member.itemId)}`);
-        ids.push(...item.attempts.map((attempt) => String(attempt.runId)));
-      }
-    }
+    append(surface, item);
   }
-  return ids;
+  return entries;
+}
+
+export function visibleQueueKeys(surfaces: readonly QueueSurfaceWire[], sort: QueueSortKey = "attention", nowIso: string = new Date(0).toISOString()): readonly string[] {
+  return queueKeyboardEntries(surfaces, sort, nowIso).map(entry => entry.key);
 }
 
 /** Attention shortcuts use the same visible order and bands as the queue. */
-export function attentionRunIds(
-  surfaces: readonly QueueSurfaceWire[],
-  sort: QueueSortKey = "attention",
-  nowIso: string = new Date(0).toISOString(),
-): string[] {
-  const attention = new Set<string>(
-    groupQueueAttempts(surfaces)
-      .map((group) => group.representative)
-      .filter((surface) => bandOf(dsStatusOf(surface.status)) === "attention")
-      .map((surface) => String(surface.runId)),
-  );
-  return visibleRunIds(surfaces, sort, nowIso).filter((runId) => attention.has(runId));
+export function attentionQueueKeys(surfaces: readonly QueueSurfaceWire[], sort: QueueSortKey = "attention", nowIso: string = new Date(0).toISOString()): readonly string[] {
+  return queueKeyboardEntries(surfaces, sort, nowIso).filter(entry => bandOf(dsStatusOf(entry.status)) === "attention").map(entry => entry.key);
 }
 
-export interface QueueBatch {
+export interface QueueBatch extends QueueSortRow {
+  readonly kind: "batch";
+  readonly key: string;
   readonly id: string;
   readonly version: number;
   readonly groupInQueue: boolean;
-  readonly startedAt: string;
+  readonly layout: "items" | "batch";
+  readonly workflowId: QueueSurfaceWire["workflowId"];
+  readonly origin: Extract<QueueSurfaceWire["session"], { state: "present" }>["origin"];
   readonly representative: QueueSurfaceWire;
+  readonly items: readonly QueueItemGroup[];
   readonly members: readonly QueueSurfaceWire[];
   readonly history: readonly QueueSurfaceWire[];
   readonly band: QueueBandKey;
 }
 
-/** Groups only the loaded scope. A batch is presentation, never a synthetic run. */
+/** A day-scoped presentation, never a synthetic run or a complete-session claim. */
 export function queueBatches(rows: readonly QueueSurfaceWire[]): readonly QueueBatch[] {
   const groups = new Map<string, QueueSurfaceWire[]>();
   for (const row of rows) {
-    if (row.containment !== "root" || row.surfaceKind === "operation" || row.session.state !== "present" || row.session.presentation === undefined) continue;
+    if (row.parent !== null || row.surfaceKind === "operation" || row.session.state !== "present" || row.session.presentation === undefined) continue;
     const members = groups.get(row.session.sessionId) ?? [];
     members.push(row);
     groups.set(row.session.sessionId, members);
@@ -401,29 +499,52 @@ export function queueBatches(rows: readonly QueueSurfaceWire[]): readonly QueueB
     const first = rows[0];
     if (first === undefined || first.session.state !== "present" || first.session.presentation === undefined) throw new Error("batch has no presentation");
     const presentation = first.session.presentation;
-    const latest = new Map<string, QueueSurfaceWire>();
+    const attempts = new Set<string>();
     for (const row of rows) {
       const session = row.session;
       if (session.state !== "present" || session.presentation === undefined) throw new Error("batch member lacks item identity");
-      if (row.workflowId !== first.workflowId || session.presentation.version !== presentation.version || session.presentation.groupInQueue !== presentation.groupInQueue || session.presentation.startedAt !== presentation.startedAt) throw new Error("batch members disagree about their presentation");
-      const previous = latest.get(row.itemId);
-      if (previous === undefined || previous.attempt < row.attempt) latest.set(row.itemId, row);
-      else if (previous.attempt === row.attempt) throw new Error("batch has duplicate item attempt");
+      if (row.workflowId !== first.workflowId || session.presentation.version !== presentation.version || session.presentation.layout !== presentation.layout || session.presentation.groupInQueue !== presentation.groupInQueue || session.presentation.startedAt !== presentation.startedAt
+        || JSON.stringify(session.origin) !== JSON.stringify(first.session.origin)) throw new Error("batch members disagree about their presentation");
+      const attempt = JSON.stringify([row.itemId, row.attempt]);
+      if (attempts.has(attempt)) throw new Error("batch has duplicate item attempt");
+      attempts.add(attempt);
     }
-    const members = [...latest.values()];
-    const latestIds = new Set(members.map((row) => row.runId));
-    const history = rows.filter((row) => !latestIds.has(row.runId));
-    const band = BAND_ORDER.find((key) => members.some((row) => bandOf(dsStatusOf(row.status)) === key));
+    const items = groupQueueAttempts(rows).map(item => ({ ...item,
+      representative: item.attempts.reduce((current, attempt) => attempt.attempt > current.attempt ? attempt : current, item.representative),
+    }));
+    const members = items.map(item => item.representative);
+    const latestIds = new Set(members.map(row => row.runId));
+    const history = rows.filter(row => !latestIds.has(row.runId));
+    const band = BAND_ORDER.find(key => members.some(row => bandOf(dsStatusOf(row.status)) === key));
     if (band === undefined) throw new Error("batch has no queue band");
-    return { id, ...presentation, representative: first, members, history, band };
+    const statuses = members.filter(row => bandOf(dsStatusOf(row.status)) === band).map(row => row.status);
+    let status = [...statuses].sort((a, b) => SORT_STATUS_RANK[dsStatusOf(a)] - SORT_STATUS_RANK[dsStatusOf(b)])[0];
+    if (status === undefined) throw new Error("batch has no status");
+    if (band === "finished" && statuses.includes("done") && statuses.includes("cancelled") && status === "done") status = "partial";
+    const absentEnd = { state: "absent" as const, reason: band === "finished"
+      ? "A person's recorded end time is unavailable." : "People on this day are still in progress." };
+    const endedAt = band === "finished" && members.every(row => row.endedAt.state === "present")
+      ? members.reduce<QueueSurfaceWire["endedAt"]>((latest, row) => row.endedAt.state === "present"
+        && (latest.state === "absent" || Date.parse(row.endedAt.value) > Date.parse(latest.value)) ? row.endedAt : latest, absentEnd)
+      : absentEnd;
+    return { kind: "batch", key: `batch:${id}`, id, ...presentation, workflowId: first.workflowId, origin: first.session.origin,
+      representative: first, items, members, history, band, status, endedAt };
   });
 }
 
-/** Logical items stay separate regardless of the served session's grouping preference. */
+/** Consume the served batch layout without choosing workflow eligibility. */
 export function queueItemLayout(top: readonly QueueSurfaceWire[]) {
   const itemGroups = groupQueueAttempts(top);
-  const itemByRunId = new Map(itemGroups.flatMap((group) =>
-    group.attempts.map((attempt) => [String(attempt.runId), group] as const)));
-  const displayTop = itemGroups.map((group) => group.representative);
+  const itemByRunId = new Map(itemGroups.flatMap(group =>
+    group.attempts.map(attempt => [String(attempt.runId), group] as const)));
+  const batches = queueBatches(top).filter(batch => batch.layout === "batch");
+  const batchByRunId = new Map(batches.flatMap(batch => [...batch.members, ...batch.history].map(row => [row.runId, batch] as const)));
+  const seen = new Set<string>();
+  const displayTop: (QueueSurfaceWire | QueueBatch)[] = [];
+  for (const item of itemGroups) {
+    const batch = batchByRunId.get(item.representative.runId);
+    if (batch === undefined) displayTop.push(item.representative);
+    else if (!seen.has(batch.id)) { seen.add(batch.id); displayTop.push(batch); }
+  }
   return { displayTop, itemGroups, itemByRunId };
 }

@@ -20,6 +20,7 @@ export function redactObservedDataPoints(
   return Object.freeze(points.map((point) => Object.freeze(ObservedDataPointSchema.parse({
     direction: point.direction,
     field: point.field,
+    ...(point.origins === undefined ? {} : { origins: point.origins }),
     values: evidenceLeaves(point.value, point.field).map((leaf) => redactEvidenceLeaf(scope, leaf)),
   }))));
 }

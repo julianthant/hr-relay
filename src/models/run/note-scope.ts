@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { localDatePart } from "../../rules/time/clock.js";
 import type { RunRecord } from "./record.js";
+import { recoveryActivitySpanPath, type RecoveryActivity } from "./recovery-activity.js";
 
 /** One durable instant the window is composed from, with the name of the fact it is. */
 export const RunNoteScopeInstantSchema = z.strictObject({
@@ -73,7 +74,9 @@ export function runNotePartitionScope(input: {
 /** The producer-side half: refuse, by name, a note whose append-at-now partition falls outside the window the reader would open. */
 export function assertNoteWithinRunScope(
   authority: RunRecord,
-  note: { readonly runId: string; readonly workflow: string; readonly at: Date },
+  note: { readonly runId: string; readonly workflow: string; readonly at: Date;
+    readonly attempt?: number; readonly traceId?: string; readonly spanPath?: string },
+  recovery?: RecoveryActivity,
 ): void {
   if (note.runId !== authority.envelope.runId) {
     throw new Error(
@@ -91,6 +94,15 @@ export function assertNoteWithinRunScope(
       `refusing to file a note for run ${note.runId} under workflow ${note.workflow}: the run belongs to `
       + `${scope.workflow}, and the logs reader opens that workflow's partitions alone, so the line would never be served`,
     );
+  }
+  if (recovery !== undefined) {
+    if (recovery.runId !== note.runId || recovery.workflow !== note.workflow
+      || recovery.attempt !== authority.envelope.attempt || recovery.attempt !== note.attempt
+      || recovery.traceId !== authority.envelope.traceId || recovery.traceId !== note.traceId
+      || note.spanPath !== recoveryActivitySpanPath(recovery) || note.at.getTime() < Date.parse(recovery.openedAt)) {
+      throw new Error("recovery-activity-note-scope-mismatch");
+    }
+    return;
   }
   const day = localDatePart(note.at);
   if (day < scope.fromDate || day > scope.toDate) {

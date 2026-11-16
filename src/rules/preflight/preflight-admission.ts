@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import type { Clock } from "../time/clock.js";
 import { ConfigSnapshotIdSchema, FingerprintSchema } from "../identity/ids.js";
 import { PreflightReportWireSchema, RuntimeCapabilitySchema } from "../../models/preflight/preflight-contract.js";
 import { createPreflightAuthority, type PreflightDeadlineScheduler, type PreflightRunner } from "../../models/preflight/preflight.js";
+import { bindErrorOrigin } from "../../models/failures/error-origins.js";
 
 export const PreflightAdmissionScopeSchema = z.strictObject({
   configSnapshotId: ConfigSnapshotIdSchema,
@@ -14,8 +16,22 @@ export const PreflightAdmissionScopeSchema = z.strictObject({
 export type PreflightAdmissionScope = z.infer<typeof PreflightAdmissionScopeSchema>;
 export type PreflightReport = z.infer<typeof PreflightReportWireSchema>;
 export class PreflightAdmissionRefusal extends Error {
-  constructor(readonly reason: "unavailable" | "stale" | "blocked" | "scope-mismatch", message: string, options?: ErrorOptions) {
-    super(message, options); this.name = "PreflightAdmissionRefusal";
+  /** Value-free detector summaries of the failing checks, for diagnostics only. */
+  readonly observationSummary: string | undefined;
+  constructor(readonly reason: "unavailable" | "stale" | "blocked" | "scope-mismatch" | "observation-changed", message: string, options?: ErrorOptions & { observationSummary?: string }) {
+    super(message, options); this.name = "PreflightAdmissionRefusal"; this.observationSummary = options?.observationSummary;
+  }
+}
+export class PreflightObservationChangedError extends PreflightAdmissionRefusal {
+  constructor(options?: ErrorOptions) {
+    super("observation-changed", ERROR_CATALOG.PREFLIGHT_OBSERVATION_CHANGED.text, options);
+    this.name = "PreflightObservationChangedError";
+  }
+}
+bindErrorOrigin(PreflightObservationChangedError, "preflight-observation-changed");
+export class PreflightEvidenceExpiredError extends PreflightAdmissionRefusal {
+  constructor(readonly report: PreflightReport) {
+    super("stale", ERROR_CATALOG.PREFLIGHT_EVIDENCE_EXPIRED.text); this.name = "PreflightEvidenceExpiredError";
   }
 }
 export interface PreflightAdmission {
@@ -44,7 +60,8 @@ export function createPreflightAdmission(input: Readonly<{
     }
     if (entry.observationIdentity !== input.observationIdentity?.(scope)) throw new PreflightAdmissionRefusal("stale", "Protected settings changed; re-check readiness.");
     const age = input.clock.monotonicMs() - entry.completedAt;
-    if (age < 0 || age >= freshnessMs) throw new PreflightAdmissionRefusal("stale", "Preflight evidence expired; re-check readiness.");
+    if (age < 0) throw new PreflightAdmissionRefusal("stale", "Preflight evidence is dated in the future; re-check readiness.");
+    if (age >= freshnessMs) throw new PreflightEvidenceExpiredError(entry.report);
     return PreflightReportWireSchema.parse(entry.report);
   };
   return Object.freeze({
@@ -78,7 +95,8 @@ export function createPreflightAdmission(input: Readonly<{
     assertReady(scope: PreflightAdmissionScope): void {
       const report = read(scope);
       const blocked = report.results.filter(result => result.status === "fail");
-      if (blocked.length > 0) throw new PreflightAdmissionRefusal("blocked", `Preflight blocks this scope: ${blocked.map(result => result.check).join(", ")}.`);
+      if (blocked.length > 0) throw new PreflightAdmissionRefusal("blocked", `Preflight blocks this scope: ${blocked.map(result => result.check).join(", ")}.`,
+        { observationSummary: blocked.map(result => `${result.check}: ${result.summary}`).join("; ").slice(0, 4096) });
     },
   });
 }

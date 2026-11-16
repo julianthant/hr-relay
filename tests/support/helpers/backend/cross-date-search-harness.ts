@@ -41,11 +41,12 @@ export function insertMeasuredSearchRun(database: AuthorityDatabase, input: Seed
   const claimed = database.authority.runs.claimNext({ workflow: "separations", workerId, now });
   if (claimed.state !== "claimed") throw new Error("measured search fixture was not claimed");
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
+  const held = { workerId, claimedAt: now, heartbeatAt: now };
   const validating = database.authority.runs.transition({
     runId: queued.envelope.runId,
     expectedVersion: claimed.run.version,
     claim,
-    lifecycle: { state: "validating", workerId, claimedAt: now, heartbeatAt: now },
+    lifecycle: { state: "validating", ...held },
     now,
   });
   if (validating.state !== "applied") throw new Error("measured search fixture did not enter validating");
@@ -53,7 +54,7 @@ export function insertMeasuredSearchRun(database: AuthorityDatabase, input: Seed
     runId: queued.envelope.runId,
     expectedVersion: validating.run.version,
     claim,
-    lifecycle: { state: "running", workerId, claimedAt: now, heartbeatAt: now },
+    lifecycle: { state: "running", ...held },
     now,
   });
   if (running.state !== "applied") throw new Error("measured search fixture did not enter running");

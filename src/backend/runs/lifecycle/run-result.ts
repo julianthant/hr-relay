@@ -1,3 +1,4 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 /** Factory-authenticated construction of durable terminal workflow results. */
 import {
   workflowTerminalResultExecution,
@@ -18,11 +19,13 @@ export function buildRunResult(
   currentRun: unknown,
   evidence: unknown,
   clock: Clock,
+  schemaReader?: EvidenceSchemaReader,
 ): Readonly<{ record: RunResultRecord; authorization: object }> {
   return workflowTerminalResultExecution(descriptor).build(
     RunRecordSchema.parse(currentRun),
     evidence,
     clock,
+    schemaReader,
   );
 }
 
@@ -33,11 +36,13 @@ export function buildRunPreviewResult(
   preview: unknown,
   evidence: unknown,
   clock: Clock,
+  schemaReader?: EvidenceSchemaReader,
 ): Readonly<{ record: RunResultRecord; authorization: object }> {
   return workflowTerminalResultExecution(descriptor).buildPreview(
     RunRecordSchema.parse(currentRun),
     preview,
     evidence,
     clock,
+    schemaReader,
   );
 }

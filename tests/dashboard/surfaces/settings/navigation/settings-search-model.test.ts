@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { searchSettings,settingsSearchIndex } from "../../../../../src/dashboard/surfaces/settings/navigation/settings-search-model.js";
 import { buildSettingsNav } from "../../../../../src/dashboard/surfaces/settings/settings-model.js";
-import { fixtureSettingsDocument } from "../../../../parity/helpers/fixture-settings.js";
+import { fixtureSettingsDocument } from "../../../../mocks/helpers/fixture-settings.js";
 
 const document = fixtureSettingsDocument();
-const groups = buildSettingsNav([], document);
-const index = settingsSearchIndex(groups, document, true);
+const groups = buildSettingsNav(document);
+const index = settingsSearchIndex(groups, document);
 
 describe("Settings field search", () => {
   it("finds pages and the displayed field names with their canonical parent page", () => {
@@ -18,19 +18,41 @@ describe("Settings field search", () => {
     ]);
     for (const [term, section, target] of [
       ["job end date", "general", `annualDates.FY${document.currentFiscalYear}.jobEndDate`],
-      ["CRM onboarding search", "routes", "urls.crm.prod.onboardingSearch"],
       ["OpenAI login", "general", "chatgpt.account"],
-      ["UCPath username", "credentials", "protected.ucpathUserId"],
-      ["runtime state folder", "paths", "paths.stateRoot"],
+      ["UCPath username", "account", "protected.ucpathUserId"],
     ]) assert.ok(searchSettings(index, term).some(result => result.entry.id === section && result.target === target), term);
+    assert.deepEqual(searchSettings(index, "runtime state folder"), []);
+    assert.deepEqual(searchSettings(index, "CRM onboarding search"), []);
+    assert.equal(index.some(result => result.entry.id === "storage" || result.entry.id === "routes" || result.entry.id === "paths"), false);
     assert.equal(new Set(index.map(result => result.id)).size, index.length);
+  });
+
+  it("finds read-only profile facts without retaining the retired pseudonym field", () => {
+    assert.deepEqual(searchSettings(index, "Timekeeper name").map(result => [result.entry.id, result.target]), [["account", "profile.displayName"]]);
+    assert.deepEqual(searchSettings(index, "Timekeeper initials").map(result => [result.entry.id, result.target]), [["account", "profile.initials"]]);
+    assert.deepEqual(searchSettings(index, "pseudonym"), []);
+    assert.equal(index.some(result => result.target === "protected.timekeeperName"), false);
   });
 
   it("searches descriptions, normalizes whitespace/case, and ranks exact names first", () => {
     assert.equal(searchSettings(index, "  DARK  THEME ")[0]?.target, "appearance.theme");
-    assert.ok(searchSettings(index, "capture diagnostic").some(result => result.target === "features.debugScreenshots"));
+    assert.deepEqual(searchSettings(index, "capture diagnostic"), []);
+    assert.equal(searchSettings(index, "animations")[0]?.target, "appearance.animations");
+    assert.equal(searchSettings(index, "browser window")[0]?.target, "browser.window");
     assert.deepEqual(searchSettings(index, "   "), []);
     assert.deepEqual(searchSettings(index, "this setting does not exist"), []);
+  });
+
+  it("has no search destinations for removed permission controls", () => {
+    assert.deepEqual(searchSettings(index, "assistant permission"), []);
+    assert.deepEqual(searchSettings(index, "ask before every action"), []);
+    for (const query of ["ask before submits", "without asking"]) assert.deepEqual(searchSettings(index, query), []);
+  });
+
+  it("indexes each appearance control once through its visible destination", () => {
+    assert.deepEqual(searchSettings(index, "theme").map(result => result.target), ["appearance.theme"]);
+    assert.deepEqual(searchSettings(index, "animations").map(result => result.target), ["appearance.animations"]);
+    assert.equal(index.some(result => result.target?.startsWith("preferences.")), false);
   });
 
   it("never searches or serializes current values, secrets, or source paths", () => {
@@ -50,10 +72,9 @@ describe("Settings field search", () => {
   });
 
   it("retains page search when reads fail without inventing served fields", () => {
-    const unavailable = settingsSearchIndex(buildSettingsNav([]));
+    const unavailable = settingsSearchIndex(buildSettingsNav());
     assert.ok(searchSettings(unavailable, "performance").some(result => result.target === undefined));
     assert.deepEqual(searchSettings(unavailable, "backoff"), []);
     assert.deepEqual(searchSettings(unavailable, "runtime state folder"), []);
-    assert.deepEqual(searchSettings(settingsSearchIndex(groups, undefined, true), "runtime state folder"), []);
   });
 });

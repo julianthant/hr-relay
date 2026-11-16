@@ -73,6 +73,7 @@ export function timelineEventFromRow(raw: unknown): TimelineEventRecord {
 }
 
 function timelineRetentionClass(record: z.infer<typeof TimelineAppendSchema>) {
+  if (record.payload.kind === "recovery-activity-started" || record.payload.kind === "recovery-activity-ended") return "protected";
   if (record.payload.kind === "operation-confirmed") return "confirmed-operation";
   if (record.payload.kind === "debug" && record.payload.event.pinned) return "protected";
   if (record.payload.kind === "span" && record.payload.event.t === "span.ended" && ["failed", "interrupted"].includes(record.payload.event.outcome)) return "protected";
@@ -182,6 +183,13 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
         return Object.freeze(rows.map(timelineEventFromRow));
       });
     },
+    lastWorkerClaim(workerId: string) {
+      return ports.read(() => {
+        const row = prepare(`SELECT * FROM timeline_events WHERE kind='run.claimed'
+          AND json_extract(payload_json,'$.payload.event.workerId')=? ORDER BY cursor DESC LIMIT 1`).get(z.string().min(1).parse(workerId));
+        return row === undefined ? undefined : timelineEventFromRow(row);
+      });
+    },
     highWaterMark() {
       return ports.read(() => HighWaterMarkSchema.parse(prepare(
         "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'timeline_events'), 0) AS cursor",
@@ -192,6 +200,7 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       return ports.mutate(() => {
         const result = prepare(
           `DELETE FROM timeline_events WHERE retention_class = 'ordinary'
+            AND kind <> 'gate.resolved'
             AND retention_date < CASE WHEN json_extract(payload_json,'$.payload.event.category')='sse'
               AND json_extract(payload_json,'$.payload.event.phase')='settled' THEN date(?,'+23 days') ELSE ? END
             AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.id=timeline_events.run_id AND r.state<>'terminal')

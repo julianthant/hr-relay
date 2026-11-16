@@ -60,13 +60,12 @@ afterEach(_afterEachFixture0);
     const frontendPort = await occupiedPort(true);
     const composed = composeRunners_m1({
       repoRoot: root, stateRoot, artifactRoot: join(stateRoot, "artifacts"),
-      processLockRoot: join(stateRoot, "locks"), config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config,
+      config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config,
       backendPort: 0, frontendPort, frontendOwnerNonce: "a".repeat(64), clock,
       authorityHealth: {
         check: PreflightCheckIdSchema.parse("authority.health"), kind: "io",
         async run() { throw new Error("ports check must not run authority health"); },
       },
-      listLiveWorkerProcesses: () => [],
     });
     const runner = composed.runners.find(({ check }) => check === "ports.available");
     assert.ok(runner);
@@ -111,9 +110,7 @@ afterEach(_afterEachFixture0);
       frontendPort: 0,
       authorityHealth,
       clock: manualClock(new Date(NOW)),
-      processLockRoot: join(stateRoot, "locks"),
       frontendProbe: async () => { throw new Error("port 0 must not invoke the frontend probe"); },
-      listLiveWorkerProcesses: () => [],
     });
 
     const observations = await Promise.all(runners.runners.map((runner) =>
@@ -166,9 +163,7 @@ afterEach(_afterEachFixture0);
       backendPort: 0,
       frontendPort,
       clock: manualClock(new Date(NOW)),
-      processLockRoot: join(stateRoot, "locks"),
       authorityHealth,
-      listLiveWorkerProcesses: () => [],
     } as const;
     const foreign = composeRunners_m1({ ...options, frontendProbe: foreignProbe });
     const portsRunner = foreign.runners.find(({ check }) => check === "ports.available");
@@ -211,13 +206,12 @@ const PASSIVE_DEADLINE_SCHEDULER: MonotonicDeadlineScheduler = Object.freeze({
   schedule: () => Object.freeze({ cancel: () => undefined }),
 });
 
-function createDashboardPreflightRunners(input: Omit<DashboardPreflightRunnerInput, "config" | "authorityHealth" | "listLiveWorkerProcesses">
+function createDashboardPreflightRunners(input: Omit<DashboardPreflightRunnerInput, "config" | "authorityHealth">
   & { configFingerprint: string; authorityDoctorOptions: unknown; backendOwned: () => boolean }) {
   const composed = composeRunners_m1({
     ...input,
     config: resolveConfigWithProvenance({}, hostConfigFacts({}), input.clock).config,
     authorityHealth: new AuthorityHealthPreflightRunner(input.authorityDoctorOptions, input.clock),
-    listLiveWorkerProcesses: () => [],
   });
   if (input.backendOwned()) composed.markBackendOwned(input.backendPort);
   return composed.runners;
@@ -245,7 +239,18 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(result, { state: "owned" });
   });
 
+  it("accepts the dashboard index after Vite stamps its entry with a hot-update timestamp", async () => {
+    const { result } = await probeViteIdentity({
+      owner: OWNER_NONCE,
+      index: '<title>Relay</title><script type="module" src="/app/main.tsx?t=1793770896671"></script>',
+      client: OWNED_VITE_CLIENT,
+    });
+
+    assert.deepEqual(result, { state: "owned" });
+  });
+
   it.each([
+    ["dashboard entry query", { owner: OWNER_NONCE, index: '<title>Relay</title><script type="module" src="/app/main.tsx?foreign=1"></script>', client: OWNED_VITE_CLIENT }, "index-identity-invalid", [DASHBOARD_FRONTEND_OWNER_PATH, "/"]],
     ["launcher nonce", { owner: FOREIGN_NONCE, index: OWNED_VITE_INDEX, client: OWNED_VITE_CLIENT }, "owner-proof-invalid", [DASHBOARD_FRONTEND_OWNER_PATH]],
     ["dashboard index", { owner: OWNER_NONCE, index: '<title>Foreign</title><script type="module" src="/app/main.tsx"></script>', client: OWNED_VITE_CLIENT }, "index-identity-invalid", [DASHBOARD_FRONTEND_OWNER_PATH, "/"]],
     ["Vite client", { owner: OWNER_NONCE, index: OWNED_VITE_INDEX, client: "export function createForeignContext() {}" }, "vite-client-identity-invalid", [DASHBOARD_FRONTEND_OWNER_PATH, "/", "/@vite/client"]],
@@ -283,7 +288,6 @@ afterEach(_afterEachFixture0);
         repoRoot: process.cwd(),
         stateRoot,
         artifactRoot,
-        processLockRoot: join(stateRoot, "locks"),
         backendPort: 0,
         frontendPort: address.port,
         frontendOwnerNonce: OWNER_NONCE,
@@ -326,7 +330,6 @@ afterEach(_afterEachFixture0);
       repoRoot,
       stateRoot,
       artifactRoot,
-      processLockRoot: join(stateRoot, "locks"),
       backendPort: 0,
       frontendPort: 0,
       backendOwned: () => false,
@@ -369,7 +372,6 @@ afterEach(_afterEachFixture0);
       repoRoot: process.cwd(),
       stateRoot,
       artifactRoot,
-      processLockRoot: join(stateRoot, "locks"),
       backendPort: 0,
       frontendPort: 0,
       backendOwned: () => false,
@@ -398,53 +400,6 @@ afterEach(_afterEachFixture0);
       state: "unhealthy",
       summary: "configured rebuild storage could not be verified (filesystem-root-unavailable: .tracker, artifacts)",
       impact: "authority or evidence writes cannot be admitted",
-    });
-    assert.equal(observation.summary.includes(root), false);
-    assert.equal(observation.summary.includes("10873698"), false);
-  });
-
-  it("serves only the process-lock root basename when ownership evidence is malformed", async () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-preflight-employee-10873698-"));
-    roots.push(root);
-    const stateRoot = join(root, ".tracker");
-    const artifactRoot = join(stateRoot, "artifacts");
-    const processLockRoot = join(stateRoot, "locks");
-    mkdirSync(artifactRoot, { recursive: true });
-    mkdirSync(processLockRoot, { recursive: true });
-    writeFileSync(join(processLockRoot, "server.lock.json"), "not-json");
-    const runner = createDashboardPreflightRunners({
-      repoRoot: process.cwd(),
-      stateRoot,
-      artifactRoot,
-      processLockRoot,
-      backendPort: 0,
-      frontendPort: 0,
-      backendOwned: () => false,
-      configFingerprint: FINGERPRINT,
-      authorityDoctorOptions: {
-        stateRootTrustAnchor: root,
-        stateRoot,
-        authorityPath: join(stateRoot, "state.db"),
-        backupDirectory: join(stateRoot, "backups", "authority"),
-        maxBackupAgeMs: 60_000,
-        busyTimeoutMs: 100,
-      },
-      clock: CLOCK,
-    }).find(({ check }) => check === "process.orphans");
-    if (runner === undefined) throw new Error("dashboard preflight omitted process.orphans");
-
-    const observation = await executePreflightRunner(
-      runner,
-      new AbortController().signal,
-      CLOCK,
-      PASSIVE_DEADLINE_SCHEDULER,
-    );
-
-    assert.deepEqual(observation, {
-      check: "process.orphans",
-      state: "unhealthy",
-      summary: "process-lock evidence could not be reconciled (process-lock-evidence-invalid: locks)",
-      impact: "process liveness cannot be reconciled until the malformed record is reviewed",
     });
     assert.equal(observation.summary.includes(root), false);
     assert.equal(observation.summary.includes("10873698"), false);
@@ -534,13 +489,11 @@ afterEach(_afterEachFixture0);
     roots.push(root);
     const stateRoot = join(root, ".tracker");
     const artifactRoot = join(stateRoot, "artifacts");
-    const processLockRoot = join(stateRoot, "locks");
     mkdirSync(artifactRoot, { recursive: true });
     const runners = createDashboardPreflightRunners({
       repoRoot: process.cwd(),
       stateRoot,
       artifactRoot,
-      processLockRoot,
       backendPort: 0,
       frontendPort: 0,
       backendOwned: () => false,
@@ -564,7 +517,7 @@ afterEach(_afterEachFixture0);
       clock: CLOCK,
       scheduler: PASSIVE_DEADLINE_SCHEDULER,
     }));
-    const localChecks = new Set(["runtime.compatibility", "config.valid", "filesystem.health", "process.orphans"]);
+    const localChecks = new Set(["runtime.compatibility", "config.valid", "filesystem.health"]);
     for (const runner of runners.filter(({ check }) => localChecks.has(check))) {
       const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
       assert.equal(observation.state, "healthy", runner.check);

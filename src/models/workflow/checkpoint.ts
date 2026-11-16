@@ -1,6 +1,7 @@
 import { DeclaredActionIdentitySchema } from "./operation-action-identity.js";
 /** The checkpoint record, its loader, and the freshness walk: a union loader with no defaultable shape, mandatory fingerprints, and a walk that keeps a stale read out of a live write. */
 import { z } from "zod";
+import { DataObservationOriginsSchema, observationLeafPaths } from "../events/data-observation-origin.js";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import type { FreshnessPolicy } from "../task/task-contract.js";
@@ -47,12 +48,18 @@ export const RunCheckpointRecordSchema = z.strictObject({
   provenance: z.array(FactProvenanceSchema),
   writtenAt: IsoInstantSchema,
   operationSources: z.array(z.strictObject({ path: ContractFieldPathSchema, identity: DeclaredActionIdentitySchema })).optional(),
+  observationOrigins: DataObservationOriginsSchema.optional(),
     // Operator assertions replay only under the same omission; they never substitute for live observations.
   assertion: z.strictObject({
     step: z.string().min(1),
     assertedAt: IsoInstantSchema,
   }).optional(),
 }).superRefine((record, context) => {
+  if (record.observationOrigins !== undefined) {
+    const expected = new Set(observationLeafPaths(record.output.value).map(path => JSON.stringify(path)));
+    const actual = new Set(record.observationOrigins.map(entry => JSON.stringify(entry.path)));
+    if (expected.size !== actual.size || [...expected].some(path => !actual.has(path))) context.addIssue({ code: "custom", path: ["observationOrigins"], message: "observation origins must cover exact typed output leaf addresses" });
+  }
   const paths = new Set<string>();
   for (const [index, source] of (record.operationSources ?? []).entries()) {
     const identity = source.identity;

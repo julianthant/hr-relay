@@ -5,13 +5,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath,pathToFileURL } from "node:url";
 import { describe,it } from "vitest";
-import { runSecureEnvironmentBootstrap,secureEnvironmentEntrypoint } from "../../../scripts/dev/secure-env-bootstrap.js";
+import { runSecureEnvironmentBootstrap as runBootstrap,secureEnvironmentEntrypoint } from "../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
+import { acquireRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { testProcessImport } from "../../support/compiled-process.js";
 
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
-const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const syntheticAdmission = () => RuntimeAdmission.syntheticFixture(":memory:");
+const runSecureEnvironmentBootstrap: typeof runBootstrap = (args, dependencies) => runBootstrap(args, {
+  acquireLifetimeLock: () => acquireRuntimeLifetimeLock(0), ...dependencies,
+});
 
 describe("secure environment bootstrap", () => {
   it("admits stopped boot diagnostics exclusively without provider environment or database bootstrap", async () => {
@@ -27,39 +31,6 @@ describe("secure environment bootstrap", () => {
         acquireAdmission: () => { throw new Error("invalid boot flags must refuse before admission"); },
       }), /diagnostic-boot-does-not-have-timeline-cursors/u);
     } finally { process.argv.splice(0, process.argv.length, ...original); }
-  });
-
-  it("shows the exact pending recovery operation without normal or provider admission", async () => {
-    const operationId = "11111111-1111-4111-8111-111111111111";
-    const output: string[] = [];
-    const originalWrite = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (value: string) => { output.push(value); return true; };
-    try {
-      await runSecureEnvironmentBootstrap(["cli", "storage", "relocate", "--status"], {
-        acquireAdmission: () => { throw new Error("status must not acquire normal installation admission"); },
-        assertEnvironment: () => { throw new Error("status must not read provider environment"); },
-        inspectRelocationStatus: () => ({ operationId, phase: "fenced", fromGeneration: 0 }),
-        runRelocation: () => { throw new Error("status must not resume operation"); },
-      });
-      assert.deepEqual(output, [`storage relocate: fenced operation ${operationId}; run storage relocate --resume ${operationId}\n`]);
-    } finally { process.stdout.write = originalWrite; }
-  });
-  it("dispatches exact offline admission recovery without normal admission or provider environment", async () => {
-    const output: string[] = [];
-    const original = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (value: string) => { output.push(value); return true; };
-    try {
-      await runSecureEnvironmentBootstrap(["cli", "storage", "recover-admission", "--pid", "71300"], {
-        acquireAdmission: () => { throw new Error("normal admission must not run"); },
-        assertEnvironment: () => { throw new Error("provider environment must not load"); },
-        runAdmissionRecovery: (workspace, pid) => {
-          assert.equal(workspace, REPO_ROOT);
-          assert.equal(pid, 71300);
-          return { acquisitionId: "11111111-1111-4111-8111-111111111111", pid, receiptPath: "/synthetic/receipt.json" };
-        },
-      });
-      assert.match(output.join(""), /storage admission recovered: 11111111-1111-4111-8111-111111111111/u);
-    } finally { process.stdout.write = original; }
   });
 
   it("validates the exact production bundle before authority and provider admission", async () => {
@@ -131,7 +102,7 @@ describe("secure environment bootstrap", () => {
         assertEnvironment: () => {}, admitEnvironmentFile: () => {}, runCli: async () => {},
       });
       process.stdout.write('RELEASED\\n');`;
-    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", source],
+    const child = spawnSync(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", source],
       { cwd: REPO_ROOT, encoding: "utf8", timeout: 5000 });
     assert.equal(child.status, 0, `child ended with ${String(child.signal)}: ${child.stderr}`);
     assert.match(child.stdout, /RELEASED/u);
@@ -157,7 +128,7 @@ describe("secure environment bootstrap", () => {
   });
 
   it.each([
-    ["storage", "doctor"], ["storage", "backup"], ["storage", "upgrade"], ["storage", "restore"],
+    ["storage", "doctor"], ["storage", "upgrade"],
 
     ["test-data", "check"], ["test-data", "migrate"],
   ])("isolates %s %s from provider environment admission", async (command, operation) => {
@@ -173,18 +144,21 @@ describe("secure environment bootstrap", () => {
   });
 
   it.each([
-    ["backup", "shared"], ["doctor", "shared"], ["transactions", "shared"],
-    ["upgrade", "exclusive"], ["restore", "exclusive"], ["repair", "exclusive"],
+    ["doctor", "shared"], ["transactions", "shared"],
+    ["help", "shared"], ["--help", "shared"], ["-h", "shared"],
+    ["upgrade", "exclusive"], ["repair-span-root", "exclusive"],
   ] as const)("holds %s admission in %s mode for the full CLI lifetime", async (operation, expectedMode) => {
     let finish: (() => void) | undefined;
     const running = new Promise<void>((resolve) => { finish = resolve; });
     let selectedMode: "shared" | "exclusive" | undefined;
     let held: RuntimeAdmission | undefined;
+    const admitted = Promise.withResolvers<void>();
     const launch = runSecureEnvironmentBootstrap(["cli", "storage", operation], {
-      acquireAdmission: (mode) => { selectedMode = mode; held = syntheticAdmission(); return held; },
+      acquireAdmission: (mode) => { selectedMode = mode; held = syntheticAdmission(); admitted.resolve(); return held; },
       runCli: async () => { held?.assertLive(); await running; held?.assertLive(); },
     });
     try {
+      await Promise.race([admitted.promise, launch]);
       assert.equal(selectedMode, expectedMode);
       held?.assertLive();
     } finally { finish?.(); }
@@ -192,53 +166,8 @@ describe("secure environment bootstrap", () => {
     assert.throws(() => held?.assertLive(), /released admission/u);
   });
 
-  it("dispatches exact relocation recovery before normal installation or provider admission", async () => {
-    const operationId = "11111111-1111-4111-8111-111111111111";
-    const events: string[] = [];
-    const originalWrite = process.stdout.write.bind(process.stdout);
-    const output: string[] = [];
-    process.stdout.write = (value: string) => { output.push(value); return true; };
-    try {
-      await runSecureEnvironmentBootstrap(["cli", "storage", "relocate", "--resume", operationId, "--json"], {
-        acquireAdmission: () => { throw new Error("normal admission must not precede recovery"); },
-        assertEnvironment: () => { throw new Error("relocation must not read provider environment"); },
-        runCli: () => { throw new Error("relocation must not enter ordinary CLI composition"); },
-        runRelocation: async ({ args, admission }) => {
-          assert.equal(admission, undefined);
-          assert.deepEqual(args, ["--resume", operationId, "--json"]);
-          events.push("recovery");
-          return { operationId, generation: 2 };
-        },
-      });
-      assert.deepEqual(events, ["recovery"]);
-      assert.deepEqual(output, [`{"operationId":"${operationId}","generation":2}\n`]);
-    } finally { process.stdout.write = originalWrite; }
-  });
-
-  it("keeps the exact planned relocation admission held through the offline runner", async () => {
-    const commandId = "22222222-2222-4222-8222-222222222222";
-    const originalWrite = process.stdout.write.bind(process.stdout);
-    process.stdout.write = () => true;
-    let held: RuntimeAdmission | undefined;
-    try {
-      await runSecureEnvironmentBootstrap(["cli", "storage", "relocate", "--plan", commandId], {
-        acquireAdmission: (mode) => { assert.equal(mode, "exclusive"); held = syntheticAdmission(); return held; },
-        assertEnvironment: () => { throw new Error("relocation must not read provider environment"); },
-        runRelocation: async ({ args, admission }) => {
-          assert.deepEqual(args, ["--plan", commandId]);
-          assert.equal(admission, held);
-          admission?.assertLive();
-          await Promise.resolve();
-          admission?.assertLive();
-          return { operationId: commandId, generation: 1 };
-        },
-      });
-      assert.throws(() => held?.assertLive(), /released admission/u);
-    } finally { process.stdout.write = originalWrite; }
-  });
-
   it("does not start the CLI when its module is executed directly", () => {
-    const result = spawnSync(TSX, [join(REPO_ROOT, "src", "cli.ts")], {
+    const result = spawnSync(process.execPath, ["--import", testProcessImport(), join(REPO_ROOT, "src", "cli.ts")], {
       cwd: tmpdir(),
       encoding: "utf8",
     });
@@ -251,8 +180,8 @@ describe("secure environment bootstrap", () => {
 
   it("does not start the document-number smoke when its module is executed directly", () => {
     const result = spawnSync(
-      TSX,
-      [join(REPO_ROOT, "scripts", "verify", "test-target-document-number.ts")],
+      process.execPath,
+      ["--import", testProcessImport(), join(REPO_ROOT, "scripts", "verify", "test-target-document-number.ts")],
       { cwd: tmpdir(), encoding: "utf8" },
     );
 
@@ -267,7 +196,7 @@ describe("secure environment bootstrap", () => {
       pathToFileURL(join(REPO_ROOT, "src", "cli.ts")).href,
       pathToFileURL(join(REPO_ROOT, "scripts", "verify", "test-target-document-number.ts")).href,
     ].map((url) => `import(${JSON.stringify(url)})`).join(",");
-    const result = spawnSync(TSX, ["--eval", `Promise.all([${imports}])`], {
+    const result = spawnSync(process.execPath, ["--import", testProcessImport(), "--input-type=module", "--eval", `Promise.all([${imports}])`], {
       cwd: tmpdir(),
       encoding: "utf8",
     });
@@ -291,11 +220,6 @@ describe("secure environment bootstrap", () => {
     assert.equal(
       scripts["smoke:test-target-document-number"],
       "tsx scripts/dev/secure-env-bootstrap.ts test-target-document-number",
-    );
-    assert.equal(scripts["smoke:test-target-person-secrets"], undefined);
-    assert.equal(
-      Object.values(scripts).some((command) => command.includes("test-target-person-secrets")),
-      false,
     );
     assert.equal(
       Object.values(scripts).some((command) => command.includes("--env-file")),
@@ -327,29 +251,3 @@ describe("secure environment bootstrap", () => {
     );
   });
 });
-
-it("dispatches exact empty admission recovery without normal or provider admission", async () => {
-  const output: string[] = [];
-  const original = process.stdout.write.bind(process.stdout);
-  process.stdout.write = (value: string) => { output.push(value); return true; };
-  try {
-    await runSecureEnvironmentBootstrap(["cli", "storage", "recover-admission", "--empty"], {
-      acquireAdmission: () => { throw new Error("normal admission must not run"); },
-      assertEnvironment: () => { throw new Error("provider environment must not load"); },
-      runAdmissionRecovery: (workspace, selector) => {
-        assert.equal(workspace, REPO_ROOT);
-        assert.equal(selector, "empty");
-        return { acquisitionId: "11111111-1111-4111-8111-111111111111", receiptPath: "/synthetic/empty.json" };
-      },
-    });
-    assert.match(output.join(""), /storage admission recovered: 11111111-1111-4111-8111-111111111111; receipt \/synthetic\/empty.json/u);
-  } finally { process.stdout.write = original; }
-});
-it.each([["--empty", "extra"], ["--empty", "--pid", "1"], ["--pid", "0"], []])(
-  "refuses ambiguous admission recovery arguments %j before effects", async (...args) => {
-    await assert.rejects(runSecureEnvironmentBootstrap(["cli", "storage", "recover-admission", ...args], {
-      acquireAdmission: () => { throw new Error("normal admission must not run"); },
-      assertEnvironment: () => { throw new Error("provider environment must not load"); },
-      runAdmissionRecovery: () => { throw new Error("recovery must not run"); },
-    }), /storage recover-admission usage/u);
-  });

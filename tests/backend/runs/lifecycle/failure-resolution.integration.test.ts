@@ -2,13 +2,12 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
-import { failureResolutionCapability } from "../../../../src/backend/runs/lifecycle/failure-resolution.js";
 import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
 import { NOW,failure,id,terminalizeFixtureFailure } from "../../../support/helpers/database-foundation/fixtures.js";
 import { resolutionCommand,resolutionFixture,resolutionKernel } from "../../../support/helpers/failure-resolution/fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-function snapshot(f: ReturnType<typeof resolutionFixture>, excludeHttpDiagnostics = false) {
+function snapshot(f: Awaited<ReturnType<typeof resolutionFixture>>, excludeHttpDiagnostics = false) {
   const sql = new DatabaseSync(f.path);
   try { return JSON.stringify({ ...(excludeHttpDiagnostics ? {} : { generation: f.db.getMeta().authorityGeneration }),
     tables: Object.fromEntries(["runs", "run_failures", "commands", "command_audits", "timeline_events", "run_receipts"]
@@ -17,10 +16,9 @@ function snapshot(f: ReturnType<typeof resolutionFixture>, excludeHttpDiagnostic
 }
 
 describe("D resolution command authority", () => {
-  it("resolves/reopens only its annotation and preserves immutable failure/run/completion evidence", () => {
-    const f = resolutionFixture();
+  it("resolves/reopens only its annotation and preserves immutable failure/run/completion evidence", async () => {
+    const f = await resolutionFixture();
     try {
-      assert.equal(failureResolutionCapability().state, "available");
       const beforeRun = JSON.stringify(f.db.authority.runs.get(f.record.runId));
       const beforeFailure = JSON.stringify(f.db.authority.failures.get(f.record.failureId));
       const command = resolutionCommand();
@@ -37,14 +35,20 @@ describe("D resolution command authority", () => {
       const history = readTimelineRecords(f.db.authority.timelineEvents).records.filter(row => row.payload.kind === "failure-resolution");
       assert.deepEqual(history.map(row => row.payload.kind === "failure-resolution" && row.payload.action), ["resolve", "reopen"]);
       assert.ok(history.every(row => !JSON.stringify(row).includes("Updated page control")));
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
-  it("exact replay after lost acknowledgement and restart does not advance any authority; divergent identity refuses", () => {
-    const f = resolutionFixture();
+  it("exact replay after lost acknowledgement and restart does not advance any authority; divergent identity refuses", async () => {
+    const f = await resolutionFixture();
     try {
       const command = resolutionCommand();
+      let acknowledgementLost = false;
       const lostAck = resolutionKernel(f.db, f.clock, { authority: { withAuthorityTransaction: work => {
-        f.db.withAuthorityTransaction(work); throw new Error("ack-lost");
+        const result = f.db.withAuthorityTransaction(work);
+        if (!acknowledgementLost && f.db.authority.commandAudits.findByCommand(command.commandId) !== undefined) {
+          acknowledgementLost = true;
+          throw new Error("ack-lost");
+        }
+        return result;
       } } });
       assert.throws(() => lostAck.execute(command), /ack-lost/u);
       const before = snapshot(f);
@@ -58,10 +62,10 @@ describe("D resolution command authority", () => {
         if (divergent.state === "rejected") assert.equal(divergent.code, "command-divergent");
         assert.equal(snapshot(f), before);
       } finally { second.close(); }
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
   it("two real connections fence the same annotation version", async () => {
-    const f = resolutionFixture();
+    const f = await resolutionFixture();
     const second = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "d-race" }, f.clock);
     try {
       const other = resolutionKernel(second, f.clock);
@@ -69,13 +73,13 @@ describe("D resolution command authority", () => {
       const results = await Promise.all([Promise.resolve().then(() => f.kernel.execute(commands[0])), Promise.resolve().then(() => other.execute(commands[1]))]);
       assert.deepEqual(results.map(result => result.state).sort(), ["applied", "rejected"]);
       const loser = results.find(result => result.state === "rejected"); assert.ok(loser);
-      assert.equal(f.db.authority.commands.get(loser.commandId), undefined);
-      assert.equal(f.db.authority.commandAudits.findByCommand(loser.commandId), undefined);
+      assert.equal(f.db.authority.commands.get(loser.commandId)?.commandId, loser.commandId);
+      assert.deepEqual(f.db.authority.commandAudits.findByCommand(loser.commandId)?.result, loser);
       assert.equal(f.db.authority.failureResolution.read(f.record.runId, f.record.failureId)?.resolution.version, 2);
-    } finally { second.close(); f.dispose(); }
+    } finally { second.close(); await f.dispose(); }
   });
-  for (const boundary of ["annotation", "event", "audit"] as const) it(`rolls back generation, annotation and journal on ${boundary} failure with a same-boundary positive control`, () => {
-    const f = resolutionFixture();
+  for (const boundary of ["annotation", "event", "audit"] as const) it(`keeps the admitted command when ${boundary} fails, then applies that command`, async () => {
+    const f = await resolutionFixture();
     let hit = 0;
     try {
       const original = snapshot(f);
@@ -87,31 +91,50 @@ describe("D resolution command authority", () => {
         ...(boundary === "audit" ? { commandAudits: { ...repositories.commandAudits, insert: input => { repositories.commandAudits.insert(input); hit++; throw new Error("injected-audit"); } } } : {}),
       })) } });
       assert.throws(() => kernel.execute(command), new RegExp(`injected-${boundary}`, "u"));
-      assert.equal(hit, 1); assert.equal(snapshot(f), original);
+      assert.equal(hit, 1);
+      const prior = JSON.parse(original) as { generation: number; tables: Record<string, unknown[]> };
+      const after = JSON.parse(snapshot(f)) as { generation: number; tables: Record<string, unknown[]> };
+      assert.equal(after.generation, prior.generation + 1);
+      for (const table of ["runs", "run_failures", "command_audits", "timeline_events", "run_receipts"]) assert.deepEqual(after.tables[table], prior.tables[table]);
+      assert.equal(after.tables.commands.length, prior.tables.commands.length + 1);
+      assert.equal(f.db.authority.commands.get(command.commandId)?.commandId, command.commandId);
+      assert.equal(f.db.authority.commandAudits.findByCommand(command.commandId), undefined);
       assert.equal(f.kernel.execute(command).state, "applied");
       assert.ok(f.db.authority.commandAudits.findByCommand(command.commandId));
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
-  it("refuses absent, mismatched, stale and same-state targets without any mutation", () => {
-    const f = resolutionFixture();
+  it("refuses absent, mismatched, stale and same-state targets without changing the failure", async () => {
+    const f = await resolutionFixture();
     try {
-      const before = snapshot(f);
+      let before = snapshot(f);
+      const refused = (command: ReturnType<typeof resolutionCommand>) => {
+        const result = f.kernel.execute(command);
+        assert.equal(result.state, "rejected");
+        assert.deepEqual(f.db.authority.commands.get(command.commandId), command);
+        assert.deepEqual(f.db.authority.commandAudits.findByCommand(command.commandId)?.result, result);
+        const prior = JSON.parse(before) as { generation: number; tables: Record<string, unknown[]> };
+        const after = JSON.parse(snapshot(f)) as { generation: number; tables: Record<string, unknown[]> };
+        assert.equal(after.generation, prior.generation + 2);
+        for (const table of ["runs", "run_failures", "timeline_events", "run_receipts"]) assert.deepEqual(after.tables[table], prior.tables[table]);
+        assert.equal(after.tables.commands.length, prior.tables.commands.length + 1);
+        assert.equal(after.tables.command_audits.length, prior.tables.command_audits.length + 1);
+        before = snapshot(f);
+      };
       for (const target of [
         { runId: randomUUID(), failureId: f.record.failureId, expectedVersion: 1 },
         { runId: f.record.runId, failureId: randomUUID(), expectedVersion: 1 },
         { runId: f.record.runId, failureId: f.record.failureId, expectedVersion: 9 },
-      ]) { assert.equal(f.kernel.execute(resolutionCommand({ target })).state, "rejected"); assert.equal(snapshot(f), before); }
-      assert.equal(f.kernel.execute(resolutionCommand({ payload: { action: "reopen" } })).state, "rejected");
-      assert.equal(snapshot(f), before);
+      ]) refused(resolutionCommand({ target }));
+      refused(resolutionCommand({ payload: { action: "reopen" } }));
       for (const payload of [{ action: "other" }, { action: "resolve", note: " " }, { action: "resolve", note: "x".repeat(1001) }, { action: "reopen", note: "no" }]) {
         assert.throws(() => f.kernel.execute({ ...resolutionCommand(), payload })); assert.equal(snapshot(f), before);
       }
       assert.throws(() => f.kernel.execute({ ...resolutionCommand(), target: { runId: f.record.runId, failureId: f.record.failureId, expectedVersion: 0 } }));
       assert.equal(snapshot(f), before);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
-  it("matching fingerprints remain independently unresolved", () => {
-    const f = resolutionFixture();
+  it("matching fingerprints remain independently unresolved", async () => {
+    const f = await resolutionFixture();
     try {
       const run = f.createRun(id(81));
       const sibling = { ...failure(), failureId: id(82), runId: run.envelope.runId, traceId: run.envelope.traceId };
@@ -119,19 +142,24 @@ describe("D resolution command authority", () => {
       assert.equal(f.kernel.execute(resolutionCommand()).state, "applied");
       assert.deepEqual(f.db.authority.failureResolution.read(sibling.runId, sibling.failureId)?.resolution, { status: "unresolved", version: 1 });
       assert.equal(f.db.authority.failures.get(f.record.failureId)?.writeState, "unknown");
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });
 
 import { resolutionPeer } from "../../../support/helpers/failure-resolution/fixtures.js";
 it("two independent OS processes compete for one annotation version and exactly one commits", async () => {
-  const f = resolutionFixture(); const peers = [resolutionPeer(f.path), resolutionPeer(f.path)];
+  const f = await resolutionFixture(undefined, undefined, { sharedMachine: true });
+  const peers: Awaited<ReturnType<typeof resolutionPeer>>[] = [];
   try {
-    await Promise.all(peers.map(peer => peer.ready));
+    for (let index = 0; index < 2; index++) {
+      const peer = await resolutionPeer(f.path, f.profile.lifetime); peers.push(peer);
+      await peer.ready;
+    }
     const outcomes = await Promise.all(peers.map(peer => peer.send(resolutionCommand())));
     assert.deepEqual(outcomes.map(result => result.state).sort(), ["applied", "rejected"]);
     assert.equal(f.db.authority.failureResolution.read(f.record.runId, f.record.failureId)?.resolution.version, 2);
     const loser = outcomes.find(result => result.state === "rejected"); assert.ok(loser);
-    assert.equal(f.db.authority.commands.get(loser.commandId), undefined);
-  } finally { for (const peer of peers) peer.stop(); f.dispose(); }
+    assert.equal(f.db.authority.commands.get(loser.commandId)?.commandId, loser.commandId);
+    assert.deepEqual(f.db.authority.commandAudits.findByCommand(loser.commandId)?.result, loser);
+  } finally { for (const peer of peers) peer.stop(); await f.dispose(); }
 });

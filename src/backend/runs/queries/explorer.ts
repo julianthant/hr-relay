@@ -1,4 +1,5 @@
 
+import { buildExplorerReviewSpec } from "./explorer-review-spec.js";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
@@ -34,16 +35,14 @@ import {
   type ExplorerTaskWire,
   type ExplorerUiLinkWire,
   type ExplorerWriteSafetyWire,
-  type ExplorerWorkflowOverride,
   type SourceLinkWire,
   type WorkflowExplorerWire,
 } from "../../../models/dashboard/explorer.js";
-import type { ExplorerOperationStructureWire } from "../../../models/dashboard/operation-structure.js";
 import type { Fingerprint } from "../../../rules/identity/ids.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import type { UiTaskLink } from "../../systems/ui-task-links.js";
-import { GENERATED_BUILD_MANIFEST } from "../../../workflow-kit/validation/generated-build-manifest.js";
-import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
+import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
+import { currentBuildId } from "../../runtime/build-id.js";
 import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import {
@@ -73,17 +72,14 @@ export interface ExplorerQueryDeps {
   /** Semantic UI identifiers attributed to tasks by the registered drivers. */
   readonly uiTaskLinks: readonly UiTaskLink[];
 
-  readonly buildManifest?: BuildManifestSource;
   // Missing executable scenario files report unresolved names; packaging without tests must not discard the Explorer.
   readonly listScenarioSources: () => readonly Readonly<{ path: string; text: string }>[];
-  /** Presentation-only hot overrides; absence means revision zero. */
-  readonly overrides?: Readonly<{ readAll(): readonly ExplorerWorkflowOverride[] }>;
 }
 
 const SCENARIO_DIRECTORY = "tests/scenario";
 
 
-const DetailDisplaySchema = z.enum(["text", "eid", "date", "count", "badge"]);
+const DetailDisplaySchema = z.enum(["text", "eid", "date", "count", "badge", "person-name"]);
 
 // Source evidence belongs to the executing module tree, not repoRoot, which may name a temporary runtime root.
 export const EXPLORER_SOURCE_ROOT = resolve(import.meta.dirname, "..", "..", "..", "..");
@@ -115,75 +111,31 @@ function unresolved(attemptedPath: string, reason: string): SourceLinkWire {
   return { state: "unresolved", attemptedPath: SourcePathSchema.parse(attemptedPath), reason };
 }
 
-/** The two manifest tables this query reads; the checked-in manifest and a fixture manifest both satisfy it. */
-type BuildManifestSource = Readonly<{
-  workflows: readonly Readonly<{ id: string; sources: readonly Readonly<{ path: string }>[] }>[];
-  tasks: readonly Readonly<{ id: string; sources: readonly Readonly<{ path: string }>[] }>[];
-}>;
+function sourceLink(path: string, reason: string): SourceLinkWire {
+  return existsSync(join(EXPLORER_SOURCE_ROOT, path)) ? resolved(path) : unresolved(path, reason);
+}
 
-/** Every path the build manifest fingerprinted, across workflows and tasks. */
-function manifestSourceIndex(manifest: BuildManifestSource): ReadonlyMap<string, ReadonlySet<string>> {
-  const index = new Map<string, ReadonlySet<string>>();
-  for (const entry of manifest.workflows) {
-    index.set(`workflow:${entry.id}`, new Set(entry.sources.map(({ path }) => path)));
+function taskSourceOwner(binding: ExplorerTaskBindingWire) {
+  if (binding.state !== "bound") return undefined;
+  const namespace = binding.storeNamespace;
+  if (namespace.startsWith("workflow:")) {
+    const workflow = namespace.slice("workflow:".length);
+    return { model: `src/models/workflows/${workflow}`, implementation: `src/workflows/${workflow}/tasks` };
   }
-  for (const entry of manifest.tasks) {
-    index.set(`task:${entry.id}`, new Set(entry.sources.map(({ path }) => path)));
-  }
-  return index;
+  const directory = binding.storeKind === "browser" ? "systems" : "processing";
+  return { model: `src/models/${directory}/${namespace}`, implementation: `src/backend/${directory}/${namespace}/tasks` };
 }
 
-function taskFingerprint(taskId: string): Fingerprint | undefined {
-  const entry = GENERATED_BUILD_MANIFEST.tasks.find(({ id }) => id === taskId);
-  return entry === undefined ? undefined : (entry.fingerprint as Fingerprint);
+function contractSourceLink(taskId: string, binding: ExplorerTaskBindingWire): SourceLinkWire {
+  const owner = taskSourceOwner(binding);
+  if (owner === undefined) return unresolved("src/models", "no registered task store declares this contract's source owner");
+  return sourceLink(`${owner.model}/${taskId.slice(taskId.indexOf("/") + 1)}.ts`, "no contract source exists at this path");
 }
 
-
-function taskPathTail(taskId: string): string {
-  return taskId.startsWith("workflow:") ? taskId.slice("workflow:".length) : taskId;
-}
-
-
-function contractSourceLink(
-  taskId: string,
-  closures: readonly ReadonlySet<string>[],
-): SourceLinkWire {
-  const tail = taskPathTail(taskId);
-  const namespace = tail.slice(0, tail.indexOf("/"));
-  const owner = taskId.startsWith("workflow:") ? `workflows/${namespace}`
-    : ["extraction", "normalization", "ocr", "roster"].includes(namespace)
-      ? `processing/${namespace}` : `systems/${namespace}`;
-  const candidate = `src/models/${owner}/${tail.slice(namespace.length + 1)}.ts`;
-  return closures.some((closure) => closure.has(candidate))
-    ? resolved(candidate)
-    : unresolved(candidate, "no fingerprinted source closure contains this path");
-}
-
-
-function implSourceLink(taskId: string, closure: ReadonlySet<string> | undefined): SourceLinkWire {
-  const tail = taskPathTail(taskId);
-  const namespace = tail.slice(0, tail.indexOf("/"));
-  const directories = taskId.startsWith("workflow:")
-    ? [`src/workflows/${namespace}/tasks`]
-    : ["extraction", "normalization", "ocr", "roster"].includes(namespace)
-      ? [`src/backend/processing/${namespace}/tasks`]
-      : [`src/backend/systems/${namespace}/tasks`];
-  if (closure === undefined) {
-    return unresolved(directories[0] ?? "src/backend/systems", `the build manifest carries no task entry for ${taskId}`);
-  }
-  const matches = [...closure]
-    .filter((path) => directories.some((directory) => path.startsWith(`${directory}/`)))
-    .sort();
-  if (matches.length === 1) return resolved(matches[0] ?? "");
-  const directory = directories.find((candidate) => [...closure].some((path) => path.startsWith(`${candidate}/`)))
-    ?? directories[0]
-    ?? "src/backend/systems";
-  return unresolved(
-    directory,
-    matches.length === 0
-    ? "the task's fingerprinted closure contains no implementation in its owner task directory"
-      : `the task's closure contains ${String(matches.length)} implementations across system and service store directories`,
-  );
+function implSourceLink(taskId: string, binding: ExplorerTaskBindingWire): SourceLinkWire {
+  const owner = taskSourceOwner(binding);
+  if (owner === undefined) return unresolved("src", "no registered task store declares this implementation's source owner");
+  return sourceLink(`${owner.implementation}/${taskId.slice(taskId.indexOf("/") + 1)}.ts`, "no implementation exists in the task's owner directory");
 }
 
 /** Freshness, with `Infinity` turned into the word that survives JSON. */
@@ -417,15 +369,9 @@ function taskWire(
   context: Readonly<{
     bindings: BindingIndex;
     ui: ReadonlyMap<string, readonly ExplorerUiLinkWire[]>;
-    manifest: ReadonlyMap<string, ReadonlySet<string>>;
-    workflowClosure: ReadonlySet<string>;
   }>,
 ): ExplorerTaskWire {
   const taskId = String(contract.id);
-  const taskClosure = context.manifest.get(`task:${taskId}`);
-  const closures = taskClosure === undefined
-    ? [context.workflowClosure]
-    : [context.workflowClosure, taskClosure];
   const binding = context.bindings.byTaskId.get(taskId);
   if (binding === undefined) {
     // An unbound implementation means registry validation did not run; refuse instead of inventing a chip.
@@ -434,7 +380,7 @@ function taskWire(
       + "src/backend/app/registries/pending-impl-bindings.json does not track it",
     );
   }
-  const implFingerprint = taskFingerprint(taskId);
+  const implFingerprint = taskImplFingerprint(contract);
   const freshness = "freshness" in contract ? freshnessWire(contract.freshness) : undefined;
   const provenance = "provenance" in contract ? provenanceWire(contract.provenance) : undefined;
   return {
@@ -459,9 +405,9 @@ function taskWire(
     inputSchemaHash: deriveSchemaHash(contract.input, "input"),
     outputSchemaHash: deriveSchemaHash(contract.output, "output"),
     fields: contractFieldWires(contract, freshness, provenance),
-    contractSource: contractSourceLink(taskId, closures),
-    implSource: implSourceLink(taskId, taskClosure),
-    ...(implFingerprint === undefined ? {} : { implFingerprint }),
+    contractSource: contractSourceLink(taskId, binding),
+    implSource: implSourceLink(taskId, binding),
+    implFingerprint,
   } as ExplorerTaskWire;
 }
 
@@ -473,6 +419,7 @@ function nodeShape(node: RuntimeFlowNode): ExplorerNodeShapeWire {
         kind: "task",
         replay: node.replay,
         ...(node.when === undefined ? {} : { condition: node.when }),
+        ...(node.dryRun === undefined ? {} : { dryRun: node.dryRun }),
       };
     case "transaction":
       return {
@@ -511,6 +458,7 @@ function nodeShape(node: RuntimeFlowNode): ExplorerNodeShapeWire {
       return {
         kind: "gate",
         resolvedBy: node.resolvedBy,
+        ...(node.resolvedBy !== "operator" || node.when === undefined ? {} : { condition: node.when }),
         ...(node.statusKey === undefined ? {} : { statusKey: node.statusKey }),
       };
   }
@@ -591,54 +539,9 @@ function proseWire(
     : { state: "authored", text };
 }
 
-/** One resolution point for every field the safe-edit store is allowed to persist. */
-function resolveExplorerPresentation(
-  descriptor: AnyWorkflowDescriptor,
-  override: ExplorerWorkflowOverride | undefined,
-): Readonly<{
-  label: string;
-  icon: string;
-  category: string;
-  overrideRevision: number;
-}> {
-  if (override !== undefined
-    && (String(override.workflowId) !== String(descriptor.id)
-      || override.descriptorVersion !== descriptor.version
-      || override.contractFingerprint !== descriptor.contractFingerprint)) {
-    throw new Error(
-      `Explorer override ${String(override.workflowId)} targets descriptor v${String(override.descriptorVersion)} `
-      + `(${override.contractFingerprint}) but the live descriptor is ${String(descriptor.id)} `
-      + `v${String(descriptor.version)} (${descriptor.contractFingerprint}); refusing stale presentation authority`,
-    );
-  }
-  return Object.freeze({
-    label: override?.presentation.label ?? descriptor.label,
-    icon: override?.presentation.icon ?? descriptor.icon,
-    category: override?.presentation.category ?? descriptor.category,
-    overrideRevision: override?.revision ?? 0,
-  });
-}
-
-
-function operationStructureWire(descriptor: AnyWorkflowDescriptor): ExplorerOperationStructureWire {
-  const definition = freezeWorkflowOperationDisplaySnapshot({
-    workflowId: descriptor.id,
-    definitionFingerprint: descriptor.contractFingerprint,
-    display: descriptor.operationDisplay,
-  });
-  return definition === undefined
-    ? {
-      state: "legacy",
-      reason: "this workflow has no complete versioned operation declaration",
-    }
-    : { state: "declared", definition };
-}
-
 function workflowWire(
   module: ExplorerModuleView,
   deps: ExplorerQueryDeps,
-  override: ExplorerWorkflowOverride | undefined,
-  manifest: ReadonlyMap<string, ReadonlySet<string>>,
   ui: ReadonlyMap<string, readonly ExplorerUiLinkWire[]>,
   scenarioSources: readonly Readonly<{ path: string; text: string }>[],
 ): unknown {
@@ -647,9 +550,8 @@ function workflowWire(
   const projections = workflowProjections(descriptor);
   const terminal = workflowTerminalResultExecution(descriptor);
   const nodes = descriptorRuntimeNodes(descriptor);
-  const workflowClosure = manifest.get(`workflow:${workflowId}`) ?? new Set<string>();
   const bindings = bindingIndex(module, deps.pendingImplBindings);
-  const context = { bindings, ui, manifest, workflowClosure };
+  const context = { bindings, ui };
   const definition = module.definition;
   if (definition !== undefined && workflowDefinitionOf(descriptor) !== definition) {
     throw new Error(`workflow ${workflowId} Explorer definition is not the descriptor's compiled source`);
@@ -683,65 +585,62 @@ function workflowWire(
     coverageByNode.set(String(point.nodeId), list);
   }
 
+
+
   const editable = descriptor.capabilities?.editData;
-
-
+  const editDataFields = typeof editable === "object" ? editable.fields : [];
   const descriptorPath = workflowSourcePath(workflowId, module.role);
   const modulePath = descriptorPath;
 
-  const purposeByNode = new Map(
-    descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),
-  );
+  // A node without its own purpose is described by its timeline group.
+  const purposeByNode = new Map([
+    ...descriptor.timeline.flatMap((group) => group.description === undefined ? [] : group.nodes.map((member) => [String(member.id), group.description] as const)),
+    ...descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose] as const),
+  ]);
 
-  const effectivePresentation = resolveExplorerPresentation(descriptor, override);
 
-  const editDataFields = typeof editable === "object" ? editable.fields : [];
+
+  const nodeWires = nodes.map((node): ExplorerNodeWire => ({
+      id: node.id,
+      label: nodeLabel(node),
+      purpose: proseWire(
+        purposeByNode.get(String(node.id)),
+        `${workflowId} node ${String(node.id)}`,
+        `${descriptorPath}'s \`nodePurposes\` or its timeline group's \`description\``,
+      ),
+      dependsOn: [...node.dependsOn],
+      shape: nodeShape(node),
+      tasks: nodeTasks(node, context),
+      details: descriptor.details
+        .flatMap((detail) => "nodeId" in detail.source && detail.source.nodeId === String(node.id) ? [{
+          key: detail.key,
+          label: detail.label,
+          fieldPath: ContractFieldPathSchema.parse(detail.source.fieldPath),
+          display: DetailDisplaySchema.parse(detail.display),
+        }] : []),
+      editableFields: editDataFields
+        .filter((field) => field.nodeId === String(node.id))
+        .map((field) => ({
+          fieldPath: ContractFieldPathSchema.parse(field.fieldPath),
+          label: field.label,
+        })),
+      coveragePoints: coverageByNode.get(String(node.id)) ?? [],
+    }));
 
   return {
     id: descriptor.id,
-    label: effectivePresentation.label,
+    label: descriptor.label,
     summary: proseWire(descriptor.summary, `${workflowId}`, `${descriptorPath}'s \`summary\``),
     code: descriptor.code,
-    icon: effectivePresentation.icon,
-    category: effectivePresentation.category,
+    icon: descriptor.icon,
+    category: descriptor.category,
 
     role: module.role,
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
-    operationStructure: operationStructureWire(descriptor),
     definitionPreview: declaration === undefined
       ? { state: "unavailable", reason: "this registered descriptor has no compiled ordered definition" }
       : { state: "compiled", groups: declaration, systemsFirstUse },
-    edit: {
-      overrideRevision: effectivePresentation.overrideRevision,
-      presentation: {
-        workflowLabel: true,
-        iconValues: [
-          "Search", "Users", "UserMinus", "UserPlus", "FileScan", "FileText",
-          "ClipboardCheck", "Upload", "CalendarClock", "ShieldCheck", "Building2",
-        ],
-        categoryValues: ["search", "onboarding", "separation", "documents", "timekeeping", "operations"],
-        timeline: {
-          state: "unavailable",
-          reason: "timeline presentation has no complete hot-apply reader; it remains descriptor-owned",
-        },
-      },
-      notificationPreferences: {
-        state: "unavailable",
-        reason: "this descriptor declares no notification-preference owner or closed preference union",
-      },
-      operationalPolicies: {
-        state: "code-change-only",
-        reason: "this descriptor declares no exact safe-edit value allowlist for operational policy",
-      },
-      editData: editDataFields.length === 0
-        ? { state: "unavailable", reason: "this descriptor allowlists no Edit Data fields" }
-        : {
-          state: "code-change-only",
-          fields: editDataFields,
-          reason: "Edit Data fields change runtime correction authority and require a reviewed descriptor change",
-        },
-    },
     surfaceShape: "shape" in descriptor.surface ? descriptor.surface.shape : "by-input",
     enqueue: descriptor.enqueue,
     inputSubject: typeof descriptor.inputSubject === "function"
@@ -783,62 +682,35 @@ function workflowWire(
         }
         : { state: "declared", targetCount: module.intake.targets.length },
     },
-    nodes: nodes.map((node): ExplorerNodeWire => ({
-      id: node.id,
-      label: nodeLabel(node),
-      purpose: proseWire(
-        purposeByNode.get(String(node.id)),
-        `${workflowId} node ${String(node.id)}`,
-        `${descriptorPath}'s \`nodePurposes\``,
-      ),
-      dependsOn: [...node.dependsOn],
-      shape: nodeShape(node),
-      tasks: nodeTasks(node, context),
-      details: descriptor.details
-        .filter((detail) => detail.source.nodeId === String(node.id))
-        .map((detail) => ({
-          key: detail.key,
-          label: detail.label,
-          fieldPath: ContractFieldPathSchema.parse(detail.source.fieldPath),
-          display: DetailDisplaySchema.parse(detail.display),
-        })),
-      editableFields: editDataFields
-        .filter((field) => field.nodeId === String(node.id))
-        .map((field) => ({
-          fieldPath: ContractFieldPathSchema.parse(field.fieldPath),
-          label: field.label,
-        })),
-      coveragePoints: coverageByNode.get(String(node.id)) ?? [],
-    })),
+    nodes: nodeWires,
+    reviewSpec: buildExplorerReviewSpec(module, deps.modules, nodeWires),
     timeline: descriptor.timeline.map((group) => ({
       key: group.key,
       label: group.label,
+      ...(group.description === undefined ? {} : { description: group.description }),
+      ...(group.system === undefined ? {} : { system: group.system }),
+      ...(group.operatorFields === undefined ? {} : { operatorFields: group.operatorFields }),
       nodes: group.nodes.map((node) => node.id),
     })),
     edges: edgesOf(nodes),
     scenarios: scenarioWires(descriptor, projections.scenarios.map(String), scenarioSources),
     sources: {
-      descriptor: workflowClosure.has(descriptorPath)
-        ? resolved(descriptorPath)
-        : unresolved(descriptorPath, "the workflow's fingerprinted closure does not contain it"),
+      descriptor: sourceLink(descriptorPath, "no workflow definition exists at this path"),
 
       module: resolved(modulePath),
-      closureFileCount: workflowClosure.size,
     },
   };
 }
 
 export function buildWorkflowExplorer(deps: ExplorerQueryDeps): WorkflowExplorerWire {
-  const overrides = deps.overrides?.readAll();
-  const manifest = manifestSourceIndex(deps.buildManifest ?? GENERATED_BUILD_MANIFEST);
   const ui = uiLinkIndex(deps.uiTaskLinks);
   const scenarioSources = deps.listScenarioSources();
   return WorkflowExplorerWireSchema.parse({
     wireVersion: 1,
     generatedAt: deps.clock.now().toISOString(),
     descriptorHash: deps.descriptorSetHash,
+    buildId: currentBuildId(),
     workflows: deps.modules.map((module) =>
-      workflowWire(module, deps, overrides?.find(({ workflowId }) => workflowId === module.descriptor.id),
-        manifest, ui, scenarioSources)),
+      workflowWire(module, deps, ui, scenarioSources)),
   });
 }

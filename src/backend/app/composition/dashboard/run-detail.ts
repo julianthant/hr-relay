@@ -1,5 +1,5 @@
 import {
-  WORKFLOW_MODULES,
+  READABLE_WORKFLOW_MODULES,
 } from "../../registries/workflow-registry.js";
 import { stepProofModuleOf } from "../../registries/step-proof-modules.js";
 
@@ -13,9 +13,13 @@ import type {
 import { gateNodeViewsOf, writeContractViewsOf, dataOriginViewsOf } from "./run-detail-descriptors.js";
 import { createItemAttemptHistoryQuery } from "../../../runs/queries/item-attempt-history.js";
 
-export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRoot" | "projection" | "trust" | "captures" | "canonical" | "runReader"> & { database: AuthorityDatabase }): RunDetailQueryDeps {
+export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRoot" | "projection" | "trust" | "captures" | "canonical" | "runReader" | "workerMembers" | "operatorName"> & { database: AuthorityDatabase }): RunDetailQueryDeps {
   const { stateRoot, projection, database, trust, captures, canonical, runReader } = input;
+  const identity = database.getMeta();
   return {
+    ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
+    ...(input.operatorName === undefined ? {} : { operatorName: input.operatorName }),
+    ...(identity.installationId === undefined || identity.profileId === undefined ? {} : { authorityIdentity: { installationId: identity.installationId, profileId: identity.profileId } }),
     ...(canonical === undefined ? {} : { canonical }),
     ...(runReader === undefined ? {} : { runReader }),
     ...(runReader === undefined ? {} : { itemAttemptHistory: createItemAttemptHistoryQuery({ database, reader: runReader }) }),
@@ -23,6 +27,7 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
     stateRoot,
     projection,
     authority: {
+      delegationWait: runId => database.authority.dependencies.waitState(runId),
       getRun: (runId) => database.authority.runs.get(runId),
       latestCheckpoint: (workflowId, itemId, nodeId) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
@@ -36,7 +41,7 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
 
       resolve: (workflowId) => {
 
-        const module = WORKFLOW_MODULES.find((candidate) => candidate.descriptor.id === workflowId)
+        const module = READABLE_WORKFLOW_MODULES.find((candidate) => candidate.descriptor.id === workflowId)
           ?? stepProofModuleOf(workflowId);
         if (module === undefined) return undefined;
         const { descriptor } = module;

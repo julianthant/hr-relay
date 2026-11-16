@@ -1,6 +1,6 @@
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StartCommandRequestSchema, CommandIdentityConflictError, type CommandRequest, type BulkRunCommandOutcome, type CommandResult } from "../../../rules/commands/commands.js";
+import { StartCommandRequestSchema, CommandIdentityConflictError, type DashboardCommandRequest, type BulkRunCommandOutcome, type CommandResult } from "../../../rules/commands/commands.js";
 import type { DashboardCommandBinding } from "../../app/dashboard-app-model.js";
 import type { CommandOutcome, CommandReadbackVerification } from "../../app/commands/command-executor.js";
 import { canonicalJsonStringify, type JsonValue } from "../../../rules/validation/canonical-json.js";
@@ -14,19 +14,21 @@ import type { LaunchVerificationPlan } from "./run-launch-recovery.js";
 import { START_DOOR_ABSENCE } from "./run-start-model.js";
 import type { RunStartWorkflow } from "./run-start.js";
 import type { WorkflowBootstrapPrimitive } from "../shell/shell-model.js";
+import type { WorkbookCompatibility } from "../../../models/dashboard/workbook-library.js";
 import { RUN_START_DOOR_ID, restoreDashboardTakeoverFocus } from "../../app/dashboard-app-model.js";
 import type { RerunValuesRequestSchema } from "../../../models/dashboard/rerun-values.js";
 import type { z } from "zod";
 export type RerunLaunchSource = z.infer<typeof RerunValuesRequestSchema> & { readonly label?: string; readonly traceId?: string };
 
 /** The host owns focus transfer, independently of date/history and Settings state. */
-export function useRunLaunch(initialOpen: boolean, mainRegionId: string) {
+export function useRunLaunch(initialOpen: boolean, mainRegionId: string, authority?: object) {
   const navigation = useViewNavigation();
   const [localOpen, setLocalOpen] = useState(initialOpen);
   const open = navigation?.start ?? localOpen;
   const routeSetStart = navigation?.setStart;
   const setOpen = useCallback((next: boolean) => routeSetStart ? routeSetStart(next) : setLocalOpen(next), [routeSetStart]);
   const [routedRerunSource, setRerunSource] = useViewState("launchRerun", undefined);
+  const [rerunDraft, setRerunDraft] = useState<{ source: RerunLaunchSource; text: string; authority: object | undefined }>();
   // Route updates re-parse the whole view, so keep the source's identity while its value is unchanged.
   const rerunKey = routedRerunSource === undefined ? undefined : JSON.stringify(routedRerunSource);
   const rerunSource = useMemo(() => rerunKey === undefined ? undefined : JSON.parse(rerunKey) as RerunLaunchSource, [rerunKey]);
@@ -39,10 +41,11 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string) {
     launcher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   }, []);
   const openStart = useCallback(() => { intakeHandoff.current = false; launcher.current = null; setRerunSource(undefined); setOpen(true); }, [setOpen, setRerunSource]);
-  const openRerun = useCallback((source: RerunLaunchSource) => {
+  const openRerun = useCallback((source: RerunLaunchSource, text?: string) => {
     rememberLauncher();
+    setRerunDraft(text === undefined ? undefined : { source, text, authority });
     setRerunSource(source); setOpen(true);
-  }, [rememberLauncher, setOpen, setRerunSource]);
+  }, [rememberLauncher, setOpen, setRerunSource, authority]);
   const closeFocus = useCallback((event: Event) => {
     event.preventDefault();
     if (mounted.current && !intakeHandoff.current) {
@@ -51,16 +54,26 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string) {
     }
   }, [mainRegionId]);
   const handOffToIntake = useCallback(() => { intakeHandoff.current = true; }, []);
-  return { open, setOpen, openStart, openRerun, rerunSource, closeFocus, handOffToIntake, rememberLauncher };
+  const rerunInputText = rerunDraft?.authority === authority && rerunDraft?.source.runId === rerunSource?.runId
+    && rerunDraft?.source.expectedVersion === rerunSource?.expectedVersion ? rerunDraft?.text : undefined;
+  return { open, setOpen, openStart, openRerun, rerunSource, rerunInputText, closeFocus, handOffToIntake, rememberLauncher };
 }
 
-export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[]): readonly RunStartWorkflow[] {
-  return workflows.map((entry) => ({ workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId,
+export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[], compatibility: WorkbookCompatibility): readonly RunStartWorkflow[] {
+  return workflows.map((entry) => {
+    const projection = compatibility.workflows.find(workflow => workflow.workflowId === entry.id);
+    if (entry.start.workbookReference !== undefined && projection === undefined) throw new Error(`WORKBOOK_COMPATIBILITY_UNAVAILABLE: ${entry.id}`);
+    return { workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId,
     role: entry.role, code: entry.code, ...(entry.start.summary === undefined ? {} : { summary: entry.start.summary }),
     enqueue: entry.start.enqueue, version: entry.start.version, steps: entry.start.steps,
     spreadsheetIntake: entry.start.spreadsheetIntake,
+    ...(entry.start.uploadRun === undefined ? {} : { uploadRun: entry.start.uploadRun }),
+    requiredWorkbookFields: entry.start.requiredWorkbookFields,
+    workbookReference: entry.start.workbookReference,
+    referenceSources: projection?.sources ?? [],
     inputRun: entry.start.inputRun === undefined ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
-      : { state: "present", surface: entry.start.inputRun } }));
+      : { state: "present", surface: entry.start.inputRun } };
+  });
 }
 
 /** Copy only explicitly selected, available producer values; never checkpoint execution. */
@@ -96,7 +109,7 @@ export function prefillRerun(input: RerunValuesSnapshot, options: Readonly<{
   if (new Set(options.selectedStepKeys).size !== options.selectedStepKeys.length
     || options.selectedStepKeys.some((key) => !snapshot.steps.some((step) => step.key === key))) throw new Error("RERUN_PREFILL_STEP_INVALID");
   return StartPlanRequestSchema.parse({ workflowId: snapshot.source.workflow, submissions: [submission],
-    workers: snapshot.workers, dryRun: options.dryRun, browserMode: options.browserMode, captureBrowserScreenshots: options.captureBrowserScreenshots,
+    dryRun: options.dryRun, browserMode: options.browserMode, captureBrowserScreenshots: options.captureBrowserScreenshots,
     selectedStepKeys: options.selectedStepKeys, rerunSource: { runId: snapshot.source.runId,
       expectedVersion: snapshot.source.version, intent: "rerun", selectedStepKeys: options.selectedStepKeys, copiedFrom },
     ...(Object.keys(omissionFacts).length === 0 ? {} : { stepOmissions: Object.entries(omissionFacts).map(([step, facts]) => ({ step, facts })) }) });
@@ -114,8 +127,6 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
     const request = StartPlanRequestSchema.parse(input);
     const plan = StartPlanWireSchema.parse(await client.submitStartPlan(request));
     if (plan.workflowId !== request.workflowId || plan.plannedBy !== actorId || plan.dryRun !== request.dryRun
-      || (request.workers !== undefined && plan.workers !== request.workers)
-      || (request.workers === undefined && request.rerunSource === undefined && plan.workers !== "auto")
       || (plan.browserMode !== undefined && plan.browserMode !== request.browserMode)
       || (plan.captureBrowserScreenshots !== undefined && plan.captureBrowserScreenshots !== request.captureBrowserScreenshots)
       || plan.priority !== (request.priority ?? "interactive")
@@ -123,6 +134,27 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
       || (request.warningAcknowledgment !== undefined && plan.rerun?.acknowledgment !== request.warningAcknowledgment)) {
       throw launchPlanIdentityMismatch();
     }
+    if ((request.workbookReferences ?? []).some(selection => selection.entry > request.submissions.length)) throw launchPlanIdentityMismatch();
+    const refusedEntries = plan.refused.map(refusal => refusal.entry);
+    if (new Set(refusedEntries).size !== refusedEntries.length
+      || refusedEntries.some(entry => entry < 1 || entry > request.submissions.length)
+      || plan.planned.length + refusedEntries.length !== request.submissions.length) throw launchPlanIdentityMismatch();
+    const acceptedEntries = request.submissions.flatMap((_, index) => refusedEntries.includes(index + 1) ? [] : [index + 1]);
+    if (plan.planned.some((planned, index) => {
+      const selections = (request.workbookReferences ?? []).filter(selection => selection.entry === acceptedEntries[index]);
+      const references = planned.workbookReferences ?? [];
+      const sourceIdentity = (libraryId: string, versionId: string, sheetId: string) => JSON.stringify([libraryId, versionId, sheetId]);
+      return new Set(selections.map(selection => sourceIdentity(selection.libraryId, selection.versionId, selection.sheetId))).size !== selections.length
+        || references.length !== selections.length
+        || references.some((reference, referenceIndex) => {
+          const selection = selections[referenceIndex];
+          return selection === undefined || selection.libraryId !== reference.libraryId
+            || selection.versionId !== reference.versionId
+            || selection.expectedVersion !== reference.version
+            || reference.worksheets.length !== 1 || reference.worksheets[0]?.sheetId !== selection.sheetId
+            || canonicalJsonStringify(selection.selectedRow ?? null) !== canonicalJsonStringify(reference.selectedRow ?? null);
+        });
+    })) throw launchPlanIdentityMismatch();
     return plan;
   };
   return Object.freeze({
@@ -145,7 +177,7 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
     },
     submit(input: unknown, binding: DashboardCommandBinding, plan?: LaunchVerificationPlan, publish?: (outcome: CommandOutcome) => void) {
       const command = StartCommandRequestSchema.parse(input);
-      const options = { scope: binding.scope, readback: async (request: CommandRequest, reply: CommandResult | BulkRunCommandOutcome) => {
+      const options = { scope: binding.scope, readback: async (request: DashboardCommandRequest, reply: CommandResult | BulkRunCommandOutcome) => {
         if (request.family !== "start" || !("state" in reply)) return { state: "mismatch" as const, evidence: reply };
         return verifyRunLaunchReadback(client, request, reply, plan);
       }, ...(publish === undefined ? {} : { publish }) };
@@ -202,7 +234,7 @@ async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardD
   const originMatches = (row: QueueSurfaceWire) => row.session.state === "present"
     && row.session.origin?.kind === "start-plan" && row.session.origin.startPlanId === command.target.startPlanId
     && row.session.origin.actorId === command.requestedBy;
-  const roots = rows.filter(row => originMatches(row) && row.lineage.state === "root");
+  const roots = rows.filter(row => originMatches(row) && row.parent === null);
   const rootIds = new Set(roots.map(row => row.runId));
   if (roots.length === 0
     || roots.some(row => !runs.includes(row.runId)) || (plan !== undefined && roots.length !== plan.planned.length)) {
@@ -213,7 +245,7 @@ async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardD
     const entry = liveRuns.get(runId);
     const row = snapshots.find(snapshot => snapshot.day.valueOf() === entry?.partitionDay.valueOf())?.queueSurfaces.find(row => row.runId === runId);
     if (row === undefined || entry === undefined || row.workflowId !== command.target.workflowId || row.itemId !== entry.itemId
-      || row.attempt !== entry.attempt || row.rowRevision.valueOf() !== entry.rowRevision.valueOf()) return { state: "mismatch", evidence };
+      || row.attempt !== entry.attempt || row.rowRevision.valueOf() < entry.rowRevision.valueOf()) return { state: "mismatch", evidence };
     if (!originMatches(row)) {
       const prior = superseded.find(target => target.runId === runId);
       if (prior === undefined || row.traceId !== prior.traceId || row.attempt !== prior.attempt || row.rowRevision !== prior.version + 1
@@ -222,10 +254,15 @@ async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardD
     }
     if (row.actorId !== command.requestedBy || row.configFingerprint !== command.payload.configFingerprint
       || row.descriptorHash !== command.payload.descriptorFingerprint || (plan !== undefined && row.dryRun !== plan.dryRun)
-      || (row.lineage.state === "child" && !rootIds.has(row.lineage.parentRunId))) {
+      || (row.parent !== null && !rootIds.has(row.parent.runId))) {
       return { state: "mismatch", evidence };
     }
   }
   if (superseded.some(target => !runs.includes(target.runId))) return { state: "mismatch", evidence };
   return { state: "matched", evidence: { ...evidence, createdRuns: roots.map(row => row.runId) } };
+}
+
+export function runLaunchAppliedToast(input: Readonly<{ label: string; count?: number; rerun: boolean }>) {
+  return { tone: "success" as const, title: input.count === undefined ? "Run submission confirmed" : input.rerun ? "Rerun started"
+    : input.count === 1 ? "Run started" : `${input.count} runs started`, description: input.label };
 }

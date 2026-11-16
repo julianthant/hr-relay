@@ -4,24 +4,25 @@ import { rmSync } from "node:fs";
 import { afterEach, it } from "vitest";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 
-const { roots, openDatabases, rejectActiveDescriptor, createHarness, createPlan, startCommand, applyCurrentSettings } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, createPlan, startCommand, applyCurrentSettings } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 
-it("F accepted start replay keeps its original run after active settings change", () => {
- const h = createHarness();
+it("F accepted start replay keeps its original run after active settings change", async () => {
+ const h = await createHarness();
  const plan = createPlan(h, rejectActiveDescriptor, ["10800000"]);
  const command = startCommand(plan);
- const first = h.kernel.execute(command);
+ const first = await h.kernel.executeStart(command);
  const runId = singleAppliedRunId(first);
  const original = h.database.authority.runs.get(runId);
  applyCurrentSettings(h);
- const replay = h.kernel.execute(command);
+ const replay = await h.kernel.executeStart(command);
  assert.equal(replay.state, "already-applied");
  assert.equal(singleAppliedRunId(replay), runId);
  assert.deepEqual(h.database.authority.runs.get(runId), original);

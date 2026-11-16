@@ -81,7 +81,7 @@ export const WORKFLOW_PREVIEW_GRAPHS: readonly PreviewGraph[] = [
     ],
     edges: [{"from":"Kuali extraction","to":"Identity check"},{"from":"Identity check","to":"Identity approval","condition":"resolved person ≠ typed input"},{"from":"Identity check","to":"Job summary","condition":"exactly one confident match"},{"from":"Identity approval","to":"Job summary","condition":"you pick an EID"},{"from":"Job summary","to":"Kronos search","condition":"timekeeping in the last 90 days"},{"from":"Job summary","to":"UCPath transaction","condition":"no timekeeping — Kronos is skipped"},{"from":"Kronos search","to":"UCPath transaction"},{"from":"UCPath transaction","to":"Kuali finalization"},{"from":"Parse typed input","to":"Member fan-out"},{"from":"Member fan-out","to":"Kuali extraction","condition":"each member starts the per-document path"},{"from":"Member fan-out","to":"Rollup","condition":"every member is terminal"}],
   },
-  { workflowId: "fixture-i9-check", label: "I-9 Check", summary: "Reads each person off a retention scan, searches UCPath for them, and appends a local retention tracker. Its review completes itself — there is nothing to approve — and no live HR system is ever mutated, which is pinned by an import guard rather than by convention.",
+  { workflowId: "fixture-i9-check-start", label: "I-9 Check", summary: "Reads each person off a retention scan, searches UCPath for them, and appends a local retention tracker. Its review completes itself — there is nothing to approve — and no live HR system is ever mutated, which is pinned by an import guard rather than by convention.",
     nodes: [
       {"id":"OCR extraction","lane":"Per packet","kind":"delegation","system":"i9","delegatesTo":"fixture-ocr","purpose":"Extract and pair the I-9 pages.","skippedInDryRun":false,"contract":[{"dir":"read","field":"People found","system":"i9"}]},
       {"id":"Roster match","lane":"Per packet","kind":"task","system":"i9","purpose":"Match each read person against the roster, so an EID comes off paper before anybody is searched for.","skippedInDryRun":false,"contract":[{"dir":"read","field":"Roster rows matched","system":"i9"}]},
@@ -92,16 +92,6 @@ export const WORKFLOW_PREVIEW_GRAPHS: readonly PreviewGraph[] = [
       {"id":"Retention tracker","lane":"Per person","kind":"output","system":"i9","purpose":"Append this person's row to the master retention tracker on disk. No HR system is touched.","skippedInDryRun":false,"contract":[{"dir":"read","field":"I-9 separation date","system":"i9"},{"dir":"write","field":"Retention row","system":"i9","proof":"the row re-read from the tracker file"}]},
     ],
     edges: [{"from":"OCR extraction","to":"Roster match"},{"from":"Roster match","to":"Member fan-out","condition":"the review completed"},{"from":"Member fan-out","to":"Person match","condition":"each person starts the per-person path"},{"from":"Member fan-out","to":"Rollup","condition":"every person is terminal"},{"from":"Person match","to":"Person lookup","condition":"no unique EID yet"},{"from":"Person match","to":"Retention tracker","condition":"one confident match"},{"from":"Person lookup","to":"Retention tracker"}],
-  },
-  { workflowId: "fixture-work-study", label: "Work-Study", summary: "Updates PayPath Position Data effective date, reason JRL and pool F, then files the transaction with matching comments. This workflow has no dry-run option.",
-    nodes: [
-      {"id":"Parse input","aliases":["Parse typed input"],"lane":"Multi-person start","kind":"task","system":"ucpath","purpose":"Turn the typed EIDs — or an accepted spreadsheet import — into one run per person.","skippedInDryRun":false,"contract":[{"dir":"read","field":"People typed","system":"ucpath"}]},
-      {"id":"Member fan-out","lane":"Multi-person start","kind":"fanout","purpose":"Enqueue one member run per person. Each walks the per-person path on its own row.","skippedInDryRun":false,"contract":[]},
-      {"id":"Rollup","lane":"Multi-person start","kind":"task","purpose":"Close the coordinator once every member is terminal.","skippedInDryRun":false,"contract":[]},
-      {"id":"UCPath auth","lane":"Per person","kind":"task","system":"ucpath","purpose":"Reach an authenticated UCPath session and land on the person the run carries.","skippedInDryRun":false,"contract":[{"dir":"read","field":"EID","system":"ucpath"}]},
-      {"id":"Transaction","aliases":["Award update"],"lane":"Per person","kind":"write","system":"ucpath","purpose":"Fill Position Data, Job Data comments and Initiator comments; verify and Save and Submit.","skippedInDryRun":false,"contract":[{"dir":"write","field":"Effective date","system":"ucpath","proof":"staged form readback and submission confirmation"},{"dir":"write","field":"Position pool","system":"ucpath","proof":"staged form readback and submission confirmation"},{"dir":"write","field":"Change reason","system":"ucpath","proof":"staged form readback and submission confirmation"},{"dir":"write","field":"Job Data comments","system":"ucpath","proof":"staged form readback and submission confirmation"},{"dir":"write","field":"Initiator comments","system":"ucpath","proof":"staged form readback and submission confirmation"}]},
-    ],
-    edges: [{"from":"UCPath auth","to":"Transaction"},{"from":"Parse input","to":"Member fan-out"},{"from":"Member fan-out","to":"UCPath auth","condition":"each member starts the per-person path"},{"from":"Member fan-out","to":"Rollup","condition":"every member is terminal"}],
   },
   { workflowId: "fixture-kronos-pay-rule", label: "Kronos Pay Rule", summary: "Reads a person's union and current pay rule off the elections tracker, decides the correct rule, and updates it in Kronos. The decision is a branch, not a gate — no human is asked — and there is no dry run.",
     nodes: [
@@ -150,7 +140,7 @@ export const WORKFLOW_PREVIEW_GRAPHS: readonly PreviewGraph[] = [
     ],
     edges: [{"from":"Split pages","to":"Read forms"},{"from":"Read forms","to":"Roster match","condition":"a roster was selected"},{"from":"Read forms","to":"Person lookup","condition":"no roster — every person is looked up"},{"from":"Roster match","to":"Person lookup"},{"from":"Person lookup","to":"Your review","condition":"the spec has an approve target"},{"from":"Person lookup","to":"Done","condition":"no downstream workflow"}],
   },
-  { workflowId: "fixture-crm-doc-download", label: "CRM Doc Download", summary: "Finds a person's onboarding record in CRM and downloads the iDocs attached to it. CRM is read-only throughout — every change this workflow makes is to a local folder — so there is nothing a rehearsal would stop short of.",
+  { workflowId: "fixture-crm-doc-download", label: "Onboarding Documents", summary: "Finds a person's onboarding record in CRM and downloads the iDocs attached to it. CRM is read-only throughout — every change this workflow makes is to a local folder — so there is nothing a rehearsal would stop short of.",
     nodes: [
       {"id":"CRM auth","kind":"task","system":"crm","purpose":"Reach an authenticated CRM session. A replayed session is reused when a prior attempt still holds one.","skippedInDryRun":false,"contract":[{"dir":"read","field":"CRM authentication","system":"crm"}]},
       {"id":"Search record","kind":"task","system":"crm","purpose":"Find the onboarding record from the typed EID or email. The fuzzy search result must be confirmed against the identifier on the record, or the run throws rather than downloading somebody else's documents.","skippedInDryRun":false,"contract":[{"dir":"read","field":"Email searched","system":"crm","editable":true},{"dir":"read","field":"Roster email","system":"crm","editable":true},{"dir":"read","field":"UCPath Employee ID","system":"crm"}]},
@@ -158,13 +148,6 @@ export const WORKFLOW_PREVIEW_GRAPHS: readonly PreviewGraph[] = [
       {"id":"Archive","kind":"output","system":"crm","purpose":"Read the person's name off the UCPath Entry Sheet, zip the folder under it, and delete the folder. Runs sharing a parent append into one combined zip under a cross-process lock.","skippedInDryRun":false,"contract":[{"dir":"read","field":"Lived name","system":"crm"},{"dir":"write","field":"Archive zip","system":"crm","proof":"the zip listed back after the move"}]},
     ],
     edges: [{"from":"CRM auth","to":"Search record"},{"from":"Search record","to":"Download"},{"from":"Download","to":"Archive"}],
-  },
-  { workflowId: "fixture-sharepoint-download", label: "SharePoint Download", summary: "Downloads the current roster export into the roster folder, then reads it back and counts its rows. Every roster-backed start reads whatever this leaves behind. It changes no system of record.",
-    nodes: [
-      {"id":"Navigate","kind":"task","system":"sharepoint","purpose":"Resolve the configured Onboarding Roster destination and authenticate to SharePoint. The operator does not supply a URL.","skippedInDryRun":false,"contract":[]},
-      {"id":"Download","kind":"output","system":"sharepoint","purpose":"Download one configured spreadsheet into the local roster directory and record the saved filename and path.","skippedInDryRun":false,"contract":[{"dir":"write","field":"Roster file","system":"sharepoint","proof":"download save completed"}]},
-    ],
-    edges: [{"from":"Navigate","to":"Download"}],
   },
 ];
 

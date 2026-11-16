@@ -1,4 +1,7 @@
-import { deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../models/run/result.js";
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
+import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
+import type { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
+import { delegationEvidenceOutput, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { evaluateNodeCondition, nodeConditionDependency } from "../../../models/workflow/node-condition.js";
 import { z } from "zod";
@@ -6,6 +9,8 @@ import { descriptorRuntimeNodes } from "../../../workflow-kit/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
+import type { DataObservationOrigin, DataObservationOrigins } from "../../../models/events/data-observation-origin.js";
+import { readObservationPath, observationLeafPaths, resolveObservationOrigin } from "../../../models/events/data-observation-origin.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import {
   ContractFieldPathSchema,
@@ -27,6 +32,7 @@ import type {
 } from "../../../rules/workflow/task-provenance.js";
 import { FactProvenanceSchema } from "../../../models/workflow/checkpoint.js";
 import type { FactProvenance } from "../../../models/workflow/checkpoint.js";
+import type { TransactionOutcome } from "../../../rules/write-safety/write-safety.js";
 
 type ParsedDataPoint = z.output<typeof DataPointSchema>;
 
@@ -43,10 +49,13 @@ export type TaskProvenanceCollector = Readonly<{
 
 export type TaskProvenanceCollectorInput = Readonly<{
   readonly descriptor: AnyWorkflowDescriptor;
+  readonly schemaReader?: EvidenceSchemaReader;
   readonly execution: z.input<typeof TaskExecutionIdentitySchema>;
   readonly upstreamEvidence: z.input<typeof TaskUpstreamCheckpointEvidenceSchema>;
   readonly clock: Clock;
   readonly canonicalInput?: JsonValue;
+  readonly continuation?: AuthenticatedRunContinuation;
+  readonly observationSpanPath?: string;
 
   readonly onRecord: (batch: RecordedDataBatch) => void;
 }>;
@@ -62,6 +71,14 @@ export function jsonLeafPaths(value: JsonValue, prefix = ""): readonly string[] 
     return [prefix];
   }
   return entries.flatMap(([key, child]) => jsonLeafPaths(child, prefix.length === 0 ? key : `${prefix}.${key}`));
+}
+
+export function transactionCheckpointProvenance(outcome: TransactionOutcome, observedAt: string): readonly FactProvenance[] {
+  const instant = IsoInstantSchema.parse(observedAt);
+  return jsonLeafPaths(JsonValueSchema.parse(outcome)).map(path => FactProvenanceSchema.parse({
+    path, source: outcome.proofSource === "operator-attestation" ? "operator" : "live",
+    observedAt: instant, originalObservedAt: instant,
+  }));
 }
 
 function isJsonArray(value: JsonValue): value is readonly JsonValue[] {
@@ -141,10 +158,10 @@ function validateCheckpointSet(
   const expected = new Set(expectedDependencies);
   const actual = new Set<string>([
     ...evidence.checkpoints.map(({ nodeId }) => nodeId),
-    ...evidence.gateResults.map(({ gateId }) => gateId),
+    ...evidence.gateResults.map(({ nodeId }) => nodeId),
     ...evidence.skippedGates,
     ...evidence.skippedTasks,
-    ...(evidence.children ?? []).map((child) => child.nodeId),
+    ...(evidence.children ?? []).map((child) => child.evidence.nodeId),
   ]);
   for (const checkpoint of evidence.checkpoints) {
     if (!expected.has(checkpoint.nodeId)) {
@@ -152,10 +169,10 @@ function validateCheckpointSet(
     }
   }
   for (const child of evidence.children ?? []) {
-    if (!expected.has(child.nodeId)) throw new Error(`task ${taskId} received undeclared upstream child ${child.nodeId}`);
+    if (!expected.has(child.evidence.nodeId)) throw new Error(`task ${taskId} received undeclared upstream child ${child.evidence.nodeId}`);
   }
   for (const gate of evidence.gateResults) {
-    if (!expected.has(gate.gateId)) {
+    if (!expected.has(gate.nodeId)) {
       throw new Error(`task ${taskId} received undeclared upstream gate result ${gate.gateId}`);
     }
   }
@@ -198,8 +215,8 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
   const evidence = TaskUpstreamCheckpointEvidenceSchema.parse(input.upstreamEvidence);
   validateCheckpointSet(execution.taskId, node.dependsOn, evidence);
   const conditionEvidence = evidence.conditionEvidence;
-  const directIds = new Set([...evidence.checkpoints.map(row => String(row.nodeId)), ...evidence.gateResults.map(row => String(row.gateId)), ...evidence.skippedTasks.map(String), ...evidence.skippedGates.map(String), ...(evidence.children ?? []).map(row => String(row.nodeId))]);
-  const conditionIds = [...conditionEvidence.checkpoints.map(row => String(row.nodeId)), ...conditionEvidence.gateResults.map(row => String(row.gateId)), ...conditionEvidence.skippedTasks.map(String), ...conditionEvidence.skippedGates.map(String)];
+  const directIds = new Set([...evidence.checkpoints.map(row => String(row.nodeId)), ...evidence.gateResults.map(row => String(row.nodeId)), ...evidence.skippedTasks.map(String), ...evidence.skippedGates.map(String), ...(evidence.children ?? []).map(row => String(row.evidence.nodeId))]);
+  const conditionIds = [...conditionEvidence.checkpoints.map(row => String(row.nodeId)), ...conditionEvidence.gateResults.map(row => String(row.nodeId)), ...conditionEvidence.skippedTasks.map(String), ...conditionEvidence.skippedGates.map(String)];
   if (new Set(conditionIds).size !== conditionIds.length || conditionIds.some(id => directIds.has(id))) throw new Error("duplicate or overlapping condition evidence");
   const allCheckpoints = [...evidence.checkpoints, ...conditionEvidence.checkpoints];
   const allGates = [...evidence.gateResults, ...conditionEvidence.gateResults];
@@ -235,14 +252,14 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     }
     const producer = nodes.find(node => node.id === checkpoint.nodeId);
     if (producer?.kind !== "task" || checkpoint.contractFingerprint !== input.descriptor.contractFingerprint || checkpoint.descriptorVersion !== input.descriptor.version
-      || checkpoint.output.schemaHash !== deriveSchemaHash(producer.uses.output, "output")) throw new Error(`invalid condition checkpoint ${checkpoint.nodeId}`);
+      || (input.schemaReader?.({ kind: "task-output", id: checkpointRecordKey(checkpoint) }, checkpoint, checkpoint.output.schemaHash, deriveSchemaHash(producer.uses.output, "output")) ?? checkpoint.output.schemaHash) !== deriveSchemaHash(producer.uses.output, "output")) throw new Error(`invalid condition checkpoint ${checkpoint.nodeId}`);
     validateCheckpointFacts(execution.workflowId, checkpoint);
     outputs[String(checkpoint.nodeId)] = JsonValueSchema.parse(producer.uses.output.parse(checkpoint.output.value));
   }
   for (const gate of allGates) {
-    const producer = nodes.find(node => String(node.id) === String(gate.gateId));
-    if (producer?.kind !== "gate" || gate.runId !== execution.runId || gate.result.schemaHash !== deriveSchemaHash(producer.result, "output")) throw new Error(`invalid condition gate ${gate.gateId}`);
-    outputs[String(gate.gateId)] = JsonValueSchema.parse(producer.result.parse(gate.result.value));
+    const producer = nodes.find(node => String(node.id) === String(gate.nodeId));
+    if (producer?.kind !== "gate" || String(gate.gateId) !== String(producer.id) || (gate.runId !== execution.runId && !input.continuation?.permitsGate(gate)) || (input.schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate, gate.result.schemaHash, deriveSchemaHash(producer.result, "output")) ?? gate.result.schemaHash) !== deriveSchemaHash(producer.result, "output")) throw new Error(`invalid condition gate ${gate.gateId}`);
+    outputs[String(gate.nodeId)] = JsonValueSchema.parse(producer.result.parse(gate.result.value));
   }
   for (const id of visited) {
     const skipped = nodes.find(node => String(node.id) === id);
@@ -253,17 +270,20 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     if (evaluateNodeCondition(skipped.when, { input: input.canonicalInput, outputs })) throw new Error(`task ${execution.taskId} cannot skip required ${skipped.kind === "gate" ? "gate" : "task"} ${id}`);
   }
   const childFacts = (evidence.children ?? []).flatMap((child) => {
-    const declared = nodes.find((candidate) => candidate.id === child.nodeId);
-    if (declared?.kind !== "child-run" || declared.await !== "terminal" || declared.cardinality !== "one"
-      || child.parentRunId !== execution.runId || child.edgeId !== declared.edgeId || child.result.workflowId !== declared.target.id
-      || child.result.resultSchemaHash !== deriveSchemaHash(declared.target.result, "output")) throw new Error("task-child-upstream-identity-mismatch");
-    const records = new Map(child.results.map((result) => [result.runId, result]));
-    if (records.size !== child.results.length || !records.has(child.result.runId) || canonicalJsonStringify(records.get(child.result.runId)) !== canonicalJsonStringify(child.result)) throw new Error("task-child-upstream-result-mismatch");
+    const declared = nodes.find((candidate) => candidate.id === child.evidence.nodeId);
+    if (declared?.kind !== "child-run" || (child.evidence.parentRunId !== execution.runId && !input.continuation?.permitsDelegation(child.evidence)) || child.evidence.edgeId !== declared.edgeId
+      || child.evidence.manifest.cardinality !== declared.cardinality || child.evidence.manifest.join !== declared.join
+      || canonicalJsonStringify(child.evidence.manifest.policy) !== canonicalJsonStringify(declared.policy)
+      || child.evidence.children.some(member => member.run.envelope.workflow !== declared.target.id)) throw new Error("task-child-upstream-identity-mismatch");
+    delegationEvidenceOutput(child.evidence, declared.target.result, input.schemaReader);
+    const records = new Map(child.results.map(result => [result.runId, result]));
+    if (records.size !== child.results.length || child.evidence.children.some(member => canonicalJsonStringify(records.get(member.result.runId)) !== canonicalJsonStringify(member.result))
+      || new Set(child.checkpoints.map(checkpoint => canonicalJsonStringify(checkpoint))).size !== child.checkpoints.length) throw new Error("task-child-upstream-result-mismatch");
     const expectedCheckpoints = new Set<string>();
     const facts: FactProvenance[] = [];
     const visited = new Set<RunId>();
-    const visit = (runId: RunId): void => {
-      if (visited.has(runId)) throw new Error("task-child-upstream-cycle");
+    const visit = (runId: RunId, depth = 0): void => {
+      if (depth > 16 || visited.has(runId)) throw new Error("task-child-upstream-cycle");
       visited.add(runId);
       const result = records.get(runId);
       if (result === undefined) throw new Error("task-child-upstream-result-unavailable");
@@ -279,13 +299,19 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
           const nested = records.get(dependency.child.runId);
           if (nested === undefined || nested.resultDigest !== dependency.child.resultDigest || nested.dependencyDigest !== dependency.child.dependencyDigest
             || nested.contractFingerprint !== dependency.child.contractFingerprint || nested.resultSchemaHash !== dependency.child.resultSchemaHash) throw new Error("task-child-upstream-descendant-mismatch");
-          visit(nested.runId);
+          visit(nested.runId, depth + 1);
+        } else if (dependency.state === "delegation-resolved") {
+          for (const member of dependency.members) {
+            const nested = records.get(member.runId);
+            if (nested === undefined || nested.resultDigest !== member.resultDigest || nested.dependencyDigest !== member.dependencyDigest
+              || nested.contractFingerprint !== member.contractFingerprint || nested.resultSchemaHash !== member.resultSchemaHash) throw new Error("task-child-upstream-descendant-mismatch");
+            visit(nested.runId, depth + 1);
+          }
         } else if (dependency.state === "asserted") facts.push(FactProvenanceSchema.parse({ path: "assertion", source: "operator", observedAt: dependency.assertedAt, originalObservedAt: dependency.assertedAt }));
       }
     };
-    visit(child.result.runId);
+    for (const member of child.evidence.children) visit(member.result.runId);
     if (visited.size !== records.size || child.checkpoints.some((checkpoint) => !expectedCheckpoints.has(canonicalJsonStringify(checkpoint)))) throw new Error("task-child-upstream-extra-evidence");
-    if (facts.length === 0) throw new Error("task-child-upstream-observation-unavailable");
     return facts;
   });
   const upstream = Object.freeze([
@@ -302,6 +328,49 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
   ]);
   const points = new Map<string, RecordedDataPoint>();
   let finalized = false;
+
+  const originsFor = (point: ParsedDataPoint): DataObservationOrigins | undefined => {
+    const spanPath = input.observationSpanPath;
+    const aliases = (point.aliases ?? []).map(alias => {
+      const target = readObservationPath(point.value, alias.path);
+      let source: JsonValue;
+      let originAt: (path: readonly (string | number)[]) => DataObservationOrigin;
+      if (alias.source.kind === "local") {
+        const local = points.get(alias.source.field);
+        if (local === undefined) throw new Error("observation alias source is not a prior local point");
+        source = readObservationPath(local.value, alias.source.path);
+        originAt = path => {
+          if (spanPath === undefined) throw new Error("observation alias source local span unavailable");
+          return resolveObservationOrigin({ ...execution, spanPath }, local, path);
+        };
+      } else {
+        const nodeId = alias.source.nodeId;
+        const checkpoint = evidence.checkpoints.find(row => row.nodeId === nodeId);
+        if (checkpoint === undefined) throw new Error("observation alias source is not an admitted dependency");
+        source = readObservationPath(checkpoint.output.value, alias.source.path);
+        originAt = path => {
+          const origin = checkpoint.observationOrigins?.find(entry => canonicalJsonStringify(entry.path) === canonicalJsonStringify(path))?.origin;
+          if (origin === undefined) throw new Error(`observation alias source checkpoint ${checkpoint.nodeId} origin unavailable`);
+          return origin;
+        };
+      }
+      if (canonicalJsonStringify(source) !== canonicalJsonStringify(target)) throw new Error("observation alias contradicts its exact source value");
+      return { ...alias, originAt };
+    });
+    for (let index = 0; index < aliases.length; index++) for (let other = index + 1; other < aliases.length; other++) {
+      const a = aliases[index].path, b = aliases[other].path;
+      if (a.every((part, i) => part === b[i]) || b.every((part, i) => part === a[i])) throw new Error("observation alias targets overlap");
+    }
+    if (spanPath === undefined || aliases.length === 0) return undefined;
+    const origins = observationLeafPaths(point.value).flatMap(path => {
+      const alias = aliases.find(alias => alias.path.every((part, index) => path[index] === part));
+      if (alias === undefined) return [];
+      const origin = alias.originAt([...alias.source.path, ...path.slice(alias.path.length)]);
+      return canonicalJsonStringify(origin) === canonicalJsonStringify(resolveObservationOrigin({ ...execution, spanPath }, point, path))
+        ? [] : [{ path: [...path], origin }];
+    });
+    return origins.length === 0 ? undefined : origins;
+  };
 
   const recordData = (pointInput: DataPoint | readonly DataPoint[]): void => {
     if (finalized) throw new Error(`task ${execution.taskId} cannot record provenance after finalization`);
@@ -324,7 +393,8 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
       if (overlapping !== undefined) {
         throw new Error(`task ${execution.taskId} recorded overlapping fields ${overlapping} and ${point.field}`);
       }
-      const stored = RecordedDataPointSchema.parse({ ...point, execution, recordedAt });
+      const origins = originsFor(point);
+      const stored = RecordedDataPointSchema.parse({ ...point, execution, recordedAt, ...(origins === undefined ? {} : { origins }) });
       points.set(point.field, stored);
       recorded.push(stored);
     }

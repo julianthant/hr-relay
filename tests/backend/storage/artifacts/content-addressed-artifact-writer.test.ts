@@ -1,12 +1,13 @@
+import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
 import { default as assert } from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createContentAddressedArtifactWriter, pendingDiagnosticArtifacts, reclaimDiagnosticStages } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 
 {
@@ -52,12 +53,7 @@ it("refuses a root replaced by a symlink before ready or put", async () => {
 {
 
 it("never deletes an unregistered shared winner during stopped cleanup and preserves its accounted witness", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "diagnostic-shared-cleanup-")));
-  const admission = RuntimeAdmission.acquireInitial(root, (pair, inspection) => ({ kind: "verified-existing", pair,
-    authorityGeneration: AuthorityDatabase.inspectExistingReadOnly(inspection, join(pair.stateRoot, "state.db")).authorityGeneration,
-    databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(pair.stateRoot, "state.db")) }), (pair, initialization) => {
-    AuthorityDatabase.open(initialization, { path: join(pair.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "diagnostic-shared" }).close();
-  });
+  const profile = await createBoundProfileFixture(), admission = profile.admission;
   try {
     const writer = createContentAddressedArtifactWriter({ admission });
     const bytes = Buffer.from("shared winner bytes");
@@ -71,6 +67,43 @@ it("never deletes an unregistered shared winner during stopped cleanup and prese
     assert.equal(reclaimDiagnosticStages(admission, ref => ref.id === winner.id), 1);
     assert.deepEqual(readdirSync(admission.artifactRoot).sort(), before.filter(name => !name.endsWith(".diagnostic.tmp")));
     assert.equal(existsSync(join(admission.artifactRoot, `${winner.sha256}.artifact`)), true);
-  } finally { admission.release(); rmSync(root, { recursive: true, force: true }); }
+  } finally { await profile.close(); }
 });
 }
+
+
+it.skipIf(process.platform !== "linux")("publishes and disposes a diagnostic with exact high file IDs", async () => {
+  const f = await createBoundProfileFixture(), restore = forceExactFileMetadata(f.admission.artifactRoot);
+  try {
+    const writer = createContentAddressedArtifactWriter({ admission: f.admission });
+    const bytes = Buffer.from("exact diagnostic fixture"), stage = await writer.stageDiagnostic(bytes, { mediaType: "application/json" }, "ordinary");
+    const name = readdirSync(f.admission.artifactRoot).find(name => name.endsWith(".diagnostic.tmp")); assert.ok(name);
+    const path = join(f.admission.artifactRoot, name);
+    const inode = (1n << 54n) + (lstatSync(path, { bigint: true }).ino << 2n);
+    for (const source of ["path", "descriptor"] as const) assert.ok(restore.observations.some(observation =>
+      observation.path === path && observation.source === source && observation.inode === inode), `missing exact ${source} identity`);
+    assert.equal(stage.publish().sha256, createHash("sha256").update(bytes).digest("hex"));
+    stage.dispose();
+    const chunks: Buffer[] = [];
+    for await (const chunk of await writer.open(stage.ref)) { assert.ok(chunk instanceof Uint8Array); chunks.push(Buffer.from(chunk)); }
+    assert.deepEqual(Buffer.concat(chunks), bytes);
+    assert.deepEqual(pendingDiagnosticArtifacts(f.admission), []);
+  } finally { restore(); await f.close(); }
+});
+
+it.skipIf(process.platform !== "linux")("refuses an adjacent high-ID diagnostic stage substitution", async () => {
+  const f = await createBoundProfileFixture();
+  let substituted = false;
+  const restore = forceExactFileMetadata(f.admission.artifactRoot, (path, info) => {
+    if (substituted && path.endsWith(".diagnostic.tmp")) { assert.equal(Number(info.ino), Number(info.ino + 1n)); info.ino += 1n; }
+  });
+  try {
+    const writer = createContentAddressedArtifactWriter({ admission: f.admission });
+    const bytes = Buffer.from("preserved diagnostic fixture"), stage = await writer.stageDiagnostic(bytes, { mediaType: "application/json" }, "ordinary");
+    const before = readdirSync(f.admission.artifactRoot).sort();
+    substituted = true;
+    assert.throws(() => stage.publish(), /diagnostic-stage-custody-changed/u);
+    assert.deepEqual(readdirSync(f.admission.artifactRoot).sort(), before);
+    substituted = false; stage.publish(); stage.dispose();
+  } finally { restore(); await f.close(); }
+});

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import type { Clock } from "../../rules/time/clock.js";
+import { leadingKebabToken } from "../failures/error-origins.js";
 import {
   FingerprintSchema,
 } from "../../rules/identity/ids.js";
@@ -65,6 +66,27 @@ export interface PreflightRunner {
   run(context: PreflightRunnerContext): Promise<z.input<typeof PreflightObservationSchema>>;
 }
 
+/** A detector missed its registered budget. The message names that check and budget only. */
+export class PreflightRunnerTimeoutError extends Error {
+  constructor(readonly check: PreflightCheckId, readonly timeoutMs: number) {
+    super(`preflight runner ${check} exceeded its registered ${String(timeoutMs)}ms timeout`);
+    this.name = "PreflightRunnerTimeoutError";
+  }
+}
+
+/** The timeout itself, the cause of a wrapper, or one failure inside an aggregate of runner failures. */
+export function preflightRunnerTimeout(error: unknown): PreflightRunnerTimeoutError | undefined {
+  if (error instanceof PreflightRunnerTimeoutError) return error;
+  if (error instanceof AggregateError) {
+    for (const failure of error.errors) {
+      const nested = preflightRunnerTimeout(failure);
+      if (nested !== undefined) return nested;
+    }
+  }
+  const cause = error instanceof Error ? error.cause : undefined;
+  return cause === undefined || cause === error ? undefined : preflightRunnerTimeout(cause);
+}
+
 /** Executes one detector under its registered deadline: a timeout rejects the eventual return rather than racing the runner promise away. */
 export async function executePreflightRunner(
   runner: PreflightRunner,
@@ -86,9 +108,7 @@ export async function executePreflightRunner(
   if (signal.aborted) forwardAbort();
   signal.addEventListener("abort", forwardAbort, { once: true });
   let timedOut = false;
-  const timeoutError = new Error(
-    `preflight runner ${runner.check} exceeded its registered ${String(check.timeoutMs)}ms timeout`,
-  );
+  const timeoutError = new PreflightRunnerTimeoutError(runner.check, check.timeoutMs);
   const deadline = scheduler.schedule(deadlineMonotonicMs, () => {
     timedOut = true;
     controller.abort(timeoutError);
@@ -256,6 +276,14 @@ interface CreatePreflightAuthorityInput {
   readonly runners: readonly PreflightRunner[];
   readonly clock: Clock;
   readonly scheduler: PreflightDeadlineScheduler;
+  /** Dashboard only: a runner that rejects becomes an unhealthy row instead of rejecting the refresh. */
+  readonly incompleteAsFailure?: true;
+}
+
+function incompleteObservation(check: PreflightCheckId, error: unknown): z.infer<typeof PreflightObservationSchema> {
+  const reason = preflightRunnerTimeout(error) !== undefined ? "timeout"
+    : (error instanceof Error ? leadingKebabToken(error.message) : undefined) ?? "error";
+  return { check, state: "unhealthy", summary: `check did not complete (${reason})`, impact: "this check's result is unknown" };
 }
 
 /** The one runtime preflight authority: selection comes from the strict dependency registry, and a rerun is read-only but idempotent by command id. */
@@ -296,7 +324,8 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
     const settlements = await Promise.allSettled(selectedChecks.map(async (check) => {
       const runner = runners.get(check);
       if (runner === undefined) throw new Error(`preflight authority runner ${check} vanished after composition`);
-      return executePreflightRunner(runner, signal, input.clock, input.scheduler);
+      const observation = executePreflightRunner(runner, signal, input.clock, input.scheduler);
+      return input.incompleteAsFailure === true ? observation.catch((error: unknown) => { if (signal.aborted) throw error; return incompleteObservation(check, error); }) : observation;
     }));
     const observations: z.infer<typeof PreflightObservationSchema>[] = [];
     const failures: unknown[] = [];

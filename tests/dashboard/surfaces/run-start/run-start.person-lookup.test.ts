@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { act } from "react";
 import { afterEach, describe, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { RerunValuesRequestSchema, RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../src/models/dashboard/rerun-warning.js";
@@ -14,13 +14,44 @@ import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-st
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
-const descriptor = WORKFLOW_DESCRIPTORS.find(workflow => workflow.id === "person-lookup"); assert.ok(descriptor);
+const descriptor = DESCRIPTORS.find(workflow => workflow.id === "person-lookup"); assert.ok(descriptor);
 const surface = descriptor.surfaces.inputRun; assert.ok(surface);
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, version: descriptor.version,
   steps: projectStartSteps(descriptor), inputRun: { state: "present", surface } };
 const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
 
 describe("served Person Lookup Run and Rerun", () => {
+  it("leaves rejected older Match identity uncopied and restores current controls", async () => {
+    const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion,
+      workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: "0".repeat(64), outcome: "done" },
+      sourceInput: { state: "partial", value: { mode: "match", crmCheck: true, includeCrmDates: false }, identityCopied: false },
+      steps: descriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })),
+      values: [], transactions: [] });
+    let request: unknown;
+    const dialog = await h.openDialog(h.stubClient({ rerunValues: async () => ({ state: "available", snapshot }),
+      previewRerunWarnings: async options => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(options).source, warnings: [], warningDigest: h.HASH } }),
+      submitStartPlan: async options => { request = options; const parsed = StartPlanRequestSchema.parse(options); return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
+    }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
+    await dialog.press("Continue");
+    assert.equal(dialog.typedInput().value, ""); assert.equal(dialog.disabled("Continue"), true); assert.equal(request, undefined);
+    await dialog.type("Example, Person, 01/15/2000, x"); await dialog.press("Continue"); await dialog.press("Continue");
+    assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [{ mode: "match", lastName: "Example", firstName: "Person", dob: "01/15/2000", crmCheck: true, includeCrmDates: false }]);
+  });
+  it("fills a missing older control from current defaults without changing accepted identity", async () => {
+    const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion,
+      workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: "0".repeat(64), outcome: "done" },
+      sourceInput: { state: "partial", value: { mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true }, identityCopied: true },
+      steps: descriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })),
+      values: [], transactions: [] });
+    let request: unknown;
+    const dialog = await h.openDialog(h.stubClient({ rerunValues: async () => ({ state: "available", snapshot }),
+      previewRerunWarnings: async options => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(options).source, warnings: [], warningDigest: h.HASH } }),
+      submitStartPlan: async options => { request = options; const parsed = StartPlanRequestSchema.parse(options); return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
+    }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
+    await dialog.press("Continue"); assert.equal(dialog.typedInput().value, "10000001");
+    await dialog.press("Continue"); await dialog.press("Continue");
+    assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [{ mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true, includeCrmDates: false }]);
+  });
   it("keeps the Run component and model independent of workflow-specific models", () => {
     for (const filename of ["run-start.tsx", "run-start-model.ts"]) {
       const source = readFileSync(resolve(`src/dashboard/surfaces/run-start/${filename}`), "utf8");
@@ -52,7 +83,7 @@ describe("served Person Lookup Run and Rerun", () => {
     let request: unknown;
     const dialog = await h.openDialog(h.stubClient({ submitStartPlan: async input => { request = input; return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }), { workflows: [workflow], panelWorkflowId: descriptor.id });
     await dialog.type("10000001; 10000001; Example, Person");
-    assert.ok([...document.querySelectorAll("label")].some(label => label.textContent === "Employee IDs or names"));
+    assert.ok(document.querySelector('textarea[aria-label="Employee IDs or names"]'));
     assert.match(dialog.text(), /Lookup mode/u); assert.match(dialog.text(), /CRM check/u);
     await dialog.press("Continue"); await dialog.press("Continue");
     const planned = StartPlanRequestSchema.parse(request);
@@ -67,7 +98,7 @@ describe("served Person Lookup Run and Rerun", () => {
     const dialog = await h.openDialog(h.stubClient({ submitStartPlan: async input => { request = input; return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }), { workflows: [workflow], panelWorkflowId: descriptor.id });
     const match = document.querySelector<HTMLInputElement>('input[type="radio"][value="match"]'); assert.ok(match);
     await act(async () => match.click()); await dialog.type("Example, Person, x, x");
-    assert.match(dialog.text(), /Each entry starts one run\./u);
+    assert.match(dialog.text(), /Search by ID or name, or match on details\./u);
     assert.equal(/Enter employee IDs\./iu.test(dialog.text()), false);
     assert.equal(dialog.disabled("Continue"), true);
     await dialog.type("Example, Person, x, 123456789");
@@ -78,7 +109,7 @@ describe("served Person Lookup Run and Rerun", () => {
     assert.equal(dialog.text().includes("123456789"), false);
   });
   it("keeps protected source input unavailable and never offers output values as its replacement", async () => {
-    const snapshot = RerunValuesSnapshotSchema.parse({ workers: "auto", source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
+    const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
       descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "done" },
       sourceInput: { state: "unavailable", reason: "protected" },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "completed", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "completed", reason: "checkpoint" })) })), values: [], transactions: [] });
@@ -91,7 +122,7 @@ describe("served Person Lookup Run and Rerun", () => {
   });
   it("blocks a cleared rerun input before planning and accepts fresh canonical replacement input", async () => {
     const input = { mode: "search", emplId: "10000001", crmCheck: true, keepNonHdh: false, includeCrmDates: false };
-    const snapshot = RerunValuesSnapshotSchema.parse({ workers: "auto", source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
+    const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
       descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "done" },
       sourceInput: { state: "available", value: input },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "completed", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "completed", reason: "checkpoint" })) })), values: [], transactions: [] });
@@ -110,13 +141,13 @@ describe("served Person Lookup Run and Rerun", () => {
     assert.equal(planned.length, 1);
     assert.deepEqual(StartPlanRequestSchema.parse(planned[0]).submissions, [{ ...input, emplId: "10000002" }]);
   });
-  for (const input of [
+  for (const older of [false, true]) for (const input of [
     { mode: "search", name: "Example, Person", crmCheck: false, keepNonHdh: true, includeCrmDates: false },
     { mode: "search", emplId: "10000001", crmCheck: true, keepNonHdh: false, includeCrmDates: true },
     { mode: "match", lastName: "Example", firstName: "Person", ssn: "123456789", crmCheck: true, includeCrmDates: false },
-  ]) it(`restores exact ${input.mode} source values and masks Match confirmation`, async () => {
-    const snapshot = RerunValuesSnapshotSchema.parse({ workers: "auto", source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
-      descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: "done" },
+  ]) it(`restores exact ${input.mode} source values after fingerprint change ${older} and masks Match confirmation`, async () => {
+    const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: descriptor.id,
+      descriptorVersion: descriptor.version, contractFingerprint: older ? "0".repeat(64) : descriptor.contractFingerprint, outcome: "done" },
       sourceInput: { state: "available", value: input },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "completed", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "completed", reason: "checkpoint" })) })), values: [], transactions: [] });
     let request: unknown;

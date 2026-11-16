@@ -1,3 +1,5 @@
+import { afterAll } from "vitest";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import assert from "node:assert/strict";
@@ -7,21 +9,23 @@ import { UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {executorHarness, SIGNAL, cleanup } = createRunExecutorTestWorld();
+const profiles = createProfileFixtureSet();
+afterAll(() => profiles.close());
+const {executorHarness, SIGNAL, cleanup } = createRunExecutorTestWorld(profiles.create);
 
 afterEach(cleanup);
 
 describe("terminal identity binding", () => {
   it("refuses to execute a run bound to a different descriptor identity", async () => {
-    const harness = executorHarness();
+    const harness = await executorHarness();
     const { database, clock } = harness.authority;
     const run = personLookupQueuedRun();
     const envelope = run.envelope as Record<string, unknown>;
     envelope.contractFingerprint = UUID_6.replaceAll("-", "").padEnd(64, "0");
     database.authority.runs.enqueue(run);
-    const { workerId, workerLifetime } = testAdmittedWorker(database, clock, { path: harness.authority.path, workflow: WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
+    const { workerId } = testAdmittedWorker(database, clock, { path: harness.authority.path, workflow: WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
     const claimed = database.authority.runs.claimNext({
-      workerLifetime, workflow: WORKFLOW_ID,
+      workflow: WORKFLOW_ID,
       workerId: workerId,
       now: clock.now().toISOString(),
     });

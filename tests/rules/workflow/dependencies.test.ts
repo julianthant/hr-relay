@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
 import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
-import { AtomicOutboxRecordSchema } from "../../../src/models/notifications/outbox.js";
 import {
 ChildFailurePolicySchema,
 ChildRetryPolicySchema,
@@ -15,10 +14,8 @@ import {
 CONFIG_SNAPSHOT,
 DELEGATION_MANIFEST,
 DEPENDENCY_RECORD,
-LEDGER_OUTBOX_PAYLOAD,
 LEDGER_PAYLOAD,
 NOTIFICATION,
-NOW,
 UUID_1
 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -43,21 +40,11 @@ describe("durable control and outbox records", () => {
     assert.equal(ConfigSnapshotRecordSchema.safeParse({ ...CONFIG_SNAPSHOT, config: { ...CONFIG_SNAPSHOT.config, credential: "secret" } }).success, false);
   });
 
-  it("keeps ledger and atomic outbox payloads typed and dry-run impossible", () => {
+  it("keeps ledger payloads typed and dry-run impossible", () => {
     assert.equal(LedgerEntryPayloadSchema.safeParse(LEDGER_PAYLOAD).success, true);
     assert.equal(LedgerEntryPayloadSchema.safeParse({ ...LEDGER_PAYLOAD, dryRun: true }).success, false);
     assert.equal(LedgerEntryPayloadSchema.safeParse({ ...LEDGER_PAYLOAD, proof: { value: "T123" } }).success, false);
     assert.equal(LedgerEntrySchema.safeParse({ outboxId: UUID_1, seq: 0, payload: LEDGER_PAYLOAD }).success, true);
-    const outbox = {
-      outboxId: UUID_1,
-      aggregate: { kind: "write-intent", writeIntentId: UUID_1, generation: 1 },
-      payload: LEDGER_OUTBOX_PAYLOAD,
-      projection: { state: "pending" },
-      createdAt: NOW,
-    };
-    assert.equal(AtomicOutboxRecordSchema.safeParse(outbox).success, true);
-    assert.equal(AtomicOutboxRecordSchema.safeParse({ ...outbox, payload: { kind: "generic", body: {} } }).success, false);
-    assert.equal(AtomicOutboxRecordSchema.safeParse({ ...outbox, projection: { state: "projected" } }).success, false);
   });
 });
 

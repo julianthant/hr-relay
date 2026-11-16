@@ -1,6 +1,9 @@
+import { mockBrowserRootPort } from "./browser-roots.js";
+import { fixtureDuoSigningSource } from "./duo-signing.js";
+import type { DuoSigningSource } from "../../../../src/backend/storage/configuration/duo-signing.js";
 import { PNG } from "pngjs";
 import { runInNewContext } from "node:vm";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BrowserContext, Worker } from "playwright";
@@ -20,9 +23,11 @@ export function createBrowserSessionFactoryFixtures(
   SESSION_ID: string,
   NEVER_SCHEDULER: BrowserDeadlineScheduler,
 ) {
+  // Fake controls count as painted: filter({ visible: true }) returns the same locator.
+  interface FakeLocator { selector: string; count: () => Promise<number>; filter: (options: { visible: true }) => FakeLocator }
   interface FakeFrame {
     url: () => string;
-    locator: (selector: string) => { selector: string; count: () => Promise<number> };
+    locator: (selector: string) => FakeLocator;
     evaluate: <T, A>(callback: (arg: A) => T, arg: A) => Promise<T>;
     isDetached: () => boolean;
   }
@@ -63,7 +68,7 @@ export function createBrowserSessionFactoryFixtures(
       const result: unknown = runInNewContext(`(${callback.toString()})(arg)`, { ...sandbox, document: realm.document, arg });
       return result as T;
     };
-    const mainFrame = { evaluate, isDetached: () => false, url: () => current, locator: (selector: string) => ({ selector, ...page.locator() }) };
+    const mainFrame = { evaluate, isDetached: () => false, url: () => current, locator: (selector: string) => { const locator: FakeLocator = { selector, ...page.locator(), filter: () => locator }; return locator; } };
     const page: FakePage = {
       evaluate,
       viewportSize: () => ({ width: realm.innerWidth, height: realm.innerHeight }),
@@ -102,7 +107,7 @@ export function createBrowserSessionFactoryFixtures(
   }
 
 
-  function verifierFor(options: Readonly<{ authenticated?: boolean; reason?: string }> = {}) {
+  function verifierFor(options: Readonly<{ authenticated?: boolean; reason?: string; check?: "application-route" | "positive-evidence" | "sign-in-form-absent" | "evidence-system" }> = {}) {
     const seen: string[] = [];
     return {
       seen: () => Object.freeze([...seen]),
@@ -110,7 +115,7 @@ export function createBrowserSessionFactoryFixtures(
         const url = context.page.url();
         seen.push(url);
         if (options.authenticated === false) {
-          return { authenticated: false, reason: options.reason ?? "the fake verifier refused" };
+          return { authenticated: false, reason: options.reason ?? "the fake verifier refused", check: options.check ?? "application-route" };
         }
         return {
           authenticated: true,
@@ -158,7 +163,6 @@ export function createBrowserSessionFactoryFixtures(
     };
     return {
       launcher: {
-        observeProcess: (_directory, pid = 123) => ({ pid, observation: closed ? { state: "gone" } : { state: "alive", identity: { platform: "darwin", startToken: "fixture-process" } } }),
         async launch(input) {
           mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 });
           await page.setViewportSize(input.viewport);
@@ -198,12 +202,12 @@ export function createBrowserSessionFactoryFixtures(
 
   // Confine every browser-factory filesystem effect to the test root.
   function withTempRuntime(body: (input: Readonly<{ config: Config; root: string }>) => void | Promise<void>): Promise<void> {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-browser-factory-"));
-    const extensionDir = join(root, "duo-autopilot");
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-browser-factory-")));
+    const extensionDir = join(root, "fast-duo");
     const credential = join(root, "duo-webauthn.json");
     const profileRoot = join(root, "profiles");
-    mkdirSync(extensionDir, { recursive: true });
-    writeFileSync(join(extensionDir, "manifest.json"), "{}\n");
+    mkdirSync(extensionDir);
+    for (const name of ["workflow-manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "src"]) cpSync(join(process.cwd(), "fast-duo", name), join(extensionDir, name), { recursive: true });
     writeFileSync(credential, "{\"credentials\":[]}\n");
     chmodSync(credential, 0o600);
     const base = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config;
@@ -227,15 +231,18 @@ export function createBrowserSessionFactoryFixtures(
       ucpathPassword: "fixture-value",
     }),
     Factory: typeof PlaywrightWorkerSessionFactory = PlaywrightWorkerSessionFactory,
+    duo: DuoSigningSource = fixtureDuoSigningSource(),
   ): PlaywrightWorkerSessionFactory {
     return new Factory({
-      config,
+      ...mockBrowserRootPort(), config,
+      duo,
       protectedSecrets,
       isolation: rebuildRuntimeIsolation,
       clock: CLOCK,
       scheduler,
       slotOrdinal: () => 1,
       newSessionId: () => SESSION_ID,
+      assertCurrent: () => undefined,
       admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 7, resetRequired: false })),
       bindings,
       launcher: harness.launcher,

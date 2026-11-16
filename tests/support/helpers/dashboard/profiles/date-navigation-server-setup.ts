@@ -1,5 +1,6 @@
 import { sqliteRunReader } from "../../canonical-run-reader.js";
-import { queryActivitySummaries, queryQueueSummaries } from "../../../../../src/backend/runs/queries/run-summaries.js";
+import { queryActivitySummaries } from "../../../../../src/backend/runs/queries/run-summaries.js";
+import { composeQueueSummaries } from "../../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../../src/models/dashboard/subscription.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -15,8 +16,7 @@ export function createDateNavigationServerSetup() {
     const reader = sqliteRunReader(database, clock);
     const ledger = createTransactionHistory(database.authority);
     return { ...reader, summaries: {
-      withSnapshot: <T>(read: () => T): T => database.withAuthorityReadSnapshot(read),
-      queue: (query: Parameters<typeof queryQueueSummaries>[1]) => queryQueueSummaries(database, query),
+      ...composeQueueSummaries(database),
       activity: (from: string, to: string) => queryActivitySummaries(database, { from, to, generatedAt: clock.now().toISOString() },
         { descriptors: { resolve: () => undefined }, ledger }),
     } };

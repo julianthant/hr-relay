@@ -4,9 +4,9 @@ import { WorkflowIdSchema } from "../../rules/identity/ids.js";
 import { TimelineCategoryKeySchema } from "../../models/workflow/presentation.js";
 
 export const WorkflowModuleRoleSchema = z.discriminatedUnion("kind", [
-  /** An ordinary workflow that stands on its own (person-lookup). */
+  /** An ordinary workflow that stands on its own. */
   z.strictObject({ kind: z.literal("standalone") }),
-  /** A graph assembled from chunk-proven tasks (separations). */
+  /** A graph assembled from chunk-proven tasks. */
   z.strictObject({ kind: z.literal("composition") }),
   /** A per-chunk proving harness: `of` names the composition and `step` one of its declared timeline keys; both are refused if dangling/undeclared, and `step` is required (no default). */
   z.strictObject({

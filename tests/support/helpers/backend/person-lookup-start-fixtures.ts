@@ -1,6 +1,4 @@
-import { mkdtempSync, realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { CONFIG_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
@@ -9,16 +7,19 @@ import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 export function createPersonLookupStartFixtures(
   roots: string[],
   databases: AuthorityDatabase[],
+  profiles: { close(): Promise<void> }[],
   clock: NonNullable<Parameters<typeof AuthorityDatabase.open>[1]>,
   planTtlMs: number,
+  profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture,
 ) {
-  function openDatabase(): AuthorityDatabase {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-start-"));
-    roots.push(root);
+  void roots;
+  async function openDatabase(): Promise<AuthorityDatabase> {
+    const profile = await profileFixture();
     const database = AuthorityDatabase.open(
-      { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
       clock,
     );
+    profiles.push(profile);
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     databases.push(database);
     return database;

@@ -1,10 +1,8 @@
+import { releaseSeededWriteOwners } from "../support/helpers/timeline-write-fixture.js";
 import { registryWithCrmSearch } from "../support/helpers/backend/run-executor-world.js";
 import { crmDriver } from "../../src/backend/systems/crm/driver-declaration.js";
 import { defineTask } from "../../src/workflow-kit/task.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun, type RunExecutorDependencies, type WriteSequencerContext } from "../../src/backend/runtime/execution/run-executor.js";
 import { withBoundRunConfigFingerprint } from "../../src/backend/runtime/workers/worker-sessions.js";
@@ -20,7 +18,6 @@ import {
   buildWriteFixtureRegistry,
   createWriteFixtureWorld,
   WRITE_FIXTURE_EID,
-  WRITE_FIXTURE_IMPL_FINGERPRINT,
   WRITE_FIXTURE_KEY,
   WRITE_FIXTURE_NODE_ID,
   WRITE_FIXTURE_NOW,
@@ -43,11 +40,11 @@ import {
   sessionManagerFor,
 } from "../support/helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../support/helpers/registered-workflows.js";
-import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
+import { openBoundDatabaseFixture } from "../support/helpers/admission-fixture.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 const SIGNAL = new AbortController().signal;
@@ -66,7 +63,7 @@ describe("failure, retry, and resume", () => {
         readOnboardingDates: () => Promise.reject(new Error("unused")),
       }),
     });
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     const deps: RunExecutorDependencies = {
@@ -81,7 +78,7 @@ describe("failure, retry, and resume", () => {
         },
       })),
       authority: database,
-      sessions: sessionManagerFor(mismatched, clock),
+      sessions: await sessionManagerFor(mismatched, clock),
       emitter: createTimelineEmitter({ repository: database.authority.timelineEvents, clock }),
       clock,
       ids: sequentialIdFactory("b"),
@@ -94,6 +91,8 @@ describe("failure, retry, and resume", () => {
     const slot = database.authority.workerSlots.list(WORKFLOW_ID).find(slot => slot.poolIndex === 1 && slot.retiredAt === null);
     if (slot === undefined) throw new Error("executor-fixture-worker-missing");
     database.authority.runs.enqueue(personLookupQueuedRun());
+    const claimMember1 = database.authority.workerSlots.get(slot.workerId);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
     const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: slot.workerId, now });
     if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
     const claim = { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration };
@@ -121,20 +120,14 @@ describe("failure, retry, and resume", () => {
 describe("dry-run — structurally zero intent, zero fence, zero commit", () => {
   it("executeTransaction refuses a dry-run context before any side effect", async () => {
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-write-sequencer-"));
-    const database = AuthorityDatabase.open(
-      { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "write-sequencer-test" },
-      clock,
-    );
-    disposers.push(() => {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
-    });
+    const opened = await openBoundDatabaseFixture("write-sequencer-test", clock);
+    const database = opened.database;
+    disposers.push(async () => { releaseSeededWriteOwners(database, clock.now().toISOString()); await opened.close(); });
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-    testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: writeFixtureDescriptor, poolIndex: 1 });
+    testWorkerPorts(database, clock, { path: opened.path, descriptor: writeFixtureDescriptor, poolIndex: 1 });
     const world = createWriteFixtureWorld();
     const registry = buildWriteFixtureRegistry(world);
-    const manager = writeFixtureSessionManager(writeFixtureSessions(world), registry, clock);
+    const manager = await writeFixtureSessionManager(writeFixtureSessions(world), registry, clock);
     const sequencer = createWriteSequencer({
       lifecycle: testRunLifecycle(database, clock),
       stores: registry,
@@ -146,14 +139,14 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
       scheduler: new ManualScheduler(clock),
       taskDeadlineMs: 60_000,
       operator: "local-operator",
-      log: recordingLogger().log,
-      resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+      log: recordingLogger().log
     });
     const now = clock.now().toISOString();
     const enqueued = database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun: true }));
     assert.equal(enqueued.state, "inserted");
-    const claimed = database.authority.runs.claimNext({
-      workflow: WRITE_FIXTURE_WORKFLOW_ID,
+    const claimMember2 = database.authority.workerSlots.get(WRITE_FIXTURE_WORKER_ID);
+    if (claimMember2 === undefined) throw new Error("fixture-claim-member-required");
+    const claimed = database.authority.runs.claimNext({ workflow: WRITE_FIXTURE_WORKFLOW_ID,
       workerId: WRITE_FIXTURE_WORKER_ID,
       now,
     });

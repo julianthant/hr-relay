@@ -1,3 +1,4 @@
+import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -10,7 +11,9 @@ import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-execu
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("serves the read-only storage doctor on demand (2i-D)", async () => {
-    const h = harness();
+    const h = await harness();
+    const before = FrontendBootstrapWireSchema.parse(await (await h.app.request("/api/v1/bootstrap")).json());
+    assert.deepEqual(before.storage, { authority: "healthy" });
     const response = await h.app.request("/api/v1/storage/doctor");
     assert.equal(response.status, 200);
     const report = StorageDoctorWireSchema.parse(await response.json());
@@ -36,11 +39,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       reason: "the test harness runs no backup lane",
     });
 
-    // The same summary reaches bootstrap: authority probed, backup indicator real.
-    const boot = await json(await h.app.request("/api/v1/bootstrap"));
-    const storage = boot.storage as { authority: string; backup: string };
+    const boot = FrontendBootstrapWireSchema.parse(await (await h.app.request("/api/v1/bootstrap")).json());
+    const storage = boot.storage;
     assert.equal(storage.authority, "healthy");
-    assert.equal(storage.backup, "missing");
     const sections = boot.settingsSections as { id: string; label: string }[];
 
     assert.deepEqual(sections, [
@@ -50,7 +51,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("serves a sanitized span-stream structural diagnosis through the real storage doctor", async () => {
-    const h = harness();
+    const h = await harness();
     const run = RunRecordSchema.parse(personLookupQueuedRun({ runId: RUN_ID }));
     h.database.authority.runs.enqueue(run);
     createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock, pid: 4242 }).emit({
@@ -92,5 +93,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 });
 
-import { disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
+import { disposeHttpRouteHarness, harness } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

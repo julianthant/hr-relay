@@ -1,3 +1,4 @@
+import { prepareWindowsObserverPolicy } from "./scripts/build/windows-observer-policy.js";
 /** Development proxies keep the typed client on the BFF's same origin. */
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
@@ -9,6 +10,8 @@ import {
   DASHBOARD_LAUNCH_NONCE_ENV,
   DashboardLaunchNonceSchema,
 } from "./src/backend/transports/http/frontend-owner.js";
+
+prepareWindowsObserverPolicy(import.meta.dirname);
 
 const BACKEND = "http://127.0.0.1:3938";
 const ownerNonceInput = process.env[DASHBOARD_LAUNCH_NONCE_ENV];
@@ -58,7 +61,7 @@ return defineConfig({
     outDir: distDir,
     emptyOutDir: true,
     // Build the dashboard and design-system specimen together.
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         index: resolve(import.meta.dirname, "src/dashboard/index.html"),
         kit: resolve(import.meta.dirname, "src/dashboard/kit.html"),

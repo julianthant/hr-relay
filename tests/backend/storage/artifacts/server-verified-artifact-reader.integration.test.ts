@@ -1,6 +1,7 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir,mkdtemp,readFile,readdir,rm,symlink,writeFile } from "node:fs/promises";
+import { mkdir,mkdtemp,readFile,readdir,realpath,rm,symlink,writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe,it } from "vitest";
@@ -71,12 +72,13 @@ it("closes snapshot and source when admission is released during snapshotting", 
 });
 
 it("refuses writable artifact services during current existing-authority inspection", async () => {
-  const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-adoption-"));
+  const workspace = await realpath(await mkdtemp(join(tmpdir(), "hrauto-artifact-adoption-")));
+  const lifetime = await runtimeLifetimeLock();
   const stateRoot = join(workspace, ".tracker/data");
   try {
     await mkdir(stateRoot, { recursive: true, mode: 0o700 });
     await writeFile(join(stateRoot, "state.db"), "existing authority evidence");
-    assert.throws(() => RuntimeAdmission.acquireInitial(workspace, (_pair, inspection) => {
+    assert.throws(() => RuntimeAdmission.acquireInitial(workspace, lifetime, (_pair, inspection) => {
       assert.throws(() => createContentAddressedArtifactWriter({ admission: inspection }), /read-only/u);
       assert.throws(() => createServerVerifiedArtifactReader({ admission: inspection }), /read-only/u);
       throw new Error("inspection-tested");

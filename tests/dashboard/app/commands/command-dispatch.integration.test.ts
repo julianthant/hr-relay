@@ -1,11 +1,16 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
+import { randomUUID } from "node:crypto";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
+import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
-import { PositiveIntSchema as positiveIntSchemaForReset } from "../../../../src/rules/identity/ids.js";
 
 import assert_m0 from "node:assert/strict";
-import { mkdtempSync as mkdtempSync_m0,realpathSync as realpathSync_m0,rmSync as rmSync_m0 } from "node:fs";
-import { tmpdir as tmpdir_m0 } from "node:os";
-import { join as join_m0 } from "node:path";
+import { rmSync as rmSync_m0 } from "node:fs";
 import { afterEach as afterEach_m0,describe as describe_m0,it as it_m0 } from "vitest";
 
 import {
@@ -49,29 +54,30 @@ import { CommandRequestSchema as CommandRequestSchema_m1 } from "../../../../src
 {
 
 
-const roots: string[] = [];
-const openDatabases: AuthorityDatabase_m0[] = [];
+const cleanup: (() => void | Promise<void>)[] = [];
 
-const _afterEachFixture0 = () => {
-  for (const db of openDatabases.splice(0)) db.close();
-  for (const root of roots.splice(0)) rmSync_m0(root, { recursive: true, force: true });
+const _afterEachFixture0 = async () => {
+  for (const close of cleanup.splice(0).reverse()) await close();
 };
 
-function createHarness(): {
+async function createHarness(): Promise<{
   database: AuthorityDatabase_m0;
   kernel: CommandKernel_m0;
   clock: ReturnType<typeof manualClock_m0>;
   lifecycle: RunRecordService_m0;
-} {
-  const root = realpathSync_m0(mkdtempSync_m0(join_m0(tmpdir_m0(), "queue-lifecycle-test-")));
-  roots.push(root);
-  const path = join_m0(root, "authority.sqlite");
+}> {
+  const profile = await createBoundProfileFixture();
+  const path = profile.path;
   const clock = manualClock_m0(new Date(NOW_m0));
   const database = AuthorityDatabase_m0.open(
     { path, busyTimeoutMs: 250, migrationOwner: "queue-lifecycle-proof" },
     clock,
   );
-  openDatabases.push(database);
+  cleanup.push(async () => {
+    releaseSeededWriteOwners(database, clock.now().toISOString());
+    database.close();
+    await profile.close();
+  });
   seedSyntheticRuntimeConfig_m0(database);
 
   const ids = sequentialIdFactory_m0("d");
@@ -99,9 +105,9 @@ function createHarness(): {
     },
     writeResolution: {
       resolveAbsent: () => { throw new Error("unused in test"); },
-      resolvePresent: () => { throw new Error("unused in test"); },
+      recheck: () => { throw new Error("unused in test"); },
     },
-    workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("worker runtime is not wired in this fixture"); }, spawnPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, refreshPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, reopenPoolBrowser: () => { throw new Error("worker runtime is not wired in this fixture"); }, stopPoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, pausePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); }, resumePoolWorker: () => { throw new Error("worker runtime is not wired in this fixture"); } } },
+    workerRuntime: { pool: unusedWorkerPool() },
   });
 
   return { database, kernel, clock, lifecycle };
@@ -136,16 +142,18 @@ function terminalizeRun(harness: Harness, runId: string, outcome: "completed" | 
   return run.version + 1;
 }
 
-type Harness = ReturnType<typeof createHarness>;
+type Harness = Awaited<ReturnType<typeof createHarness>>;
 
 describe_m0("Queue commands: CAS binding, attribution, in-flight, and replay", () => {
 afterEach_m0(_afterEachFixture0);
 
-  it_m0("binds exact expectedVersion; stale version refuses with CAS conflict and records feed entry without state change", () => {
-    const harness = createHarness();
+  it_m0("binds exact expectedVersion; stale version refuses with CAS conflict and records feed entry without state change", async () => {
+    const harness = await createHarness();
     const runId = "11111111-1111-4000-8000-111111111111";
     enqueueRun(harness, runId);
     testWorkerPorts(harness.database, harness.clock, { path: syntheticDatabasePath(harness.database), descriptor: personLookupDescriptor_m0, poolIndex: 1 });
+    const claimMember1 = harness.database.authority.workerSlots.get("person-lookup-worker-1");
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
     const claim = harness.database.authority.runs.claimNext({ workflow: "person-lookup", workerId: "person-lookup-worker-1", now: NOW_m0 });
     assert_m0.equal(claim.state, "claimed");
     const currentRun = harness.database.authority.runs.get(runId);
@@ -288,10 +296,22 @@ afterEach_m0(_afterEachFixture0);
     assert_m0.equal(dispatches, 2);
   });
 
-  it_m0("retains commandId across uncertain network response and exact replay produces single accepted effect", () => {
-    const harness = createHarness();
-    const runId = "22222222-2222-4000-8000-222222222222";
-    enqueueRun(harness, runId);
+  it_m0("retains commandId across uncertain network response and exact replay produces single accepted effect", async () => {
+    const harness = await createHarness();
+    const active = harness.database.authority.runtimeConfig.get();
+    assert_m0.ok(active);
+    const planner = createStartPlanService({ authority: harness.database, authorityRead: harness.database,
+      descriptors: { resolve: workflow => workflow === personLookupDescriptor_m0.id ? personLookupDescriptor_m0 : undefined },
+      clock: harness.clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: LOCAL_OPERATOR_ACTOR_ID,
+      configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId });
+    const plan = planner.plan({ workflowId: personLookupDescriptor_m0.id, submissions: [QUEUED_RUN_m0.input.raw], dryRun: false,
+      selectedStepKeys: personLookupDescriptor_m0.timeline.map(step => step.key) });
+    assert_m0.equal(plan.planned.length, 1);
+    assert_m0.equal(plan.refused.length, 0);
+    const started = harness.kernel.execute({ commandId: randomUUID(), family: "start", type: "start-run", source: "dashboard",
+      requestedBy: LOCAL_OPERATOR_ACTOR_ID, requestedAt: harness.clock.now().toISOString(), target: { workflowId: personLookupDescriptor_m0.id,
+        startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
+    const runId = singleAppliedRunId(started);
 
     const action: CommandAction_m0 = {
       key: "cancel",
@@ -309,7 +329,7 @@ afterEach_m0(_afterEachFixture0);
     const requestedAt = "2026-09-22T12:00:00.000Z";
 
     const composed1 = composeCommandRequest_m0(action, target, {
-      actorId: "operator-1",
+      actorId: LOCAL_OPERATOR_ACTOR_ID,
       source: "queue",
       commandId,
       requestedAt,
@@ -324,7 +344,7 @@ afterEach_m0(_afterEachFixture0);
 
 
     const composedReplay = composeCommandRequest_m0(action, target, {
-      actorId: "operator-1",
+      actorId: LOCAL_OPERATOR_ACTOR_ID,
       source: "queue",
       commandId, // exact same commandId
       requestedAt, // exact same requestedAt
@@ -348,8 +368,8 @@ afterEach_m0(_afterEachFixture0);
 describe_m0("Delete: Terminal-only, leaves-first, and selection-switch protection", () => {
 afterEach_m0(_afterEachFixture0);
 
-  it_m0("refuses to delete an active run; leaves no tombstone and removes no bytes", () => {
-    const harness = createHarness();
+  it_m0("refuses to delete an active run; leaves no tombstone and removes no bytes", async () => {
+    const harness = await createHarness();
     const runId = "55555555-5555-4000-8000-555555555555";
     enqueueRun(harness, runId);
 
@@ -388,8 +408,8 @@ afterEach_m0(_afterEachFixture0);
     assert_m0.deepEqual(harness.database.authority.runs.get(runId), runBefore);
   });
 
-  it_m0("deletes a valid terminal run leaves-first with insert-only tombstone", () => {
-    const harness = createHarness();
+  it_m0("deletes a valid terminal run leaves-first with insert-only tombstone", async () => {
+    const harness = await createHarness();
     const runId = "66666666-6666-4000-8000-666666666666";
     enqueueRun(harness, runId);
     const terminalVersion = terminalizeRun(harness, runId, "cancelled");
@@ -448,8 +468,8 @@ afterEach_m0(_afterEachFixture0);
     }
   });
 
-  it_m0("deletes a tree leaves-first, and refuses the tree while any member is not terminal", () => {
-    const harness = createHarness();
+  it_m0("deletes a tree leaves-first, and refuses the tree while any member is not terminal", async () => {
+    const harness = await createHarness();
     const parentId = "aaaaaaaa-1111-4000-8000-111111111111";
     enqueueRun(harness, parentId);
     const parent = harness.database.authority.runs.get(parentId);
@@ -466,7 +486,7 @@ afterEach_m0(_afterEachFixture0);
         itemId: deriveItemId_m0("person-lookup", "child:delete"),
         traceId: "pl-170000-4444",
         descriptorVersion: 1,
-        contractFingerprint: parent.envelope.contractFingerprint,
+        contractFingerprint: parent.envelope.contractFingerprint, buildId: currentBuildId(),
         resolvedInstance: { ucpath: "prod" },
         configFingerprint: parent.envelope.configFingerprint,
         configSnapshotId: parent.envelope.configSnapshotId,
@@ -552,7 +572,8 @@ afterEach_m0(_afterEachFixture0);
 
     // Deleting parent deletes tree leaves-first
     if (parentDelete.state === "ready") {
-      const deleted = harness.kernel.execute(CommandRequestSchema_m0.parse(parentDelete.request));
+      const admittedRefusal = CommandRequestSchema_m0.parse(parentDelete.request);
+      const deleted = harness.kernel.execute({ ...admittedRefusal, commandId: randomUUID() });
       assert_m0.equal(deleted.state, "applied");
       if (deleted.state === "applied") {
         assert_m0.deepEqual(
@@ -623,14 +644,14 @@ describe_m1("the controls post the arms the wire declares", () => {
     assert_m1.deepEqual(request.target, { workflowId: "separations", expectedVersion: 0 });
   });
 
-  it_m1("stops a worker against its LEASE version, which is a different basis", () => {
+  it_m1("stops a worker against its member lifetime and version", () => {
     const request = CommandRequestSchema_m1.parse(composeStopWorkerCommand_m1(
-      { workerId: "person-lookup-worker-1", membershipRevision: positiveIntSchemaForReset.parse(1), leaseVersion: 12, controlBasis: { leaseGeneration: positiveIntSchemaForReset.parse(2), controlRevision: positiveIntSchemaForReset.parse(3) } },
+      { workerId: "person-lookup-worker-1", workflowId: "person-lookup", lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", version: 12 },
       ACTOR,
     ));
 
     assert_m1.equal(request.type, "stop-worker");
-    assert_m1.deepEqual(request.target, { workerId: "person-lookup-worker-1", membershipRevision: 1, expectedVersion: 12, controlBasis: { leaseGeneration: 2, controlRevision: 3 } });
+    assert_m1.deepEqual(request.target, { workerId: "person-lookup-worker-1", workflowId: "person-lookup", lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", expectedVersion: 12 });
   });
 });
 }
@@ -646,7 +667,7 @@ it_m0("verifies real cascade tombstones after a lost delete reply and explicit e
   const { verifyShellCommandEffect } = await import("../../../../src/dashboard/app/commands/command-dispatch.js");
   const world = createCommandKernelTestWorld();
   try {
-    const h = world.createHarness();
+    const h = await world.createHarness();
     const plan = world.createPlan(h, world.rejectActiveDescriptor, ["10800000"]);
     const parentId = singleAppliedRunId(h.kernel.execute(world.startCommand(plan)));
     const parent = h.database.authority.runs.get(parentId); assert_m0.ok(parent);
@@ -691,6 +712,7 @@ it_m0("verifies real cascade tombstones after a lost delete reply and explicit e
     assert_m0.deepEqual(result.reply.affectedTargets.map(target => target.family === "run" ? target.runId : undefined), [childId, parentId]);
   } finally {
     for (const database of world.openDatabases.splice(0)) database.close();
+    for (const profile of world.profiles.splice(0)) await profile.close();
     for (const path of world.roots.splice(0)) rmSync_m0(path, { recursive: true, force: true });
   }
 });

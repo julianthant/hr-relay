@@ -3,11 +3,9 @@ export type PreflightRemedy = 'settings' | 'storage' | 'sessions' | 'credentials
 /** Destinations available in both the compact report and the Settings page. */
 export function preflightRemedy(check: string): PreflightRemedy {
   switch (check) {
-    case 'process.orphans': return 'sessions';
     case 'authority.health':
     case 'filesystem.health': return 'storage';
-    case 'secrets.ucpath-sso':
-    case 'secrets.timekeeper': return 'credentials';
+    case 'secrets.ucpath-sso': return 'credentials';
     case 'secrets.sharepoint-roster': return 'routes';
     default: return 'settings';
   }

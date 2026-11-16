@@ -1,7 +1,8 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createProfileFixtureSet, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { afterEach, describe, it } from "vitest";
 import { type SettingsApplicationExecutor } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
@@ -10,18 +11,22 @@ import { deriveSettingsCommandFingerprint } from "../../../../src/rules/commands
 import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { roots, openDatabases, databasePath, createHarness, nextCommandId } = createCommandKernelTestWorld();
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+
+const { roots, openDatabases, profiles, createHarness, nextCommandId } = createCommandKernelTestWorld(profileFixtures.create);
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 describe("apply-settings authority", () => {
   it.each(SettingsApplyRejectionCodeSchema.options)(
     "preserves the closed %s rejection code and rolls back the command journal",
-    (code) => {
+    async (code) => {
       const settings: SettingsApplicationExecutor = {
         validateRequest: () => undefined,
         commitPrivate: () => undefined,
@@ -30,7 +35,7 @@ describe("apply-settings authority", () => {
         },
         applyOrdinary: () => ({ state: "rejected", code, message: `${code} { document: settings.json }` }),
       };
-      const harness = createHarness(undefined, settings);
+      const harness = await createHarness(undefined, settings);
       const patch = { "browser.headless": { set: false } } as const;
       const command = {
         commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
@@ -51,9 +56,10 @@ describe("apply-settings authority", () => {
     },
   );
 
-  it("maps candidate validation failure to a value-free rejection without changing SQLite", () => {
-    const credentials = createCredentialStore({ stateRoot: databasePath("validation-credentials") });
-    const harness = createHarness(undefined, createSettingsApplicationExecutor(() => {
+  it("maps candidate validation failure to a value-free rejection without changing SQLite", async () => {
+    const credentialProfile = await createBoundProfileFixture();
+    const credentials = createCredentialStore({ stateRoot: credentialProfile.stateRoot });
+    const harness = await createHarness(undefined, createSettingsApplicationExecutor(() => {
       throw new Error("private candidate diagnostic must not cross the authority boundary");
     }, credentials));
     const patch = { "browser.headless": { set: false } } as const;
@@ -85,11 +91,12 @@ describe("apply-settings authority", () => {
       settingsFingerprint: derivePersistedSettingsFingerprint({}),
       settings: {},
     });
+    await credentialProfile.close();
   });
 
-  it("recovers an ambiguous SQLite COMMIT through exact command replay", () => {
+  it("recovers an ambiguous SQLite COMMIT through exact command replay", async () => {
     let reported = false;
-    const harness = createHarness(undefined, {}, (database, work) => {
+    const harness = await createHarness(undefined, {}, (database, work) => {
       const result = database.withAuthorityTransaction(work);
       if (!reported) {
         reported = true;
@@ -123,8 +130,8 @@ describe("apply-settings authority", () => {
     assert.deepEqual(readSettings(harness.database.authority), committed);
   });
 
-  it("applies one strict multi-leaf patch at the expected settings revision", () => {
-    const harness = createHarness();
+  it("applies one strict multi-leaf patch at the expected settings revision", async () => {
+    const harness = await createHarness();
     const patch = {
       "browser.headless": { set: false },
       "display.screenWidth": { set: 1920 },
@@ -198,7 +205,7 @@ describe("apply-settings authority", () => {
     assert.deepEqual(readSettings(harness.database.authority).settings, persistedSettings);
   });
 
-  it("refuses an executor outcome that does not advance exactly one revision", () => {
+  it("refuses an executor outcome that does not advance exactly one revision", async () => {
     const settings: SettingsApplicationExecutor = {
       validateRequest: () => undefined,
       commitPrivate: () => undefined,
@@ -212,7 +219,7 @@ describe("apply-settings authority", () => {
         settings: {},
       }),
     };
-    const harness = createHarness(undefined, settings);
+    const harness = await createHarness(undefined, settings);
     const patch = { "timeouts.taskMs": { set: 240_000 } } as const;
     const command = {
       commandId: nextCommandId(),
@@ -245,9 +252,9 @@ describe("apply-settings authority", () => {
     });
   });
 
-  it("rolls ordinary settings and journal effects back when command audit insertion fails", () => {
+  it("rolls ordinary settings and journal effects back when command audit insertion fails", async () => {
     let failAudit = false;
-    const harness = createHarness((repositories) => ({
+    const harness = await createHarness((repositories) => ({
       ...repositories,
       commandAudits: {
         ...repositories.commandAudits,
@@ -281,9 +288,9 @@ describe("apply-settings authority", () => {
     assert.deepEqual(readSettings(harness.database.authority).settings, {});
   });
 
-  it("rolls ordinary settings, command, and audit back when current-result advance fails", () => {
+  it("rolls ordinary settings, command, and audit back when current-result advance fails", async () => {
     let failCurrent = false;
-    const harness = createHarness((repositories) => ({
+    const harness = await createHarness((repositories) => ({
       ...repositories,
       settingsCurrent: {
         ...repositories.settingsCurrent,

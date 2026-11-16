@@ -48,6 +48,14 @@ function stitchCaptureBands(bands: CaptureBand[]): { bytes: Uint8Array; width: n
 
 async function observeSecrets(frame: Frame, selector: string): Promise<void> {
   await frame.evaluate(selector => {
+    // Matches Playwright's visible filter: a never-painted control cannot reach the pixels.
+    // An object method: tsx wraps a named inner function in a __name helper the page realm lacks.
+    const controls = { painted(): boolean {
+      return [...document.querySelectorAll<HTMLElement>(selector)].some(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && el.checkVisibility({ visibilityProperty: true });
+      });
+    } };
     const positions = [...document.querySelectorAll<HTMLElement>("*")].map(el => ({ el, x: el.scrollLeft, y: el.scrollTop }));
     const originalScroll = { x: window.scrollX, y: window.scrollY };
     const state = { restore() {
@@ -56,23 +64,30 @@ async function observeSecrets(frame: Frame, selector: string): Promise<void> {
       try { window.scrollTo({ left: originalScroll.x, top: originalScroll.y, behavior: "instant" }); } catch (error) { errors.push(error); }
       if (errors.length) throw new AggregateError(errors, "Full-page capture scroll restoration failed");
     }, observer: new MutationObserver(records => {
-      if (document.querySelector(selector)) state.seen = true;
+      if (controls.painted()) state.seen = true;
       for (const record of records) {
         if (record.type === "attributes" && record.target instanceof HTMLInputElement && ((record.attributeName === "type" && record.oldValue?.toLowerCase() === "password")
           || (record.attributeName === "autocomplete" && record.oldValue !== null && ["one-time-code", "current-password", "new-password"].includes(record.oldValue)))) state.seen = true;
-        for (const node of record.addedNodes) if (node instanceof Element && (node.matches(selector) || node.querySelector(selector))) state.seen = true;
+        // A secret control that left this document (removed, or moved into a shadow tree or another frame) is no longer watched.
+        for (const node of record.removedNodes) if (node instanceof Element && [...(node.matches(selector) ? [node] : []), ...node.querySelectorAll(selector)].some(el => !document.contains(el))) state.seen = true;
       }
-    }), seen: document.querySelector(selector) !== null };
+    }), seen: controls.painted() };
     (window as CaptureWindow).__relayCaptureSecrets = state;
-    state.observer.observe(document, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ["type", "autocomplete"] });
+    state.observer.observe(document, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ["type", "autocomplete", "class", "style", "hidden", "open"] });
   }, selector);
 }
 
-async function setCaptureWidth(page: Page): Promise<void> {
+async function setCaptureWidth(page: Page, assertCurrent: () => void): Promise<void> {
+  assertCurrent();
   const metrics = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight,
     docWidth: Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0) }));
+  assertCurrent();
   let widest = metrics.docWidth;
-  for (const frame of page.frames()) widest = Math.max(widest, await frame.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0)));
+  for (const frame of page.frames()) {
+    assertCurrent();
+    widest = Math.max(widest, await frame.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0)));
+  }
+  assertCurrent();
   await page.setViewportSize({ width: Math.min(Math.max(CAPTURE.width, widest + 24), CAPTURE.maxWidth), height: Math.min(metrics.height, CAPTURE.sliceHeight) });
 }
 
@@ -80,7 +95,9 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
   return page.evaluate(() => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const docH = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0);
+    // The viewport scrolls only its scrolling element; a body that scrolls under a clipped root is an element target.
+    const viewportScroller = document.scrollingElement ?? document.documentElement;
+    const docH = viewportScroller.scrollHeight;
     const winOverflow = Math.max(0, docH - vh);
     const all = [...document.querySelectorAll<HTMLElement>("*")].slice(0, 25_000);
     const visibility = { visible(el: HTMLElement): boolean {
@@ -187,7 +204,7 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
       clientHeight = target.clientHeight;
       scrollHeight = mode === "iframe" ? (bestFrame!.contentDocument!.scrollingElement ?? bestFrame!.contentDocument!.documentElement).scrollHeight : target.scrollHeight;
     } else {
-      scrollHeight = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0);
+      scrollHeight = viewportScroller.scrollHeight;
       clientHeight = vh;
       if (scrollHeight <= vh) {
         const range = document.createRange();
@@ -201,51 +218,91 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
 }
 
 export async function captureFullPage(page: Page, options: Readonly<{
+  assertCurrent: () => void;
   assertSafe: () => Promise<void>;
+  sampleLabels?: readonly string[];
   mask: () => Locator[];
   secretControls: string;
   afterCapture: () => Promise<void>;
 }>): Promise<Readonly<{ bytes: Uint8Array; width: number; height: number }>> {
+  const { assertCurrent } = options;
+  assertCurrent();
   const viewport = page.viewportSize();
   const originalViewport = viewport ?? await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const frames: Frame[] = [];
   let failure: { cause: unknown } | undefined;
+  let sampleBannerOwned = false;
   const assertSafe = async (): Promise<void> => {
+    assertCurrent();
     await options.assertSafe();
-    for (const frame of frames) if (await frame.evaluate(() => {
-      const state = (window as CaptureWindow).__relayCaptureSecrets;
-      if (state === undefined || typeof state.seen !== "boolean" || !(state.observer instanceof MutationObserver)) throw new Error("Full-page capture safety observer is unavailable");
-      return state.seen;
-    })) throw new FullPageCaptureRefusedError("secret-controls-present");
+    for (const frame of frames) {
+      assertCurrent();
+      if (await frame.evaluate(() => {
+        const state = (window as CaptureWindow).__relayCaptureSecrets;
+        if (state === undefined || typeof state.seen !== "boolean" || !(state.observer instanceof MutationObserver)) throw new Error("Full-page capture safety observer is unavailable");
+        return state.seen;
+      })) throw new FullPageCaptureRefusedError("secret-controls-present");
+    }
+    assertCurrent();
   };
   try {
-    for (const frame of page.frames()) { frames.push(frame); await observeSecrets(frame, options.secretControls); }
+    assertCurrent();
+    for (const frame of page.frames()) { assertCurrent(); frames.push(frame); await observeSecrets(frame, options.secretControls); }
     await assertSafe();
-    await setCaptureWidth(page);
+    await setCaptureWidth(page, assertCurrent);
+    assertCurrent();
     const plan = await planScrollCapture(page);
+    assertCurrent();
     const bandHeight = Math.max(1, Math.min(plan.clientHeight, CAPTURE.sliceHeight));
     const bands: CaptureBand[] = [];
     let coveredTo = 0;
     for (const offset of computeSliceOffsets(plan.scrollHeight, bandHeight)) {
+      assertCurrent();
       const clip = await page.evaluate(offset => (window as CaptureWindow).__relayCapture!.scroll(offset), offset);
+      assertCurrent();
       await page.waitForTimeout(250);
       await assertSafe();
       const { offset: actualOffset, ...rect } = clip;
       rect.height = Math.min(rect.height, bandHeight);
       if (actualOffset > coveredTo) throw new Error("Full-page capture has an unpainted gap");
       coveredTo = Math.max(coveredTo, actualOffset + rect.height);
+      assertCurrent();
       const buffer = await page.screenshot({ type: "png", clip: rect, mask: options.mask() });
       await assertSafe();
       bands.push({ buffer, offsetCss: actualOffset, clipHeightCss: rect.height });
     }
     if (coveredTo < plan.scrollHeight) throw new Error("Full-page capture did not reach the content bottom");
-    return stitchCaptureBands(bands);
+    assertCurrent();
+    const image = stitchCaptureBands(bands);
+    if ((options.sampleLabels?.length ?? 0) === 0) return image;
+    await page.evaluate(({ labels, width }) => {
+      if (document.getElementById("relay-dry-run-sample-banner")) throw new Error("Sample banner identity is already in use");
+      const banner = document.createElement("div");
+      banner.id = "relay-dry-run-sample-banner";
+      banner.textContent = labels.join("\n");
+      banner.style.cssText = `position:fixed;left:0;top:0;z-index:2147483647;box-sizing:border-box;width:${width / window.devicePixelRatio}px;padding:16px;background:#fff0b3;color:#161616;font:700 18px monospace;white-space:pre-wrap;overflow-wrap:anywhere;`;
+      document.documentElement.append(banner);
+    }, { labels: options.sampleLabels ?? [], width: image.width });
+    sampleBannerOwned = true;
+    await assertSafe();
+    assertCurrent();
+    const banner = PNG.sync.read(await page.locator("#relay-dry-run-sample-banner").screenshot({ type: "png" }));
+    await assertSafe();
+    const source = PNG.sync.read(Buffer.from(image.bytes));
+    const width = Math.max(source.width, banner.width), height = source.height + banner.height;
+    if (width * height > CAPTURE.maxPixels) throw new Error("Labelled capture exceeds the pixel limit");
+    const labelled = new PNG({ width, height });
+    labelled.data.fill(255);
+    PNG.bitblt(banner, labelled, 0, 0, banner.width, banner.height, 0, 0);
+    PNG.bitblt(source, labelled, 0, 0, source.width, source.height, 0, banner.height);
+    return { bytes: new Uint8Array(PNG.sync.write(labelled)), width, height };
   } catch (error) { failure = { cause: error }; throw error; }
   finally { await restoreCaptureState(); }
 
   async function restoreCaptureState(): Promise<void> {
     const errors: unknown[] = [];
     const restore = async (action: () => Promise<unknown>): Promise<void> => { try { await action(); } catch (error) { errors.push(error); } };
+    if (sampleBannerOwned) await restore(() => page.locator("#relay-dry-run-sample-banner").evaluate(element => element.remove()));
     await restore(() => page.evaluate(() => (window as CaptureWindow).__relayCapture?.restore()));
     await restore(() => page.setViewportSize(originalViewport));
     for (const frame of frames) if (!frame.isDetached()) await restore(() => frame.evaluate(() => (window as CaptureWindow).__relayCaptureSecrets?.restore()));

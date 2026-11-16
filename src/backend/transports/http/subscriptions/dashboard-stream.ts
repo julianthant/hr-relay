@@ -22,8 +22,18 @@ export interface DashboardStreamConnection {
   close(): void;
 }
 
+/** The projection methods the hub reads. A test supplies a script; production passes `RunQueueProjection`. */
+interface DashboardStreamProjection {
+  onChange(listener: (change: RunQueueProjectionChange) => void): () => void;
+  health(): { readonly state: "live" | "degraded" };
+  buildDashboardDayWire(day: string): ReturnType<RunQueueProjection["buildDashboardDayWire"]>;
+  generation(): number;
+  cursor(): string;
+  descriptorSetHash(): string;
+}
+
 export interface DashboardStreamHubDeps {
-  readonly projection: RunQueueProjection;
+  readonly projection: DashboardStreamProjection;
   readonly notificationPublications?: {
     readonly subscribe: NotificationInbox["onPublication"];
     readonly project: (publication: NotificationPublication) => NotificationPublicationWire;
@@ -35,14 +45,19 @@ export interface DashboardStreamHubDeps {
   readonly maxPending?: number;
 }
 
+/** One subscriber's delivery phase. A waiter exists only on an empty open queue. */
+type SubscriberQueue =
+  | {
+      readonly state: "open";
+      readonly queue: readonly DashboardStreamEnvelope[];
+      readonly waiter?: (envelope: DashboardStreamEnvelope | undefined) => void;
+    }
+  | { readonly state: "reset-pending"; readonly reason: "cursor-expired" }
+  | { readonly state: "closed" };
+
 interface Subscriber {
   readonly day: string;
-  queue: DashboardStreamEnvelope[];
-  /** The one outstanding `next()`; present only while the queue is empty. */
-  waiter?: (envelope: DashboardStreamEnvelope | undefined) => void;
-  closed: boolean;
-  /** After a loud overflow reset, nothing else queues until the reset is consumed. */
-  resetPending: boolean;
+  phase: SubscriberQueue;
 }
 
 // A count-bearing snapshot marker invalidates the held payload and requires a fresh snapshot on resume.
@@ -56,7 +71,7 @@ function cursorNumber(cursor: string): number | undefined {
 }
 
 export class DashboardStreamHub {
-  readonly #projection: RunQueueProjection;
+  readonly #projection: DashboardStreamProjection;
   readonly #retention: number;
   readonly #maxPending: number;
   readonly #backfillGaps: Pick<BackfillGapNotifier, "detected">;
@@ -98,11 +113,15 @@ export class DashboardStreamHub {
   }
 
   #closeSubscriber(subscriber: Subscriber): void {
-    subscriber.closed = true;
-    subscriber.queue = [];
-    const waiter = subscriber.waiter;
-    delete subscriber.waiter;
+    const waiter = subscriber.phase.state === "open" ? subscriber.phase.waiter : undefined;
+    subscriber.phase = { state: "closed" };
     waiter?.(undefined);
+  }
+
+  #pending(subscriber: Subscriber): number {
+    if (subscriber.phase.state === "open") return subscriber.phase.queue.length;
+    if (subscriber.phase.state === "reset-pending") return 1;
+    return 0;
   }
 
   #hello(input?: Readonly<{ generation: number; cursor: string; descriptorHash: string }>): DashboardStreamEnvelope {
@@ -175,23 +194,64 @@ export class DashboardStreamHub {
   }
 
   #push(subscriber: Subscriber, envelope: DashboardStreamEnvelope): void {
-    if (subscriber.closed) return;
-    const waiter = subscriber.waiter;
-    if (waiter !== undefined) {
-      // A consumer is asking right now; the queue is empty by construction.
-      delete subscriber.waiter;
-      waiter(envelope);
-      return;
+    const phase = subscriber.phase;
+    switch (phase.state) {
+      case "closed":
+      case "reset-pending":
+        return;
+      case "open": {
+        const waiter = phase.waiter;
+        if (waiter !== undefined) {
+          // A consumer is asking right now; the queue is empty by construction.
+          subscriber.phase = { state: "open", queue: phase.queue };
+          waiter(envelope);
+          return;
+        }
+        const queue = [...phase.queue, envelope];
+        if (queue.length > this.#maxPending) {
+          subscriber.phase = { state: "reset-pending", reason: "cursor-expired" };
+          return;
+        }
+        subscriber.phase = { state: "open", queue };
+        return;
+      }
+      default: {
+        const unexpected: never = phase;
+        throw new Error(`dashboard stream subscriber phase is not a known state: ${JSON.stringify(unexpected)}`);
+      }
     }
-    if (subscriber.resetPending) return; // the queued reset already supersedes everything after it
-    subscriber.queue.push(envelope);
-    if (subscriber.queue.length > this.#maxPending) {
-      subscriber.queue = [DashboardStreamEnvelopeSchema.parse({
-        type: "reset-required",
-        reason: "cursor-expired",
-        cursor: this.#projection.cursor(),
-      })];
-      subscriber.resetPending = true;
+  }
+
+  #read(subscriber: Subscriber): Promise<DashboardStreamEnvelope | undefined> {
+    const phase = subscriber.phase;
+    switch (phase.state) {
+      case "closed":
+        return Promise.resolve(undefined);
+      case "reset-pending":
+        // Mint the reset at handout so its cursor names the boundary the client must resnapshot.
+        subscriber.phase = { state: "open", queue: [] };
+        return Promise.resolve(DashboardStreamEnvelopeSchema.parse({
+          type: "reset-required",
+          reason: phase.reason,
+          cursor: this.#projection.cursor(),
+        }));
+      case "open": {
+        if (phase.waiter !== undefined) {
+          return Promise.reject(new Error("dashboard stream connection already has an outstanding next(); one consumer, one demand at a time"));
+        }
+        const [queued, ...rest] = phase.queue;
+        if (queued !== undefined) {
+          subscriber.phase = { state: "open", queue: rest };
+          return Promise.resolve(queued);
+        }
+        return new Promise<DashboardStreamEnvelope | undefined>((resolve) => {
+          subscriber.phase = { state: "open", queue: [], waiter: resolve };
+        });
+      }
+      default: {
+        const unexpected: never = phase;
+        return Promise.reject(new Error(`dashboard stream subscriber phase is not a known state: ${JSON.stringify(unexpected)}`));
+      }
     }
   }
 
@@ -201,7 +261,7 @@ export class DashboardStreamHub {
     lastProjectionGeneration?: number;
   }>): Promise<DashboardStreamConnection> {
     const day = z.iso.date().parse(input.day);
-    const subscriber: Subscriber = { day, queue: [], closed: false, resetPending: false };
+    const subscriber: Subscriber = { day, phase: { state: "open", queue: [] } };
     const live = this.#projection.health().state !== "degraded";
     const capturedSnapshot = live ? this.#projection.buildDashboardDayWire(day) : undefined;
     const capturedGeneration = capturedSnapshot?.projectionGeneration ?? this.#projection.generation();
@@ -286,32 +346,13 @@ export class DashboardStreamHub {
     }
 
     this.#subscribers.add(subscriber);
+    const read = (): Promise<DashboardStreamEnvelope | undefined> => this.#read(subscriber);
+    const pendingCount = (): number => this.#pending(subscriber);
     return Object.freeze({
       initial: Object.freeze(initial),
-      next: (): Promise<DashboardStreamEnvelope | undefined> => {
-        if (subscriber.closed) return Promise.resolve(undefined);
-        if (subscriber.waiter !== undefined) {
-          return Promise.reject(new Error("dashboard stream connection already has an outstanding next(); one consumer, one demand at a time"));
-        }
-        const queued = subscriber.queue.shift();
-        if (queued !== undefined) {
-          if (queued.type === "reset-required" && subscriber.resetPending) {
-            // Mint reset at handout so its cursor names the boundary the client must resnapshot.
-            subscriber.resetPending = false;
-            return Promise.resolve(DashboardStreamEnvelopeSchema.parse({
-              type: "reset-required",
-              reason: queued.reason,
-              cursor: this.#projection.cursor(),
-            }));
-          }
-          return Promise.resolve(queued);
-        }
-        return new Promise<DashboardStreamEnvelope | undefined>((resolve) => {
-          subscriber.waiter = resolve;
-        });
-      },
+      next: read,
       get pending(): number {
-        return subscriber.queue.length;
+        return pendingCount();
       },
       close: (): void => {
         this.#closeSubscriber(subscriber);

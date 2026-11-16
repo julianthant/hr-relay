@@ -14,9 +14,9 @@ export function seedSyntheticRuntimeConfig(database: AuthorityDatabase): void {
 }
 
 /** Initial settings and runtime activation share the same resolved document. */
-export function seedInitialSettingsRuntimeConfig(database: AuthorityDatabase, clock: Clock): void {
+export function seedInitialSettingsRuntimeConfig(database: AuthorityDatabase, clock: Clock, pair?: Parameters<typeof resolveConfigWithProvenance>[3]): void {
   const record = initialSettingsFileRecord();
-  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
+  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock, pair);
   const snapshot = { ...CONFIG_SNAPSHOT, configSnapshotId: UUID_4, config: resolved.config,
     fingerprint: resolved.fingerprint, provenance: resolved.provenance, capturedAt: clock.now().toISOString() };
   const active = database.authority.runtimeConfig.initialize(snapshot);

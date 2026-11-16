@@ -1,10 +1,10 @@
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
-import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
+import { currentAtomicWriteFixture, atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import {
   deriveIdempotencyKeyDigest,
@@ -34,14 +34,26 @@ function commitHistory(database: AuthorityDatabase, input: unknown, checkpoint: 
 }
 
 const CLOCK = manualClock(new Date(NOW));
-const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 const paths = new WeakMap<AuthorityDatabase, string>();
+let template: { profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; snapshot: Buffer } | undefined;
 
-function databasePath(): string {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-atomic-write-"));
-  roots.push(root);
-  return join(root, "state.sqlite");
+async function databasePath(): Promise<string> {
+  if (template === undefined) {
+    const profile = await createBoundProfileFixture();
+    const primed = AuthorityDatabase.open(
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "atomic-write-test" },
+      CLOCK,
+    );
+    primed.close();
+    template = { profile, snapshot: readFileSync(profile.path) };
+  }
+  for (const suffix of ["-wal", "-shm"]) {
+    const companion = `${template.profile.path}${suffix}`;
+    if (existsSync(companion)) rmSync(companion);
+  }
+  writeFileSync(template.profile.path, template.snapshot);
+  return template.profile.path;
 }
 
 function open(path: string, hooks?: AuthorityWriteCommitHooks): AuthorityDatabase {
@@ -67,12 +79,16 @@ function fence(database: AuthorityDatabase): void {
 }
 
 afterEach(() => {
+  for (const database of databases) releaseSeededWriteOwners(database, NOW);
   for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+afterAll(async () => {
+  await template?.profile.close();
 });
 describe("atomic write authority commit", () => {
-  it.each(["written-at", "output"] as const)("refuses a mismatched confirmation checkpoint %s before settlement", (field) => {
-    const database = open(databasePath());
+  it.each(["written-at", "output"] as const)("refuses a mismatched confirmation checkpoint %s before settlement", async (field) => {
+    const database = open(await databasePath());
     fence(database);
     const checkpoint = atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT);
     const invalid = field === "written-at"
@@ -88,8 +104,8 @@ describe("atomic write authority commit", () => {
     assert.deepEqual(database.authority.timelineEvents.page({}), []);
   });
 
-  it("commits intent, attempt, ledger outbox, and terminal outcome span all-or-none", () => {
-    const database = open(databasePath());
+  it("commits intent, attempt, ledger outbox, and terminal outcome span all-or-none", async () => {
+    const database = open(await databasePath());
     fence(database);
     const generationBeforeCommit = database.getMeta().authorityGeneration;
     const report = commitHistory(database, ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
@@ -112,13 +128,13 @@ describe("atomic write authority commit", () => {
   });
 
   for (const failedStep of AtomicWriteCommitStorageStepSchema.options) {
-    it(`rolls back every authority row and generation after ${failedStep} failure`, () => {
+    it(`rolls back every authority row and generation after ${failedStep} failure`, async () => {
       const hooks: AuthorityWriteCommitHooks = {
         afterStorageStep(step) {
           if (step === failedStep) throw new Error(`injected failure after ${step}`);
         },
       };
-      const path = databasePath();
+      const path = await databasePath();
       const database = open(path, hooks);
       fence(database);
       const generationBeforeCommit = database.getMeta().authorityGeneration;
@@ -140,8 +156,8 @@ describe("atomic write authority commit", () => {
     });
   }
 
-  it("rejects mismatched generic outcome and outbox identities before changing authority", () => {
-    const database = open(databasePath());
+  it("rejects mismatched generic outcome and outbox identities before changing authority", async () => {
+    const database = open(await databasePath());
     fence(database);
     const generationBeforeCommit = database.getMeta().authorityGeneration;
     assert.throws(() => commitHistory(database, {
@@ -159,8 +175,8 @@ describe("atomic write authority commit", () => {
     assert.equal(database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
   });
 
-  it("rejects mismatched ledger/terminal trace identity before changing authority", () => {
-    const database = open(databasePath());
+  it("rejects mismatched ledger/terminal trace identity before changing authority", async () => {
+    const database = open(await databasePath());
     fence(database);
     const generationBeforeCommit = database.getMeta().authorityGeneration;
     assert.throws(() => commitHistory(database, {
@@ -172,8 +188,8 @@ describe("atomic write authority commit", () => {
     assert.equal(database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
   });
 
-  it("rejects ledger subject evidence that disagrees with the fenced subject proof", () => {
-    const database = open(databasePath());
+  it("rejects ledger subject evidence that disagrees with the fenced subject proof", async () => {
+    const database = open(await databasePath());
     fence(database);
     const generationBeforeCommit = database.getMeta().authorityGeneration;
     assert.throws(() => commitHistory(database, {
@@ -188,8 +204,8 @@ describe("atomic write authority commit", () => {
     assert.equal(database.authority.timelineEvents.page({}).filter((row) => row.payload.kind === "operation-confirmed").length, 0);
   });
 
-  it("rejects subject-bearing ledger output for an explicitly unscoped fence", () => {
-    const database = open(databasePath());
+  it("rejects subject-bearing ledger output for an explicitly unscoped fence", async () => {
+    const database = open(await databasePath());
     const idempotencyKey = "document-44444444|upload|2026-08-01";
     const idempotencyKeyDigest = deriveIdempotencyKeyDigest("onbase", idempotencyKey);
     const bindingProofDigest = deriveWriteBindingProofDigest(UNSCOPED_PROOF);
@@ -232,8 +248,8 @@ describe("atomic write authority commit", () => {
     assert.equal(database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.status, "attempting");
   });
 
-  it("keeps standalone attempt/outbox mutation private and routes the commit through one authority transaction", () => {
-    const database = open(databasePath());
+  it("keeps standalone attempt/outbox mutation private and routes the commit through one authority transaction", async () => {
+    const database = open(await databasePath());
 
     assert.deepEqual(Object.keys(database.authority.writeAttempts), ["get", "listByIntent"]);
     assert.equal("durableOutbox" in database.authority, false);

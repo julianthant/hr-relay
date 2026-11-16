@@ -48,6 +48,15 @@ describe("person match key", () => {
 });
 
 describe("grouping does not assume adjacency", () => {
+  it("groups admitted page identities without inventing classification time or confidence", () => {
+    const grouping = groupStack({ pages: [
+      { sourcePage: 1, pageKind: "emergency-contact", subjectName: "Example, Avery" },
+      { sourcePage: 2, pageKind: "blank", subjectName: null },
+    ] }, "emergency-contact");
+    assert.deepEqual(grouping.subjects.map(subject => subject.pages), [[{ sourcePage: 1, pageKind: "emergency-contact" }]]);
+    assert.deepEqual(grouping.dataless, [{ sourcePage: 2, pageKind: "blank" }]);
+  });
+
   it("groups the real I-9 stack by NAME, never by neighbour", () => {
 
     const grouping = groupStack(stack([

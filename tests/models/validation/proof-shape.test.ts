@@ -75,7 +75,7 @@ describe("shapes the proof describer refuses by name", () => {
   const cases: readonly (readonly [string, z.ZodType, RegExp])[] = [
     ["a non-object root", z.string(), /a proof this surface can compose is an object/u],
     ["an optional leaf", z.strictObject({ a: z.string().optional() }), /zod "optional"/u],
-    ["a nullable leaf", z.strictObject({ a: z.string().nullable() }), /zod "nullable"/u],
+    ["a nullable object", z.strictObject({ a: z.strictObject({ value: z.string() }).nullable() }), /zod "object"/u],
     ["an array leaf", z.strictObject({ a: z.array(z.string()) }), /zod "array"/u],
     ["a union leaf", z.strictObject({ a: z.union([z.string(), z.number()]) }), /zod "union"/u],
     ["a float leaf", z.strictObject({ a: z.number() }), /non-integer number/u],
@@ -107,6 +107,17 @@ describe("shapes the proof describer refuses by name", () => {
     assert.equal(field.serverOnlyRules, true);
     assert.equal(field.minLength, 1);
     assert.equal(field.maxLength, 10);
+  });
+
+  it("retains nullable text and email validation metadata without turning null into a value", () => {
+    const shape = describeProofShape(z.strictObject({ profileId: z.string().regex(/^[1-9]\d*$/u).nullable(), email: z.email() }));
+    assert.ok(shape.state === "described");
+    assert.deepEqual(shape.fields, [
+      { kind: "text", path: "profileId", pattern: "^[1-9]\\d*$", serverOnlyRules: false, nullable: true },
+      { kind: "text", path: "email", serverOnlyRules: true },
+    ]);
+    assert.equal(ProofContractWireSchema.safeParse({ state: "served", commitTaskId: "ucpath/create-hire", completionKind: "save-verify",
+      schemaHash: "a".repeat(64), fields: shape.fields }).success, true);
   });
 
   it("carries a regex source and an instant's own format", () => {

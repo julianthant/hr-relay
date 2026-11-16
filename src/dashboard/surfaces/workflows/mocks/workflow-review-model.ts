@@ -1,34 +1,27 @@
 import type { MockRun } from "./workflow-mock-model.js";
+import type { RecordReviewProps, ReviewSourcePage } from "../../run-detail/review/review-record-model.js";
 import { mockOnbaseDocumentType, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { mockDocumentFixture } from "./workflow-document-model.js";
 
-// Review shapes and selection rules copied from legacy@9bb973672666b9267569a22d3fa0af722e4c5e87
-// src/dashboard/components/ocr/{EcRecordView,OathRecordView,VerifyRecordView,types,approval-selection}.
-export type ReviewField = Readonly<{ key: string; label: string; value: string; kind?: "date" | "boolean" | "relationship"; section?: string; readOnly?: boolean }>;
-export type ReviewRecord = Readonly<{
-  id: string; page: number; kind: "oath" | "contact" | "verify" | "i9" | "separation";
-  fields: readonly ReviewField[]; selected: boolean; unknown?: boolean;
-  match: "matched" | "unresolved" | "manual"; warnings: readonly string[];
-  targetWorkflowId?: MockWorkflowId;
-  i9Section?: 1 | 2; manualEntry?: boolean; sourcePageCount?: number;
-}>;
-export const REVIEW_RELATIONSHIPS = ["Parent", "Sibling", "Spouse", "Domestic Partner Adult", "Domestic Partner Child", "Child", "Grandchild", "Grand Parent", "Other Relative", "Friend", "Neighbor", "Roommate", "Ward", "Medical Provider", "Emerg/Detention/Arrest Contact", "Contact if Detained/Arrested", "Other"];
+import type { ReviewField, ReviewRecordView } from "../../run-detail/review/review-record-model.js";
+export type ReviewRecord = ReviewRecordView & Readonly<{ targetWorkflowId?: MockWorkflowId; match: "matched" | "unresolved" | "manual" }>;
 const field = (key: string, label: string, value: string, kind?: ReviewField["kind"], section?: string): ReviewField => ({ key, label, value, ...(kind ? { kind } : {}), ...(section ? { section } : {}) });
 function extractedReviewRecords(run: Pick<MockRun, "workflowId" | "draft">, useFixture = true): readonly ReviewRecord[] {
   const fixture = mockDocumentFixture(run.draft);
   const documentType = mockOnbaseDocumentType(run.draft.documentType);
-  const type = run.workflowId === "i9-check" ? "i9" : run.workflowId === "ocr" ? run.draft.formType : run.workflowId === "onbase" ? documentType.formType : run.workflowId === "emergency-contact" ? "emergency-contact" : run.workflowId === "separations" ? "separation" : "oath";
+  const type = run.workflowId === "i9-check-start" ? "i9" : run.workflowId === "ocr" ? run.draft.formType : run.workflowId === "onbase" ? documentType.formType : run.workflowId === "emergency-contact" ? "emergency-contact" : run.workflowId === "separations" ? "separation" : "oath";
   if (!["i9", "verify", "oath", "emergency-contact", "onbase-emergency-contact", "separation"].includes(type)) throw new Error("MOCK_REVIEW_DOCUMENT_TYPE_UNKNOWN");
   const kind = type === "i9" ? "i9" : type === "verify" ? "verify" : type === "oath" ? "oath" : type === "separation" ? "separation" : "contact";
   const i9Section = kind === "i9" && "i9Section" in documentType ? documentType.i9Section : undefined;
   const records: readonly ReviewRecord[] = [{ id: "person-1", page: 1, kind, ...(i9Section ? { i9Section } : {}), selected: true, match: "matched", warnings: [], fields: [
-    field("employeeId", "Employee ID", "10000001"), field("firstName", "First name", "Jordan"), field("lastName", "Last name", "Lee"),
+    field("employeeId", "Employee ID", "10000001"), ...(kind === "contact" ? [] : [field("firstName", "First name", "Jordan"), field("lastName", "Last name", "Lee")]),
     ...(kind === "oath" ? [field("printedName", "Printed name", "Lee, Jordan"), field("dateSigned", "Date signed", "2026-08-03", "date", "Oath"), field("employeeSigned", "Employee signed", "true", "boolean", "Oath"), field("officerSigned", "Officer signed", "true", "boolean", "Oath")] : []),
     ...(kind === "contact" ? [
-      ...[["employeeName", "Employee name", "Jordan Lee"], ["pid", "PID", ""], ["jobTitle", "Job title", ""], ["workLocation", "Work location", ""], ["supervisor", "Supervisor", ""], ["workEmail", "Work email", "jordan.lee@example.com"], ["personalEmail", "Personal email", ""], ["employeeHomePhone", "Employee home phone", ""], ["employeeCellPhone", "Employee cell phone", "(202) 555-0101"]].map(([key, label, value]) => field(key, label, value)),
-      ...[["employeeStreet", "Employee street", "100 Example Street"], ["employeeCity", "Employee city", "San Diego"], ["employeeState", "Employee state", "CA"], ["employeeZip", "Employee ZIP", "92101"], ["employeeCountry", "Employee country", "USA"]].map(([key, label, value]) => field(key, label, value, undefined, "Employee address")),
-      field("contactName", "Contact name", "Alex Lee", undefined, "Emergency contact"), field("relationship", "Relationship", "Sibling", "relationship", "Emergency contact"), field("primary", "Primary contact", "true", "boolean", "Emergency contact"), field("sameAddress", "Same address as employee", "true", "boolean", "Emergency contact"),
-      ...[["cellPhone", "Cell phone", "(202) 555-0102"], ["homePhone", "Home phone", ""], ["workPhone", "Work phone", ""], ["street", "Street", "100 Example Street"], ["city", "City", "San Diego"], ["state", "State", "CA"], ["zip", "ZIP", "92101"], ["country", "Country", "USA"]].map(([key, label, value]) => field(key, label, value, undefined, "Emergency contact")),
+      field("employeeName", "Employee name", "Jordan Lee"), field("dateCompleted", "Date completed", "2026-04-23", "date"), field("homeAddress", "Home address", "100 Example Street, San Diego, CA 92101"),
+      field("employeeCellPhone", "Cell phone", "(202) 555-0101"), field("employeeHomePhone", "Home phone", ""),
+      field("contactName", "Name", "Alex Lee", undefined, "Emergency contact"), field("relationship", "Relationship", "Sibling", "relationship", "Emergency contact"),
+      field("address", "Address", "100 Example Street, San Diego, CA 92101", undefined, "Emergency contact"),
+      ...[["cellPhone", "Cell phone", "(202) 555-0102"], ["homePhone", "Home phone", ""], ["workPhone", "Work phone", ""]].map(([key, label, value]) => field(key, label, value, undefined, "Emergency contact")),
     ] : []),
     ...(kind === "verify" ? [field("printedName", "Printed name", "Lee, Jordan"), field("paperEmployeeId", "Employee ID on paper", "10000001"), field("paperEmploymentDate", "First day of service on paper", "2026-08-03", "date", "Paper forms"), field("paperDateSigned", "Date signed on paper", "2026-08-03", "date", "Paper forms"), field("employeeSigned", "Employee signed", "true", "boolean", "Paper forms"), field("officerSigned", "Officer signed", "true", "boolean", "Paper forms"), field("paperOfficialName", "Official name on paper", "Alex Morgan", undefined, "Paper forms")] : []),
     ...(kind === "i9" ? [field("middleInitial", "Middle initial", ""), ...(i9Section !== 2 ? [field("dateOfBirth", "Date of birth", "1990-01-01", "date", "I-9"), field("ssn", "Social Security number", "", undefined, "I-9"), field("section1", "Section 1 page", "1", undefined, "I-9")] : []), ...(i9Section !== 1 ? [field("hireDate", "First day of employment", "2026-08-03", "date", "I-9"), field("section2", "Section 2 page", i9Section === 2 ? "1" : "2", undefined, "I-9")] : [])] : []),
@@ -56,7 +49,7 @@ export function reviewApprovalError(record: ReviewRecord): string | undefined {
   if (!/^10\d{6}$/u.test(employeeId)) return "Employee ID must start with 10 and contain eight digits.";
   if (record.unknown || record.match === "unresolved") return "Resolve this record before approval.";
   if (!record.manualEntry) return undefined;
-  if (!["firstName", "lastName"].every(key => reviewValue(record, key).trim())) return "Enter the employee’s first and last name.";
+  if (record.kind === "contact" ? !reviewValue(record, "employeeName").trim() : !["firstName", "lastName"].every(key => reviewValue(record, key).trim())) return record.kind === "contact" ? "Enter the employee’s name." : "Enter the employee’s first and last name.";
   const required = record.kind === "oath" ? ["dateSigned"] : record.kind === "contact" ? ["contactName", "cellPhone"] : record.kind === "i9" ? ["dateOfBirth", "hireDate"] : record.kind === "verify" ? ["paperEmploymentDate", "paperDateSigned"] : ["kualiId", "separationDate"];
   for (const item of record.fields.filter(field => required.includes(field.key))) {
     if (!item.value.trim()) return `Enter ${item.label.toLowerCase()}.`;
@@ -76,7 +69,7 @@ function validManualDate(value: string): boolean {
   return Number.isFinite(date.valueOf()) && date.toISOString().slice(0, 10) === iso;
 }
 export function reviewValue(record: ReviewRecord, key: string): string { return record.fields.find(item => item.key === key)?.value ?? ""; }
-export function reviewName(record: ReviewRecord): string { return `${reviewValue(record, "firstName")} ${reviewValue(record, "lastName")}`.trim() || "Unnamed record"; }
+export function reviewName(record: ReviewRecord): string { return reviewValue(record, "employeeName").trim() || `${reviewValue(record, "firstName")} ${reviewValue(record, "lastName")}`.trim() || "Unnamed record"; }
 export function reviewCanApprove(record: ReviewRecord): boolean {
   return record.selected && reviewApprovalError(record) === undefined;
 }
@@ -94,12 +87,6 @@ export function mockInputRecord(run: MockRun): ReviewRecord { return run.inputRe
 export function reviewIsReadOnly(run: MockRun): boolean {
   return run.workflowId !== "ocr" || run.approved || run.discarded === true || run.role === "person";
 }
-export function addMockReviewRecord(records: readonly ReviewRecord[]): readonly ReviewRecord[] {
-  const base = records[0];
-  if (!base) throw new Error("MOCK_REVIEW_SHAPE_MISSING");
-  const record: ReviewRecord = { ...base, id: `manual-${records.length + 1}`, selected: false, match: "unresolved", warnings: [], fields: base.fields.map(item => ({ ...item, value: /^section[12]$/u.test(item.key) ? item.value : item.kind === "boolean" ? "false" : "" })) };
-  return [...records, record];
-}
 export function updateMockReview(runs: readonly MockRun[], id: string, records: readonly ReviewRecord[]): readonly MockRun[] {
   const run = runs.find(item => item.id === id);
   if (!run || reviewIsReadOnly(run)) throw new Error("MOCK_REVIEW_READ_ONLY");
@@ -114,4 +101,20 @@ export function restoreMockReview(runs: readonly MockRun[], id: string): readonl
   const run = runs.find(item => item.id === id);
   if (run?.workflowId !== "ocr" || !run.discarded || run.approved || run.role === "person") throw new Error("MOCK_REVIEW_RESTORE_UNAVAILABLE");
   return runs.map(item => item.id === id || item.id === run.parentId ? { ...item, discarded: false } : item);
+}
+
+export function mockReviewProps({ run, sourcePages, approvalError, onChange, onApprove, onDiscard, onRestore }: {
+  run: MockRun; sourcePages?: Readonly<Record<string, readonly ReviewSourcePage[]>>; approvalError?: string;
+  onChange: (records: readonly ReviewRecord[]) => void; onApprove?: () => void; onDiscard?: () => void; onRestore: () => void;
+}): RecordReviewProps {
+  const records = reviewRecords(run), originals = seedReviewRecords(run), readOnly = reviewIsReadOnly(run);
+  return { runId: run.id, subject: run.subject, readOnly, discarded: run.discarded === true,
+    selectedCount: records.filter(reviewCanApprove).length, approvalError, onApprove, onDiscard, onRestore,
+    cards: records.map(record => ({ record, name: reviewName(record), original: originals.find(item => item.id === record.id),
+      pages: sourcePages?.[record.id] ?? [], approvalError: reviewApprovalError(record),
+      ...(readOnly ? { disposition: { tone: run.approved ? "success" as const : "neutral" as const,
+        label: run.discarded ? "Discarded" : record.selected ? "Approved" : "Excluded" } } : {}) })),
+    onEditField: (recordId, key, value) => onChange(records.map(record => record.id === recordId ? editReviewRecord(record, key, value) : record)),
+    onChange: updated => onChange(records.map(record => record.id === updated.id ? { ...record, ...updated } : record)),
+  };
 }

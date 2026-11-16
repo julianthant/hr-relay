@@ -1,3 +1,6 @@
+import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
+import { personLookupDescriptor } from "../registered-workflows.js";
+import { syntheticDatabasePath } from "../synthetic-database-admission.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import assert from "node:assert/strict";
 import type { Page } from "playwright";
@@ -52,6 +55,7 @@ export function createLoginContractTestWorld() {
     const discards: unknown[] = [];
     const page = { url: () => "https://app.example/" } as unknown as Page;
     const factory: WorkerBrowserSessionFactory = {
+      probeProfile: async () => undefined,
       async open(input) {
         opens += 1;
         let ceremonyCompleted = false;
@@ -60,7 +64,7 @@ export function createLoginContractTestWorld() {
           system: SYSTEM,
           verify: async () => ceremonyCompleted
             ? { authenticated: true, evidence: { system: SYSTEM, url: page.url(), positive: "stub session", negative: "no form" } }
-            : { authenticated: false, reason: "the stub session is not proven until the ceremony ran" },
+            : { authenticated: false, reason: "the stub session is not proven until the ceremony ran", check: "application-route" },
           navigate: async () => undefined,
           ceremony: async (context, token) => {
             await script.onCeremony(token, context);
@@ -85,7 +89,8 @@ export function createLoginContractTestWorld() {
               label: `worker ${workerId} ${system} session`,
               signal: authOptions.signal ?? input.signal,
               credentials: { userId: "stub-user", password: "stub-pass" },
-              recordEvidence: () => undefined,
+              assertCurrent: () => undefined,
+        recordEvidence: () => undefined,
               duoCeremony: input.duoCeremony,
             }),
           },
@@ -129,11 +134,10 @@ export function createLoginContractTestWorld() {
 
   const databases: AuthorityDatabase[] = [];
 
-  function sharedAuthority(clock: TestClock): AuthorityDatabase {
-    const database = openDuoCeremonyLeaseDatabase(clock);
-    database.withAuthorityTransaction(repositories => {
-      repositories.workerPools.plan({ workflow: WORKFLOW_ID, expectedVersion: 0, desiredWorkers: 2, requestedBy: "local-operator", now: clock.now().toISOString() });
-      for (const poolIndex of [1, 2]) repositories.workerSlots.allocate({ workflow: WORKFLOW_ID, poolIndex, commandId: null, now: clock.now().toISOString() });
+  async function sharedAuthority(clock: TestClock): Promise<AuthorityDatabase> {
+    const database = await openDuoCeremonyLeaseDatabase(clock);
+    for (const poolIndex of [1, 2]) testWorkerPorts(database, clock, {
+      path: syntheticDatabasePath(database), descriptor: personLookupDescriptor, poolIndex,
     });
     databases.push(database);
     return database;

@@ -4,7 +4,8 @@ import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { notificationsSample } from "../../../../src/dashboard/surfaces/notifications/notifications-fixture.js";
-import { useNotificationRailModel } from "../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
+import { MOCK_SURFACES_FLAG } from "../../../../src/dashboard/app/mock-surfaces.js";
+import { useNotificationRailModel, type NotificationReads } from "../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
 import type { NotificationDestination, NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -16,6 +17,7 @@ afterEach(async () => {
   host?.remove();
   host = undefined;
   window.history.replaceState(null, "", "/");
+  Reflect.deleteProperty(window, MOCK_SURFACES_FLAG);
 });
 
 function Harness({ notifications, onOpenNotification }: {
@@ -24,20 +26,19 @@ function Harness({ notifications, onOpenNotification }: {
 }) {
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("existing notice");
-  const model = useNotificationRailModel({ notifications, filter: "all", setOpen, setNotice, onOpenNotification });
-  const reads = model.state.state === "ready" ? Object.fromEntries(model.state.items.map(item => [item.id, item.read])) : {};
+  const [reads, setReads] = useState<NotificationReads>({});
+  const model = useNotificationRailModel({ notifications, reads, setReads, setOpen, setNotice, onOpenNotification });
+  const readMarks = model.state.state === "ready" ? Object.fromEntries(model.state.items.map(item => [item.id, item.read])) : {};
   const completed = model.state.state === "ready" ? model.state.items.find(item => item.title === "Run completed") : undefined;
   return createElement("div", {
     "data-open": String(open), "data-notice": notice, "data-unread": String(model.unread),
-    "data-ping": String(model.ping), "data-ping-item": model.pingItem?.id ?? "", "data-reads": JSON.stringify(reads),
+    "data-ping": String(model.ping), "data-ping-item": model.pingItem?.id ?? "", "data-reads": JSON.stringify(readMarks),
   }, [
     createElement("button", { key: "read", onClick: () => model.onControl("sample-verification", "read") }, "Mark read"),
     createElement("button", { key: "unread", onClick: () => model.onControl("sample-completed", "unread") }, "Mark unread"),
     createElement("button", { key: "all", onClick: model.onReadAll }, "Read all"),
     createElement("button", { key: "panel", onClick: () => model.changeOpen(true) }, "Open panel"),
     createElement("button", { key: "item", onClick: () => { if (completed) model.onOpenItem(completed); } }, "Open completed"),
-    createElement("button", { key: "ping-close", onClick: model.onClosePing }, "Close ping"),
-    createElement("button", { key: "ping-open", onClick: model.onOpenPing }, "Open ping"),
   ]);
 }
 
@@ -83,28 +84,19 @@ describe("notification rail producer", () => {
     allowOpen = true;
     click("Open completed");
     assert.equal(model().dataset.notice, "");
-    assert.equal(model().dataset.open, "false");
+    assert.equal(model().dataset.open, "true");
     assert.equal(model().dataset.unread, "0");
     assert.equal(model().dataset.reads?.includes('"sample-completed":true'), true);
   });
 
-  it("initializes the preview ping and clears it on close or opening notifications", () => {
+  it("initializes the preview ping and clears it on opening notifications", () => {
+    Reflect.set(window, MOCK_SURFACES_FLAG, true);
     window.history.replaceState(null, "", "/?notificationsPreview=ping");
     mount(() => undefined);
     assert.equal(model().dataset.ping, "true");
     assert.equal(model().dataset.pingItem, "sample-completed");
-    click("Open ping");
+    click("Open panel");
     assert.equal(model().dataset.ping, "false");
     assert.equal(model().dataset.open, "true");
-
-    act(() => root?.unmount());
-    root = undefined;
-    host?.remove();
-    host = undefined;
-    window.history.replaceState(null, "", "/?notificationsPreview=ping");
-    mount(() => undefined);
-    click("Close ping");
-    assert.equal(model().dataset.ping, "false");
-    assert.equal(model().dataset.open, "false");
   });
 });

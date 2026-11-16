@@ -1,18 +1,23 @@
 import { createServer } from "node:net";
 import { accessSync, constants, readFileSync, statfsSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { DashboardLaunchNonceSchema } from "../../../models/dashboard/dashboard-frontend-owner.js";
 import { ConfigSchema, type Config } from "../../../models/config/schema.js";
 import { PreflightCheckIdSchema } from "../../../models/preflight/preflight-contract.js";
 import {
+  createPreflightAuthority,
   PreflightObservationSchema,
   requiredPreflightChecks,
   type PreflightRunner,
 } from "../../../models/preflight/preflight.js";
+import type { CredentialStore } from "../../../models/config/credential-store.js";
+import type { RuntimeAdmission } from "../../storage/admission/admission.js";
+import { AuthorityHealthPreflightRunner } from "../../storage/sqlite/authority-health-runner.js";
+import type { AuthorityImageOwner } from "../../storage/sqlite/readonly-authority-snapshot.js";
+import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { probeOwnedViteServer } from "../host/local-vite-probe.js";
-import { inspectRuntimeProcessOrphans, observeProcessIdentity } from "../../storage/sqlite/runtime-process-locks.js";
 
 const RuntimePackageSchema = z.object({
   name: z.string().min(1),
@@ -32,7 +37,6 @@ const RuntimeCompatibilityCheck = PreflightCheckIdSchema.parse("runtime.compatib
 const ConfigValidCheck = PreflightCheckIdSchema.parse("config.valid");
 const FilesystemHealthCheck = PreflightCheckIdSchema.parse("filesystem.health");
 const PortsAvailableCheck = PreflightCheckIdSchema.parse("ports.available");
-const ProcessOrphansCheck = PreflightCheckIdSchema.parse("process.orphans");
 
 function nodeMeetsFloor(version: string, engine: string): boolean {
   const required = NodeFloorSchema.parse(engine).slice(2).split(".").map(Number);
@@ -88,10 +92,7 @@ export interface DashboardPreflightRunnerInput {
   readonly authorityHealth: PreflightRunner;
   readonly frontendOwnerNonce?: string;
   readonly clock: Clock;
-  readonly processLockRoot: string;
   readonly frontendProbe?: typeof probeOwnedViteServer;
-  readonly listLiveWorkerProcesses: () => readonly Readonly<{ workerId: string; processId: number }>[];
-  readonly observeProcess?: typeof observeProcessIdentity;
   /** The filesystem boundary remains injectable for controlled disk-exhaustion proof. */
   readonly filesystemProbe?: { availableBlocks(this: void, path: string): number };
 }
@@ -113,7 +114,6 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
     ? undefined
     : DashboardLaunchNonceSchema.parse(input.frontendOwnerNonce);
   const frontendProbe = input.frontendProbe ?? probeOwnedViteServer;
-  const observe = input.observeProcess ?? observeProcessIdentity;
   let ownedBackendPort: number | undefined;
 
   const implementations: readonly PreflightRunner[] = [
@@ -211,32 +211,6 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
         return healthy(this.check, "reserved dashboard ports are bindable or owned by this dashboard pair");
       },
     },
-    {
-      check: ProcessOrphansCheck,
-      kind: "io",
-      async run(context) {
-        if (context.signal.aborted) throw new Error("process.orphans preflight was aborted");
-        try {
-          const inspection = inspectRuntimeProcessOrphans(input.processLockRoot);
-          const staleOwners = inspection.staleServerRecords + inspection.staleWorkerRecords;
-          const orphaned = input.listLiveWorkerProcesses().filter(({ processId }) => observe(processId).state === "gone");
-          return orphaned.length === 0 && staleOwners === 0
-            ? healthy(this.check, "no live worker lease points at a missing process and no unreleased dead process owners were found")
-            : unhealthy(
-              this.check,
-              `${String(orphaned.length)} live worker lease(s) point at missing processes; ${String(staleOwners)} unreleased dead process owner record(s) require review`,
-              "review worker leases and stale process ownership before recovery",
-            );
-        } catch {
-          return unhealthy(
-            this.check,
-            "process-lock evidence could not be reconciled (process-lock-evidence-invalid: "
-              + `${basename(input.processLockRoot)})`,
-            "process liveness cannot be reconciled until the malformed record is reviewed",
-          );
-        }
-      },
-    },
   ];
   const byCheck = new Map(implementations.map((runner) => [runner.check, runner]));
   const runners = requiredPreflightChecks(["dashboard.serve"]).map((check) => {
@@ -254,4 +228,35 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
       ownedBackendPort = backendPort === 0 ? parsed : backendPort;
     },
   });
+}
+
+export interface DashboardPreflightInput extends Omit<DashboardPreflightRunnerInput, "authorityHealth"> {
+  readonly admission: RuntimeAdmission;
+  readonly credentials: CredentialStore;
+  readonly backupDirectory: string;
+  readonly configFingerprint: string;
+  readonly descriptorFingerprint?: string;
+  readonly authorityOwner?: AuthorityImageOwner;
+}
+
+/** The one dashboard preflight construction, shared by sign-in and the pre-login rehearsal. */
+export function createDashboardPreflight(input: DashboardPreflightInput) {
+  const runners = createDashboardPreflightRunners({ ...input,
+    authorityHealth: new AuthorityHealthPreflightRunner(input.admission, {
+      stateRootTrustAnchor: resolve(input.stateRoot, ".."),
+      stateRoot: input.stateRoot,
+      authorityPath: join(input.stateRoot, "state.db"),
+      backupDirectory: input.backupDirectory,
+      busyTimeoutMs: 5000,
+    }, input.clock, input.credentials, input.authorityOwner) });
+  const authority = createPreflightAuthority({
+    configFingerprint: input.configFingerprint,
+    ...(input.descriptorFingerprint === undefined ? {} : { descriptorFingerprint: input.descriptorFingerprint }),
+    requestedCapabilities: ["dashboard.serve"],
+    runners: runners.runners,
+    clock: input.clock,
+    scheduler: createTimeoutDeadlineScheduler(input.clock),
+    incompleteAsFailure: true,
+  });
+  return { runners, authority };
 }

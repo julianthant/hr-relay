@@ -1,5 +1,5 @@
 import type { Clock } from "../../../rules/time/clock.js";
-import { withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
+import { isAuthoritySourceChanged, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
 import { AuthorityUpgradeRecordSchema } from "../../../models/config/authority.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
@@ -17,7 +17,8 @@ export function inspectAuthorityUpgradeStatus(admission: RuntimeAdmission, path:
       return AuthorityUpgradeInspectionSchema.parse(phases.length === 0
         ? { state: "absent", reason: "journal-empty" } : { state: "available", phases });
     }, busyTimeoutMs);
-  } catch {
+  } catch (error) {
+    if (isAuthoritySourceChanged(error)) throw error;
     // Parsing/storage diagnostics can include the private row; expose a closed unavailable state.
     return AuthorityUpgradeInspectionSchema.parse({ state: "unavailable",
       cause: { code: "authority-unavailable", summary: "authority upgrade journal could not be verified" },

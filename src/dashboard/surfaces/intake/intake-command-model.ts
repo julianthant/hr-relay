@@ -1,10 +1,11 @@
 import type { z } from "zod";
+import { attemptUnresolved, commandAttemptView } from "../../app/commands/command-outcome.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IntakeSessionWire } from "../../../models/intake/wire.js";
 import { deriveMappingSnapshotHash } from "../../../models/intake/mapping.js";
 import { IntakeSessionWireSchema } from "../../../models/intake/wire.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { IntakeCommandRequestSchema, type CommandRequest, type CommandResult, type BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
+import { IntakeCommandRequestSchema, type CommandRequest, type CommandResult, type BulkRunCommandOutcome, type DashboardCommandRequest } from "../../../rules/commands/commands.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import type { DashboardClient } from "../../client/index.js";
 import type { CommandExecutor, CommandOutcome, CommandReadbackVerification } from "../../app/commands/command-executor.js";
@@ -131,7 +132,7 @@ export function useIntakeCommands(client: DashboardClient, sessionId: string, ad
   const active = useRef(false);
   const inFlight = useRef<object | undefined>(undefined);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
-  const retained = binding?.executor.retainedAttempts().find(attempt => "family" in attempt.request && attempt.request.family === "intake" && attempt.request.target.intakeSessionId === sessionId && (attempt.state === "pending" || attempt.outcome?.kind === "uncertain"));
+  const retained = binding?.executor.retainedAttempts().find(attempt => "family" in attempt.request && attempt.request.family === "intake" && attempt.request.target.intakeSessionId === sessionId && attemptUnresolved(attempt));
   const retainedId = useRef(retained?.request.commandId);
   retainedId.current = retained?.request.commandId;
   useEffect(() => {
@@ -158,18 +159,17 @@ export function useIntakeCommands(client: DashboardClient, sessionId: string, ad
         adopt(IntakeSessionWireSchema.parse(readback.session), request);
         setProblem(null); setRecoveryId(undefined);
       } else {
-        const reply = outcome.reply;
-        setProblem(reply !== undefined && "state" in reply && reply.state === "conflict"
-          ? { kind: "conflict", currentVersion: reply.currentVersion, message: outcome.feedback.text }
-          : outcome.kind === "confirmation-required" ? { kind: "confirmation-required", message: outcome.feedback.text }
-          : outcome.kind === "refused" && reply !== undefined && "state" in reply && reply.state === "rejected"
-            ? { kind: "rejected", code: outcome.feedback.code, message: outcome.feedback.text }
-            : { kind: "transport", message: outcome.feedback.text, cause: outcome });
-        if (outcome.kind === "uncertain") setRecoveryId(request.commandId);
+        const view = commandAttemptView(outcome);
+        setProblem(view.view === "conflict" && view.currentVersion !== undefined
+          ? { kind: "conflict", currentVersion: view.currentVersion, message: outcome.feedback.text }
+          : view.view === "confirmation-required" ? { kind: "confirmation-required", message: outcome.feedback.text }
+          : view.view === "rejected" ? { kind: "rejected", code: outcome.feedback.code, message: outcome.feedback.text }
+          : { kind: "transport", message: outcome.feedback.text, cause: outcome });
+        if (view.view === "unknown") setRecoveryId(request.commandId);
       }
     };
     setPending(basis.pendingKey); setProblem(null);
-    const options = { scope: binding.scope, readback: async (sent: CommandRequest, reply: CommandResult | BulkRunCommandOutcome) => {
+    const options = { scope: binding.scope, readback: async (sent: DashboardCommandRequest, reply: CommandResult | BulkRunCommandOutcome) => {
       if (sent.family !== "intake" || "outcome" in reply) return { state: "mismatch" as const, evidence: sent };
       return verifyIntakeCommand(client, basis.before, sent, reply, basis.zone);
     }, publish };

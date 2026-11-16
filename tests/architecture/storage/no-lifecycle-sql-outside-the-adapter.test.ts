@@ -5,10 +5,12 @@ import { resolve } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 import { gitVisibleFiles, REPO_ROOT, repoRelative } from "../support/helpers/guard-files.js";
+import { scaledMs } from "../../support/time-scale.js";
+import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 
 const ALLOWLIST = ["src/backend/storage/sqlite/authority-database.ts", "src/backend/runs/lifecycle/run-record-service.ts"];
 const RUN_MUTATORS = new Set(["enqueue", "claimNext", "claimEligible", "renewClaim", "transition", "resume", "requeue",
-  "sweepExpiredClaims", "requestCancellation", "advanceRevision", "bumpPriority", "updatePresentation", "injectCheckpointPatches",
+  "requestCancellation", "advanceRevision", "bumpPriority", "updatePresentation", "injectCheckpointPatches",
   "delete", "terminalizeFailure", "terminalizeSuccess"]);
 function owner(node: ts.Node, name: string): boolean {
   for (let current: ts.Node | undefined = node; current !== undefined; current = current.parent) {
@@ -48,6 +50,21 @@ function allowedNativeDeletionSql(relative: string, node: ts.Node): boolean {
     || node.text !== "INSERT INTO deleted_runs VALUES(?,?,?,?,?,?,?,?,?,?,?)") return false;
   for (let parent = node.parent; parent !== undefined; parent = parent.parent) {
     if (ts.isFunctionDeclaration(parent)) return parent.name?.text === "executeNativeRunDeletion";
+  }
+  return false;
+}
+function allowedSettlementMigrationSql(relative: string, node: ts.Node): boolean {
+  if (relative !== "src/backend/storage/sqlite/migrations.ts" || !ts.isStringLiteralLike(node)
+    || sha256Hex(node.text) !== "77eed8af1ec09397d5b900e272238306f49f09ca6a9cb57040a0abedcad9ca0f") return false;
+  const statements = node.parent;
+  if (!ts.isArrayLiteralExpression(statements)) return false;
+  const property = statements.parent;
+  if (!ts.isPropertyAssignment(property) || property.name.getText() !== "statements") return false;
+  const migration = property.parent;
+  if (!ts.isObjectLiteralExpression(migration) || !migration.properties.some(property => ts.isPropertyAssignment(property)
+    && property.name.getText() === "version" && ts.isNumericLiteral(property.initializer) && property.initializer.text === "20")) return false;
+  for (let parent = migration.parent; parent !== undefined; parent = parent.parent) {
+    if (ts.isVariableDeclaration(parent)) return ts.isIdentifier(parent.name) && parent.name.text === "SQLITE_MIGRATIONS";
   }
   return false;
 }
@@ -106,7 +123,8 @@ function collectAudit(): readonly string[] {
       const report = (arm: string) => violations.push(`${relative}:${arm}:${node.getText().slice(0, 100)}`);
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node))
         && /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM)\s+["`[]?(?:workflow_runs|tasks|workflow_workers|leases|archived_runs|deleted_runs|run_results|archive_relaunches)\b/iu.test(node.getText())
-        && !allowedArchiveSectionSql(relative, node) && !allowedCompletionSql(relative, node) && !allowedNativeDeletionSql(relative, node)) report("sql");
+        && !allowedArchiveSectionSql(relative, node) && !allowedCompletionSql(relative, node) && !allowedNativeDeletionSql(relative, node)
+        && !allowedSettlementMigrationSql(relative,node)) report("sql");
       if ((ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) && /\bFROM\s+["`[]?runs_view\b/iu.test(node.getText())) report("runs-view");
       const signature = ts.isCallExpression(node) && mayCallMutator(node.expression)
         ? checker.getResolvedSignature(node)?.declaration : undefined;
@@ -136,6 +154,28 @@ describe("no-lifecycle-sql-outside-the-adapter", () => {
     assert.equal(nativeDeletionSqlFixture(path, "forgedDeletion", sql), false);
     assert.equal(nativeDeletionSqlFixture(path, "executeNativeRunDeletion", "DELETE FROM deleted_runs"), false);
   });
+  it("admits only the exact reviewed settlement backfill in migration 20", () => {
+    const path = "src/backend/storage/sqlite/migrations.ts";
+    const source = ts.createSourceFile(path,readFileSync(resolve(REPO_ROOT,path),"utf8"),ts.ScriptTarget.Latest,true);
+    let sql: string | undefined;
+    const find = (node: ts.Node): void => {
+      if (ts.isStringLiteralLike(node) && allowedSettlementMigrationSql(path,node)) sql = node.text;
+      ts.forEachChild(node,find);
+    };
+    find(source); assert.ok(sql);
+    const check = (body: string, relative = path, version = 20, owner = "SQLITE_MIGRATIONS") => {
+      const fixture = ts.createSourceFile(relative,`const ${owner}=[{version:${version},statements:[${JSON.stringify(body)}]}]`,ts.ScriptTarget.Latest,true);
+      let admitted = false;
+      const visit = (node: ts.Node): void => { if (allowedSettlementMigrationSql(relative,node)) admitted = true; ts.forEachChild(node,visit); };
+      visit(fixture); return admitted;
+    };
+    assert.equal(check(sql),true);
+    assert.equal(check(sql,"src/backend/transports/http/forged.ts"),false);
+    assert.equal(check(sql,path,21),false);
+    assert.equal(check(sql,path,20,"ordinaryRuntime"),false);
+    assert.equal(check(sql.replace("JOIN runs", "LEFT JOIN runs")),false);
+    assert.equal(check("DELETE FROM run_results"),false);
+  });
   it("admits only exact frozen-section SQL in its stopped converter", () => {
     const check = (sql: string, path: string, name: string) => {
       const source = ts.createSourceFile(path, `function ${name}() { db.prepare(${JSON.stringify(sql)}); }`, ts.ScriptTarget.Latest, true);
@@ -162,7 +202,7 @@ describe("no-lifecycle-sql-outside-the-adapter", () => {
     assert.equal(check("src/backend/storage/sqlite/completion-conversion.ts","runtime",COMPLETION_SQL),false);
     assert.equal(check("src/backend/storage/sqlite/completion-conversion.ts","convertRunCompletions","DELETE FROM workflow_runs"),false);
   });
-  it("limits lifecycle writes to the service/adapter and remaining exact stopped conversions", () => { assert.deepEqual(audit(), []); }, 45_000);
+  it("limits lifecycle writes to the service/adapter and remaining exact stopped conversions", () => { assert.deepEqual(audit(), []); }, scaledMs(45_000));
   it("detects checked-in SQL, aliased mutator and runs_view reader violations", () => {
     const found = audit(true);
     for (const arm of ["sql", "mutator", "view"]) assert.ok(found.some((entry) => entry.startsWith(`src/core/guard-fixtures/${arm}.ts:`)), arm);

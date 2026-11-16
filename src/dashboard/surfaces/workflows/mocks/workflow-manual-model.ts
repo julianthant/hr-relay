@@ -9,11 +9,11 @@ function inSentence(label: string): string {
   return [/^[A-Z0-9-]{2,}$/u.test(first) ? first : first.charAt(0).toLowerCase() + first.slice(1), ...rest].join(" ");
 }
 
-export function mockStepIsDependency(step: MockStep): boolean { return ["wait-approval", "wait-signatures"].includes(step.key); }
+export function mockStepIsDependency(step: MockStep): boolean { return ["wait-approval", "wait-signatures", "prep:person-lookup", "read-document"].includes(step.key); }
 function formStepIsLocked(id: MockWorkflowId, step: MockStep): boolean {
   return Boolean(step.write || ["fill-form", "fill-keywords", "prepare-import"].includes(step.key)
     || id === "separations" && ["ucpath-job-summary", "kronos-search"].includes(step.key)
-    || id === "i9-check" && step.key === "roster-match");
+    || id === "i9-check-start" && step.key === "roster-match");
 }
 /** Sign-in to a system stays included while a required action on that system remains in the plan. */
 export function mockStepIsRequiredSignIn(id: MockWorkflowId, step: MockStep): boolean {

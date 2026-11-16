@@ -33,9 +33,9 @@ recordingLogger,
 sessionManagerFor,
 } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 const SIGNAL = new AbortController().signal;
@@ -125,14 +125,14 @@ const gateResumeDescriptor = defineWorkflowDescriptor({
 
 /* ── harness ─────────────────────────────────────────────────────────────── */
 
-function harness(): Readonly<{
+async function harness(): Promise<Readonly<{
   database: AuthorityDatabase;
   clock: TestClock;
   now: () => string;
   emitter: ReturnType<typeof recordingEmitter>;
   deps: RunExecutorDependencies;
-}> {
-  const authority = openAuthorityHarness();
+}>> {
+  const authority = await openAuthorityHarness();
   testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: gateResumeDescriptor, poolIndex: 1 });
   disposers.push(authority.dispose);
   const emitter = recordingEmitter();
@@ -141,7 +141,7 @@ function harness(): Readonly<{
     descriptor: gateResumeDescriptor,
     stores: taskStoreRegistry,
     authority: authority.database,
-    sessions: sessionManagerFor(happySessionHarness(), authority.clock),
+    sessions: await sessionManagerFor(happySessionHarness(), authority.clock),
     emitter: emitter.emitter,
     clock: authority.clock,
     ids: sequentialIdFactory("e"),
@@ -181,8 +181,8 @@ function queuedRun() {
 }
 
 function claim(database: AuthorityDatabase, now: string) {
-  const { workerId, workerLifetime } = testWorkerLifetime(database, WORKFLOW_ID, 1);
-  const claimed = database.authority.runs.claimNext({ workerLifetime, workflow: WORKFLOW_ID, workerId, now });
+  const { workerId } = testWorkerLifetime(database, WORKFLOW_ID, 1);
+  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
   return {
     run: claimed.run,
@@ -207,7 +207,7 @@ function approve(database: AuthorityDatabase, version: number, now: string): voi
 
 describe("a gate resume re-executes an always-rerun node without colliding", () => {
   it("walks park → approve → resume to terminal done, storing BOTH executions", async () => {
-    const h = harness();
+    const h = await harness();
     h.database.authority.runs.enqueue(queuedRun());
 
     /* ── first claim: the read chain, then the park ───────────────────────── */
@@ -269,7 +269,7 @@ describe("a gate resume re-executes an always-rerun node without colliding", () 
   });
 
   it("makes the two executions distinguishable in the span stream", async () => {
-    const h = harness();
+    const h = await harness();
     h.database.authority.runs.enqueue(queuedRun());
     const first = claim(h.database, h.now());
     await executeClaimedRun(h.deps, { ...first, signal: SIGNAL });
@@ -299,7 +299,7 @@ describe("a gate resume re-executes an always-rerun node without colliding", () 
   });
 
   it("resolves terminal evidence to the LATEST execution, and authority re-reads that exact row", async () => {
-    const h = harness();
+    const h = await harness();
     h.database.authority.runs.enqueue(queuedRun());
     const first = claim(h.database, h.now());
     await executeClaimedRun(h.deps, { ...first, signal: SIGNAL });

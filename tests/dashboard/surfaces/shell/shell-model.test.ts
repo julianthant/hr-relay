@@ -1,5 +1,3 @@
-import { WorkerSlotRecordSchema } from "../../../../src/models/run/worker-slot.js";
-import { createWorkerLeaseFixtures } from "../../../support/helpers/backend/worker-lease-fixtures.js";
 
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,it as it_m0 } from "vitest";
@@ -11,7 +9,7 @@ sessionPoolGroupFor as sessionPoolGroupFor_m0,
 workerBrowserView as workerBrowserView_m0
 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { DashboardDayWireSchema as DashboardDayWireSchema_m0,type DashboardDayWire as DashboardDayWire_m0 } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0,uuidOf as uuidOf_m0 } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0,uuidOf as uuidOf_m0 } from "../../../mocks/helpers/fixture-day.js";
 
 import { describe as describe_m1,expect as expect_m1,it as it_m1 } from "vitest";
 import { z as z_m1 } from "zod";
@@ -28,11 +26,8 @@ import { WorkflowCountWireSchema as WorkflowCountWireSchema_m1 } from "../../../
 
 import assert_m2 from "node:assert/strict";
 import { describe as describe_m2,it as it_m2 } from "vitest";
-import { workerCardOf as workerCardOf_m2 } from "../../../../src/backend/runs/projections/worker-cards.js";
-import {
-WORKER_STOP_REASON_LABEL as WORKER_STOP_REASON_LABEL_m2,
-WORKER_TONE as WORKER_TONE_m2
-} from "../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { WORKER_STOP_REASON_LABEL as WORKER_STOP_REASON_LABEL_m2 } from "../../../../src/dashboard/surfaces/sessions/worker-stop-reason-label.js";
+import { WORKER_TONE as WORKER_TONE_m2 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 
 
 
@@ -48,7 +43,7 @@ function sessionDay(): DashboardDayWire_m0 {
     ...FIXTURE_DAY_WIRE_m0,
     queueSurfaces: FIXTURE_DAY_WIRE_m0.queueSurfaces.map((row) => {
       if (String(row.runId) === uuidOf_m0(2) || String(row.runId) === uuidOf_m0(3)) {
-        return { ...row, session: { state: "present", sessionId: SESSION_ID } };
+        return { ...row, session: { state: "present", itemScope: row.workflowId === "person-lookup" && row.parent === null ? "session" : "workflow", sessionId: SESSION_ID } };
       }
       if (String(row.runId) === uuidOf_m0(4)) {
         return { ...row, session: { state: "absent", reason: "This fixture has no run session." } };
@@ -193,7 +188,7 @@ describe_m0("Session Panel authority joins", () => {
     });
   });
 
-  it_m0("shows no browser slots on a retained terminal worker card", () => {
+  it_m0("shows the systems a retained terminal worker card needs as closed", () => {
     const day = sessionDay();
     const terminal = day.workerCards.find((card) => card.state === "failed");
     if (terminal === undefined) throw new Error("the real wire fixture needs a stopped retained worker card");
@@ -201,7 +196,7 @@ describe_m0("Session Panel authority joins", () => {
     assert_m0.deepEqual(workerBrowserView_m0({
       ...terminal,
       browserRequirements: { state: "present", systems: ["ucpath", "crm"] },
-    }), { slots: [] });
+    }), { slots: [{ state: "closed", system: "ucpath" }, { state: "closed", system: "crm" }] });
   });
 
   it_m0("folds one membership per served card, in wire order, for the strip to read by worker id", () => {
@@ -281,6 +276,15 @@ describe_m1("workflowStatusCounts — the band's scope selector", () => {
   });
 });
 
+describe_m1("running count — the rail pill", () => {
+  it_m1("reads the served running count from that workflow's own statusCounts", () => {
+    const served = WorkflowCountWireSchema_m1.parse({ workflowId: "person-lookup", count: 3,
+      statusCounts: [{ status: "running", count: 2 }, { status: "queued", count: 1 }] });
+    expect_m1(statusCount_m1(workflowStatusCounts_m1([served], "person-lookup"), "running")).toBe(2);
+    expect_m1(WorkflowCountWireSchema_m1.safeParse({ ...served, count: 2 }).success).toBe(false);
+  });
+});
+
 describe_m1("totalCount — the `All` segment", () => {
   it_m1("keeps Cancelling active and selectable, including after its selected bucket empties", () => {
     const counts = z_m1.array(WorkflowCountWireSchema_m1).parse([{
@@ -318,21 +322,7 @@ describe_m1("totalCount — the `All` segment", () => {
 {
 
 
-const STARTED = "2026-08-20T16:00:00.000Z";
-
-const { leaseOf } = createWorkerLeaseFixtures(STARTED);
-
-const NO_TRACE = (): undefined => undefined;
-
 describe_m2("the words the card carries", () => {
-  const _live = workerCardOf_m2({
-    lease: leaseOf(),
-    fold: undefined,
-    resolveRun: NO_TRACE,
-    member: WorkerSlotRecordSchema.parse(FIXTURE_DAY_WIRE_m0.workerAuthority.members[0]),
-    ownerAlive: true,
-  });
-
   it_m2("has a word for every state and every recorded stop reason", () => {
 
     const labels = Object.values(WORKER_TONE_m2).map(({ label }) => label);

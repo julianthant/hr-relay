@@ -27,5 +27,5 @@ another. Do not split one inseparable visit into tasks that assume an unproven b
 
 Before driver changes, read `session.ts` and the relevant `driver/` source.
 Read the assigned workflow brief for workflow behavior;
-use `docs/rebuild/reference/stores.md` and source contracts for the current task/output inventory.
+use `docs/reference/stores.md` and source contracts for the current task/output inventory.
 Root rules apply.

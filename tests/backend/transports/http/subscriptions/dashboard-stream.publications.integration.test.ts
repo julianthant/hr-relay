@@ -11,10 +11,10 @@ import { DAY, makeWorld, queuedEventOf, type DashboardWorld } from "../../../../
 import { sseSerialize } from "../../../../../src/backend/transports/http/subscriptions/sse-response.js";
 
 const worlds: DashboardWorld[] = [], hubs: DashboardStreamHub[] = [];
-afterEach(() => { for (const hub of hubs.splice(0)) hub.close(); for (const world of worlds.splice(0)) world.dispose(); });
+afterEach(async () => { for (const hub of hubs.splice(0)) hub.close(); for (const world of worlds.splice(0)) await world.dispose(); });
 const event = { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: "a".repeat(64) };
-function setup() {
-  const world = makeWorld(); worlds.push(world);
+async function setup() {
+  const world = await makeWorld(); worlds.push(world);
   const inbox = createNotificationInbox({ authority: world.database, clock: world.clock, ids: sequentialIdFactory("f"), runReader: world.runReader, actorId: "local-operator" });
   const projected: NotificationPublication[] = [];
   let listener: ((publication: NotificationPublication) => void) | undefined;
@@ -29,7 +29,7 @@ function setup() {
   return { world, inbox, hub, projected, broadcast: (publication: NotificationPublication) => listener?.(publication) };
 }
 it("delivers only live committed publications; baseline, reconnect and resnapshot contain no publication", async () => {
-  const { world, inbox, hub } = setup();
+  const { world, inbox, hub } = await setup();
   await inbox.publish(event);
   const connection = await hub.connect({ day: DAY });
   assert.equal(connection.initial.some(envelope => envelope.type === "notification-publication"), false);
@@ -54,7 +54,7 @@ it("delivers only live committed publications; baseline, reconnect and resnapsho
   assert.equal(resnapshot.pending, 0);
 });
 it("carries snooze from committed state and excludes notifications for another actor", async () => {
-  const { world, inbox, hub, projected, broadcast } = setup();
+  const { world, inbox, hub, projected, broadcast } = await setup();
   const first = await inbox.publish(event);
   const connection = await hub.connect({ day: DAY });
   let pending: ReturnType<typeof inbox.publish> | undefined;
@@ -72,7 +72,7 @@ it("carries snooze from committed state and excludes notifications for another a
   connection.close();
 });
 it("uses existing bounded backpressure and removes its publication listener on close", async () => {
-  const { world, inbox, hub, projected } = setup();
+  const { world, inbox, hub, projected } = await setup();
   const connection = await hub.connect({ day: DAY });
   for (const identity of ["b", "c", "d"]) await inbox.publish(event, { identity: identity.repeat(64), occurredAt: world.clock.now().toISOString() });
   assert.equal(connection.pending, 1);
@@ -85,7 +85,7 @@ it("uses existing bounded backpressure and removes its publication listener on c
 });
 
 it("does not attach the subscriber until snapshot construction has finished", async () => {
-  const { world, inbox, hub } = setup();
+  const { world, inbox, hub } = await setup();
   const build = world.projection.buildDashboardDayWire.bind(world.projection);
   let pending: ReturnType<typeof inbox.publish> | undefined;
   const spy = vi.spyOn(world.projection, "buildDashboardDayWire").mockImplementationOnce(day => {
@@ -100,7 +100,7 @@ it("does not attach the subscriber until snapshot construction has finished", as
 });
 
 it("excludes publications made by backfill detection from the connecting subscriber", async () => {
-  const { world, hub } = setup();
+  const { world, hub } = await setup();
   queuedEventOf(world, { seed: 1 });
   const first = await hub.connect({ day: DAY });
   const lastEventId = world.projection.cursor(), lastProjectionGeneration = world.projection.generation();
@@ -112,7 +112,7 @@ it("excludes publications made by backfill detection from the connecting subscri
   assert.equal(world.database.authority.notificationPublications.list().length, 1);
 });
 it("keeps verified completion publications eligible despite the legacy no-channel report", async () => {
-  const { world, inbox, hub } = setup();
+  const { world, inbox, hub } = await setup();
   const run = queuedEventOf(world, { seed: 1 });
   const connection = await hub.connect({ day: DAY });
   const report = await inbox.publish({ kind: "verified-done", runId: run.runId, workflowId: "person-lookup" });

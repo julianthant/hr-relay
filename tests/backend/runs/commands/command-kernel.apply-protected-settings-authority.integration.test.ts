@@ -1,3 +1,4 @@
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -10,17 +11,18 @@ import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { HASH_A, NOW, UUID_4, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { roots, openDatabases, databasePath, createHarness, nextCommandId } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, createHarness, nextCommandId } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 function protectedSettingsCommand(input: Readonly<{
   commandId?: string;
-  expectedRevision?: number;
+  expectedRevision: number;
   protectedSchemaHash?: string;
   value: string;
   writeId?: string;
@@ -32,7 +34,7 @@ function protectedSettingsCommand(input: Readonly<{
     source: "settings-surface",
     family: "settings",
     type: "apply-protected-settings",
-    target: { expectedRevision: input.expectedRevision ?? 1 },
+    target: { expectedRevision: input.expectedRevision },
     payload: {
       protectedSchemaHash: input.protectedSchemaHash ?? PROTECTED_SETTINGS_SCHEMA_HASH,
       writeId: input.writeId ?? UUID_7,
@@ -42,12 +44,15 @@ function protectedSettingsCommand(input: Readonly<{
 }
 
 describe("apply-protected-settings authority", () => {
-  it("refuses a stale protected schema before reading or materializing credentials", () => {
+  it("refuses a stale protected schema before reading or materializing credentials", async () => {
     assert.notEqual(HASH_A, PROTECTED_SETTINGS_SCHEMA_HASH);
-    const stateRoot = databasePath("invalid-credential-root");
+    const profile = await createBoundProfileFixture({ pending: "storage" });
+    profiles.push(profile);
+    const stateRoot = profile.stateRoot;
     const credentials = createCredentialStore({ stateRoot });
-    const harness = createHarness(undefined, createSettingsApplicationExecutor(() => { throw new Error("protected fixture reached ordinary settings"); }, credentials));
+    const harness = await createHarness(undefined, createSettingsApplicationExecutor(() => { throw new Error("protected fixture reached ordinary settings"); }, credentials));
     const command = protectedSettingsCommand({
+      expectedRevision: 1,
       protectedSchemaHash: HASH_A,
       value: "must-not-reach-authority",
     });
@@ -64,9 +69,9 @@ describe("apply-protected-settings authority", () => {
     assert.equal(harness.database.authority.settingsCurrent.get(), undefined);
   });
 
-  it("keeps an independently committed credential across audit failure and settles exact retry", () => {
+  it("keeps an independently committed credential across audit failure and settles exact retry", async () => {
     let failAudit = true;
-    const harness = createHarness((repositories) => ({
+    const harness = await createHarness((repositories) => ({
       ...repositories,
       commandAudits: {
         ...repositories.commandAudits,
@@ -77,14 +82,15 @@ describe("apply-protected-settings authority", () => {
       },
     }));
     const protectedValue = "protected-value-before-audit";
-    const command = protectedSettingsCommand({ value: protectedValue });
+    const revision = harness.credentials.read().revision;
+    const command = protectedSettingsCommand({ value: protectedValue, expectedRevision: revision });
     const protectedPath = join(harness.stateRoot, "credentials", "protected.json");
 
     assert.throws(
       () => harness.kernel.execute(command),
       /credential-audit-uncertain: credentials committed; retry the exact command/u,
     );
-    assert.equal(harness.credentials.read().revision, 2);
+    assert.equal(harness.credentials.read().revision, revision + 1);
     assert.equal(harness.credentials.read().entries.ucpathPassword?.value, protectedValue);
     const committedBytes = readFileSync(protectedPath);
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
@@ -92,6 +98,7 @@ describe("apply-protected-settings authority", () => {
 
     const divergent = protectedSettingsCommand({
       commandId: command.commandId,
+      expectedRevision: revision,
       value: "divergent-protected-value",
       writeId: command.payload.writeId,
     });
@@ -108,18 +115,18 @@ describe("apply-protected-settings authority", () => {
     assert.deepEqual(readFileSync(protectedPath), committedBytes);
 
     const stale = protectedSettingsCommand({
-      expectedRevision: 1,
+      expectedRevision: revision,
       value: "stale-protected-value",
       writeId: UUID_4,
     });
     const staleResult = harness.kernel.execute(stale);
     assert.equal(staleResult.state, "conflict");
-    if (staleResult.state === "conflict") assert.equal(staleResult.currentVersion, 2);
+    if (staleResult.state === "conflict") assert.equal(staleResult.currentVersion, revision + 1);
     assert.equal(harness.database.authority.commands.get(stale.commandId), undefined);
     assert.deepEqual(readFileSync(protectedPath), committedBytes);
 
     const reusedWrite = protectedSettingsCommand({
-      expectedRevision: 2,
+      expectedRevision: revision + 1,
       value: "reused-write-protected-value",
       writeId: command.payload.writeId,
     });
@@ -130,17 +137,18 @@ describe("apply-protected-settings authority", () => {
     assert.deepEqual(readFileSync(protectedPath), committedBytes);
   });
 
-  it("journals only marked operations while the independent store owns credential values", () => {
-    const harness = createHarness();
+  it("journals only marked operations while the independent store owns credential values", async () => {
+    const harness = await createHarness();
     const protectedValue = "protected-value-that-must-never-reach-sqlite";
-    const command = protectedSettingsCommand({ value: protectedValue });
+    const revision = harness.credentials.read().revision;
+    const command = protectedSettingsCommand({ value: protectedValue, expectedRevision: revision });
     const result = harness.kernel.execute(command);
 
     assert.equal(result.state, "applied");
     if (result.state !== "applied") return;
     assert.equal(result.restartRequired, false);
-    assert.equal(result.revision, 2);
-    assert.deepEqual(result.affectedTargets, [{ family: "protected-settings", revision: 2 }]);
+    assert.equal(result.revision, revision + 1);
+    assert.deepEqual(result.affectedTargets, [{ family: "protected-settings", revision: revision + 1 }]);
     assert.equal(result.entries?.ucpathPassword.present, true);
     const journal = harness.database.authority.commands.get(command.commandId);
     const audit = harness.database.authority.commandAudits.findByCommand(command.commandId);
@@ -152,7 +160,7 @@ describe("apply-protected-settings authority", () => {
     assert.equal(durableBytes.includes('"set":"<set>"'), true);
     assert.equal(harness.database.authority.settingsCurrent.get(), undefined);
     const credentialRecord = harness.credentials.read();
-    assert.equal(credentialRecord.revision, 2);
+    assert.equal(credentialRecord.revision, revision + 1);
     assert.equal(credentialRecord.entries.ucpathPassword?.value, protectedValue);
     assert.equal(credentialRecord.lastApplied?.commandId, command.commandId);
   });

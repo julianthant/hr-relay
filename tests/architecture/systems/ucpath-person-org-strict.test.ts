@@ -35,15 +35,15 @@ export function auditStrictPersonOrgSource(source: string): readonly string[] {
     ["positive no-results marker", "bannerText.includes(NO_RESULTS_TEXT)"],
     ["empty results grid failure", "results grid rendered without rows; refusing to report not-found"],
     ["empty assignment failure", "detail has no parsed assignment rows"],
-    ["Employment Instances expansion", "await ensureEmploymentInstancesExpanded(page);"],
+    ["Employment Instances expansion", "await ensureEmploymentInstancesExpanded(assertCurrent, page);"],
   ] as const) {
     if (!source.includes(required)) issues.push(`missing ${label}`);
   }
-  const resultExpansions = source.match(/await ensureResultsExpanded\(page\);/gu)?.length ?? 0;
+  const resultExpansions = source.match(/await ensureResultsExpanded\(assertCurrent, page\);/gu)?.length ?? 0;
   if (resultExpansions < 2) {
     issues.push("missing search-result expansion before extraction or after Return to Search");
   }
-  const employmentExpansion = source.indexOf("await ensureEmploymentInstancesExpanded(page);");
+  const employmentExpansion = source.indexOf("await ensureEmploymentInstancesExpanded(assertCurrent, page);");
   const assignmentExtraction = source.indexOf("const rows = await resolveUcpathElement(");
   if (employmentExpansion === -1 || assignmentExtraction === -1 || employmentExpansion > assignmentExtraction) {
     issues.push("Employment Instances expansion must precede assignment extraction");
@@ -130,8 +130,8 @@ describe("strict UCPath Person Org operation", () => {
 
   it("catches pagination extraction that omits either required expansion boundary", () => {
     const withoutExpansion = readFileSync(OPERATION_PATH, "utf8")
-      .replaceAll("await ensureResultsExpanded(page);", "")
-      .replace("await ensureEmploymentInstancesExpanded(page);", "");
+      .replaceAll("await ensureResultsExpanded(assertCurrent, page);", "")
+      .replace("await ensureEmploymentInstancesExpanded(assertCurrent, page);", "");
     const issues = auditStrictPersonOrgSource(withoutExpansion).join("\n");
     assert.match(issues, /search-result expansion/);
     assert.match(issues, /Employment Instances expansion/);

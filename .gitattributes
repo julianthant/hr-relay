@@ -1,1 +1,3 @@
 *.pdf binary
+*.ts text eol=lf
+*.tsx text eol=lf

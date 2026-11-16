@@ -1,97 +1,83 @@
 import type { CommandKernel } from "./command-kernel.js";
-import { WorkerBrowserCommandRequestSchema, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
+import { type CapacityRequest, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { lifecycleCommandId } from "../../../rules/commands/lifecycle-command-id.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
-type StartRequest = Extract<CommandRequest, { family: "start" }>;
-type WorkerRequest = Extract<CommandRequest, { family: "worker-browser" }>;
-type CapacityAuthority = Pick<AuthorityRepositories, "startPlans" | "workerPools" | "workerSlots" | "workerControls" | "commands">;
-
 export interface RunWorkerCapacity {
-  ensure(request: StartRequest, result: CommandResult): Promise<void>;
+  workflowOf(request: CapacityRequest): string | undefined;
+  ensure(request: CapacityRequest, result: CommandResult): Promise<void>;
+  /** Runs capacity work its command did not wait for: the worker pool owns it until it settles, and its failure is reported as a fault. */
+  detach(work: Promise<void>): void;
+  /** True while a capacity step for the workflow is unsettled; its members that are not live are starting, not failed. */
+  readonly startupPending: (workflowId: string) => boolean;
 }
 
-export function runCapacityCommandId(parentId: string, type: "plan-worker-count" | "spawn-worker", index: number) {
+export class RunWorkerStartupError extends Error {
+  constructor(readonly failure: RunWorkerStartupFailure, options?: ErrorOptions) { super(failure.message, options); this.name = "RunWorkerStartupError"; }
+}
+
+export function runCapacityCommandId(parentId: string, type: "plan-worker-count", index: number) {
   return lifecycleCommandId(`run-start-${type}`, [parentId, index]);
 }
 
-export function createRunWorkerCapacity(deps: { kernel: CommandKernel; authority: CapacityAuthority }): RunWorkerCapacity {
+function fail(detail: string, state: RunWorkerStartupFailure["state"], cause?: unknown): never {
+  throw new RunWorkerStartupError({ state, code: "RUN_QUEUED_WORKER_UNAVAILABLE", message: ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text, detail },
+    cause === undefined ? undefined : { cause });
+}
+
+/** A start, or a run command that queues work, needs one live member of its workflow; a replayed command asks again, which is idempotent by pool state. */
+export function createRunWorkerCapacity(deps: {
+  kernel: CommandKernel;
+  authority: Pick<AuthorityRepositories, "runs" | "startPlans" | "workerPools" | "workerSlots">;
+  running(workflowId: string): boolean;
+  ensureRunning(workflowId: string): Promise<void>;
+  /** The worker pool's owner of startup work no caller waits for. */
+  own: (work: Promise<void>) => void;
+  reportDetachedFailure: (error: Error) => void;
+  /** The served worker cards read `startupPending`; this republishes them when it changes. */
+  startupPendingChanged: () => void;
+}): RunWorkerCapacity {
+  const workflowOf = (request: CapacityRequest) => request.family === "start" ? request.target.workflowId : deps.authority.runs.get(request.target.runId)?.envelope.workflow;
+  const pending = new Map<string, number>();
+  const countPending = (workflowId: string, delta: 1 | -1): void => {
+    const count = (pending.get(workflowId) ?? 0) + delta;
+    if (count === 0) pending.delete(workflowId); else pending.set(workflowId, count);
+    deps.startupPendingChanged();
+  };
+  const start = async (workflowId: string, request: CapacityRequest): Promise<void> => {
+    if (deps.authority.workerSlots.active(workflowId).length === 0) {
+      const outcome = await deps.kernel.executeWorkerPool({ commandId: runCapacityCommandId(request.commandId, "plan-worker-count", 1),
+        requestedAt: request.requestedAt, requestedBy: request.requestedBy, source: request.source, family: "worker-browser", type: "plan-worker-count",
+        target: { workflowId, expectedVersion: deps.authority.workerPools.get(workflowId)?.version ?? 0 }, payload: { desiredWorkers: 1 } });
+      if (outcome.state !== "applied" && outcome.state !== "already-applied") fail(`worker plan did not apply: ${JSON.stringify(outcome)}`, "refused");
+      // The plan already preflighted and started its member; a refused or failed start leaves the workflow without a live member.
+      if (!deps.running(workflowId)) fail("the planned worker did not start", "refused");
+      return;
+    }
+    try { await deps.ensureRunning(workflowId); }
+    catch (error) { fail(error instanceof Error ? error.message : String(error), "refused", error); }
+  };
   return Object.freeze({
-    async ensure(request: StartRequest, result: CommandResult): Promise<void> {
+    workflowOf,
+    startupPending: (workflowId: string) => pending.has(workflowId),
+    detach(work: Promise<void>): void {
+      deps.own(work.catch((error: unknown) => {
+        deps.reportDetachedFailure(error instanceof Error ? error : new Error("worker capacity failed", { cause: error }));
+      }));
+    },
+    async ensure(request: CapacityRequest, result: CommandResult): Promise<void> {
       if (result.state !== "applied" && result.state !== "already-applied") return;
-      const runIds = result.affectedTargets.flatMap(target => target.family === "run" ? [target.runId] : []);
-      const fail = (message: string): never => {
-        throw new Error(`Runs queued (${runIds.join(", ")}; start ${request.commandId}; plan ${request.target.startPlanId}); worker startup ${message}`);
-      };
-      const { workflowId } = request.target;
-      const startPlan = deps.authority.startPlans.get(request.target.startPlanId);
-      if (startPlan === undefined || startPlan.workflowId !== workflowId) return fail("start plan is missing or mismatched");
-      if (startPlan.shape === "preview" || startPlan.planned.length === 0) return;
-      const wanted = Math.min(startPlan.workers === "auto" ? 1 : startPlan.workers, startPlan.planned.length);
-      const slots = deps.authority.workerSlots.list(workflowId);
-      const read = (type: "plan-worker-count" | "spawn-worker", index: number) => {
-        const id = runCapacityCommandId(request.commandId, type, index);
-        const value = deps.authority.workerControls.get(id)?.request ?? deps.authority.commands.get(id);
-        if (value === undefined) return undefined;
-        if (value.family !== "worker-browser" || value.type !== type || !("workflowId" in value.target)
-          || value.target.workflowId !== workflowId || value.requestedAt !== request.requestedAt
-          || value.requestedBy !== request.requestedBy || value.source !== request.source
-          || (value.type === "spawn-worker" && !slots.some(slot => slot.workerId === value.payload.workerId && slot.poolIndex === index))) {
-          return fail("identity differs from its retained capacity command");
-        }
-        return WorkerBrowserCommandRequestSchema.parse(value);
-      };
-      const retained = [...new Set(slots.map(slot => slot.poolIndex))].flatMap(index => {
-        const plan = read("plan-worker-count", index), spawn = read("spawn-worker", index);
-        return plan === undefined && spawn === undefined ? [] : [{ index, plan, spawn }];
-      });
-      const plans = retained.flatMap(intent => intent.plan === undefined ? [] : [intent.plan]);
-      if (plans.length > 1) return fail("has multiple retained pool plans; reconciliation required");
-      let plan = plans[0];
-      const execute = async (child: WorkerRequest) => {
-        const outcome = await deps.kernel.executeWorkerPool(child).catch((error: unknown) =>
-          fail(`failed or uncertain at ${child.type} ${child.commandId}: ${error instanceof Error ? error.message : String(error)}`));
-        if (outcome.state !== "applied" && outcome.state !== "already-applied") {
-          fail(`did not complete at ${child.type} ${child.commandId}: ${JSON.stringify(outcome)}`);
-        }
-      };
-      if (plan === undefined && retained.length > 0) {
-        for (const intent of retained) if (intent.spawn !== undefined) await execute(intent.spawn);
-        return;
+      const workflowId = workflowOf(request);
+      if (workflowId === undefined) fail("run is missing", "unknown");
+      if (request.family === "start") {
+        const startPlan = deps.authority.startPlans.get(request.target.startPlanId);
+        if (startPlan === undefined || startPlan.workflowId !== workflowId) fail("start plan is missing or mismatched", "unknown");
+        if (startPlan.shape === "preview" || startPlan.planned.length === 0) return;
       }
-      if (plan === undefined) {
-        const active = slots.filter(slot => slot.retiredAt === null);
-        if (active.length >= wanted) return;
-        if (result.state === "already-applied") return fail("status unknown: no retained startup command; reconcile before a new launch");
-        const pool = deps.authority.workerPools.get(workflowId);
-        if ((pool?.desiredWorkers ?? 0) !== active.length) return fail("unavailable: worker pool roster authority is inconsistent");
-        if (deps.authority.workerSlots.verifications(workflowId).length !== 0) return fail("unavailable: worker verification owns the pool reservation");
-        let index = 1;
-        while (active.some(slot => slot.poolIndex === index)) index += 1;
-        plan = WorkerBrowserCommandRequestSchema.parse({ commandId: runCapacityCommandId(request.commandId, "plan-worker-count", index),
-          requestedAt: request.requestedAt, requestedBy: request.requestedBy, source: request.source,
-          family: "worker-browser", type: "plan-worker-count", target: { workflowId, expectedVersion: pool?.version ?? 0 },
-          payload: { desiredWorkers: wanted } });
-      }
-      await execute(plan);
-      const control = deps.authority.workerControls.get(plan.commandId);
-      if (plan.type !== "plan-worker-count" || control?.roster === undefined || control.roster.excess.length !== 0) {
-        return fail("has no retained additive roster; reconciliation required");
-      }
-      for (const member of control.roster.selected.filter(slot => slot.reservationCommandId === plan.commandId)) {
-        let spawn = read("spawn-worker", member.poolIndex);
-        if (spawn === undefined) {
-          const current = deps.authority.workerSlots.get(member.workerId);
-          if (current === undefined || current.retiredAt !== null || current.membershipRevision !== member.membershipRevision) {
-            return fail("admitted member changed before Spawn; reconciliation required");
-          }
-          spawn = WorkerBrowserCommandRequestSchema.parse({ commandId: runCapacityCommandId(request.commandId, "spawn-worker", member.poolIndex),
-            requestedAt: request.requestedAt, requestedBy: request.requestedBy, source: request.source,
-            family: "worker-browser", type: "spawn-worker", target: { workflowId, expectedVersion: control.roster.afterVersion },
-            payload: { workerId: member.workerId } });
-        }
-        await execute(spawn);
-      }
+      countPending(workflowId, 1);
+      try { await start(workflowId, request); }
+      finally { countPending(workflowId, -1); }
     },
   });
 }

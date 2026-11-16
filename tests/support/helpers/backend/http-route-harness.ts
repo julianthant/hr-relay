@@ -1,27 +1,26 @@
+import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
+import { unusedWorkerPool } from "./unused-worker-pool.js";
+import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { createWorkbookIntakeBridge } from "../../../../src/backend/runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
-import { createRunLogStreamStore } from "../../../../src/backend/logs/run-log-stream.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createProtectedSettingsRuntimeReader } from "../../../../src/backend/runtime/settings/settings-runtime.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { RunLogsStreamHub } from "../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
+import { createBoundProfileFixture, boundProfileCredentials, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/rules/identity/ids.js";
 import { seedInitialSettingsRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { sqliteRunReader } from "../canonical-run-reader.js";
-import { syntheticStateRoot } from "../synthetic-storage-admission.js";
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,writeFileSync } from "node:fs";
+import { existsSync,readFileSync,writeFileSync } from "node:fs";
 import { request } from "node:http";
-import { tmpdir } from "node:os";
 import { dirname,join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { descriptorSetHash } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -58,12 +57,12 @@ import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-strea
 import { fixtureDescriptor } from "../../fixtures/descriptor-fixtures.js";
 import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 import { NO_INTAKE_PROJECTIONS,UNSTORED_CONFIG_IDENTITY,UNWIRED_INTAKE_PARSER,UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
-import { activityPersonPseudonymResultRecord,CURRENT_SEPARATIONS_RESULT,seedSeparationsRunAuthority,TERMINAL_SEPARATIONS_RUN } from "../../fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { separationsRunResultRecord,CURRENT_SEPARATIONS_RESULT,seedSeparationsRunAuthority,TERMINAL_SEPARATIONS_RUN } from "../../fixtures/integration/separations-run-fixtures.js";
 import { CONFIG_SNAPSHOT,UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID,sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
 import { personLookupQueuedRun } from "../phase1f-executor-harness.js";
-import { AuthorityDatabase,createCredentialStore,type AuthorityRepositories } from "../synthetic-storage-admission.js";
+import { AuthorityDatabase,type AuthorityRepositories } from "../synthetic-storage-admission.js";
 import { AT,DAY,traceOf,uuidOf } from "./dashboard-harness.js";
 export const HASH_B = resolveConfigWithProvenance(initialSettingsFileRecord().settings, hostConfigFacts({}), manualClock(AT)).fingerprint;
 
@@ -143,26 +142,27 @@ export function writeStoredArtifactEnvelope(
 }
 
 
-const cleanups: (() => void)[] = [];
+const cleanups: (() => void | Promise<void>)[] = [];
 export const OPERATOR_JSON_HEADERS = Object.freeze({
   host: "localhost",
   origin: "http://localhost",
   "content-type": "application/json",
 });
 
-export const disposeHttpRouteHarness = () => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
+export const disposeHttpRouteHarness = async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 };
 
-export function harness(options: {
+export async function harness(options: {
+  readonly workbookWorkflows?: readonly import("../../../../src/backend/workbooks/workbook-library-service.js").WorkbookReferenceWorkflow[];
+  readonly profileFixture?: () => Promise<BoundProfileStorageFixture>;
   readonly protectedCommandAcceptedAt?: DashboardAppDeps["protectedCommandAcceptedAt"];
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
+  readonly ocr?: DashboardAppDeps["ocr"];
   /** Wrap the real start-plan service (e.g. to observe whether admission reached it). */
   readonly startPlans?: (real: StartPlanService) => StartPlanService;
 
-  /** An Explorer safe-edit validation seam; absent by default. */
-  readonly explorerEdits?: DashboardAppDeps["explorerEdits"];
   /** The hub's per-subscriber pending bound; the hub default when absent. */
   readonly maxPending?: number;
   readonly preflightBeforeRun?: () => Promise<void>;
@@ -179,10 +179,9 @@ export function harness(options: {
   readonly commandJournal?: (
     real: DashboardAppDeps["commandJournal"],
   ) => DashboardAppDeps["commandJournal"];
-} = {}): Harness {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-bff-")));
-  const stateRoot = join(root, ".tracker", "data");
-  mkdirSync(stateRoot, { mode: 0o700, recursive: true });
+} = {}): Promise<Harness> {
+  const profile = await (options.profileFixture ?? createBoundProfileFixture)();
+  const root = profile.workspace, stateRoot = profile.stateRoot;
   const settingsPath = join(root, ".tracker", "settings", "settings.json");
   const clock = manualClock(AT);
   const ids = sequentialIdFactory("c");
@@ -190,15 +189,17 @@ export function harness(options: {
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 1000, migrationOwner: "bff-flow-test" },
     clock,
   );
-  seedInitialSettingsRuntimeConfig(database, clock);
-  database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);
+  database.withAuthorityTransaction(repositories => {
+    seedInitialSettingsRuntimeConfig(database, clock);
+    repositories.configSnapshots.insert(CONFIG_SNAPSHOT);
+  });
   assert.equal("projections" in database, false, "the retired projection repositories have no database capability");
   const artifacts = createContentAddressedArtifactWriter({
-    admission: RuntimeAdmission.syntheticRoots(stateRoot, join(stateRoot, "artifacts")),
+    admission: profile.admission,
   });
   const artifactSourceReads: number[] = [];
   const artifactReader = createServerVerifiedArtifactReader({
-    admission: RuntimeAdmission.syntheticRoots(stateRoot, join(stateRoot, "artifacts")),
+    admission: profile.admission,
     observeIo: (kind, bytes) => {
       if (kind === "source-read") artifactSourceReads.push(bytes);
     },
@@ -206,9 +207,12 @@ export function harness(options: {
       ? {}
       : { observeLeaseClosed: options.observeArtifactLeaseClosed }),
   });
-  cleanups.push(() => {
+  cleanups.push(async () => {
+    const readiness = await Promise.allSettled([artifacts.ready, artifactReader.ready]);
+    const failures = readiness.filter(result => result.status === "rejected").map((result): unknown => result.reason);
+    if (failures.length > 0) throw new AggregateError(failures, "artifact initialization failed");
     database.close();
-    rmSync(root, { recursive: true, force: true });
+    await profile.close();
   });
 
   const descriptors = {
@@ -228,10 +232,11 @@ export function harness(options: {
     descriptorSetHash: descriptorSetHash([fixtureDescriptor.contractFingerprint]),
     ledger: createTransactionHistory(database.authority),
     authority: {
+      queueParents: envelopes => database.authority.dependencies.parents(envelopes),
       listNotifications: () => [],
       listNotificationCheckpoints: () => [],
-      listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-      getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
+      listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
+      listGateResults: runId => database.authority.gateResults.listByRun(runId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
@@ -276,7 +281,7 @@ export function harness(options: {
 
   const activeSettings = resolveConfigWithProvenance({}, hostConfigFacts({}), clock);
   const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), activeSettings.fingerprint);
-  const credentials = createCredentialStore({ stateRoot });
+  const credentials = boundProfileCredentials(profile.admission);
   const settingsFile = {
     read: () => {
       // Persisted settings do not mutate the running process; model active and saved revisions separately.
@@ -287,9 +292,9 @@ export function harness(options: {
         && persisted.settingsSchemaHash === activeSettingsIdentity.settingsSchemaHash
         && persisted.settingsFingerprint === activeSettingsIdentity.settingsFingerprint
       ) {
-        return { record, activeConfig: activeSettings.config, runtimeStatus: { state: "current" as const, identity: activeSettingsIdentity } };
+        return { record, activeConfig: activeSettings.config, activePreferences: activeSettings.preferences, runtimeStatus: { state: "current" as const, identity: activeSettingsIdentity } };
       }
-      return { record, activeConfig: activeSettings.config, runtimeStatus: { state: "restart-required" as const, active: activeSettingsIdentity, persisted } };
+      return { record, activeConfig: activeSettings.config, activePreferences: activeSettings.preferences, runtimeStatus: { state: "restart-required" as const, active: activeSettingsIdentity, persisted } };
     },
   };
   const kernel = createCommandKernel({
@@ -306,22 +311,14 @@ export function harness(options: {
     ids,
     descriptors,
     writeResolution: {
-      resolvePresent: () => {
+      recheck: () => {
         throw new Error("write resolution is not wired in this harness");
       },
       resolveAbsent: () => {
         throw new Error("write resolution is not wired in this harness");
       },
     },
-    workerRuntime: { pool: {
-      planPoolWorkerCount: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      spawnPoolWorker: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      refreshPoolBrowser: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      reopenPoolBrowser: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      stopPoolWorker: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      pausePoolWorker: async () => { throw new Error("worker runtime is not wired in this harness"); },
-      resumePoolWorker: async () => { throw new Error("worker runtime is not wired in this harness"); },
-    } },
+    workerRuntime: { pool: unusedWorkerPool() },
     settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock), credentials),
   });
   const commands = createDashboardCommandService({ kernel, projection });
@@ -342,12 +339,6 @@ export function harness(options: {
     ...(options.maxPending === undefined ? {} : { maxPending: options.maxPending }),
   });
   cleanups.push(() => hub.close());
-  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(database.authority.timelineEvents),
-    readRun: runId => {
-      const result = runDetailDeps.runReader.read(runId);
-      return result.state === "present" ? { disposition: result.disposition, run: result.run } : undefined;
-    } });
-  cleanups.push(() => runLogsHub.close());
   const preflight = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun, options.preflightScheduler);
 
 
@@ -364,7 +355,7 @@ export function harness(options: {
     },
   });
   const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
-  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock });
+  const workbookLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
   const app = createDashboardApp({
     protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
     requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
@@ -372,8 +363,9 @@ export function harness(options: {
       label: "Local operator",
     }),
     intake: options.intake ?? UNWIRED_INTAKE_SERVICE,
+    ...(options.ocr === undefined ? {} : { ocr: options.ocr }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
-    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE) },
+    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE), workflows: options.workbookWorkflows ?? [fixtureDescriptor] },
     bootstrap: {
       appVersion: "0.1.0",
       clock,
@@ -381,9 +373,9 @@ export function harness(options: {
       descriptorSetHash: descriptorSetHash([fixtureDescriptor.contractFingerprint]),
       settingsSchemaHash: descriptorSetHash(["settings-schema"]),
       projection,
+      actorLabel: () => "Fixture Operator",
       authorityMeta: () => database.getMeta(),
-      // The harness runs no backup lane; "missing" is its true state.
-      backupSummary: () => "missing",
+      workbookCompatibility: workflows => workbookLibrary.compatibility(workflows),
       preflightReport: () => preflight.report,
     },
     preflight: preflight.authority,
@@ -400,6 +392,7 @@ export function harness(options: {
       search,
       activityReport: (from, to, token) => activity.readSelected(from, to, token),
     }),
+    resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority),
     commandJournal: options.commandJournal?.(database.authority.commands)
       ?? database.authority.commands,
     bulkCommandAcceptances: {
@@ -423,15 +416,14 @@ export function harness(options: {
     runDetail: runDetailDeps,
     commands,
     startPlans,
-    ...(options.explorerEdits === undefined ? {} : { explorerEdits: options.explorerEdits }),
     hub,
-    runLogsHub,
 
     settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [fixtureDescriptor] },
     settingsEditor: { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials),
       environment: {}, clock },
     storage: {
-      admission: syntheticStateRoot(stateRoot),
+      admission: profile.admission,
+      credentials,
       doctorOptions: {
         stateRootTrustAnchor: root,
         stateRoot,
@@ -471,7 +463,7 @@ export function settingsAuthoritySnapshot(h: Harness, commandId: string) {
   const settingsRoot = dirname(h.settingsPath);
   return {
     settingsBytes: optionalFileBytes(h.settingsPath),
-    protectedBytes: optionalFileBytes(join(dirname(settingsRoot), "credentials", "protected.json")),
+    protectedBytes: optionalFileBytes(join(h.stateRoot, "credentials", "protected.json")),
     initializationBytes: optionalFileBytes(join(settingsRoot, "authority.json")),
     lockBytes: optionalFileBytes(join(settingsRoot, "settings.lock")),
     prepareBytes: optionalFileBytes(join(settingsRoot, "prepare.json")),
@@ -484,31 +476,58 @@ export function settingsAuthoritySnapshot(h: Harness, commandId: string) {
   };
 }
 
-export function faultAuthoritySnapshot(h: Harness) {
+/** Assistant chat rows an accepted send writes; a fault check that spans a send names its exact history writes. */
+export const ASSISTANT_HISTORY_TABLES = Object.freeze(["assistant_conversations", "assistant_messages"]);
+export interface HistoryWrites { readonly tables: readonly string[]; readonly writes: number }
+const NO_HISTORY_WRITES: HistoryWrites = { tables: [], writes: 0 };
+
+export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot">, history: HistoryWrites = NO_HISTORY_WRITES) {
   const raw = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
   try {
-    const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all();
+    const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all()
+      .filter(row => typeof row.name !== "string" || !history.tables.includes(row.name));
     const rows = tables.map(row => {
       if (typeof row.name !== "string" || !/^[a-z_]+$/u.test(row.name)) throw new Error("fixture table identity invalid");
       return { table: row.name, rows: raw.prepare(`SELECT * FROM ${row.name} ORDER BY rowid`).all() };
     });
-    return { rows, generation: h.database.getMeta().authorityGeneration,
+    return { rows, schema: raw.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all(),
+      generation: h.database.getMeta().authorityGeneration,
       timeline: h.database.authority.timelineEvents.page({ limit: 500 }) };
   } finally { raw.close(); }
 }
 
-export function assertHttpFaultOnly(h: Harness, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number) {
-  const after = faultAuthoritySnapshot(h);
+type TimelinePage = ReturnType<Harness["database"]["authority"]["timelineEvents"]["page"]>;
+/** The dashboard's loop-delay monitor writes a stall diagnostic on its own clock; a slow host can land one inside any checked span. */
+const isLoopStall = (record: TimelinePage[number]) => record.payload.kind === "debug" && record.payload.event.category === "boot"
+  && record.payload.event.area === "event-loop" && record.payload.event.reason === "event-loop-stall";
+
+/** Asserts a span wrote nothing to authority except loop-stall diagnostics; returns how many it wrote. */
+export function assertOnlyLoopStallWrites(database: Harness["database"], before: Readonly<{ generation: number; timeline: TimelinePage }>): number {
+  const timeline = database.authority.timelineEvents.page({ limit: 500 });
+  assert.deepEqual(timeline.slice(0, before.timeline.length), before.timeline);
+  const added = timeline.slice(before.timeline.length);
+  assert.ok(added.every(isLoopStall), "the span wrote only loop-stall diagnostics");
+  assert.equal(database.getMeta().authorityGeneration, before.generation + added.length);
+  return added.length;
+}
+
+/** Exact HTTP-fault timeline counts compose the dashboard with the event-loop monitor off. */
+export const exactHttpFaultLoopDelay = false;
+
+export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number,
+  history: HistoryWrites = NO_HISTORY_WRITES) {
+  const after = faultAuthoritySnapshot(h, history);
+  assert.deepEqual(after.schema, before.schema, "HTTP refusal changes no table, index or trigger");
   assert.deepEqual(after.rows, before.rows, "HTTP refusal changes no HR, settings, command, audit or proof owner");
   assert.deepEqual(after.timeline.slice(0, before.timeline.length), before.timeline);
-  const added = after.timeline.slice(before.timeline.length);
-  assert.equal(added.length, expected);
-  for (const record of added) {
+  const added = after.timeline.slice(before.timeline.length), stalls = added.filter(isLoopStall).length;
+  assert.equal(added.length - stalls, expected);
+  for (const record of added.filter(record => !isLoopStall(record))) {
     assert.equal(record.payload.kind, "debug");
     if (record.payload.kind !== "debug") throw new Error("HTTP refusal wrote non-debug authority");
     assert.equal(record.payload.event.category, "http");
   }
-  assert.equal(after.generation, Number(before.generation) + expected);
+  assert.equal(after.generation, Number(before.generation) + expected + history.writes + stalls);
 }
 
 export function rawSettingsPatchFingerprint(patch: unknown): string {
@@ -586,7 +605,7 @@ export function seedCurrentSeparationsRun(
   run: RunRecord,
   canonicalSubject = "10800000",
 ): void {
-  const result = activityPersonPseudonymResultRecord(run, {
+  const result = separationsRunResultRecord(run, {
     ...CURRENT_SEPARATIONS_RESULT,
     approved: { ...CURRENT_SEPARATIONS_RESULT.approved, emplId: canonicalSubject },
   });

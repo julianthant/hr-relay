@@ -23,7 +23,7 @@ describe("worker browser sessions", () => {
   it("captures once before reset for successful and failed selected browser leases", async () => {
     let opens = 0;
     let screenshots = 0;
-    const factory: WorkerBrowserSessionFactory = {
+    const factory: WorkerBrowserSessionFactory = { probeProfile: async () => undefined,
       async open(input) {
         opens += 1;
         const sessionId = BrowserSessionIdSchema.parse(
@@ -76,14 +76,13 @@ describe("worker browser sessions", () => {
       clock,
       scheduler: new ManualScheduler(clock),
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(clock),
+      duoCeremony: await fixtureDuoCeremonyGates(clock),
       onEvent: (event) => events.push(event),
       browserScreenshotCapture: { async capture(context) { captured.push(context); } },
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT, undefined, {
       runId: "00000000-0000-4000-8000-000000000099",
       descriptorFingerprint: RUN_FINGERPRINT,
-      captureBrowserScreenshots: true,
     });
 
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "ok");

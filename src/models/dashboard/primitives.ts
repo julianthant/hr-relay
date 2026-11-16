@@ -19,7 +19,7 @@ export const RecordRevisionSchema = z.number().int().positive().brand<"RecordRev
 export const PanelKindSchema = z.enum(["run", "member", "review", "group"]);
 export const RunDetailSectionSchema = z.enum([
   "logs", "receipt", "review", "people", "context-data", "context-evidence",
-  "context-attempts", "failure", "captures", "parked-write", "identity-gate",
+  "context-attempts", "failure", "captures", "parked-write", "identity-gate", "workbook-writes",
 ]);
 
 export const WireErrorSchema = z.strictObject({
@@ -39,7 +39,7 @@ export function wireResourceSchema<Value extends z.ZodType>(value: Value) {
 }
 
 export const FeatureAvailabilityWireSchema = z.strictObject({
-  feature: z.enum(["ocr", "archive", "workflow-editor"]),
+  feature: z.enum(["ocr", "archive", "workflow-editor", "workflow-start:i9-check-start", "workflow-start:onboarding", "workflow-start:crm-doc-download"]),
   availability: CapabilityAvailabilitySchema,
 });
 

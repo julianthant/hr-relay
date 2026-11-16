@@ -1,9 +1,12 @@
+import { successfulActivityTiming } from "./activity-timing.js";
+import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { z } from "zod";
-import { ActivityPopulationRangeSchema, ActivityPopulationRunSchema, ActivitySuccessfulTimingSchema, ActivityPopulationIdentitySchema, ActivityPopulationSelectionSchema, ActivityPopulationBrowseSchema, ActivityPopulationBrowseResultSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema, type ActivityPopulationRun, type ActivityPopulationSelection, type ActivityPopulationBrowseResult, type ActivityPopulationSelectedRead, type ActivityPopulationExport } from "../../../models/dashboard/activity-population.js";
+import { ActivityPopulationRangeSchema, ActivityPopulationRunSchema, ActivityPopulationIdentitySchema, ActivityPopulationSelectionSchema, ActivityPopulationBrowseSchema, ActivityPopulationBrowseResultSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema, type ActivityPopulationRun, type ActivityPopulationSelection, type ActivityPopulationBrowseResult, type ActivityPopulationSelectedRead, type ActivityPopulationExport } from "../../../models/dashboard/activity-population.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { spreadsheetCsvRow } from "../exports/spreadsheet-csv.js";
-import { deriveRunStatus } from "../lifecycle/run-status.js";
+import { deriveRunStatus } from "../../../rules/runs/run-status.js";
+import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
 import { activityReportCsv, activityReportCsvFileName } from "./activity-export.js";
 import { createActivitySelectionService, createActivitySnapshotSigner } from "./activity-selection.js";
 import { queryActivitySummaries, visitActivitySummaryRange } from "./activity-summaries.js";
@@ -65,18 +68,13 @@ export function createActivityPopulationService(input: {
       const report = selected === undefined ? reports.read(from, to) : reports.readSelected(from, to, selected.reportToken);
       const population: ActivityPopulationRun[] = [];
       visitActivitySummaryRange(database, from, to, report.volume.timeZone, row => {
-        if (row.shape === "operation-member") return;
-        population.push(ActivityPopulationRunSchema.parse({ runId: row.runId, workflowId: row.workflow, title: row.title, attempt: row.attempt, day: row.localDay, parentRunId: row.parentRunId, shape: row.shape,
-          status: deriveRunStatus(row), terminal: row.lifecycle.state === "terminal", durationMs: row.durationMs,
+        if (!isQueueTopLevel(row)) return;
+        population.push(ActivityPopulationRunSchema.parse({ runId: row.runId, workflowId: row.workflow, title: row.title, attempt: row.attempt, day: row.localDay, parentRunId: row.parent?.runId ?? null, shape: row.shape,
+          status: deriveRunStatus(row), terminal: runResultCurrent(row), durationMs: row.durationMs,
           receiptResult: row.receiptResult, warningCount: row.warningCount, readback: row.receiptResult === null ? null : row.receiptResult === "verified-done" }));
       });
       if (population.length !== report.totalRuns || new Set(population.map(row => row.runId)).size !== population.length) throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");
-      const successfulTiming = report.workflows.map(workflow => {
-        const successful = population.filter(row => row.workflowId === workflow.workflowId && row.status === "done" && row.parentRunId === null);
-        const measured = successful.flatMap(row => row.durationMs === null ? [] : [row.durationMs]);
-        return ActivitySuccessfulTimingSchema.parse({ workflowId: workflow.workflowId, measured: measured.length, unmeasured: successful.length - measured.length,
-          totalMs: measured.length === 0 ? null : measured.reduce((sum, duration) => sum + duration, 0) });
-      });
+      const successfulTiming = report.workflows.map(workflow => successfulActivityTiming(workflow.workflowId, population));
       const populationDigest = sha256Hex(canonicalJsonStringify({ population, successfulTiming }));
       if (selected !== undefined && populationDigest !== selected.populationDigest) throw new ActivityPopulationError("ACTIVITY_POPULATION_CONTENT_MISMATCH");
       const { token: reportToken, ...reportIdentity } = report.snapshot;

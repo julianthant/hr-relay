@@ -1,3 +1,5 @@
+import { afterAll } from "vitest";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
@@ -6,14 +8,16 @@ import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld();
+const profiles = createProfileFixtureSet();
+afterAll(() => profiles.close());
+const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld(profiles.create);
 
 afterEach(cleanup);
 
 
 describe("worker terminal service boundary", () => {
   it("honours an admitted cancellation before the next non-fenced operation", async () => {
-    const h = executorHarness();
+    const h = await executorHarness();
     const { database, clock } = h.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     assert.equal(testRunService(database, clock).transition({
@@ -33,7 +37,7 @@ describe("worker terminal service boundary", () => {
 
   for (const failure of ["refusal", "outer-rollback"] as const) {
     it(`never publishes run end after terminal ${failure}`, async () => {
-      const h = executorHarness();
+      const h = await executorHarness();
       const { database, clock } = h.authority;
       const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
       const lifecycle = h.deps.lifecycle;

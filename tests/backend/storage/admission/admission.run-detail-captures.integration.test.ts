@@ -1,7 +1,7 @@
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
+import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { prepareLiveDiagnosticArtifactLease,readDiagnosticBundleAttachment } from "../../../../src/backend/runs/queries/diagnostic-bundle.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdirSync,rmSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach,describe,it,vi } from "vitest";
+import { afterAll, afterEach,describe,it,vi } from "vitest";
 import type { z } from "zod";
 import { DiagnosticBundleCorruptError,SectionUnavailableError,TargetNotFoundError } from "../../../../src/backend/runs/commands/refusals.js";
 import {
@@ -25,16 +25,18 @@ import { createServerVerifiedArtifactReader } from "../../../../src/backend/stor
 import { ArtifactRefSchema,type ArtifactRef } from "../../../../src/models/artifacts/artifacts.js";
 import { deriveDiagnosticContentDigest } from "../../../../src/models/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../../src/models/trust/diagnostic.js";
-import { DiagnosticBundleIdSchema,FailureIdSchema,RunIdSchema } from "../../../../src/rules/identity/ids.js";
+import { DiagnosticBundleIdSchema,FailureIdSchema,LOCAL_OPERATOR_ACTOR_ID,RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { RGBA_PNG_BASE64 } from "../../../support/fixtures/diagnostic-image-fixtures.js";
 import { HASH_A,HASH_B,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { makeWorld,queuedEventOf,uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { makeWorld,queuedEventOf,runRecordOf,uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import type { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 const BYTES = Buffer.from("[]");
 const ATTACHMENT = {
@@ -53,12 +55,11 @@ function refOf(attachment: typeof ATTACHMENT): ArtifactRef {
 }
 
 function writeArtifactEnvelope(
-  workspaceRoot: string,
+  artifactRoot: string,
   ref: ArtifactRef,
   bytes: Uint8Array,
   storedRef: ArtifactRef = ref,
 ): void {
-  const artifactRoot = join(workspaceRoot, "artifacts");
   mkdirSync(artifactRoot, { recursive: true });
   writeFileSync(join(artifactRoot, `${ref.sha256}.artifact`), JSON.stringify({
     ref: storedRef,
@@ -83,34 +84,32 @@ function bundleOf(bundleSeed: number, origin: BundleInput["origin"], options: {
   });
 }
 
-function harness() {
-  const world = makeWorld();
-  cleanups.push(() => world.dispose());
-  queuedEventOf(world, { seed: 1, enqueuedAt: NOW });
-  const database = AuthorityDatabase.open({
-    path: join(world.stateRoot, "capture-authority.db"), busyTimeoutMs: 1000,
-    migrationOwner: "run-detail-captures-test",
-  }, world.clock);
-  cleanups.push(() => database.close());
-  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+async function harness() {
+  const profile = await profileFixtures.create();
+  const world = await makeWorld({ profileFixture: async () => profile, busyTimeoutMs: 1000 });
+  cleanups.push(async () => await world.dispose());
+  const database = world.database;
+  const seeded = runRecordOf({ seed: 1, enqueuedAt: NOW, descriptor: personLookupDescriptor });
+  const record = { ...seeded, input: { ...seeded.input, parsed: { ...seeded.input.parsed,
+    schemaHash: deriveSchemaHash(personLookupDescriptor.canonicalInput, "output") } } };
+  database.authority.runs.enqueue(record);
+  world.authority.put(record);
   const run = world.authority.getRun(uuidOf(1));
   assert.ok(run);
-  database.authority.runs.enqueue({ ...run, input: { ...run.input, parsed: { ...run.input.parsed,
-    schemaHash: deriveSchemaHash(personLookupDescriptor.canonicalInput, "output") } }, envelope: {
-    ...run.envelope, descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
-  } });
-  testWorkerPorts(database, world.clock, { path: join(world.stateRoot, "capture-authority.db"), descriptor: personLookupDescriptor, poolIndex: 1 });
-  writeArtifactEnvelope(world.stateRoot, refOf(ATTACHMENT), BYTES);
+  world.writer.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Capture fixture" }));
+  testWorkerPorts(database, world.clock, { path: profile.path, descriptor: personLookupDescriptor, poolIndex: 1 });
+  writeArtifactEnvelope(profile.admission.artifactRoot, refOf(ATTACHMENT), BYTES);
   const sourceReads: number[] = [];
   const artifactReader = createServerVerifiedArtifactReader({
-    admission: RuntimeAdmission.syntheticRoots(world.stateRoot, join(world.stateRoot, "artifacts")),
+    admission: profile.admission,
     observeIo: (kind, bytes) => {
       if (kind === "source-read") sourceReads.push(bytes);
     },
   });
+  await artifactReader.ready;
   const captures = { authority: database.authority.diagnosticBundles, artifactReader };
   const deps: RunDetailQueryDeps = { runReader: sqliteRunReader(database, world.clock),
-    stateRoot: world.stateRoot, timeline: database.authority.timelineEvents, projection: world.projection,
+    stateRoot: profile.stateRoot, timeline: database.authority.timelineEvents, projection: world.projection,
     authority: { ...world.authority, getRun: (id) => database.authority.runs.get(id) },
     descriptors: { resolve: () => undefined }, captures,
   };
@@ -122,9 +121,9 @@ function harness() {
     sourceReads,
     world,
     removeArtifact: (ref: ArtifactRef) =>
-      rmSync(join(world.stateRoot, "artifacts", `${ref.sha256}.artifact`)),
+      rmSync(join(profile.admission.artifactRoot, `${ref.sha256}.artifact`)),
     writeArtifact: (ref: ArtifactRef, bytes: Uint8Array, storedRef: ArtifactRef = ref) =>
-      writeArtifactEnvelope(world.stateRoot, ref, bytes, storedRef),
+      writeArtifactEnvelope(profile.admission.artifactRoot, ref, bytes, storedRef),
   };
 }
 
@@ -162,7 +161,7 @@ function recordFailure(database: AuthorityDatabase): void {
 
 describe("run capture authority", () => {
   it("requires a live membership for generic bytes while preserving shared artifacts across terminal deletion", async () => {
-    const h = harness();
+    const h = await harness();
     const queued = h.database.authority.runs.get(uuidOf(1)); assert.ok(queued);
     h.database.authority.runs.enqueue({ ...queued, envelope: { ...queued.envelope,
       runId: uuidOf(2), itemId: uuidOf(6002), traceId: "pl-010101-0002" } });
@@ -203,7 +202,7 @@ describe("run capture authority", () => {
   });
 
   it("serves captures, failure and receipt without a fold, then refuses foreign failure identity", async () => {
-    const h = harness(); recordFailure(h.database);
+    const h = await harness(); recordFailure(h.database);
     const id = uuidOf(1);
     h.database.authority.diagnosticBundles.insert(bundleOf(50, { kind: "failure", failureId: uuidOf(40) }));
     vi.spyOn(h.world.projection, "runFold").mockReturnValue(undefined);
@@ -223,7 +222,7 @@ describe("run capture authority", () => {
 
   for (const boundary of ["verification", "attachment preparation", "generic preparation"] as const) {
     it(`refuses deletion during ${boundary} and closes its prepared lease`, async () => {
-      const h = harness(); recordFailure(h.database);
+      const h = await harness(); recordFailure(h.database);
       const id = uuidOf(1);
       const bundle = bundleOf(51, { kind: "operator-request", requestedBy: "local-operator" });
       h.database.authority.diagnosticBundles.insert(bundle);
@@ -265,7 +264,7 @@ describe("run capture authority", () => {
   }
 
   it("states indexed absence without opening bytes or advertising a lazy list", async () => {
-    const h = harness();
+    const h = await harness();
     const detail = await readRunDetail(h.deps, uuidOf(1));
     assert.deepEqual(detail.captures, { state: "absent", reason: "this run has no indexed diagnostic capture artifacts" });
     assert.equal(detail.availableSections.includes("captures"), false);
@@ -274,13 +273,13 @@ describe("run capture authority", () => {
   });
 
   it("names an uncomposed capture authority instead of claiming an empty index", async () => {
-    const { captures: _captures, ...deps } = harness().deps;
+    const { captures: _captures, ...deps } = (await harness()).deps;
     assert.deepEqual((await readRunDetail(deps, uuidOf(1))).captures,
       { state: "absent", reason: "this composition wires no diagnostic capture authority" });
   });
 
   it("states absence for a verified bundle with no attachments", async () => {
-    const h = harness();
+    const h = await harness();
     h.database.authority.diagnosticBundles.insert(bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" }, { attachments: [] }));
     assert.deepEqual((await readRunDetail(h.deps, uuidOf(1))).captures,
       { state: "absent", reason: "this run has no indexed diagnostic capture artifacts" });
@@ -288,7 +287,7 @@ describe("run capture authority", () => {
   });
 
   it("excludes another run's real bundle even when it shares this artifact", async () => {
-    const h = harness();
+    const h = await harness();
     queuedEventOf(h.world, { seed: 2 });
     const otherRun = h.world.authority.getRun(uuidOf(2));
     assert.ok(otherRun);
@@ -304,7 +303,7 @@ describe("run capture authority", () => {
   });
 
   it("serves one artifact with every verified mixed-origin membership from this run", async () => {
-    const h = harness();
+    const h = await harness();
     recordFailure(h.database);
     h.database.authority.diagnosticBundles.insert(bundleOf(32, { kind: "failure", failureId: uuidOf(40) }));
     h.database.authority.diagnosticBundles.insert(bundleOf(33, { kind: "operator-request", requestedBy: "local-operator" }));
@@ -325,7 +324,7 @@ describe("run capture authority", () => {
   });
 
   it("serves every ordered origin from many same-run bundles sharing one artifact exactly once", async () => {
-    const h = harness();
+    const h = await harness();
     recordFailure(h.database);
     const failureId = uuidOf(40);
     const bundles: readonly Readonly<{ seed: number; origin: BundleInput["origin"] }>[] = [
@@ -386,7 +385,7 @@ describe("run capture authority", () => {
 
   it.each(["failure", "unexpected-state", "subject-mismatch", "recovery-park", "operator-request"] as const)(
     "preserves the literal %s origin without failure details or actor data", async (kind) => {
-      const h = harness();
+      const h = await harness();
       recordFailure(h.database);
       const bundle = bundleOf(32, kind === "operator-request"
         ? { kind, requestedBy: "local-operator" } : { kind, failureId: uuidOf(40) });
@@ -402,7 +401,7 @@ describe("run capture authority", () => {
   );
 
   it("keeps capture refs lazy while serving verified availability", async () => {
-    const h = harness();
+    const h = await harness();
     h.database.authority.diagnosticBundles.insert(bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" }));
     const detail = await readRunDetail(h.deps, uuidOf(1));
     assert.deepEqual(detail.captures, { state: "available", artifactCount: 1 });
@@ -412,7 +411,7 @@ describe("run capture authority", () => {
   });
 
   it.each(["missing", "digest", "size"] as const)("keeps %s bytes visibly corrupt on both public reads", async (fault) => {
-    const h = harness();
+    const h = await harness();
     h.database.authority.diagnosticBundles.insert(bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" }));
     const ref = refOf(ATTACHMENT);
     if (fault === "missing") h.removeArtifact(ref);
@@ -433,7 +432,7 @@ describe("run capture authority", () => {
 
   it.each(["foreign", "duplicate", "conflicting-origin", "malformed", "missing-origin"] as const)(
     "refuses a %s run index before any exact readback or byte open", async (fault) => {
-      const h = harness();
+      const h = await harness();
       const bundle = bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" });
       const other = fault === "foreign" ? { ...bundle, runId: RunIdSchema.parse(uuidOf(2)) }
         : fault === "malformed" ? { ...bundle, untrusted: "PRIVATE_PATH" }
@@ -455,7 +454,7 @@ describe("run capture authority", () => {
   );
 
   it("refuses a valid re-digested exact readback whose origin differs from the run index", async () => {
-    const h = harness();
+    const h = await harness();
     recordFailure(h.database);
     const listed = bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" });
     const stored = bundleOf(32, { kind: "failure", failureId: uuidOf(40) });
@@ -468,7 +467,7 @@ describe("run capture authority", () => {
 
   it.each(["missing-bundle", "foreign-bundle", "changed-origin", "missing-index", "changed-index"] as const)(
     "refuses %s exact verification instead of serving a plausible capture", async (fault) => {
-      const h = harness();
+      const h = await harness();
       const bundle = bundleOf(32, { kind: "operator-request", requestedBy: "local-operator" });
       h.database.authority.diagnosticBundles.insert(bundle);
       const real = h.captures.authority;
@@ -491,7 +490,7 @@ describe("run capture authority", () => {
   );
 
   it("refuses individually verified bundles that disagree on a shared artifact's dimensions", async () => {
-    const h = harness();
+    const h = await harness();
     const png = Buffer.from(RGBA_PNG_BASE64, "base64");
     const image = { ...ATTACHMENT, kind: "screenshot" as const, mediaType: "image/png" as const,
       digest: createHash("sha256").update(png).digest("hex"), byteLength: png.byteLength, width: 16, height: 12 };
@@ -512,7 +511,7 @@ describe("run capture authority", () => {
   });
 
   it.each(["not-an-id", uuidOf(999)])("refuses unavailable run %s before capture authority", async (runId) => {
-    const h = harness();
+    const h = await harness();
     const listByRun = vi.fn(h.captures.authority.listByRun);
     const deps = { ...h.deps, captures: { ...h.captures, authority: { ...h.captures.authority, listByRun } } };
     const expected = runId === "not-an-id" ? /uuid|invalid/iu : TargetNotFoundError;

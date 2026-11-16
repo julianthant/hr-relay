@@ -1,8 +1,9 @@
+import { afterAll, describe, it } from "vitest";
+import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { existsSync,readFileSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
+import { existsSync,lstatSync,readFileSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe,it } from "vitest";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { ArtifactSinkBusyError,createArtifactSinkProjector,type ArtifactSinkProjectorOptions } from "../../../../src/backend/storage/artifacts/artifact-sink-projector.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createXlsxRetentionSink,type PublicationFaultPoint } from "../../../../src/backend/storage/artifacts/xlsx-retention-sink.js";
@@ -10,9 +11,12 @@ import type { ArtifactRef } from "../../../../src/models/artifacts/artifacts.js"
 import { foundationFixture,id,NOW,update } from "../../../support/helpers/database-foundation/fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+
 async function fixture() {
-  const f = foundationFixture();
-  const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/data/artifacts")) });
+  const f = await foundationFixture({ profileFixture: profileFixtures.create });
+  const artifacts = createContentAddressedArtifactWriter({ admission: f.profile.admission });
   await artifacts.ready;
   const path = join(f.root, "retention.xlsx");
   const make = (db = f.db, fault?: (point: PublicationFaultPoint) => void | Promise<void>, settlementFault?: ArtifactSinkProjectorOptions["fault"], destination = path) => createArtifactSinkProjector({
@@ -38,6 +42,38 @@ async function fixture() {
   };
   return { ...f, artifacts, path, make, read, file, seed };
 }
+
+it.skipIf(process.platform !== "linux")("projects with exact high-ID lock and parent custody", async () => {
+  const f = await fixture(), lockPath = join(f.root, ".retention.xlsx.writer.lock");
+  const restore = forceExactFileMetadata(f.root);
+  try {
+    f.db.authority.artifactOutbox.insert(update(1));
+    assert.deepEqual(await f.make().projectOutbox([id(1)]), { projected: 1 });
+    assert.equal(existsSync(lockPath), false);
+    const captured = restore.observations.find(observation => observation.path === lockPath && observation.source === "descriptor");
+    assert.ok(captured); assert.ok(captured.inode > 2n ** 53n);
+    assert.ok(restore.observations.some(observation => observation.path === lockPath && observation.source === "path" && observation.inode === captured.inode));
+    const parentInode = (1n << 54n) + (lstatSync(f.root, { bigint: true }).ino << 2n);
+    assert.ok(restore.observations.some(observation => observation.path === f.root && observation.inode === parentInode));
+    assert.equal(f.db.authority.artifactOutbox.get(id(1))?.state, "projected");
+  } finally { restore(); await f.dispose(); }
+});
+
+for (const target of ["lock", "parent"] as const) it.skipIf(process.platform !== "linux")(`refuses an adjacent high-ID projector ${target} substitution before publication`, async () => {
+  const f = await fixture(), lockPath = join(f.root, ".retention.xlsx.writer.lock");
+  let captured = false;
+  const restore = forceExactFileMetadata(f.root, (path, info, source) => {
+    if (path === lockPath && source === "descriptor") captured = true;
+    if (captured && source === "path" && path === (target === "lock" ? lockPath : f.root)) { assert.equal(Number(info.ino), Number(info.ino + 1n)); info.ino += 1n; }
+  });
+  try {
+    f.db.authority.artifactOutbox.insert(update(1));
+    await assert.rejects(f.make().projectOutbox([id(1)]), error => error instanceof AggregateError
+      && error.errors.some(cause => cause instanceof Error && cause.message === "artifact-sink-lock-custody-changed"));
+    assert.equal(captured, true); assert.equal(existsSync(lockPath), true); assert.equal(existsSync(f.path), false);
+    assert.equal(f.db.authority.artifactOutbox.get(id(1))?.state, "pending");
+  } finally { restore(); await f.dispose(); }
+});
 
 describe("G ordered publication and durable intent", () => {
   it("preserves two independent enqueues and a later enqueue while one destination writer is active", async () => {
@@ -65,7 +101,7 @@ describe("G ordered publication and durable intent", () => {
       assert.equal(f.file().head?.generation, 3);
       assert.deepEqual(await f.make().projectOutbox([id(1)]), { projected: 0 });
       assert.deepEqual(readFileSync(f.path), latest);
-    } finally { second.close(); f.dispose(); }
+    } finally { second.close(); await f.dispose(); }
   });
 
   const windows = ["before-stage", "after-stage", "after-stage-sync", "after-prepare", "before-replace", "after-replace", "after-directory-sync", "before-settlement", "after-head", "after-ack"] as const;
@@ -93,7 +129,7 @@ describe("G ordered publication and durable intent", () => {
         assert.deepEqual(restarted.authority.generatedArtifacts.get("sink:xlsx-retention")?.prepared, intended);
       } finally { restarted.close(); }
       assert.equal(existsSync(join(f.root, ".retention.xlsx.writer.lock")), false);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("refuses staged corruption before replacing the verified destination", async () => {
@@ -106,7 +142,7 @@ describe("G ordered publication and durable intent", () => {
       assert.deepEqual(readFileSync(f.path), old.bytes);
       assert.deepEqual(await f.read(old.ref), old.bytes);
       assert.equal(f.file().prepared?.updateId, id(2));
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("detects an external edit during publication without replacing it or losing the last good version", async () => {
@@ -118,7 +154,7 @@ describe("G ordered publication and durable intent", () => {
       assert.equal(f.file().state, "conflict");
       assert.deepEqual(f.file().head, old.head);
       assert.deepEqual(await f.read(old.ref), old.bytes);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("refuses stale preparation, divergent settlement and acknowledgement outside the exact head transaction", async () => {
@@ -138,7 +174,7 @@ describe("G ordered publication and durable intent", () => {
       assert.equal(f.db.getMeta().authorityGeneration, generation);
       assert.deepEqual(f.file().head, old.head);
       assert.equal(f.file().prepared?.updateId, id(2));
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("uses one destination fence through directory aliases and refuses a symlink destination", async () => {
@@ -154,7 +190,7 @@ describe("G ordered publication and durable intent", () => {
         f.db.authority.artifactOutbox.insert(update(3));
         await assert.rejects(f.make(f.db, undefined, undefined, join(f.root, "linked.xlsx")).projectOutbox([id(3)]), /symlink-destination-conflict/u);
       } finally { rmSync(alias); }
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("refuses oversized metadata before committing any member of the producing transaction", async () => {
@@ -169,7 +205,7 @@ describe("G ordered publication and durable intent", () => {
       assert.equal(f.db.getMeta().authorityGeneration, generation);
       await f.seed();
       assert.equal(f.file().state, "ready");
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   for (const damage of ["missing", "corrupt"] as const) it(`refuses publication when its retained current immutable version is ${damage}`, async () => {
@@ -177,7 +213,7 @@ describe("G ordered publication and durable intent", () => {
     try {
       const old = await f.seed();
       f.db.authority.artifactOutbox.insert(update(2));
-      const objectPath = join(f.root, ".tracker/data/artifacts", `${old.ref.sha256}.artifact`);
+      const objectPath = join(f.profile.admission.artifactRoot, `${old.ref.sha256}.artifact`);
       const object = readFileSync(objectPath);
       if (damage === "missing") rmSync(objectPath); else writeFileSync(objectPath, "corrupt");
       await assert.rejects(f.make().projectOutbox([id(2)]));
@@ -189,7 +225,7 @@ describe("G ordered publication and durable intent", () => {
       await f.make().projectOutbox([id(2)]);
       assert.equal(f.file().state, "ready");
       assert.deepEqual(await f.read(old.ref), old.bytes);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("refuses missing or corrupt immutable old versions while keeping shared receipt references", async () => {
@@ -198,12 +234,12 @@ describe("G ordered publication and durable intent", () => {
       const old = await f.seed(); f.db.authority.artifactOutbox.insert(update(2)); await f.make().projectOutbox([id(2)]);
       assert.deepEqual(await f.read(old.ref), old.bytes);
       assert.deepEqual(f.file().versions[0], { state: "verified", artifact: old.ref });
-      const storedPath = join(f.root, ".tracker/data/artifacts", `${old.ref.sha256}.artifact`);
+      const storedPath = join(f.profile.admission.artifactRoot, `${old.ref.sha256}.artifact`);
       const stored = readFileSync(storedPath); writeFileSync(storedPath, "corrupt");
       await assert.rejects(f.read(old.ref));
       writeFileSync(storedPath, stored); assert.deepEqual(await f.read(old.ref), old.bytes);
       rmSync(storedPath); await assert.rejects(f.read(old.ref), /ENOENT/u);
       assert.equal(f.file().versions.length, 2);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });

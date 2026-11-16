@@ -8,21 +8,21 @@ import { buildUiTaskLinks } from "../../../src/backend/systems/ui-task-links.js"
 import { type ExplorerNodeWire } from "../../../src/models/dashboard/explorer.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
-import { explorerAuthorityFixture } from "../../support/fixtures/explorer-authority.js";
+import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
 import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
 
-const FIRST = "11111111-1111-4111-8111-111111111111";
 
 describe("Explorer registered graph and service acceptance", () => {
-  it("matches each runtime dependency, condition and dry-run boundary and resolves all printed sources", () => {
-    const f = explorerAuthorityFixture();
-    try {
-      const query = explorerQueryDeps(f.clock, FingerprintSchema.parse("b".repeat(64)));
-      const wire = f.read();
+  it("matches each runtime dependency, condition and dry-run boundary and resolves all printed sources", async () => {
+
+      const query = explorerQueryDeps(manualClock(new Date("2026-09-13T10:00:00Z")), FingerprintSchema.parse("b".repeat(64)));
+      const wire = buildWorkflowExplorer(query);
       const uiTaskLinks = buildUiTaskLinks();
       assert.deepEqual(wire.workflows.map(w => w.id), query.modules.map(m => m.descriptor.id));
       let conditional = 0;
       let transactions = 0;
+      let delegated = 0;
       for (const module of query.modules) {
         const served = wire.workflows.find(w => w.id === module.descriptor.id);
         assert.ok(served);
@@ -45,9 +45,17 @@ describe("Explorer registered graph and service acceptance", () => {
             if (view.shape.kind !== "transaction") throw new Error("transaction view mismatch");
             assert.equal(view.shape.dryRun, node.dryRun);
           }
+          if (node.kind === "child-run") {
+            delegated += 1;
+            assert.deepEqual(view.shape, {
+              kind: "child-run", edgeId: String(node.edgeId), targetWorkflowId: node.target.id, cardinality: node.cardinality,
+              await: node.await, join: node.join, onChildFailed: node.policy.onChildFailed,
+              cascadeCancel: node.policy.cascadeCancel, afterChildRetry: node.policy.afterChildRetry, visibility: node.policy.visibility,
+            });
+          }
         }
         for (const source of [served.sources.descriptor, served.sources.module, ...served.nodes.flatMap(n => n.tasks.flatMap(t => [t.contractSource, t.implSource]))]) {
-          assert.equal(source.state, "resolved");
+          assert.equal(source.state, "resolved", `${module.descriptor.id}: ${JSON.stringify(source)}`);
           if (source.state === "resolved") assert.ok(existsSync(join(EXPLORER_SOURCE_ROOT, source.path)), source.path);
         }
         for (const scenario of served.scenarios) {
@@ -60,10 +68,6 @@ describe("Explorer registered graph and service acceptance", () => {
             .filter(link => link.taskUses.includes(task.taskId)).map(link => link.id).sort());
         }
       }
-      assert.ok(conditional > 0 && transactions > 0, "must exercise actual conditional and transaction nodes");
-      assert.deepEqual(f.database.authority.explorerOverrides.readAll(), []);
-      assert.equal(f.database.authority.commands.get(FIRST), undefined);
-      assert.equal(f.database.authority.commandAudits.findByCommand(FIRST), undefined);
-    } finally { f.dispose(); }
+      assert.ok(conditional > 0 && transactions > 0 && delegated > 0, "must exercise actual conditional, transaction and delegation nodes");
   });
 });

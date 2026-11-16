@@ -1,17 +1,23 @@
+import { readRunCheckpoint } from "../../storage/sqlite/run-continuation.js";
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
+import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
+import { containsDryRunSample, DryRunSampleSchema } from "../../../models/workflow/dry-run.js";
+import { acceptsRecheckTransactionId } from "../../../rules/write-safety/parked-resolution.js";
+import { UcpathTerminationTargetSchema } from "../../../models/ui/ucpath-smart-hr-termination.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 import { valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { isFreshOccurrenceProof } from "../gates/repeat-proof.js";
-import { readRunCheckpoint } from "../checkpoints/run-checkpoint-reader.js";
+import { transactionCheckpointProvenance } from "../../runs/provenance/task-provenance.js";
 import { decideDurableIntent } from "../policies/durable-intent.js";
 import { runMandatorySavedVerification, completeProtectedWrite } from "./mandatory-saved-verification.js";
 
 import { z } from "zod";
 import { TaskError } from "../../../workflow-kit/errors.js";
-import type { AnyTask, BrowserDriver, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
+import type { AnyTask, BrowserDriver, TaskLogger } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
-import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -47,12 +53,9 @@ import {
 } from "../../../rules/workflow/task-provenance.js";
 import type { DataPoint, RecordedDataPoint } from "../../../rules/workflow/task-provenance.js";
 import { assertMintedMutationCapability, mintMutationCapability } from "../../../workflow-kit/mutation-capability.js";
+import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
+import { currentBuildId } from "../build-id.js";
 import {
-  BUILD_MANIFEST,
-  resolveTaskImplFingerprint,
-} from "../../../workflow-kit/validation/build-manifest.js";
-import {
-  FactProvenanceSchema,
   RunCheckpointRecordSchema,
   type RunCheckpointRecord,
 } from "../../../models/workflow/checkpoint.js";
@@ -70,6 +73,7 @@ import {
   WriteAttemptRecordSchema,
   WriteBindingProofSchema,
   WriteIntentRecordSchema,
+  ParkedWriteResolutionBindingSchema,
   WriteSafetyAuthorityError,
   type WriteAuthorityReason,
   type WriteAuthorityReasonCode,
@@ -78,7 +82,7 @@ import {
   type WriteIntentRecord,
 } from "../../../rules/write-safety/write-safety.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import type { RunClaimToken } from "../../storage/sqlite/run-store-contracts.js";
+import type { RunClaimToken } from "../../../models/run/worker.js";
 import {
   SequencedWriteCommitInputSchema,
   AtomicWriteCommitReportSchema,
@@ -91,8 +95,6 @@ import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-schedule
 import type { SpanEmitter } from "../../logs/span-emitter.js";
 import { ExecutorSpanEventSchema } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
-import { withBrowserActionBinding } from "../../systems/browser-shared/action-notes.js";
-import type { BrowserActionBinder } from "../../systems/browser-shared/action-notes.js";
 import { WriteParkedError } from "../execution/run-executor.js";
 import type { WriteSequencer, WriteSequencerContext } from "../execution/run-executor.js";
 
@@ -202,9 +204,11 @@ export type WriteSequencerRepositories = Omit<AuthorityRepositories, "runs"> & {
 };
 
 export interface WriteSequencerAuthority {
+  readonly evidenceSchemaHash?: EvidenceSchemaReader;
   readonly authority: WriteSequencerRepositories;
   withAuthorityTransaction<Result>(work: (repositories: WriteSequencerRepositories) => Result): Result;
   commitWriteAttempt(input: unknown, checkpoint: unknown): AtomicWriteCommitReport;
+  commitRecheckedParkedWrite(input: unknown): AtomicWriteCommitReport;
 }
 
 // Use the same session manager bound by the worker loop; recovery binds retained config separately.
@@ -213,7 +217,8 @@ export interface TransactionSessionHost {
     need: SessionNeed,
     instance: string | undefined,
     signal: AbortSignal,
-    operation: (driver: BrowserDriver) => Promise<Result>,
+    operation: (driver: BrowserDriver, captureScreenshot: () => Promise<void>) => Promise<Result>,
+    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn">; sampleLabels?: readonly string[] }>,
   ): Promise<Result>;
   withTransactionDriver<Result>(
     need: SessionNeed,
@@ -221,8 +226,10 @@ export interface TransactionSessionHost {
     signal: AbortSignal,
     operation: (
       driver: BrowserDriver,
-      ownership: Readonly<{ retainAfterFence(): void }>,
+      ownership: Readonly<{ readonly signal: AbortSignal; retainAfterFence(): void }>,
+      captureScreenshot: (boundary?: "step" | "before-submit" | "after-submit") => Promise<void>,
     ) => Promise<Result>,
+    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn">; sampleLabels?: readonly string[] }>,
   ): Promise<Result>;
   closeAll(reason: "parked"): Promise<void>;
 }
@@ -247,8 +254,6 @@ export interface WriteSequencerDependencies {
   /** The acting operator identity from the config domain (ref clock-config-secrets); never fabricated. */
   readonly operator: unknown;
   readonly log: TaskLogger;
-
-  readonly resolveImplFingerprint?: (taskId: TaskId) => Fingerprint;
   readonly hooks?: WriteSequencerHooks;
 }
 
@@ -394,7 +399,7 @@ interface BoundedTaskInvocation {
   readonly settlement: Promise<BoundedTaskSettlement>;
 }
 
-function beginBoundedTask(
+export function beginBoundedTask(
   deps: BoundedTaskDeps,
   taskId: TaskId,
   signal: AbortSignal,
@@ -494,6 +499,7 @@ function taskCtx(
 export interface ProbeReadDeps extends BoundedTaskDeps {
   readonly stores: TaskStoreRegistry;
   readonly sessions: Pick<TransactionSessionHost, "withDriver">;
+  readonly retainCallback?: (settlement: Promise<unknown>) => void;
 }
 
 /** The runtime probe verdict — the exact output of `probeVerdictSchema(proofSchema)`. */
@@ -505,15 +511,21 @@ export async function executeIdempotencyProbe(
   input: Readonly<{
     commitContract: AnyCommitTaskContract;
     commitInput: unknown;
+    transactionId?: string;
     instance: string;
     signal: AbortSignal;
+    screenshotOwner?: Readonly<{ nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>;
     onRecord?: (taskId: TaskId, batch: BoundedTaskRecordBatch) => void;
-    actionBinderForInput?: (taskId: string, parsedInput: unknown) => BrowserActionBinder;
-    confirmedForInput?: (taskId: string, parsedInput: unknown) => ConfirmedTaskActions | undefined;
+    onTaskSignal?: (signal: AbortSignal) => void;
   }>,
 ): Promise<z.output<ReturnType<typeof probeVerdictSchema>>> {
   const { commitContract } = input;
-  const probeRef = commitContract.writeSafety.idempotency.probe;
+  const completion = commitContract.writeSafety.completion;
+  if (input.transactionId !== undefined && !acceptsRecheckTransactionId(completion)) {
+    throw new Error("write-recheck-transaction-id-unsupported");
+  }
+  const probeRef = input.transactionId === undefined || completion.kind === "receipt"
+    ? commitContract.writeSafety.idempotency.probe : completion.verify;
   const probeTask = taskIndexOf(deps.stores).get(probeRef.taskId);
   if (probeTask === undefined) throw new Error(`no store implements idempotency probe ${probeRef.taskId}`);
   if (probeTask.contract.effect !== "read") {
@@ -525,7 +537,8 @@ export async function executeIdempotencyProbe(
   }
   let probeInput: unknown;
   try {
-    probeInput = probeTask.contract.input.parse(input.commitInput);
+    probeInput = probeTask.contract.input.parse(input.transactionId === undefined ? input.commitInput
+      : { ...UcpathTerminationTargetSchema.parse(input.commitInput), transactionId: input.transactionId });
   } catch (error) {
     throw new Error(
       `idempotency probe ${probeRef.taskId} cannot bind the commit input; a dedicated probe input `
@@ -534,20 +547,29 @@ export async function executeIdempotencyProbe(
     );
   }
   const proofSchema = commitContract.writeSafety.completion.proofSchema;
-  const raw = await deps.sessions.withDriver(need, input.instance, input.signal, async (driver) => {
-    const { raw: output } = await invokeBoundedTask(deps, probeRef.taskId, input.signal, (innerSignal, recordData) => {
+  const raw = await deps.sessions.withDriver(need, input.instance, input.signal, async (driver, captureScreenshot) => {
+    const invocation = beginBoundedTask(deps, probeRef.taskId, input.signal, (innerSignal, recordData) => {
+      input.onTaskSignal?.(innerSignal);
       const run = RunnableTaskSchema.parse(probeTask.impl.run);
-      const confirmed = input.confirmedForInput?.(probeRef.taskId, probeInput);
-      return withBrowserActionBinding(input.actionBinderForInput?.(probeRef.taskId, probeInput), () => run({
+      return run({
         input: probeInput,
-        ctx: { ...taskCtx(probeRef.taskId, innerSignal, recordData, deps.log), driver,
-          ...(confirmed === undefined ? {} : { confirmed }) },
-      }));
+        ctx: { ...taskCtx(probeRef.taskId, innerSignal, recordData, deps.log), driver },
+      });
     }, input.onRecord === undefined ? undefined : (batch) => input.onRecord?.(probeRef.taskId, batch));
+    deps.retainCallback?.(invocation.settlement);
+    const { raw: output } = await invocation.bounded;
+    if (input.screenshotOwner !== undefined) await captureScreenshot();
     return output;
-  });
+  }, input.screenshotOwner === undefined ? undefined : { ...input.screenshotOwner, taskId: probeRef.taskId });
   try {
-    return probeVerdictSchema(proofSchema).parse(probeTask.contract.output.parse(raw));
+    const verdict = probeVerdictSchema(proofSchema).parse(probeTask.contract.output.parse(raw));
+    if (input.transactionId !== undefined && verdict.state === "present") {
+      const target = UcpathTerminationTargetSchema.parse(input.commitInput);
+      const observed = z.object({ emplId: z.string(), effectiveDate: z.string(), transactionId: z.string() }).parse(verdict.proof);
+      if (observed.transactionId !== input.transactionId || observed.emplId !== target.emplId
+        || observed.effectiveDate !== target.effectiveDate) throw new Error("write-recheck-transaction-identity-mismatch");
+    }
+    return verdict;
   } catch (error) {
     throw new Error(
       `idempotency probe ${probeRef.taskId} output does not parse as a ProbeVerdict; a probe that `
@@ -597,7 +619,6 @@ export function executeSequencedWriteCommit(
     const advance = () => transition.kind === "advance-running"
       ? transition.port.workerTransition({ commandId, ...parsed.run, claim: transition.claim, evidenceFingerprint,
           lifecycle: { state: "running", workerId: transition.claim.workerId, claimedAt: transition.claimedAt,
-            ...("workerId" in current.lifecycle && current.lifecycle.workerLifetime !== undefined ? { workerLifetime: current.lifecycle.workerLifetime } : {}),
             heartbeatAt: parsed.commit.confirmedAt, currentNodeId: NodeIdSchema.parse(parsed.checkpoint.nodeId) } })
       : transition.port.transition({ commandId, runId: parsed.run.runId, expectedVersion: parsed.run.expectedVersion,
           evidenceFingerprint, lifecycle: { state: "queued" }, writeResolution: {kind:"recovery",writeIntentId:parsed.commit.writeIntentId,generation:parsed.commit.generation,writeAttemptId:requireRecoveryIdentity(intent).currentAttemptId,bindingProofDigest:requireRecoveryIdentity(intent).bindingProofDigest,decision:"present"},
@@ -650,7 +671,14 @@ export function executeSequencedWriteCommit(
       || current.lifecycle.intentGeneration !== parsed.commit.generation) {
       throw new Error("resume-queued settlement requires the exact parked write intent and generation");
     }
-    const report = authority.commitWriteAttempt(parsed.commit, parsed.checkpoint);
+    const report = intent?.status === "parked" && intent.recheck !== undefined && transition.kind === "advance-running"
+      ? authority.commitRecheckedParkedWrite({ commit: parsed.commit, checkpoint: parsed.checkpoint,
+          expectedIntentVersion: intent.version, claim: transition.claim,
+          resolution: ParkedWriteResolutionBindingSchema.parse({ commandId: intent.recheck.commandId, auditId: intent.recheck.auditId, expectedRunVersion: intent.recheck.expectedRunVersion,
+            writeIntentId: intent.writeIntentId, writeAttemptId: intent.currentAttemptId, generation: intent.generation,
+            bindingProofDigest: intent.bindingProofDigest, idempotencyKeyDigest: intent.idempotencyKeyDigest,
+            runId: intent.runId, runAttempt: intent.runAttempt, decision: "present", resolvedAt: parsed.commit.confirmedAt }) })
+      : authority.commitWriteAttempt(parsed.commit, parsed.checkpoint);
     hooks?.afterSequencedStep?.("commit-write-attempt");
     repositories.runCheckpoints.insert(parsed.checkpoint);
     hooks?.afterSequencedStep?.("transaction-checkpoint");
@@ -769,14 +797,7 @@ function buildTransactionCheckpoint(
 ): RunCheckpointRecord {
   const envelope = identity.run.envelope;
   const instant = IsoInstantSchema.parse(writtenAt);
-  const source = proofSource === "operator-attestation" ? "operator" : "live";
-  const provenance = ["disposition", "proofSource", "proof", "output"].map((path) =>
-    FactProvenanceSchema.parse({
-      path,
-      source,
-      observedAt: instant,
-      originalObservedAt: instant,
-    }));
+  const provenance = transactionCheckpointProvenance(outcome, instant);
   return RunCheckpointRecordSchema.parse({
     workflowId: identity.descriptor.id,
     itemId: envelope.itemId,
@@ -802,8 +823,6 @@ function buildTransactionCheckpoint(
 
 export function createWriteSequencer(deps: WriteSequencerDependencies): ProductionWriteSequencer {
   const operator = ActorIdSchema.parse(deps.operator);
-  const resolveImplFingerprint = deps.resolveImplFingerprint
-    ?? ((taskId: TaskId) => resolveTaskImplFingerprint(BUILD_MANIFEST, taskId));
   z.number().int().positive().parse(deps.taskDeadlineMs);
   const taskIndex = taskIndexOf(deps.stores);
   const instant = () => IsoInstantSchema.parse(deps.clock.now().toISOString());
@@ -826,8 +845,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     signal: AbortSignal,
     recordData: (point: DataPoint | readonly DataPoint[]) => void,
     context?: WriteSequencerContext,
-    role?: "prepare" | "verify",
-    parsedInput?: unknown,
     bufferedLogs?: BufferedCommitLog[],
   ) => ({ ...taskCtx(taskId, signal, recordData, bufferedLogs === undefined ? context === undefined ? deps.log : {
     debug(message, fields) { try { deps.log.debug(message, fields); } catch { reportDiagnosticFailure(context); } },
@@ -837,11 +854,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     debug(message, fields) { bufferedLogs.push({ level: "debug", message, ...(fields === undefined ? {} : { fields }) }); },
     info(message, fields) { bufferedLogs.push({ level: "info", message, ...(fields === undefined ? {} : { fields }) }); },
     warn(message, fields) { bufferedLogs.push({ level: "warn", message, ...(fields === undefined ? {} : { fields }) }); },
-  }), ...(context !== undefined && role !== undefined && context.confirmedForRole !== undefined
-    ? { confirmed: context.confirmedForRole(role, taskId, parsedInput) } : {}) });
+  }) });
 
   function transactionTaskSpanPath(context: WriteSequencerContext, role: TransactionTaskRole): string {
-    return `${TraceIdSchema.parse(context.run.envelope.traceId)}/${String(context.node.id)}/${role}`;
+    // The claim generation lets a resumed claim in the same process open its own span (as executor task spans do).
+    return `${TraceIdSchema.parse(context.run.envelope.traceId)}/${String(context.node.id)}/${role}#${String(context.claim.claimGeneration)}`;
   }
 
   function emitObservedBatch(
@@ -1023,7 +1040,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     context: WriteSequencerContext,
     role: TransactionTaskRole,
     event: "span.started" | "span.ended",
-    outcome?: "done" | "failed",
+    outcome?: "done" | "failed" | "cancelled",
     deliverySafe = false,
   ): void {
     const envelope = context.run.envelope;
@@ -1072,14 +1089,17 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     );
   }
 
-  /** Emit the failed terminal beat without ever replacing the task's primary failure. */
+  /** Emit the failed (or, before the fence under a pending pause or stop, cancelled) terminal beat without replacing the task's primary failure. */
   function preserveTaskFailure(
     context: WriteSequencerContext,
     role: TransactionTaskRole,
     taskFailure: unknown,
   ): unknown {
     try {
-      emitTaskSpan(context, role, "span.ended", "failed");
+      const current = role === "verify" ? undefined : deps.authority.authority.runs.get(context.run.envelope.runId);
+      const interrupted = current !== undefined
+        && (context.signal.aborted || current.pause?.state === "requested" || current.cancelRequested === true);
+      emitTaskSpan(context, role, "span.ended", interrupted ? "cancelled" : "failed");
       return taskFailure;
     } catch (spanFailure) {
       return aggregateSecondaryFailure(
@@ -1095,6 +1115,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
     commitInput: unknown,
+    transactionId?: string,
   ): Promise<RuntimeProbeVerdict> {
     const instance = resolvedInstanceFor(context, systemOf(commitContract.id));
     emitTaskSpan(context, "probe", "span.started");
@@ -1102,11 +1123,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       const verdict = await executeIdempotencyProbe(deps, {
         commitContract,
         commitInput,
+        ...(transactionId === undefined ? {} : { transactionId }),
         instance,
         signal: context.signal,
+        screenshotOwner: { nodeId: String(context.node.id), attempt: context.run.envelope.attempt, log: context.captureLog ?? deps.log },
         onRecord: (taskId, batch) => emitObservedBatch(context, "probe", taskId, batch),
-        actionBinderForInput: context.operationReadBinder === undefined ? undefined : (taskId, parsedInput) => context.operationReadBinder!("probe", taskId, parsedInput),
-        confirmedForInput: context.confirmedForRole === undefined ? undefined : (taskId, parsedInput) => context.confirmedForRole!("probe", taskId, parsedInput),
       });
       emitTaskSpan(context, "probe", "span.ended", "done");
       return verdict;
@@ -1147,9 +1168,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         ...(retainedRunProtectedBindings(context.run).length === 0 ? {} : { protectedBindings: retainedRunProtectedBindings(context.run) }) },
       descriptorVersion: context.descriptor.version,
       contractFingerprint: context.descriptor.contractFingerprint,
-      implFingerprint: resolveImplFingerprint(commitContract.id),
-      provenance: ["disposition", "proofSource", "proof", "output"].map((path) =>
-        FactProvenanceSchema.parse({ path, source: "live", observedAt: now, originalObservedAt: now })),
+      implFingerprint: taskImplFingerprint(commitContract),
+      provenance: transactionCheckpointProvenance(outcome, now),
       writtenAt: now,
     });
     deps.authority.withAuthorityTransaction((repositories) => {
@@ -1177,7 +1197,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         lifecycle: {
           state: "running",
           workerId: current.lifecycle.workerId,
-          ...(current.lifecycle.workerLifetime === undefined ? {} : { workerLifetime: current.lifecycle.workerLifetime }),
           claimedAt: current.lifecycle.claimedAt,
           heartbeatAt: now,
           currentNodeId: context.node.id,
@@ -1209,7 +1228,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     if (stored === undefined) {
       throw new Error(`write intent ${durable.writeIntentId} is ${durable.status}; there is no proof to reuse`);
     }
-    if (stored.schemaHash !== proofSchemaHash) {
+    if ((deps.authority.evidenceSchemaHash?.({ kind: "write-proof", id: durable.writeIntentId, generation: durable.generation }, durable, stored.schemaHash, proofSchemaHash) ?? stored.schemaHash) !== proofSchemaHash) {
       throw new Error(
         `write intent ${durable.writeIntentId} retains proof bound to schema ${stored.schemaHash.slice(0, 12)}…, `
         + `but ${commitContract.id} currently requires ${proofSchemaHash.slice(0, 12)}…; refusing to reuse drifted proof`,
@@ -1261,7 +1280,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         + "recovery-probe path under its own run and is never reused as this node's settlement",
       );
     }
-    if (canonicalJsonStringify(durableProof) !== canonicalJsonStringify(outcome.proof)) {
+    const expectedProofHash = deriveSchemaHash(commitContract.writeSafety.completion.proofSchema, "output");
+    const durableHash = deps.authority.evidenceSchemaHash?.({ kind: "write-proof", id: durable.writeIntentId, generation: durable.generation }, durable, durableProof.schemaHash, expectedProofHash) ?? durableProof.schemaHash;
+    const outcomeHash = deps.authority.evidenceSchemaHash?.({ kind: "checkpoint-proof", id: checkpointRecordKey(stored) }, stored, outcome.proof.schemaHash, expectedProofHash) ?? outcome.proof.schemaHash;
+    if (durableHash !== expectedProofHash || outcomeHash !== expectedProofHash
+      || canonicalJsonStringify({ ...durableProof, schemaHash: durableHash }) !== canonicalJsonStringify({ ...outcome.proof, schemaHash: outcomeHash })) {
       throw new Error(
         `transaction node "${context.node.id}" holds a completed settlement whose proof is not the proof of the `
         + `write the fresh facts address (${reference}); refusing to relabel a completed external write as the `
@@ -1278,7 +1301,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   ): void {
     if (stored.descriptorVersion !== context.descriptor.version
       || stored.contractFingerprint !== context.descriptor.contractFingerprint
-      || stored.implFingerprint !== resolveImplFingerprint(commitContract.id)
+      || stored.implFingerprint !== taskImplFingerprint(commitContract)
       || stored.output.schemaHash !== TRANSACTION_OUTCOME_SCHEMA_HASH) {
       throw new Error(
         `transaction node "${context.node.id}" has a stored outcome from a drifted descriptor/impl; `
@@ -1297,10 +1320,13 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const outcome = TransactionOutcomeSchema.parse(stored.output.value);
     const completion = commitContract.writeSafety.completion;
     const proofSchemaHash = deriveSchemaHash(completion.proofSchema, "output");
-    if (outcome.proof.schemaHash !== proofSchemaHash) {
+    if ((deps.authority.evidenceSchemaHash?.({ kind: "checkpoint-proof", id: checkpointRecordKey(stored) }, stored, outcome.proof.schemaHash, proofSchemaHash) ?? outcome.proof.schemaHash) !== proofSchemaHash) {
       throw new Error(
         `transaction node "${context.node.id}" stored proof is bound to a different proof schema; refusing to replay`,
       );
+    }
+    if ((deps.authority.evidenceSchemaHash?.({ kind: "checkpoint-output", id: checkpointRecordKey(stored) }, stored, outcome.output.schemaHash, deriveSchemaHash(commitContract.output, "output")) ?? outcome.output.schemaHash) !== deriveSchemaHash(commitContract.output, "output")) {
+      throw new Error(`transaction node "${context.node.id}" stored output is bound to a different output schema; refusing to replay`);
     }
     const proof = completion.proofSchema.parse(outcome.proof.value);
     const output = commitContract.output.parse(outcome.output.value);
@@ -1328,7 +1354,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const now = instant();
     const envelope = context.run.envelope;
     deps.authority.withAuthorityTransaction((repositories) => {
-      repositories.writeIntents.parkAttempt({
+      const intent = repositories.writeIntents.get(failure.writeIntentId);
+      const request = {
         writeIntentId: failure.writeIntentId,
         generation: failure.generation,
         expectedVersion: failure.intentVersion,
@@ -1336,7 +1363,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         message: failure.operatorMessage,
         authorityReason: failure.authorityReason,
         now,
-      });
+      };
+      if (intent?.status === "parked" && intent.recheck !== undefined) {
+        repositories.writeIntents.parkRecheck({ ...request, commandId: intent.recheck.commandId });
+      } else repositories.writeIntents.parkAttempt(request);
       const current = repositories.runs.get(envelope.runId);
       if (current === undefined) throw new Error(`run ${envelope.runId} disappeared while parking`);
       if (current.lifecycle.state !== "running") {
@@ -1364,13 +1394,45 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     });
   }
 
+  /** Beat ⑦ keeps custody of a proven save: a settlement that does not land parks the intent UNKNOWN. */
+  async function settleOrPark<T>(
+    context: WriteSequencerContext,
+    intent: Extract<WriteIntentRecord, { status: "attempting" | "parked" }>,
+    settle: () => T,
+  ): Promise<T> {
+    try {
+      return settle();
+    } catch (error) {
+      const failure = new PostFenceWriteFailure({
+        writeIntentId: intent.writeIntentId,
+        generation: intent.generation,
+        intentVersion: intent.version,
+        parkCode: "unknown",
+        message: `the save was proven but its settlement did not commit: ${failureMessage(error)}`,
+        operatorMessage: "The save was proven but could not be recorded; check again to confirm it",
+        authorityReason: authorityReason(context.run, "post-fence-session-exception", "settlement", authorityExceptionDetail(error)),
+        cause: error,
+      });
+      await parkAfterFence(context, failure);
+      throw new WriteParkedError({
+        writeIntentId: failure.writeIntentId,
+        intentGeneration: failure.generation,
+        parkCode: failure.parkCode,
+        message: failure.message,
+        cause: failure,
+      });
+    }
+  }
+
   /** Beat ⑥ — capture/verify: every completion arm parses through its proofSchema. */
   async function captureProof(input: Readonly<{
     context: WriteSequencerContext;
+    signal: AbortSignal;
     commitContract: AnyCommitTaskContract;
     commitInput: unknown;
     driver: BrowserDriver;
     rawCommitOutput: unknown;
+    captureScreenshot: () => Promise<void>;
     intent: AttemptingIntent;
   }>): Promise<{ proofValue: JsonValue; outputValue: JsonValue }> {
     const { commitContract, intent } = input;
@@ -1453,15 +1515,16 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         input.context,
         "verify",
         completion.verify.taskId,
-        input.context.signal,
+        input.signal,
         (innerSignal, recordData) => {
           const run = RunnableTaskSchema.parse(verifyTask.impl.run);
-          return withBrowserActionBinding(input.context.operationReadBinder?.("verify", completion.verify.taskId, verifyInput), () => run({
+          return run({
             input: verifyInput,
-            ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData, input.context, "verify", verifyInput), driver: input.driver },
-          }));
+            ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData, input.context), driver: input.driver },
+          });
         },
       );
+      await input.captureScreenshot();
       verdict = probeVerdictSchema(completion.proofSchema).parse(verifyTask.contract.output.parse(raw));
       emitTaskSpan(input.context, "verify", "span.ended", "done", true);
     } catch (error) {
@@ -1511,15 +1574,15 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   }
 
 
-  async function recoverOwnAttemptingIntent(
+  async function recoverOwnIntent(
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
     commitInput: unknown,
-    intent: AttemptingIntent,
+    intent: Extract<WriteIntentRecord, { status: "attempting" | "parked" }>,
   ): Promise<unknown> {
     let verdict: RuntimeProbeVerdict;
     try {
-      verdict = await runLiveProbe(context, commitContract, commitInput);
+      verdict = await runLiveProbe(context, commitContract, commitInput, intent.status === "parked" ? intent.recheck?.transactionId : undefined);
     } catch (error) {
       const failure = new PostFenceWriteFailure({
         writeIntentId: intent.writeIntentId,
@@ -1579,30 +1642,33 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         throw new WriteParkedError({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
           parkCode: "unknown", message: failure.message, cause: failure });
       }
-      const settlement = buildCommittedSettlement({
-        descriptor: context.descriptor,
-        nodeId: String(context.node.id),
-        run: context.run,
-        intent,
-        commitContract,
-        operator,
-        implFingerprint: resolveImplFingerprint(commitContract.id),
-        proofSource: "recovery-probe",
-        proofValue,
-        outputValue,
-        confirmedAt: instant(),
-        ids: deps.ids,
+      const settlement = await settleOrPark(context, intent, () => {
+        const built = buildCommittedSettlement({
+          descriptor: context.descriptor,
+          nodeId: String(context.node.id),
+          run: context.run,
+          intent,
+          commitContract,
+          operator,
+          implFingerprint: taskImplFingerprint(commitContract),
+          proofSource: "recovery-probe",
+          proofValue,
+          outputValue,
+          confirmedAt: instant(),
+          ids: deps.ids,
+        });
+        executeSequencedWriteCommit(
+          deps.authority,
+          {
+            run: { runId: context.run.envelope.runId, expectedVersion: currentRunVersion(context), claim: context.claim },
+            checkpoint: built.checkpoint,
+            commit: built.commit,
+          },
+          { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
+          deps.hooks,
+        );
+        return built;
       });
-      executeSequencedWriteCommit(
-        deps.authority,
-        {
-          run: { runId: context.run.envelope.runId, expectedVersion: currentRunVersion(context), claim: context.claim },
-          checkpoint: settlement.checkpoint,
-          commit: settlement.commit,
-        },
-        { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
-        deps.hooks,
-      );
       return {
         disposition: "committed",
         proofSource: "recovery-probe",
@@ -1713,13 +1779,29 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         + "click a real external write for it, whatever the caller passed — use executeDryRun");
     }
 
+    if (context.previewBinding !== undefined || context.scope.dryRun !== undefined) {
+      throw new TaskError(commitContract.id, "DRY_RUN_SAMPLE_REFUSED", "Dry-run samples cannot authorize a real submission.");
+    }
+
     /* stable commit input + key BEFORE any replay, probe or browser (ref workflow-model ) */
     const commitInput: unknown = commitContract.input.parse(node.commit.bind(context.scope));
+    const prepareInput: unknown = prepareContract.input.parse(node.prepare.bind(context.scope));
+    if (containsDryRunSample(commitInput) || containsDryRunSample(prepareInput)) {
+      throw new TaskError(commitContract.id, "DRY_RUN_SAMPLE_REFUSED", "Dry-run samples cannot authorize a real submission.");
+    }
+    const storedCheckpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id));
+    const sourceBound = envelope.continuation !== undefined && storedCheckpoint !== undefined && storedCheckpoint.runId !== envelope.runId
+      ? undefined : envelope.sourceBound;
+    const replaysCommittedOutcome = storedCheckpoint !== undefined && (sourceBound === undefined || storedCheckpoint.runId === envelope.runId);
+    // A write approved under another build never derives its key, fences or clicks here; only its committed outcome replays.
+    if (!replaysCommittedOutcome && envelope.buildId !== currentBuildId()) {
+      throw new TaskError(commitContract.id, "WRITE_BUILD_CHANGED",
+        "Relay was updated after this run was approved. Retry the run to approve its write under this version.");
+    }
     const system = systemOf(commitContract.id);
     const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
     const naturalKey = IdempotencyKeySchema.parse(keyRaw);
     const businessKeyDigest = deriveIdempotencyKeyDigest(system, naturalKey);
-    const sourceBound = envelope.sourceBound;
     const repeatBindings = sourceBound?.protectedBindings ?? retainedRunProtectedBindings(run);
     const consent = sourceBound?.warnings.filter((warning) => warning.nodeId === node.id
       && warning.taskId === commitContract.id && warning.system === system && warning.businessKeyDigest === businessKeyDigest);
@@ -1751,8 +1833,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
 
 
-    const storedCheckpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id));
-    if (storedCheckpoint !== undefined && (sourceBound === undefined || storedCheckpoint.runId === envelope.runId)) {
+    if (replaysCommittedOutcome) {
 
       assertReplayMatchesFreshFacts(context, commitContract, storedCheckpoint, system, key, keyDigest);
       return replayCheckpoint(context, commitContract, storedCheckpoint);
@@ -1766,7 +1847,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       return reuseDurableIntent(context, commitContract, decision.record);
     }
     if (decision.kind === "recover-own") {
-      return await recoverOwnAttemptingIntent(context, commitContract, commitInput, decision.record);
+      return await recoverOwnIntent(context, commitContract, commitInput, decision.record);
     }
     if (decision.kind === "refuse-foreign") {
       const existing = decision.record;
@@ -1777,6 +1858,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
     if (decision.kind === "refuse-parked") {
       const existing = decision.record;
+      if (existing.recheck !== undefined && existing.runId === envelope.runId && existing.runAttempt === envelope.attempt) {
+        return await recoverOwnIntent(context, commitContract, commitInput, existing);
+      }
       throw new Error(
         `write intent ${existing.writeIntentId} for ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} is parked (`
         + `${existing.parkedCode}); stored detail is retained only in authority. `
@@ -1910,27 +1994,28 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         need,
         instance,
         context.signal,
-        async (driver, ownership) => {
+        async (driver, ownership, captureScreenshot) => {
         const leaseId = deps.ids.uuid();
 
         /* beat ② — prepare stages the page; output is preview data only */
         emitTaskSpan(context, "prepare", "span.started");
         let prepareOutput: unknown;
         try {
-          const prepareInput: unknown = prepareContract.input.parse(node.prepare.bind(context.scope));
           const { raw } = await invokeTransactionTask(
             context,
             "prepare",
             prepareContract.id,
-            context.signal,
+            ownership.signal,
             (innerSignal, recordData) => {
               const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
-              return withBrowserActionBinding(context.operationActionBinders?.prepare, () => runImpl({
+              return runImpl({
                 input: prepareInput,
-                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context, "prepare", prepareInput), driver },
-              }));
+                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context), driver,
+                  captureScreenshot: () => captureScreenshot("step") },
+              });
             },
           );
+          await captureScreenshot("step");
           prepareOutput = prepareContract.output.parse(raw);
           emitTaskSpan(context, "prepare", "span.ended", "done");
         } catch (error) {
@@ -1950,6 +2035,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           afterPrepareSpanPath,
         });
         const bindingProofDigest = FingerprintSchema.parse(deriveWriteBindingProofDigest(bindingProof));
+
+        await captureScreenshot("before-submit");
 
         /* beat ④ — probe→fence budget, then the durable CAS before any click */
         const elapsedMs = deps.clock.monotonicMs() - probeCompletedMonotonicMs;
@@ -2013,9 +2100,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           recordedAt: fencedAt,
         });
         let fencedRecord: WriteIntentRecord;
-        if (context.signal.aborted) {
-          throw context.signal.reason instanceof Error
-            ? context.signal.reason
+        if (ownership.signal.aborted) {
+          throw ownership.signal.reason instanceof Error
+            ? ownership.signal.reason
             : new Error(`${commitContract.id} was cancelled before its write fence`);
         }
         refuseRequestedCancellation(context);
@@ -2069,13 +2156,13 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         const commitInvocation = beginBoundedTask(
           deps,
           commitContract.id,
-          context.signal,
+          ownership.signal,
           (innerSignal, recordData) => {
             const runImpl = RunnableTaskSchema.parse(commitTask.impl.run);
-            return withBrowserActionBinding(context.operationActionBinders?.commit, () => runImpl({
+            return runImpl({
               input: commitInput,
-              ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData, context, undefined, undefined, bufferedCommitLogs), driver, mutation: capability },
-            }));
+              ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData, context, bufferedCommitLogs), driver, mutation: capability },
+            });
           },
           (batch) => bufferedCommitObservations.push(batch),
         );
@@ -2096,6 +2183,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           commitSettlement = { state: "failed", error: failure };
         }
 
+        let captureFailure: Readonly<{ error: unknown }> | undefined;
+        try { await captureScreenshot("after-submit"); }
+        catch (error) { captureFailure = { error }; reportDiagnosticFailure(context); }
         let emissionFailure: Readonly<{ error: unknown }> | undefined;
         try {
           // Flush fallible observations only after commit callback settlement so recording cannot strand a fenced-but-unclicked write.
@@ -2158,14 +2248,21 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           ...(emissionFailure === undefined ? {} : { diagnosticFailure: emissionFailure.error }),
           diagnosticIsProgramFailure: containsSchemaFailure,
           reportDeliveryFailure: () => reportDiagnosticFailure(context),
-          verifySavedEffect: () => captureProof({ context, commitContract, commitInput, driver,
-            rawCommitOutput, intent: fenced }),
+          verifySavedEffect: () => captureProof({ context, signal: ownership.signal, commitContract, commitInput, driver,
+            rawCommitOutput, captureScreenshot: () => captureScreenshot("step"), intent: fenced }),
           onProgramFailure: error => { throw postFenceTaskFailure(
             `${commitContract.id} post-settlement observation failed schema validation after saved-effect verification`,
             "post-fence-commit-and-observation-exception",
             error,
           ); },
         });
+        if (captureFailure !== undefined) {
+          throw postFenceTaskFailure(
+            `${commitContract.id} required post-submit screenshot failed after saved-effect verification`,
+            "post-fence-session-exception",
+            captureFailure.error,
+          );
+        }
         if (!isFreshOccurrenceProof(fenced, envelope, {
           schemaHash: deriveSchemaHash(commitContract.writeSafety.completion.proofSchema, "output"), value: captured.proofValue,
         })) {
@@ -2178,6 +2275,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           catch { reportDiagnosticFailure(context); }
         }
         return { intent: fenced, proofValue: captured.proofValue, outputValue: captured.outputValue };
+        },
+        { taskId: commitContract.id, nodeId: String(node.id), attempt: envelope.attempt,
+          log: { warn(message, fields) { (context.captureLog ?? deps.log).warn(message, { ...fields,
+            ...(retainedIntent === undefined ? {} : { writeIntentId: retainedIntent.writeIntentId,
+              writeAttemptId: retainedIntent.currentAttemptId, generation: retainedIntent.generation }),
+          }); } },
         },
       );
     } catch (error) {
@@ -2230,32 +2333,35 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
         return { state: "new" as const, proof: leased };
       },
-      settleVerified: proof => {
+      settleVerified: async proof => {
         /* beat ⑦ — ONE outer authority transaction over the whole bundle */
-        const committed = buildCommittedSettlement({
-          descriptor: context.descriptor,
-          nodeId: String(node.id),
-          run,
-          intent: proof.intent,
-          commitContract,
-          operator,
-          implFingerprint: resolveImplFingerprint(commitContract.id),
-          proofSource: "normal-output",
-          proofValue: proof.proofValue,
-          outputValue: proof.outputValue,
-          confirmedAt: instant(),
-          ids: deps.ids,
+        const committed = await settleOrPark(context, proof.intent, () => {
+          const built = buildCommittedSettlement({
+            descriptor: context.descriptor,
+            nodeId: String(node.id),
+            run,
+            intent: proof.intent,
+            commitContract,
+            operator,
+            implFingerprint: taskImplFingerprint(commitContract),
+            proofSource: "normal-output",
+            proofValue: proof.proofValue,
+            outputValue: proof.outputValue,
+            confirmedAt: instant(),
+            ids: deps.ids,
+          });
+          executeSequencedWriteCommit(
+            deps.authority,
+            {
+              run: { runId: envelope.runId, expectedVersion: currentRunVersion(context), claim: context.claim },
+              checkpoint: built.checkpoint,
+              commit: built.commit,
+            },
+            { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
+            deps.hooks,
+          );
+          return built;
         });
-        executeSequencedWriteCommit(
-          deps.authority,
-          {
-            run: { runId: envelope.runId, expectedVersion: currentRunVersion(context), claim: context.claim },
-            checkpoint: committed.checkpoint,
-            commit: committed.commit,
-          },
-          { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
-          deps.hooks,
-        );
         if (committed.outcome.disposition !== "committed") throw new Error("committed-settlement-disposition-mismatch");
         return { committed, confirmedAt: committed.outcome.confirmedAt };
       },
@@ -2276,11 +2382,33 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const commitContract = node.commit.uses;
     const prepareContract = node.prepare.uses;
     const envelope = context.run.envelope;
+    if (!context.dryRun || !envelope.dryRun) {
+      throw new TaskError(commitContract.id, "capability-unavailable", "Preview requires an accepted dry-run envelope.");
+    }
     if (node.dryRun !== "stop-after-prepare") {
       throw new TaskError(commitContract.id, "capability-unavailable",
         `transaction node "${node.id}" declares dryRun:"${node.dryRun}"; there is no preview arm to run`);
     }
-    const commitInput: unknown = commitContract.input.parse(node.commit.bind(context.scope));
+    const commitInput: unknown = commitContract.input.parse(context.previewBinding?.commit ?? node.commit.bind(context.scope));
+    const samples = DryRunSampleSchema.array().parse(context.previewBinding?.samples ?? []);
+    const usesSamples = samples.length > 0;
+    const ancestors = new Set<string>();
+    const includeAncestors = (ids: readonly string[]): void => {
+      for (const id of ids) {
+        if (ancestors.has(id)) continue;
+        ancestors.add(id);
+        const source = descriptorRuntimeNodes(context.descriptor).find(candidate => candidate.id === id);
+        if (source === undefined) throw new Error("preview dependency is undeclared");
+        includeAncestors(source.dependsOn);
+      }
+    };
+    if (usesSamples) includeAncestors(node.dependsOn);
+    if (samples.some(sample => !ancestors.has(sample.sourceNodeId)
+      || !context.scope.dryRun?.transactions.some(step => step.nodeId === sample.sourceNodeId
+        && step.preview.outcome.state === "would-prepare"))) {
+      throw new TaskError(commitContract.id, "DRY_RUN_SAMPLE_UNDECLARED", "Dry-run sample values require declared preview provenance.");
+    }
+    if (!usesSamples && containsDryRunSample(commitInput)) throw new TaskError(commitContract.id, "DRY_RUN_SAMPLE_UNDECLARED", "Dry-run sample values require declared preview provenance.");
     const completion = commitContract.writeSafety.completion;
     const proofSchemaHash = deriveSchemaHash(completion.proofSchema, "output");
     const outputSchemaHash = deriveSchemaHash(commitContract.output, "output");
@@ -2335,7 +2463,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
       if (source === undefined && (durable.status === "committed" || durable.status === "observed-present")) {
         const stored = durable.status === "committed" ? durable.completionProof : durable.observedProof;
-        if (stored.schemaHash !== proofSchemaHash) {
+        if ((deps.authority.evidenceSchemaHash?.({ kind: "write-proof", id: durable.writeIntentId, generation: durable.generation }, durable, stored.schemaHash, proofSchemaHash) ?? stored.schemaHash) !== proofSchemaHash) {
           throw new Error(
             `preview of "${node.id}": write intent ${durable.writeIntentId} retains proof bound to schema `
             + `${stored.schemaHash.slice(0, 12)}…, and ${commitContract.id} currently requires `
@@ -2361,12 +2489,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
 
     /* beat ① — the policy-controlled live probe, on its own read lease */
-    const mustProbe = source !== undefined || node.probePolicy === "always"
-      || durable !== undefined
-      || envelope.attempt > 1;
+    const mustProbe = !usesSamples && (source !== undefined || node.probePolicy === "always"
+      || durable !== undefined || envelope.attempt > 1);
     let probe: z.input<typeof DryRunProbeObservationSchema>;
     if (!mustProbe) {
-      probe = { state: "not-required", reason: "policy-retries-and-recovery-only" };
+      probe = { state: "not-required", reason: usesSamples ? "preview-only-sample" : "policy-retries-and-recovery-only" };
     } else {
       let verdict: RuntimeProbeVerdict;
       try {
@@ -2440,8 +2567,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const need = commitTask.impl.sessions[0];
     if (need === undefined) throw new Error(`${commitContract.id} declares no transaction session need`);
     const instance = resolvedInstanceFor(context, need.system);
-    return deps.sessions.withDriver(need, instance, context.signal, async (driver) => {
-      const prepareInput: unknown = prepareContract.input.parse(node.prepare.bind(context.scope));
+    return deps.sessions.withDriver(need, instance, context.signal, async (driver, captureScreenshot) => {
+      const prepareInput: unknown = prepareContract.input.parse(context.previewBinding?.prepare ?? node.prepare.bind(context.scope));
+      if (!usesSamples && containsDryRunSample(prepareInput)) throw new TaskError(prepareContract.id, "DRY_RUN_SAMPLE_UNDECLARED", "Dry-run sample values require declared preview provenance.");
       emitTaskSpan(context, "prepare", "span.started");
       let prepareOutput: unknown;
       try {
@@ -2452,10 +2580,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           context.signal,
           (innerSignal, recordData) => {
             const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
-            return withBrowserActionBinding(context.operationActionBinders?.prepare, () => runImpl({
+            return runImpl({
               input: prepareInput,
-              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context, "prepare", prepareInput), driver },
-            }));
+              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context), driver,
+                captureScreenshot: () => captureScreenshot() },
+            });
           },
         );
         prepareOutput = prepareContract.output.parse(raw);
@@ -2492,6 +2621,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           );
         }
       }
+      await captureScreenshot();
       return TransactionDryRunPreviewSchema.parse({
         kind: "transaction-dry-run-preview",
         nodeId: String(node.id),
@@ -2506,6 +2636,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         },
         observedAt,
       });
+    }, { taskId: prepareContract.id, nodeId: String(node.id), attempt: envelope.attempt, log: context.captureLog ?? deps.log,
+      ...(samples.length === 0 ? {} : { sampleLabels: samples.map(sample => `${sample.label}: ${sample.field} = ${JSON.stringify(sample.value)}`) }),
     });
   }
 

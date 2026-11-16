@@ -6,9 +6,13 @@ export type LogField = Readonly<{
   kind: "read" | "fill" | "compute";
   label: string;
   value: string;
+  /** The read failed before a value was observed. */
+  unread?: true;
 }>;
 
 export type LogScreenshot = Readonly<{
+  logId?: string;
+  boundary?: "step" | "before-submit" | "after-submit";
   src: string;
   alt: string;
   time: string;
@@ -37,6 +41,7 @@ export type LogEntry = Readonly<{
   id: string;
   time: string;
   message: string;
+  captureFailure?: "pre-submit-failed" | "post-submit-unknown" | "post-submit-proved";
   tone?: "info" | "danger" | "positive";
   announce?: boolean;
 }> | Readonly<{
@@ -71,7 +76,7 @@ export function logEntryText(entry: LogEntry): string {
     case "fields": return [entry.title, ...entry.fields.map(field => `${field.time} ${field.label} ${field.value}`), entry.result].filter(Boolean).join(" ");
     case "click": return `${entry.time} ${entry.label}`;
     case "note": return `${entry.time} ${entry.message}`;
-    case "decision": return [entry.time, entry.decision.title, entry.decision.message, entry.decision.attemptedAction, entry.decision.lastCompleted, entry.decision.field?.label, entry.decision.field?.value, entry.decision.caution, entry.decision.footer, ...(entry.decision.comparison ?? []).map(row => `${row.label} ${row.expected} ${row.observed}`)].filter(Boolean).join(" ");
+    case "decision": return [entry.time, entry.decision.title, entry.decision.message, entry.decision.attemptedAction, entry.decision.lastCompleted, entry.decision.field?.label, entry.decision.field?.value, entry.decision.caution, entry.decision.unavailableCapture, entry.decision.footer, ...(entry.decision.comparison ?? []).map(row => `${row.label} ${row.expected} ${row.observed}`)].filter(Boolean).join(" ");
   }
 }
 

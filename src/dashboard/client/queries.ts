@@ -1,3 +1,4 @@
+import { createAssistantQueries, type AssistantQueries } from "./queries/assistant-queries.js";
 import { createChatGptAccountQueries, type ChatGptAccountQueries } from "./queries/chatgpt-account-queries.js";
 import { createWorkbookLibraryQueries, type WorkbookLibraryQueries } from "./queries/workbook-library-queries.js";
 import { createRerunQueries, type RerunQueries } from "./queries/rerun-queries.js";
@@ -23,9 +24,9 @@ import { createStorageQueries } from "./queries/storage-queries.js";
 import type { DashboardTransport } from "./transport.js";
 
 
-export interface DashboardQueries extends ChatGptAccountQueries, WorkbookLibraryQueries, RerunQueries, NotificationQueries, ShellQueries, QueueQueries, DetailQueries, StorageQueries, SettingsQueries, PreflightQueries, IntakeQueries, ExplorerQueries, ActivityQueries {}
+export interface DashboardQueries extends AssistantQueries, ChatGptAccountQueries, WorkbookLibraryQueries, RerunQueries, NotificationQueries, ShellQueries, QueueQueries, DetailQueries, StorageQueries, SettingsQueries, PreflightQueries, IntakeQueries, ExplorerQueries, ActivityQueries {}
 
-export function createDashboardQueries(transport: DashboardTransport): DashboardQueries {return Object.freeze({...createChatGptAccountQueries(transport),...createWorkbookLibraryQueries(transport),...createRerunQueries(transport),...createNotificationQueries(transport),...createShellQueries(transport),...createQueueQueries(transport),...createDetailQueries(transport),...createStorageQueries(transport),...createSettingsQueries(transport),...createPreflightQueries(transport),...createIntakeQueries(transport),...createExplorerQueries(transport),...createActivityQueries(transport)});}
+export function createDashboardQueries(transport: DashboardTransport): DashboardQueries {return Object.freeze({...createAssistantQueries(transport),...createChatGptAccountQueries(transport),...createWorkbookLibraryQueries(transport),...createRerunQueries(transport),...createNotificationQueries(transport),...createShellQueries(transport),...createQueueQueries(transport),...createDetailQueries(transport),...createStorageQueries(transport),...createSettingsQueries(transport),...createPreflightQueries(transport),...createIntakeQueries(transport),...createExplorerQueries(transport),...createActivityQueries(transport)});}
 export { createActivityQueries } from "./queries/activity-queries.js";
 export type { ActivityQueries } from "./queries/activity-queries.js";
 export { createDetailQueries } from "./queries/detail-queries.js";
@@ -48,3 +49,5 @@ export type { StorageQueries } from "./queries/storage-queries.js";
 export type { RerunQueries } from "./queries/rerun-queries.js";
 
 export type { WorkbookLibraryQueries } from "./queries/workbook-library-queries.js";
+
+export type { AssistantQueries } from "./queries/assistant-queries.js";

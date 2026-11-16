@@ -95,7 +95,7 @@ describe("workflow definition public equivalence characterization", () => {
         surface: { shape: "single" },
         enqueue: "reject-active",
 
-        actions: { enabled: ["retry", "restart", "cancel", "bump", "rename", "delete"] },
+        actions: { enabled: ["retry", "restart", "recover-run", "cancel", "bump", "rename", "delete"] },
         capabilities: undefined,
         verdicts: [
           { key: "name-differs", label: "Name differs from UCPath", tone: "warning", tag: true },
@@ -133,7 +133,7 @@ describe("workflow definition public equivalence characterization", () => {
           { key: "transaction-id", label: "Transaction", source: { nodeId: "file-termination", fieldPath: "receipt.transactionId" }, display: "text" },
           { key: "approval-status", label: "Transaction status", source: { nodeId: "file-termination", fieldPath: "receipt.approvalStatus" }, display: "text" },
         ],
-        subjectProjection: { nodeId: "job-summary", fieldPath: "displayedName" },
+        subjectProjection: { nodeId: "job-summary", fieldPath: "displayedName", eidFieldPath: "emplId" },
         timelineDeclared: true,
         timeline: [
           {
@@ -265,7 +265,7 @@ describe("workflow definition public equivalence characterization", () => {
         { id: "timecard", kind: "task", dependsOn: ["subject", "plan", "timecard-search"] },
         { id: "dates", kind: "task", dependsOn: ["plan", "timecard"] },
         { id: "comparison", kind: "task", dependsOn: ["document", "plan", "subject", "job-summary", "name-search", "termination-type", "department-option", "employment", "dates"] },
-        { id: "identity-approval", kind: "gate", dependsOn: ["comparison"], when: { kind: "equals", of: { from: "node", nodeId: "comparison", path: "packet.emplIdSource" }, value: "name-resolved" } },
+        { id: "identity-approval", kind: "gate", dependsOn: ["comparison"], when: { kind: "is-true", of: { from: "node", nodeId: "comparison", path: "approvalRequired" } } },
         { id: "approval", kind: "task", dependsOn: ["comparison", "identity-approval"] },
         { id: "pending-set", kind: "task", dependsOn: ["approval"] },
         { id: "clear-pending", kind: "transaction", dependsOn: ["approval", "pending-set"], dryRun: "stop-after-prepare" },
@@ -318,7 +318,7 @@ describe("workflow definition public equivalence characterization", () => {
         "ucpath/create-termination", "workflow:separations/verify-termination-receipt", "ucpath/verify-termination-filing-present",
         "kuali/stage-separation-finalization", "kuali/save-separation-finalization",
       ],
-      dryRun: { state: "supported", stopsAt: "clear-pending" },
+      dryRun: { state: "supported", firstTransactionNodeId: "clear-pending" },
     });
   });
 });

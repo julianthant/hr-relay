@@ -8,7 +8,7 @@ import { gitVisibleFiles, REPO_ROOT, repoRelative } from "../support/helpers/gua
 
 const MUTATORS = new Set([
   "enqueue", "claimNext", "claimEligible", "renewClaim", "transition", "resume", "requeue",
-  "sweepExpiredClaims", "requestCancellation", "advanceRevision", "bumpPriority", "updatePresentation",
+  "requestCancellation", "advanceRevision", "bumpPriority", "updatePresentation",
   "injectCheckpointPatches", "delete", "terminalizeFailure", "terminalizeSuccess",
 ]);
 
@@ -33,7 +33,7 @@ function audit(extraSource?: string): readonly string[] {
   // Scan every core helper: moving a forbidden call into another core module cannot hide it.
   const roots = gitVisibleFiles(["src/backend/runtime", "src/backend/runs"])
     .filter((file) => file.endsWith(".ts") && !["src/backend/runs/commands/command-kernel.ts", "src/backend/runs/lifecycle/run-fan-out.ts"].includes(file));
-  roots.push("src/backend/app/composition/dashboard/compose.ts");
+  roots.push("src/backend/app/composition/dashboard/write-safety.ts");
   const fixture = resolve(REPO_ROOT, "src/backend/runtime/worker-mutator-proof.ts");
   const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext, strict: true, skipLibCheck: true };
@@ -54,7 +54,7 @@ function audit(extraSource?: string): readonly string[] {
       if (file === "src/backend/runtime/writes/write-recovery.ts"
         && ((ts.isMethodDeclaration(node) && node.name.getText() === "resolveAbsent")
           || (ts.isIfStatement(node) && node.expression.getText() === 'evaluation.state === "safe-to-retry"'))) return;
-      if (file === "src/backend/app/composition/dashboard/compose.ts") {
+      if (file === "src/backend/app/composition/dashboard/write-safety.ts") {
         if (!ancestor(node, (parent) => ts.isCallExpression(parent)
           && parent.expression.getText() === "createWriteResolutionExecutor")) {
           ts.forEachChild(node, visit);
@@ -96,10 +96,10 @@ describe("worker-loop-writes-only-through-the-service", () => {
     assert.ok(violations.some((entry) => entry.includes("database.terminalizeSuccess")));
   });
 
-  it("keeps the worker capability closed to its five admitted operations", () => {
+  it("keeps the worker capability closed to seven mutations and two execution reads", () => {
     const source = readFileSync(resolve(REPO_ROOT, "src/backend/runs/lifecycle/run-record-service.ts"), "utf8");
     const port = source.slice(source.indexOf("export type WorkerRunLifecyclePort"), source.indexOf("export interface RunContinuationPort"));
     assert.deepEqual([...port.matchAll(/"([a-zA-Z]+)"/gu)].map((match) => match[1]).sort(),
-      ["claimNext", "renewClaim", "workerTransition", "terminalize", "requeue"].sort());
+      ["claimNext", "renewClaim", "workerTransition", "acknowledgePause", "terminalize", "requeue", "admitDelegation", "assertCurrentExecution", "delegationRetryExecution"].sort());
   });
 });

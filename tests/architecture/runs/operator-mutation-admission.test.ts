@@ -1,5 +1,8 @@
 import { dashboardRouteSource } from "../dashboard/helpers/dashboard-route-source.js";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { REPO_ROOT } from "../support/helpers/guard-files.js";
 import { describe, it } from "vitest";
 
 
@@ -9,22 +12,33 @@ type Admission =
   | { readonly inline: string };
 
 const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
+  "/api/v1/storage/run-history/clear": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/storage/run-history/result": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/assistant/respond": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/assistant/action": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/assistant/history": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/assistant/conversations/:conversationId/attachments": { guard: "operatorOpaqueIngressGuard" },
   "/api/v1/debug/errors": { guard: "operatorMutationIngressGuard" },
   "/api/v1/preflight/rerun": { inline: "inspectLoopbackOrigin(c.req.header(\"origin\"))" },
   "/api/v1/exports/xlsx": { guard: "operatorMutationIngressGuard" },
   "/api/v1/exports/search": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/explorer/validate": { guard: "operatorMutationIngressGuard" },
   "/api/v1/start-plans": { guard: "operatorMutationIngressGuard" },
   "/api/v1/rerun-warnings": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/workbooks/types": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/workbooks/import": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/workbooks/:libraryId/operations": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/workbooks/:libraryId/library-actions": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/workbooks/:libraryId/sync": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/:libraryId/save": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/:libraryId/intake": { guard: "operatorMutationIngressGuard" },
   "/api/v1/intake/files": { guard: "operatorOpaqueIngressGuard" },
+  "/api/v1/ocr/files": { guard: "operatorOpaqueIngressGuard" },
   "/api/v1/commands": { guard: "operatorMutationIngressGuard" },
   "/api/v1/commands/bulk": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/chatgpt-account/sign-in": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel": { guard: "operatorMutationIngressGuard" },
-  "/api/v1/settings/chatgpt-account/sign-out": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/settings/chatgpt-account/test-ocr": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/path-picker": { guard: "operatorMutationIngressGuard" },
 });
 
@@ -65,7 +79,8 @@ export function auditOperatorMutationAdmission(source: string, table: Readonly<R
       }
       continue;
     }
-    const use = uses.get(path);
+    const use = uses.get(path) ?? [...uses.entries()].filter(([pattern]) => pattern.endsWith("/*") && path.startsWith(pattern.slice(0, -1)))
+      .sort(([left], [right]) => right.length - left.length)[0]?.[1];
     if (use === undefined) {
       violations.push(`${method.toUpperCase()} ${path} has no app.use("${path}", ${admission.guard}) line`);
     } else if (use.guard !== admission.guard) {
@@ -91,6 +106,15 @@ describe("operator mutation admission", () => {
     const audit = auditOperatorMutationAdmission(source, ADMITTED_MUTATIONS);
     assert.deepEqual(audit.violations, []);
     assert.deepEqual([...audit.mutations].sort(), Object.keys(ADMITTED_MUTATIONS).sort());
+  });
+
+  it("admits the public profile routes before request-body effects", () => {
+    const publicSource = readFileSync(resolve(REPO_ROOT, "src/backend/app/composition/dashboard/profile-session-routes.ts"), "utf8");
+    const table = Object.fromEntries(["sign-in", "resume", "sign-up", "logout", "delete-account", "onboarding/duo/browser", "onboarding/duo/reopen", "onboarding/duo/portal", "onboarding/duo/start", "onboarding/duo/confirm",
+      "onboarding/duo/cancel", "onboarding/cancel", "onboarding/complete", "account/password", "account/username", "account/details",
+      "duo/reenrol/begin", "duo/reenrol/read", "duo/reenrol/browser", "duo/reenrol/reopen", "duo/reenrol/portal", "duo/reenrol/start", "duo/reenrol/confirm",
+      "duo/reenrol/cancel-attempt", "duo/reenrol/cancel", "duo/reenrol/commit"].map(path => [`/api/v1/profile/${path}`, { guard: "operatorMutationIngressGuard" as const }]));
+    assert.deepEqual(auditOperatorMutationAdmission(publicSource, table).violations, []);
   });
 
   it("catches an unguarded route, a late guard, a wrong guard, a missing inline door, a stale row and every unclassified registration shape", () => {
@@ -133,8 +157,8 @@ describe("operator mutation admission", () => {
 
 
 it("audits imported registrations at the call site and detects relocated unguarded mutations", () => {
-  const entry = "/route-proof/api.ts";
-  const child = "/route-proof/child.ts";
+  const entry = resolve("/route-proof/api.ts");
+  const child = resolve("/route-proof/child.ts");
   const root = `import { attachChild } from "./child.js";
     export function createDashboardApp() {
       app.use("/guarded", operatorMutationIngressGuard);

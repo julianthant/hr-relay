@@ -1,20 +1,27 @@
+import { runClaim } from "../../../../src/models/run/record.js";
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import * as privateFiles from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+
+import * as credentialStores from "../../../../src/backend/storage/configuration/credential-store.js";
+import { RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { createWorkerCompositionTestWorld } from "../../../support/helpers/backend/worker-composition-world.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { fixtureAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { composeWorkerRuntime, parseWorkerArguments } from "../../../../src/backend/app/composition/worker-compose.js";
+import { PreflightObservationChangedError } from "../../../../src/rules/preflight/preflight-admission.js";
+import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { type GateSourcePort } from "../../../../src/backend/runtime/gates/gate-source-runtime.js";
-import { observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+
 import { AppSettingsSchema } from "../../../../src/models/config/app-settings.js";
 import { SETTINGS_SCHEMA_HASH, derivePersistedSettingsFingerprint, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
@@ -22,14 +29,45 @@ import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js
 import { SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS, persistCorruptJournaledSettings } from "../../../support/fixtures/integration/settings-runtime-corruption-fixtures.js";
 import { RUN_ID, WORKFLOW_ID, sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { settingsSetOperations } from "../../../support/fixtures/settings-operation-fixtures.js";
-import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/admission-fixture.js";
+import { AuthorityDatabase, createCredentialStore, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { happySessionHarness, personLookupQueuedRun, type SessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, fixtureProcessIdentityObserver, composeInput, cleanup } = createWorkerCompositionTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
+const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, captureSyntheticClosure, resolvedSettings, profileAdmission, stateRootFor, concurrentWorkers, databaseDescriptors, composeInput, cleanup } = createWorkerCompositionTestWorld();
 
 
 afterEach(cleanup);
 const POOL_INDEX_2 = PositiveIntSchema.parse(2);
+
+it("returns a typed changed-observation report at boot with no browser or claim effects", async () => {
+  const { repoRoot, stateRoot } = await repoRootWithState(); const clock = manualClock(new Date(NOW));
+  seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+  const sessions = happySessionHarness(); let observations = 0;
+  const input = composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 });
+  const report = await composeWorkerRuntime({ ...input,
+    preflightRunnerFactory: selected => healthyRuntimePreflightRunners(selected).map(runner => runner.check !== "authority.health" ? runner : {
+      ...runner, async run() { observations++; throw new PreflightObservationChangedError(); },
+    }) });
+  assert.equal(report.stopped, "preflight-refused"); assert.equal(report.closure, "proved"); assert.deepEqual(report.outcomes, []);
+  assert.equal(observations, 1); assert.equal(sessions.opens("ucpath"), 0); assert.equal(sessions.opens("crm"), 0);
+  const database = reopen(stateRoot, clock);
+  assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+});
+
+it("returns a blocked preflight refusal at drain boot without claiming or opening browsers", async () => {
+  const { repoRoot, stateRoot } = await repoRootWithState(); const clock = manualClock(new Date(NOW));
+  seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+  const sessions = happySessionHarness();
+  const input = composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 });
+  const report = await composeWorkerRuntime({ ...input,
+    preflightRunnerFactory: selected => healthyRuntimePreflightRunners(selected).map(runner => runner.check !== "authority.health" ? runner : {
+      ...runner, async run() { return { check: runner.check, state: "unhealthy" as const, summary: "Fixture blocked", impact: "Claim blocked" }; },
+    }) });
+  assert.equal(report.stopped, "preflight-refused");
+  assert.equal(report.preflightRefusal?.code, "PREFLIGHT_BLOCKED");
+  assert.equal(report.closure, "proved");
+  assert.equal(sessions.opens("ucpath"), 0); assert.equal(sessions.opens("crm"), 0);
+  assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+});
 
 function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, patch: unknown) {
   patch = settingsSetOperations(patch);
@@ -44,7 +82,8 @@ function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, pa
     target: { expectedRevision: 1 },
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
   };
-  void repoRoot; void clock;
+  const baseline = reopen(stateRootFor(repoRoot), clock);
+  try { command.target.expectedRevision = readSettings(baseline.authority).revision; } finally { baseline.close(); }
   return Object.freeze({ command, settingsFingerprint: derivePersistedSettingsFingerprint({ browser: { headless: false } }) });
 }
 
@@ -65,9 +104,9 @@ function persistJournaledWorkerSettings(
     const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") });
     database.withAuthorityTransaction((repositories) => {
       const configSnapshotId = "55555555-5555-4555-8555-555555555555";
-      repositories.configSnapshots.insert({
+      repositories.configSnapshots.insert({ ...PREFERENCES_SNAPSHOT,
         configSnapshotId,
-        revision: 1,
+        revision: record.revision,
         fingerprint: resolved.fingerprint,
         capturedAt: clock.now().toISOString(),
         capturedBy: "local-operator",
@@ -94,10 +133,10 @@ function journalWorkerSettings(
 ): void {
   const clock = manualClock(new Date(NOW));
   if (database.authority.runtimeConfig.get() === undefined) {
-    const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, {
+    const resolved = resolveConfigWithProvenance(readSettings(database.authority).settings, hostConfigFacts({}), clock, {
       stateRoot, artifactRoot: join(stateRoot, "artifacts"),
     });
-    database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
+    database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: readSettings(database.authority).revision,
       fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(),
       capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
   }
@@ -106,16 +145,11 @@ function journalWorkerSettings(
   assert.equal(result.state, "applied");
 }
 
-function assertStoppedWorkerProcessRecord(repoRoot: string, clock: TestClock, generation = 3): void {
-  const snapshot = observeRuntimeLockSnapshot({
-    processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
-    sourceDatabaseIdentity: "a".repeat(64),
-  }, clock, {
-    // Re-read through the exact identity observer that wrote this fixture
-    // record. An unreleased record is therefore active, not a PID-reuse arm.
-    observeProcessIdentity: fixtureProcessIdentityObserver,
-  });
-  assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation });
+function assertStoppedWorkerLifetimes(repoRoot: string, clock: TestClock): void {
+  const database = reopen(stateRootFor(repoRoot), clock);
+  for (const slot of database.authority.workerSlots.list()) {
+    assert.equal(database.authority.runs.listByWorker(slot.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state)), false);
+  }
 }
 
 describe("worker CLI argument parsing", () => {
@@ -150,7 +184,7 @@ describe("worker CLI argument parsing", () => {
 
   it("refuses missing values, duplicate drain flags, and unknown flags by name", () => {
     assert.throws(() => parseWorkerArguments([]), /needs a workflow id/);
-    assert.throws(() => parseWorkerArguments(["not-registered"]), /is not registered/);
+    assert.throws(() => parseWorkerArguments(["not-registered", "--pool-index", "1"]), /is not registered/);
     assert.throws(
       () => parseWorkerArguments(["separations-kuali-finalization", "--pool-index", "1", "--drain"]),
       /is not registered/,
@@ -172,19 +206,17 @@ describe("worker CLI argument parsing", () => {
 
 describe("composed worker runtime", () => {
   it("three workers boot, poll and claim without creating file authority", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const reports = await Promise.all([0, 1, 2].map((offset) =>
-      composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: happySessionHarness(),
-        poolIndex: PositiveIntSchema.parse(offset + 1), processId: 4300 + offset }))));
+    const reports = await concurrentWorkers(repoRoot, clock);
     assert.equal(reports.flatMap(({ outcomes }) => outcomes).length, 1,
       "one queued run is claimed once while other workers observe idle");
     assert.equal(existsSync(join(stateRoot, "settings")), false, "boot and polling create no file authority or lock");
   });
 
-  it("keeps a worker live and idle after completion and reuses its exact lifetime for another queued item", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+  it("keeps a worker idle after completion and claims another queued item in the same process", async () => {
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     persistJournaledWorkerSettings(repoRoot, stateRoot, clock, { daemon: { idleRepollMs: 10 } });
@@ -202,8 +234,8 @@ describe("composed worker runtime", () => {
         args: [WORKFLOW_ID, "--pool-index", "1"], stopSignal: stop.signal }),
       heartbeatIntervalMs: 10,
       afterClaimAdmissionCheck: () => {
-        const lease = database.authority.workerLeases.listLive(WORKFLOW_ID)[0];
-        if (lease?.lifecycle.state !== "idle") return;
+        const member = database.authority.workerSlots.active(WORKFLOW_ID)[0];
+        if (member === undefined || database.authority.runs.listByWorker(member.workerId).some(run => runClaim(run) !== undefined)) return;
         if (database.authority.runs.get(RUN_ID)?.lifecycle.state === "terminal") firstIdle?.();
         if (database.authority.runs.get(secondId)?.lifecycle.state === "terminal") secondIdle?.();
       },
@@ -213,24 +245,56 @@ describe("composed worker runtime", () => {
       await idleAfterFirst;
       const member = database.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(member);
       const pool = database.authority.workerPools.get(WORKFLOW_ID); assert.ok(pool);
-      const lease = database.authority.workerLeases.get(member.workerId); assert.ok(lease);
       const first = database.authority.runs.get(RUN_ID); assert.ok(first?.lifecycle.state === "terminal");
       assert.equal(first.lifecycle.outcome, "done"); assert.equal(member.retiredAt, null);
-      assert.equal(lease.lifecycle.state, "idle"); assert.equal(lease.control.directive, "run");
+      assert.equal(member.paused, false);
       seedQueuedRun(stateRoot, clock, personLookupQueuedRun({ runId: secondId, itemId: randomUUID() }));
       await idleAfterSecond;
       const second = database.authority.runs.get(secondId); assert.ok(second?.lifecycle.state === "terminal");
       assert.equal(second.lifecycle.outcome, "done");
       assert.deepEqual(database.authority.workerPools.get(WORKFLOW_ID), pool);
       assert.deepEqual(database.authority.workerSlots.get(member.workerId), member);
-      const reused = database.authority.workerLeases.get(member.workerId); assert.ok(reused);
-      assert.equal(reused.leaseGeneration, lease.leaseGeneration); assert.equal(reused.processId, lease.processId);
-      assert.equal(reused.lifecycle.state, "idle"); assert.equal(reused.control.directive, "run");
+      assert.equal(second.lifecycle.state === "terminal" && second.claimGeneration, 1);
+    } finally { stop.abort(); await running; }
+  });
+
+  it("boots a paused member that claims nothing, then claims on its idle repoll once the slot is resumed without any message", async () => {
+    const { repoRoot, stateRoot } = await repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    persistJournaledWorkerSettings(repoRoot, stateRoot, clock, { daemon: { idleRepollMs: 10 } });
+    const stop = new AbortController();
+    const input = composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
+      args: [WORKFLOW_ID, "--pool-index", "1"], stopSignal: stop.signal });
+    const database = reopen(stateRoot, clock);
+    const member = database.authority.workerSlots.active(WORKFLOW_ID)[0]; assert.ok(member);
+    database.authority.workerSlots.setPaused({ workerId: member.workerId, paused: true, now: NOW });
+    let claimAdmissions = 0;
+    const running = composeWorkerRuntime({
+      ...input,
+      heartbeatIntervalMs: 10,
+      afterClaimAdmissionCheck: () => { claimAdmissions += 1; },
+    });
+    let failure: unknown;
+    void running.catch((error: unknown) => { failure = error; });
+    try {
+      // Ten idle repolls while paused: the queued run stays unclaimed.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      assert.equal(failure, undefined);
+      assert.equal(claimAdmissions, 0);
+      assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+      database.authority.workerSlots.setPaused({ workerId: member.workerId, paused: false, now: NOW });
+      await vi.waitFor(() => {
+        assert.equal(failure, undefined);
+        const run = database.authority.runs.get(RUN_ID);
+        assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
+      }, { timeout: 5_000, interval: 10 });
+      assert.equal(claimAdmissions >= 1, true);
     } finally { stop.abort(); await running; }
   });
 
   it("starts and awaits shutdown of registered gate source ports", async () => {
-    const { repoRoot } = repoRootWithState();
+    const { repoRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     let subscribed = 0;
     let stopped = 0;
@@ -253,7 +317,7 @@ describe("composed worker runtime", () => {
   });
 
   it("ignores retired unjournaled file bytes and claims using SQLite settings", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     const directory = join(stateRoot, "settings"); mkdirSync(directory);
     const path = join(directory, "settings.json"); writeFileSync(path, "retired invalid authority");
@@ -261,13 +325,13 @@ describe("composed worker runtime", () => {
     const report = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1 }));
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
     assert.equal(readFileSync(path, "utf8"), "retired invalid authority");
-    assertStoppedWorkerProcessRecord(repoRoot, clock);
+    assertStoppedWorkerLifetimes(repoRoot, clock);
   });
 
   it.each(SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS)(
     "refuses valid settings bytes with corrupt $label on worker boot",
     async (corruption) => {
-      const { repoRoot, stateRoot } = repoRootWithState();
+      const { repoRoot, stateRoot } = await repoRootWithState();
       const clock = manualClock(new Date(NOW));
       seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
       const sessions = happySessionHarness();
@@ -278,29 +342,39 @@ describe("composed worker runtime", () => {
         clock,
         corruption,
         activateRuntime: true,
-        admission: fixtureAdmission(repoRoot),
+        admission: profileAdmission(repoRoot), credentials: boundProfileCredentials(profileAdmission(repoRoot)),
       });
       const before = readFileSync(join(stateRoot, "state.db"));
-      await assert.rejects(
-        composeWorkerRuntime(input),
-        corruption.id === "command-envelope" ? /command-row-identity-mismatch/u : /command-audit-settlement-mismatch/u,
-      );
+      const readPrivateFile = privateFiles.readPrivateFile;
+      const credentialReads: string[] = [];
+      const readSpy = vi.spyOn(privateFiles, "readPrivateFile").mockImplementation((path, options) => {
+        if (path === join(stateRoot, "credentials", "protected.json")) credentialReads.push(path);
+        return readPrivateFile(path, options);
+      });
+      try {
+        await assert.rejects(
+          composeWorkerRuntime(input),
+          corruption.id === "command-envelope" ? /command-row-identity-mismatch/u : /command-audit-settlement-mismatch/u,
+        );
+      } finally { readSpy.mockRestore(); }
       const raw = new DatabaseSync(join(stateRoot, "state.db"), { readOnly: true });
       try {
         const row = raw.prepare("SELECT payload_json FROM settings WHERE id='current'").get();
         assert.equal(typeof row?.payload_json, "string");
         assert.deepEqual(AppSettingsSchema.parse(JSON.parse(String(row?.payload_json))).saved, fixture.record);
         assert.equal(raw.prepare("SELECT state FROM runs WHERE id=?").get(RUN_ID)?.state, "queued");
+        // The pool admits the launched slot before boot; a refused boot adds or retires none.
+        assert.deepEqual(raw.prepare("SELECT id FROM worker_slots WHERE retired_at IS NULL").all().map(row => row.id), ["person-lookup-worker-1"]);
       } finally { raw.close(); }
       assert.deepEqual(readFileSync(join(stateRoot, "state.db")), before);
+      assert.deepEqual(credentialReads, [], "native corruption refuses before credential values are read");
       assert.equal(sessions.opens("ucpath"), 0);
       assert.equal(sessions.opens("crm"), 0);
-      assertStoppedWorkerProcessRecord(repoRoot, clock, 2);
     },
   );
 
   it("uses persisted settings after restart for the worker session-acquisition bound", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     persistJournaledWorkerSettings(
       repoRoot,
@@ -312,12 +386,23 @@ describe("composed worker runtime", () => {
       stateRoot,
       clock,
       personLookupQueuedRun(),
-      resolveConfigWithProvenance({ timeouts: { sessionAcquireMs: 1 } }, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }),
+      resolvedSettings(stateRoot, clock),
     );
+    const unusedResources = happySessionHarness();
+    let acquisitionStarts = 0, acquisitionAborts = 0;
     const neverOpeningSessions: SessionFactoryHarness = {
-      ...happySessionHarness(),
-      factory: {
-        open: () => new Promise<never>(() => undefined),
+      ...unusedResources,
+      factory: { probeProfile: async () => undefined,
+        open: input => new Promise<never>((_resolve, reject) => {
+          acquisitionStarts++;
+          const abort = () => {
+            const reason: unknown = input.signal.reason;
+            assert.ok(reason instanceof Error, "actual acquisition cancellation must carry its Error");
+            acquisitionAborts++; reject(reason);
+          };
+          if (input.signal.aborted) abort();
+          else input.signal.addEventListener("abort", abort, { once: true });
+        }),
       },
     };
     const stop = new AbortController();
@@ -338,13 +423,16 @@ describe("composed worker runtime", () => {
       assert.ok(failed?.state === "failed");
       const failure = reopen(stateRoot, clock).authority.failures.get(failed.failureId);
       assert.match(failure?.summary ?? "", /exceeded its 1ms timeouts\.sessionAcquireMs bound/u);
+      assert.equal(acquisitionStarts, 1);
+      assert.equal(acquisitionAborts, 1);
+      assert.equal(unusedResources.opens(), 0);
     } finally {
       clearTimeout(stopFallback);
     }
   });
 
   it("executes a retained queued run after settings change", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const original = reopen(stateRoot, clock).authority.runs.get(RUN_ID); assert.ok(original);
@@ -364,12 +452,13 @@ describe("composed worker runtime", () => {
   });
 
   it("rolls back a nested settings save when ownership fails at claim admission before either browser opens", async () => {
-    const { repoRoot, stateRoot } = repoRootWithState();
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const sessions = happySessionHarness();
     let admissionCrossed = false;
     let admissionSettingsRecord: ReturnType<typeof readSettings> | undefined;
+    let admissionCurrentRecord: ReturnType<AuthorityDatabase["authority"]["settingsCurrent"]["get"]>;
     let admissionDatabase: AuthorityDatabase | undefined;
 
     const refusal = await composeWorkerRuntime({
@@ -393,6 +482,7 @@ describe("composed worker runtime", () => {
           );
           // Nested settings application must roll back with failed claim admission.
           admissionSettingsRecord = readSettings(admissionDatabase.authority);
+          admissionCurrentRecord = admissionDatabase.authority.settingsCurrent.get();
           journalWorkerSettings(admissionDatabase, persisted, stateRoot);
           admissionCrossed = true;
           throw new Error("synthetic stale owner at claim admission");
@@ -401,7 +491,10 @@ describe("composed worker runtime", () => {
       () => undefined,
       (error: unknown) => error,
     );
-    assert.equal(admissionCrossed, true);
+    assert.equal(admissionCrossed, true, JSON.stringify({
+      errorClass: refusal instanceof Error && ["Error", "TypeError", "RangeError", "RuntimeCustodyUncertainError"].includes(refusal.name) ? refusal.name : "unclassified",
+      messageSha256: createHash("sha256").update(refusal instanceof Error ? refusal.message : typeof refusal).digest("hex"),
+    }));
     assert.deepEqual(readSettings(reopen(stateRoot, clock).authority), admissionSettingsRecord);
     const database = reopen(stateRoot, clock);
     assert.equal(sessions.opens("ucpath"), 0);
@@ -412,11 +505,11 @@ describe("composed worker runtime", () => {
     );
     assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
     assert.equal(database.authority.commands.get("33333333-3333-4333-8333-333333333333"), undefined);
-    assert.equal(database.authority.settingsCurrent.get(), undefined);
+    assert.deepEqual(database.authority.settingsCurrent.get(), admissionCurrentRecord);
   });
 
-  it("releases its process record when authority open fails without masking that error", async () => {
-    const { repoRoot } = repoRootWithState();
+  it("releases worker admission when authority open fails without masking that error", async () => {
+    const { repoRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     const openFailure = new Error("injected authority open failure");
     await assert.rejects(
@@ -426,7 +519,7 @@ describe("composed worker runtime", () => {
           clock,
           sessions: happySessionHarness(),
           poolIndex: POOL_INDEX_1,
-          processId: process.pid,
+
         }),
         openDatabase: () => {
           throw openFailure;
@@ -434,45 +527,36 @@ describe("composed worker runtime", () => {
       }),
       (error: unknown) => error === openFailure,
     );
-    const snapshot = observeRuntimeLockSnapshot({
-      processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
-      sourceDatabaseIdentity: "a".repeat(64),
-    }, clock);
-    assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
+    const database = reopen(stateRootFor(repoRoot), clock);
+    assert.deepEqual(database.authority.workerSlots.list().map(slot => [slot.workerId, slot.retiredAt]), [["person-lookup-worker-1", null]]);
   });
 
-  it("keeps its process record active when database closure cannot be proven", async () => {
-    const { repoRoot } = repoRootWithState();
+  it("retains controller and database custody when database closure cannot be proven", async () => {
+    const { repoRoot, stateRoot } = await repoRootWithState();
     const clock = manualClock(new Date(NOW));
     const closeFailure = new Error("injected database close failure");
     let stillOpen: AuthorityDatabase | undefined;
-    await assert.rejects(
-      composeWorkerRuntime({
-        ...composeInput({
-          repoRoot,
-          clock,
-          sessions: happySessionHarness(),
-          poolIndex: POOL_INDEX_1,
-          processId: process.pid,
-        }),
-        closeDatabase: (database) => {
-          stillOpen = database;
-          throw closeFailure;
-        },
-      }),
-      (error: unknown) => error === closeFailure,
-    );
-    assert.ok(stillOpen !== undefined);
-    assert.doesNotThrow(() => stillOpen?.getMeta(), "the injected close failure left the handle usable");
-    const snapshot = observeRuntimeLockSnapshot({
-      processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
-      sourceDatabaseIdentity: "a".repeat(64),
-    }, clock);
-    assert.deepEqual(snapshot.processLocks.workers, {
-      state: "active",
-      generation: 3,
-      pid: process.pid,
-    });
-    stillOpen.close();
+    const input = composeInput({ repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1 });
+    const captured = captureSyntheticClosure(repoRoot, clock, credentialStores.createCredentialStore);
+    const storeSpy = vi.spyOn(credentialStores, "createCredentialStore").mockImplementation(options => captured.createStore(options));
+    try {
+      await assert.rejects(composeWorkerRuntime({ ...input, openDatabase: (options, openClock) => captured.openDatabase(options, openClock),
+        closeDatabase: database => { stillOpen = database; throw closeFailure; } }), error => {
+        assert.ok(error instanceof RuntimeCustodyUncertainError);
+        const contains = (value: unknown): boolean => value === closeFailure
+          || value instanceof AggregateError && value.errors.some(member => contains(member));
+        assert.equal(contains(error), true);
+        return true;
+      });
+      assert.ok(stillOpen);
+      const retainedDatabase = stillOpen;
+      assert.doesNotThrow(() => retainedDatabase.getMeta(), "the injected close failure left the handle usable");
+      assert.equal(databaseDescriptors(stateRoot).length > 0, true);
+      input.lifetimeLock.assertHeld();
+      assert.ok(captured.report);
+      assert.deepEqual(captured.report.outcomes, []);
+      captured.assertHeld();
+      await captured.closeAfterSyntheticFailure([]);
+    } finally { captured.restore(); storeSpy.mockRestore(); }
   });
 });

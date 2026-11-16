@@ -1,4 +1,4 @@
-import { registerFixturePreflightRoutes } from "../../../../parity/helpers/fixture-preflight-routes.js";
+import { registerFixturePreflightRoutes } from "../../../../mocks/helpers/fixture-preflight-routes.js";
 import { wireError } from "../../../fixtures/dashboard/fixture-wire-error.js";
 import { Hono } from "hono";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import type { FixtureBffOptions, FixtureDashboardProfile } from "../../../fixtures/dashboard/fixture-profile.js";
-import { type ParityBundleProof } from "../served-fixtures/bundle.js";
+import { type MockBundleProof } from "../served-fixtures/bundle.js";
 import { createStaticAssetFixture } from "../static-assets.js";
 import type * as DiagnosticJpegFixtureTypes from "../../../fixtures/dashboard/diagnostic-jpeg-fixture.js";
 import type * as FixtureDayTypes from "../../../fixtures/dashboard/fixture-day.js";
@@ -111,7 +111,7 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
       manifest: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,
       screenshotBytes: FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES,
     };
-    registerFixtureShellRoutes({ app, profile });
+    registerFixtureShellRoutes({ app, profile, dayWire });
 
     registerFixtureQueueRoutes({ app, dayWire });
 
@@ -125,7 +125,7 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
     if (input.preflightScenario) registerFixturePreflightRoutes(app, profile, input.preflightScenario);
     else app.get("/api/v1/preflight", c => c.json({ state: "unavailable", reason: "This shell fixture does not compose runtime readiness." }));
 
-    registerFixtureStorageRoutes({ app });
+    registerFixtureStorageRoutes({ app, runHistory: input.runHistory });
 
     registerFixtureExplorerRoutes({ app });
 
@@ -184,12 +184,13 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
   async function startFixtureServer(
     input: Readonly<{
       distDir: string;
-      bundle: ParityBundleProof;
+      bundle: MockBundleProof;
       profile?: FixtureDashboardProfile;
       dayWire?: DashboardDayWire;
       diagnosticFixture?: "restricted-jpeg";
       runCaptureScenario?: "evidence";
       preflightScenario?: FixtureBffOptions["preflightScenario"];
+      runHistory?: FixtureBffOptions["runHistory"];
     }>,
   ): Promise<FixtureServer> {
 
@@ -200,6 +201,7 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
       ...(input.diagnosticFixture === undefined ? {} : { diagnosticFixture: input.diagnosticFixture }),
       ...(input.runCaptureScenario === undefined ? {} : { runCaptureScenario: input.runCaptureScenario }),
       ...(input.preflightScenario === undefined ? {} : { preflightScenario: input.preflightScenario }),
+      ...(input.runHistory === undefined ? {} : { runHistory: input.runHistory }),
     });
     const openStreams = new Set<ServerResponse>();
     const artifactExchanges: FixtureArtifactExchange[] = [];

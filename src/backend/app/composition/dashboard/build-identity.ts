@@ -14,19 +14,20 @@ import {
 } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
+import { digestFiles, filesUnder } from "../../../runtime/source-digest.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 
 export const DASHBOARD_BUILD_IDENTITY_FILE = "dashboard-build-identity.json";
 export const DASHBOARD_BUILD_COMMAND = "npm run web:build";
-export const PARITY_BUILD_COMMAND = "npm exec vite -- build --config vite.parity.config.ts";
-export type DashboardBuildCommand = typeof DASHBOARD_BUILD_COMMAND | typeof PARITY_BUILD_COMMAND;
+export const MOCK_BUILD_COMMAND = "npm exec vite -- build --config vite.mocks.config.ts";
+export type DashboardBuildCommand = typeof DASHBOARD_BUILD_COMMAND | typeof MOCK_BUILD_COMMAND;
 
 const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/u);
 export const DashboardBuildIdentitySchema = z.strictObject({
   stampVersion: z.literal(1),
   inputDigest: Sha256Schema,
   outputDigest: Sha256Schema,
-  buildScript: z.enum([DASHBOARD_BUILD_COMMAND, PARITY_BUILD_COMMAND]),
+  buildScript: z.enum([DASHBOARD_BUILD_COMMAND, MOCK_BUILD_COMMAND]),
   builtAt: z.string().datetime({ offset: true }),
 });
 export type DashboardBuildIdentity = z.infer<typeof DashboardBuildIdentitySchema>;
@@ -40,35 +41,14 @@ const INPUT_FILES = [
   "package-lock.json",
 ] as const;
 
-const PARITY_INPUT_FILES = ["vite.parity.config.ts", "tests/parity/app-entry.tsx", "tests/parity/helpers/workflow-composition.ts"] as const;
-
-function filesUnder(root: string, into: string[]): void {
-  const info = lstatSync(root);
-  if (!info.isDirectory()) throw new Error(`dashboard build input is not a directory: ${root}`);
-  for (const entry of readdirSync(root, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-    const path = join(root, entry.name);
-    if (entry.isDirectory()) filesUnder(path, into);
-    else if (entry.isFile()) into.push(path);
-    else throw new Error(`dashboard build input contains an unsafe entry: ${relative(root, path)}`);
-  }
-}
-
-function digestFiles(base: string, files: readonly string[]): string {
-  const hash = createHash("sha256");
-  for (const file of files) {
-    hash.update(relative(base, file).split(sep).join("/"));
-    hash.update("\0");
-    hash.update(createHash("sha256").update(readFileSync(file)).digest("hex"));
-    hash.update("\n");
-  }
-  return hash.digest("hex");
-}
+const MOCK_INPUT_FILES = ["vite.mocks.config.ts", "tests/mocks/app-entry.tsx", "tests/mocks/helpers/workflow-composition.ts"] as const;
 
 export function computeDashboardBuildInputDigest(repoRoot: string, buildScript: DashboardBuildCommand = DASHBOARD_BUILD_COMMAND): string {
   const root = resolve(repoRoot);
   const files: string[] = [];
   for (const inputRoot of INPUT_ROOTS) filesUnder(join(root, inputRoot), files);
-  for (const inputFile of [...INPUT_FILES, ...(buildScript === PARITY_BUILD_COMMAND ? PARITY_INPUT_FILES : [])]) {
+  if (buildScript === MOCK_BUILD_COMMAND) filesUnder(join(root, "tests/support/helpers/dashboard/controls"), files);
+  for (const inputFile of [...INPUT_FILES, ...(buildScript === MOCK_BUILD_COMMAND ? MOCK_INPUT_FILES : [])]) {
     const path = join(root, inputFile);
     if (!lstatSync(path).isFile()) throw new Error(`dashboard build input is not a regular file: ${inputFile}`);
     files.push(path);

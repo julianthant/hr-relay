@@ -1,30 +1,33 @@
 import { createHash } from "node:crypto";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute,join,relative,resolve } from "node:path";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { Clock } from "../../../rules/time/clock.js";
-import { systemClock } from "../../../rules/time/clock.js";
-import { FingerprintSchema } from "../../../rules/identity/ids.js";
-import { defaultRuntimePaths } from "./runtime-paths.js";
-import { HostConfigFactsSchema, type HostConfigFacts } from "../../../models/config/host-display.js";
+import { HostConfigFactsSchema,type HostConfigFacts } from "../../../models/config/host-display.js";
 import {
-  ConfigLeafPathSchema,
-  ConfigProvenanceSchema,
-  configLeafPaths,
-  type ConfigProvenance,
+ConfigLeafPathSchema,
+ConfigProvenanceSchema,
+configLeafPaths,
+type ConfigProvenance,
 } from "../../../models/config/provenance.js";
 import {
-  ConfigSchema,
-  SettingsOverrideInputSchema,
-  DEFAULT_DISPLAY,
-  type Config,
-  type SettingsOverride,
+ConfigSchema,
+DEFAULT_DISPLAY,
+SettingsOverrideInputSchema,
+type Config,
+type SettingsOverride,
 } from "../../../models/config/schema.js";
+import { PersonPreferencesSchema, resolvePersonPreferences, derivePersonPreferencesFingerprint } from "../../../models/config/person-preferences.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock } from "../../../rules/time/clock.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { defaultRuntimePaths } from "./runtime-paths.js";
 
-export { ConfigLeafPathSchema, ConfigProvenanceSchema, configLeafPaths } from "../../../models/config/provenance.js";
-export type { ConfigLeafPath, ConfigProvenance } from "../../../models/config/provenance.js";
+export { ConfigLeafPathSchema,ConfigProvenanceSchema,configLeafPaths } from "../../../models/config/provenance.js";
+export type { ConfigLeafPath,ConfigProvenance } from "../../../models/config/provenance.js";
 export const ResolvedConfigSchema = z.strictObject({
   config: ConfigSchema,
+  preferences: PersonPreferencesSchema,
+  preferencesFingerprint: FingerprintSchema,
   /** Provenance is explanatory metadata, never runtime decision input. */
   provenance: z.record(ConfigLeafPathSchema, ConfigProvenanceSchema),
   fingerprint: FingerprintSchema,
@@ -76,7 +79,7 @@ function mergeAnnualDates(
   return Object.fromEntries(entries);
 }
 
-type SettingsOverrideByConfigGroup = Exclude<keyof SettingsOverride, keyof Config> extends never
+type SettingsOverrideByConfigGroup = Exclude<keyof SettingsOverride, keyof Config | "preferences"> extends never
   ? { readonly [Group in keyof Config]: Group extends keyof SettingsOverride ? SettingsOverride[Group] : never }
   : never;
 
@@ -135,9 +138,10 @@ function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts
   const settings = SettingsOverrideInputSchema.parse(settingsInput);
   const hostFacts = HostConfigFactsSchema.parse(hostFactsInput);
   const admittedPair = runtimeStoragePair === undefined ? undefined : RuntimeStoragePairSchema.parse(runtimeStoragePair);
+  if (admittedPair !== undefined && settings.paths?.browserProfileRoot !== undefined
+    && settings.paths.browserProfileRoot !== join(admittedPair.stateRoot, "browsers")) throw new Error("fixed-person-browser-root-required");
   const defaults = ConfigSchema.parse({
-    paths: { ...defaultRuntimePaths(), ...admittedPair,
-      ...(admittedPair === undefined ? {} : { browserProfileRoot: join(admittedPair.stateRoot, "browsers"), duoCredential: join(admittedPair.stateRoot, "credentials", "duo-webauthn.json") }) }, display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
+    paths: defaultRuntimePaths(admittedPair), display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
   });
   const config = mergeSettings(defaults, settings);
 
@@ -156,7 +160,8 @@ function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts
   const fingerprint = FingerprintSchema.parse(
     createHash("sha256").update(canonicalJsonStringify(config)).digest("hex"),
   );
-  return ResolvedConfigSchema.parse({ config, provenance, fingerprint });
+  const preferences = resolvePersonPreferences(settings.preferences);
+  return ResolvedConfigSchema.parse({ config, provenance, fingerprint, preferences, preferencesFingerprint: derivePersonPreferencesFingerprint(preferences) });
 }
 
 /** Ordinary document > host/contract defaults. No environment override parameter exists. */

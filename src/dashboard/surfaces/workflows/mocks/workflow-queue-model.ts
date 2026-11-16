@@ -6,6 +6,7 @@ import { mockNeedsReview, mockWaitsForOcr, mockQueueStatus, mockRunLog, type Moc
 import { reviewCanApprove, reviewRecords } from "./workflow-review-model.js";
 import { runDisplayId, workflowDisplayCode } from "../../shared/status/run-display-model.js";
 import { mockWorkflow } from "./workflow-mock-catalog.js";
+import { localDatePart } from "../../../../rules/time/clock.js";
 
 // Presentation identities are local only; no command descriptors target them.
 export function mockQueueId(id: string): string {
@@ -17,20 +18,24 @@ export function mockRunDisplayId(run: Pick<MockRun, "id" | "workflowId">): strin
   return runDisplayId(mockQueueId(run.id), workflowDisplayCode(mockWorkflow(run.workflowId).label));
 }
 
-export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
+export function mockQueueSurface(run: MockRun, anchorIso: string, parent?: MockRun): QueueSurfaceWire {
   const review = mockNeedsReview(run);
   const records = reviewRecords(run);
   const warnings = records.flatMap(record => record.warnings);
-  const { timeline, endTime } = mockRunLog(run);
+  const { timeline, durationSeconds } = mockRunLog(run);
   const currentStep = timeline.find(stage => stage.state === "active" || stage.state === "waiting");
-  const endClock = endTime;
-  const end = `${day}T${String(Number(endClock.slice(0, 2)) + 7).padStart(2, "0")}${endClock.slice(2)}.000Z`;
+  const anchor = Date.parse(anchorIso);
+  const end = new Date(anchor).toISOString();
+  const start = new Date(anchor - durationSeconds * 1000).toISOString();
   const absent = (reason: string) => ({ state: "absent" as const, reason });
+  if (run.parentId !== undefined && parent?.id !== run.parentId) throw new Error("MOCK_QUEUE_PARENT_UNAVAILABLE");
   return QueueSurfaceWireSchema.parse({
     surfaceKind: "single", runId: mockQueueId(run.id), itemId: mockQueueId(run.id), workflowId: run.workflowId,
     traceId: `${workflowDisplayCode(mockWorkflow(run.workflowId).label)}-091000-${sha256Hex(run.id).slice(0, 4)}`, attempt: 1,
-    lineage: run.parentId ? { state: "child", parentRunId: mockQueueId(run.parentId) } : { state: "root" },
-    containment: run.parentId ? "linked" : "root", linkedRuns: [],
+    parent: parent === undefined ? null : { runId: mockQueueId(parent.id), visibility: "linked",
+      partitionDay: localDatePart(new Date(anchor - mockRunLog(parent).durationSeconds * 1000)), workflowId: parent.workflowId,
+      label: mockWorkflow(parent.workflowId).label, title: parent.subject, panelKind: mockNeedsReview(parent) ? "review" : "run", status: mockQueueStatus(parent) },
+    linkedRuns: [],
     appVersion: absent("Local workflow fixture"), descriptorVersion: 1,
     descriptorHash: sha256Hex(run.workflowId), configFingerprint: sha256Hex(JSON.stringify(run.draft)),
     resolvedInstances: [], dryRun: run.draft.dryRun,
@@ -39,7 +44,7 @@ export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
     facts: absent("Results appear in Logs"), title: run.subject,
     displayName: absent("Use the input subject"), subtitle: absent("The panel names the workflow"),
     status: mockQueueStatus(run),
-    startedAt: `${day}T16:10:00.000Z`, updatedAt: end,
+    startedAt: start, updatedAt: end,
     endedAt: review || mockWaitsForOcr(run) ? absent("Records await approval") : { state: "present", value: end },
     gateOpenedAt: review ? { state: "present", value: end } : absent("No open approval"),
     liveMessage: review ? { state: "present", value: `${records.filter(reviewCanApprove).length} of ${records.length} records ready for approval` } : currentStep ? { state: "present", value: currentStep.label } : absent("No active step"),
@@ -53,8 +58,8 @@ export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
   });
 }
 
-export function mockQueueSurfaces(runs: readonly MockRun[], day: string): readonly QueueSurfaceWire[] {
-  const surfaces = runs.map(run => mockQueueSurface(run, day));
+export function mockQueueSurfaces(runs: readonly MockRun[], anchorIso: string, allRuns = runs): readonly QueueSurfaceWire[] {
+  const surfaces = runs.map(run => mockQueueSurface(run, anchorIso, run.parentId === undefined ? undefined : allRuns.find(parent => parent.id === run.parentId)));
   if (new Set(surfaces.map(surface => surface.runId)).size !== runs.length) throw new Error("MOCK_QUEUE_ID_COLLISION");
   return surfaces;
 }

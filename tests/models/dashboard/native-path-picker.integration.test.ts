@@ -44,8 +44,9 @@ describe("Settings native picker route", () => {
     let calls = 0;
     const app = appWith(async () => { calls += 1; return { state: "failed" }; });
     assert.equal(NativePathPickerRequestSchema.safeParse({ field: "paths.unknown" }).success, false);
+    assert.equal(NativePathPickerRequestSchema.safeParse({ field: "paths.duoCredential" }).success, false);
     const response = await app.request("http://127.0.0.1:3210/api/v1/settings/path-picker", { method: "POST", headers,
-      body: JSON.stringify({ field: "paths.duoCredential", initialPath: "relative/file" }) });
+      body: JSON.stringify({ field: "paths.i9CheckTrackerPath", initialPath: "relative/file" }) });
     assert.equal(response.status, 400);
     assert.equal((await response.json() as { code: string }).code, "NATIVE_PATH_HINT_INVALID");
     assert.equal(calls, 0);

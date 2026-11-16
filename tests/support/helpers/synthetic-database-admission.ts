@@ -1,5 +1,170 @@
+import { retainAuthoritySourceClosure } from "../../../src/backend/storage/source-closure.js";
+import { createCredentialStore as productionCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
+import type { CredentialStore } from "../../../src/models/config/credential-store.js";
 import { AuthorityDatabase as RealAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { dirname, join, resolve, sep } from "node:path";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import type { Clock } from "../../../src/rules/time/clock.js";
+
+type FixtureWorker = Readonly<{ database: RealAuthorityDatabase; workerId: string; clock: Clock }>;
+const boundProfiles = new Map<string, { admission: RuntimeAdmission; machine: RuntimeAdmission; credentials: CredentialStore;
+  workers: Set<FixtureWorker> }>();
+const workerDatabases = new WeakSet<RealAuthorityDatabase>();
+
+export function registerBoundProfile(admission: RuntimeAdmission, machine: RuntimeAdmission): void {
+  const credentials = productionCredentialStore({ admission, stateRoot: admission.stateRoot });
+  const prior = boundProfiles.get(admission.stateRoot);
+  if (prior !== undefined && prior.workers.size !== 0) throw new Error("fixture-worker-custody-retained");
+  boundProfiles.set(admission.stateRoot, { admission, machine, credentials, workers: new Set() });
+}
+
+export function transferBoundFixtureWorkers(prior: RealAuthorityDatabase, admission: RuntimeAdmission, machine: RuntimeAdmission, clock: Clock): RealAuthorityDatabase {
+  const entry = boundProfiles.get(admission.stateRoot);
+  if (entry === undefined || entry.machine !== machine) throw new Error("fixture-bound-profile-owner-required");
+  const retained = [...entry.workers];
+  if (retained.some(worker => worker.database !== prior)) throw new Error("fixture-worker-custody-retained");
+  const path = join(admission.stateRoot, "state.db");
+  const credentials = productionCredentialStore({ admission, stateRoot: admission.stateRoot });
+  const successor = RealAuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "fixture-session-change" }, clock,
+    undefined, undefined, undefined, credentials);
+  for (const worker of retained) {
+    const member = successor.authority.workerSlots.get(worker.workerId);
+    if (member === undefined || member.retiredAt !== null) {
+      successor.close(); throw new Error("fixture-worker-lifetime-replaced");
+    }
+  }
+  entry.workers.clear();
+  try { prior.close(); }
+  catch (error) {
+    for (const worker of retained) entry.workers.add(worker);
+    throw retainAuthoritySourceClosure([error], { database: successor, admission: { admission, prior, workers: retained } });
+  }
+  registerBoundProfile(admission, machine);
+  for (const worker of retained) registerBoundFixtureWorker({ ...worker, database: successor, path });
+  fixturePaths.set(successor, path);
+  return successor;
+}
+
+export function unregisterBoundProfile(admission: RuntimeAdmission): void {
+  const entries = [...boundProfiles].filter(([, entry]) => entry.admission === admission);
+  const entry = entries[0];
+  if (entries.length !== 1 || entry === undefined) throw new Error("fixture-bound-profile-owner-required");
+  if (entry[1].workers.size !== 0) throw new Error("fixture-worker-custody-retained");
+  boundProfiles.delete(entry[0]);
+}
+
+export function assertBoundFixtureWorkersReleased(admission: RuntimeAdmission): void {
+  const entries = [...boundProfiles].filter(([, entry]) => entry.admission === admission);
+  const entry = entries[0];
+  if (entries.length !== 1 || entry === undefined) throw new Error("fixture-bound-profile-owner-required");
+  if (entry[1].workers.size !== 0) throw new Error("fixture-worker-custody-retained");
+}
+
+const syntheticWorkerStops = new WeakMap<object, { readonly path: string; readonly stop: () => void }>();
+
+export function detachBoundFixtureWorkers(database: RealAuthorityDatabase): void {
+  const registered = syntheticWorkerStops.get(database);
+  if (registered === undefined) return;
+  const admission = boundProfileAdmission(registered.path);
+  const entry = boundProfiles.get(admission.stateRoot);
+  if (entry === undefined) return;
+  for (const worker of [...entry.workers]) {
+    if (worker.database !== database) continue;
+    entry.workers.delete(worker);
+  }
+}
+
+export function stopSyntheticDatabaseWorkers(input: Pick<Parameters<typeof registerBoundFixtureWorker>[0], "database" | "path">): void {
+  const registered = syntheticWorkerStops.get(input.database);
+  if (registered === undefined || registered.path !== input.path) throw new Error("synthetic-database-fixture-unavailable");
+  registered.stop();
+}
+
+export function registerBoundFixtureWorker(input: FixtureWorker & Readonly<{ path: string }>): void {
+  const admission = boundProfileAdmission(input.path);
+  const entry = boundProfiles.get(admission.stateRoot);
+  if (entry?.admission !== admission || input.database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) {
+    throw new Error("fixture-worker-database-owner-mismatch");
+  }
+  fixturePaths.set(input.database, input.path);
+  if ([...entry.workers].some(worker => worker.workerId === input.workerId)) throw new Error("fixture-worker-owner-already-retained");
+  const worker = Object.freeze({ database: input.database, workerId: input.workerId, clock: input.clock });
+  entry.workers.add(worker);
+  if (workerDatabases.has(input.database)) return;
+  workerDatabases.add(input.database);
+  // A fixture worker owns no process; releasing it requires that it holds no claimed run in validated current authority.
+  syntheticWorkerStops.set(input.database, { path: input.path, stop: () => {
+    const owners = [...entry.workers].filter(owner => owner.database === input.database);
+    if (owners.length === 0) return;
+    const claimed = input.database.withAuthorityTransaction(repositories => owners
+      .filter(owner => repositories.runs.listByWorker(owner.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state))));
+    if (claimed.length !== 0) throw new Error("fixture-worker-claim-retained");
+  } });
+  const close = input.database.close.bind(input.database);
+  let databaseClosed = false;
+  input.database.close = () => {
+    if (!databaseClosed) {
+      try { stopSyntheticDatabaseWorkers(input); }
+      catch (error) { throw new AggregateError([error], "fixture-worker-closure-unproved", { cause: error }); }
+    }
+    const retained = [...entry.workers].filter(value => value.database === input.database);
+    if (!databaseClosed) { close(); databaseClosed = true; }
+    for (const owner of retained) entry.workers.delete(owner);
+  };
+}
+
+export function boundFixtureWorker(database: RealAuthorityDatabase, path: string, workerId: string): boolean {
+  const admission = boundProfileAdmission(path), entry = boundProfiles.get(admission.stateRoot);
+  if (entry?.admission !== admission || database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) return false;
+  const owner = [...entry.workers].find(worker => worker.database === database && worker.workerId === workerId);
+  if (owner === undefined) return false;
+  return database.authority.workerSlots.get(workerId)?.retiredAt === null;
+}
+
+export function createBoundProfileCredentialStore(admission: RuntimeAdmission, options: Omit<Parameters<typeof productionCredentialStore>[0], "admission">): CredentialStore {
+  const entry = boundProfiles.get(admission.stateRoot);
+  if (entry?.admission !== admission || options.stateRoot !== admission.stateRoot) throw new Error("fixture-bound-profile-credential-owner-required");
+  return productionCredentialStore({ ...options, admission });
+}
+
+export function boundProfileCredentials(admission: RuntimeAdmission): CredentialStore {
+  const entry = boundProfiles.get(admission.stateRoot);
+  if (entry?.admission !== admission) throw new Error("fixture-bound-profile-credential-owner-required");
+  admission.assertLive();
+  return entry.credentials;
+}
+
+export function findProfileFixtureInWorkspace(workspace: string): RuntimeAdmission | undefined {
+  const root = resolve(workspace);
+  for (const [stateRoot, entry] of boundProfiles) {
+    if (stateRoot === root || stateRoot.startsWith(`${root}${sep}`)) {
+      entry.admission.assertLive();
+      return entry.admission;
+    }
+  }
+  return undefined;
+}
+
+export function findProfileFixtureAdmission(stateRoot: string): RuntimeAdmission | undefined {
+  const admission = boundProfiles.get(resolve(stateRoot))?.admission;
+  admission?.assertLive();
+  return admission;
+}
+
+export function profileFixtureStorageAdmission(path: string): RuntimeAdmission {
+  const canonical = resolve(path);
+  const admission = boundProfiles.get(dirname(canonical))?.admission;
+  if (admission === undefined || canonical !== join(admission.stateRoot, "state.db")) throw new Error("fixture-bound-profile-path-required");
+  admission.assertLive();
+  return admission;
+}
+
+export function boundProfileAdmission(path: string): RuntimeAdmission {
+  const admission = profileFixtureStorageAdmission(path);
+  admission.assertProfileRuntime();
+  return admission;
+}
+
 
 export type AuthorityDatabase = RealAuthorityDatabase;
 const fixturePaths = new WeakMap<RealAuthorityDatabase, string>();
@@ -25,20 +190,23 @@ export const AuthorityDatabase = new Proxy(RealAuthorityDatabase, {
     if (property === "open") {
       return (input: unknown, ...rest: OpenOptions) => {
         const path = AuthorityDatabaseOptionsSchema.parse(input).path;
-        const database = target.open(RuntimeAdmission.syntheticFixture(path), input, ...rest);
+        const admission = boundProfileAdmission(path);
+        const [clock, writeHooks, terminalHooks, lifecycleHooks, credentials] = rest;
+        const database = target.open(admission, input, clock, writeHooks, terminalHooks, lifecycleHooks,
+          credentials ?? boundProfileCredentials(admission));
         fixturePaths.set(database, path);
         return database;
       };
     }
     if (property === "inspectExistingReadOnly") return (path: string, timeout?: number) =>
-      target.inspectExistingReadOnly(RuntimeAdmission.syntheticFixture(path), path, timeout);
+      target.inspectExistingReadOnly((findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path)), path, timeout);
     if (property === "inspectAuthorityReadIdentityReadOnly") return (path: string, timeout?: number) =>
-      target.inspectAuthorityReadIdentityReadOnly(RuntimeAdmission.syntheticFixture(path), path, timeout);
+      target.inspectAuthorityReadIdentityReadOnly((findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path)), path, timeout);
     if (property === "inspectSpanRunAuthorityReadOnly") return (path: string,
       roots: Parameters<typeof RealAuthorityDatabase.inspectSpanRunAuthorityReadOnly>[2], timeout?: number) =>
-      target.inspectSpanRunAuthorityReadOnly(RuntimeAdmission.syntheticFixture(path), path, roots, timeout);
+      target.inspectSpanRunAuthorityReadOnly((findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path)), path, roots, timeout);
     if (property === "inspectTimelineReadOnly") return (path: string, timeout?: number, recovery?: boolean) =>
-      target.inspectTimelineReadOnly(RuntimeAdmission.syntheticFixture(path), path, timeout, recovery);
+      target.inspectTimelineReadOnly((findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path)), path, timeout, recovery);
     return Reflect.get(target, property, receiver) as unknown;
   },
 }) as unknown as SyntheticAuthorityStatic;

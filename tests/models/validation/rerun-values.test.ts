@@ -4,7 +4,7 @@ import { z } from "zod";
 import { rerunSourceFieldSchema,rerunTargetAccepts,validateRerunValueMappings } from "../../../src/models/validation/rerun-values.js";
 import { RerunValueMappingSchema } from "../../../src/models/workflow/rerun-values.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
 import { eidMapping,mappedReadDescriptor } from "../../support/fixtures/rerun-values-fixtures.js";
 import { writeFixtureDescriptor } from "../../support/fixtures/write-sequencer-fixtures.js";
 
@@ -31,6 +31,13 @@ describe("explicit Rerun mapping admission", () => {
     assert.throws(() => validateRerunValueMappings({ ...descriptor, nodes: descriptorRuntimeNodes(descriptor),
       protectedInputs: [{ inputPath: "eid" }] }, [eidMapping]), /TARGET_PROTECTED/u);
   });
+  it("rejects a mapping that targets the stored Timekeeper initials", () => {
+    const descriptor = mappedReadDescriptor();
+    const view = { ...descriptor, nodes: descriptorRuntimeNodes(descriptor),
+      input: z.strictObject({ eid: z.string(), timekeeperInitials: z.string() }) };
+    assert.throws(() => validateRerunValueMappings(view, [{ ...eidMapping, targetFieldPath: "timekeeperInitials" }]),
+      /RERUN_MAPPING_TARGET_PROTECTED/u);
+  });
   it("preserves nested union constraints and refuses coercion or positional guesses", () => {
     const view = { input: z.object({ value: z.union([z.object({ count: z.number().int().min(2) }), z.object({ other: z.string() })]).optional(),
       coerced: z.coerce.number(), list: z.array(z.string()) }), stepOmissions: [] };
@@ -48,7 +55,7 @@ describe("explicit Rerun mapping admission", () => {
     assert.equal(rerunSourceFieldSchema(node, "proof.value.receiptId").schema, node.commit.uses.writeSafety.completion.proofSchema);
   });
   it("compiles Separations mappings into the registered descriptor and validates existing omission fields", () => {
-    const descriptor = WORKFLOW_DESCRIPTORS.find(({ id }) => id === "separations"); assert.ok(descriptor);
+    const descriptor = DESCRIPTORS.find(({ id }) => id === "separations"); assert.ok(descriptor);
     const mappings = descriptor.rerunValues?.map((mapping) => RerunValueMappingSchema.parse(mapping)); assert.ok(mappings);
     assert.equal(mappings.length, 4);
     const date = mappings.find(({ fieldPath }) => fieldPath === "lastDayWorked"); assert.ok(date);

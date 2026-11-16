@@ -1,28 +1,18 @@
-
 import { join, resolve } from "node:path";
-import { rebuildRuntimeIsolation } from "./runtime-isolation.js";
-import { ConfigPathsSchema, type ConfigPaths } from "../../../models/config/schema.js";
+import { ConfigPathsSchema,ONBOARDING_DOCUMENTS_DIRECTORY_NAME,type ConfigPaths } from "../../../models/config/schema.js";
+import { applicationDataWorkspace,rebuildRuntimeIsolation } from "./runtime-isolation.js";
 
-// Resolve the isolation-pinned profile root from the repository before opening Chromium.
-let browserProfileRootMemo: string | undefined;
-
-export function defaultBrowserProfileRoot(): string {
-  browserProfileRootMemo ??= resolve(rebuildRuntimeIsolation.browserProfileRoot);
-  return browserProfileRootMemo;
-}
-
-/** Parsed, not asserted: a default that failed to resolve absolute fails loud here. */
-export function defaultRuntimePaths(): ConfigPaths {
-  const profileRoot = defaultBrowserProfileRoot();
+export function defaultRuntimePaths(admittedPair?: Pick<ConfigPaths, "stateRoot" | "artifactRoot">): ConfigPaths {
+  const stateRoot = admittedPair === undefined ? join(applicationDataWorkspace(), rebuildRuntimeIsolation.stateRoot) : admittedPair.stateRoot;
   return ConfigPathsSchema.parse({
-    reportsDir: resolve("data/reports"),
-    downloadsDir: resolve("data/downloads"),
-    onboardingDocsDir: resolve("data/onboarding"),
-    i9CheckTrackerPath: resolve("data/reports/i9-check-tracker.xlsx"),
-    stateRoot: resolve(rebuildRuntimeIsolation.stateRoot),
-    artifactRoot: resolve(rebuildRuntimeIsolation.artifactRoot),
-    browserProfileRoot: profileRoot,
-    duoCredential: join(resolve(rebuildRuntimeIsolation.stateRoot), "credentials", "duo-webauthn.json"),
-    duoExtensionDir: resolve("duo-autopilot"),
+    reportsDir: join(stateRoot, "files", "reports"),
+    downloadsDir: join(stateRoot, "files", "downloads"),
+    onboardingDocsDir: join(stateRoot, "files", ONBOARDING_DOCUMENTS_DIRECTORY_NAME),
+    i9CheckTrackerPath: join(stateRoot, "files", "reports", "i9-check-tracker.xlsx"),
+    stateRoot,
+    artifactRoot: admittedPair?.artifactRoot ?? join(stateRoot, "artifacts"),
+    browserProfileRoot: join(stateRoot, "browsers"),
+    duoCredential: join(stateRoot, "credentials", "duo-webauthn.json"),
+    duoExtensionDir: resolve(import.meta.dirname, "../../../../fast-duo"),
   });
 }

@@ -8,9 +8,11 @@ export function commitGeneratedCheckpoint(input:Readonly<{
  withTransaction<T>(work:(repositories:AuthorityRepositories)=>T):T;
  checkpoint:RunCheckpointRecord;
  updates:readonly unknown[];
+ publish?:(repositories:AuthorityRepositories, checkpoint:RunCheckpointRecord)=>void;
 }>):void {
  input.withTransaction(repositories=>{
   repositories.runCheckpoints.insert(input.checkpoint);
+  input.publish?.(repositories,input.checkpoint);
   for(const update of input.updates)repositories.artifactOutbox.insert(update);
  });
 }
@@ -26,7 +28,7 @@ export function generatedUpdateId(checkpoint: RunCheckpointRecord, row: DerivedA
 // Call inside one authority transaction; random artifact IDs require a unique source witness.
 export function pendingGeneratedUpdateIds(repositories: AuthorityRepositories, checkpoint: RunCheckpointRecord, specs: readonly unknown[]): readonly string[] {
  const derive = (record: RunCheckpointRecord) => deriveArtifactProjectionRows({ specs,
-  nodeId: record.nodeId, outputValue: record.output.value });
+  nodeId: record.nodeId, outputValue: record.output.value, runId: record.runId });
  const target = derive(checkpoint);
  const targetIdentity = canonicalJsonStringify(checkpoint);
  const expected = new Set(target.map(row => generatedUpdateId(checkpoint, row)));

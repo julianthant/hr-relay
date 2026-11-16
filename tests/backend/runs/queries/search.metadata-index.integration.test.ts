@@ -1,10 +1,15 @@
+import { afterAll, it, vi } from "vitest";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
+import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
+import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { it,vi } from "vitest";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
@@ -13,15 +18,17 @@ import { DiagnosticBundleSchema } from "../../../../src/models/trust/diagnostic.
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { failure,HASH,NOW } from "../../../support/helpers/database-foundation/fixtures.js";
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "search-index-"));
-  const path = join(root, "authority.db");
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+
+async function fixture() {
+  const profile = await profileFixtures.create();
+  const root = profile.stateRoot, path = profile.path;
   const clock = manualClock(new Date("2026-09-21T12:00:00Z"));
   let db = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "search-test" }, clock);
   db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -29,11 +36,11 @@ function fixture() {
     descriptors: { resolve: () => undefined }, authority: { readSnapshot: read => db.withAuthorityReadSnapshot(() => read({
       authorityGeneration: db.getMeta().authorityGeneration, searchRuns: input => db.authority.runs.search(input),
     })) } });
-  return { root, path, clock, get db(){return db;}, service, reopen(){db.close();db=AuthorityDatabase.open({path,busyTimeoutMs:500,migrationOwner:"search-reopen"},clock);}, dispose() { db.close(); rmSync(root, { recursive: true, force: true }); } };
+  return { root, path, clock, get db(){return db;}, service, reopen(){releaseSeededWriteOwners(db, clock.now().toISOString());db.close();db=AuthorityDatabase.open({path,busyTimeoutMs:500,migrationOwner:"search-reopen"},clock);}, async dispose() { releaseSeededWriteOwners(db, clock.now().toISOString()); db.close(); await profile.close(); } };
 }
 
-it("searches registered and historical workflow metadata without exposing raw inputs or inventing actors", () => {
-  const f = fixture();
+it("searches registered and historical workflow metadata without exposing raw inputs or inventing actors", async () => {
+  const f = await fixture();
   try {
     for (const [seed, workflow, shape] of [[1001, "person-lookup", "single"], [1002, "historical-workflow", "preview"], [1003, "separations", "operation"], [1004,"historical-workflow","operation-member"]] as const) {
       f.db.authority.runs.enqueue(runRecordOf({ seed, workflow, shape, dryRun: true, displayName: "PRIVATE SUBJECT MUST NOT MATCH", enqueuedAt: "2026-09-20T17:00:00Z" }));
@@ -46,11 +53,11 @@ it("searches registered and historical workflow metadata without exposing raw in
     assert.equal(search.search({ q: "", facets: { workflow: "historical-workflow", shape: "preview", state: "queued", dryRun: true, version: 1, evidence: "none" } }).totalMatches, 1);
     assert.equal(search.search({ q: "historical" }).results[0]?.registration.state, "unregistered");
     assert.ok(all.results.every(row => row.metadata.actor.state === "unavailable"));
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("refuses tampered metadata even for nonmatching queries; resumes bounded rebuilds across reopen", () => {
-  const f = fixture();
+it("refuses tampered metadata even for nonmatching queries; resumes bounded rebuilds across reopen", async () => {
+  const f = await fixture();
   try {
     for (let seed = 1101; seed < 1105; seed++) f.db.authority.runs.enqueue(runRecordOf({ seed, workflow: "person-lookup" }));
     const raw = new DatabaseSync(f.path);
@@ -64,11 +71,11 @@ it("refuses tampered metadata even for nonmatching queries; resumes bounded rebu
     assert.equal(f.service().search({ q: "person" }).totalMatches, 4);
     assert.throws(() => f.db.withAuthorityTransaction(() => { f.db.rebuildRunSearchIndex({ restart: true, limit: 1 }); throw new Error("interrupt"); }), /interrupt/);
     assert.equal(f.service().search({ q: "person" }).totalMatches, 4);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("cold and post-mutation pages read only selected run JSON with large unrelated history", () => {
-  const f = fixture();
+it("cold and post-mutation pages read only selected run JSON with large unrelated history", async () => {
+  const f = await fixture();
   try {
     f.db.withAuthorityTransaction(() => {
       for (let seed = 2001; seed < 2501; seed++) f.db.authority.runs.enqueue(runRecordOf({ seed, workflow: "unrelated-workflow" }));
@@ -116,11 +123,11 @@ it("cold and post-mutation pages read only selected run JSON with large unrelate
       assert.equal(observed.reduce((n, row) => n + row.rows, 0), 3);
       process.stdout.write(`P2_QUERY_PROOF ${JSON.stringify({kind:"search-post-mutation",historyRows:505,selectedMatches:5,pageLimit:2,rawReads:observed.reduce((n,row)=>n+row.rows,0)})}\n`);
     } finally { spy.mockRestore(); }
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("expires snapshots and retains exact pages until authority changes", () => {
-  const f = fixture();
+it("expires snapshots and retains exact pages until authority changes", async () => {
+  const f = await fixture();
   try {
     f.db.authority.runs.enqueue(runRecordOf({ seed: 3001 }));
     const search = f.service(), query = { q: "", limit: 1 };
@@ -128,16 +135,18 @@ it("expires snapshots and retains exact pages until authority changes", () => {
     assert.deepEqual(search.searchSelected(query, first.snapshot.token).results, first.results);
     f.clock.setWall(new Date("2026-09-21T12:16:00Z"));
     assert.throws(() => search.searchSelected(query, first.snapshot.token), /expired/);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("publishes declared subject names, authentic recorded actors and typed failure evidence with source writes", () => {
-  const f = fixture();
+it("publishes declared subject names, authentic recorded actors and typed failure evidence with source writes", async () => {
+  const f = await fixture();
   try {
     const { descriptor } = createSubjectTitleTestWorld();
     const queued = runRecordOf({ seed: 4801, descriptor, enqueuedAt: NOW });
     f.db.authority.runs.enqueue(queued);
     const { workerId } = testAdmittedWorker(f.db, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: ["ucpath"] });
+    const claimMember1 = f.db.authority.workerSlots.get(workerId);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
     const claimed = f.db.authority.runs.claimNext({ workflow: "person-lookup", workerId, now: NOW });
     assert.ok(claimed.state === "claimed");
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
@@ -190,11 +199,11 @@ hdh: true };
       contentDigest:deriveDiagnosticContentDigest(diagnostic),retention:{kind:"ordinary",purgeAfter:"2026-12-01T00:00:00.000Z"}}));
     assert.equal(search("", { evidence: "diagnostic",state:"failed" }).totalMatches, 1);
     assert.equal(search("", { evidence: "none" }).totalMatches, 0);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("keeps ordinary authority writes available while a large declaration requires explicit bounded rebuild",()=>{
-  const f=fixture();
+it("keeps ordinary authority writes available while a large declaration requires explicit bounded rebuild",async ()=>{
+  const f=await fixture();
   try {
     f.db.withAuthorityTransaction(()=>{for(let seed=3100;seed<3601;seed++)f.db.authority.runs.enqueue(runRecordOf({seed}));});
     const run=runRecordOf({seed:3100});
@@ -206,11 +215,11 @@ it("keeps ordinary authority writes available while a large declaration requires
     assert.equal(first.state,"building");assert.equal(first.rowCount,500);
     const second=f.db.rebuildRunSearchIndex({limit:500});assert.equal(second.state,"published");assert.equal(second.rowCount,502);
     assert.equal(f.service().search({q:""}).totalMatches,502);
-  } finally {f.dispose();}
+  } finally {await f.dispose();}
 });
 
-it("selects each reachable lifecycle, shape, retained version and mode without narrowing to one workflow",()=>{
-  const f=fixture();
+it("selects each reachable lifecycle, shape, retained version and mode without narrowing to one workflow",async ()=>{
+  const f=await fixture();
   try {
     const targets=["queued","claimed","validating","running","parked-gate","parked-write","cancelled","discarded","superseded","interrupted"] as const;
     for(const [offset,target] of targets.entries()) {
@@ -219,18 +228,31 @@ it("selects each reachable lifecycle, shape, retained version and mode without n
       f.db.authority.runs.enqueue(queued);
       const search=()=>f.service().search({q:"",facets:{workflow:queued.envelope.workflow,state:target,version:7,dryRun:queued.envelope.dryRun,shape:queued.envelope.shape,system:"ucpath"}});
       if(target!=="queued") {
-        const {workerId,workerLifetime}=testAdmittedWorker(f.db,f.clock,{path:f.path,workflow:queued.envelope.workflow,poolIndex:1,browserSystems:["ucpath"]});
-        const claim=f.db.authority.runs.claimNext({workflow:queued.envelope.workflow,workerId,workerLifetime,now:queued.createdAt});
+        const { workerId }=testAdmittedWorker(f.db,f.clock,{path:f.path,workflow:queued.envelope.workflow,poolIndex:1,browserSystems:["ucpath"]});
+        const claim=f.db.authority.runs.claimNext({workflow:queued.envelope.workflow,workerId,now:queued.createdAt});
         assert.equal(claim.state,"claimed");if(claim.state!=="claimed")throw new Error("claim failed");
         let run=claim.run;
         const advance=(lifecycle:unknown)=>{const result=f.db.authority.runs.transition({runId:run.envelope.runId,expectedVersion:run.version,claim:{workerId,claimGeneration:run.claimGeneration},lifecycle,now:queued.createdAt});assert.equal(result.state,"applied");if(result.state!=="applied")throw new Error("transition failed");run=result.run;};
-        const ownership={workerId,workerLifetime,claimedAt:queued.createdAt,heartbeatAt:queued.createdAt};
+        const ownership={workerId,claimedAt:queued.createdAt,heartbeatAt:queued.createdAt};
         if(target!=="claimed") {
           advance({state:"validating",...ownership});
           if(target!=="validating") {
             advance({state:"running",...ownership});
             if(target==="parked-gate")advance({state:target,gateId:"synthetic-review",parkedAt:queued.createdAt,resumeAt:"review"});
-            else if(target==="parked-write")advance({state:target,writeIntentId:queued.envelope.runId,intentGeneration:1,parkedAt:queued.createdAt,code:"unknown",message:"Synthetic unknown; do not retry"});
+            else if(target==="parked-write") {
+              const bindingProof = { ...WRITE_INTENT_ATTEMPTING.bindingProof, runId: queued.envelope.runId, attempt: queued.envelope.attempt,
+                afterPrepareSpanPath: `${queued.envelope.traceId}/termination/prepare` };
+              const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
+              const intent = { ...WRITE_INTENT_ATTEMPTING, bindingProof, bindingProofDigest, writeIntentId: queued.envelope.runId,
+                workflowId: queued.envelope.workflow, itemId: queued.envelope.itemId,
+                runId: queued.envelope.runId, runAttempt: queued.envelope.attempt };
+              fenceWriteFixture(f.db, { intent, attempt: { ...WRITE_ATTEMPT,
+                writeIntentId: intent.writeIntentId, runId: intent.runId, runAttempt: intent.runAttempt, bindingProof, bindingProofDigest } });
+              f.db.authority.writeIntents.parkAttempt({ writeIntentId: intent.writeIntentId, generation: 1,
+                expectedVersion: 1, code: "unknown", message: "Synthetic unknown; do not retry",
+                authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "Synthetic unknown"), now: queued.createdAt });
+              advance({state:target,writeIntentId:intent.writeIntentId,intentGeneration:1,parkedAt:queued.createdAt,code:"unknown",message:"Synthetic unknown; do not retry"});
+            }
             else if(target!=="running")advance({state:"terminal",outcome:target,endedAt:queued.createdAt});
           }
         }
@@ -238,20 +260,28 @@ it("selects each reachable lifecycle, shape, retained version and mode without n
       assert.equal(search().totalMatches,1,target);
       assert.equal(search().results[0]?.metadata.version,7);
     }
-  } finally {f.dispose();}
+  } finally {await f.dispose();}
 });
 
-it("refuses a selection beyond the 10000 metadata bound before reading run JSON",()=>{
-  const f=fixture();
+it("refuses a selection beyond the 10000 metadata bound before reading run JSON",async ()=>{
+  const f=await fixture();
   try {
     const prototype = runRecordOf({seed:1,workflow:"history"});
-    f.db.withAuthorityTransaction(() => {
+    const raw = new DatabaseSync(f.path);
+    try {
+      raw.exec("PRAGMA foreign_keys=ON; BEGIN IMMEDIATE");
+      const columns = Object.keys(runRecordColumns(prototype));
+      const insert = raw.prepare(`INSERT INTO runs(${columns.join(",")}) VALUES(${columns.map(() => "?").join(",")})`);
       for (let seed = 1; seed <= 10001; seed++) {
         const runId = `00000000-0000-4000-8000-${String(seed).padStart(12,"0")}`;
-        f.db.authority.runs.enqueue({...prototype,envelope:{...prototype.envelope,runId,itemId:runId,workflow:seed === 10001 ? "needle" : "history"}});
+        const record = RunRecordSchema.parse({...prototype,envelope:{...prototype.envelope,runId,itemId:runId,workflow:seed === 10001 ? "needle" : "history"}});
+        insert.run(...Object.values(runRecordColumns(record)));
       }
-    });
+      raw.exec("COMMIT");
+      assert.equal(raw.prepare("SELECT count(*) AS count FROM runs").get()?.count, 10001);
+    } finally { raw.close(); }
     for(let publication=f.db.rebuildRunSearchIndex({restart:true,limit:500});publication.state!=="published";publication=f.db.rebuildRunSearchIndex({limit:500}))assert.equal(publication.state,"building");
+    f.reopen();
     // A too-broad selection must stop before any raw source JSON is materialized.
     // eslint-disable-next-line @typescript-eslint/unbound-method -- preserve the database receiver in this observer.
     const prepare=DatabaseSync.prototype.prepare;
@@ -261,11 +291,11 @@ it("refuses a selection beyond the 10000 metadata bound before reading run JSON"
     });
     try {assert.throws(()=>f.service().search({q:""}),/run-search-query-too-broad/u);} finally {spy.mockRestore();}
     assert.equal(f.service().search({q:"needle"}).totalMatches,1);
-  } finally {f.dispose();}
+  } finally {await f.dispose();}
 });
 
-it("requires an explicit restart when native source changes during a persisted rebuild", () => {
-  const f = fixture();
+it("requires an explicit restart when native source changes during a persisted rebuild", async () => {
+  const f = await fixture();
   try {
     for (let seed = 4101; seed <= 4104; seed++) f.db.authority.runs.enqueue(runRecordOf({seed}));
     assert.equal(f.db.rebuildRunSearchIndex({restart:true,limit:1}).state,"building");
@@ -274,11 +304,11 @@ it("requires an explicit restart when native source changes during a persisted r
     assert.throws(() => f.db.rebuildRunSearchIndex({limit:2}),/run-search-rebuild-restart-required/u);
     for (let progress = f.db.rebuildRunSearchIndex({restart:true,limit:2}); progress.state !== "published"; progress = f.db.rebuildRunSearchIndex({limit:2})) assert.equal(progress.state,"building");
     assert.equal(f.service().search({q:""}).totalMatches,5);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("does not cache derived admission when a corruption rebuild rolls back", () => {
-  const f = fixture();
+it("does not cache derived admission when a corruption rebuild rolls back", async () => {
+  const f = await fixture();
   try {
     const run = runRecordOf({seed:4201});
     f.db.authority.runs.enqueue(run);
@@ -287,11 +317,11 @@ it("does not cache derived admission when a corruption rebuild rolls back", () =
     finally { raw.close(); }
     assert.throws(() => f.db.rebuildRunSearchIndex({restart:true,limit:1}));
     assert.throws(() => f.service().search({q:"no-match"}),/run-search-index-rebuild-required/u);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-for (const fault of ["corrupt-completed-row", "hole"] as const) it(`refuses ${fault} in durable rebuild progress and permits explicit repair`, () => {
-  const f = fixture();
+for (const fault of ["corrupt-completed-row", "hole"] as const) it(`refuses ${fault} in durable rebuild progress and permits explicit repair`, async () => {
+  const f = await fixture();
   try {
     for (let seed = 4301; seed <= 4304; seed++) f.db.authority.runs.enqueue(runRecordOf({seed}));
     const progress = f.db.rebuildRunSearchIndex({restart:true,limit:1});
@@ -306,5 +336,5 @@ for (const fault of ["corrupt-completed-row", "hole"] as const) it(`refuses ${fa
     assert.throws(() => AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"corrupt-build-reopen"},f.clock),expected);
     for (let repaired = f.db.rebuildRunSearchIndex({restart:true,limit:2}); repaired.state !== "published"; repaired = f.db.rebuildRunSearchIndex({limit:2})) assert.equal(repaired.state,"building");
     assert.equal(f.service().search({q:""}).totalMatches,4);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });

@@ -20,7 +20,7 @@ describe("dry-run scenario manifest boundary", () => {
 
     assert.equal(
       deriveDryRunScenarioManifestDigest(parsed),
-      "0aaccc8fbfc9c0083a8248104d800f74f073ad6d0736e0913a2685e118c7e297",
+      "a88ff7081bb9be203451b4124d03bf359fc393135a07feacd1bf34072ac0eb13",
     );
   });
 

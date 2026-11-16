@@ -52,8 +52,8 @@ function detailOf(w: DashboardWorld) {
 }
 
 describe("run detail under step omission", () => {
-  it("names the omitted step keys and carries none of the typed facts", () => {
-    const w = world();
+  it("names the omitted step keys and carries none of the typed facts", async () => {
+    const w = await world();
     omittedRun(w);
 
     const detail = detailOf(w);
@@ -61,8 +61,8 @@ describe("run detail under step omission", () => {
     assert.equal(JSON.stringify(detail).includes(TYPED_FACT), false);
   });
 
-  it("distinguishes an asserted member from an omitted one inside the same step", () => {
-    const w = world();
+  it("distinguishes an asserted member from an omitted one inside the same step", async () => {
+    const w = await world();
     omittedRun(w);
 
     const step = detailOf(w).timeline.steps?.find((entry) => entry.label === "Kronos timecard");
@@ -77,8 +77,8 @@ describe("run detail under step omission", () => {
     assert.deepEqual(events.get("reconcile"), { state: "present", reason: "step-omitted" });
   });
 
-  it("refuses to call a done run with an omitted step verified-done", () => {
-    const w = world();
+  it("refuses to call a done run with an omitted step verified-done", async () => {
+    const w = await world();
     omittedRun(w);
 
     const outcome = detailOf(w).outcome;
@@ -89,8 +89,8 @@ describe("run detail under step omission", () => {
     assert.equal(outcome.rehearsal, undefined);
   });
 
-  it("still calls a settled run with no omission verified-done", () => {
-    const w = world();
+  it("still calls a settled run with no omission verified-done", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, lifecycle: TERMINAL_DONE });
     claimEventOf(w, 1);
     taskEventsOf(w, 1, "document", "done");
@@ -102,8 +102,8 @@ describe("run detail under step omission", () => {
   });
 
 
-  it("refuses a span that recorded a not-run reason beside an outcome that RAN", () => {
-    const w = world();
+  it("refuses a span that recorded a not-run reason beside an outcome that RAN", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, lifecycle: TERMINAL_DONE });
     claimEventOf(w, 1);
     taskEventsOf(w, 1, "timecard", "skipped", "operator-asserted");
@@ -121,8 +121,8 @@ describe("run detail under step omission", () => {
     );
   });
 
-  it("leaves a member whose span recorded no reason without one", () => {
-    const w = world();
+  it("leaves a member whose span recorded no reason without one", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, lifecycle: TERMINAL_DONE });
     claimEventOf(w, 1);
     taskEventsOf(w, 1, "timecard", "skipped");

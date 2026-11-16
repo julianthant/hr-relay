@@ -1,15 +1,17 @@
+import { createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
+import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import {
 BulkRunCommandRequestSchema,
 BulkRunCommandResponseSchema,
-CommandRequestSchema,
+DashboardCommandRequestSchema,
 CommandResultSchema,
-type BulkRunCommandResponse,
+commandNoChangeResultMatches,
+needsWorkerCapacity,
 type BulkRunCommandRequest,
-type CommandRequest,
+type BulkRunCommandResponse,
+type DashboardCommandRequest,
 type CommandResult
 } from "../../../rules/commands/commands.js";
-import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { DashboardClientError } from "../errors.js";
 import { parseOrThrow } from "../queries/query-parse.js";
 import type { DashboardTransport } from "../transport.js";
@@ -20,15 +22,26 @@ function identityMismatch(response: unknown): never {
     cause: response });
 }
 
-export function checkedCommandResult(command: CommandRequest, response: unknown): CommandResult {
+export function checkedCommandResult(command: DashboardCommandRequest, response: unknown): CommandResult {
   const result = parseOrThrow(CommandResultSchema, "POST /api/v1/commands", response);
   if (result.commandId !== command.commandId || result.state === "pending" && command.family !== "worker-browser") identityMismatch(response);
   if (result.state !== "applied" && result.state !== "already-applied") return result;
+  if (result.workerStartup !== undefined && !needsWorkerCapacity(command)) identityMismatch(response);
+  if (!commandNoChangeResultMatches(command, result)) identityMismatch(response);
   const targets = result.affectedTargets;
+  if (command.family === "run" && command.type === "resolve-workbook-reference-row" && targets.length !== 2) identityMismatch(response);
+  if (command.family === "worker-browser" && command.type === "check-parked-write" && targets.length !== 2) identityMismatch(response);
   const matches = (target: typeof targets[number]): boolean => {
     switch (command.family) {
-      case "run": return target.family === "run" && (target.runId === command.target.runId
-        || ["cancel", "delete", "retry", "restart"].includes(command.type));
+      case "ocr-review": return (target.family === "ocr-review" || target.family === "run") && target.runId === command.target.runId;
+      case "application": return target.family === "application" && target.runtimeGeneration === command.target.runtimeGeneration;
+      case 'assistant-model-preference': return target.family === 'assistant-model-preference'
+        && target.profileId === command.target.profileId && target.revision === command.target.expectedRevision + 1;
+      case "run": return command.type === "resolve-workbook-reference-row"
+        ? (target.family === "gate" && target.runId === command.target.runId && target.gateId === command.target.gateId)
+          || (target.family === "run" && target.runId === command.target.runId)
+        : target.family === "run" && (target.runId === command.target.runId
+        || ["cancel", "delete", "retry", "recover-run"].includes(command.type));
       case "gate": return (target.family === "gate" && target.runId === command.target.runId && target.gateId === command.target.gateId)
         || (target.family === "run" && target.runId === command.target.runId);
       case "start": return target.family === "run" || (target.family === "start" && target.workflowId === command.target.workflowId
@@ -36,21 +49,22 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
       case "intake": return (target.family === "intake" && target.intakeSessionId === command.target.intakeSessionId)
         || (command.type === "enqueue-intake-manifest" && target.family === "run");
       case "worker-browser":
+        if (command.type === "check-parked-write") return target.family === "worker-browser" && target.workerId === command.target.workerId
+          || target.family === "run" && target.runId === command.target.runId;
         if (command.type === "remove-worker") return target.family === "worker-browser" && target.workerId === command.target.workerId
           || target.family === "worker-pool" && target.workflowId === command.target.workflowId;
         if (command.type === "plan-worker-count") return target.family === "worker-browser"
           || (target.family === "worker-pool" && target.workflowId === command.target.workflowId);
         return target.family === "worker-browser" && target.workerId === (command.type === "spawn-worker" ? command.payload.workerId : command.target.workerId);
       case "settings": return target.family === (command.type === "apply-settings" ? "settings" : "protected-settings");
-      case "storage-relocation": return target.family === "storage-relocation";
-      case "notification": return target.family === "notification" && target.notificationId === command.target.notificationId;
-      case "explorer": return target.family === "explorer" && target.workflowId === command.target.workflowId;
+      case "notification": return target.family === "notification" && ("members" in command.target ? command.target.members.some(member => member.notificationId === target.notificationId) : target.notificationId === command.target.notificationId);
       case "workflow-batch": return target.family === "workflow-batch" && target.batchId === command.target.batchId;
       case "failure-resolution": return target.family === "failure-resolution" && target.runId === command.target.runId && target.failureId === command.target.failureId;
     }
   };
   if (!targets.every(matches)) identityMismatch(response);
   const anchor = targets.some(target => {
+    if (command.family === "ocr-review") return target.family === "ocr-review" && target.runId === command.target.runId;
     if (command.family === "run") return target.family === "run" && target.runId === command.target.runId;
     if (command.family === "gate") return target.family === "gate";
     if (command.family === "start") return target.family === "start";
@@ -58,7 +72,8 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
     if (command.family === "worker-browser" && command.type === "plan-worker-count") return target.family === "worker-pool";
     return true;
   });
-  if (!anchor || new Set(targets.map(target => JSON.stringify(target))).size !== targets.length) identityMismatch(response);
+  if (command.family === "notification" && "members" in command.target && targets.length !== command.target.matchingCount) identityMismatch(response);
+  if ((!anchor && !(command.family === "notification" && "members" in command.target && command.target.matchingCount === 0)) || new Set(targets.map(target => JSON.stringify(target))).size !== targets.length) identityMismatch(response);
   return result;
 }
 
@@ -90,7 +105,7 @@ export interface SharedCommands {
 export function createSharedCommands(transport: DashboardTransport): SharedCommands { return Object.freeze({
 
     async executeCommand(request: unknown): Promise<CommandResult> {
-      const command = CommandRequestSchema.parse(request);
+      const command = DashboardCommandRequestSchema.parse(request);
       const response = await transport.requestJson("/api/v1/commands", {
         method: "POST",
         body: JSON.stringify(command),

@@ -1,6 +1,7 @@
 import { createSeparationTaskFixtures, TaskRefusal } from "../../../support/helpers/separation-task-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { matchSeparationSubjectTask } from "../../../../src/workflows/separations/tasks/match-separation-subject.js";
 
 const { DOCUMENT, EID, NAME, taskContext, nameSelection } = createSeparationTaskFixtures();
@@ -50,4 +51,15 @@ describe("separations workflow task wrappers", () => {
     }), (error: unknown) => error instanceof TaskRefusal && error.code === "subject-not-resolvable");
     assert.deepEqual(refusal.records, []);
   });
+});
+
+it("selects the operator-entered EID while preserving the document field", async () => {
+  const documentEid = { state: "present" as const, value: EID };
+  const context = taskContext();
+  const output = await matchSeparationSubjectTask.impl.run({ input: {
+    operatorEmployeeId: EidSchema.parse("10800001"), documentNumber: DOCUMENT, employeeName: NAME, documentEid, nameSelection,
+  }, ctx: context.ctx });
+  assert.equal(output.emplId, "10800001");
+  assert.equal(output.emplIdSource, "operator-entered");
+  assert.deepEqual(documentEid, { state: "present", value: EID });
 });

@@ -1,8 +1,14 @@
 // Serve each section through its own evidence state; absent sections never look like empty successful reads.
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import type { NativeRunEventWire } from "../../../models/dashboard/run-detail.js";
+import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js";
+import type { RunDecisionWire } from "../../../models/dashboard/run-decision.js";
+import { projectDecision, rowActionOption } from "../decisions/project-decision.js";
 import { availableSections, buildRunGate } from "./run-trust.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
+import { ocrChildRetryAvailable,readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
+import { aggregateMemberRetryAvailable } from "./run-retry.js";
+import { hostedOcrRun } from "./ocr-record-members.js";
 import {
   RunDetailWireSchema,
   TimelineStepWireSchema,
@@ -15,20 +21,23 @@ import {
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { SubjectCheckpointSource } from "../projections/run-subject-title.js";
 import type { RunRecord } from "../../../models/run/record.js";
+import type { DelegationWaitState } from "../../../models/run/summary.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import type { RunFoldRecord } from "../projections/run-queue-projection.js";
 import { resolveSubjectTitle } from "../projections/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
-import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type TaskSpanOutcome } from "../lifecycle/run-status.js";
+import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type TaskSpanOutcome } from "../../../rules/runs/run-status.js";
 import {
   ProjectionDegradedError,
   LogIdentityRefusedError,
 } from "../commands/refusals.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
 import { requireCanonicalRun } from "./run-read.js";
+import { assertRunTimelineCompatible } from "./run-timeline-compatibility.js";
 
 export { availableSections } from "./run-trust.js";
 export { buildRunSection, readRunSection } from "./run-sections.js";
+export { resolveGateArmAnswer, resolveIdentityGateAnswer } from "./run-detail/gate-park.js";
 export { createRunNoteScanCache } from "./run-logs.js";
 export type { RunLogScanEntry, RunNoteScanEntry, RunNoteScanCache } from "./run-logs.js";
 export type {
@@ -110,6 +119,7 @@ function buildTimelineSteps(
   row: RunFoldRecord,
   runTerminal: boolean,
   replaySource: (nodeId: string) => { attempt: number; claimGeneration?: number } | undefined,
+  wait: DelegationWaitState | null | undefined,
 ): TimelineStepWire[] {
   type SpanFold = RunFoldRecord["taskSpans"][number];
   const spansByNode = new Map<string, SpanFold[]>();
@@ -179,7 +189,9 @@ function buildTimelineSteps(
     return TimelineStepWireSchema.parse({
       key: category.key,
       label: category.label,
-      state: foldCategoryState(members.map((member) => member.state), runTerminal),
+      ...(category.system === undefined ? {} : { system: category.system }),
+      state: wait != null && (category.key === wait.nodeId || category.nodes.some(node => node.id === wait.nodeId))
+        ? wait.state === "blocked" ? "blocked" : "active" : foldCategoryState(members.map((member) => member.state), runTerminal),
       ...(measured.length > 0 ? { durationSec: Math.round(totalMs / 1000) } : {}),
       ...(maxExecutions >= 2 ? { executions: maxExecutions } : {}),
       members: members.map((member) => ({
@@ -201,14 +213,17 @@ export function buildRunDetail(
   captures?: RunCaptureAvailabilityWire,
 ): RunDetailWire {
   const { row, authority } = requireCanonicalRun(deps, runId);
-  const status = deriveRunStatus(authority);
+  const delegationWait = deps.authority.delegationWait?.(runId);
+  const status = deriveRunStatus({ ...authority, delegationWait });
   const descriptorView = deps.descriptors.resolve(authority.envelope.workflow);
+  let retainedCheckpoints: readonly RunCheckpointRecord[] | undefined;
+  const readCheckpoints = () => retainedCheckpoints ??= deps.authority.listCheckpoints(authority.envelope.workflow, authority.envelope.itemId);
   let latestByNode: Map<string, RunCheckpointRecord> | undefined;
   const checkpoints: SubjectCheckpointSource = {
     latestCheckpoint: (_workflowId, _itemId, nodeId) => {
       if (latestByNode === undefined) {
         latestByNode = new Map();
-        for (const checkpoint of deps.authority.listCheckpoints(authority.envelope.workflow, authority.envelope.itemId)) {
+        for (const checkpoint of readCheckpoints()) {
           const latest = latestByNode.get(checkpoint.nodeId);
           if (latest === undefined || checkpoint.attempt > latest.attempt
             || checkpoint.attempt === latest.attempt && checkpoint.claimGeneration > latest.claimGeneration) {
@@ -219,14 +234,18 @@ export function buildRunDetail(
       return latestByNode.get(nodeId);
     },
   };
-  if (descriptorView?.timeline !== undefined && (descriptorView.version !== authority.envelope.descriptorVersion
-    || descriptorView.contractFingerprint !== authority.envelope.contractFingerprint
-    || descriptorView.timeline.some(category => category.key === undefined))) {
-    throw new LogIdentityRefusedError("run timeline descriptor identity does not match its frozen authority");
+  if (descriptorView?.timeline?.some(category => category.key === undefined)) {
+    throw new LogIdentityRefusedError("timeline category identity is missing");
   }
-  const nativeRecords = row !== undefined && row.taskSpans.length === 0 && row.openGates.length === 0 && row.resolvedGates.length === 0
+  const olderDescriptor = descriptorView?.version !== authority.envelope.descriptorVersion
+    || descriptorView?.contractFingerprint !== authority.envelope.contractFingerprint;
+  const skipTimeline = row !== undefined && row.taskSpans.length === 0 && row.openGates.length === 0 && row.resolvedGates.length === 0;
+  const nativeRecords = skipTimeline
     ? []
     : readTimelineRecords(deps.timeline, 0, runId).records;
+  if (olderDescriptor) assertRunTimelineCompatible(authority, descriptorView?.timeline, {
+    timeline: deps.timeline, authority: { listCheckpoints: readCheckpoints, listGateResults: id => deps.authority.listGateResults(id) },
+  }, row, skipTimeline ? undefined : nativeRecords);
   const nativeOf = (record: (typeof nativeRecords)[number], nodeId?: string): NativeRunEventWire => {
     if (record.payload.kind !== "span" || !("runId" in record.payload.event)) throw new LogIdentityRefusedError("timeline event has no run identity");
     const event = record.payload.event;
@@ -335,17 +354,39 @@ export function buildRunDetail(
       }
     : { state: "absent", reason: `run is ${status}` };
 
+  const canonical = deps.canonical;
+  const review = canonical === undefined ? undefined : canonical.database.withAuthorityReadSnapshot(() => {
+    const ocrRunId = authority.envelope.workflow === "ocr" ? runId : hostedOcrRun(canonical.database.authority, authority)?.envelope.runId;
+    return ocrRunId === undefined ? undefined : readOcrReviewAuthority(canonical.database.authority, canonical.reader, ocrRunId);
+  });
+  const reviewAvailable = review !== undefined;
+  const childRetry = canonical === undefined || !(ocrChildRetryAvailable(canonical.database.authority, canonical.reader, authority,
+      workflowId => canonical.descriptors.resolve(workflowId)) || aggregateMemberRetryAvailable(canonical.database.authority, canonical.reader, authority,
+      workflowId => canonical.descriptors.resolve(workflowId))) ? undefined : {
+    key: "retry-child", label: "Retry", kind: "command", command: "retry", expectedVersion: authority.version,
+    intent: "neutral", icon: "retry", placement: ["banner"],
+  };
+  const surface = deps.projection.queueSurface(runId);
+  const decision = runLevelDecision({ status, childRetryKey: childRetry?.key, paused: surface?.pauseControl?.state === "paused",
+    stalled: lifecycle.state === "terminal" && lifecycle.outcome === "interrupted", rowActions: surface?.actions });
   return RunDetailWireSchema.parse({
     runId,
     rowRevision: authority.version,
-    panelKind: panelKindOf(authority.envelope.shape),
+    ...(review === undefined ? {} : { ocrRecordCount: review.revision.records.length }),
+    ...(review === undefined || review.invalidatedCorrections.length === 0 ? {} : { ocrReviewChanges: review.invalidatedCorrections }),
+    ...(childRetry === undefined ? {} : { childRetry }),
+    ...(decision === undefined ? {} : { decision }),
+    panelKind: panelKindOf(authority.envelope.shape, reviewAvailable),
     header: {
       runId,
+      ...(authority.envelope.parent === undefined ? {} : { parentRunId: authority.envelope.parent.runId }),
+      ...(authority.envelope.retryOf === undefined ? {} : { retryOf: authority.envelope.retryOf }),
       traceId: authority.envelope.traceId,
       workflowId: authority.envelope.workflow,
       ...(row === undefined ? {} : { actorId: row.queued.actorId }),
 
       title: (retainedRunProtectedBindings(authority).length > 0 ? undefined : authority.displayName)
+        ?? (descriptorView?.titleProjection === undefined ? undefined : deps.projection.queueSurface(runId)?.title)
         ?? resolveSubjectTitle(
           descriptorView?.subjectProjection,
           { workflowId: authority.envelope.workflow, itemId: authority.envelope.itemId },
@@ -366,23 +407,34 @@ export function buildRunDetail(
             row,
             authority.lifecycle.state === "terminal",
             (nodeId) => replaySourceOf(checkpoints, authority, nodeId),
+            delegationWait,
           ),
         }),
     },
     gate,
     outcome,
     context: {
-      // Every done task recorded provenance-validated data (1f mandate); the
-      // evidence service is 2g, so its count is genuinely zero today.
-      dataFacts: row?.taskSpans.filter((span) => span.outcome === "done").length ?? 0,
+      // Every done task recorded provenance-validated data (1f mandate); a settled delegation join records no checkpoint and observed nothing.
+      // The evidence service is 2g, so its count is genuinely zero today.
+      dataFacts: row?.taskSpans.filter((span) => span.outcome === "done"
+        && readCheckpoints().some(checkpoint => checkpoint.runId === authority.envelope.runId && checkpoint.nodeId === nodeIdOfTaskSpanPath(span.spanPath))).length ?? 0,
       evidenceFacts: 0,
       attempts: authority.envelope.attempt,
     },
     ...(captures === undefined ? {} : { captures }),
 
     ...(omittedSteps.length === 0 ? {} : { omittedSteps }),
-    availableSections: availableSections(row, authority, deps.trust, captures),
+    availableSections: availableSections(row, authority, deps.trust, captures, reviewAvailable),
   });
+}
+
+/** The run-level decision: a failed member's own retry (D9), a cancel that has not settled (D16), a paused run (D13) or an interrupted one (D14); run controls send the queue row's own descriptors. */
+export function runLevelDecision(facts: Readonly<{ status: string; childRetryKey?: string; paused: boolean; stalled: boolean; rowActions?: readonly ActionDescriptorWire[] }>): RunDecisionWire | undefined {
+  if (facts.childRetryKey !== undefined) return projectDecision("member-failed", [{ id: "retry", send: { via: "action", actionKey: facts.childRetryKey } }]);
+  if (facts.status === "cancelling") return projectDecision("cancelling", []);
+  if (facts.paused) return projectDecision("paused", [...rowActionOption("resume", "resume", facts.rowActions), ...rowActionOption("cancel-run", "cancel", facts.rowActions)]);
+  if (facts.stalled) return projectDecision("stalled", [...rowActionOption("recover", "recover-run", facts.rowActions), ...rowActionOption("cancel-run", "cancel", facts.rowActions)]);
+  return undefined;
 }
 
 /** The live route adds async capture verification; Archive's synchronous `buildRunDetail` freeze does not inspect that authority. */

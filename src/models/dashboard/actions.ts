@@ -1,17 +1,19 @@
 /** Server-authored action descriptors: the ONLY source a surface may render a run control from — a control the server did not describe is unreachable, not hidden. */
 import { z } from "zod";
 import { WriteIntentIdSchema, WriteAttemptIdSchema, FingerprintSchema } from "../../rules/identity/ids.js";
+import { ParkedWriteCheckTargetSchema, WorkbookRowChoiceTargetSchema, WorkbookReferenceRowChoiceTargetSchema } from "../../rules/commands/commands.js";
 
 export const ActionPlacementSchema = z.enum(["footer", "banner", "outcome", "menu", "data", "review"]);
 export const ActionIntentSchema = z.enum(["primary", "neutral", "destructive", "violet", "success", "info", "warning"]);
-export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "archive", "delete", "review", "resolve", "rename", "external", "drill"]);
+export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "archive", "delete", "review", "resolve", "rename", "external", "drill", "pause", "resume"]);
 /** The command verbs a served action may name; the two write resolutions are INTENT-scoped rather than run-scoped, and every verb on this list has a durable reason it is here. */
 export const ActionCommandKeySchema = z.enum([
-  "retry", "restart", "cancel", "bump", "rename", "archive", "delete", "resolve-gate",
-  "resolve-write-present", "resolve-write-absent",
+  "retry", "recover-run", "cancel", "bump", "rename", "archive", "delete", "resolve-gate",
+  "recheck-write", "resolve-write-absent", "check-parked-write",
+  "resolve-workbook-row", "resolve-workbook-reference-row", "pause", "resume",
 ]);
 
-/** Both write resolutions are INTENT-scoped as well as run-scoped: a stale generation is refused by the kernel, so the descriptor carries the generation it was projected from. */
+/** Parked-write actions bind the exact intent generation and original attempt. */
 export const ActionWriteTargetSchema = z.strictObject({
   writeIntentId: WriteIntentIdSchema,
   intentGeneration: z.number().int().positive(),
@@ -23,7 +25,7 @@ export const ActionWriteTargetSchema = z.strictObject({
 export const ActionConfirmWireSchema = z.strictObject({
   title: z.string().min(1),
   /** names the casualties in the operator's own terms */
-  body: z.string().min(1),
+  body: z.string().min(1).optional(),
   confirmLabel: z.string().min(1),
   tone: z.enum(["destructive", "neutral"]),
 });
@@ -49,8 +51,12 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
     confirm: ActionConfirmWireSchema.optional(),
     /** the typed resolution this gate option records (`resolve-gate` only) */
     resolution: z.enum(["approved", "rejected"]).optional(),
-    /** the parked intent this write resolution settles (`resolve-write-*` only) */
+    /** The parked intent and original write occurrence. */
     writeTarget: ActionWriteTargetSchema.optional(),
+    /** The idle worker and held run authority for `check-parked-write`. */
+    checkTarget: ParkedWriteCheckTargetSchema.optional(),
+    workbookTarget: WorkbookRowChoiceTargetSchema.optional(),
+    referenceTarget: WorkbookReferenceRowChoiceTargetSchema.optional(),
   }),
   z.strictObject({
     ...ActionBaseFields,
@@ -62,8 +68,17 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
   }),
 ]).superRefine((action, context) => {
   if (action.kind !== "command") return;
-  const scoped = action.command === "resolve-write-present" || action.command === "resolve-write-absent";
-  // Intent targets belong only to write resolutions, which require one to be sendable.
+  const scoped = action.command === "recheck-write" || action.command === "resolve-write-absent" || action.command === "check-parked-write";
+  if ((action.command === "check-parked-write") !== (action.checkTarget !== undefined)) {
+    context.addIssue({ code: "custom", path: ["checkTarget"], message: "only held checks require their exact worker and parked-write target" });
+  }
+  if ((action.command === "resolve-workbook-row") !== (action.workbookTarget !== undefined)) {
+    context.addIssue({ code: "custom", path: ["workbookTarget"], message: "only a workbook row choice requires its retained receipt and live revision" });
+  }
+  if ((action.command === "resolve-workbook-reference-row") !== (action.referenceTarget !== undefined)) {
+    context.addIssue({ code: "custom", path: ["referenceTarget"], message: "a reference row choice requires its captured reference and live revision" });
+  }
+  // Every parked-write action requires an occurrence target.
   if (scoped && action.writeTarget === undefined) {
     context.addIssue({
       code: "custom",
@@ -75,7 +90,7 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
     context.addIssue({
       code: "custom",
       path: ["writeTarget"],
-      message: `${action.command} takes no write target; only the ref write-safety §4.1 resolutions are intent-scoped`,
+      message: `${action.command} takes no parked-write target`,
     });
   }
 });

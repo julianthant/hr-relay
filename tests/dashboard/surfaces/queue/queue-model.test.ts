@@ -1,8 +1,10 @@
+import { queueParentFixture } from "../../../support/helpers/dashboard/queue-parent-fixture.js";
+import { isQueueMember, isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
 import { createAwaitingQueueFixtures } from "../../../support/helpers/dashboard/awaiting-queue-fixtures.js";
 import assert_m0 from 'node:assert/strict';
 import { describe as describe_m0,it as it_m0 } from 'vitest';
-import { queueDisplayGroups as queueDisplayGroups_m0,visibleRunIds as visibleRunIds_m0 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from "../../../parity/helpers/fixture-queue.js";
+import { queueDisplayGroups as queueDisplayGroups_m0,visibleQueueKeys as visibleQueueKeys_m0 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from "../../../mocks/helpers/fixture-queue.js";
 
 import assert_m1 from "node:assert/strict";
 import { describe as describe_m1,it as it_m1 } from "vitest";
@@ -14,7 +16,7 @@ queueRowAccessibleName as queueRowAccessibleName_m1
 
 import assert_m2 from "node:assert/strict";
 import { describe as describe_m2,it as it_m2 } from "vitest";
-import { attentionRunIds as attentionRunIds_m2 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import { attentionQueueKeys as attentionQueueKeys_m2, queueRenameDraft as queueRenameDraft_m2 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m2 } from "../../../../src/models/dashboard/projection.js";
 
 import assert_m3 from "node:assert/strict";
@@ -22,19 +24,20 @@ import { describe as describe_m3,it as it_m3 } from "vitest";
 import {
 checkedByYouCount as checkedByYouCount_m3,
 toggleCheckedByYou as toggleCheckedByYou_m3,
-type MemberSurfaceWire as MemberSurfaceWire_m3
+type QueueSurfaceWire as MemberSurfaceWire_m3
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m3 } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m3 } from "../../../mocks/helpers/fixture-day.js";
 
 import assert_m4 from "node:assert/strict";
 import { describe as describe_m4,it as it_m4 } from "vitest";
 import {
-attentionRunIds as attentionRunIds_m4,
+attentionQueueKeys as attentionQueueKeys_m4,
 bandOf as bandOf_m4,
 filterQueueSurfaces as filterQueueSurfaces_m4,
 groupQueueAttempts as groupQueueAttempts_m4,
+queueMemberPresentation as queueMemberPresentation_m4,
 sortQueueBand as sortQueueBand_m4,
-visibleRunIds as visibleRunIds_m4
+visibleQueueKeys as visibleQueueKeys_m4
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m4 } from "../../../../src/models/dashboard/projection.js";
 
@@ -46,7 +49,7 @@ type OperationSurfaceWire as OperationSurfaceWire_m5,
 type QueueSurfaceWire as QueueSurfaceWire_m5
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m5 } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m5 } from "../../../parity/helpers/fixture-day.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m5 } from "../../../mocks/helpers/fixture-day.js";
 
 
 {
@@ -54,7 +57,7 @@ import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m5 } from "../../../parity/helpers
 
 describe_m0('Relay presentation models', () => {
   it_m0('groups only Attention mode and shares flat sorting with keyboard navigation', () => {
-    const rows = FIXTURE_DAY_WIRE_m0.queueSurfaces.filter(row => row.surfaceKind !== 'member');
+    const rows = FIXTURE_DAY_WIRE_m0.queueSurfaces.filter(row => isQueueTopLevel(row));
     assert_m0.equal(queueDisplayGroups_m0(rows, 'attention', '2026-08-03T18:00:00Z').length, 4);
     for (const sort of ['newest', 'oldest', 'longest'] as const) {
       const groups = queueDisplayGroups_m0(rows, sort, '2026-08-03T18:00:00Z');
@@ -63,7 +66,7 @@ describe_m0('Relay presentation models', () => {
       const durations = ordered.map(row => Date.parse(row.endedAt.state === 'present' ? row.endedAt.value : '2026-08-03T18:00:00Z') - Date.parse(row.startedAt));
       if (sort === 'longest') assert_m0.deepEqual(durations, [...durations].sort((a,b) => b-a));
       else { const dates = ordered.map(row => Date.parse(row.startedAt)); assert_m0.deepEqual(dates, [...dates].sort((a,b) => sort === 'oldest' ? a-b : b-a)); }
-      assert_m0.deepEqual(visibleRunIds_m0(rows, sort, '2026-08-03T18:00:00Z'), ordered.map(row => String(row.runId)));
+      assert_m0.deepEqual(visibleQueueKeys_m0(rows, sort, '2026-08-03T18:00:00Z'), ordered.map(row => String(row.runId)));
     }
   });
 });
@@ -107,6 +110,12 @@ describe_m1("the row's accessible name carries the age", () => {
     const row = surface({ status: "running" });
     assert_m1.equal(queueRowAccessibleName_m1(row, NOW), "Jordan Reyes — running");
   });
+  it_m1("announces the recorded pause and its request instead of the underlying worker status", () => {
+    for (const [state, label] of [["paused", "paused"], ["pause-pending", "pausing"]] as const) {
+      const row = surface({ status: "running", pauseControl: { state, expectedVersion: 1 } });
+      assert_m1.equal(queueRowAccessibleName_m1(row, NOW), `Jordan Reyes — ${label}`);
+    }
+  });
 });
 }
 
@@ -126,7 +135,7 @@ function surface(input: Record<string, unknown>) {
     workflowId: "person-lookup",
     traceId: "pl-120000-1111",
     attempt: 1,
-    lineage: { state: "root" },
+    parent: null,
     actorId: "local-operator",
     appVersion: { state: "present", value: "1.0.0" },
     descriptorVersion: 1,
@@ -137,7 +146,6 @@ function surface(input: Record<string, unknown>) {
   priority: "interactive",
   runNumber: { state: "present", value: 1 },
   session: { state: "absent", reason: "This fixture has no run session." },
-  containment: "root",
   linkedRuns: [],
   facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
     startedAt: NOW,
@@ -159,7 +167,7 @@ function surface(input: Record<string, unknown>) {
   });
 }
 
-describe_m2("attentionRunIds — the band and the key cannot disagree", () => {
+describe_m2("attentionQueueKeys — the band and the key cannot disagree", () => {
   it_m2("selects exactly the NEEDS YOU band's rows, in the drawn order", () => {
     const rows = [
       surface({ runId: runId(1), status: "running" }),
@@ -170,10 +178,21 @@ describe_m2("attentionRunIds — the band and the key cannot disagree", () => {
         endedAt: { state: "present", value: NOW },
       }),
       surface({ runId: runId(4), status: "blocked" }),
+      surface({ runId: runId(5), status: "failed", endedAt: { state: "present", value: NOW } }),
     ];
-    // `awaiting-approval` and `blocked` are the two statuses the band draws;
-    // the order is the band's, so the waiting row precedes the parked one.
-    assert_m2.deepEqual(attentionRunIds_m2(rows, "attention", NOW), [runId(2), runId(4)]);
+    // Waiting, then failed, then parked: failed sits in Needs you with them.
+    assert_m2.deepEqual(attentionQueueKeys_m2(rows, "attention", NOW), [runId(2), runId(5), runId(4)]);
+  });
+
+  it_m2("sends a changed name, clears with an empty draft, and skips an unchanged title", () => {
+    const named = surface({ runId: runId(1), status: "running", displayName: { state: "present", value: "April contacts" } });
+    const unnamed = surface({ runId: runId(2), status: "running", title: "Jordan" });
+    assert_m2.equal(queueRenameDraft_m2(named, "  May roster  "), "May roster");
+    assert_m2.equal(queueRenameDraft_m2(named, "April contacts"), undefined);
+    assert_m2.equal(queueRenameDraft_m2(named, "   "), "");
+    assert_m2.equal(queueRenameDraft_m2(unnamed, "Jordan"), undefined);
+    assert_m2.equal(queueRenameDraft_m2(unnamed, ""), undefined);
+    assert_m2.equal(queueRenameDraft_m2(unnamed, "April contacts"), "April contacts");
   });
 });
 }
@@ -182,7 +201,7 @@ describe_m2("attentionRunIds — the band and the key cannot disagree", () => {
 
 
 const members = FIXTURE_DAY_WIRE_m3.queueSurfaces.filter(
-  (surface): surface is MemberSurfaceWire_m3 => surface.surfaceKind === "member",
+  (surface): surface is MemberSurfaceWire_m3 => isQueueMember(surface),
 );
 
 describe_m3("checked by you — local triage only", () => {
@@ -219,7 +238,7 @@ function surface(input: Record<string, unknown>) {
     workflowId: "person-lookup",
     traceId: "pl-120000-1111",
     attempt: 1,
-    lineage: { state: "root" },
+    parent: null,
     actorId: "local-operator",
     appVersion: { state: "present", value: "1.0.0" },
     descriptorVersion: 1,
@@ -231,7 +250,6 @@ function surface(input: Record<string, unknown>) {
     runNumber: { state: "present", value: 1 },
     session: { state: "absent", reason: "This fixture has no run session." },
 
-    containment: input.surfaceKind === "member" ? "member" : "root",
     linkedRuns: [],
     facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
     startedAt: NOW,
@@ -302,11 +320,11 @@ describe_m4("member ordering", () => {
 
   it_m4("ranks doneWarnings with parked, and sinks cancelled below a clean done", () => {
     const members = [
-      surface({ runId: runId(1), surfaceKind: "member", status: "done", endedAt: { state: "present", value: NOW }, lineage: { state: "child", parentRunId: runId(9) } }),
-      surface({ runId: runId(2), surfaceKind: "member", status: "cancelled", endedAt: { state: "present", value: NOW }, lineage: { state: "child", parentRunId: runId(9) } }),
-      surface({ runId: runId(3), surfaceKind: "member", status: "queued", lineage: { state: "child", parentRunId: runId(9) } }),
-      surface({ runId: runId(4), surfaceKind: "member", status: "partial", endedAt: { state: "present", value: NOW }, lineage: { state: "child", parentRunId: runId(9) } }),
-      surface({ runId: runId(5), surfaceKind: "member", status: "failed", endedAt: { state: "present", value: NOW }, lineage: { state: "child", parentRunId: runId(9) } }),
+      surface({ runId: runId(1), surfaceKind: "single", status: "done", endedAt: { state: "present", value: NOW }, parent: queueParentFixture(runId(9)) }),
+      surface({ runId: runId(2), surfaceKind: "single", status: "cancelled", endedAt: { state: "present", value: NOW }, parent: queueParentFixture(runId(9)) }),
+      surface({ runId: runId(3), surfaceKind: "single", status: "queued", parent: queueParentFixture(runId(9)) }),
+      surface({ runId: runId(4), surfaceKind: "single", status: "partial", endedAt: { state: "present", value: NOW }, parent: queueParentFixture(runId(9)) }),
+      surface({ runId: runId(5), surfaceKind: "single", status: "failed", endedAt: { state: "present", value: NOW }, parent: queueParentFixture(runId(9)) }),
     ];
     const operation = surface({
       runId: runId(9),
@@ -317,7 +335,7 @@ describe_m4("member ordering", () => {
       memberPreview: { state: "absent", reason: "this fixture names no member subjects" },
     });
     assert_m4.deepEqual(
-      visibleRunIds_m4([operation, ...members], "attention", NOW),
+      visibleQueueKeys_m4([operation, ...members], "attention", NOW),
       [runId(9), runId(5), runId(4), runId(3), runId(2), runId(1)],
     );
   });
@@ -327,10 +345,10 @@ describe_m4("member ordering", () => {
     const members = [3, 4, 5].map((n) =>
       surface({
         runId: runId(n),
-        surfaceKind: "member",
+        surfaceKind: "single",
         status: "failed",
         endedAt: { state: "present", value: NOW },
-        lineage: { state: "child", parentRunId: runId(9) },
+        parent: queueParentFixture(runId(9)),
       }),
     );
     const operation = surface({
@@ -341,7 +359,7 @@ describe_m4("member ordering", () => {
       memberRollup: { total: 3, terminal: 3, failed: 3 },
       memberPreview: { state: "absent", reason: "this fixture names no member subjects" },
     });
-    assert_m4.deepEqual(visibleRunIds_m4([operation, ...members], "attention", NOW), [
+    assert_m4.deepEqual(visibleQueueKeys_m4([operation, ...members], "attention", NOW), [
       runId(9),
       runId(3),
       runId(4),
@@ -351,6 +369,14 @@ describe_m4("member ordering", () => {
 });
 
 describe_m4("logical item attempt grouping", () => {
+  it_m4("uses the member's served lookup outcome words", () => {
+    const member = settled({ runId: runId(1), status: "done", outcome: { label: "Active", tone: "success" } });
+    const item = groupQueueAttempts_m4([member])[0]; assert_m4.ok(item);
+    const line = queueMemberPresentation_m4({ kind: "run", key: item.key, item });
+    assert_m4.equal(line.statusLabel, "Active");
+    assert_m4.equal(line.statusAccessibleLabel, "Active");
+    assert_m4.equal(line.native?.surface, member);
+  });
   it_m4("keeps selected-day attempts under one item and scopes identity by workflow", () => {
     const first = settled({ runId: runId(1), itemId: runId(8), attempt: 1, status: "failed" });
     const retry = settled({ runId: runId(2), itemId: runId(8), attempt: 2, status: "done" });
@@ -358,10 +384,34 @@ describe_m4("logical item attempt grouping", () => {
 
     const groups = groupQueueAttempts_m4([first, otherWorkflow, retry]);
     assert_m4.equal(groups.length, 2);
-    assert_m4.deepEqual(groups[0]?.attempts.map((row) => row.attempt), [1, 2]);
+    assert_m4.deepEqual(groups[0]?.attempts.map((row) => row.attempt), [2, 1]);
     assert_m4.equal(groups[0]?.representative.runId, retry.runId);
     assert_m4.equal(groups[1]?.representative.workflowId, "other-workflow");
-    assert_m4.deepEqual(visibleRunIds_m4([first, retry]), [first.runId, retry.runId]);
+    assert_m4.deepEqual(visibleQueueKeys_m4([first, retry]), [first.runId, retry.runId]);
+  });
+
+  it_m4("numbers the day's runs by start time, including a run in progress", () => {
+    const first = settled({ runId: runId(1), itemId: runId(8), attempt: 7, status: "failed", startedAt: "2026-08-14T16:00:00.000Z" });
+    const second = settled({ runId: runId(2), itemId: runId(8), attempt: 4, status: "done", startedAt: "2026-08-14T16:10:00.000Z" });
+    const running = surface({ runId: runId(3), itemId: runId(8), attempt: 9, startedAt: "2026-08-14T16:20:00.000Z", status: "running" });
+    const [group] = groupQueueAttempts_m4([second, running, first]);
+    assert_m4.deepEqual([...group.dayNumberByRunId], [[first.runId, 1], [second.runId, 2], [running.runId, 3]]);
+    assert_m4.deepEqual(group.attempts.map(row => row.runId), [running.runId, second.runId, first.runId]);
+    assert_m4.equal(group.representative.runId, running.runId);
+    assert_m4.equal(running.endedAt.state, "absent");
+  });
+
+  it_m4("breaks equal start times by ascending runId", () => {
+    const first = settled({ runId: runId(1), itemId: runId(8), attempt: 9, status: "failed" });
+    const second = settled({ runId: runId(2), itemId: runId(8), attempt: 7, status: "done" });
+    const [group] = groupQueueAttempts_m4([second, first]);
+    assert_m4.deepEqual([...group.dayNumberByRunId], [[first.runId, 1], [second.runId, 2]]);
+  });
+
+  it_m4("refuses a run without a start time", () => {
+    const row = settled({ runId: runId(1), itemId: runId(8), status: "done" });
+    Reflect.deleteProperty(row, "startedAt");
+    assert_m4.throws(() => groupQueueAttempts_m4([row]), /start time/u);
   });
 
   it_m4("refuses two served run identities for the same workflow item attempt", () => {
@@ -385,7 +435,7 @@ describe_m4("logical item attempt grouping", () => {
   it_m4("does not promote historical attention over the selected item's current attempt", () => {
     const failed = settled({ runId: runId(1), itemId: runId(8), attempt: 1, status: "failed" });
     const retry = settled({ runId: runId(2), itemId: runId(8), attempt: 2, status: "done" });
-    assert_m4.deepEqual(attentionRunIds_m4([failed, retry]), []);
+    assert_m4.deepEqual(attentionQueueKeys_m4([failed, retry]), []);
   });
 });
 
@@ -404,7 +454,7 @@ it_m4("keeps Cancelling in the active band ahead of queued and completed work", 
 
 
 const [base] = FIXTURE_DAY_WIRE_m5.queueSurfaces;
-if (base === undefined) throw new Error("the parity day fixture must serve at least one queue surface");
+if (base === undefined) throw new Error("the mock day fixture must serve at least one queue surface");
 
 const LONG_VALUE = "re-read 1 — operator requested fresh 4568 rehearsal after resume freshness refusal";
 
@@ -437,7 +487,7 @@ const ABSENT_FIELDS = {
 const operationBase = FIXTURE_DAY_WIRE_m5.queueSurfaces.find(
   (row): row is OperationSurfaceWire_m5 => row.surfaceKind === "operation",
 );
-if (operationBase === undefined) throw new Error("the parity day fixture must serve at least one operation surface");
+if (operationBase === undefined) throw new Error("the mock day fixture must serve at least one operation surface");
 
 const SINGLE_PRESENT = { ...base, ...PRESENT_FIELDS };
 const OPERATION_PRESENT = {

@@ -1,3 +1,4 @@
+import type { EvidenceSchemaReader } from "../storage/evidence-schema-admission.js";
 /** The canonical-input snapshot contract: a raw submission is stored immutable for audit, then validated ONCE with defaults and transforms applied. */
 import { SchemaBoundCanonicalValueSchema, deriveSchemaHash } from "../validation/schema-bound-value.js";
 import type { z } from "zod";
@@ -66,10 +67,12 @@ export function canonicalInputSamples(schema: object): readonly unknown[] {
 export function parseCanonicalInputSnapshot<InputSchema extends z.ZodType>(
   canonical: CanonicalInputSchema<InputSchema>,
   stored: unknown,
+  retained?: Readonly<{ owner: Readonly<{ kind: "run-input"; id: string }>; source: Readonly<{ parsed: unknown }>; schemaReader?: EvidenceSchemaReader }>,
 ): z.output<InputSchema> {
   const snapshot = SchemaBoundCanonicalValueSchema.parse(stored);
+  if (retained !== undefined && canonicalJsonStringify(retained.source.parsed) !== canonicalJsonStringify(stored)) throw new Error("canonical-input-source-changed");
   const expectedHash = deriveSchemaHash(canonical, "output");
-  if (snapshot.schemaHash !== expectedHash) throw new Error(`stored canonical input snapshot is bound to schema ${snapshot.schemaHash}; this build requires ${expectedHash}. It will not be re-derived from ingress.`);
+  if ((retained?.schemaReader?.(retained.owner, retained.source, snapshot.schemaHash, expectedHash) ?? snapshot.schemaHash) !== expectedHash) throw new Error(`stored canonical input snapshot is bound to schema ${snapshot.schemaHash}; this build requires ${expectedHash}. It will not be re-derived from ingress.`);
   const result = canonical.safeParse(snapshot.value);
   if (!result.success) {
     throw new Error(

@@ -11,7 +11,6 @@ import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import {
   PHASE1_ACTIVE_COMMAND_ARMS,
-  PHASE1_DEFERRED_COMMAND_ARMS,
 } from "../../../src/backend/runs/commands/command-kernel.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
@@ -121,15 +120,14 @@ describe("edit data field policy", () => {
     }
   });
 
-  it("keeps the retired save outside the active and deferred partitions", () => {
+  it("keeps the retired save outside the active arms", () => {
     assert.ok(!PHASE1_ACTIVE_COMMAND_ARMS.run.includes("edit-checkpoint" as never));
-    assert.ok(!PHASE1_DEFERRED_COMMAND_ARMS.run.includes("edit-checkpoint" as never));
   });
 });
 
 describe("Rerun source and provenance boundary", () => {
   it("checks source revision, descriptor closure, node and field provenance before storing a plan", async () => {
-    const h = sourceBoundHarness();
+    const h = await sourceBoundHarness();
     try {
       const initial = h.start(h.proposal());
       h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
@@ -150,8 +148,9 @@ describe("Rerun source and provenance boundary", () => {
         copiedFrom: [{ nodeId: "submit-write", fieldPath: "output.value.transactionId", targetFieldPath: "eid" }] } }), /does not match/);
       assert.deepEqual(effects(), before, "every negative control leaves authority and publication unchanged");
       const changedDescriptor = { ...h.descriptor, contractFingerprint: FingerprintSchema.parse("f".repeat(64)) };
-      assert.throws(() => buildRerunPlan(h.database.authority, changedDescriptor, RerunSourceSchema.parse(request.rerunSource), []), /descriptor changed/);
+      assert.throws(() => buildRerunPlan(h.database.authority, changedDescriptor, RerunSourceSchema.parse(request.rerunSource), []),
+        /workflow runtime nodes require the exact object returned by defineWorkflowDescriptor/u);
       assert.deepEqual(h.fresh(source), source);
-    } finally { h.dispose(); }
+    } finally { await h.dispose(); }
   });
 });

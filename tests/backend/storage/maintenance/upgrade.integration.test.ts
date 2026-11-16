@@ -1,55 +1,58 @@
-import { createWorkbookLibraryRepository } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
-import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { restorePrePreferencesSettingsRows, prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { BrowserProfileStillClosingError } from "../../../../src/workflow-kit/session.js";
+import { inspectUnboundBackupFixture } from "../../../support/helpers/storage/backup-fixtures.js";
+import { UnboundPredecessorBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
+import { prepareStoppedBackupClosure, probeStoppedProfileBrowsersClosed } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { withOfflineMaintenanceSync, withOfflineMaintenance, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { START_PLAN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync,writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync,mkdirSync,readFileSync,readdirSync,rmSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it,vi } from "vitest";
-import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { backupStoppedAuthority,upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { createWorkerSlotRepository } from "../../../../src/backend/storage/sqlite/worker-slots.js";
-import { createWorkerControlRepository } from "../../../../src/backend/storage/sqlite/worker-control.js";
-import { WorkerBrowserCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { commandFromRow, insertNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
-import { WorkerLeaseRecordSchema } from "../../../../src/models/run/worker.js";
+import { verifyStoppedBackupManifestAtPath, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION, isWorkerCustodyDroppedTable } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { insertNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { WorkerPoolRecordSchema } from "../../../../src/models/run/worker-pool.js";
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
 import { createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase, AuthoritySchemaVersionError, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityUpgradeRecordSchema } from "../../../../src/models/config/authority.js";
-import { AuthorityUpgradeInspectionSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
 import { StorageDoctorWireSchema } from "../../../../src/models/dashboard/storage.js";
-import { parseBackupManifestFile, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { RecoveryStopProofStore } from "../../../../src/backend/storage/sqlite/recovery-stop-proof.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 const clock = manualClock(new Date("2026-10-01T12:00:00Z"));
-const owners: {workspace:string;admission:RuntimeAdmission}[] = [];
-afterEach(() => {vi.restoreAllMocks();for(const owner of owners.splice(0).reverse()){owner.admission.release();rmSync(owner.workspace,{recursive:true,force:true});}});
-function fixture(){
- const workspace=mkdtempSync(join(realpathSync(tmpdir()),"native-upgrade-admission-"));
- const admission=acquireEntrypointAdmission(workspace,"exclusive");owners.push({workspace,admission});
- const root=admission.stateRoot,path=join(root,"state.db"),input={stateRoot:root,processLockRoot:join(root,"locks"),plan:false};
- return {admission,root,path,input,run:(plan=false)=>upgradeStorage(admission,{...input,plan},clock)};
+const closers: Array<() => void | Promise<void>> = [];
+afterEach(async () => { vi.restoreAllMocks(); for (const close of closers.splice(0).reverse()) await close(); });
+async function fixture(){
+ const profile=await createBoundProfileFixture({ pending: "onboarding" }); closers.push(async () => await profile.close());
+ rmSync(profile.path);
+ const root=profile.stateRoot,path=profile.path,input={stateRoot:root,processLockRoot:join(profile.workspace,rebuildRuntimeIsolation.processLockRoot),plan:false};
+ return {get admission(){return profile.admission;},profileId:profile.admission.profileBinding.profileId,machine:profile.machine,finish:async ()=>await profile.finish(),root,path,input,run:(plan=false)=>withOfflineMaintenance(profile.admission, operation => upgradeStorage(profileBrowserClosure, profile.admission, {...input,plan}, clock, operation))};
 }
-function initialize(f:ReturnType<typeof fixture>){const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"admission-fixture"},clock);database.close();}
+async function liveFixture(){
+ const profile=await createBoundProfileFixture();closers.push(async ()=>await profile.close());
+ const root=profile.stateRoot,path=profile.path,input={stateRoot:root,processLockRoot:join(profile.workspace,rebuildRuntimeIsolation.processLockRoot),plan:false};
+ return {get admission(){return profile.admission;},root,path,input,run:(plan=false)=>withOfflineMaintenance(profile.admission, operation => upgradeStorage(profileBrowserClosure, profile.admission, {...input,plan}, clock, operation))};
+}
+function initialize(f:Awaited<ReturnType<typeof liveFixture>>){const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"admission-fixture"},clock);database.close();}
 
-describe("stopped native upgrade admission",()=>{
- function baselineFixture(version=1){
-  const f=fixture();rmSync(f.path);
+ async function baselineFixture(version=1){
+  const f=await fixture();rmSync(f.path,{force:true});
   const raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
   try {
    for(const migration of SQLITE_MIGRATIONS.filter(migration=>migration.version<=version))for(const statement of migration.statements)raw.exec(statement);
@@ -60,65 +63,120 @@ describe("stopped native upgrade admission",()=>{
    const mutate=<T,>(work:()=>Readonly<{result:T;changes:number}>)=>work().result;
    const settings=createSettingsActivationRepositories({database:raw,mutate,
     readRecord:()=>undefined});
-   settings.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+   const resolved=resolveConfigWithProvenance({}, {primaryDisplay:null}, clock, {stateRoot:f.root,artifactRoot:f.admission.artifactRoot});
+   settings.runtimeConfig.initialize({...CONFIG_SNAPSHOT,...resolved});
+   restorePrePreferencesSettingsRows(raw);
    const repository=createTimelineRepository({database:raw,mutate,read:work=>work(),assertOwner:()=>{}});
    createDebugEventWriter({repository,clock,build:"test"}).emit({category:"http",phase:"failed",correlationId:"retained-history"});
+   assert.equal(inspectNativeAuthority(raw,version).schemaVersion,version);
   } finally {raw.close();}
   return f;
  }
- function retainedPlan(version: 3 | 4, patch: Record<string, unknown> = {}) {
-  const f=baselineFixture(version), raw=new DatabaseSync(f.path);
-  const { workers: _workers, ...prior }=START_PLAN;
+
+describe("stopped native upgrade admission",()=>{
+ it("upgrades schema 5 retained plans by removing only workers through stopped backup admission",async()=>{
+  const f=await baselineFixture(5),raw=new DatabaseSync(f.path);
+  const plan={...START_PLAN,workers:8};
+  try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
+   plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
+  const before=readFileSync(f.path);
+  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/profile-bound-authority-required/u);
+  assert.deepEqual(readFileSync(f.path),before);
+  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:5,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
+  assert.deepEqual(readFileSync(f.path),before);
+  assert.equal((await f.run()).state,"upgraded");
+  const {workers:_removed,...expected}=plan;
+  const current=new DatabaseSync(f.path,{readOnly:true});
+  try {
+   assert.equal(current.prepare("PRAGMA user_version").get()?.user_version,CURRENT_AUTHORITY_SCHEMA_VERSION);
+   const row=current.prepare("SELECT payload_json FROM run_requests WHERE id=?").get(plan.startPlanId);assert.ok(row);
+   assert.deepEqual(JSON.parse(String(row.payload_json)),expected);
+  }finally{current.close();}
+  const directory=join(f.root,"backups","authority"),names=readdirSync(directory).filter(name=>name.endsWith(".manifest.json"));
+  assert.equal(names.length,1);
+  const backup=await inspectUnboundBackupFixture(f.admission,join(directory,names[0]));
+  assert.equal(backup.manifest.schemaVersion,5);
+  const prior=new DatabaseSync(backup.backupPath,{readOnly:true});
+  try {const row=prior.prepare("SELECT payload_json FROM run_requests WHERE id=?").get(plan.startPlanId);assert.ok(row);assert.deepEqual(JSON.parse(String(row.payload_json)),plan);}finally{prior.close();}
+  const upgraded=readFileSync(f.path);assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),upgraded);
+ });
+ it("rolls back schema 5 field removal when migration fails",async()=>{
+  const f=await baselineFixture(5),raw=new DatabaseSync(f.path),plan={...START_PLAN,workers:"auto"};
+  try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
+   plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
+  const before=readFileSync(f.path),exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");assert.ok(typeof exec==="function");
+  vi.spyOn(DatabaseSync.prototype,"exec").mockImplementation(function(this:DatabaseSync,sql:string){
+   Reflect.apply(exec,this,[sql]);
+   if(sql==="UPDATE run_requests SET payload_json=json_remove(payload_json, '$.workers')")throw new Error("injected-worker-removal-failure");
+  });
+  await assert.rejects(f.run(),/injected-worker-removal-failure/u);assert.deepEqual(readFileSync(f.path),before);
+ });
+ it.each([undefined,0,9,1.5,"1",null])("refuses malformed schema 5 workers %j before upgrade effects",async workers=>{
+  const f=await baselineFixture(5),raw=new DatabaseSync(f.path);
+  const plan={...START_PLAN,...(workers===undefined?{}:{workers})};
+  try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
+   plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
+  const before=readFileSync(f.path);await assert.rejects(f.run(true),/run_requests/u);assert.deepEqual(readFileSync(f.path),before);
+ });
+ async function retainedPlan(version: 3 | 4, patch: Record<string, unknown> = {}) {
+  const f=await baselineFixture(version), raw=new DatabaseSync(f.path);
+  const prior=START_PLAN;
   const plan={...prior,...patch};
   let workbookRows: Record<string, unknown[]> = {};
   try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
    plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);
    if(version===4){
-    const library=createWorkbookLibraryService({repository:createWorkbookLibraryRepository({database:raw,mutate:work=>work().result,read:work=>work()}),clock});
-    const first=library.create({name:"Retained.xlsx",themes:[],hasFormulas:false,sheets:[{id:"sheet",name:"People",width:1,hidden:[],rows:[{id:"row",cells:[{value:"retained"}]}]}]});
-    library.save(first.libraryId,first.version,{...first.workbook,name:"Saved.xlsx"});
+    const at = clock.now().toISOString(), id = randomUUID();
+    const first = { libraryId: id, version: 1, createdAt: at, savedAt: at, workbook: { libraryId: id, name: 'Retained.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 'sheet', name: 'People', width: 1, hidden: [], rows: [{ id: 'row', cells: [{ value: 'retained' }] }] }] } };
+    const second = { ...first, version: 2, workbook: { ...first.workbook, name: 'Saved.xlsx' } };
+    raw.prepare('INSERT INTO workbook_library(id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(id, 2, at, at, JSON.stringify(second));
+    for (const record of [first, second]) raw.prepare('INSERT INTO workbook_library_history(workbook_id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(id, record.version, at, at, JSON.stringify(record));
     workbookRows=Object.fromEntries(["workbook_library","workbook_library_history"].map(table=>[table,raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
    }
   }finally{raw.close();}
   return {...f,plan,workbookRows};
  }
- it.each([3,4] as const)("upgrades retained schema %s plans to explicit Auto while preserving fields and workbook history",async version=>{
-  const f=retainedPlan(version);
-  const source=AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock);
-  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),AuthoritySchemaVersionError);
+ it.each([3,4] as const)("upgrades retained schema %s plans without workers while preserving fields and workbook history",async version=>{
+  const f=await retainedPlan(version);
+  const source=withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } });
+  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/profile-bound-authority-required/u);
   const before=readFileSync(f.path);
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:version,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.deepEqual(readFileSync(f.path),before);
   assert.equal((await f.run()).state,"upgraded");
-  const current=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock);
-  try {assert.deepEqual(current.authority.startPlans.get(f.plan.startPlanId),{...f.plan,workers:"auto"});
-   assert.equal(current.getMeta().schemaVersion,5);
-   assert.equal(current.authority.workbooks.list().length,version===4?1:0);
+  const current=new DatabaseSync(f.path,{readOnly:true});
+  try {assert.equal(current.prepare("PRAGMA user_version").get()?.user_version,CURRENT_AUTHORITY_SCHEMA_VERSION);
+   const row=current.prepare("SELECT payload_json FROM run_requests WHERE id=?").get(f.plan.startPlanId);assert.ok(row);
+   assert.deepEqual(JSON.parse(String(row.payload_json)),f.plan);
+   assert.equal(current.prepare("SELECT COUNT(*) AS count FROM workbook_library").get()?.count,version===4?1:0);
   }finally{current.close();}
   const stored=new DatabaseSync(f.path,{readOnly:true});
   try {
-   for(const [table,rows] of Object.entries(f.workbookRows))assert.deepEqual(stored.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),rows);
+   for(const [table,rows] of Object.entries(f.workbookRows)) {
+     const columns = table === 'workbook_library' ? 'id,version,created_at,saved_at,payload_json' : 'workbook_id,version,created_at,saved_at,payload_json';
+     assert.deepEqual(stored.prepare(`SELECT ${columns} FROM ${table} ORDER BY rowid`).all(),rows);
+    }
    const row=stored.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
    const record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));assert.ok(record.phase==="settled");
    const migrations=SQLITE_MIGRATIONS.filter(migration=>migration.version>version);
-   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5]:[5]);
-   assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:version,toSchemaVersion:5,
+   assert.deepEqual(migrations.map(migration=>migration.version),Array.from({length:CURRENT_AUTHORITY_SCHEMA_VERSION-version},(_,index)=>version+1+index));
+   assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:version,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,
     sourceContentFingerprint:source.authorityContentFingerprint,statements:migrations.flatMap(migration=>migration.statements)})).digest("hex"));
   }finally{stored.close();}
   const directory=join(f.root,"backups","authority"),name=readdirSync(directory).find(name=>name.endsWith(".manifest.json"));assert.ok(name);
-  const verified=await verifyBackupManifestAtPath(f.admission,join(directory,name),AuthorityDatabase.sourceDatabaseIdentity(f.path));
+  const verified=await inspectUnboundBackupFixture(f.admission,join(directory,name));
   assert.equal(verified.manifest.schemaVersion,version);
   assert.equal(verified.manifest.authorityContentFingerprint,source.authorityContentFingerprint);
   const prior=new DatabaseSync(verified.backupPath,{readOnly:true});
   try {assert.deepEqual(JSON.parse(String(prior.prepare("SELECT payload_json FROM run_requests").get()?.payload_json)),f.plan);}finally{prior.close();}
  });
  for(const version of [3,4] as const) it.each([{workers:"auto"},{workers:2},{priority:"corrupt"},{plannedBy:""}])(`refuses malformed schema ${version} plan %j without writes`,async patch=>{
-  const f=retainedPlan(version,patch),before=readFileSync(f.path);
+  const f=await retainedPlan(version,patch),before=readFileSync(f.path);
   await assert.rejects(f.run(true),/run_requests/u);
   assert.deepEqual(readFileSync(f.path),before);
  });
  it.each([3,4] as const)("rolls back schema %s worker backfill and preceding migrations on failure",async version=>{
-  const f=retainedPlan(version),before=readFileSync(f.path),exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
+  const f=await retainedPlan(version),before=readFileSync(f.path),exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
   assert.ok(typeof exec==="function");
   vi.spyOn(DatabaseSync.prototype,"exec").mockImplementation(function(this:DatabaseSync,sql:string){
    Reflect.apply(exec,this,[sql]);
@@ -127,39 +185,38 @@ describe("stopped native upgrade admission",()=>{
   await assert.rejects(f.run(),/injected-worker-backfill-failure/u);
   assert.deepEqual(readFileSync(f.path),before);
  });
- it("refuses current retained plans without explicit workers",()=>{
-  const f=fixture();initialize(f);
-  const raw=new DatabaseSync(f.path);const {workers:_workers,...plan}=START_PLAN;
+ it("refuses current retained plans carrying removed workers",async ()=>{
+  const f=await liveFixture();initialize(f);
+  const raw=new DatabaseSync(f.path);const plan={...START_PLAN,workers:"auto"};
   try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
    plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);}finally{raw.close();}
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/run_requests/u);
  });
- function populatedV2(){
-  const f=baselineFixture(2), raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
+ async function populatedV2(){
+  const f=await baselineFixture(2), raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
   const now=clock.now().toISOString(), commandId=randomUUID();
   try {
    const pool=WorkerPoolRecordSchema.parse({workflow:"person-lookup",desiredWorkers:1,version:4,plannedBy:"local-operator",plannedAt:now,createdAt:now,updatedAt:now});
    raw.prepare("INSERT INTO worker_pools VALUES(?,?,?,?,?,?)").run(pool.workflow,pool.desiredWorkers,pool.version,canonicalJsonStringify(pool),now,now);
    insertNativeCommand(raw,{commandId,requestedAt:now,requestedBy:"local-operator",source:"dashboard",family:"worker-browser",type:"plan-worker-count",target:{workflowId:"person-lookup",expectedVersion:3},payload:{desiredWorkers:1}});
-   const slots=createWorkerSlotRepository({database:raw,admission:f.admission,mutate:work=>work().result});
-   const retired=slots.allocate({workflow:"person-lookup",poolIndex:1,commandId,now});
-   const lease=WorkerLeaseRecordSchema.parse({workerId:retired.workerId,workflow:"person-lookup",browserSystems:[],processId:4100,leaseGeneration:1,controlRevision:2,version:3,control:{directive:"stop",requestedAt:now,requestedBy:"local-operator"},lifecycle:{state:"stopped",startedAt:now,stoppedAt:now,reason:"operator"},createdAt:now,updatedAt:now});
+   // Schema-2 worker rows as that schema stored them: a retired first member, its stopped lease and the active replacement.
+   const slot=(workerId:string,ordinal:number,retiredAt:string|null)=>({workerId,workflow:"person-lookup",ordinal,poolIndex:1,membershipRevision:retiredAt===null?1:2,
+    phase:"failed",retiredAt,retirementCommandId:retiredAt===null?null:commandId,reservationCommandId:commandId,createdAt:now,updatedAt:now});
+   for(const row of [slot("person-lookup-worker-1",1,now),slot("person-lookup-worker-2",2,null)])raw.prepare("INSERT INTO worker_slots(id,workflow,ordinal,membership_revision,phase,retired_at,retirement_command_id,reservation_command_id,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+    .run(row.workerId,row.workflow,row.ordinal,row.membershipRevision,row.phase,row.retiredAt,row.retirementCommandId,row.reservationCommandId,canonicalJsonStringify(row),now,now);
+   const lease={workerId:"person-lookup-worker-1",workflow:"person-lookup",browserSystems:[],processId:4100,leaseGeneration:1,controlRevision:2,version:3,control:{directive:"stop",requestedAt:now,requestedBy:"local-operator"},lifecycle:{state:"stopped",startedAt:now,stoppedAt:now,reason:"operator"},createdAt:now,updatedAt:now};
    raw.prepare("INSERT INTO worker_leases VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(lease.workerId,lease.workerId,lease.workflow,1,2,"stopped","stop",null,3,canonicalJsonStringify(lease),now,now);
-   slots.retire({workerId:retired.workerId,commandId,expectedRevision:1,now});
-   const active=slots.allocate({workflow:"person-lookup",poolIndex:1,commandId,now});
-   const request=WorkerBrowserCommandRequestSchema.parse(commandFromRow(raw.prepare("SELECT * FROM commands WHERE id=?").get(commandId)));
-   createWorkerControlRepository({database:raw,mutate:(_table,work)=>work().result}).admit({commandId,request,scope:"worker-pool:person-lookup",executorId:randomUUID(),admittedAt:now,expiresAt:now,basisVersion:3,phase:{state:"admitted"},roster:{selected:[active],excess:[],beforeVersion:3,admittedVersion:4,afterVersion:4}});
-   return { ...f, retained:Object.fromEntries(["worker_pools","worker_slots","worker_leases","worker_controls","commands"].map(table=>[table,raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])) };
+   return { ...f, now, retained:Object.fromEntries(["worker_pools"].map(table=>[table,raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])) };
   }finally{raw.close();}
  }
- it("upgrades schema 3 only after verifying its exact backup and retains every source table",async()=>{
-  const f=baselineFixture(3),before=readFileSync(f.path);
-  const source=AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock);
+ it("upgrades schema 3 only after verifying its exact backup and retains every unrelated source table",async()=>{
+  const f=await baselineFixture(3),before=readFileSync(f.path);
+  const source=withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } });
   const raw=new DatabaseSync(f.path,{readOnly:true});
-  let retained:Record<string,unknown[]>;
-  try {retained=Object.fromEntries(source.tables.filter(table=>table.name!=="database_states"&&table.name!=="database_upgrades")
+  let retained:Record<string,Record<string,unknown>[]>;
+  try {retained=Object.fromEntries(source.tables.filter(table=>table.name!=="database_states"&&table.name!=="database_upgrades"&&table.name!=="explorer_overrides"&&!isWorkerCustodyDroppedTable(table.name))
    .map(table=>[table.name,raw.prepare(`SELECT * FROM ${table.name} ORDER BY rowid`).all()]));}finally{raw.close();}
-  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),AuthoritySchemaVersionError);
+  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/profile-bound-authority-required/u);
   assert.deepEqual(readFileSync(f.path),before);
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:3,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.deepEqual(readFileSync(f.path),before);
@@ -173,25 +230,28 @@ describe("stopped native upgrade admission",()=>{
    return migrate(...args);
   });
   assert.equal((await f.run()).state,"upgraded");
-  const current=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"upgrade-test"},clock);
-  try {assert.equal(current.getMeta().schemaVersion,CURRENT_AUTHORITY_SCHEMA_VERSION);assert.deepEqual(current.authority.workbooks.list(),[]);}finally{current.close();}
+  const current=new DatabaseSync(f.path,{readOnly:true});
+  try {assert.equal(current.prepare("PRAGMA user_version").get()?.user_version,CURRENT_AUTHORITY_SCHEMA_VERSION);
+   assert.equal(current.prepare("SELECT COUNT(*) AS count FROM workbook_library").get()?.count,0);
+  }finally{current.close();}
   const upgraded=new DatabaseSync(f.path,{readOnly:true});
-  try {for(const [table,rows] of Object.entries(retained))assert.deepEqual(upgraded.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),rows);
+  try {for(const [table,rows] of Object.entries(retained))assert.deepEqual(upgraded.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map(row=>prePreferencesSettingsRow(table,row)),rows.map(row=>({...row})));
+   assert.equal(upgraded.prepare("SELECT name FROM sqlite_schema WHERE name='explorer_overrides'").get(),undefined);
    assert.deepEqual(upgraded.prepare("PRAGMA foreign_key_check").all(),[]);
   }finally{upgraded.close();}
  });
  it.each([3,4] as const)("refuses a schema %s backup mismatch before migration effects",async version=>{
-  const f=baselineFixture(version),before=readFileSync(f.path),migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
+  const f=await baselineFixture(version),before=readFileSync(f.path),migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
   vi.spyOn(AuthorityDatabase,"upgradeStopped").mockImplementation((...args)=>{
    const backup=args[5];assert.ok(backup);
    return migrate(args[0],args[1],args[2],args[3],args[4],
-    {...backup,manifest:{...backup.manifest,authorityGeneration:backup.manifest.authorityGeneration+1}});
+    {...backup,manifest:{...backup.manifest,authorityGeneration:backup.manifest.authorityGeneration+1}},args[6]);
   });
   await assert.rejects(f.run(),/source-changed: upgrade backup differs/u);
   assert.deepEqual(readFileSync(f.path),before);
  });
  it("rolls back schema 3 workbook DDL and metadata when migration fails",async()=>{
-  const f=baselineFixture(3),before=readFileSync(f.path),exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
+  const f=await baselineFixture(3),before=readFileSync(f.path),exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
   assert.ok(typeof exec==="function");
   vi.spyOn(DatabaseSync.prototype,"exec").mockImplementation(function(this:DatabaseSync,sql:string){
    Reflect.apply(exec,this,[sql]);
@@ -200,14 +260,18 @@ describe("stopped native upgrade admission",()=>{
   await assert.rejects(f.run(),/injected-workbook-migration-failure/u);
   assert.deepEqual(readFileSync(f.path),before);
  });
- it("upgrades populated schema 2 with an exact verified backup and retained roster history",async()=>{
-  const f=populatedV2();
-  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),AuthoritySchemaVersionError);
+ it("upgrades populated schema 2 with an exact verified backup and retained worker slots",async()=>{
+  const f=await populatedV2();
+  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/profile-bound-authority-required/u);
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:2,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.equal((await f.run()).state,"upgraded");
   const raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
   try {
-   for(const [table,rows] of Object.entries(f.retained))assert.deepEqual(raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),rows);
+   for(const [table,rows] of Object.entries(f.retained))assert.deepEqual(raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map(row=>prePreferencesSettingsRow(table,row)),rows.map(row=>({...row})));
+   assert.deepEqual(raw.prepare("SELECT id,ordinal,pool_index,retired_at FROM worker_slots ORDER BY ordinal").all().map(row=>({...row})),
+    [{id:"person-lookup-worker-1",ordinal:1,pool_index:1,retired_at:f.now},{id:"person-lookup-worker-2",ordinal:2,pool_index:1,retired_at:null}]);
+   assert.deepEqual(raw.prepare("SELECT id FROM commands WHERE family='worker-browser'").all(),[]);
+   for(const table of ["worker_leases","worker_controls","browser_sessions"])assert.equal(raw.prepare("SELECT name FROM sqlite_schema WHERE name=?").get(table),undefined);
    assert.deepEqual(raw.prepare("PRAGMA foreign_key_check").all(),[]);
    assert.equal(raw.prepare("PRAGMA foreign_keys").get()?.foreign_keys,1);
    assert.throws(()=>raw.exec("DELETE FROM worker_pools"),/worker-pools-retained/u);
@@ -215,11 +279,11 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
   const directory=join(f.root,"backups","authority"),names=readdirSync(directory).filter(name=>name.endsWith(".manifest.json"));
   assert.equal(names.length,1);
-  const backup=await verifyBackupManifestAtPath(f.admission,join(directory,names[0]),AuthorityDatabase.sourceDatabaseIdentity(f.path));
+  const backup=await inspectUnboundBackupFixture(f.admission,join(directory,names[0]));
   assert.equal(backup.manifest.schemaVersion,2);
  });
  it("rolls back the schema 2 rebuild when the rebuilt pool leaves orphaned slots",async()=>{
-  const f=populatedV2(),before=readFileSync(f.path);
+  const f=await populatedV2(),before=readFileSync(f.path);
   const exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
   assert.ok(typeof exec==="function");
   let injected=false;
@@ -231,7 +295,7 @@ describe("stopped native upgrade admission",()=>{
     Reflect.apply(exec,this,["PRAGMA defer_foreign_keys=ON; DROP TRIGGER worker_pools_retained; DELETE FROM worker_pools; CREATE TRIGGER worker_pools_retained BEFORE DELETE ON worker_pools BEGIN SELECT RAISE(ABORT,'worker-pools-retained'); END; PRAGMA defer_foreign_keys=OFF;"]);
    }
   });
-  await assert.rejects(f.run(),/foreign-key validation failed/u);
+  await assert.rejects(f.run(),/authority-upgrade-foreign-key-check-failed/u);
   assert.equal(injected,true);
   vi.restoreAllMocks();
   assert.deepEqual(readFileSync(f.path),before);
@@ -244,7 +308,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
  });
  it("verifies a schema 1 backup before converting the source",async()=>{
-  const f=baselineFixture(),bytes=readFileSync(f.path);
+  const f=await baselineFixture(),bytes=readFileSync(f.path);
   const directory=join(f.root,"backups","authority");
   const migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
   let observedManifestPath:string|undefined;
@@ -254,7 +318,7 @@ describe("stopped native upgrade admission",()=>{
    const manifests=readdirSync(directory).filter(name=>name.endsWith(".manifest.json"));
    assert.equal(manifests.length,1,"one verified backup precedes conversion");
    observedManifestPath=join(directory,manifests[0]);
-   const manifest=parseBackupManifestFile(observedManifestPath);
+   const manifest=UnboundPredecessorBackupManifestSchema.parse(JSON.parse(readFileSync(observedManifestPath,"utf8")));
    const backupBytes=readFileSync(join(directory,manifest.backupFileName));
    assert.equal(manifest.schemaVersion,1);
    assert.equal(manifest.verification.state,"verified");
@@ -271,11 +335,11 @@ describe("stopped native upgrade admission",()=>{
   });
   assert.equal((await f.run()).state,"upgraded");
   assert.ok(observedManifestPath);
-  const verified=await verifyBackupManifestAtPath(f.admission,observedManifestPath,AuthorityDatabase.sourceDatabaseIdentity(f.path));
+  const verified=await inspectUnboundBackupFixture(f.admission,observedManifestPath);
   assert.equal(verified.manifest.schemaVersion,1);
  });
  it("keeps schema 1 bytes unchanged when the backup destination refuses",async()=>{
-  const f=baselineFixture();
+  const f=await baselineFixture();
   mkdirSync(join(f.root,"backups"),{recursive:true});
   writeFileSync(join(f.root,"backups","authority"),"backup destination blocked");
   const bytes=readFileSync(f.path);
@@ -288,8 +352,8 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
  });
  it("settles the forward record with the exact verified backup manifest",async()=>{
-  const f=baselineFixture();
-  const source=AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock);
+  const f=await baselineFixture();
+  const source=withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } });
   assert.equal((await f.run()).state,"upgraded");
   const raw=new DatabaseSync(f.path,{readOnly:true});
   let record:ReturnType<typeof AuthorityUpgradeRecordSchema.parse>;
@@ -307,45 +371,44 @@ describe("stopped native upgrade admission",()=>{
   assert.notEqual(record.planDigest,source.authorityContentFingerprint);
   assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:1,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,
    sourceContentFingerprint:source.authorityContentFingerprint,statements:SQLITE_MIGRATIONS.filter(migration=>migration.version>1).flatMap(migration=>migration.statements)})).digest("hex"));
-  const verified=await verifyBackupManifestAtPath(f.admission,record.backup.manifestPath,AuthorityDatabase.sourceDatabaseIdentity(f.path));
+  const verified=await inspectUnboundBackupFixture(f.admission,record.backup.manifestPath);
   assert.equal(verified.manifest.schemaVersion,1);
   assert.equal(verified.manifest.authorityContentFingerprint,source.authorityContentFingerprint);
   assert.deepEqual(record.backup,{manifestPath:verified.manifestPath,sha256:verified.manifest.sha256,authorityGeneration:source.authorityGeneration});
  });
  it("plans the schema 1 upgrade without backup or source effects",async()=>{
-  const f=baselineFixture(),before=storageTree(f.root),bytes=readFileSync(f.path);
+  const f=await baselineFixture(),before=storageTree(f.root),bytes=readFileSync(f.path);
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:1,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.deepEqual(storageTree(f.root),before);
   assert.deepEqual(readFileSync(f.path),bytes);
   assert.equal(existsSync(join(f.root,"backups")),false);
  });
  it("forward upgrades a stopped baseline while preserving its settings and history",async()=>{
-  const f=baselineFixture();
+  const f=await baselineFixture();
   const raw=new DatabaseSync(f.path,{readOnly:true});
-  const retained: Record<string,unknown>={};
+  const retained: Record<string,Record<string,unknown>[]>={};
   try {for(const table of ["settings","settings_snapshots","commands","command_audits","timeline_events","database_upgrades"]) {
-   retained[table]=raw.prepare(`SELECT * FROM ${table}`).all();assert.ok((retained[table] as unknown[]).length>0);
+   const rows=raw.prepare(`SELECT * FROM ${table}`).all();retained[table]=rows;assert.ok(rows.length>0);
   }}finally{raw.close();}
-  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),/schema/u);
+  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),/profile-bound-authority-required/u);
   const before=storageTree(f.root);
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:1,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.deepEqual(storageTree(f.root),before);
   assert.equal((await f.run()).state,"upgraded");
-  const current=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"upgrade-test"},clock);
-  try {assert.equal(current.getMeta().schemaVersion,CURRENT_AUTHORITY_SCHEMA_VERSION);assert.ok(current.authority.runtimeConfig.get());
-   const inspection=AuthorityUpgradeInspectionSchema.parse(current.readUpgradePhases());
-   assert.equal(inspection.state,"available");
-   if(inspection.state==="available")assert.deepEqual(inspection.phases.map(({phase})=>phase),["baseline","settled"]);
+  const current=new DatabaseSync(f.path,{readOnly:true});
+  try {assert.equal(current.prepare("PRAGMA user_version").get()?.user_version,CURRENT_AUTHORITY_SCHEMA_VERSION);
+   assert.ok(current.prepare("SELECT 1 FROM settings").get());
+   assert.deepEqual(current.prepare("SELECT phase FROM database_upgrades ORDER BY rowid").all().map(row=>row.phase),["baseline","settled"]);
   }finally{current.close();}
   const stored=new DatabaseSync(f.path,{readOnly:true});
   try {
-   for(const [table,rows] of Object.entries(retained))assert.deepEqual(stored.prepare(`SELECT * FROM ${table}${table==="database_upgrades"?" WHERE phase='baseline'":""}`).all(),rows);
+   for(const [table,rows] of Object.entries(retained))assert.deepEqual(stored.prepare(`SELECT * FROM ${table}${table==="database_upgrades"?" WHERE phase='baseline'":""}`).all().map(row=>prePreferencesSettingsRow(table,row)),rows.map(row=>({...row})));
    assert.ok(stored.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get());
   }finally{stored.close();}
   assert.equal((await f.run()).state,"already-upgraded");
  });
  it.each(["dashboard","preflight"] as const)("observes a migrated authority as settled through %s",async surface=>{
-  const f=baselineFixture();
+  const f=await baselineFixture();
   assert.equal((await f.run()).state,"upgraded");
   const doctorOptions={stateRootTrustAnchor:f.root,stateRoot:f.root,authorityPath:f.path,
    backupDirectory:join(f.root,"backups","authority"),busyTimeoutMs:250};
@@ -358,45 +421,58 @@ describe("stopped native upgrade admission",()=>{
   }else{
    const observation=await new AuthorityHealthPreflightRunner(f.admission,doctorOptions,clock).run({
     signal:new AbortController().signal,timeoutMs:10_000,deadlineMonotonicMs:10_000,redaction:"presence-only"});
-   assert.equal(observation.state,"healthy");
+   assert.equal(observation.state,"unhealthy");
+   assert.match(observation.summary,/credentials/u);
    assert.match(observation.summary,/authority upgrade phase settled/u);
   }
  });
- it("reacquires stopped installation admission for a retained baseline",async()=>{
-  const f=baselineFixture();
-  const owner=owners.find(row=>row.admission===f.admission);assert.ok(owner);
+ it("reacquires stopped profile admission for a retained baseline",async()=>{
+  const f=await baselineFixture();
   f.admission.release();
-  const admission=acquireEntrypointAdmission(owner.workspace,"exclusive");owner.admission=admission;
-  assert.throws(()=>AuthorityDatabase.open(admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),/schema/u);
-  assert.equal((await upgradeStorage(admission,f.input,clock)).state,"upgraded");
+
+  const admission=f.machine.admitProfile(f.profileId);
+  closers.push(()=>admission.release());
+  assert.throws(()=>AuthorityDatabase.open(admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),/profile-bound-authority-required/u);
+  assert.equal((await withOfflineMaintenance(admission, operation => upgradeStorage(profileBrowserClosure, admission, f.input, clock, operation))).state,"upgraded");
  });
  it("refuses baseline metadata disagreement without effects",async()=>{
-  const f=baselineFixture(),raw=new DatabaseSync(f.path);
+  const f=await baselineFixture(),raw=new DatabaseSync(f.path);
   try {raw.exec("UPDATE database_states SET schema_version=2");}finally{raw.close();}
   const before=storageTree(f.root);
   for(const plan of [true,false])await assert.rejects(f.run(plan),/metadata/u);
   assert.deepEqual(storageTree(f.root),before);
  });
  it("rolls back migration DDL and metadata when strict settings validation fails",async()=>{
-  const f=baselineFixture(),raw=new DatabaseSync(f.path);
+  const f=await baselineFixture(),raw=new DatabaseSync(f.path);
   try {raw.exec("DELETE FROM settings");}finally{raw.close();}
   const before=storageTree(f.root);
   for(const plan of [true,false])await assert.rejects(f.run(plan),/settings/u);
   assert.deepEqual(storageTree(f.root),before);
  });
  it("rechecks the source after restore admission before converting it",async()=>{
-  const f=baselineFixture();
-  await assert.rejects(upgradeStorage(f.admission,f.input,clock,input=>{
-   const raw=new DatabaseSync(f.path);try{raw.prepare("UPDATE database_states SET updated_at=?").run("2026-10-01T12:01:00.000Z");}finally{raw.close();}
-   return acquireRuntimeRestoreAdmission(input,clock);
-  }),/source-changed/u);
+  const f=await baselineFixture();
+  const inspect = AuthorityDatabase.inspectStoppedUpgrade.bind(AuthorityDatabase);
+  let inspections = 0;
+  const observed = vi.spyOn(AuthorityDatabase, "inspectStoppedUpgrade").mockImplementation((...args) => {
+   const result = inspect(...args);
+   if (++inspections === 1) {
+    const changed = new DatabaseSync(f.path);
+    try { changed.prepare("UPDATE database_states SET updated_at=?").run("2026-10-01T12:01:00.000Z"); }
+    finally { changed.close(); }
+   }
+   return result;
+  });
+  try {
+   await assert.rejects(withOfflineMaintenance(f.admission, operation => upgradeStorage(profileBrowserClosure, f.admission, f.input, clock, operation)), /source-changed/u);
+   assert.equal(inspections, 2);
+  } finally { observed.mockRestore(); }
   const raw=new DatabaseSync(f.path,{readOnly:true});try{
    assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version,1);
    assert.equal(raw.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get(),undefined);
   }finally{raw.close();}
  });
  it("refuses a source change after the verified backup and before migration",async()=>{
-  const f=baselineFixture(),migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
+  const f=await baselineFixture(),migrate=AuthorityDatabase.upgradeStopped.bind(AuthorityDatabase);
   let changedBytes:Buffer|undefined;
   vi.spyOn(AuthorityDatabase,"upgradeStopped").mockImplementation((...args)=>{
    assert.ok(args[5],"verified backup evidence reaches migration");
@@ -416,11 +492,14 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
  });
  it("atomically rolls back the real migration when current validation rejects",async()=>{
-  const f=baselineFixture();
-  const source=AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock);
-  const report=await backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot);
+  const f=await baselineFixture();
+  const operation=f.admission.acquireOfflineMaintenance(),stopped=f.admission.forStoppedProfileUpgrade();
+  closers.push(()=>{stopped.release();operation.release();});
+  const source=AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock);
+  const report=await prepareStoppedBackupClosure(profileBrowserClosure,stopped,operation,clock,f.input.processLockRoot)
+    .then(closure=>backupStoppedAuthority(closure,stopped,f.root,clock,f.input.processLockRoot,operation));
   const manifest=report.manifests[0];assert.ok(manifest);
-  const backup=await verifyBackupManifestAtPath(f.admission,join(f.root,"backups","authority",`${manifest.backupFileName}.manifest.json`));
+  const backup=verifyStoppedBackupManifestAtPath(stopped,join(f.root,"backups","authority",`${manifest.backupFileName}.manifest.json`));
   const exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
   assert.ok(typeof exec==="function");
   let reachedCurrentSchema=false;
@@ -432,7 +511,7 @@ describe("stopped native upgrade admission",()=>{
     Reflect.apply(exec,this,["DELETE FROM settings"]);
    }
   });
-  assert.throws(()=>AuthorityDatabase.upgradeStopped(f.admission,f.path,f.input.processLockRoot,clock,source.authorityContentFingerprint,backup),/settings/u);
+  assert.throws(()=>AuthorityDatabase.upgradeStopped(stopped,f.path,f.input.processLockRoot,clock,source.authorityContentFingerprint,backup,verifyStoppedBackupManifestAtPath),/settings/u);
   assert.equal(reachedCurrentSchema,true);
   const raw=new DatabaseSync(f.path,{readOnly:true});
   try {
@@ -444,27 +523,43 @@ describe("stopped native upgrade admission",()=>{
   }finally{raw.close();}
  });
  it("refuses restoration of a verified schema 1 backup without changing current authority",async()=>{
-  const f=baselineFixture();
-  const report=await backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot);
+  const f=await baselineFixture();
+  const report=await withOfflineMaintenance(f.admission,async operation=>{
+   const stopped=f.admission.forStoppedProfileUpgrade();
+   try{
+    const produced=await prepareStoppedBackupClosure(profileBrowserClosure,stopped,operation,clock,f.input.processLockRoot)
+     .then(closure=>backupStoppedAuthority(closure,stopped,f.root,clock,f.input.processLockRoot,operation));
+    const first=produced.manifests[0];assert.ok(first);
+    assert.equal(verifyStoppedBackupManifestAtPath(stopped,join(f.root,"backups","authority",`${first.backupFileName}.manifest.json`)).manifest.schemaVersion,1);
+    return produced;
+   }finally{stopped.release();}
+  });
   const manifest=report.manifests[0];assert.ok(manifest);
   const manifestPath=join(f.root,"backups","authority",`${manifest.backupFileName}.manifest.json`);
-  assert.equal((await verifyBackupManifestAtPath(f.admission,manifestPath)).manifest.schemaVersion,1);
-  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),error=>error instanceof AuthoritySchemaVersionError && error.schemaVersion===1);
+  assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),/profile-bound-authority-required/u);
   await f.run();
-  const sourceDatabaseIdentity=AuthorityDatabase.sourceDatabaseIdentity(f.path);
-  const proofs=new RecoveryStopProofStore({processLockRoot:f.input.processLockRoot,maxProofAgeMs:60_000},clock);
-  proofs.recordRuntimeState(observeRuntimeLockSnapshot({processLockRoot:f.input.processLockRoot,sourceDatabaseIdentity},clock));
-  const stoppedSystemProof=proofs.issue({observedBy:"local-operator",sourceDatabaseIdentity});
-  const restore=new OfflineAuthorityRestoreService(f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"backups","suspects"),
-   busyTimeoutMs:250,processLockRoot:f.input.processLockRoot,stoppedProofMaxAgeMs:60_000},async()=>{throw new Error("unexpected projection rebuild");},clock);
+  await f.finish();
+  const credentials=boundProfileCredentials(f.admission);
+
+
+  const operation=f.admission.acquireOfflineMaintenance();
+  const restore=new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"backups","suspects"),
+   busyTimeoutMs:250,processLockRoot:f.input.processLockRoot},async()=>{throw new Error("unexpected projection rebuild");},clock,undefined,credentials);
   const before=storageTree(f.root);
-  await assert.rejects(restore.restore({manifestPath,stoppedSystemProof}),/authority-schema-mismatch/u);
+  await assert.rejects(restore.restore({ manifestPath }, operation), /backup-profile-binding-required/u);
+  assert.deepEqual(storageTree(f.root),before);
+ });
+ it("refuses constructing restore for a pending profile",async ()=>{
+  const f=await fixture();
+  const before=storageTree(f.root);
+  assert.throws(()=>new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"backups","suspects"),
+   busyTimeoutMs:250,processLockRoot:f.input.processLockRoot},async()=>{throw new Error("unexpected projection rebuild");},clock),/profile-bound-authority-required/u);
   assert.deepEqual(storageTree(f.root),before);
  });
  it("refuses schema-valid journal column corruption during read-only preflight without effects",async()=>{
-  const f=fixture();const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"journal-corruption-fixture"},clock);
+  const f=await liveFixture();const database=AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"journal-corruption-fixture"},clock,undefined,undefined,undefined,boundProfileCredentials(f.admission));
   const commandId=randomUUID();
-  try{database.authority.commands.insert({commandId,family:"worker-browser",type:"refresh-browser",target:{workerId:"person-lookup-worker-1",browserSessionId:randomUUID(),expectedVersion:1,controlBasis:{leaseGeneration:1,controlRevision:1}},source:"dashboard",requestedBy:"local-operator",requestedAt:clock.now().toISOString()});}finally{database.close();}
+  try{database.authority.commands.insert({commandId,family:"worker-browser",type:"refresh-browser",target:{workerId:"person-lookup-worker-1",browserSessionId:randomUUID(),lifetimeId:randomUUID(),expectedVersion:1},source:"dashboard",requestedBy:"local-operator",requestedAt:clock.now().toISOString()});}finally{database.close();}
   const raw=new DatabaseSync(f.path);
   try{
    const triggers=raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='commands'").all();
@@ -472,46 +567,77 @@ describe("stopped native upgrade admission",()=>{
    try{assert.equal(raw.prepare("UPDATE commands SET family='settings' WHERE id=?").run(commandId).changes,1);}finally{for(const trigger of triggers)raw.exec(String(trigger.sql));}
   }finally{raw.close();}
   const bytes=readFileSync(f.path);
-  await assert.rejects(backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot),/command-row-identity-mismatch/u);
+  await assert.rejects(withOfflineMaintenance(f.admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, clock, f.input.processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, clock, f.input.processLockRoot, operation))),/command-row-identity-mismatch/u);
   assert.deepEqual(readFileSync(f.path),bytes);
   const before=storageTree(f.root);
   for(const plan of [true,false])await assert.rejects(f.run(plan),/command-row-identity-mismatch/u);
   assert.deepEqual(storageTree(f.root),before);
  });
- it("plans the bootstrapped native authority without writes and verifies unchanged current authority",async()=>{
-  const f=fixture(),before=storageTree(f.root);
-  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});assert.deepEqual(storageTree(f.root),before);
-  assert.equal((await f.run()).state,"already-upgraded");const current=readFileSync(f.path);
-  assert.equal((await f.run(true)).state,"planned");assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),current);
+ it("plans a missing profile database without writes and initializes it",async()=>{
+  const f=await fixture(),before=storageTree(f.root);
+  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});assert.deepEqual(storageTree(f.root),before);
+  assert.equal((await f.run()).state,"initialized");const current=readFileSync(f.path);
+  assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
+  assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),current);
  });
- it.each([6,19,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
-  const f=fixture();initialize(f);const raw=new DatabaseSync(f.path);
+ it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
+  const f=await liveFixture();initialize(f);const raw=new DatabaseSync(f.path);
   try{raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);}finally{raw.close();}
   const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),error=>error instanceof AuthoritySchemaVersionError && error.code==="authority-schema-mismatch");assert.deepEqual(storageTree(f.root),before);
  });
  it("refuses a divergent native schema without effects",async()=>{
-  const f=fixture();initialize(f);const raw=new DatabaseSync(f.path);try{raw.exec("CREATE TABLE divergent_authority(id TEXT PRIMARY KEY) STRICT");}finally{raw.close();}
+  const f=await liveFixture();initialize(f);const raw=new DatabaseSync(f.path);try{raw.exec("CREATE TABLE divergent_authority(id TEXT PRIMARY KEY) STRICT");}finally{raw.close();}
   const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),/schema/u);assert.deepEqual(storageTree(f.root),before);
  });
- it("refuses an active runtime lock before backup or upgrade effects",async()=>{
-  const f=fixture();initialize(f);const server=acquireRuntimeProcessLock({processLockRoot:f.input.processLockRoot,name:"server",pid:process.pid},clock);
-  try{const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),/runtime-active/u);
-   assert.throws(()=>AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock),/runtime-active/u);
-   assert.throws(()=>AuthorityDatabase.upgradeStopped(f.admission,f.path,f.input.processLockRoot,clock),/runtime-active/u);
-   await assert.rejects(backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot),/runtime-active/u);assert.deepEqual(storageTree(f.root),before);
-  }finally{server.release();}
+ it("refuses an old-build process record before backup or upgrade effects",async()=>{
+  const f=await liveFixture();initialize(f);plantOldBuildArtifact(f.input.processLockRoot);
+  const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
+   assert.throws(()=>withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } }),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
+   assert.throws(()=>withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.upgradeStopped(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } }),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
+   await assert.rejects(withOfflineMaintenance(f.admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, clock, f.input.processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, clock, f.input.processLockRoot, operation))),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });assert.deepEqual(storageTree(f.root),before);
  });
  it("verifies an explicit native backup without changing authority or credentials",async()=>{
-  const f=fixture();initialize(f);const bytes=readFileSync(f.path);
-  const report=await backupStoppedAuthority(f.admission,f.root,clock,f.input.processLockRoot);assert.equal(report.state,"verified");assert.equal(report.manifests.length,1);
+  const f=await liveFixture();initialize(f);const bytes=readFileSync(f.path);
+  const report=await withOfflineMaintenance(f.admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, clock, f.input.processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, clock, f.input.processLockRoot, operation)));assert.equal(report.state,"verified");assert.equal(report.manifests.length,1);
   const manifest=report.manifests[0];assert.ok(manifest);
-  const verified=await verifyBackupManifestAtPath(f.admission,join(f.root,"backups","authority",manifest.backupFileName+".manifest.json"),AuthorityDatabase.sourceDatabaseIdentity(f.path));
+  const verified=await verifyBackupManifestAtPath(f.admission,join(f.root,"backups","authority",manifest.backupFileName+".manifest.json"));
   assert.equal(verified.manifest.schemaVersion,CURRENT_AUTHORITY_SCHEMA_VERSION);assert.deepEqual(readFileSync(f.path),bytes);
   const before=storageTree(f.root);assert.equal((await f.run(true)).state,"planned");assert.deepEqual(storageTree(f.root),before);assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),bytes);
  });
  it("leaves current authority untouched after failed restore admission and admits exact retry",async()=>{
-  const f=fixture(),before=storageTree(f.root);
-  await assert.rejects(upgradeStorage(f.admission,f.input,clock,()=>{throw new Error("injected-admission-failure");}),/injected-admission-failure/u);
-  assert.deepEqual(storageTree(f.root),before);assert.equal((await f.run()).state,"already-upgraded");
+  const f=await fixture(),before=storageTree(f.root);
+  const expired = f.admission.acquireOfflineMaintenance(); expired.release();
+  await assert.rejects(upgradeStorage(profileBrowserClosure, f.admission,f.input,clock,expired),/offline-maintenance-unissued/u);
+  assert.deepEqual(storageTree(f.root),before);assert.equal((await f.run()).state,"initialized");
  });
+});
+
+for(const failure of ["busy","unproved"] as const)it(`keeps stopped backup files unchanged when native browser closure is ${failure}`,async()=>{
+  const f=await baselineFixture(),operation=f.admission.acquireOfflineMaintenance(),stopped=f.admission.forStoppedProfileUpgrade();
+  closers.push(()=>{stopped.release();operation.release();});
+  const error=failure==="busy"?new BrowserProfileStillClosingError(new Error("synthetic native busy")):new NativeBrowserClosureUnprovedError([new Error("synthetic unproved close")]);
+  const probe=vi.spyOn(profileBrowserClosure,"probeClosed").mockRejectedValue(error);
+  const before=storageTree(f.root);
+  await assert.rejects(prepareStoppedBackupClosure(profileBrowserClosure, stopped, operation, clock, f.input.processLockRoot).then(closure => backupStoppedAuthority(closure, stopped, f.root, clock, f.input.processLockRoot, operation)), value => value === error);
+  assert.deepEqual(storageTree(f.root), before); assert.equal(probe.mock.calls.length, 1);
+  probe.mockRestore();
+  await probeStoppedProfileBrowsersClosed(stopped, clock, profileBrowserClosure, f.input.processLockRoot);
+  operation.release();
+});
+
+
+it("binds legacy conversion issuance and expiry to the same actual maintenance operation", async () => {
+  const f=await baselineFixture();
+  assert.throws(()=>f.admission.forStoppedProfileUpgrade(), /offline-maintenance/u);
+  const first=f.admission.acquireOfflineMaintenance(),stopped=f.admission.forStoppedProfileUpgrade();
+  try {
+    stopped.assertReadOnlyAuthorityDatabase(f.path);
+    first.release();
+    const second=f.admission.acquireOfflineMaintenance();
+    try {
+      assert.throws(()=>stopped.assertReadOnlyAuthorityDatabase(f.path), /offline-maintenance-unissued/u);
+      const current=f.admission.forStoppedProfileUpgrade();
+      try { current.assertReadOnlyAuthorityDatabase(f.path); } finally { current.release(); }
+    } finally { second.release(); }
+  } finally { stopped.release(); first.release(); }
 });

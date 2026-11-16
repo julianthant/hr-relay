@@ -29,7 +29,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         await new Promise<void>((resolve) => setImmediate(resolve));
       },
     };
-    const h = harness({ intake });
+    const h = await harness({ intake });
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b75";
     const acceptedAt = h.clock.now().toISOString();
     const patch = { "browser.headless": { set: false } } as const;
@@ -67,7 +67,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses malformed and unavailable requests with typed wire errors", async () => {
-    const h = harness();
+    const h = await harness();
 
     const badDay = await h.app.request("/api/v1/dashboard?day=today");
     assert.equal(badDay.status, 400);
@@ -101,6 +101,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       },
     };
     const settingsBefore = settingsAuthoritySnapshot(h, settingsCommandId);
+    const settingsFaultBefore = faultAuthoritySnapshot(h);
 
     const mismatchedSettingsSchema = await h.app.request("/api/v1/commands", {
       method: "POST",
@@ -112,10 +113,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(rejection.state, "rejected");
     assert.equal(rejection.code, "schema-mismatch");
     assert.deepEqual(
-      settingsAuthoritySnapshot(h, settingsCommandId),
+      { ...settingsAuthoritySnapshot(h, settingsCommandId), authorityGeneration: settingsBefore.authorityGeneration },
       settingsBefore,
-      "a schema-mismatched settings command must leave file, prepare, current, journal, audit, and generations byte-exactly unchanged",
+      "a schema-mismatched settings command changes only its HTTP diagnostic",
     );
+
+    assertHttpFaultOnly(h, settingsFaultBefore, 1);
 
     const unknownWorkflowPlan = await h.app.request("/api/v1/start-plans", {
       method: "POST",
@@ -163,7 +166,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses a command whose requested actor disagrees with BFF admission before authority changes", async () => {
-    const h = harness();
+    const h = await harness();
     const commandId = "00000000-0000-4000-8000-000000000095";
     const patch = {
       "display.screenWidth": { set: 1980 },
@@ -231,7 +234,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("executes a bulk cancel as N CAS-bound children and answers the per-run vector", async () => {
-    const h = harness();
+    const h = await harness();
 
     // Three real runs through the real plan -> start doors, one per subject.
     const startRun = async (eid: string, commandId: string): Promise<string> => {
@@ -293,7 +296,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(soloCancel)).state, "applied");
 
     // Whole-request refusals reach NO target: an empty batch, a duplicated
-    // target, and the all-or-none mode this runtime deliberately refuses.
+    // target.
     const envelope = {
       commandId: "1a000000-0000-4000-8000-00000000000b",
       requestedAt: "2020-01-01T00:00:00.000Z",
@@ -327,17 +330,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(duplicated.payload.state, "refused");
     assert.match(String(duplicated.payload.message), /more than once/);
 
-    const allOrNone = await postBulk({
-      ...envelope,
-      commandId: "1a000000-0000-4000-8000-00000000000d",
-      bulkCommandId: "1a000000-0000-4000-8000-00000000000d",
-      mode: "all-or-none",
-      targets: [{ runId: runA, expectedVersion: 1 }],
-    });
-    assert.equal(allOrNone.payload.state, "refused");
-    assert.equal(allOrNone.payload.code, "capability-unavailable");
-    assert.match(String(allOrNone.payload.message), /Nothing was\s+attempted/);
-
     // The mixed vector: one applied, one conflict (stale version, with the
     // server's currentVersion), one refused by the kernel's own precondition.
     const bulkBody = {
@@ -369,8 +361,10 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const acceptedParent = h.database.authority.commands.getBulk(envelope.bulkCommandId);
     assert.notEqual(acceptedParent, undefined);
     assert.equal(h.database.authority.commands.parentId(String(results[0].commandId)), envelope.bulkCommandId);
-    assert.equal(h.database.authority.commands.parentId(String(results[1].commandId)), undefined);
-    assert.equal(h.database.authority.commands.parentId(String(results[2].commandId)), undefined);
+    for (const [index, state] of [[1, "conflict"], [2, "rejected"]] as const) {
+      assert.equal(h.database.authority.commands.parentId(String(results[index].commandId)), envelope.bulkCommandId);
+      assert.equal(h.database.authority.commandAudits.findByCommand(String(results[index].commandId))?.result.state, state);
+    }
     assert.equal(h.database.authority.commandAudits.findByCommand(envelope.bulkCommandId), undefined);
 
     assert.deepEqual(acceptedParent?.request.targets, bulkBody.targets);
@@ -393,7 +387,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       "exact replay reuses the byte-exact accepted parent and its original accepted time",
     );
 
-    const snapshot = (): unknown => ({
+    const snapshot = () => ({
       generation: h.database.getMeta().authorityGeneration,
       parent: h.database.authority.commands.getBulk(envelope.bulkCommandId),
       runs: [runA, runB, runC, runD].map((runId) => h.database.authority.runs.get(runId)),
@@ -409,6 +403,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.ok(simultaneous.every((response) => response.payload.state === "vector"));
     assert.ok(simultaneous.every((response) => (response.payload.results as Record<string, unknown>[])[0].replayed === true));
     const identityBefore = snapshot();
+    const identityFaultBefore = faultAuthoritySnapshot(h);
     for (const commandId of [envelope.bulkCommandId, String(results[0].commandId)]) {
       const response = await h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
         body: JSON.stringify({ commandId, family: "run", type: "cancel", target: bulkBody.targets[0] }) });
@@ -419,15 +414,17 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const bulkIdentityRefusal = await postBulk({ ...bulkBody, bulkCommandId: String(results[0].commandId) });
     assert.equal(bulkIdentityRefusal.payload.state, "refused");
     assert.equal(bulkIdentityRefusal.payload.code, "command-divergent");
-    assert.deepEqual(snapshot(), identityBefore);
+    assert.deepEqual({ ...snapshot(), generation: identityBefore.generation }, identityBefore);
+    assertHttpFaultOnly(h, identityFaultBefore, 3);
     const beforeConcurrent = snapshot();
+    const concurrentFaultBefore = faultAuthoritySnapshot(h);
     const divergentConcurrent = await Promise.all([postBulk(bulkBody), postBulk({ ...bulkBody, reason: "different selection reason" })]);
     assert.equal(divergentConcurrent[0].payload.state, "vector");
     assert.equal(divergentConcurrent[1].payload.state, "refused");
-    assert.deepEqual(snapshot(), beforeConcurrent);
+    assert.deepEqual({ ...snapshot(), generation: beforeConcurrent.generation }, beforeConcurrent);
+    assertHttpFaultOnly(h, concurrentFaultBefore, 3);
     const divergentReplays = [
       { label: "changes operation", body: { ...bulkBody, type: "retry" } },
-      { label: "changes mode", body: { ...bulkBody, mode: "all-or-none" } },
       { label: "changes reason", body: { ...bulkBody, reason: "different selection reason" } },
       {
         label: "adds an old+new target",
@@ -457,11 +454,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ] as const;
     for (const divergent of divergentReplays) {
       const before = snapshot();
+      const beforeFault = faultAuthoritySnapshot(h);
       const refusal = await postBulk(divergent.body);
       assert.equal(refusal.status, 422, divergent.label);
       assert.equal(refusal.payload.state, "refused", divergent.label);
       assert.equal(refusal.payload.code, "schema-mismatch", divergent.label);
-      assert.deepEqual(snapshot(), before, `${divergent.label} has byte-exact zero child effects`);
+      assert.deepEqual({ ...snapshot(), generation: before.generation }, before, `${divergent.label} has byte-exact zero child effects`);
+      assertHttpFaultOnly(h, beforeFault, 1);
     }
 
     const runG = await startRun("10873704", "1a000000-0000-4000-8000-000000000008");
@@ -482,7 +481,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       const failure = await postBulk(failureBody);
       assert.equal(failure.payload.requestedCount, 3);
       assert.deepEqual((failure.payload.results as Record<string, unknown>[]).map(({ outcome }) => outcome), ["applied", "errored"]);
-      assert.equal(h.database.authority.commands.get(failId), undefined);
+      // The trigger also blocks the errored-child audit, so the child stays admitted and the resumed bulk applies it.
+      assert.equal(h.database.authority.commands.get(failId)?.commandId, failId);
+      assert.equal(h.database.authority.commandAudits.findByCommand(failId), undefined);
       assert.equal(h.database.authority.commands.get(deriveBulkChildCommandId(failureBody.bulkCommandId, runF)), undefined);
       assert.equal(versionOf(runE), failureBody.targets[1].expectedVersion);
       raw.exec("DROP TRIGGER synthetic_child_failure");

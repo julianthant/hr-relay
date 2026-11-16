@@ -1,3 +1,4 @@
+import type { AssistantService } from "../../../assistant/service.js";
 import type { ChatGptAccountRouteDeps } from "./chatgpt-account.js";
 import type { WorkbooksRouteDeps } from "./workbooks.js";
 import type { TrustRouteDeps } from "./trust-types.js";
@@ -6,6 +7,7 @@ import type { SettingsRouteDeps } from "./settings-types.js";
 import type { StorageRouteDeps } from "./storage-types.js";
 import type { ExplorerRouteDeps } from "./explorer-types.js";
 import type { IntakeRouteDeps } from "./intake-types.js";
+import type { CommandsRouteDeps } from "./commands-types.js";
 import type { RunDetailRouteDeps } from "./run-detail-types.js";
 import type { composeDataQueries } from "../../../app/composition/dashboard/data.js";
 import type { Hono } from "hono";
@@ -16,10 +18,12 @@ import type { StartPlanService } from "../../../runs/commands/start-plan-service
 import type { RunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
 import type { StaticBundle } from "../static-bundle.js";
 import type { RequestIdentityCheckpoint } from "../request-identity.js";
+import type { OcrRouteDeps } from "./ocr.js";
 
 /** Shared wiring plus leaf-owned contracts. Existing composed fixtures remain valid. */
-export interface DashboardAppDeps extends ChatGptAccountRouteDeps, WorkbooksRouteDeps, TrustRouteDeps, ShellRouteDeps, SettingsRouteDeps, StorageRouteDeps, ExplorerRouteDeps, IntakeRouteDeps, RunDetailRouteDeps {
-  readonly notifications?: { snapshot(actor: string): readonly import("../../../../models/dashboard/projection.js").NotificationWire[]; target: ReturnType<typeof import("../../../runs/queries/notifications.js").createNotificationTargetQuery>; status(): import("../../../runs/notifications/observation.js").NotificationObservationStatus };
+export interface DashboardAppDeps extends OcrRouteDeps, ChatGptAccountRouteDeps, WorkbooksRouteDeps, TrustRouteDeps, ShellRouteDeps, SettingsRouteDeps, StorageRouteDeps, ExplorerRouteDeps, IntakeRouteDeps, RunDetailRouteDeps, Pick<CommandsRouteDeps, "workerCommandResult" | "resolveWriteCommand"> {
+  readonly notifications?: { collection?(actor: string, operation: import("../../../../models/notifications/notifications.js").NotificationCollectionOperation): import("../../../../models/notifications/notifications.js").NotificationCollectionTarget; snapshot(actor: string): readonly import("../../../../models/dashboard/projection.js").NotificationWire[]; target: ReturnType<typeof import("../../../runs/queries/notifications.js").createNotificationTargetQuery>; status(): import("../../../runs/notifications/observation.js").NotificationObservationStatus };
+  readonly assistant?: AssistantService;
   readonly requestIdentity: RequestIdentityCheckpoint;
   readonly preflight: import("./settings-preflight-types.js").SettingsPreflightRouteDeps["preflight"];
   readonly projection: RunQueueProjection;

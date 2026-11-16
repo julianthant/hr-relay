@@ -1,4 +1,5 @@
 import { defineTask } from "../../../../workflow-kit/task.js";
+import { selectPreferredUcpathCandidate } from "../../../../rules/matching/ucpath-person.js";
 import {
   SearchPersonOrg,
   SearchPersonOrgOutputSchema,
@@ -20,9 +21,13 @@ export const searchPersonOrgTask = defineTask(ucpathDriver, SearchPersonOrg, {
       return ctx.fail(failure.code, failure.message, { cause: failure });
     }
     await ctx.captureScreenshot();
+    const preferred = output.selection.status === "resolved" ? selectPreferredUcpathCandidate(output.results) : null;
+    const selectedIndex = preferred === null ? -1 : output.results.indexOf(preferred);
+    if (output.selection.status === "resolved" && selectedIndex < 0) throw new Error("observation alias selected source unavailable");
     ctx.recordData([
       { direction: "read", field: "results", value: output.results },
-      { direction: "read", field: "selection", value: output.selection },
+      { direction: "read", field: "selection", value: output.selection,
+        ...(selectedIndex < 0 ? {} : { aliases: [{ path: ["selected"], source: { kind: "local", field: "results", path: [selectedIndex] } }] }) },
     ]);
     return output;
   },

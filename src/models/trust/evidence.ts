@@ -4,6 +4,7 @@ import {
   ActorIdSchema,
   ArtifactIdSchema,
   BrowserSystemIdSchema,
+  CommandIdSchema,
   ErrorCodeSchema,
   EvidenceEntryIdSchema,
   EvidenceReceiptIdSchema,
@@ -33,6 +34,10 @@ const EvidenceSourceSchema = z.discriminatedUnion("kind", [
     gateId: GateIdSchema,
     resolvedBy: ActorIdSchema,
     resolvedAt: IsoInstantSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("continued-gate-result"), sourceRunId: RunIdSchema, gateId: GateIdSchema,
+    commandId: CommandIdSchema, resolvedBy: ActorIdSchema, resolvedAt: IsoInstantSchema,
   }),
   z.strictObject({
     kind: z.literal("gate-source-event"),

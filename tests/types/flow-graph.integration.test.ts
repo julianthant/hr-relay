@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join,resolve } from "node:path";
 import { promisify } from "node:util";
 import { describe,it } from "vitest";
+import { scaledMs } from "../support/time-scale.js";
 
 
 const run = promisify(execFile);
@@ -81,5 +82,5 @@ describe("workflow builder type budget", () => {
       `memory ${diagnostics.memoryUsedBytes} bytes exceeds the 1GiB budget — `
       + "simplify the builder's type shapes rather than raising the ceiling",
     );
-  }, 120_000);
+  }, scaledMs(120_000));
 });

@@ -62,21 +62,6 @@
   font-weight: 400;
 }
 
-.diagnostic-check-detail .diagnostic-storage-updates {
-  display: grid;
-  gap: var(--ds-space-snug);
-  margin: var(--ds-space-snug) 0;
-  padding: 0;
-  list-style: none;
-}
-
-.diagnostic-storage-updates li {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: var(--ds-space-snug);
-}
-
 .diagnostic-check-entry + .diagnostic-check-entry {
   border-top: var(--ds-border-w) solid var(--ds-border-subtle);
 }

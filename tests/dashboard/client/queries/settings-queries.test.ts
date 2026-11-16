@@ -16,11 +16,11 @@ describe("native Paths picker client", () => {
   it("uses one guarded POST and preserves selected, cancellation, and typed unavailable states", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     const responses: { status: number; body: NativePathPickerResponse }[] = [
-      { status: 200, body: { state: "selected", field: "paths.stateRoot", path: "/tmp/new-state" } },
-      { status: 200, body: { state: "cancelled", field: "paths.stateRoot" } },
-      { status: 409, body: { state: "unavailable", field: "paths.stateRoot", reason: "busy" } },
-      { status: 503, body: { state: "unavailable", field: "paths.stateRoot", reason: "timeout" } },
-      { status: 503, body: { state: "unavailable", field: "paths.stateRoot", reason: "unsupported-platform" } },
+      { status: 200, body: { state: "selected", field: "paths.reportsDir", path: "/tmp/new-state" } },
+      { status: 200, body: { state: "cancelled", field: "paths.reportsDir" } },
+      { status: 409, body: { state: "unavailable", field: "paths.reportsDir", reason: "busy" } },
+      { status: 503, body: { state: "unavailable", field: "paths.reportsDir", reason: "timeout" } },
+      { status: 503, body: { state: "unavailable", field: "paths.reportsDir", reason: "unsupported-platform" } },
     ];
     const queries = createSettingsQueries(createDashboardTransport({ baseUrl: "http://127.0.0.1:4371",
       fetchImpl: (url, init) => {
@@ -29,18 +29,18 @@ describe("native Paths picker client", () => {
         return Promise.resolve(new Response(JSON.stringify(next.body), { status: next.status }));
       } }));
     for (const state of ["selected", "cancelled", "unavailable", "unavailable", "unavailable"]) {
-      assert.equal((await queries.pickSettingsPath({ field: "paths.stateRoot", initialPath: "/tmp/state" })).state, state);
+      assert.equal((await queries.pickSettingsPath({ field: "paths.reportsDir", initialPath: "/tmp/state" })).state, state);
     }
     assert.equal(calls.length, 5);
     assert.ok(calls.every(call => call.url === "http://127.0.0.1:4371/api/v1/settings/path-picker" && call.init?.method === "POST"));
     assert.ok(calls.every(call => new Headers(call.init?.headers).get("origin") === "http://127.0.0.1:4371"));
     assert.ok(calls.every(call => typeof call.init?.body === "string"
-      && NativePathPickerRequestSchema.parse(JSON.parse(call.init.body) as unknown).field === "paths.stateRoot"));
+      && NativePathPickerRequestSchema.parse(JSON.parse(call.init.body) as unknown).field === "paths.reportsDir"));
   });
 
   it("rejects a selected path for a different field", async () => {
     const queries = createSettingsQueries(createDashboardTransport({ baseUrl: "http://127.0.0.1:4371",
-      fetchImpl: () => Promise.resolve(new Response(JSON.stringify({ state: "selected", field: "paths.artifactRoot", path: "/tmp/other" }), { status: 200 })) }));
-    await assert.rejects(queries.pickSettingsPath({ field: "paths.stateRoot" }), /selected field differs/u);
+      fetchImpl: () => Promise.resolve(new Response(JSON.stringify({ state: "selected", field: "paths.downloadsDir", path: "/tmp/other" }), { status: 200 })) }));
+    await assert.rejects(queries.pickSettingsPath({ field: "paths.reportsDir" }), /selected field differs/u);
   });
 });

@@ -19,8 +19,8 @@ const { ACTIVE, openDatabase, startRunning, resultRequest, cleanup, failure, fai
 afterEach(cleanup);
 
 describe("atomic failure terminal authority", () => {
-  it("inserts the exact failure, transitions failed, lists by run, and replays byte-exactly", () => {
-    const database = openDatabase();
+  it("inserts the exact failure, transitions failed, lists by run, and replays byte-exactly", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const record = failure(running);
     const request = {
@@ -72,8 +72,8 @@ describe("atomic failure terminal authority", () => {
 
 describe("atomic success terminal authority", () => {
 
-  it("inserts result and same-row completion without outbox, transitions done, and replays byte-exactly", () => {
-    const database = openDatabase();
+  it("inserts result and same-row completion without outbox, transitions done, and replays byte-exactly", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const { result, authorization, factoryAuthorization } = resultRequest(database, running);
     const request = { result, authorization };

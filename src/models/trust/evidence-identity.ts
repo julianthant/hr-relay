@@ -19,10 +19,11 @@ function foldToUuid(namespace: string, seed: string): string {
   ].join("-");
 }
 
-/** One terminal run, one receipt id — the `run_receipts.run_id` UNIQUE key's twin. */
-export function deriveEvidenceReceiptId(runId: string, attempt: number): EvidenceReceiptId {
+/** Initial and refreshed settlements retain distinct immutable receipt identities. */
+export function deriveEvidenceReceiptId(runId: string, attempt: number, settlementVersion?: number): EvidenceReceiptId {
   return EvidenceReceiptIdSchema.parse(
-    foldToUuid("hrauto:evidence-receipt:v1", `${runId}\0${String(attempt)}`),
+    settlementVersion === undefined ? foldToUuid("hrauto:evidence-receipt:v1", `${runId}\0${String(attempt)}`)
+      : foldToUuid("hrauto:evidence-refresh-receipt:v1", `${runId}\0${String(attempt)}\0${String(settlementVersion)}`),
   );
 }
 

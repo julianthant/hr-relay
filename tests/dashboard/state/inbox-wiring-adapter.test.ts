@@ -3,13 +3,15 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
-import { inboxProjection, notificationPolicy, notificationTargetMatches, useInboxWiring, type InboxWiring } from "../../../src/dashboard/state/inbox-wiring-adapter.js";
+import { inboxProjection, notificationDay, notificationPolicy, notificationTargetMatches, useInboxWiring, type InboxWiring } from "../../../src/dashboard/state/inbox-wiring-adapter.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { CommandExecutor, type CommandExecutionScope } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import { NotificationWireSchema, type NotificationWire } from "../../../src/models/dashboard/projection.js";
+import { NotificationTargetSchema } from "../../../src/models/notifications/notification-target.js";
+import { CommandIdSchema } from "../../../src/rules/identity/ids.js";
 import { NotificationPublicationWireSchema, type NotificationPublicationWire } from "../../../src/models/dashboard/subscription.js";
-import { NotificationCommandRequestSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
+import { NotificationCommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
 import type { DsToast } from "../../../src/dashboard/ds/ui.js";
@@ -27,6 +29,12 @@ function row(kind = "storage-degraded", overrides: Record<string, unknown> = {})
     context: { state: "available", subject: "Exact subject", workflow: "Person Lookup" }, sourceEvent: { state: "available", kind },
     link: kind === "storage-degraded" ? { kind: "storage" } : ["run-failed", "subject-mismatch", "repeating-failure"].includes(kind) ? { kind: "failure", runId, failureId } : { kind: "run", runId }, ...overrides });
 }
+const commandId = "00000000-0000-4000-8000-000000000444";
+function commandRow(sourceKind: "command-refused" | "command-unknown" | "bulk-incomplete", overrides: Record<string, unknown> = {}): NotificationWire {
+  const link = sourceKind === "bulk-incomplete" ? { kind: "bulk-result", bulkCommandId: commandId } : { kind: sourceKind === "command-unknown" ? "recovery" : "command-result", commandId };
+  return NotificationWireSchema.parse({ kind: "command", notificationId: id, actorId: "local-operator", channel: "ping", count: 1, publicationId: "c".repeat(64), severity: sourceKind === "command-unknown" ? "error" : "warning", title: "Command notice", summary: "Served summary.", state: "unread", readState: "unread", revision: 1, occurredAt: now, priority: true,
+    context: { state: "available", subject: "Exact subject", workflow: "Person Lookup" }, sourceEvent: { state: "available", kind: sourceKind }, link, ...overrides });
+}
 function publication(notification: NotificationWire, n = 1) { return NotificationPublicationWireSchema.parse({ sourceId: String(n).repeat(64), actorId: notification.actorId, durable: "created", notification }); }
 async function harness(enabled = true, initiallyFailed = false) {
   let rows: readonly NotificationWire[] = [row()], lose = false, refuseTarget = false;
@@ -40,18 +48,23 @@ async function harness(enabled = true, initiallyFailed = false) {
       if (refuseTarget || linked?.kind !== "notification" || linked.link === undefined) return Response.json({ kind: "refused", reason: "run-unavailable" });
       return Response.json(linked.link.kind === "storage" ? { kind: "storage" } : { ...linked.link, day: "2026-08-03" });
     }
+    if (path.endsWith("/collection")) return Response.json({ actorId: "local-operator",
+      members: [...rows].sort((a, b) => a.notificationId < b.notificationId ? -1 : 1).map(row => ({ notificationId: row.notificationId, expectedVersion: row.kind === "notification" ? row.revision : 1 })),
+      matchingCount: rows.filter(row => row.kind === "notification" && row.readState === "unread").length });
     if (path.endsWith("/status")) return Response.json({ state: "ready", pending: 0 });
     if (path.endsWith("/notifications")) { await snapshotWait; if (failReads) throw new Error("inbox read failed"); return Response.json(rows); }
     if (path.endsWith("/commands")) {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); commands.push(command);
       await postWait;
-      rows = rows.map(item => item.kind !== "notification" || item.notificationId !== command.target.notificationId ? item : NotificationWireSchema.parse({ ...item, revision: item.revision + 1,
-        readState: command.type === "notification-read" ? "read" : command.type === "notification-unread" ? "unread" : item.readState,
-        state: command.type === "notification-snooze" ? "snoozed" : command.type === "notification-unsnooze" ? item.readState : command.type === "notification-read" ? "read" : command.type === "notification-unread" ? "unread" : item.state,
+      const target = command.target;
+      const affected = rows.filter(item => item.kind === "notification" && ("members" in target ? target.members.some(member => member.notificationId === item.notificationId) && item.readState === "unread" : item.notificationId === target.notificationId));
+      rows = rows.map(item => item.kind !== "notification" || !affected.some(row => row.notificationId === item.notificationId) ? item : NotificationWireSchema.parse({ ...item, revision: item.revision + 1,
+        readState: command.type === "notification-read" || command.type === "notification-read-all" ? "read" : command.type === "notification-unread" ? "unread" : item.readState,
+        state: command.type === "notification-snooze" ? "snoozed" : command.type === "notification-unsnooze" ? item.readState : command.type === "notification-read" || command.type === "notification-read-all" ? "read" : command.type === "notification-unread" ? "unread" : item.state,
         snoozedUntil: command.type === "notification-snooze" ? "2026-08-03T18:00:00.000Z" : undefined }));
       if (lose) { lose = false; throw new Error("response lost after commit"); }
-      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId: command.target.notificationId }] });
+      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: affected.map(row => ({ family: "notification", notificationId: row.notificationId })) });
     }
     throw new Error(`unexpected ${path}`);
   } });
@@ -62,7 +75,7 @@ async function harness(enabled = true, initiallyFailed = false) {
   const binding: DashboardCommandBinding = { executor, scope, feedback() {}, authority: { epoch, nowIso: now, today: "2026-08-03", day: "2026-08-03", catalog: [], selection: { route: { start: false }, workflowId: "" },
     dayState: { request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "live" }, refresh() {}, subscribePublications: listener => { listeners.push(listener); return () => { listeners.splice(listeners.indexOf(listener), 1); }; } } } };
   let value: InboxWiring | undefined;
-  function Probe({ served, currentBinding, currentClient }: { served: boolean; currentBinding: DashboardCommandBinding; currentClient: typeof client }) { value = useInboxWiring({ client: currentClient, enabled: served, binding: currentBinding, toast: input => { toasts.push(input); return "toast"; }, openInbox() {} }); return null; }
+  function Probe({ served, currentBinding, currentClient }: { served: boolean; currentBinding: DashboardCommandBinding; currentClient: typeof client }) { value = useInboxWiring({ client: currentClient, enabled: served, binding: currentBinding, toast: input => { toasts.push(input); return "toast"; } }); return null; }
   root = createRoot(document.createElement("div"));
   const render = async (served = enabled, currentBinding = binding, currentClient = client) => { activeScope = currentBinding.scope; await act(async () => { root?.render(createElement(Probe, { served, currentBinding, currentClient })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
   await render();
@@ -119,7 +132,7 @@ it("keeps successful Ping values and refuses a stale target without marking it r
 it("refuses foreign actor and wrong revision in shared notification readback", async () => {
   const h = await harness();
   const request = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read", target: { notificationId: id, actorId: "local-operator", expectedVersion: 1 } });
-  const reply = { state: "applied" as const, commandId: request.commandId, affectedTargets: [{ family: "notification" as const, notificationId: request.target.notificationId }] };
+  const reply = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [{ family: "notification", notificationId: id }] });
   for (const next of [row("storage-degraded", { readState: "read", state: "read", revision: 3 }), row("storage-degraded", { actorId: "other-operator", readState: "read", state: "read", revision: 2 })]) {
     h.setRows([next]); assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "mismatch");
   }
@@ -143,7 +156,7 @@ it("delivers two synchronous positive publications and a warning once each witho
   });
   assert.deepEqual(h.toasts.map(toast => toast.tone), ["success", "success", "warning"]);
   assert.deepEqual(h.toasts.slice(0, 2).map(toast => toast.description), ["Exact subject · Person Lookup", "Exact subject · Person Lookup"]);
-  assert(h.toasts.every(toast => toast.action?.label === "Open notifications"));
+  assert(h.toasts.every(toast => !("action" in toast)));
   await h.render(true, { ...h.binding, authority: { ...h.binding.authority, dayState: { ...h.binding.authority.dayState, connection: { state: "reconnecting" } } } });
   await h.render();
   await act(async () => { h.listeners[0](publication(second, 2)); h.listeners[0](publication(warning, 3)); await new Promise(resolve => setTimeout(resolve, 0)); });
@@ -159,13 +172,20 @@ it("delivers the closed danger and warning source policies using exact current t
   assert.deepEqual(h.toasts.map(toast => toast.tone), ["danger", "danger", "warning", "warning", "danger", "warning"]);
 });
 
-it("read-all uses each exact notification/version and skips the pinned backfill notice", async () => {
+it("read-all binds the complete inbox in one command and preserves the pinned backfill notice", async () => {
   const h = await harness();
   const second = "00000000-0000-4000-8000-000000000112";
-  h.setRows([row(), row("storage-degraded", { notificationId: second }), row("backfill-gap", { notificationId: "00000000-0000-4000-8000-000000000113" })]);
+  const extra = Array.from({ length: 23 }, (_, index) => row("storage-degraded", { notificationId: `00000000-0000-4000-8000-${String(200 + index).padStart(12, "0")}` }));
+  h.setRows([row(), row("storage-degraded", { notificationId: second }), ...extra, row("backfill-gap", { notificationId: "00000000-0000-4000-8000-000000000113" })]);
   await act(async () => { h.listeners[0](publication(row(), 1)); await new Promise(resolve => setTimeout(resolve, 0)); });
   await act(async () => h.value.readAll());
-  assert.deepEqual(h.commands.map(command => command.family === "notification" ? [command.target.notificationId, command.target.expectedVersion] : null), [[id, 1], [second, 1]]);
+  assert.equal(h.commands.length, 1);
+  const command = h.commands[0]; assert.equal(command.family, "notification");
+  if (command.family !== "notification" || !("members" in command.target)) throw new Error("collection command required");
+  assert.equal(command.type, "notification-read-all"); assert.equal(command.target.matchingCount, 25);
+  assert.deepEqual(command.target.members.map(row => [row.notificationId, row.expectedVersion]), [[id, 1], [second, 1], ["00000000-0000-4000-8000-000000000113", 1], ...extra.map(row => [row.notificationId, 1])]);
+  assert.equal(h.value.state.state, "ready"); if (h.value.state.state === "ready") assert(h.value.state.items.every(item => item.read));
+  assert.match(h.value.notice, /history is incomplete/);
 });
 
 it("retains loaded rows when a refresh fails and isolates actions while pending or failed", async () => {
@@ -209,4 +229,103 @@ for (const replacement of ["actor", "client", "authority"] as const) it(`does no
   await act(async () => { release(); await result; await new Promise(resolve => setTimeout(resolve, 0)); });
   assert.equal(h.requests.filter(path => path.endsWith("/notifications")).length, readCount + 1, "only the executor's original readback runs; replacement authority must not refresh");
   assert.equal(h.commands.length, 1); assert.equal(h.toasts.length, 0);
+});
+
+it("retains a lost collection response and blocks overlapping single-row or collection retries", async () => {
+  const h = await harness(); h.lose();
+  await act(async () => h.value.readAll());
+  const retained = h.binding.executor.retainedAttempts()[0]; assert.equal(retained.outcome?.kind, "uncertain");
+  await act(async () => { await h.value.readAll(); assert.equal(await h.value.control(id, "read"), false); });
+  assert.equal(h.commands.length, 1);
+  assert.equal(h.binding.executor.retainedAttempts()[0].request.commandId, retained.request.commandId);
+});
+it("does not start read-all while an overlapping single-row response is unknown", async () => {
+  const h = await harness(); h.lose();
+  await act(async () => h.value.control(id, "read"));
+  await act(async () => h.value.readAll());
+  assert.equal(h.commands.length, 1); assert.equal(h.commands[0].type, "notification-read");
+});
+
+it("requires exact collection readback membership and one version advance for every reported effect", async () => {
+  const h = await harness();
+  const request = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read-all",
+    target: { actorId: "local-operator", members: [{ notificationId: id, expectedVersion: 1 }], matchingCount: 1 } });
+  const reply = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [{ family: "notification", notificationId: id }] });
+  for (const rows of [[], [row()], [row("storage-degraded", { revision: 3, readState: "read", state: "read" })],
+    [row("storage-degraded", { revision: 2, readState: "read", state: "read" }), row("storage-degraded", { notificationId: runId })]]) {
+    h.setRows(rows); assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "mismatch");
+  }
+  h.setRows([row("storage-degraded", { revision: 2, readState: "read", state: "read" })]);
+  assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, reply)).state, "matched");
+  assert.equal(CommandResultSchema.safeParse({ ...reply, affectedTargets: [] }).success, false);
+  assert.equal((await verifyShellCommandEffect(h.client, "2026-08-03", request, CommandResultSchema.parse({ ...reply, affectedTargets: [], noChange: "no-matching-notifications" }))).state, "mismatch");
+});
+
+it("maps command notices with policy tone, served detail and priority, and counts unread danger and warning as needs you", () => {
+  const conflict = "This changed before Relay got to it, so nothing was done. Check it and try again.";
+  const unknown = commandRow("command-unknown", { summary: "Relay could not confirm whether this finished. Open it to check before trying again." });
+  const refused = commandRow("command-refused", { notificationId: "00000000-0000-4000-8000-000000000112", readState: "read", state: "read", priority: false, summary: conflict });
+  const bulk = commandRow("bulk-incomplete", { notificationId: "00000000-0000-4000-8000-000000000113", summary: "Some items in this batch were not done. Open it to see each one." });
+  const positive = row("verified-done", { notificationId: "00000000-0000-4000-8000-000000000114" });
+  const readDanger = row("run-failed", { notificationId: "00000000-0000-4000-8000-000000000115", readState: "read", state: "read" });
+  const info = row("storage-degraded", { notificationId: "00000000-0000-4000-8000-000000000116", severity: "info", sourceEvent: { state: "unavailable" } });
+  const warning = row("gate-opened", { notificationId: "00000000-0000-4000-8000-000000000117" });
+  const projection = inboxProjection([unknown, refused, bulk, positive, readDanger, info, warning], now);
+  assert.equal(projection.state.state, "ready");
+  if (projection.state.state !== "ready") throw new Error("inbox unavailable");
+  const [unknownItem, refusedItem, bulkItem, positiveItem] = projection.state.items;
+  assert.equal(unknownItem.tone, "danger");
+  assert.equal(unknownItem.priority, true);
+  assert.equal(unknownItem.detail, "Relay could not confirm whether this finished. Open it to check before trying again.");
+  assert.equal(unknownItem.action, "Open");
+  assert.equal(unknownItem.read, false);
+  assert.deepEqual(unknownItem.destination, { kind: "refused", reason: "target-unavailable" });
+  assert.equal(refusedItem.tone, "warning");
+  assert.equal(refusedItem.priority, false);
+  assert.equal(refusedItem.detail, conflict);
+  assert.equal(refusedItem.read, true);
+  assert.equal(bulkItem.tone, "warning");
+  assert.equal(bulkItem.priority, true);
+  assert.equal(bulkItem.detail, "Some items in this batch were not done. Open it to see each one.");
+  assert.equal(bulkItem.action, "Open");
+  assert.equal(positiveItem.priority, false);
+  assert.equal(projection.needsYou, 3);
+  const fallback = inboxProjection([
+    commandRow("command-refused", { sourceEvent: { state: "unavailable" }, severity: "error", summary: "Served summary." }),
+    commandRow("command-unknown", { notificationId: "00000000-0000-4000-8000-000000000118", sourceEvent: { state: "unavailable" }, severity: "warning", summary: "Served summary." }),
+  ], now);
+  if (fallback.state.state !== "ready") throw new Error("inbox unavailable");
+  assert.equal(fallback.state.items[0].tone, "danger");
+  assert.equal(fallback.state.items[1].tone, "warning");
+  assert.equal(fallback.state.items[0].detail, "Served summary.");
+  assert.equal(notificationPolicy(commandRow("command-refused"))?.detail, "Relay did not do this, so nothing changed.");
+  assert.equal(notificationPolicy(commandRow("command-unknown"))?.tone, "danger");
+  assert.equal(notificationPolicy(commandRow("bulk-incomplete"))?.tone, "warning");
+});
+
+it("matches recovery and command-result targets by command id and bulk results by bulk command id", () => {
+  const parsed = CommandIdSchema.parse(commandId);
+  const other = CommandIdSchema.parse("00000000-0000-4000-8000-000000000555");
+  const request = NotificationCommandRequestSchema.parse({ commandId: parsed, requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read", target: { notificationId: id, actorId: "local-operator", expectedVersion: 1 } });
+  const result = CommandResultSchema.parse({ state: "rejected", commandId: parsed, code: "policy-refused", message: "Relay did not do this, so nothing changed." });
+  const recovery = { kind: "recovery" as const, commandId: parsed, request };
+  const commandResult = { kind: "command-result" as const, commandId: parsed, day: "2026-08-03", request, result };
+  const bulk = (bulkCommandId: typeof parsed) => NotificationTargetSchema.parse({ kind: "bulk-result", bulkCommandId, type: "retry", requestedCount: 1, results: [], notAttempted: [], days: {} });
+  assert.equal(notificationTargetMatches(commandRow("command-unknown"), recovery), true);
+  assert.equal(notificationTargetMatches(commandRow("command-unknown"), { ...recovery, commandId: other }), false);
+  assert.equal(notificationTargetMatches(commandRow("command-refused"), commandResult), true);
+  assert.equal(notificationTargetMatches(commandRow("command-refused"), { ...commandResult, commandId: other }), false);
+  assert.equal(notificationTargetMatches(commandRow("bulk-incomplete"), bulk(parsed)), true);
+  assert.equal(notificationTargetMatches(commandRow("bulk-incomplete"), bulk(other)), false);
+  assert.equal(notificationTargetMatches(commandRow("command-refused"), recovery), false);
+  assert.equal(notificationTargetMatches(commandRow("command-unknown"), commandResult), true);
+  assert.equal(notificationTargetMatches(commandRow("bulk-incomplete"), recovery), false);
+  assert.equal(notificationTargetMatches(row(), recovery), false);
+  assert.equal(notificationTargetMatches(commandRow("command-unknown"), { kind: "storage" }), false);
+});
+
+it("groups served notices by local day", () => {
+  const now = new Date(2026, 10, 11, 15).toISOString();
+  const at = (days: number) => new Date(2026, 10, 11 - days, 9).toISOString();
+  assert.deepEqual([0, 1, 3, 8].map(days => notificationDay(at(days), now)), ["Today", "Yesterday", "Sunday", "November 3"]);
 });

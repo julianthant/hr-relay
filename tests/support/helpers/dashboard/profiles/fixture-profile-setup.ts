@@ -25,6 +25,7 @@ export type FixtureBffOptions = Readonly<{
     dayWire?: DashboardDayWire;
     diagnosticFixture?: "restricted-jpeg";
     runCaptureScenario?: "evidence";
+    runHistory?: "ready" | "active" | "empty";
   }>;
 
 export function createFixtureProfileSetup({ FIXTURE_BOOTSTRAP, FIXTURE_DESCRIPTOR_HASH, FIXTURE_DAY_WIRE }: {

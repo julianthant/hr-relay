@@ -1,17 +1,18 @@
+import { personLookupModule } from "../../../support/helpers/registered-workflows.js";
+import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { afterAll } from "vitest";
 import { GateIdSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { testRunService, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
+import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { personLookupModule } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createGateSourceRuntime, type GateSourceDelivery, type GateSourceEnvelope, type GateSourcePort } from "../../../../src/backend/runtime/gates/gate-source-runtime.js";
 import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
@@ -28,12 +29,16 @@ import { AuthorityDatabase } from "../../../support/helpers/admission-fixture.js
 import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingLogger, recordingTimelineEmitter, happySessionHarness as sourceSessionHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
+const profiles = createProfileFixtureSet();
+const heldProfiles: BoundProfileStorageFixture[] = [];
+afterAll(() => profiles.close());
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
   releaseAdmissionFixtures();
+  for (const profile of heldProfiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) {
     releaseAdmissionFixture(root);
     rmSync(root, { recursive: true, force: true });
@@ -42,10 +47,9 @@ afterEach(() => {
 
 const NOW = "2026-08-03T09:00:00.000Z";
 
-function repoRootWithState(): { repoRoot: string; stateRoot: string } {
-  const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-worker-compose-"));
-  roots.push(repoRoot);
-  const stateRoot = installationAdmission(repoRoot).stateRoot;
+async function repoRootWithState() {
+  const profile = await profiles.create(); heldProfiles.push(profile);
+  const repoRoot = profile.workspace, stateRoot = profile.stateRoot;
   writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "worker-composition-fixture", version: "0.1.0", type: "module" }));
   return { repoRoot, stateRoot };
 }
@@ -62,7 +66,7 @@ function reopen(stateRoot: string, clock: TestClock): AuthorityDatabase {
 describe("worker-loop source gate composition", () => {
   for (const mode of ["external", "children-terminal"] as const) {
     it(`parks and source-settles a ${mode} descriptor through the production worker loop`, async () => {
-      const { stateRoot } = repoRootWithState();
+      const { stateRoot } = await repoRootWithState();
       const clock = manualClock(new Date(NOW));
       const database = reopen(stateRoot, clock);
       const descriptor = sourceGateDescriptor(mode);
@@ -109,7 +113,7 @@ describe("worker-loop source gate composition", () => {
         scheduler: new ManualScheduler(clock),
         taskDeadlineMs: 60_000,
         sessionAcquireMs: 15_000,
-        duoCeremony: fixtureDuoCeremonyGates(clock),
+        duoCeremony: await fixtureDuoCeremonyGates(clock),
         heartbeatIntervalMs: 60_000,
         idleRepollMs: 60_000,
         log: recordingLogger().log,

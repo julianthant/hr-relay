@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { default as assert } from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -13,16 +14,15 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 import { type ArtifactWriteFaultStep } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { trustWorld } from "../../../support/helpers/backend/trust-authority-fixture.js";
-import { syntheticStateRoot } from "../../../support/helpers/synthetic-storage-admission.js";
 
 {
 
 describe("diagnostic byte retention", () => {
   it("retains shared pinned bytes and removes only unreferenced expired bytes", async () => {
-    const w = trustWorld();
+    const w = await trustWorld();
     try {
       const run = w.create(820); w.cancel(run, 821);
-      const artifacts = createContentAddressedArtifactWriter({ admission: syntheticStateRoot(w.world.stateRoot) }); await artifacts.ready;
+      const artifacts = createContentAddressedArtifactWriter({ admission: w.profile.admission }); await artifacts.ready;
       const service = createDiagnosticCaptureService({ authority: w.database.authority, artifacts, clock: w.world.clock, ids: { uuid: randomUUID }, retentionDays: 1 });
       const capture = (text: string, pinned = false) => operatorRequestedCapture({ service, runId: run.envelope.runId,
         configFingerprint: "a".repeat(64), descriptorFingerprint: "b".repeat(64), fields: [],
@@ -32,10 +32,10 @@ describe("diagnostic byte retention", () => {
       assert.equal(shared.attachments[0]?.digest, pinned.attachments[0]?.digest);
       const result = w.database.sweepOrdinaryDiagnostics(new Date(w.world.clock.nowMs() + 2 * 86_400_000).toISOString());
       assert.deepEqual([...result.purged].sort(), [shared.bundleId, alone.bundleId].sort());
-      assert.equal(existsSync(join(w.world.stateRoot, "artifacts", `${shared.attachments[0]?.digest}.artifact`)), true);
-      assert.equal(existsSync(join(w.world.stateRoot, "artifacts", `${alone.attachments[0]?.digest}.artifact`)), false);
+      assert.equal(existsSync(join(w.profile.admission.artifactRoot, `${shared.attachments[0]?.digest}.artifact`)), true);
+      assert.equal(existsSync(join(w.profile.admission.artifactRoot, `${alone.attachments[0]?.digest}.artifact`)), false);
       assert.equal(w.database.authority.diagnosticBundles.get(pinned.bundleId)?.availability, undefined);
-    } finally { w.dispose(); }
+    } finally { await w.dispose(); }
   });
 });
 }
@@ -144,7 +144,7 @@ describe("task, store, session, provider, and artifact seams", () => {
     try {
       const child = spawn(
         process.execPath,
-        ["--import", "tsx", "--input-type=module", "--eval", childSource],
+        ["--import", testProcessImport(), "--input-type=module", "--eval", childSource],
         { stdio: ["ignore", "ignore", "pipe"] },
       );
       let stderr = "";

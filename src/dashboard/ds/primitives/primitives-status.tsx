@@ -7,6 +7,7 @@ import {
   Clock,
   Loader2,
   PauseCircle,
+  Pause,
   TriangleAlert,
   UserRoundSearch,
 } from "lucide-react";
@@ -235,8 +236,11 @@ export function StatusPill({
   label,
   className,
   presentation = "default",
+  pause,
+  meaning,
 }: {
   status: DsStatus;
+  pause?: "requested" | "paused";
   /** how long it has been in this state — "12m", "2h". Show it when known. */
   age?: string;
   size?: DsStatusPillSize;
@@ -247,10 +251,14 @@ export function StatusPill({
   className?: string;
   /** Queue rows use the operator-approved compact attention treatments. */
   presentation?: "default" | "queue";
+  /** The served reason for this exact status, when it differs from the status's general meaning. */
+  meaning?: string;
 }) {
-  const spec = DS_STATUS[status];
+  const displayStatus = pause === "paused" ? "queued" : pause === "requested" ? "running" : status;
+  const spec = pause === "paused" ? { ...DS_STATUS.queued, label: "Paused", icon: Pause, meaning: "Pause recorded. Resume to continue." }
+    : pause === "requested" ? { ...DS_STATUS.running, label: "Pausing", meaning: "Pause requested." } : DS_STATUS[status];
   const Icon = spec.icon;
-  const compactAttention = presentation === "queue" && (status === "waiting" || status === "failed");
+  const compactAttention = presentation === "queue" && (displayStatus === "waiting" || displayStatus === "failed");
   const chip = compactAttention
     ? status === "waiting"
       ? "bg-[var(--ds-queue-info-bg)] border-[color:var(--ds-queue-info-border)]"
@@ -258,10 +266,10 @@ export function StatusPill({
     : spec.chip;
   const text = compactAttention
     ? status === "waiting" ? "text-ui-info font-medium" : "text-ui-danger font-medium"
-    : presentation === "queue" && status === "running" ? "text-ui-info" : spec.text;
+    : presentation === "queue" && displayStatus === "running" ? "text-ui-info" : spec.text;
   return (
     <ShadcnBadge
-      title={spec.meaning}
+      title={meaning ?? spec.meaning}
       className={cn(
         // Allow pills to shrink within parent width so truncation happens inside their border.
         "inline-flex w-fit shrink-0 items-center border",
@@ -281,7 +289,7 @@ export function StatusPill({
           className={cn(
             dsIcon.sm,
             "shrink-0",
-            presentation === "queue" && (compactAttention || status === "running") ? text : spec.iconTone,
+            presentation === "queue" && (compactAttention || displayStatus === "running") ? text : spec.iconTone,
             spec.spin && "animate-spin motion-reduce:animate-none",
           )}
         />

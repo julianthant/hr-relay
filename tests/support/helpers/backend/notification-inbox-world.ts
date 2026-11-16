@@ -1,10 +1,9 @@
-import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { unusedWorkerPool } from "./unused-worker-pool.js";
+import type { BoundProfileStorageFixture } from "../admission-fixture.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
+import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
 import assert from "node:assert/strict";
-
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { createCommandKernel, type CommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 
@@ -13,12 +12,15 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { HASH_A, LATER, NOW, UUID_2, UUID_7 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { AuthorityDatabase } from "../synthetic-storage-admission.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
-export function createNotificationInboxTestWorld() {
-  const disposers: (() => void)[] = [];
-  const _afterEachFixture0 = () => {
-    for (const dispose of disposers.splice(0)) dispose();
+export function createNotificationInboxTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  const disposers: (() => void | Promise<void>)[] = [];
+  const _afterEachFixture0 = async () => {
+    const failures: unknown[] = [];
+    for (const dispose of disposers.splice(0)) { try { await dispose(); } catch (error) { failures.push(error); } }
+    if (failures.length > 0) throw new AggregateError(failures, "notification fixture cleanup failed");
   };
 
   const ACTOR = "local-operator";
@@ -44,15 +46,15 @@ export function createNotificationInboxTestWorld() {
     });
   }
 
-  function harness(): { database: AuthorityDatabase; kernel: CommandKernel } {
+  async function harness(mapRepositories: (repositories: AuthorityRepositories) => AuthorityRepositories = repositories => repositories): Promise<{ database: AuthorityDatabase; kernel: CommandKernel }> {
     const clock = manualClock(new Date(LATER));
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-inbox-"));
-    disposers.push(() => rmSync(root, { recursive: true, force: true }));
-    const database = AuthorityDatabase.open(
-      { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "inbox-test" },
-      clock,
-    );
-    disposers.push(() => database.close());
+    const profile = await profileFixture();
+    const opened: { database?: AuthorityDatabase } = {};
+    disposers.push(async () => { opened.database?.close(); await profile.close(); });
+    const database = AuthorityDatabase.open(profile.admission,
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "inbox-test" }, clock,
+      undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+    opened.database = database;
     seedSyntheticRuntimeConfig(database);
     const active = database.authority.runtimeConfig.get(); assert.ok(active);
     const kernel = createCommandKernel({
@@ -63,17 +65,17 @@ export function createNotificationInboxTestWorld() {
       intakeProjections: NO_INTAKE_PROJECTIONS,
       authority: {
         withAuthorityTransaction: (work) => database.withAuthorityTransaction(
-          (repositories) => work(repositories),
+          (repositories) => work(mapRepositories(repositories)),
         ),
       },
       clock,
       ids: sequentialIdFactory("c"),
       descriptors: { resolve: () => undefined },
       writeResolution: {
-        resolvePresent: () => { throw new Error("unused"); },
+        recheck: () => { throw new Error("unused"); },
         resolveAbsent: () => { throw new Error("unused"); },
       },
-      workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
+      workerRuntime: { pool: unusedWorkerPool() },
     });
     return { database, kernel };
   }

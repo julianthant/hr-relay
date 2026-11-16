@@ -1,10 +1,10 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmodSync, closeSync, cpSync, existsSync, fstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join as join_m0, relative } from "node:path";
-import { pathToFileURL } from "node:url";
 import { afterEach, describe, it } from "vitest";
 import { absentTestDataInputSource, assertNoDuplicateKeys, createTestDataInputSource, parseTestDataSharedConfig, planTestDataLocalMerge, readTestDataFileBytes, readTestDataLocalConfig, readTestDataShared, TEST_DATA, testDataFile, testDataInputSourceFrom, testDataLocalFilePath, testDataLocalPath, testDataLocalPresence, testDataSamples, writeTestDataLocalConfig, type TestDataLocalWriteAccess } from "../../../../src/backend/app/registries/test-data.js";
 import { TEST_TARGET_REGISTRY } from "../../../../src/backend/app/registries/test-target-registry.js";
@@ -95,8 +95,7 @@ afterEach(_afterEachFixture0);
     // Different CWD: the module resolves from import.meta.url, so a child process
     // started elsewhere reads the identical asset.
     const elsewhere = scratch("hrauto-test-data-cwd-");
-    const tsxLoader = pathToFileURL(join_m0(REPO_ROOT, "node_modules", "tsx", "dist", "loader.mjs")).href;
-    const child = spawnSync(process.execPath, ["--import", tsxLoader, "--input-type=module", "--eval", `
+    const child = spawnSync(process.execPath, ["--import", testProcessImport(), "--input-type=module", "--eval", `
       import { TEST_DATA, readTestDataFileBytes } from ${JSON.stringify(join_m0(REPO_ROOT, "src", "backend", "app", "registries", "test-data.ts"))};
       const { bytes } = readTestDataFileBytes(TEST_DATA, "synthetic-sample-pdf");
       process.stdout.write(JSON.stringify({ length: bytes.byteLength, head: bytes.subarray(0, 5).toString("latin1") }));

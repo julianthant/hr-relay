@@ -1,19 +1,33 @@
+import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { randomUUID } from "node:crypto";
+import { childPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
+import { plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
+import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
+import { testAdmittedWorker, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { deriveTerminalFailureDigest } from "../../../../src/models/run/result.js";
-import { CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_5, UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, LATER, NOW, UUID_5, UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
+import { composeProfileActivity } from "../../../../src/backend/app/composition/storage-compose.js";
 
 const {fixture, created, runningRun, parkedWriteIntent, failureTerminalRequest, cleanup } = createRunRecordServiceTestWorld();
 
+const executorWorld = createRunExecutorTestWorld();
+const LOGOUT_CANCELLED = `RUN_LOGOUT_CANCELLED: ${ERROR_CATALOG.RUN_LOGOUT_CANCELLED.text}`;
+const logoutActivity = (input: Pick<Parameters<typeof composeProfileActivity>[0], "admission" | "database" | "clock" | "lifecycle">) =>
+  composeProfileActivity({ ...input, supervisor: { snapshot: () => [], stopAll: async () => [] } });
 afterEach(cleanup);
+afterEach(executorWorld.cleanup);
 
 describe("canonical run-record service", () => {
 
-  it("#1 reserves distinct monotonically increasing item and workflow ordinals", () => {
-    const { service, request, database, published } = fixture();
+  it("#1 reserves distinct monotonically increasing item and workflow ordinals", async () => {
+    const { service, request, database, published } = await fixture();
     const before = database.getMeta().authorityGeneration;
     const runs = Array.from({ length: 5 }, (_, index) => created(service, {
       ...request, commandId: `20000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
@@ -25,8 +39,8 @@ describe("canonical run-record service", () => {
     assert.equal(published.length, 5);
   });
 
-  it("#3 refuses a missing parent and retry source without reserving ordinals", () => {
-    const { service, request, database } = fixture();
+  it("#3 refuses a missing parent and retry source without reserving ordinals", async () => {
+    const { service, request, database } = await fixture();
     const before = database.getMeta().authorityGeneration;
     assert.deepEqual(service.create({ ...request, parent: { runId: UUID_5, tracePrefix: "pl-170000-5555", edgeId: "member" } }),
       { state: "refused", refusal: { reason: "parent-missing" } });
@@ -36,8 +50,8 @@ describe("canonical run-record service", () => {
     assert.equal(created(service, request).envelope.attempt, 1);
   });
 
-  it("refuses an absent runtime token and preserves queued authority", () => {
-    const { service, request, database } = fixture();
+  it("refuses an absent runtime token and preserves queued authority", async () => {
+    const { service, request, database } = await fixture();
     const run = created(service, request);
     const before = database.getMeta().authorityGeneration;
     assert.deepEqual(service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID }),
@@ -46,8 +60,8 @@ describe("canonical run-record service", () => {
     assert.equal(database.getMeta().authorityGeneration, before);
   });
 
-  it("#4 grants a queued row once and refuses a busy worker", () => {
-    const { service, request, runtimeConfig } = fixture();
+  it("#4 grants a queued row once and refuses a busy worker", async () => {
+    const { service, request, runtimeConfig } = await fixture();
     const run = created(service, request);
     const first = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
     assert.equal(first.state, "applied");
@@ -59,82 +73,59 @@ describe("canonical run-record service", () => {
       { state: "refused", refusal: { reason: "worker-busy", runId: run.envelope.runId } });
   });
 
-  it("#4 claims the first eligible row after dependency filtering and total ordering", () => {
-    const { service, request, runtimeConfig, database } = fixture();
-    const blocked = created(service, {
-      ...request,
-      commandId: "51000000-0000-4000-8000-000000000001",
-      matchKey: "claim-blocked-parent",
-      priority: "interactive",
-    });
-    const child = created(service, {
-      ...request,
-      commandId: "51000000-0000-4000-8000-000000000002",
-      matchKey: "claim-blocking-child",
-    });
-    const childTerminal = service.transition({
-      commandId: "51000000-0000-4000-8000-000000000003",
-      runId: child.envelope.runId,
-      expectedVersion: child.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
-    });
-    if (childTerminal.state !== "applied") throw new Error("dependency child setup refused");
-    const policy = {
-      onChildFailed: "fail-parent" as const,
-      cascadeCancel: "cascade" as const,
-      afterChildRetry: "resume-parent" as const,
-      visibility: "inline" as const,
-    };
-    const manifestId = "51000000-0000-4000-8000-000000000004";
-    const dependencyId = "51000000-0000-4000-8000-000000000005";
-    database.authority.delegationManifests.insert({
-      manifestId,
-      parentRunId: blocked.envelope.runId,
-      edgeId: "claim-dependency",
-      inputSchemaHash: HASH_A,
-      resultSchemaHash: HASH_C,
-      cardinality: "one",
-      join: "one",
-      policy,
-      children: [{
-        dependencyId,
-        childRunId: child.envelope.runId,
-        childItemId: child.envelope.itemId,
-        canonicalInputFingerprint: HASH_A,
-      }],
-      createdAt: NOW,
-      manifestFingerprint: HASH_C,
-    });
-    database.authority.dependencies.insert({
-      dependencyId,
-      manifestId,
-      edgeId: "claim-dependency",
-      parentRunId: blocked.envelope.runId,
-      childRunId: child.envelope.runId,
-      childItemId: child.envelope.itemId,
-      policy,
-      state: "active",
-      version: 1,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    const olderBulk = created(service, {
+  it("#4 claims the first eligible row after dependency filtering and total ordering", async () => {
+    const { root: compiled, modules } = childPolicyModules("cascade");
+    const h = await executorWorld.executorHarness({ descriptor: compiled.descriptor, stores: plan1Stores });
+    const { database, clock, path } = h.authority;
+    const execution = canonicalChildExecution(h.deps, database, path,
+      id => modules.find(module => module.descriptor.id === id)?.descriptor);
+    const service = execution.lifecycle;
+    const blocked = execution.start(compiled.descriptor, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
+    assert.equal((await execution.step(blocked, executorWorld.SIGNAL)).outcome.state, "yielded-delegation");
+    const children = database.authority.runs.listChildren(blocked.envelope.runId);
+    assert.equal(children.length, 1);
+    const child = children[0]; assert.ok(child);
+    assert.equal(database.authority.dependencies.readiness(blocked.envelope.runId, "join").state, "waiting");
+    const parent = database.authority.runs.get(blocked.envelope.runId); assert.ok(parent);
+    assert.equal(parent.lifecycle.state, "queued");
+    assert.equal(parent.envelope.priority, "interactive");
+    const active = database.authority.runtimeConfig.get(); assert.ok(active);
+    const runtimeConfig = { generation: active.generation, settingsRevision: active.settingsRevision,
+      settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint };
+    const firstOwner = testWorkerLifetime(database, compiled.descriptor.id, 1);
+    const childClaim = service.claimNext({ commandId: randomUUID(), workflow: compiled.descriptor.id,
+      workerId: firstOwner.workerId, runtimeConfig });
+    assert.equal(childClaim.state, "applied");
+    assert.ok("run" in childClaim);
+    assert.equal(childClaim.run.envelope.runId, child.envelope.runId);
+    assert.equal(childClaim.run.lifecycle.state, "claimed");
+    assert.ok("workerId" in childClaim.run.lifecycle);
+    assert.equal(childClaim.run.lifecycle.workerId, firstOwner.workerId);
+    const request = { commandId: randomUUID(), code: compiled.descriptor.code, matchKey: "claim-order",
+      workflow: compiled.descriptor.id, descriptorVersion: compiled.descriptor.version,
+      contractFingerprint: compiled.descriptor.contractFingerprint, configFingerprint: blocked.envelope.configFingerprint,
+      configSnapshotId: blocked.envelope.configSnapshotId, resolvedInstance: blocked.envelope.resolvedInstance,
+      priority: blocked.envelope.priority, shape: blocked.envelope.shape, dryRun: false,
+      input: blocked.input, runtimeConfig };
+    const olderBulk = requireLifecycleApplied(service.create({
       ...request,
       commandId: "51000000-0000-4000-8000-000000000006",
       matchKey: "claim-older-bulk",
       priority: "bulk",
-    });
-    const newerInteractive = created(service, {
+    }, { title: "Claim order fixture", actorId: "local-operator" }));
+    const newerInteractive = requireLifecycleApplied(service.create({
       ...request,
       commandId: "51000000-0000-4000-8000-000000000007",
       matchKey: "claim-newer-interactive",
       priority: "interactive",
-    });
+    }, { title: "Claim order fixture", actorId: "local-operator" }));
 
+    const owner = testAdmittedWorker(database, clock, { path, workflow: compiled.descriptor.id, poolIndex: 2, browserSystems: [] });
+    const generation = database.getMeta().authorityGeneration;
     const claim = service.claimNext({
       commandId: "51000000-0000-4000-8000-000000000008",
-      workflow: WORKFLOW_ID,
-      workerId: WORKER_ID,
+      workflow: compiled.descriptor.id,
+      workerId: owner.workerId,
       runtimeConfig,
     });
     assert.equal(claim.state, "applied");
@@ -142,10 +133,27 @@ describe("canonical run-record service", () => {
     assert.equal(claim.run.envelope.runId, newerInteractive.envelope.runId);
     assert.equal(service.read(blocked.envelope.runId).state, "present");
     assert.equal(service.read(olderBulk.envelope.runId).state, "present");
+    assert.deepEqual(database.authority.runs.get(blocked.envelope.runId), parent);
+    assert.deepEqual(database.authority.runs.get(olderBulk.envelope.runId), olderBulk);
+    assert.equal(database.getMeta().authorityGeneration, generation + 1);
+    assert.equal(execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard",
+      requestedBy: "local-operator", requestedAt: clock.now().toISOString(),
+      target: { runId: child.envelope.runId, expectedVersion: childClaim.run.version },
+    }).state, "applied");
+    const requestedChild = database.authority.runs.get(child.envelope.runId); assert.ok(requestedChild);
+    assert.equal(requestedChild.cancelRequested, true);
+    const childDescriptor = modules.find(module => module.descriptor.id === child.envelope.workflow)?.descriptor;
+    assert.ok(childDescriptor);
+    assert.equal(service.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: child.envelope.runId,
+      expectedVersion: requestedChild.version, claim: { workerId: firstOwner.workerId, claimGeneration: childClaim.run.claimGeneration },
+      endedAt: clock.now().toISOString() }, childDescriptor).state, "applied");
+    assert.deepEqual(database.authority.dependencies.readiness(blocked.envelope.runId, "join"),
+      { state: "blocked", childRunId: child.envelope.runId, reason: "child-cancellation-unavailable" });
+    assert.equal(database.authority.dependencies.readiness(blocked.envelope.runId, "cancel").state, "ready");
   });
 
-  it("#25 preserves spent attempt and run number after deleting the highest row", () => {
-    const { service, request, database, runtimeConfig } = fixture();
+  it("#25 preserves spent attempt and run number after deleting the highest row", async () => {
+    const { service, request, database, runtimeConfig } = await fixture();
     const source = created(service, {
       ...request,
       descriptorVersion: personLookupDescriptor.version,
@@ -189,8 +197,8 @@ describe("canonical run-record service", () => {
     assert.equal(service.read(highest.envelope.runId).state, "deleted");
   });
 
-  it("persists a cancellation request without changing the claimed lifecycle or fence", () => {
-    const { service, request, runtimeConfig } = fixture();
+  it("persists a cancellation request without changing the claimed lifecycle or fence", async () => {
+    const { service, request, runtimeConfig } = await fixture();
     const run = created(service, request);
     const claim = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
     if (claim.state !== "applied") throw new Error("claim refused");
@@ -208,8 +216,82 @@ describe("canonical run-record service", () => {
     assert.equal(renewed.run.lifecycle.state, "claimed");
   });
 
-  it("#5 a generation advance refuses the next claim without invalidating the held claim", () => {
-    const { service, request, runtimeConfig, database, clock } = fixture();
+  it("pauses a claimed operation and its never-claimed member on logout instead of cascading a cancel", async () => {
+    const { service, request, runtimeConfig, database, admission, clock } = await fixture();
+    const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
+    const member = created(service, { ...request, commandId: randomUUID(), matchKey: "logout-paused-member",
+      descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
+      shape: "operation-member", parent: { runId: anchor.envelope.runId, tracePrefix: anchor.envelope.traceId, edgeId: "logout-member" } });
+    const activity = logoutActivity({ admission, database, clock, lifecycle: service });
+    activity.requestCancellation(admission.profileBinding.profileId);
+    assert.equal(database.authority.runs.get(anchor.envelope.runId)?.pause?.state, "requested");
+    requireLifecycleApplied(service.acknowledgePause({ commandId: randomUUID(), runId: anchor.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: anchor.claimGeneration } }));
+    await activity.awaitCancellation();
+    for (const run of [anchor, member].map(run => database.authority.runs.get(run.envelope.runId))) {
+      assert.deepEqual([run?.lifecycle.state, run?.pause?.state, run?.cancelRequested], ["queued", "paused", undefined]);
+    }
+    assert.equal(database.authority.runs.get(member.envelope.runId)?.claimGeneration, 0);
+  });
+
+  it("keeps an awaited delegation resumable after a logout pauses its claimed child", async () => {
+    const { root: compiled, modules } = childPolicyModules("cascade");
+    const h = await executorWorld.executorHarness({ descriptor: compiled.descriptor, stores: plan1Stores });
+    const { database, clock, path } = h.authority;
+    const execution = canonicalChildExecution(h.deps, database, path, id => modules.find(module => module.descriptor.id === id)?.descriptor);
+    const service = execution.lifecycle;
+    const parent = execution.start(compiled.descriptor, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
+    assert.equal((await execution.step(parent, executorWorld.SIGNAL)).outcome.state, "yielded-delegation");
+    const [child] = database.authority.runs.listChildren(parent.envelope.runId); assert.ok(child);
+    const active = database.authority.runtimeConfig.get(); assert.ok(active);
+    const runtimeConfig = { generation: active.generation, settingsRevision: active.settingsRevision,
+      settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint };
+    const owner = testWorkerLifetime(database, compiled.descriptor.id, 1);
+    const claim = () => requireLifecycleApplied(service.claimNext({ commandId: randomUUID(), workflow: compiled.descriptor.id,
+      workerId: owner.workerId, runtimeConfig }));
+    const claimed = claim(); assert.equal(claimed.envelope.runId, child.envelope.runId);
+    const admission = h.authority.profile.admission, activity = logoutActivity({ admission, database, clock, lifecycle: service });
+    activity.requestCancellation(admission.profileBinding.profileId);
+    requireLifecycleApplied(service.acknowledgePause({ commandId: randomUUID(), runId: child.envelope.runId,
+      claim: { workerId: owner.workerId, claimGeneration: claimed.claimGeneration } }));
+    await activity.awaitCancellation();
+    for (const runId of [child.envelope.runId, parent.envelope.runId]) {
+      const run = database.authority.runs.get(runId); assert.ok(run);
+      assert.deepEqual([run.lifecycle.state, run.pause?.state, run.cancelRequested], ["queued", "paused", undefined]);
+      requireLifecycleApplied(service.resumePaused({ commandId: randomUUID(), runId, expectedVersion: run.version }));
+    }
+    assert.equal(database.authority.dependencies.readiness(parent.envelope.runId, "join").state, "waiting");
+    assert.equal(claim().envelope.runId, child.envelope.runId);
+  });
+
+  it("settles a claimed run's Relay cancel with the summary it was requested with", async () => {
+    const { service, request, runtimeConfig } = await fixture();
+    const run = runningRun(service, request, runtimeConfig);
+    const requested = requireLifecycleApplied(service.transition({ commandId: randomUUID(), runId: run.envelope.runId,
+      expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW, errorSummary: LOGOUT_CANCELLED } }));
+    assert.equal(requested.lifecycle.state, "running");
+    const settled = requireLifecycleApplied(service.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: run.envelope.runId,
+      expectedVersion: requested.version, claim: { workerId: WORKER_ID, claimGeneration: run.claimGeneration }, endedAt: LATER }, personLookupDescriptor));
+    assert.deepEqual(settled.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: LATER, errorSummary: LOGOUT_CANCELLED });
+  });
+
+  it("carries a Relay cancel's summary to cascaded members and the claimed anchor", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
+    const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
+    const member = created(service, { ...request, commandId: randomUUID(), matchKey: "cascade-summary-member",
+      descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
+      shape: "operation-member", parent: { runId: anchor.envelope.runId, tracePrefix: anchor.envelope.traceId, edgeId: "summary-member" } });
+    const requested = requireLifecycleApplied(service.transition({ commandId: randomUUID(), runId: anchor.envelope.runId,
+      expectedVersion: anchor.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW, errorSummary: LOGOUT_CANCELLED } }));
+    assert.deepEqual(database.authority.runs.get(member.envelope.runId)?.lifecycle,
+      { state: "terminal", outcome: "cancelled", endedAt: NOW, errorSummary: LOGOUT_CANCELLED });
+    const settled = requireLifecycleApplied(service.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: anchor.envelope.runId,
+      expectedVersion: requested.version, claim: { workerId: WORKER_ID, claimGeneration: anchor.claimGeneration }, endedAt: LATER }, personLookupDescriptor));
+    assert.deepEqual(settled.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: LATER, errorSummary: LOGOUT_CANCELLED });
+  });
+
+  it("#5 a generation advance refuses the next claim without invalidating the held claim", async () => {
+    const { service, request, runtimeConfig, database, clock } = await fixture();
     const run = created(service, request);
     const queued = created(service, {
       ...request,
@@ -234,8 +316,8 @@ describe("canonical run-record service", () => {
     assert.equal(renewed.state, "applied");
   });
 
-  it("#6/#7 requeues only an expired claim, preserves its attempt/fence, and rejects the zombie", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("#6/#7 requires the claim fence, preserves its attempt, and rejects the released owner", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     const run = created(service, request);
     const claim = service.claimNext({
       commandId: "83000000-0000-4000-8000-000000000001",
@@ -250,18 +332,17 @@ describe("canonical run-record service", () => {
       runId: run.envelope.runId,
       expectedVersion: claim.run.version,
       cause: "recovery",
-      staleBefore: NOW,
-    }), { state: "refused", refusal: { reason: "heartbeat-live" } });
+    }), { state: "refused", refusal: { reason: "illegal-transition", from: "claimed", to: "queued", message: "a claimed run requires its claim fence" } });
     assert.equal(database.getMeta().authorityGeneration, beforeLive);
     const requeued = service.requeue({
       commandId: "83000000-0000-4000-8000-000000000003",
       runId: run.envelope.runId,
       expectedVersion: claim.run.version,
       cause: "recovery",
-      staleBefore: LATER,
+      claim: { workerId: WORKER_ID, claimGeneration: claim.run.claimGeneration },
     });
     assert.equal(requeued.state, "applied");
-    if (requeued.state !== "applied") throw new Error("expired claim did not requeue");
+    if (requeued.state !== "applied") throw new Error("owned claim did not requeue");
     assert.equal(requeued.run.lifecycle.state, "queued");
     assert.equal(requeued.run.envelope.attempt, run.envelope.attempt);
     assert.equal(requeued.run.claimGeneration, claim.run.claimGeneration);
@@ -284,8 +365,8 @@ describe("canonical run-record service", () => {
     ), { state: "refused", refusal: { reason: "lost" } });
   });
 
-  it("re-enqueues a resolved gate at its durable continuation node", () => {
-    const { service, request, runtimeConfig } = fixture();
+  it("re-enqueues a resolved gate at its durable continuation node", async () => {
+    const { service, request, runtimeConfig } = await fixture();
     const running = runningRun(service, request, runtimeConfig);
     const parked = service.workerTransition({
       commandId: "83000000-0000-4000-8000-000000000007",
@@ -313,8 +394,8 @@ describe("canonical run-record service", () => {
     assert.equal(resumed.run.envelope.startAt, "crm-dates");
   });
 
-  it("refuses queued metadata that gate resolution cannot preserve", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("refuses queued metadata that gate resolution cannot preserve", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     const running = runningRun(service, request, runtimeConfig);
     const parked = service.workerTransition({
       commandId: "83000000-0000-4000-8000-000000000015",
@@ -353,8 +434,8 @@ describe("canonical run-record service", () => {
     });
   });
 
-  it("refuses to re-enqueue a parked write without a resolution continuation", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("refuses to re-enqueue a parked write without a resolution continuation", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     const running = runningRun(service, request, runtimeConfig);
     const intent = parkedWriteIntent(database, running, {
       writeIntentId: "83000000-0000-4000-8000-000000000097", code: "operator-required", message: "check whether the external write landed",
@@ -398,8 +479,8 @@ describe("canonical run-record service", () => {
     });
   });
 
-  it("#9/#10 terminalize is atomic and command replay is exact or divergent", () => {
-    const interrupted = fixture({
+  it("#9/#10 terminalize is atomic and command replay is exact or divergent", async () => {
+    const interrupted = await fixture({
       afterFailureStorageStep: (step) => {
         if (step === "failure") throw new Error("injected terminal settlement failure");
       },
@@ -424,7 +505,7 @@ describe("canonical run-record service", () => {
       run: interruptedRun,
     });
 
-    const normal = fixture();
+    const normal = await fixture();
     const running = runningRun(normal.service, normal.request, normal.runtimeConfig);
     const request = failureTerminalRequest(running, "84000000-0000-4000-8000-000000000002");
     const applied = normal.service.terminalize(request, personLookupDescriptor);
@@ -468,8 +549,8 @@ describe("canonical run-record service", () => {
     assert.equal(replayAfterDelete.appliedVersion, applied.run.version);
   });
 
-  it("refuses failure terminalization while a direct tree member is non-terminal", () => {
-    const { service, request, runtimeConfig } = fixture();
+  it("refuses failure terminalization while a direct tree member is non-terminal", async () => {
+    const { service, request, runtimeConfig } = await fixture();
     const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
     const member = created(service, {
       ...request,
@@ -491,8 +572,8 @@ describe("canonical run-record service", () => {
     ), { state: "refused", refusal: { reason: "tree-non-terminal", runId: member.envelope.runId } });
   });
 
-  it("refuses failure terminalization while a nested tree member is non-terminal", () => {
-    const { service, request, runtimeConfig } = fixture();
+  it("refuses failure terminalization while a nested tree member is non-terminal", async () => {
+    const { service, request, runtimeConfig } = await fixture();
     const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
     const member = created(service, {
       ...request,
@@ -534,8 +615,8 @@ describe("canonical run-record service", () => {
     ), { state: "refused", refusal: { reason: "tree-non-terminal", runId: grandchild.envelope.runId } });
   });
 
-  it("refuses a distinct terminal lifecycle self-edge", () => {
-    const { service, request } = fixture();
+  it("refuses a distinct terminal lifecycle self-edge", async () => {
+    const { service, request } = await fixture();
     const run = created(service, request);
     const lifecycle = { state: "terminal" as const, outcome: "cancelled" as const, endedAt: NOW };
     const settled = service.transition({
@@ -563,8 +644,22 @@ describe("canonical run-record service", () => {
     });
   });
 
-  it("refuses a display-name self-edge on a terminal run", () => {
-    const { service, request } = fixture();
+  it("a null display name drops the key and bumps the version, named or not", async () => {
+    const { service, request } = await fixture();
+    const run = created(service, request);
+    const named = service.transition({ commandId: "84000000-0000-4000-8000-000000000017", runId: run.envelope.runId, expectedVersion: run.version, displayName: "Named" });
+    if (named.state !== "applied") throw new Error("rename refused");
+    const cleared = service.transition({ commandId: "84000000-0000-4000-8000-000000000018", runId: run.envelope.runId, expectedVersion: named.run.version, displayName: null });
+    if (cleared.state !== "applied") throw new Error("clear refused");
+    assert.equal(Object.hasOwn(cleared.run, "displayName"), false);
+    assert.equal(cleared.run.version, named.run.version + 1);
+    const again = service.transition({ commandId: "84000000-0000-4000-8000-000000000019", runId: run.envelope.runId, expectedVersion: cleared.run.version, displayName: null });
+    if (again.state !== "applied") throw new Error("second clear refused");
+    assert.equal(again.run.version, cleared.run.version + 1);
+  });
+
+  it("renames and clears a terminal run but still refuses its priority bump", async () => {
+    const { service, request } = await fixture();
     const run = created(service, request);
     const settled = service.transition({
       commandId: "84000000-0000-4000-8000-000000000015",
@@ -572,14 +667,23 @@ describe("canonical run-record service", () => {
       expectedVersion: run.version,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
     });
-    assert.equal(settled.state, "applied");
     if (settled.state !== "applied") throw new Error("settlement refused");
 
+    const renamed = service.transition({ commandId: "84000000-0000-4000-8000-000000000016", runId: run.envelope.runId, expectedVersion: settled.run.version, displayName: "Late rename" });
+    if (renamed.state !== "applied") throw new Error("terminal rename refused");
+    assert.equal(renamed.run.displayName, "Late rename");
+    assert.equal(renamed.run.version, settled.run.version + 1);
+    assert.deepEqual(renamed.run.lifecycle, settled.run.lifecycle);
+    const cleared = service.transition({ commandId: "84000000-0000-4000-8000-000000000020", runId: run.envelope.runId, expectedVersion: renamed.run.version, displayName: null });
+    if (cleared.state !== "applied") throw new Error("terminal clear refused");
+    assert.equal(Object.hasOwn(cleared.run, "displayName"), false);
+    assert.equal(cleared.run.version, renamed.run.version + 1);
+
     assert.deepEqual(service.transition({
-      commandId: "84000000-0000-4000-8000-000000000016",
+      commandId: "84000000-0000-4000-8000-000000000021",
       runId: run.envelope.runId,
-      expectedVersion: settled.run.version,
-      displayName: "Late rename",
+      expectedVersion: cleared.run.version,
+      priority: "interactive",
     }), {
       state: "refused",
       refusal: {
@@ -591,8 +695,17 @@ describe("canonical run-record service", () => {
     });
   });
 
-  it("#10 journals only request commitments and returns the current version on exact replay", () => {
-    const { service, request, database } = fixture();
+  it("refuses a rename while a worker owns the run", async () => {
+    const { service, request, runtimeConfig } = await fixture();
+    created(service, request);
+    const claimed = service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
+    if (claimed.state !== "applied") throw new Error("claim refused");
+    assert.deepEqual(service.transition({ commandId: "84000000-0000-4000-8000-000000000022", runId: claimed.run.envelope.runId, expectedVersion: claimed.run.version, displayName: "Mid-run" }),
+      { state: "refused", refusal: { reason: "owned-by-worker" } });
+  });
+
+  it("#10 journals only request commitments and returns the current version on exact replay", async () => {
+    const { service, request, database } = await fixture();
     const protectedRequest={...request,input:{...request.input,parsed:{...request.input.parsed,protectedBindings:[{kind:"test-data-local" as const,inputPath:"emplId" as const,name:"personLookupCanaryEid" as const,sourceId:UUID_6}]}}};
     const run = created(service, protectedRequest);
     const first = service.transition({

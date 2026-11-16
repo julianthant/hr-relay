@@ -1,6 +1,8 @@
+import { PositiveIntSchema } from "../../../src/rules/identity/ids.js";
+import { composeCommandRequest } from "../../../src/dashboard/app/commands/command-dispatch.js";
 import { RunLifecycleSchema } from "../../../src/models/run/record.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { composeCommandRequest } from "../../../src/dashboard/app/commands/command-dispatch.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
 import { dashboardRouteSource } from "./helpers/dashboard-route-source.js";
 // @vitest-environment jsdom
@@ -9,55 +11,57 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterAll,describe,it } from "vitest";
 import { z } from "zod";
-import { ActionCommandKeySchema } from "../../../src/models/dashboard/actions.js";
-import {
-  ParkedWriteDetailWireSchema,
-  ParkedWriteSubjectEvidenceSchema,
-  RunDetailSectionResponseSchema,
-} from "../../../src/models/dashboard/run-detail.js";
-import { QueuePrioritySchema, QueueStatusSchema } from "../../../src/models/dashboard/projection.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
 import { queueRowActions } from "../../../src/backend/runs/projections/queue-row-actions.js";
-import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
-import { RunPrioritySchema } from "../../../src/models/run/envelope.js";
-import { RunOutcomeSchema, RunRecordSchema, RunStateSchema, type RunRecord } from "../../../src/models/run/record.js";
-import { SubjectEvidenceSchema, WriteIntentRecordSchema } from "../../../src/rules/write-safety/write-safety.js";
-import { availableSections, readRunDetail, readRunSection } from "../../../src/backend/runs/queries/run-detail.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
-import { deriveDiagnosticContentDigest } from "../../../src/models/trust/diagnostic-capture.js";
+import { availableSections,readRunDetail,readRunSection } from "../../../src/backend/runs/queries/run-detail.js";
+import { ActionCommandKeySchema } from "../../../src/models/dashboard/actions.js";
+import { QueuePrioritySchema,QueueStatusSchema } from "../../../src/models/dashboard/projection.js";
 import {
-  makeWorld,
-  queuedEventOf,
-  runRecordOf,
-  uuidOf,
-  type DashboardWorld,
+ParkedWriteDetailWireSchema,
+ParkedWriteSubjectEvidenceSchema,
+RunDetailSectionResponseSchema,
+} from "../../../src/models/dashboard/run-detail.js";
+import { RunPrioritySchema } from "../../../src/models/run/envelope.js";
+import { RunOutcomeSchema,RunRecordSchema,RunStateSchema,type RunRecord } from "../../../src/models/run/record.js";
+import { deriveDiagnosticContentDigest } from "../../../src/models/trust/diagnostic-capture.js";
+import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
+import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
+import { SubjectEvidenceSchema,WriteIntentRecordSchema } from "../../../src/rules/write-safety/write-safety.js";
+import {
+makeWorld,
+queuedEventOf,
+runRecordOf,
+uuidOf,
+type DashboardWorld,
 } from "../../support/helpers/backend/dashboard-harness.js";
+import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 import {
-  armField,
-  clientRouteReferences,
-  discriminantValues,
-  projectedCommandKeys,
-  normalizeClientPath,
-  readPendingWireBindings,
-  routeConnectivityProblems,
-  routeMatches,
-  servedRoutes,
-  PENDING_WIRE_BINDINGS_PATH,
-  type PendingWireBinding,
+armField,
+clientRouteReferences,
+discriminantValues,
+normalizeClientPath,
+PENDING_WIRE_BINDINGS_PATH,
+projectedCommandKeys,
+readPendingWireBindings,
+routeConnectivityProblems,
+routeMatches,
+servedRoutes,
+type PendingWireBinding,
 } from "./helpers/wire-connectivity.js";
 
 const worlds: DashboardWorld[] = [];
-afterEach(() => {
-  for (const world of worlds.splice(0)) world.dispose();
+afterAll(async () => {
+  for (const world of worlds.splice(0)) await world.dispose();
 });
 
 const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
 
 const SECTION_DESCRIPTOR_PRODUCER = "src/backend/runs/queries/run-detail/gate-park.ts";
+const WORKBOOK_DESCRIPTOR_PRODUCER = "src/backend/runs/workbooks.ts";
+const CHILD_RETRY_DESCRIPTOR_PRODUCER = "src/backend/runs/queries/run-detail.ts";
 const API_ROUTES_FILE = "src/backend/transports/http/routes/api.ts";
 const CLIENT_ROOTS = ["src/dashboard/client"];
 
@@ -65,6 +69,10 @@ const MANIFEST = readPendingWireBindings();
 
 async function scannedAndSavedReferences() {
   return clientRouteReferences(CLIENT_ROOTS.map(root => join(REPO_ROOT, root)));
+}
+
+function servedDashboardRoutes() {
+  return servedRoutes(`${dashboardRouteSource()}\n${readFileSync(join(REPO_ROOT, "src/backend/app/composition/dashboard/profile-session-routes.ts"), "utf8")}`);
 }
 
 function bindingsFor(prefix: string): readonly PendingWireBinding[] {
@@ -128,7 +136,7 @@ function lifecycleCases(): readonly LifecycleCase[] {
 
 /** Every section any lifecycle can advertise, with and without the trust seam. */
 async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<string>; readonly statesSwept: ReadonlySet<string> }> {
-  const world = makeWorld();
+  const world = await makeWorld();
   worlds.push(world);
   queuedEventOf(world, { seed: 1 });
   const row = world.projection.runFold(uuidOf(1));
@@ -162,7 +170,8 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
     for (const section of availableSections(row, record, trust)) reachable.add(section);
   }
 
-  const database = AuthorityDatabase.open({ path: join(world.stateRoot, "wire-capture-authority.db"),
+  const profile = await createBoundProfileFixture();
+  const database = AuthorityDatabase.open({ path: profile.path,
     busyTimeoutMs: 1000, migrationOwner: "wire-capture-census" }, world.clock);
   try {
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -197,7 +206,7 @@ async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<st
     const detail = await readRunDetail(deps, uuidOf(1));
     assert.deepEqual(detail.captures, { state: "available", artifactCount: 1 }, "the async census did not verify its canonical capture");
     for (const section of detail.availableSections) reachable.add(section);
-  } finally { database.close(); }
+  } finally { database.close(); await profile.close(); }
   return { reachable, statesSwept };
 }
 
@@ -209,8 +218,12 @@ function projectedRowCommands(): ReadonlySet<string> {
   const commands = new Set<string>();
   for (const status of QueueStatusSchema.options) {
     for (const isMember of [false, true]) {
+      const controls = status === "running" ? [undefined, { state: "running", command: "pause", expectedVersion: PositiveIntSchema.parse(1) }, { state: "paused", command: "resume", expectedVersion: PositiveIntSchema.parse(1) }] as const : [undefined];
+      for (const pauseControl of controls) {
       const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, {
+        ...(pauseControl === undefined ? {} : { pauseControl }),
         status,
+        ...(status === "failed" ? { recoverySource: "failed" as const } : {}),
         rowRevision: 1,
         dryRun: false,
         isChild: false,
@@ -218,19 +231,21 @@ function projectedRowCommands(): ReadonlySet<string> {
         memberCount: 0,
         isMember,
         named: false,
-        workflowLabel: "Person Lookup",
         hasReviewPanel: false,
       });
       for (const action of actions) if (action.kind === "command") commands.add(action.command);
+      }
     }
   }
   return commands;
 }
 
-// Retained commands remain kernel-readable without a dashboard action opportunity.
-const RETAINED_UNPROJECTED_ACTIONS = new Set(["retry", "restart"]);
+// Generic run Retry requires the Rerun surface.
+const RETAINED_UNPROJECTED_ACTIONS = new Set(["retry"]);
 
 const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
+  "pause-all": "application toolbar targets exact global membership, not a run row",
+  "pause-all-and-quit": "application quit dialog targets exact global membership, not a run row",
   "annotate-failure": "failure resolution targets an exact failure/version and uses the resolution command payload, not a generic run action descriptor",
   "set-batch-grouping": "queue batch controls target batch presentation, not an executable run row",
   "start-run": "the Start surface composes a start plan; there is no run row to hang it off yet",
@@ -245,30 +260,39 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "reopen-browser": "worker-browser commands target the worker pool, not a run row",
   "apply-settings": "the Settings surface owns the whole payload; a row control cannot express it",
   "apply-protected-settings": "the Settings surface owns its write-only protected payload; row actions cannot express it",
-  "plan-storage-relocation": "Settings plans a complete installation root pair; no run row owns storage location",
-  "cancel-storage-relocation": "Settings cancels the current installation plan revision; no run row owns storage location",
   "inspect-intake": "the intake surface drives the whole session; its targets are intake sessions, not runs",
   "confirm-intake-mapping": "intake session target, not a run row",
   "correct-intake-row": "intake session target, not a run row",
   "exclude-intake-row": "intake session target, not a run row",
   "validate-intake": "intake session target, not a run row",
   "enqueue-intake-manifest": "intake session target, not a run row",
+  "add-ocr-record": "the served OCR editor creates a record at an exact review revision with original page bindings through the typed review client",
+  "correct-ocr-record": "the served OCR editor targets an exact record/review revision and complete corrected fields through the typed review client",
+  "discard-ocr-record": "the served OCR editor excludes an exact record/review revision through the typed review client",
+  "restore-ocr-record": "the served OCR editor restores an exact record/review revision through the typed review client",
   "notification-read": "the inbox targets a notification row; the bell owns these three",
   "notification-unread": "notification target, not a run row",
   "notification-snooze": "notification target, not a run row",
   "notification-unsnooze": "notification target, not a run row",
-  "apply-explorer-edit": "The reviewed Explorer draft targets a workflow override revision, not a run row",
+  "notification-read-all": "complete actor inbox target, not a run row",
+  "notification-unread-all": "complete actor inbox target, not a run row",
+  "notification-snooze-all": "complete actor inbox target, not a run row",
+  "notification-unsnooze-all": "complete actor inbox target, not a run row",
+
+  "set-assistant-model-preference": "the assistant surface owns the model choice; no run row can express it",
 };
 
 /* ── the tests ───────────────────────────────────────────────────────────── */
 
 describe("wire connectivity — declared arms, served arms, and the manifest between them", () => {
+  let sectionCensus: ReturnType<typeof reachableSections> | undefined;
+  const census = () => sectionCensus ??= reachableSections();
 
   it("has every run-detail section arm either reachable or declared", async () => {
     const arms = discriminantValues(RunDetailSectionResponseSchema, "section");
     assert.ok(arms.length > 0, "the section union introspection found no arms at all");
 
-    const { reachable, statesSwept } = await reachableSections();
+    const { reachable, statesSwept } = await census();
     // The sweep is only evidence if it covered every state the schema allows.
     assert.deepEqual(
       [...statesSwept].sort(),
@@ -354,14 +378,17 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     const projected = new Set<string>([
       ...projectedRowCommands(),
       ...projectedCommandKeys(readFileSync(join(REPO_ROOT, SECTION_DESCRIPTOR_PRODUCER), "utf8")),
+      ...projectedCommandKeys(readFileSync(join(REPO_ROOT, WORKBOOK_DESCRIPTOR_PRODUCER), "utf8")),
     ]);
     assert.ok(projected.size > 3, "the descriptor-producer read under-ran; the scan or the row sweep is stale");
+    assert.deepEqual(projectedCommandKeys(readFileSync(join(REPO_ROOT, CHILD_RETRY_DESCRIPTOR_PRODUCER), "utf8"), "command"), ["retry"],
+      "run detail may directly project only its scoped child retry");
     for (const key of RETAINED_UNPROJECTED_ACTIONS) {
       assert.ok(actionKeys.includes(key) && kernelTypes.includes(key), `stale retained unprojected command: ${key}`);
       assert.ok(!projected.has(key), `retained command became directly projected: ${key}`);
     }
     const navigation = queueRowActions(STANDARD_WORKFLOW_ACTIONS, {status:"failed",rowRevision:1,dryRun:false,isChild:false,
-      parkedWrite:false,memberCount:0,isMember:false,named:false,workflowLabel:"Fixture",hasReviewPanel:false});
+      parkedWrite:false,memberCount:0,isMember:false,named:false,hasReviewPanel:false});
     assert.ok(navigation.some(action => action.kind === "navigation" && action.navigate.kind === "rerun"));
     for (const key of actionKeys) {
       if (key === "archive" || projected.has(key) || RETAINED_UNPROJECTED_ACTIONS.has(key)) continue;
@@ -375,7 +402,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
   });
 
   it("resolves every client-called path to a served route, and declares every uncalled route", async () => {
-    const routes = servedRoutes(dashboardRouteSource());
+    const routes = servedDashboardRoutes();
     assert.ok(routes.length > 10, `route extraction from ${API_ROUTES_FILE} found only ${String(routes.length)}`);
     const references = await scannedAndSavedReferences();
     assert.ok(references.length > 10, "client path extraction found almost nothing; the scan is broken");
@@ -391,7 +418,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
 
     // (a) an arm the introspection sees but the reachable set does not.
     const arms = [...discriminantValues(RunDetailSectionResponseSchema, "section"), "invented-section"];
-    const { reachable } = await reachableSections();
+    const { reachable } = await census();
     assert.ok(!reachable.has("invented-section"));
     assert.ok(arms.some((arm) => !reachable.has(arm) && arm === "invented-section"));
 
@@ -406,17 +433,19 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       ["retry"],
     );
     assert.deepEqual(projectedCommandKeys('// command: "unhide"\nconst a = { command: "resolve-gate" };'), ["resolve-gate"]);
+    assert.deepEqual(projectedCommandKeys('/* command: "unhide" */ const a = { key: "retry-child", command: "retry" };', "command"), ["retry"]);
 
     const projected = new Set<string>([
       ...projectedRowCommands(),
       ...projectedCommandKeys(readFileSync(join(REPO_ROOT, SECTION_DESCRIPTOR_PRODUCER), "utf8")),
+      ...projectedCommandKeys(readFileSync(join(REPO_ROOT, WORKBOOK_DESCRIPTOR_PRODUCER), "utf8")),
     ]);
     assert.ok(projected.has("rename"), "the readers missed a verb the row demonstrably serves");
     assert.ok(!projected.has("unhide"));
     assert.ok(!projected.has("force-done"));
 
 
-    const routes = servedRoutes(dashboardRouteSource());
+    const routes = servedDashboardRoutes();
     assert.ok(!routes.some(({ path }) => routeMatches(path, "/api/v1/invented")));
     assert.ok(routeMatches("/api/v1/runs/:runId", normalizeClientPath("/api/v1/runs/${runId}")));
     assert.ok(!routeMatches("/api/v1/runs/:runId", "/api/v1/runs/abc/logs"));

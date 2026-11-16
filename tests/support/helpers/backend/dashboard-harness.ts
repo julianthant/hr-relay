@@ -1,5 +1,11 @@
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
+import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../../src/models/run/worker-slot.js";
-import type { WorkerControlRecord } from "../../../../src/models/run/worker-control.js";
+import type { WorkerMemberView } from "../../../../src/backend/runtime/workers/worker-pool.js";
+import { WorkerActivitySchema, type WorkerActivity } from "../../../../src/backend/runtime/workers/worker-messages.js";
+import { workerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import { AuthorityDatabase } from "../synthetic-database-admission.js";
 import { DatabaseSync } from "node:sqlite";
 import type { TimelineRepository } from "../../../../src/models/events/timeline.js";
@@ -9,22 +15,14 @@ import { TimelineAppendSchema } from "../../../../src/models/events/timeline.js"
 import { inMemoryRunReaderFake, type CanonicalRunReader, type InMemoryRunReaderState } from "../canonical-run-reader.js";
 import { type RunSessionRecord } from "../../../../src/models/run/session.js";
 
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { z } from "zod";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { localDatePart, manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { NotificationRecordSchema } from "../../../../src/models/notifications/notifications.js";
 import { RunLifecycleSchema, RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
-import { isLiveWorker, WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/models/run/worker.js";
 import { WorkerPoolRecordSchema, type WorkerPoolRecord } from "../../../../src/models/run/worker-pool.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
-import {
-  ActivityPersonPseudonymEvidenceSchema,
-  type ActivityPersonPseudonymEvidence,
-} from "../../../../src/models/trust/activity-person-pseudonym.js";
 import {
   CURRENT_DIAGNOSTIC_SAFETY_VERSION,
   FailureRecordSchema,
@@ -43,6 +41,7 @@ import {
   type RunQueueProjectionChange,
 } from "../../../../src/backend/runs/projections/run-queue-projection.js";
 import { CONFIG_SNAPSHOT, HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
+import type { QueueParent } from "../../../../src/models/dashboard/queue-parent.js";
 
 export const DAY = "2026-08-03";
 export const AT = new Date("2026-08-03T10:00:00.000-07:00");
@@ -78,6 +77,7 @@ export function traceOf(seed: number): string {
 export type NotificationRecord = z.infer<typeof NotificationRecordSchema>;
 
 export interface AuthorityFake {
+  queueParents: Parameters<typeof createRunQueueProjection>[0]["authority"]["queueParents"];
   readonly records: Map<string, RunRecord>;
   readonly checkpoints: Map<string, RunCheckpointRecord>;
   getRun(runId: string): RunRecord | undefined;
@@ -95,9 +95,6 @@ export interface AuthorityFake {
 
   readonly receipts: Map<string, RunEvidenceReceipt>;
   getReceipt(runId: string): RunEvidenceReceipt | undefined;
-  readonly activityPersonPseudonyms: ActivityPersonPseudonymEvidence[];
-  listActivityPersonPseudonyms(runIds: readonly string[]): readonly ActivityPersonPseudonymEvidence[];
-  putActivityPersonPseudonym(record: unknown): void;
   /** Ref write-safety: the durable write-safety rows the parked-write section reads. */
   readonly writeIntents: Map<string, WriteIntentRecord>;
   getWriteIntent(writeIntentId: string): WriteIntentRecord | undefined;
@@ -111,13 +108,10 @@ export interface AuthorityFake {
   listWorkerSlots(): readonly WorkerSlotRecord[];
   listWorkerRuns(workerId: string): readonly RunRecord[];
   putWorkerSlot(record: unknown): void;
-  readonly workerOwners: Set<string>;
-  workerOwnerAlive(lease: WorkerLeaseRecord): boolean;
-  workerControls(): readonly WorkerControlRecord[];
-  readonly workerLeases: Map<string, WorkerLeaseRecord>;
-  listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
-  getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
-  putWorkerLease(record: unknown): void;
+  /** The pool's in-memory members by worker id. */
+  readonly members: Map<string, WorkerMemberView>;
+  workerMembers(): readonly WorkerMemberView[];
+  putWorkerMember(view: WorkerMemberView): void;
 
   readonly workerPools: Map<string, WorkerPoolRecord>;
   listWorkerPools(): readonly WorkerPoolRecord[];
@@ -132,17 +126,27 @@ export function authorityFake(): AuthorityFake {
   const checkpoints = new Map<string, RunCheckpointRecord>();
   const failures = new Map<string, FailureRecord>();
   const receipts = new Map<string, RunEvidenceReceipt>();
-  const activityPersonPseudonyms: ActivityPersonPseudonymEvidence[] = [];
   const writeIntents = new Map<string, WriteIntentRecord>();
   const gateResults: GateResultRecord[] = [];
-  const workerSlots = new Map<string, WorkerSlotRecord>(), workerOwners = new Set<string>();
-  const workerLeases = new Map<string, WorkerLeaseRecord>();
+  const workerSlots = new Map<string, WorkerSlotRecord>();
+  const members = new Map<string, WorkerMemberView>();
   const workerPools = new Map<string, WorkerPoolRecord>();
   const notifications: NotificationRecord[] = [];
   const checkpointKey = (workflowId: string, itemId: string, nodeId: string): string =>
     `${workflowId}\u0000${itemId}\u0000${nodeId}`;
   return {
     records,
+    queueParents: envelopes => {
+      const parents = new Set(envelopes.flatMap(envelope => envelope.parent === undefined ? [] : [envelope.parent.runId]));
+      const facts = new Map<string, QueueParent | null>();
+      for (const run of records.values()) {
+        const parent = run.envelope.parent;
+        if (parent === undefined || !parents.has(parent.runId)) continue;
+        facts.set(run.envelope.runId, { runId: parent.runId, visibility: run.envelope.shape === "operation-member" ? "inline" : "linked" });
+      }
+      for (const envelope of envelopes) if (envelope.parent === undefined) facts.set(envelope.runId, null);
+      return facts;
+    },
     checkpoints,
     getRun: (runId) => records.get(runId),
     put: (record) => records.set(record.envelope.runId, record),
@@ -158,28 +162,16 @@ export function authorityFake(): AuthorityFake {
     getFailure: (failureId) => failures.get(failureId),
     receipts,
     getReceipt: (runId) => receipts.get(runId),
-    activityPersonPseudonyms,
-    // Return foreign evidence from the broad fake to prove the projector rejects incorrect repository scope.
-    listActivityPersonPseudonyms: () => activityPersonPseudonyms,
-    putActivityPersonPseudonym: (record) => {
-      activityPersonPseudonyms.push(ActivityPersonPseudonymEvidenceSchema.parse(record));
-    },
     writeIntents,
     getWriteIntent: (writeIntentId) => writeIntents.get(writeIntentId),
     putWriteIntent: (record) => writeIntents.set(record.writeIntentId, record),
-    workerSlots, workerOwners,
+    workerSlots,
     listWorkerSlots: () => [...workerSlots.values()].sort((a, b) => a.workerId.localeCompare(b.workerId)),
     listWorkerRuns: workerId => [...records.values()].filter(run => "workerId" in run.lifecycle && run.lifecycle.workerId === workerId),
     putWorkerSlot: record => { const member = WorkerSlotRecordSchema.parse(record); workerSlots.set(member.workerId, member); },
-    workerOwnerAlive: lease => workerOwners.has(`${lease.workerId}:${String(lease.leaseGeneration)}:${String(lease.processId)}:${lease.lifecycle.startedAt}`),
-    workerControls: () => [],
-    workerLeases,
-    listLiveWorkerLeases: () => [...workerLeases.values()].filter((lease) => isLiveWorker(lease)),
-    getWorkerLease: (workerId) => workerLeases.get(workerId),
-    putWorkerLease: (record) => {
-      const lease = WorkerLeaseRecordSchema.parse(record);
-      workerLeases.set(lease.workerId, lease);
-    },
+    members,
+    workerMembers: () => [...members.values()],
+    putWorkerMember: view => { members.set(view.member.workerId, view); },
     workerPools,
     batches: new Map<string, RunSessionRecord>(),
     listRunBatches() { return [...this.batches.values()]; },
@@ -207,20 +199,30 @@ export interface DashboardWorld {
   readonly writer: TimelineEmitter;
   readonly changes: RunQueueProjectionChange[];
   readonly scheduledRebuilds: (() => void)[];
-  dispose(): void;
+  dispose(): void | Promise<void>;
 }
 
-export function makeWorld(input?: Readonly<{
+const retainedDashboardWorldOwners = new Set<object>();
+
+export async function makeWorld(input?: Readonly<{
   reader?: CanonicalRunReader;
   timeline?: TimelineRepository;
   collectRebuilds?: boolean;
+  profileFixture?: () => Promise<BoundProfileStorageFixture>;
+  busyTimeoutMs?: number;
 
   descriptors?: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
-}>): DashboardWorld {
-  const stateRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-dashboard-"));
+  queueCapabilities?: (workflowId: string) => Readonly<{ sessionItemScope?: boolean; groupedBatchLayout?: boolean }> | undefined;
+}>): Promise<DashboardWorld> {
+  const held: { fixture?: BoundProfileStorageFixture; database?: AuthorityDatabase; raws: Set<DatabaseSync>; primary?: { error: unknown }; failure?: Error } = { raws: new Set() };
+  retainedDashboardWorldOwners.add(held);
+  try {
+  const fixture = await (input?.profileFixture ?? createBoundProfileFixture)(); held.fixture = fixture;
+  const stateRoot = fixture.stateRoot;
   const clock = manualClock(AT);
   const authority = authorityFake();
-  const database = AuthorityDatabase.open({ path: join(stateRoot, "authority.db"), busyTimeoutMs: 500, migrationOwner: "history-dashboard-fixture" }, clock);
+  const database = AuthorityDatabase.open({ path: fixture.path, busyTimeoutMs: input?.busyTimeoutMs ?? 500, migrationOwner: "history-dashboard-fixture" }, clock);
+  held.database = database;
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const synchronizeOwner = (runId: string, visiting = new Set<string>()): void => {
     if(visiting.has(runId))throw new Error("fixture run ownership cycle");
@@ -243,7 +245,9 @@ export function makeWorld(input?: Readonly<{
       ...(run.runNumber === undefined ? {} : { runNumber: run.runNumber }),
       ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
     });
-    const row = runRecordColumns(owner), columns = Object.keys(row), raw = new DatabaseSync(join(stateRoot,"authority.db"));
+    const row = runRecordColumns(owner), columns = Object.keys(row), raw = new DatabaseSync(fixture.path);
+    held.raws.add(raw);
+    let primary: { error: unknown } | undefined, closure: { error: unknown } | undefined;
     try {
       const search = createRunSearchIndex(raw);
       search.installTracking();
@@ -258,7 +262,14 @@ export function makeWorld(input?: Readonly<{
       while (publication.state === "building") publication = search.rebuild({ restart: false, limit: 500 }, database.getMeta().authorityGeneration, clock.now().toISOString());
       raw.exec("COMMIT");
     }
-    finally { raw.close(); }
+    catch (error) { primary = { error }; }
+    try { raw.close(); held.raws.delete(raw); } catch (error) { closure = { error }; }
+    if (closure !== undefined) {
+      held.primary = primary ?? closure;
+      held.failure = retainAuthoritySourceClosure(primary === undefined ? [closure.error] : [primary.error, closure.error], { admission: held });
+      throw held.failure;
+    }
+    if (primary !== undefined) throw primary.error;
     visiting.delete(runId);
   };
   const timeline: TimelineRepository = Object.freeze({ ...database.authority.timelineEvents,
@@ -288,6 +299,7 @@ export function makeWorld(input?: Readonly<{
 
     ledger: createTransactionHistory(database.authority),
     authority,
+    ...(input?.queueCapabilities === undefined ? {} : { queueCapabilities: input.queueCapabilities }),
     descriptors: input?.descriptors ?? { resolve: () => undefined },
     ...(input?.collectRebuilds === true
       ? { scheduleRebuild: (rebuild: () => void): void => { scheduledRebuilds.push(rebuild); } }
@@ -307,6 +319,7 @@ export function makeWorld(input?: Readonly<{
       projection.ingestFromTimeline();
     },
   });
+  let closeAttempted = false;
   return {
     database,
     timeline,
@@ -319,8 +332,18 @@ export function makeWorld(input?: Readonly<{
     writer,
     changes,
     scheduledRebuilds,
-    dispose: () => { database.close(); rmSync(stateRoot, { recursive: true, force: true }); },
+    dispose: async () => {
+      if (held.failure !== undefined) throw held.failure;
+      if (closeAttempted) return;
+      closeAttempted = true;
+      try {
+        releaseSeededWriteOwners(database, clock.now().toISOString());
+        database.close(); await fixture.close(); retainedDashboardWorldOwners.delete(held);
+      }
+      catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
+    },
   };
+  } catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
 }
 
 /* ── seeded rows ─────────────────────────────────────────────────────────── */
@@ -353,32 +376,22 @@ export interface SeedRunInput {
 }
 
 
-export function workerLeaseOf(input: Readonly<{
+/** A pool member view for a slot `declareProjectionWorker` declared. */
+export function workerMemberOf(authority: AuthorityFake, input: Readonly<{
   workerId?: string;
-  workflow?: string;
-  browserSystems?: unknown;
-  lifecycle?: unknown;
-  directive?: "run" | "pause" | "stop";
+  state?: WorkerMemberView["state"];
+  activity?: Readonly<{ state: WorkerActivity["state"]; runId?: string }>;
+  directive?: "run" | "pause";
   version?: number;
-}> = {}): WorkerLeaseRecord {
-  const startedAt = instantOffsetOf(0);
-  return WorkerLeaseRecordSchema.parse({
-    workerId: input.workerId ?? "person-lookup-worker-1",
-    workflow: input.workflow ?? "person-lookup",
-    browserSystems: input.browserSystems ?? ["crm", "ucpath"],
-    processId: 4242,
-    leaseGeneration: 1,
-    lifecycle: input.lifecycle ?? { state: "idle", startedAt, heartbeatAt: instantOffsetOf(0, 1_000) },
-    control: {
-      directive: input.directive ?? "run",
-      requestedAt: startedAt,
-      requestedBy: "local-operator",
-    },
-    controlRevision: 1,
-    version: input.version ?? 1,
-    createdAt: startedAt,
-    updatedAt: instantOffsetOf(0, 1_000),
-  });
+  browsers?: WorkerMemberView["browsers"];
+  exit?: WorkerMemberView["exit"];
+}> = {}): WorkerMemberView {
+  const workerId = input.workerId ?? "person-lookup-worker-1";
+  const slot = authority.workerSlots.get(workerId);
+  if (slot === undefined) throw new Error(`declare ${workerId} before its member`);
+  return { member: workerPoolMember(slot), lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", version: input.version ?? 0,
+    state: input.state ?? "running", directive: input.directive ?? "run", pid: 4242, startedAt: instantOffsetOf(0),
+    activity: WorkerActivitySchema.parse(input.activity ?? { state: "idle" }), browsers: input.browsers ?? [], exit: input.exit, held: undefined };
 }
 
 export function runRecordOf(input: SeedRunInput): RunRecord {
@@ -399,7 +412,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
       itemId: uuidOf(input.seed + 5000),
       traceId: traceOf(input.seed),
       descriptorVersion: input.descriptor?.version ?? 1,
-      contractFingerprint: input.descriptor?.contractFingerprint ?? HASH_A,
+      contractFingerprint: input.descriptor?.contractFingerprint ?? HASH_A, buildId: currentBuildId(),
       resolvedInstance: { ucpath: "prod" },
       configFingerprint: CONFIG_SNAPSHOT.fingerprint,
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
@@ -647,8 +660,6 @@ export function claimEventOf(world: DashboardWorld, seed: number, workerId = "pe
 
 
 export function declareProjectionWorker(authority: AuthorityFake, workerId: string, ordinal: number): void {
-  authority.putWorkerSlot({ workerId, workflow: "person-lookup", ordinal, poolIndex: ordinal, membershipRevision: 1,
-    phase: "idle", retiredAt: null, retirementCommandId: null, reservationCommandId: null,
-    createdAt: instantOffsetOf(0), updatedAt: instantOffsetOf(0) });
-  authority.workerOwners.add(`${workerId}:1:4242:${instantOffsetOf(0)}`);
+  authority.putWorkerSlot({ workerId, workflow: "person-lookup", ordinal, poolIndex: ordinal, paused: false,
+    retiredAt: null, createdAt: instantOffsetOf(0), updatedAt: instantOffsetOf(0) });
 }

@@ -1,7 +1,9 @@
+import { EvidenceSchemaConversionSchema } from "../storage/evidence-schema-admission.js";
 import { z } from "zod";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { RunRecordSchema, RunStateSchema } from "../run/record.js";
 import { DeletedRunRecordSchema } from "../run/deleted-run.js";
+import { LogoutOperationSchema } from "../profiles/profile.js";
 import {
   CommandAuditIdSchema,
   CommandIdSchema,
@@ -14,12 +16,18 @@ import {
 } from "../../rules/identity/ids.js";
 
 export const AuthorityTableNameSchema = z.enum([
+  "assistant_model_preference",
   "database_states",
   "database_upgrades",
   "settings_snapshots",
   "commands",
   "command_audits",
   "settings",
+  "assistant_chats",
+  "assistant_actions",
+  "assistant_conversations",
+  "assistant_messages",
+  "assistant_attachments",
   "run_batches",
   "deleted_runs",
   "runs",
@@ -35,27 +43,33 @@ export const AuthorityTableNameSchema = z.enum([
   "write_attempts",
   "worker_pools",
   "worker_slots",
-  "worker_leases",
-  "worker_controls",
-  "browser_sessions",
   "auth_leases",
+  "exclusive_session_leases",
+  "ocr_review_revisions",
+  "ocr_source_uploads",
+  "ocr_approved_snapshots",
   "notifications",
   "notification_states",
-  "explorer_overrides",
   "artifacts",
   "timeline_events",
   "diagnostic_snapshots",
   "diagnostic_files",
   "dryrun_results",
   "run_search",
+  "workflow_workbook_selections",
+  "workbook_creations",
+  "workbook_types",
+  "workbook_operations",
   "workbook_library",
   "workbook_library_history",
+  "workbook_library_state",
+  "workbook_library_actions",
+  "workbook_library_snapshots",
 ]);
 
 export const ProjectionTableNameSchema = z.enum([]);
 
 export const TableNameSchema = z.union([AuthorityTableNameSchema, ProjectionTableNameSchema]);
-export const TableClassSchema = z.enum(["authority", "projection"]);
 const ALL_TABLE_NAMES = [...AuthorityTableNameSchema.options, ...ProjectionTableNameSchema.options];
 
 const AuthorityTableSpecSchema = z.strictObject({
@@ -143,13 +157,14 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
+  toSchemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(30)]),
 });
 
 const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
   upgradeId: FingerprintSchema,
   phase: z.enum(["planned", "committed", "settled"]),
   planDigest: FingerprintSchema,
+  startupLogout: z.strictObject({ operation: LogoutOperationSchema, postimage: FingerprintSchema }).optional(),
   backup: z.strictObject({
     manifestPath: z.string().min(1),
     sha256: FingerprintSchema,
@@ -157,9 +172,15 @@ const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.ext
   }),
 });
 
+export const AuthorityEvidenceSchemaUpgradeRecordSchema = AuthorityForwardUpgradeRecordSchema.omit({ startupLogout: true }).extend({
+  phase: z.literal("settled"), fromSchemaVersion: z.union([z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(30)]), toSchemaVersion: z.union([z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(30)]),
+  evidenceSchemas: EvidenceSchemaConversionSchema, evidenceSchemaMac: FingerprintSchema,
+});
+
 export const AuthorityUpgradeRecordSchema = z.union([
   AuthorityUpgradeBaselineRecordSchema,
   AuthorityForwardUpgradeRecordSchema,
+  AuthorityEvidenceSchemaUpgradeRecordSchema,
 ]);
 export type AuthorityUpgradeRecord = z.infer<typeof AuthorityUpgradeRecordSchema>;
 
@@ -219,7 +240,7 @@ export const RunRecordRefusalSchema = z.discriminatedUnion("reason", [
   z.strictObject({ reason: z.literal("schema-mismatch"), digest: FingerprintSchema }),
   z.strictObject({ reason: z.enum([
     "parent-missing", "retry-of-missing", "tombstoned", "runtime-stale", "cursor-stale",
-    "owned-by-worker", "lost", "replay-divergent", "heartbeat-live", "invalid-state",
+    "owned-by-worker", "lost", "replay-divergent", "invalid-state",
     "source-deleted", "not-terminal", "already-archived", "workflow-unregistered",
     "is-member", "use-archive-door", "retention-not-due", "policy-refused", "shared-checkpoint", "unresolved-write",
   ]) }),

@@ -38,7 +38,7 @@ describe("the provenance bar uses the demo's identity wording", () => {
     workflowId: "person-lookup",
     traceId: "pl-120000-e1b8",
     attempt: 1,
-    lineage: { state: "root" },
+    parent: null,
     actorId: "local-operator",
     appVersion: { state: "present", value: "0.1.0" },
     descriptorVersion: 1,
@@ -48,7 +48,6 @@ describe("the provenance bar uses the demo's identity wording", () => {
     dryRun: false,
     priority: "interactive",
     runNumber: { state: "present", value: 12 },
-    containment: "root",
     linkedRuns: [],
     session: { state: "absent", reason: "This fixture has no run session." },
     facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
@@ -108,5 +107,22 @@ describe("the provenance bar uses the demo's identity wording", () => {
     assert.match(popover.textContent ?? "", /Workflow/u);
     assert.equal(/Config/u.test(popover.textContent ?? ""), false);
     assert.equal(/Attempt/u.test(popover.textContent ?? ""), false);
+  });
+  it.each(["interactive", "bulk"] as const)("words %s priority as Priority On or Off", async priority => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted = root;
+    await act(async () => {
+      root.render(createElement(RunProvenanceBar, {
+        surface: { ...surface, priority }, workflowLabel: "Person Lookup", currentAppVersion: "0.1.0", servedDescriptorHash: DESCRIPTOR_HASH,
+      }));
+    });
+    const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Run provenance"]');
+    if (trigger === null) throw new Error("the provenance bar rendered no trigger");
+    await act(async () => { trigger.click(); });
+    const text = document.querySelector<HTMLElement>('[aria-label="Provenance"]')?.textContent ?? "";
+    assert.match(text, priority === "interactive" ? /Priority.*On/u : /Priority.*Off/u);
+    assert.doesNotMatch(text, /Interactive|Bulk/u);
   });
 });

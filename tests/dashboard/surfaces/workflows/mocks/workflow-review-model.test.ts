@@ -2,8 +2,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,expect,it } from "vitest";
 import { approveMockRun,initialMockDraft,mockRunLog,mockRunsForDraft,seedMockRuns } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { addMockReviewRecord,discardMockReview,editReviewRecord,restoreMockReview,reviewApprovalError,reviewCanApprove,reviewIsReadOnly,reviewRecords,reviewValue,updateMockReview } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
-import { WorkflowMockReview } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review.js";
+import {discardMockReview,editReviewRecord,mockReviewProps,restoreMockReview,reviewApprovalError,reviewCanApprove,reviewIsReadOnly,reviewRecords,reviewValue,updateMockReview } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
+import { RecordReview } from "../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 
 const preparation = (id: "emergency-contact" | "onbase" | "oath-upload") => mockRunsForDraft(id, { ...initialMockDraft(id), files: [{ name: "fictional.pdf", size: 1024, digest: "fixture" }] }, 1);
 describe("complete workflow presentation mocks", () => {
@@ -31,9 +31,8 @@ describe("complete workflow presentation mocks", () => {
     expect(() => approveMockRun([source], source.id)).toThrow("MOCK_APPROVAL_PARENT_MISSING");
     expect(() => approveMockRun(approved, source.id)).toThrow("MOCK_APPROVAL_UNAVAILABLE");
   });
-  it("adds unresolved records and refuses zero valid selections or discarded preparations", () => {
-    const runs = preparation("onbase"), source = runs.find(run => run.workflowId === "ocr")!, records = addMockReviewRecord(reviewRecords(source));
-    expect(records).toHaveLength(2); expect(records[1].selected).toBe(false); expect(records[1].match).toBe("unresolved");
+  it("refuses zero valid selections or discarded preparations", () => {
+    const runs = preparation("onbase"), source = runs.find(run => run.workflowId === "ocr")!, records = reviewRecords(source);
     const empty = updateMockReview(runs, source.id, records.map(record => ({ ...record, selected: false })));
     expect(() => approveMockRun(empty, source.id)).toThrow("MOCK_APPROVAL_NO_RECORDS");
     const discarded = discardMockReview(empty, source.id);
@@ -47,7 +46,7 @@ describe("complete workflow presentation mocks", () => {
     expect(mockRunLog(discarded[1]).timeline.every(step => step.state === "cancelled")).toBe(true);
   });
   it("keeps records and approval exclusively in delegated OCR, including I-9 intake", () => {
-    const runs = mockRunsForDraft("i9-check", { ...initialMockDraft("i9-check"), files: [{ name: "i9.pdf", size: 1024, digest: "fixture" }] }, 2);
+    const runs = mockRunsForDraft("i9-check-start", { ...initialMockDraft("i9-check-start"), files: [{ name: "i9.pdf", size: 1024, digest: "fixture" }] }, 2);
     const ocr = runs[1]; expect(runs).toHaveLength(2); expect(ocr.workflowId).toBe("ocr"); expect(ocr.parentId).toBe(runs[0].id);
     const corrected = editReviewRecord(reviewRecords(ocr)[0], "firstName", "Sam");
     const updated = updateMockReview(runs, ocr.id, [corrected]);
@@ -64,18 +63,18 @@ describe("complete workflow presentation mocks", () => {
       const source = { ...run, records: undefined, draft: { ...run.draft, formType } };
       const record = reviewRecords(source)[0];
       expect(record.fields.some(field => field.readOnly)).toBe(false);
-      const markup = renderToStaticMarkup(createElement(WorkflowMockReview, { run: source, onChange: () => {}, onApprove: () => {}, onRestore: () => {} }));
+      const markup = renderToStaticMarkup(createElement(RecordReview, mockReviewProps({ run: source, onChange: () => {}, onApprove: () => {}, onRestore: () => {} })));
       for (const field of record.fields) {
         expect(markup).toContain(field.label);
         expect(editReviewRecord(record, field.key, field.kind === "boolean" ? "false" : "changed").fields).toContainEqual(expect.objectContaining({ key: field.key, value: field.kind === "boolean" ? "false" : "changed" }));
       }
-      if (record.kind === "contact") for (const key of ["employeeName", "employeeHomePhone", "employeeStreet", "personalEmail", "street", "homePhone", "workPhone"]) expect(markup).toContain(`name="${key}"`);
+      if (record.kind === "contact") for (const key of ["employeeName", "dateCompleted", "homeAddress", "employeeCellPhone", "employeeHomePhone", "address", "cellPhone", "homePhone", "workPhone"]) expect(markup).toContain(`name="${key}"`);
       if (record.kind === "verify") for (const key of ["serviceDate", "oathDate", "i9Status", "i9Signer"]) expect(record.fields.map(field => field.key)).not.toContain(key);
       if (record.kind === "i9") for (const key of ["middleInitial", "dateOfBirth", "ssn", "hireDate"]) expect(markup).toContain(`name="${key}"`);
     }
     const record = reviewRecords(run)[0];
     const extra = { ...record, fields: [...record.fields, { key: "providerExtra", label: "Additional extracted field", value: "", section: "Other" }] };
-    const markup = renderToStaticMarkup(createElement(WorkflowMockReview, { run: { ...run, records: [extra] }, onChange: () => {}, onRestore: () => {} }));
+    const markup = renderToStaticMarkup(createElement(RecordReview, mockReviewProps({ run: { ...run, records: [extra] }, onChange: () => {}, onRestore: () => {} })));
     expect(markup).toContain('name="providerExtra"');
     expect(() => editReviewRecord(record, "missing", "changed")).toThrow("MOCK_REVIEW_FIELD_UNKNOWN");
     const proof = { ...record, fields: [{ key: "proof", label: "System proof", value: "Original", readOnly: true }] };

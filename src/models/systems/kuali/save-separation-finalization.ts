@@ -18,8 +18,9 @@ export type KualiSaveSeparationFinalizationOutput = z.infer<
   typeof KualiSaveSeparationFinalizationOutputSchema
 >;
 
-export function kualiFinalizationIdempotencyKey(
-  input: z.output<typeof KualiFinalizationTargetSchema>,
+export function kualiFinalizationIdempotencyKey<T extends Pick<z.output<typeof KualiFinalizationTargetSchema>, "documentNumber">
+  & { variables: Pick<z.output<typeof KualiFinalizationTargetSchema>["variables"], "transactionNumber"> }>(
+  input: T,
 ): string {
   return `kuali:${input.documentNumber}|finalization|${input.variables.transactionNumber}`;
 }

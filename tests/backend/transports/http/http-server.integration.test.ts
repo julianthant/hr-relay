@@ -11,7 +11,7 @@ import { join as join_m0 } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createServerVerifiedArtifactReader } from "../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
-import { startDashboardHttpServer, type DashboardHttpServer } from "../../../../src/backend/transports/http/http-server.js";
+import { startDashboardHttpServer, type DashboardHttpServer, type DashboardHttpListener } from "../../../../src/backend/transports/http/http-server.js";
 import { type DashboardApp } from "../../../../src/backend/transports/http/routes/api.js";
 import { verifiedByteResponse } from "../../../../src/backend/transports/http/routes/verified-byte-response.js";
 import { type ActorId } from "../../../../src/rules/identity/ids.js";
@@ -577,13 +577,62 @@ afterEach(_afterEachFixture0);
 
       await leaseClosed.promise;
       const transferError = await transferReported.promise;
-      assert.match(transferError.message, /response closed while waiting for drain/u);
+      // The disconnect lands either while the server waits for drain or between file chunks; both report it.
+      assert.match(transferError.message, /^dashboard response closed (while waiting for drain|before body write|before finish)$/u);
       assert.equal(routedRequest?.signal.aborted, true);
       await new Promise<void>((resolve) => setImmediate(resolve));
       await closeServer(server);
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
+  });
+
+  it("does not finish a body when the read fails before the first byte", async () => {
+    const transferFailure = new Error("owned response body failed before the first byte");
+    const observed: Error[] = [];
+    const app = new Hono<TestDashboardEnv>();
+    app.get("/body-read-error", () => new Response(new ReadableStream<Uint8Array>({
+      pull() {
+        throw transferFailure;
+      },
+    }), { status: 200, headers: { "content-type": "application/octet-stream" } }));
+    const server = await startServer(app, (error) => {
+      observed.push(error);
+    });
+
+    const received: Buffer[] = [];
+    const completed: string[] = [];
+    const clientErrors: NodeJS.ErrnoException[] = [];
+    const settled = Promise.withResolvers<void>();
+    const client = request({
+      hostname: "127.0.0.1",
+      port: server.port,
+      method: "GET",
+      path: "/body-read-error",
+    });
+    client.on("response", (response) => {
+      response.on("data", (chunk: Buffer) => received.push(chunk));
+      response.on("end", () => {
+        if (response.complete) completed.push(Buffer.concat(received).toString("utf8"));
+        settled.resolve();
+      });
+      response.on("aborted", () => settled.resolve());
+      response.resume();
+    });
+    client.on("error", (error: NodeJS.ErrnoException) => {
+      clientErrors.push(error);
+      settled.resolve();
+    });
+    client.end();
+
+    await settled.promise;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(completed, [], "a body read error must not complete a response");
+    assert.equal(Buffer.concat(received).includes(transferFailure.message), false);
+    assert.equal(clientErrors.length, 1);
+    assert.equal(clientErrors[0]?.code, "ECONNRESET");
+    assert.deepEqual(observed, [transferFailure]);
+    await closeServer(server);
   });
 
   it("streams ordinary success bytes exactly and closes without a transfer error", async () => {
@@ -631,7 +680,7 @@ const _afterEachFixture0 = async () => {
   const open = [...servers];
   servers.clear();
   await Promise.all(open.map((server) => server.close()));
-  for (const w of worlds.splice(0)) w.dispose();
+  for (const w of worlds.splice(0)) await w.dispose();
 };
 
 const { harness } = createStreamBackpressureFixtures(worlds, hubs, MAX_PENDING);
@@ -653,7 +702,7 @@ describe("dashboard stream backpressure (bridge + Node adapter)", () => {
 afterEach(_afterEachFixture0);
 
   it("Node adapter: a client that stops reading backs the hub up to its bound, resumes to one reset, and disconnect closes the connection", { timeout: 60_000 }, async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     const captured = Promise.withResolvers<DashboardStreamConnection>();
     const app = new Hono<TestDashboardEnv>();
     app.get("/events", async () => {
@@ -720,7 +769,118 @@ afterEach(_afterEachFixture0);
       await new Promise<void>((resolve) => setTimeout(resolve, 10));
     }
     assert.equal(transferErrors.length, 1, "the disconnect is observed exactly once, never swallowed");
-    assert.match(transferErrors[0]?.message ?? "", /closed while waiting for drain|disconnected/u);
+    assert.match(transferErrors[0]?.message ?? "", /dashboard response closed/u);
   });
 });
 }
+
+
+describe("selected dashboard transport mounts", () => {
+  it("drains only its real mounted stream while the public transition response stays live", async () => {
+    const app = new Hono<{ Variables: { requestActorId: ActorId } }>();
+    const selected = new Hono<{ Variables: { requestActorId: ActorId } }>();
+    let cancelled = 0;
+    selected.get("/active/events", () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode("data: ready\n\n")); },
+      cancel() { cancelled++; },
+    }), { headers: { "content-type": "text/event-stream" } }));
+    let mount: ReturnType<DashboardHttpListener["mount"]> | undefined;
+    app.post("/public/logout", async c => { assert.ok(mount); await mount.close(); return c.json({ state: "detached" }); });
+    app.get("/", c => c.text("public login"));
+    const server = await startDashboardHttpServer({ app, port: 0 });
+    try {
+      mount = server.mount(selected, request => new URL(request.url).pathname.startsWith("/active/"));
+      const response = await fetch(`http://127.0.0.1:${String(server.port)}/active/events`);
+      const reader = response.body?.getReader(); assert.ok(reader);
+      assert.equal((await reader.read()).done, false);
+      const logout = await fetch(`http://127.0.0.1:${String(server.port)}/public/logout`, { method: "POST" });
+      assert.deepEqual(await logout.json(), { state: "detached" });
+      assert.equal(cancelled, 1);
+      assert.equal((await fetch(`http://127.0.0.1:${String(server.port)}/active/events`)).status, 404);
+      assert.equal(await (await fetch(`http://127.0.0.1:${String(server.port)}/`)).text(), "public login");
+      const replacement = server.mount(selected, request => new URL(request.url).pathname.startsWith("/active/"));
+      await mount.close();
+      await replacement.close();
+    } finally { await server.close(); }
+  });
+
+  it("waits for an admitted request task after abort and fences new requests synchronously", async () => {
+    const app = new Hono<{ Variables: { requestActorId: ActorId } }>();
+    const selected = new Hono<{ Variables: { requestActorId: ActorId } }>();
+    const entered = Promise.withResolvers<void>(), aborted = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    selected.post("/active/body", async c => {
+      c.req.raw.signal.addEventListener("abort", () => { aborted.resolve(); }, { once: true });
+      entered.resolve(); await release.promise; return c.text("finished");
+    });
+    const server = await startDashboardHttpServer({ app, port: 0 });
+    const mount = server.mount(selected, request => new URL(request.url).pathname.startsWith("/active/"));
+    const request = fetch(`http://127.0.0.1:${String(server.port)}/active/body`, { method: "POST", body: "held" });
+    const requestOutcome = request.catch(() => undefined);
+    try {
+      await entered.promise;
+      let closed = false;
+      const closing = mount.close().then(() => { closed = true; });
+      await aborted.promise;
+      assert.equal(closed, false);
+      assert.equal((await fetch(`http://127.0.0.1:${String(server.port)}/active/body`)).status, 404);
+      release.resolve(); await closing; await requestOutcome;
+    } finally { release.resolve(); await requestOutcome; await server.close(); }
+  });
+
+  it("drains the actual unfinished upload body before releasing its mounted owner", async () => {
+    const app = new Hono<{ Variables: { requestActorId: ActorId } }>();
+    const selected = new Hono<{ Variables: { requestActorId: ActorId } }>();
+    const entered = Promise.withResolvers<void>(), bodyClosed = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    let requestAborted = false;
+    selected.post("/active/upload", async c => {
+      const body = c.req.raw.body; assert.ok(body);
+      const reader = body.getReader();
+      try {
+        assert.equal((await reader.read()).done, false);
+        entered.resolve();
+        try { await reader.read(); } catch (error) {
+          if (!c.req.raw.signal.aborted) throw error;
+        }
+        requestAborted = c.req.raw.signal.aborted;
+      } finally { reader.releaseLock(); bodyClosed.resolve(); }
+      await release.promise;
+      return new Response(null, { status: 204 });
+    });
+    const server = await startDashboardHttpServer({ app, port: 0 });
+    const mount = server.mount(selected, incoming => new URL(incoming.url).pathname.startsWith("/active/"));
+    const clientClosed = Promise.withResolvers<void>();
+    const client = request({ hostname: "127.0.0.1", port: server.port, method: "POST", path: "/active/upload" });
+    const clientErrors: Error[] = [];
+    client.on("error", error => { clientErrors.push(error); });
+    client.once("close", clientClosed.resolve);
+    client.write("owned partial upload");
+    try {
+      await entered.promise;
+      let closed = false;
+      const closing = mount.close().then(() => { closed = true; });
+      await bodyClosed.promise;
+      assert.equal(requestAborted, true);
+      assert.equal(closed, false);
+      release.resolve(); await closing; await clientClosed.promise;
+      assert.ok(clientErrors.every(error => "code" in error && error.code === "ECONNRESET"));
+    } finally { release.resolve(); client.destroy(); await server.close(); }
+  });
+
+  it("retains a throwing stream cancellation as unproved mount custody", async () => {
+    const app = new Hono<{ Variables: { requestActorId: ActorId } }>();
+    const selected = new Hono<{ Variables: { requestActorId: ActorId } }>();
+    const primary = new Error("fixture cancellation failed");
+    selected.get("/active/events", () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new Uint8Array([1])); }, cancel() { throw primary; },
+    })));
+    const server = await startDashboardHttpServer({ app, port: 0, onTransferError: () => undefined });
+    const mount = server.mount(selected, request => new URL(request.url).pathname.startsWith("/active/"));
+    try {
+      const response = await fetch(`http://127.0.0.1:${String(server.port)}/active/events`);
+      const reader = response.body?.getReader(); assert.ok(reader); await reader.read();
+      await assert.rejects(mount.close(), error => error instanceof AggregateError && error.errors.includes(primary));
+      assert.throws(() => server.mount(selected, () => true), /mount unavailable/u);
+      await assert.rejects(mount.close(), /mount closure is unproved/u);
+    } finally { await assert.rejects(server.close(), error => error === primary || error instanceof AggregateError); }
+  });
+});

@@ -1,43 +1,15 @@
-import {
-  compileWorkflow,
-  composeWorkflowModule,
-} from "../../../workflow-kit/workflow-definition.js";
-import { taskStoreRegistry } from "./task-registry.js";
-import { separationsIdentityCheckWorkflow } from "../../../workflows/separations/steps/identity-check/step.js";
-import { separationsKronosTimecardWorkflow } from "../../../workflows/separations/steps/kronos-timecard/step.js";
-import { separationsKualiFinalizationWorkflow } from "../../../workflows/separations/steps/kuali-finalization/step.js";
-import { separationsKualiReadWorkflow } from "../../../workflows/separations/steps/kuali-extraction/step.js";
-import { separationsUcpathTerminationWorkflow } from "../../../workflows/separations/steps/ucpath-transaction/step.js";
+import type { AnyWorkflowDefinition } from "../../../workflow-kit/workflow-definition.js";
+import { WORKFLOW_REGISTRATIONS } from "../../../workflows/registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, composeRegisteredWorkflow, WORKFLOW_MODULES } from "./workflow-registry.js";
 
-
-export const separationsKronosTimecardModule = composeWorkflowModule(
-  compileWorkflow(separationsKronosTimecardWorkflow),
-  taskStoreRegistry.stores,
-);
-export const separationsKualiReadModule = composeWorkflowModule(
-  compileWorkflow(separationsKualiReadWorkflow),
-  taskStoreRegistry.stores,
-);
-export const separationsIdentityCheckModule = composeWorkflowModule(
-  compileWorkflow(separationsIdentityCheckWorkflow),
-  taskStoreRegistry.stores,
-);
-export const separationsUcpathTerminationModule = composeWorkflowModule(
-  compileWorkflow(separationsUcpathTerminationWorkflow),
-  taskStoreRegistry.stores,
-);
-export const separationsKualiFinalizationModule = composeWorkflowModule(
-  compileWorkflow(separationsKualiFinalizationWorkflow),
-  taskStoreRegistry.stores,
-);
-
-export const STEP_PROOF_MODULES = Object.freeze([
-  separationsKronosTimecardModule,
-  separationsKualiReadModule,
-  separationsIdentityCheckModule,
-  separationsUcpathTerminationModule,
-  separationsKualiFinalizationModule,
-]);
+export const STEP_PROOF_MODULES = Object.freeze(WORKFLOW_REGISTRATIONS
+  .flatMap(({ proofs }): readonly { readonly definition: AnyWorkflowDefinition; readonly order: number }[] => proofs)
+  .toSorted((left, right) => left.order - right.order)
+  .map(({ definition }) => composeRegisteredWorkflow(definition)));
+const registeredIds = [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES].map(({ descriptor }) => String(descriptor.id));
+if (new Set(registeredIds).size !== registeredIds.length) {
+  throw new Error("step proof ids repeat or equal a registered workflow id");
+}
 
 export const STEP_PROOF_DESCRIPTORS = Object.freeze(
   STEP_PROOF_MODULES.map((module) => module.descriptor),

@@ -70,19 +70,19 @@ export function createSettingsActivationRepositories(ports:SettingsActivationPor
         },
       }),
       runtimeConfig: Object.freeze({
-        initialize(input: unknown) {
+        initialize(input: unknown, identity?: Readonly<{ commandId: string; auditId: string }>) {
           const snapshot = ConfigSnapshotRecordSchema.parse(input);
           return ports.mutate(() => {
             if (readAppSettings(ports.database) !== undefined
               || ports.database.prepare("SELECT 1 FROM settings_snapshots LIMIT 1").get() !== undefined) throw new Error("settings-initialization-not-fresh");
             if (snapshot.revision !== 1) throw new Error("settings-initialization-revision-invalid");
             const settings = initialSettingsFileRecord();
-            const request = SettingsInitializationCommandSchema.parse({ kind: "settings-initialization", commandId: randomUUID(), revision: 1,
+            const request = SettingsInitializationCommandSchema.parse({ kind: "settings-initialization", commandId: identity?.commandId ?? randomUUID(), revision: 1,
               settings, configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint, initializedAt: snapshot.capturedAt });
             insertNativeCommand(ports.database, request);
             ports.database.prepare("INSERT INTO settings_snapshots(id,revision,fingerprint,payload_json,captured_at) VALUES(?,?,?,?,?)")
               .run(snapshot.configSnapshotId, snapshot.revision, snapshot.fingerprint, canonicalJsonStringify(snapshot), snapshot.capturedAt);
-            const audit = SettingsInitializationAuditSchema.parse({ kind: "settings-initialization", auditId: randomUUID(), request,
+            const audit = SettingsInitializationAuditSchema.parse({ kind: "settings-initialization", auditId: identity?.auditId ?? randomUUID(), request,
               result: { state: "initialized", revision: 1, snapshotId: snapshot.configSnapshotId, fingerprint: snapshot.fingerprint }, completedAt: snapshot.capturedAt });
             ports.database.prepare("INSERT INTO command_audits(id,command_id,code,payload_json,created_at) VALUES(?,?,NULL,?,?)")
               .run(audit.auditId, request.commandId, canonicalJsonStringify(audit), audit.completedAt);

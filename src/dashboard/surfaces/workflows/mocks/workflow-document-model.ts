@@ -2,7 +2,7 @@ import documents from "../../../assets/ocr/documents.json" with { type: "json" }
 import type { ReviewRecord } from "./workflow-review-model.js";
 import type { MockWorkflowId } from "./workflow-mock-catalog.js";
 import type { MockDraft } from "./workflow-mock-model.js";
-import type { ReviewSourcePage } from "./workflow-review-source-model.js";
+import type { ReviewSourcePage } from "../../run-detail/review/review-record-model.js";
 
 export type DocumentFixture = Readonly<{ name: string; parent: MockWorkflowId; formType: string; records: readonly ReviewRecord[]; pages: readonly string[]; sourceSha256: string }>;
 // Anonymized document-shaped fixtures; no legacy runtime dependency.

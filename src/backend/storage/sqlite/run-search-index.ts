@@ -1,10 +1,12 @@
+import { AssistantM1NativeCommandAuditSchema, convertAssistantCommandPairToM1 } from "./command-record-row.js";
+import { CURRENT_RUN_SETTLEMENT_SQL } from "./run-settlement-row.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { ActorIdSchema } from "../../../rules/identity/ids.js";
-import { type RunRecord } from "../../../models/run/record.js";
+import { type PredecessorRunRecord } from "../../../models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import { FailureRecordSchema } from "../../../models/trust/failure.js";
 import { CROSS_DATE_SEARCH_MATCH_ORDER, SearchMetadataSchema } from "../../../models/dashboard/search.js";
@@ -20,7 +22,7 @@ const ActorSourcesSchema = z.array(z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("queued"), event: TimelineEventRecordSchema }),
   z.strictObject({ kind: z.literal("start-audit"), audit: CommandAuditRecordSchema }),
 ]));
-function sourceActors(sources: z.infer<typeof ActorSourcesSchema>, run: RunRecord) {
+function sourceActors(sources: z.infer<typeof ActorSourcesSchema>, run: PredecessorRunRecord) {
   const id = run.envelope.runId;
   const actors = sources.map(source => {
       if (source.kind === "queued") {
@@ -41,7 +43,7 @@ const FullIndexRowSchema = z.strictObject({ run_id:z.string(),workflow:z.string(
   dry_run:z.number().int().min(0).max(1),enqueued_ms:z.number().int(),subject:z.string().nullable(),actor_id:z.string().nullable(),descriptor_version:z.number().int().positive(),
   failure_code:z.string().nullable(),has_receipt:z.number().int().min(0).max(1),has_diagnostic:z.number().int().min(0).max(1),systems_json:z.string(),source_version:z.number().int().positive(),
   declaration_json:z.string().nullable(),actor_source_json:z.string().nullable(),metadata_json:z.string(),created_at:z.string(),updated_at:z.string() });
-export function runSearchIndexFromRow(input: unknown, run: RunRecord, requireCurrent = true) {
+export function runSearchIndexFromRow(input: unknown, run: PredecessorRunRecord, requireCurrent = true) {
   const row = FullIndexRowSchema.parse(input), record = RunSearchIndexRecordSchema.parse(JSON.parse(row.metadata_json));
   const declaration = row.declaration_json === null ? null : RunSearchDeclarationSchema.parse(JSON.parse(row.declaration_json));
   if (declaration !== null && (declaration.workflow !== run.envelope.workflow || declaration.version !== run.envelope.descriptorVersion
@@ -64,10 +66,10 @@ export function runSearchIndexFromRow(input: unknown, run: RunRecord, requireCur
 }
 const LIMIT = 10000;
 function parse<T>(schema: z.ZodType<T>, row: unknown): T { return schema.parse(JSON.parse(JsonRowSchema.parse(row).payload_json)); }
-function declarationKey(run: RunRecord): string {
+function declarationKey(run: PredecessorRunRecord): string {
   return `${run.envelope.workflow}:${String(run.envelope.descriptorVersion)}:${run.envelope.contractFingerprint}`;
 }
-function safeSubject(database: DatabaseSync, run: RunRecord, declaration: z.infer<typeof RunSearchDeclarationSchema> | null): z.infer<typeof SearchMetadataSchema>["subject"] {
+function safeSubject(database: DatabaseSync, run: PredecessorRunRecord, declaration: z.infer<typeof RunSearchDeclarationSchema> | null): z.infer<typeof SearchMetadataSchema>["subject"] {
   if (declaration === null) return { state: "unavailable", reason: "declaration-unavailable" };
   const { subjectProjection } = declaration;
   if (subjectProjection === null) return { state: "unavailable", reason: "subject-unavailable" };
@@ -86,6 +88,7 @@ function safeSubject(database: DatabaseSync, run: RunRecord, declaration: z.infe
 }
 
 export function createRunSearchIndex(database: DatabaseSync) {
+  const schemaVersion = z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version;
   const prepareTemporaryState = () => {
     database.exec("CREATE TEMP TABLE IF NOT EXISTS search_actor_dirty(run_id TEXT PRIMARY KEY) WITHOUT ROWID");
     database.exec("CREATE TEMP TABLE IF NOT EXISTS search_declarations(id TEXT PRIMARY KEY,json TEXT NOT NULL) WITHOUT ROWID");
@@ -105,7 +108,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
     database.prepare("UPDATE database_states SET search_generation=?,search_state=? WHERE id=1").run(parsed.state === "invalid" ? null : parsed.sourceGeneration,parsed.state === "published" ? "ready" : "invalid");
     return parsed;
   };
-  const retainedActorSources = (run: RunRecord): z.infer<typeof ActorSourcesSchema> => {
+  const retainedActorSources = (run: PredecessorRunRecord): z.infer<typeof ActorSourcesSchema> => {
     const id = run.envelope.runId;
     const sources: z.infer<typeof ActorSourcesSchema> = [];
     for (const raw of database.prepare("SELECT payload_json FROM timeline_events WHERE run_id=? AND json_extract(payload_json,'$.payload.event.t')='run.queued' ORDER BY cursor").all(id)) sources.push({kind:"queued",event:parse(TimelineEventRecordSchema,raw)});
@@ -114,14 +117,14 @@ export function createRunSearchIndex(database: DatabaseSync) {
     return sources;
   };
   const actorSourceKey = (source: z.infer<typeof ActorSourcesSchema>[number]) => source.kind === "queued" ? `queued:${source.event.eventId}` : `start-audit:${source.audit.auditId}`;
-  const validateActorSources = (run: RunRecord, sources: z.infer<typeof ActorSourcesSchema>, retained = retainedActorSources(run)) => {
+  const validateActorSources = (run: PredecessorRunRecord, sources: z.infer<typeof ActorSourcesSchema>, retained = retainedActorSources(run)) => {
     const frozen = new Map(sources.map(source => [actorSourceKey(source),source]));
     if (frozen.size !== sources.length) throw new Error("run-search-actor-source-duplicate");
     const actual = new Map(retained.map(source => [actorSourceKey(source),source]));
     for (const source of retained) if (frozen.get(actorSourceKey(source)) === undefined || canonicalJsonStringify(frozen.get(actorSourceKey(source))) !== canonicalJsonStringify(source)) throw new Error("run-search-retained-actor-source-mismatch");
     for (const source of sources) if (!actual.has(actorSourceKey(source))) throw new Error("run-search-retained-actor-source-missing");
   };
-  const metadataFor = (run: RunRecord, declaration: z.infer<typeof RunSearchDeclarationSchema> | null, sources: z.infer<typeof ActorSourcesSchema>) => {
+  const metadataFor = (run: PredecessorRunRecord, declaration: z.infer<typeof RunSearchDeclarationSchema> | null, sources: z.infer<typeof ActorSourcesSchema>) => {
     const id = run.envelope.runId;
     const actors = sourceActors(sources, run);
     const failureRow = database.prepare("SELECT payload_json FROM run_failures WHERE run_id=?").get(id);
@@ -130,9 +133,12 @@ export function createRunSearchIndex(database: DatabaseSync) {
     return SearchMetadataSchema.parse({ subject: safeSubject(database, run, declaration),
       actor: actors.length === 0 ? { state: "unavailable", reason: "not-recorded" } : { state: "available", value: actors[0] },
       version: run.envelope.descriptorVersion, failureCode: failure?.code ?? null,
-      evidence: { receipt: exists("run_receipts"), failure: failure !== null, diagnostic: exists("diagnostic_snapshots") } });
+      evidence: { receipt: schemaVersion < 20 ? exists("run_receipts")
+        : database.prepare(`SELECT 1 FROM run_receipts receipt JOIN run_results settlement ON settlement.run_id=receipt.run_id
+          AND settlement.settlement_version=receipt.settlement_version JOIN runs run ON run.id=settlement.run_id
+          WHERE receipt.run_id=? AND ${CURRENT_RUN_SETTLEMENT_SQL} LIMIT 1`).get(id) !== undefined, failure: failure !== null, diagnostic: exists("diagnostic_snapshots") } });
   };
-  const validateCoverage = () => {
+  const validateCoverage = (readRun: (raw: unknown) => PredecessorRunRecord = runRecordFromRow) => {
     const current = publication();
     if (current.state === "invalid") return;
     if (current.state === "building") {
@@ -144,7 +150,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
       : database.prepare("SELECT * FROM run_search ORDER BY run_id").iterate();
     for (const raw of rows) {
       const indexed = FullIndexRowSchema.parse(raw);
-      const run = runRecordFromRow(database.prepare("SELECT * FROM runs WHERE id=?").get(indexed.run_id));
+      const run = readRun(database.prepare("SELECT * FROM runs WHERE id=?").get(indexed.run_id));
       const record = runSearchIndexFromRow(raw, run);
       const declaration = indexed.declaration_json === null ? null : RunSearchDeclarationSchema.parse(JSON.parse(indexed.declaration_json));
       const sources = indexed.actor_source_json === null ? [] : ActorSourcesSchema.parse(JSON.parse(indexed.actor_source_json));
@@ -152,7 +158,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
       if (canonicalJsonStringify(record.metadata) !== canonicalJsonStringify(metadataFor(run, declaration, sources))) throw new Error("run-search-source-metadata-invalid");
     }
   };
-  const write = (run: RunRecord, now: string, rebuilding = false) => {
+  const write = (run: PredecessorRunRecord, now: string, rebuilding = false) => {
     const id = run.envelope.runId;
     const prior = database.prepare("SELECT * FROM run_search WHERE run_id=?").get(id);
     const frozen = prior === undefined ? undefined : FullIndexRowSchema.parse(prior);
@@ -266,6 +272,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
       const clauses: string[] = [], parameters: (string | number)[] = [];
       const add = (sql: string, ...values: (string | number)[]) => { clauses.push(sql); parameters.push(...values); };
       const { facets, q } = request;
+      add("NOT (s.workflow='ocr' AND EXISTS(SELECT 1 FROM runs r WHERE r.id=s.id AND r.parent_id IS NOT NULL))");
       if (q.length > 0) add("(instr(lower(s.id),?)>0 OR instr(s.trace,?)>0 OR instr(lower(s.workflow),?)>0 OR instr(s.subject,?)>0 OR instr(lower(s.actor),?)>0)", q,q,q,q,q);
       for (const [field, value] of Object.entries({ workflow: facets.workflow, state: facets.state, shape: facets.shape, actor: facets.actor, version: facets.version, failure: facets.failure })) if (value !== undefined) add(`s.${field}=?`, value);
       if (facets.from !== undefined) add("s.local_day>=?", facets.from);
@@ -321,3 +328,32 @@ export function createRunSearchIndex(database: DatabaseSync) {
   };
 }
 
+/** Rebinds a known predecessor snapshot against complete canonical contributing sources supplied by the stopped owner. */
+export function rebindAssistantM1RunSearchRow(input: unknown, run: PredecessorRunRecord, queuedEvents: readonly unknown[], commandPairs: readonly Readonly<{ command: unknown; audit: unknown }>[]) {
+  const row = FullIndexRowSchema.parse(input);
+  runSearchIndexFromRow(row, run);
+  const sources = row.actor_source_json === null ? [] : ActorSourcesSchema.parse(JSON.parse(row.actor_source_json));
+  const canonical: z.infer<typeof ActorSourcesSchema> = queuedEvents.map(event => ({ kind: "queued", event: TimelineEventRecordSchema.parse(event) }));
+  const nextAudits = new Map<string, z.infer<typeof AssistantM1NativeCommandAuditSchema>>();
+  for (const pair of commandPairs) {
+    const converted = convertAssistantCommandPairToM1(pair.command, pair.audit);
+    if (converted.audit === null) throw new Error("run-search-audit-source-missing");
+    const audit = AssistantM1NativeCommandAuditSchema.parse(JSON.parse(converted.audit.payload_json));
+    const { attribution: _attribution, ...before } = audit;
+    canonical.push({ kind: "start-audit", audit: CommandAuditRecordSchema.parse(before) });
+    if (nextAudits.has(audit.auditId)) throw new Error("run-search-audit-source-duplicate");
+    nextAudits.set(audit.auditId, audit);
+  }
+  sourceActors(canonical, run);
+  const key = (source: z.infer<typeof ActorSourcesSchema>[number]) => source.kind === "queued" ? `queued:${source.event.eventId}` : `audit:${source.audit.auditId}`;
+  const expected = new Map(canonical.map(source => [key(source), canonicalJsonStringify(source)]));
+  if (expected.size !== canonical.length || new Set(sources.map(key)).size !== sources.length || sources.length !== canonical.length
+    || sources.some(source => expected.get(key(source)) !== canonicalJsonStringify(source))) throw new Error("run-search-actor-source-mismatch");
+  if (sources.length === 0) return row;
+  return { ...row, actor_source_json: canonicalJsonStringify(sources.map(source => {
+    if (source.kind === "queued") return source;
+    const audit = nextAudits.get(source.audit.auditId);
+    if (audit === undefined) throw new Error("run-search-audit-source-missing");
+    return { kind: "start-audit", audit };
+  })) };
+}

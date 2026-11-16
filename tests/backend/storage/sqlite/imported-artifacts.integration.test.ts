@@ -2,32 +2,25 @@ import { insertImportedArtifact } from "../../../../src/backend/storage/sqlite/i
 import { importedArtifact } from "../../../../src/models/intake/imported-artifact.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
 import { IntakeSessionSchema,type IntakeSession } from "../../../../src/models/intake/session.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { HASH_A,LATER,NOW,UUID_2,UUID_3,UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const disposers: (() => void)[] = [];
+const disposers: (() => void | Promise<void>)[] = [];
 const databasePaths = new WeakMap<AuthorityDatabase, string>();
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
-function database(legacySession?: IntakeSession): AuthorityDatabase {
+async function database(legacySession?: IntakeSession): Promise<AuthorityDatabase> {
   const clock = manualClock(new Date(NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-intake-session-"));
-  disposers.push(() => rmSync(root, { recursive: true, force: true }));
-  const path = join(root, "state.db");
-  const opened = AuthorityDatabase.open(
-    { path, busyTimeoutMs: 250, migrationOwner: "intake-session-test" },
-    clock,
-  );
-  databasePaths.set(opened, path);
+  const opened = await openBoundDatabaseFixture("intake-session-test", clock);
+  const path = opened.path;
+  databasePaths.set(opened.database, path);
   if (legacySession !== undefined) {
     const legacy = new DatabaseSync(path);
     try {
@@ -36,8 +29,8 @@ function database(legacySession?: IntakeSession): AuthorityDatabase {
       legacy.close();
     }
   }
-  disposers.push(() => opened.close());
-  return opened;
+  disposers.push(async () => await opened.close());
+  return opened.database;
 }
 
 function session(overrides: Record<string, unknown> = {}) {
@@ -107,8 +100,8 @@ describe("intake session record", () => {
     );
   });
 
-  it("reads a pre-reservation stored session forward without inventing a manifest identity", () => {
-    const db = database(preReservationSession());
+  it("reads a pre-reservation stored session forward without inventing a manifest identity", async () => {
+    const db = await database(preReservationSession());
 
     const stored = db.authority.intakeSessions.get(UUID_7);
 
@@ -118,8 +111,8 @@ describe("intake session record", () => {
 });
 
 describe("intake session repository", () => {
-  it("refuses to create a new session without a reserved manifest identity", () => {
-    const db = database();
+  it("refuses to create a new session without a reserved manifest identity", async () => {
+    const db = await database();
 
     assert.throws(
       () => db.authority.intakeSessions.create(preReservationSession()),
@@ -127,8 +120,8 @@ describe("intake session repository", () => {
     );
   });
 
-  it("refuses to delete a present reserved manifest identity through update", () => {
-    const db = database();
+  it("refuses to delete a present reserved manifest identity through update", async () => {
+    const db = await database();
     db.authority.intakeSessions.create(session());
 
     assert.throws(
@@ -140,8 +133,8 @@ describe("intake session repository", () => {
     );
   });
 
-  it("refuses to replace a present reserved manifest identity through update", () => {
-    const db = database();
+  it("refuses to replace a present reserved manifest identity through update", async () => {
+    const db = await database();
     db.authority.intakeSessions.create(session());
 
     assert.throws(
@@ -157,8 +150,8 @@ describe("intake session repository", () => {
     );
   });
 
-  it("lets a legacy session retain an absent reservation through ordinary update", () => {
-    const db = database(preReservationSession());
+  it("lets a legacy session retain an absent reservation through ordinary update", async () => {
+    const db = await database(preReservationSession());
     const updated = preReservationSession({ version: 2, updatedAt: LATER });
 
     db.authority.intakeSessions.update(updated);
@@ -166,8 +159,8 @@ describe("intake session repository", () => {
     assert.deepEqual(db.authority.intakeSessions.get(UUID_7), updated);
   });
 
-  it("refuses to acquire a reservation for a legacy session through ordinary update", () => {
-    const db = database(preReservationSession());
+  it("refuses to acquire a reservation for a legacy session through ordinary update", async () => {
+    const db = await database(preReservationSession());
 
     assert.throws(
       () => db.authority.intakeSessions.update(session({ version: 2, updatedAt: LATER })),
@@ -178,8 +171,8 @@ describe("intake session repository", () => {
     );
   });
 
-  it("creates in mapping at version 1 and round-trips; refuses any other creation", () => {
-    const db = database();
+  it("creates in mapping at version 1 and round-trips; refuses any other creation", async () => {
+    const db = await database();
     const created = db.authority.intakeSessions.create(session());
     assert.deepEqual(db.authority.intakeSessions.get(UUID_7), created);
 
@@ -189,8 +182,8 @@ describe("intake session repository", () => {
     );
   });
 
-  it("updates under a version CAS, keeps the state column in step, and refuses a raced write", () => {
-    const db = database();
+  it("updates under a version CAS, keeps the state column in step, and refuses a raced write", async () => {
+    const db = await database();
     db.authority.intakeSessions.create(session());
 
     assert.equal(db.authority.intakeSessions.findActiveBySource(HASH_A).length, 1);
@@ -224,8 +217,8 @@ describe("intake session repository", () => {
   });
 });
 
-it("keeps a workbook source link immutable through repository and native import updates", () => {
-  const db = database();
+it("keeps a workbook source link immutable through repository and native import updates", async () => {
+  const db = await database();
   const original = session({ workbookSource: { libraryId: "library", version: 1 } });
   db.authority.intakeSessions.create(original);
   const generation = db.getMeta().authorityGeneration;

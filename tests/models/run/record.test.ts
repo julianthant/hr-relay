@@ -1,16 +1,12 @@
 import { default as assert } from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach } from "vitest";
 import { describe } from "vitest";
 import { expect } from "vitest";
 import { it } from "vitest";
 import { vi } from "vitest";
-import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { RunInputStorageSchema } from "../../../src/models/run/record.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../src/models/validation/schema-bound-value.js";
@@ -19,20 +15,20 @@ import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
 
 {
 
-const roots:string[]=[];
-const _afterEachFixture0 = ()=>{vi.restoreAllMocks();for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});};
-function fixture() {
-  const root=mkdtempSync(join(tmpdir(),"relay-native-authority-"));roots.push(root);
-  const path=join(root,"authority.sqlite");
-  const admission=RuntimeAdmission.syntheticFixture(path);
+const cleanups:(()=>Promise<void>)[]=[];
+const _afterEachFixture0 = async()=>{vi.restoreAllMocks();for(const cleanup of cleanups.splice(0))await cleanup();};
+async function fixture() {
+  const profile=await createBoundProfileFixture();
+  cleanups.push(()=>profile.close());
+  const path=profile.path,admission=profile.admission;
   const open=()=>AuthorityDatabase.open(admission,{path,busyTimeoutMs:250,migrationOwner:"native-test"});
   return {path,open,admission};
 }
 describe("native authority admission",()=>{
 afterEach(_afterEachFixture0);
 
-  it("admits complete run rows and publishes the derived search generation atomically",()=>{
-    const f=fixture();const authority=f.open();
+  it("admits complete run rows and publishes the derived search generation atomically",async()=>{
+    const f=await fixture();const authority=f.open();
     authority.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     const run=RunRecordSchema.parse({...QUEUED_RUN,envelope:{...QUEUED_RUN.envelope,configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,
       configFingerprint:CONFIG_SNAPSHOT.fingerprint},runNumber:1});

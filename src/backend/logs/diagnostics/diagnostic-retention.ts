@@ -18,7 +18,7 @@ export const DiagnosticSweepReportSchema = z.strictObject({
 export type DiagnosticSweepReport = z.infer<typeof DiagnosticSweepReportSchema>;
 
 export interface DiagnosticRetentionSweep {
-  sweep(): DiagnosticSweepReport;
+  sweep(eligibleBundleIds: readonly string[]): DiagnosticSweepReport;
 }
 
 export interface DiagnosticRetentionSweepDependencies {
@@ -32,9 +32,10 @@ export function createDiagnosticRetentionSweep(
 ): DiagnosticRetentionSweep {
   const repository = dependencies.authority.diagnosticBundles;
   return Object.freeze({
-    sweep: (): DiagnosticSweepReport => {
+    sweep: (eligibleBundleIds: readonly string[]): DiagnosticSweepReport => {
       const sweptAt = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
-      const due = repository.listRetentionDue(sweptAt);
+      const eligible = new Set(eligibleBundleIds);
+      const due = repository.listRetentionDue(sweptAt).filter(bundle => eligible.has(bundle.bundleId));
       // Re-evaluate retention at the same instant before purging indexed candidates.
       const dispositions = planDiagnosticSweep({ now: sweptAt, bundles: due });
       const purged: string[] = [];

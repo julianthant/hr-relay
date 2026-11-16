@@ -1,16 +1,19 @@
-import { ProtectedStoreRecordSchema } from "../../../src/models/config/protected-settings.js";
+import assert from "node:assert/strict";
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
+import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
+import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
+import { readProfileIdentity } from "../../../src/models/config/secrets.js";
 import { ProtectedInputBindingSchema } from "../../../src/models/write-safety/protected-input.js";
 import { protectedSecretSource } from "./protected-secret-source.js";
 import { admitProtectedInput } from "../../../src/backend/runs/start/protected-input.js";
 import { CONFIG_SNAPSHOT } from "../fixtures/phase1c-contract-fixtures.js";
 import { testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 
-import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { duoCeremonyGatesOver } from "./duo-ceremony-fixtures.js";
+import { createBoundProfileFixture } from "./admission-fixture.js";
 import { manualClock, type TestClock } from "../../../src/rules/time/clock.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
+import { taskImplFingerprint } from "../../../src/workflow-kit/fingerprints.js";
 import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-executor.js";
 import {
   createWriteSequencer,
@@ -21,6 +24,10 @@ import {
   WorkerSessionManager,
 } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import { kualiFinalizationIdempotencyKey } from "../../../src/models/systems/kuali/save-separation-finalization.js";
+import { UcpathReadJobSummary } from "../../../src/models/systems/ucpath/read-job-summary.js";
+import { SeparationsMatchIdentity } from "../../../src/models/workflows/separations/match-identity.js";
+import { buildIdentityEvidencePacket, deriveIdentityEvidenceDigest } from "../../../src/rules/separations/identity-evidence.js";
+import { noSeparationWritePlan } from "../../../src/rules/separations/write-plan.js";
 import { SearchPersonOrgOutputSchema } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { UcpathVerifyTerminationFilingPresent } from "../../../src/models/systems/ucpath/verify-termination-filing-present.js";
 import { SeparationsMatchDepartmentOption } from "../../../src/models/workflows/separations/match-department-option.js";
@@ -85,9 +92,6 @@ export const FINALIZATION_WORKER_ID = `${FINALIZATION_WORKFLOW_ID}-worker-1`;
 export const FINALIZATION_RUN_ID = UUID_2;
 export const FINALIZATION_ITEM_ID = UUID_3;
 export const FINALIZATION_NOW = "2026-08-14T10:00:00.000Z";
-export const FINALIZATION_IMPL_FINGERPRINT = FingerprintSchema.parse(
-  "f".repeat(64),
-);
 export const FINALIZATION_CONFIG_FINGERPRINT = FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint);
 
 /** The department the fold resolved — the option text the fake's control offers. */
@@ -301,11 +305,10 @@ export function finalizationNode(): Extract<
 export function finalizationQueuedRun(
   options: Readonly<{ dryRun?: boolean; startAt?: string }> = {},
 ): Record<string, unknown> {
-  const source = protectedSecretSource({ timekeeperName: FINALIZATION_VARIABLES.timekeeperName });
-  const signer = ProtectedStoreRecordSchema.parse(source.read()).entries.timekeeperName;
-  if (signer === undefined) throw new Error("fixture protected signer missing");
-  const binding = ProtectedInputBindingSchema.parse({ kind: "protected-store", inputPath: "timekeeperName",
-    name: "timekeeperName", valueId: signer.valueId });
+  const source = protectedSecretSource({ profileName: FINALIZATION_VARIABLES.timekeeperName });
+  const signer = readProfileIdentity(source);
+  const binding = ProtectedInputBindingSchema.parse({ kind: "profile", inputPath: "timekeeperName",
+    name: "timekeeperName", profileId: signer.profileId, sessionEpoch: signer.sessionEpoch });
   const admitted = admitProtectedInput(separationsKualiFinalizationDescriptor, [FINALIZATION_RUN_INPUT],
     source, undefined, [binding])[0];
   if (admitted === undefined) throw new Error("fixture protected input admission missing");
@@ -318,6 +321,7 @@ export function finalizationQueuedRun(
       descriptorVersion: 1,
       contractFingerprint:
         separationsKualiFinalizationDescriptor.contractFingerprint,
+      buildId: currentBuildId(),
       resolvedInstance: { kuali: "prod", ucpath: "prod" },
       configFingerprint: FINALIZATION_CONFIG_FINGERPRINT,
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
@@ -352,7 +356,11 @@ export function finalizationQueuedRun(
 }
 
 export interface FinalizationHarness {
+  readonly profile: Awaited<ReturnType<typeof createBoundProfileFixture>>;
+  readonly closeController: () => Promise<void>;
+  readonly path: string;
   readonly world: KualiFakeWorld;
+  readonly filingWorld: ReturnType<typeof createUcpathSmartHrFakeWorld>;
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
   readonly emitter: ReturnType<typeof recordingEmitter>;
@@ -360,10 +368,12 @@ export interface FinalizationHarness {
   readonly sequencer: ProductionWriteSequencer;
   readonly sessions: WorkerSessionManager;
   readonly bound: <Result>(work: () => Promise<Result>) => Promise<Result>;
-  readonly dispose: () => void;
+  readonly dispose: () => void | Promise<void>;
 }
 
-export function finalizationHarness(
+const retainedFinalizationOwners = new Set<object>();
+
+export async function finalizationHarness(
   options: Readonly<{
     /** Seed the document as ALREADY finalized with exactly these ten values. */
     persistedFinalization?: KualiFinalizationFields;
@@ -376,18 +386,22 @@ export function finalizationHarness(
     /** Values offered by the live Department control. */
     departmentOptions?: readonly string[];
   }> = {},
-): FinalizationHarness {
+): Promise<FinalizationHarness> {
+  const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; manager?: WorkerSessionManager; primary?: { error: unknown }; failure?: Error } = {};
+  retainedFinalizationOwners.add(held);
+  try {
   const clock = manualClock(new Date(FINALIZATION_NOW));
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-kuali-finalization-"));
+  const profile = await createBoundProfileFixture(); held.profile = profile;
   const database = AuthorityDatabase.open(
     {
-      path: join(root, "authority.sqlite"),
+      path: profile.path,
       busyTimeoutMs: 250,
       migrationOwner: "kuali-finalization-test",
     },
     clock,
   );
-  testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: separationsKualiFinalizationDescriptor, poolIndex: 1 });
+  held.database = database;
+  testWorkerPorts(database, clock, { path: profile.path, descriptor: separationsKualiFinalizationDescriptor, poolIndex: 1 });
   const world = createKualiFakeWorld({
     actionId: FINALIZATION_ACTION_ID,
     documentNumber: FINALIZATION_DOCUMENT,
@@ -446,11 +460,13 @@ export function finalizationHarness(
     workflowId: WorkflowIdSchema.parse(FINALIZATION_WORKFLOW_ID),
     stores: taskStoreRegistry,
     factory: sessions.factory,
+    browserScreenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } },
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-    duoCeremony: fixtureDuoCeremonyGates(clock),
+    duoCeremony: duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)),
   });
+  held.manager = manager;
   const emitter = recordingEmitter();
   const ids = sequentialIdFactory("b");
   const sequencer = createWriteSequencer({
@@ -464,11 +480,19 @@ export function finalizationHarness(
     scheduler: new ManualScheduler(clock),
     taskDeadlineMs: 60_000,
     operator: "local-operator",
-    log: recordingLogger().log,
-    resolveImplFingerprint: () => FINALIZATION_IMPL_FINGERPRINT,
+    log: recordingLogger().log
   });
+  let closeAttempted = false, databaseClosed = false;
+  const closeDatabase = () => {
+    if (databaseClosed) return;
+    releaseSeededWriteOwners(database, clock.now().toISOString()); database.close(); databaseClosed = true;
+  };
   return {
+    profile,
+    async closeController() { await manager.closeAll("worker-stop"); closeDatabase(); await profile.closeController(); },
+    path: profile.path,
     world,
+    filingWorld,
     database,
     clock,
     emitter,
@@ -480,12 +504,17 @@ export function finalizationHarness(
         manager,
         FINALIZATION_CONFIG_FINGERPRINT,
         work,
+        "headless", { runId: FINALIZATION_RUN_ID, descriptorFingerprint: separationsKualiFinalizationDescriptor.contractFingerprint },
       ),
-    dispose: (): void => {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
+    dispose: async (): Promise<void> => {
+      if (held.failure !== undefined) throw held.failure;
+      if (closeAttempted) return;
+      closeAttempted = true;
+      try { closeDatabase(); await profile.close(); retainedFinalizationOwners.delete(held); }
+      catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
     },
   };
+  } catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
 }
 
 export function finalizationClaimRunning(
@@ -498,8 +527,7 @@ export function finalizationClaimRunning(
   const enqueued = database.authority.runs.enqueue(runInput);
   if (enqueued.state !== "inserted")
     throw new Error(`enqueue outcome was ${enqueued.state}`);
-  const claimed = database.authority.runs.claimNext({
-    workflow: FINALIZATION_WORKFLOW_ID,
+  const claimed = database.authority.runs.claimNext({ workflow: FINALIZATION_WORKFLOW_ID,
     workerId,
     now,
   });
@@ -549,6 +577,13 @@ export function finalizationContext(
   };
 }
 
+function finalizationNodeImplFingerprint(nodeId: string) {
+  const node = descriptorRuntimeNodes(separationsKualiFinalizationDescriptor).find(candidate => String(candidate.id) === nodeId);
+  if (node?.kind === "task") return taskImplFingerprint(node.uses);
+  if (node?.kind === "transaction") return taskImplFingerprint(node.commit.uses);
+  throw new Error(`finalization fixture has no task node ${nodeId}`);
+}
+
 /** Authenticated upstream checkpoint evidence required to seal a preview. */
 export function finalizationPreviewDependencies(
   run: RunRecord,
@@ -572,11 +607,46 @@ export function finalizationPreviewDependencies(
       descriptorVersion: separationsKualiFinalizationDescriptor.version,
       contractFingerprint:
         separationsKualiFinalizationDescriptor.contractFingerprint,
-      implFingerprint: FINALIZATION_IMPL_FINGERPRINT,
+      implFingerprint: finalizationNodeImplFingerprint(nodeId),
       provenance: [],
       writtenAt: FINALIZATION_NOW,
     });
+  if (FINALIZATION_JOB_SUMMARY_READ.state !== "read") {
+    throw new Error("finalization fixture requires a read job summary");
+  }
+  const jobSummary = FINALIZATION_JOB_SUMMARY_READ.summary;
+  const packet = buildIdentityEvidencePacket({
+    documentNumber: FINALIZATION_DOCUMENT,
+    documentName: FINALIZATION_RUN_INPUT.employeeName,
+    documentEidText: FINALIZATION_EID,
+    emplIdSource: "document-eid",
+    documentEidConflicts: false,
+    jobSummary,
+    nameSelection: FINALIZATION_NAME_SEARCH_OUTPUT.selection,
+    plan: noSeparationWritePlan(
+      "this chunk finalizes the Kuali document alone; the composed `separations` graph is where the whole write plan — the UCPath termination included — exists to show",
+    ),
+  });
   return [
+    {
+      state: "resolved",
+      nodeId: "job-summary",
+      checkpoint: rowFor("job-summary", UcpathReadJobSummary.output, jobSummary),
+    },
+    {
+      state: "resolved",
+      nodeId: "name-search",
+      checkpoint: rowFor("name-search", SearchPersonOrgOutputSchema, FINALIZATION_NAME_SEARCH_OUTPUT),
+    },
+    {
+      state: "resolved",
+      nodeId: "comparison",
+      checkpoint: rowFor("comparison", SeparationsMatchIdentity.output, {
+        packet,
+        approvalRequired: false,
+        evidenceDigest: deriveIdentityEvidenceDigest(packet),
+      }),
+    },
     {
       state: "resolved",
       nodeId: "approval",

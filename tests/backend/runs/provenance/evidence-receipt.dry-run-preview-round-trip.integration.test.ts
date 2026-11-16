@@ -1,3 +1,7 @@
+import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
+import { runClaim } from '../../../../src/models/run/record.js';
+import { testRunService } from '../../../support/fixtures/run-lifecycle-fixtures.js';
 import { createDryRunPreviewResultTestWorld } from "../../../support/helpers/backend/dry-run-preview-result-world.js";
 import { deriveRunResultDigest } from "../../../../src/models/run/result.js";
 import assert from "node:assert/strict";
@@ -5,19 +9,26 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRunPreviewResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
+import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
+import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { WRITE_FIXTURE_NODE_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { FINALIZATION_FIELDS, finalizationClaimRunning, finalizationContext, finalizationDurableFootprint, finalizationHarness, finalizationPreviewDependencies, finalizationQueuedRun } from "../../../support/helpers/kuali-finalization-fixtures.js";
+import { createCapabilityWiringTestWorld } from "../../../support/helpers/backend/capability-wiring-world.js";
 import { separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
+
+const retainedKualiPreviewOwners = new Set<object>();
 
 const {kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness, cleanup } = createDryRunPreviewResultTestWorld();
 
 
+const wiring = createCapabilityWiringTestWorld();
 afterEach(cleanup);
+afterEach(wiring.cleanup);
 
-describe("a dry run previews its transaction node and ends there", () => {
+describe("a dry run retains transaction preview accounting", () => {
 
-  it("records an honest transaction.previewed span and ends the run at the node", async () => {
-    const h = harness();
+  it("records an honest transaction.previewed span without any commit span", async () => {
+    const h = await harness();
     await h.run();
 
     const events = h.emitter.events();
@@ -28,7 +39,7 @@ describe("a dry run previews its transaction node and ends there", () => {
       { node: WRITE_FIXTURE_NODE_ID, subject: "match", externalCommit: "none" },
     );
     assert.equal(
-      events.some((event) => String(event.spanPath).endsWith("/commit")),
+      events.some((event) => String(event.spanPath).includes("/commit#")),
       false,
       "zero commit spans",
     );
@@ -39,8 +50,11 @@ describe("a dry run previews its transaction node and ends there", () => {
 
 
   it("derives a receipt that says unknown and none, and never verified-done", async () => {
-    const k = finalizationHarness();
+    const k = await finalizationHarness();
     kualiOpen.push(k);
+    const held: { k: typeof k; primary?: { error: unknown } } = { k };
+    retainedKualiPreviewOwners.add(held);
+    try {
     const { run, claim } = finalizationClaimRunning(
       k.database,
       k.clock,
@@ -51,7 +65,11 @@ describe("a dry run previews its transaction node and ends there", () => {
     const built = buildRunPreviewResult(
       separationsKualiFinalizationDescriptor,
       run,
-      preview,
+      descriptorRuntimeNodes(separationsKualiFinalizationDescriptor).map(node => node.id === preview.nodeId
+        ? { nodeId: node.id, state: "transaction-preview", preview, samples: [] }
+        : node.kind === "gate"
+          ? { nodeId: node.id, state: "not-run", reason: "condition-false" }
+          : { nodeId: node.id, state: "exercised" }),
       finalizationPreviewDependencies(run),
       k.clock,
     );
@@ -90,14 +108,31 @@ describe("a dry run previews its transaction node and ends there", () => {
     assert.deepEqual(receipt.output, [], "a preview produced no workflow output");
     // The run's own inputs are still stated — a preview reads for real.
     assert.ok(receipt.input.length > 0);
+
+    assert.deepEqual(k.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    const current = k.database.authority.runs.get(run.envelope.runId); assert.ok(current);
+    const heldClaim = runClaim(current); assert.ok(heldClaim);
+    assert.equal(testRunService(k.database, k.clock).requeue({ commandId: k.ids.uuid(), runId: current.envelope.runId, expectedVersion: current.version,
+      claim: { workerId: heldClaim.workerId, claimGeneration: heldClaim.claimGeneration }, cause: 'recovery' }).state, 'applied');
+    const after = k.database.authority.runs.get(run.envelope.runId); assert.ok(after);
+    assert.equal(runClaim(after), undefined);
+    retainedKualiPreviewOwners.delete(held);
+    } catch (error) {
+      held.primary = { error };
+      const index = kualiOpen.indexOf(k); if (index >= 0) kualiOpen.splice(index, 1);
+      throw retainAuthoritySourceClosure([error], { admission: held });
+    }
   });
 
 
   it("derives an already-present preview's receipt, naming the probe rather than a subject", async () => {
     // A document whose persisted finalization ALREADY equals all twelve values
     // this run would write is exactly the `already-present` subject.
-    const k = finalizationHarness({ persistedFinalization: FINALIZATION_FIELDS });
+    const k = await finalizationHarness({ persistedFinalization: FINALIZATION_FIELDS });
     kualiOpen.push(k);
+    const held: { k: typeof k; primary?: { error: unknown } } = { k };
+    retainedKualiPreviewOwners.add(held);
+    try {
     const { run, claim } = finalizationClaimRunning(
       k.database,
       k.clock,
@@ -111,7 +146,11 @@ describe("a dry run previews its transaction node and ends there", () => {
     const built = buildRunPreviewResult(
       separationsKualiFinalizationDescriptor,
       run,
-      preview,
+      descriptorRuntimeNodes(separationsKualiFinalizationDescriptor).map(node => node.id === preview.nodeId
+        ? { nodeId: node.id, state: "transaction-preview", preview, samples: [] }
+        : node.kind === "gate"
+          ? { nodeId: node.id, state: "not-run", reason: "condition-false" }
+          : { nodeId: node.id, state: "exercised" }),
       finalizationPreviewDependencies(run),
       k.clock,
     );
@@ -157,12 +196,29 @@ describe("a dry run previews its transaction node and ends there", () => {
     assert.equal(footprint.intent, undefined);
     assert.equal(footprint.checkpoint, undefined);
     assert.deepEqual(footprint.outboxes, []);
+
+    assert.deepEqual(k.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    const current = k.database.authority.runs.get(run.envelope.runId); assert.ok(current);
+    const heldClaim = runClaim(current); assert.ok(heldClaim);
+    assert.equal(testRunService(k.database, k.clock).requeue({ commandId: k.ids.uuid(), runId: current.envelope.runId, expectedVersion: current.version,
+      claim: { workerId: heldClaim.workerId, claimGeneration: heldClaim.claimGeneration }, cause: 'recovery' }).state, 'applied');
+    const after = k.database.authority.runs.get(run.envelope.runId); assert.ok(after);
+    assert.equal(runClaim(after), undefined);
+    retainedKualiPreviewOwners.delete(held);
+    } catch (error) {
+      held.primary = { error };
+      const index = kualiOpen.indexOf(k); if (index >= 0) kualiOpen.splice(index, 1);
+      throw retainAuthoritySourceClosure([error], { admission: held });
+    }
   });
 
 
   it("keeps executeTransaction refusing a dry run, with zero durable footprint", async () => {
-    const k = finalizationHarness();
+    const k = await finalizationHarness();
     kualiOpen.push(k);
+    const held: { k: typeof k; primary?: { error: unknown } } = { k };
+    retainedKualiPreviewOwners.add(held);
+    try {
     const { run, claim } = finalizationClaimRunning(
       k.database,
       k.clock,
@@ -178,11 +234,28 @@ describe("a dry run previews its transaction node and ends there", () => {
     assert.equal(footprint.checkpoint, undefined);
     assert.deepEqual(footprint.outboxes, []);
     assert.equal(k.world.persistedFinalization, undefined);
+
+    assert.deepEqual(k.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    const current = k.database.authority.runs.get(run.envelope.runId); assert.ok(current);
+    const heldClaim = runClaim(current); assert.ok(heldClaim);
+    assert.equal(testRunService(k.database, k.clock).requeue({ commandId: k.ids.uuid(), runId: current.envelope.runId, expectedVersion: current.version,
+      claim: { workerId: heldClaim.workerId, claimGeneration: heldClaim.claimGeneration }, cause: 'recovery' }).state, 'applied');
+    const after = k.database.authority.runs.get(run.envelope.runId); assert.ok(after);
+    assert.equal(runClaim(after), undefined);
+    retainedKualiPreviewOwners.delete(held);
+    } catch (error) {
+      held.primary = { error };
+      const index = kualiOpen.indexOf(k); if (index >= 0) kualiOpen.splice(index, 1);
+      throw retainAuthoritySourceClosure([error], { admission: held });
+    }
   });
 
   it("refuses a preview of a transaction node that declares no dry-run arm", async () => {
-    const k = finalizationHarness();
+    const k = await finalizationHarness();
     kualiOpen.push(k);
+    const held: { k: typeof k; primary?: { error: unknown } } = { k };
+    retainedKualiPreviewOwners.add(held);
+    try {
     const { run, claim } = finalizationClaimRunning(
       k.database,
       k.clock,
@@ -196,5 +269,44 @@ describe("a dry run previews its transaction node and ends there", () => {
       /declares dryRun:"unsupported"; there is no preview arm to run/,
     );
     assert.deepEqual(k.world.events, [], "the refusal precedes the browser");
+
+    assert.deepEqual(k.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    const current = k.database.authority.runs.get(run.envelope.runId); assert.ok(current);
+    const heldClaim = runClaim(current); assert.ok(heldClaim);
+    assert.equal(testRunService(k.database, k.clock).requeue({ commandId: k.ids.uuid(), runId: current.envelope.runId, expectedVersion: current.version,
+      claim: { workerId: heldClaim.workerId, claimGeneration: heldClaim.claimGeneration }, cause: 'recovery' }).state, 'applied');
+    const after = k.database.authority.runs.get(run.envelope.runId); assert.ok(after);
+    assert.equal(runClaim(after), undefined);
+    retainedKualiPreviewOwners.delete(held);
+    } catch (error) {
+      held.primary = { error };
+      const index = kualiOpen.indexOf(k); if (index >= 0) kualiOpen.splice(index, 1);
+      throw retainAuthoritySourceClosure([error], { admission: held });
+    }
+  });
+});
+
+describe("a publication preview receipt", () => {
+  it("names the publication node and the unavailable stage in the DRY_RUN_PREVIEW warning", async () => {
+    const descriptor = wiring.publicationDescriptor("wiring-projection", "pr");
+    const store = defineServiceStore("ocr", { fixture: defineTask(wiring.providersOnlyContract, { sessions: [], async run() { return { value: "unused" }; } }) });
+    const harness = await wiring.wiringHarness(descriptor, defineTaskStoreRegistry([store], { scenarioIds: [wiring.SCENARIO],
+      tasks: [{ id: wiring.providersOnlyContract.id, effect: wiring.providersOnlyContract.effect }] }));
+    const queued = wiring.queuedRunFor(descriptor);
+    harness.authority.database.authority.runs.enqueue({ ...queued, envelope: { ...queued.envelope, dryRun: true } });
+    const claimed = wiring.claim(harness.authority, descriptor), claim = claimed.claim;
+    const run = { ...claimed.run, lifecycle: { ...claimed.run.lifecycle, state: "running" as const } };
+    const built = buildRunPreviewResult(descriptor, run, [
+      { nodeId: "extract", state: "publication-preview" },
+      { nodeId: "after", state: "unavailable", reason: "requires-unsubmitted-output" },
+    ], [], harness.authority.clock);
+    const terminal = { ...run, version: run.version + 1,
+      completion: { schemaVersion: 1, kind: "done", expectedVersion: run.version, claim, authorizedAt: built.record.createdAt, resultDigest: deriveRunResultDigest(built.record) },
+      lifecycle: { state: "terminal", outcome: "done", endedAt: built.record.createdAt } };
+    const { receipt } = deriveRunEvidenceReceipt({ descriptor, run: terminal, result: built.record, checkpoints: [] });
+    const warning = receipt.warnings.find(({ code }) => code === "DRY_RUN_PREVIEW");
+    assert.ok(warning);
+    assert.match(warning.summary, /publication node "extract" prepared its output without saving/);
+    assert.match(warning.summary, /Unavailable stages: after/);
   });
 });

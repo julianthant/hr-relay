@@ -1,5 +1,5 @@
 /** The pure per-cell coercion core: every helper turns ONE raw spreadsheet/PDF cell string into a schema-valid canonical value or a typed refusal, never a default. */
-import type { IntakeTargetFieldId, WorkflowId } from "../../rules/identity/ids.js";
+import { EidSchema, type IntakeTargetFieldId, type WorkflowId } from "../../rules/identity/ids.js";
 
 /** Where a cell sits, so a failure names the thing the operator must fix. */
 export interface CellLocation {
@@ -54,6 +54,12 @@ export function normalizeEidDigits(raw: string): string {
   return raw.replace(/\D+/g, "");
 }
 
+/** A whole-cell UCPath EID or null: a safe non-negative integer stringifies, a string is trimmed, nothing else is read. */
+export function wholeCellEid(value: unknown): string | null {
+  const text = typeof value === "string" ? value.trim() : typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? String(value) : "";
+  return EidSchema.safeParse(text).data ?? null;
+}
+
 /** Ported verbatim from legacy `identity/person-name.ts`. */
 export function titleCasePersonToken(token: string): string {
   return token
@@ -70,8 +76,8 @@ function titleCaseTokens(value: string): string {
   return value.split(/\s+/).filter(Boolean).map(titleCasePersonToken).join(" ");
 }
 
-/** A display-name fold: title case, preserve an existing `Last, First` comma form, and drop a single trailing period left over from a middle initial. */
-export function displayPersonName(raw: string): string {
+/** Title case while preserving the comma form and initial periods. */
+export function titleCasePersonName(raw: string): string {
   const trimmed = collapseWhitespace(raw);
   if (trimmed.length === 0) return "";
   const commaIndex = trimmed.indexOf(",");
@@ -83,7 +89,11 @@ export function displayPersonName(raw: string): string {
       if (last.length === 0 || rest.length === 0) return trimmed;
       return `${titleCaseTokens(last)}, ${titleCaseTokens(rest)}`;
     })();
-  return cased.replace(/\.\s*$/, "").trim();
+  return cased;
+}
+
+export function displayPersonName(raw: string): string {
+  return titleCasePersonName(raw).replace(/\.\s*$/, "").trim();
 }
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;

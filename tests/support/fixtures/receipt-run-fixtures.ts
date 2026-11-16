@@ -1,4 +1,5 @@
-import { jsonLeafPaths } from "../../../src/backend/runs/provenance/task-provenance.js";
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
+import { jsonLeafPaths, transactionCheckpointProvenance } from "../../../src/backend/runs/provenance/task-provenance.js";
 import { JsonValueSchema } from "../../../src/rules/validation/canonical-json.js";
 import { resolvePersonLookupIdentity, derivePersonLookupOutcome } from "../../../src/rules/matching/person-lookup.js";
 import { PersonLookupInput } from "../../../src/models/workflows/person-lookup/input.js";
@@ -14,7 +15,7 @@ import {
   KualiSaveSeparationFinalization,
   kualiFinalizationIdempotencyKey,
 } from "../../../src/models/systems/kuali/save-separation-finalization.js";
-import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
+import { RunCheckpointRecordSchema, type FactProvenance } from "../../../src/models/workflow/checkpoint.js";
 import {
   deriveIdempotencyKeyDigest,
   deriveWriteBindingProofDigest,
@@ -152,7 +153,7 @@ export function seedPersonLookupExitRun(
   const active = database.authority.runtimeConfig.get();
   if (active === undefined) throw new Error("exit fixture requires admitted current settings");
   const slot = database.authority.workerSlots.list(personLookupDescriptor.id).find(record => record.poolIndex === 1 && record.retiredAt === null);
-  if (slot === undefined || database.authority.workerLeases.get(slot.workerId) === undefined) throw new Error("exit fixture requires an admitted leased worker");
+  if (slot === undefined) throw new Error("exit fixture requires an admitted worker");
   database.authority.runs.enqueue({
     envelope: {
       runId: EXIT_RUN_ID,
@@ -160,7 +161,7 @@ export function seedPersonLookupExitRun(
       itemId: EXIT_ITEM_ID,
       traceId: EXIT_TRACE_ID,
       descriptorVersion: personLookupDescriptor.version,
-      contractFingerprint: personLookupDescriptor.contractFingerprint,
+      contractFingerprint: personLookupDescriptor.contractFingerprint, buildId: currentBuildId(),
       resolvedInstance: { ucpath: "prod", crm: "prod" },
       configFingerprint: active.configFingerprint,
       configSnapshotId: active.configSnapshotId,
@@ -424,7 +425,7 @@ export interface KualiReceiptEvidence {
 
 
 export function kualiReceiptEvidence(
-  input?: Readonly<{ readonly contractFingerprint?: string }>,
+  input?: Readonly<{ readonly contractFingerprint?: string; readonly transactionProvenance?: readonly FactProvenance[] }>,
 ): KualiReceiptEvidence {
   const descriptor = separationsKualiFinalizationDescriptor;
   const storedContractFingerprint =
@@ -461,20 +462,8 @@ export function kualiReceiptEvidence(
     descriptorVersion: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
     implFingerprint: IMPL_FINGERPRINT,
-    provenance: provenance(
-      [
-        "output.savedState.kind",
-        "output.savedState.actionId",
-        "output.savedState.documentNumber",
-        "output.savedState.observedEid",
-        ...Object.keys(FINALIZATION_FIELDS).map(
-          (field) => `output.savedState.fields.${field}`,
-        ),
-        "output.savedState.source",
-      ],
-      "live",
-      KUALI_CONFIRMED_AT,
-    ),
+    provenance: input?.transactionProvenance === undefined
+      ? transactionCheckpointProvenance(outcome, KUALI_CONFIRMED_AT) : input.transactionProvenance,
     writtenAt: KUALI_CONFIRMED_AT,
   });
   const dependencyCheckpoint = (
@@ -544,7 +533,7 @@ export function kualiReceiptEvidence(
       itemId: KUALI_ITEM_ID,
       traceId: KUALI_TRACE_ID,
       descriptorVersion: descriptor.version,
-      contractFingerprint: descriptor.contractFingerprint,
+      contractFingerprint: descriptor.contractFingerprint, buildId: currentBuildId(),
       resolvedInstance: { kuali: "prod" },
       configFingerprint: CONFIG_FINGERPRINT,
       configSnapshotId: CONFIG_SNAPSHOT_ID,
@@ -803,7 +792,7 @@ export function identityGateReceiptEvidence(): IdentityGateReceiptEvidence {
       itemId: GATE_ITEM_ID,
       traceId: GATE_TRACE_ID,
       descriptorVersion: descriptor.version,
-      contractFingerprint: descriptor.contractFingerprint,
+      contractFingerprint: descriptor.contractFingerprint, buildId: currentBuildId(),
       resolvedInstance: { ucpath: "prod" },
       configFingerprint: CONFIG_FINGERPRINT,
       configSnapshotId: CONFIG_SNAPSHOT_ID,

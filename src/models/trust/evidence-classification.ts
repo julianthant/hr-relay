@@ -122,6 +122,7 @@ const UCPATH_DELETE_PENDING = taskOutput("ucpath/delete-pending-terminations");
 const UCPATH_VERIFY_TERMINATION = taskOutput("ucpath/verify-termination");
 const UCPATH_VERIFY_SWEEP = taskOutput("ucpath/verify-pending-terminations-cleared");
 const UCPATH_PENDING_SET = taskOutput("ucpath/read-pending-termination-set");
+const UCPATH_FINDINGS = taskOutput("ucpath/read-transaction-findings");
 const UCPATH_FILING_PRESENCE = taskOutput("ucpath/verify-termination-filing-present");
 const KUALI_FINALIZATION_INPUT = workflowInput("separations-kuali-finalization");
 const KUALI_FINALIZATION_RESULT = workflowResult("separations-kuali-finalization");
@@ -264,7 +265,8 @@ function writePlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [
     ...person(scope, at("document.timekeeperName")),
     ...open(scope, at("document.timekeeperName.kind"), at("document.timekeeperName.name"),
-      at("document.timekeeperName.inputPath"), at("document.timekeeperName.valueId")),
+      at("document.timekeeperName.inputPath"), at("document.timekeeperName.valueId"),
+      at("document.timekeeperName.profileId"), at("document.timekeeperName.sessionEpoch")),
     ...open(scope,
       at("state"), at("reason"),
       at("termination.terminationType"), at("termination.classification"),
@@ -326,11 +328,501 @@ function approvedSubjectLeaves(scope: EvidenceValueScope, prefix: string): unkno
   ];
 }
 
+function resolvedIdentityLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
+  return [
+    ...open(scope,
+      at("state"), at("shouldCheckCrm"), at("ucpathFound"), at("crmErrorCode"), at("selected"), at("selected.department"), at("selected.jobTitle"), at("selected.employeeStatus"), at("selected.hdh"),
+      at("selected.hrStatus"), at("selected.startDate"), at("selected.effectiveDate"), at("selected.terminationDate"), at("selected.terminationReason"), at("crmRecord"),
+      at("crmIdentity"), at("crmIdentity.department"), at("crmIdentity.firstDayOfService"), at("crmRecord.recordId"), at("crmRecord.recordUrl"), at("crmRecord.department"), at("crmRecord.firstDayOfService"), at("crmRecord.dateSigned"), at("crmState"), at("method")),
+    ...person(scope, at("selected.emplId"), at("selected.name"), at("crmRecord.emplId"), at("crmRecord.name"), at("crmIdentity.emplId"), at("crmIdentity.name"), at("recoveryEid")),
+    ...population(scope, at("candidateEids"), at("unselectedCrmRecords")),
+  ];
+}
+
+function activeStatusLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
+  return [
+    ...open(scope, at("ucpathSelection"), at("state"), at("reason"), at("code"), at("hdh"), at("details.search"), at("details.department"),
+      at("details.hrStatus"), at("details.ucpath"), at("details.crm"), at("details.startDate"), at("details.endDate"), at("details.terminationReason"), at("details.foundInUcpath")),
+    ...person(scope, at("datesEid"), at("details.name"), at("details.eid"), at("details.matchedEid"), at("details.matchedName")),
+    ...population(scope, at("candidateEids")),
+  ];
+}
+
+function personLookupResultLeaves(scope: EvidenceValueScope): unknown[] {
+  return [
+    ...open(scope, "activeStatus.ucpathSelection", "activeStatus.state", "activeStatus.reason", "activeStatus.code", "activeStatus.hdh",
+      "activeStatus.details.search", "activeStatus.details.department", "activeStatus.details.hrStatus", "activeStatus.details.ucpath", "activeStatus.details.crm",
+      "activeStatus.details.startDate", "activeStatus.details.endDate", "activeStatus.details.terminationReason", "activeStatus.details.foundInUcpath",
+      "crmDates.state", "crmDates.dates.code", "crmDates.dates.state", "crmDates.dates.reason", "crmDates.dates.employmentDate", "crmDates.dates.oathDate"),
+    ...person(scope, "activeStatus.datesEid", "activeStatus.details.name", "activeStatus.details.eid", "activeStatus.details.matchedEid", "activeStatus.details.matchedName"),
+    ...population(scope, "activeStatus.candidateEids"),
+    ...person(scope, "crmDates.dates.emplId"),
+  ];
+}
+
+function onbaseTargetLeaves(scope: EvidenceValueScope): unknown[] {
+  return [
+    ...person(scope, "ucpathId", "fallback.lastName", "fallback.firstName", "fallback.middleName", "fallback.suffix"),
+    ...open(scope, "sourcePage", "document.bytes", "document.mediaType", "fallback.departmentName", "fallback.departmentCode",
+      "fallback.viceChancellor", "fallback.viceChancellorCode"),
+    ...["document.id", "document.sha256", "pageSha256"].map(path => ({ scope, path, classification: "direct-identifier", transform: "drop" })),
+  ];
+}
+
+function onbaseSavedLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  const at = (path: string): string => prefix.length === 0 ? path : `${prefix}.${path}`;
+  return [
+    ...person(scope, at("ucpathId")),
+    ...open(scope, at("documentType"), at("documentName"), at("source")),
+    { scope, path: at("documentId"), classification: "direct-identifier", transform: "digest" },
+    { scope, path: at("pageSha256"), classification: "direct-identifier", transform: "drop" },
+  ];
+}
+
+function onboardingPrivateLeaves(scope: EvidenceValueScope, ...paths: readonly string[]): unknown[] {
+  return paths.map(path => ({ scope, path, classification: "direct-identifier", transform: "digest" }));
+}
+
+function i9CreationProofLeaves(scope: EvidenceValueScope, prefix: string, remote: boolean): unknown[] {
+  return [...open(scope, `${prefix}kind`, `${prefix}source`),
+    ...onboardingPrivateLeaves(scope, ...(remote ? ["profileId", "i9Id", "startDate", "email"]
+      : ["profileId", "firstName", "lastName", "dob", "email", "departmentNumber"]).map(path => `${prefix}${path}`))];
+}
+
+function hireProofLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  return [...open(scope, ...["kind", "source", "action", "approvalStatus", "detailVerified"].map(path => `${prefix}${path}`)),
+    ...onboardingPrivateLeaves(scope, ...["transactionId", "profileId", "displayedName", "emplId", "effectiveDate", "positionNumber", "email", "dob"].map(path => `${prefix}${path}`))];
+}
+
+function onboardingRosterLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...onboardingPrivateLeaves(scope, `${prefix}workbookId`, `${prefix}sheetId`, `${prefix}rowId`, `${prefix}rowKey.email`),
+    ...open(scope, `${prefix}workbookType`, `${prefix}referenceDigest`, `${prefix}workbookVersion`, `${prefix}capturedAt`),
+  ];
+}
+
+function onboardingPlanLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  return [
+    ...onboardingPrivateLeaves(scope, `${prefix}recordId`, `${prefix}postalCodeOverride`,
+      ...["firstName", "lastName", "middleName", "preferredFirstName", "preferredLastName", "preferredMiddleName",
+        "ssn", "dob", "address", "addressLine2", "city", "state", "postalCode", "phone", "email", "positionNumber",
+        "departmentNumber", "recruitmentNumber", "employeeClassification", "hourlyRateMinor", "effectiveDate",
+        "expectedJobEndDate"].map(path => `${prefix}employee.${path}`)),
+    ...onboardingRosterLeaves(scope, `${prefix}roster.`),
+    ...open(scope, `${prefix}jobEndDateSource`, `${prefix}ssnState`),
+  ];
+}
+
+function onboardingSubjectLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  return [
+    ...open(scope, `${prefix}state`),
+    ...onboardingPrivateLeaves(scope, `${prefix}person.emplId`, `${prefix}person.name`),
+    ...population(scope, `${prefix}candidateEids`, `${prefix}candidates`),
+  ];
+}
+
+function onboardingLookupLeaves(scope: EvidenceValueScope): unknown[] {
+  return [
+    ...open(scope, "state", "subjectState", "childRunId", "result.i9Status"),
+    ...onboardingPrivateLeaves(scope, "result.signerName", "result.profileId", "result.i9Id"),
+  ];
+}
+
+function onboardingProfileLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  return [
+    ...open(scope, ...["state", "subjectState", "i9Status", "reason"].map(path => `${prefix}${path}`)),
+    ...onboardingPrivateLeaves(scope, `${prefix}profileId`,
+      ...["firstName", "lastName", "middleName", "ssn", "dob", "email", "departmentNumber", "startDate"].map(path => `${prefix}request.${path}`)),
+  ];
+}
+
+function ocrPrivateLeaves(scope: EvidenceValueScope, ...paths: readonly string[]): unknown[] {
+  return paths.map(path => ({ scope, path, classification: "sensitive-hr", transform: "drop" }));
+}
+
+function ocrArtifactLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...ocrPrivateLeaves(scope, `${prefix}id`, `${prefix}sha256`),
+    ...open(scope, `${prefix}bytes`, `${prefix}mediaType`),
+  ];
+}
+
+function ocrManifestHeadLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...ocrArtifactLeaves(scope, `${prefix}document.`),
+    ...open(scope, `${prefix}pageCount`),
+    ...ocrPrivateLeaves(scope, `${prefix}fingerprint`),
+  ];
+}
+
+function ocrManifestLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrManifestHeadLeaves(scope, prefix), ...ocrPrivateLeaves(scope, `${prefix}pages`)];
+}
+
+function ocrPageInputLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...ocrArtifactLeaves(scope, `${prefix}document.`),
+    ...ocrArtifactLeaves(scope, `${prefix}image.`),
+    ...open(scope, `${prefix}formType`, `${prefix}sourcePage`),
+    ...ocrPrivateLeaves(scope, `${prefix}manifestFingerprint`, `${prefix}readingId`),
+  ];
+}
+
+function ocrExtractionLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...open(scope, ...["formType", "sourcePage", "pageKind", "readAt", "source.kind"].map(path => `${prefix}${path}`)),
+    ...ocrPrivateLeaves(scope, ...["pageFingerprint", "sourceSha256", "source.actorId", "source.providerId", "source.modelId", "source.agentId", "source.invocation",
+      "record", "record.answers", "record.answersFingerprint"].map(path => `${prefix}${path}`)),
+    ...population(scope, `${prefix}record.blockingPaths`),
+  ];
+}
+
+function ocrPageReadingLeaves(scope: EvidenceValueScope): unknown[] {
+  return [
+    ...ocrPageInputLeaves(scope, "input."),
+    ...ocrPrivateLeaves(scope, "extractionId"),
+    ...ocrExtractionLeaves(scope, "extraction."),
+  ];
+}
+
+function ocrRosterLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrRosterReferenceLeaves(scope, prefix), ...ocrPrivateLeaves(scope, `${prefix}rows`)];
+}
+
+function ocrRosterReferenceLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...ocrPrivateLeaves(scope, prefix.slice(0, -1), `${prefix}workbookId`, `${prefix}referenceDigest`),
+    ...ocrArtifactLeaves(scope, `${prefix}artifact.`),
+    ...open(scope, `${prefix}readAt`, `${prefix}workbookType`, `${prefix}workbookVersion`),
+  ];
+}
+
+function ocrReviewCheckpointLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...ocrManifestLeaves(scope, `${prefix}accounting.manifest.`),
+    ...ocrRosterReferenceLeaves(scope, `${prefix}roster.`),
+    ...open(scope, ...["formType", "accounting.formType", "pages", "grouping.formType",
+      "grouping.unidentified", "grouping.otherForms", "grouping.dataless"].map(path => `${prefix}${path}`)),
+    ...ocrPrivateLeaves(scope, ...["sourceRunId", "accounting.readingId", "accounting.outcomes",
+      "grouping.subjects", "records"].map(path => `${prefix}${path}`)),
+  ];
+}
+
+function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
+  return [...ocrReviewCheckpointLeaves(scope, "review."), ...ocrPrivateLeaves(scope, "identities")];
+}
+
+function approvedOcrReferenceLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrPrivateLeaves(scope, `${prefix}snapshotId`, `${prefix}sourceRunId`, `${prefix}digest`), ...open(scope, `${prefix}revision`)];
+}
+function approvedOcrSnapshotLeaves(scope: EvidenceValueScope): unknown[] {
+  return [...ocrPrivateLeaves(scope, "snapshot.snapshotId", "snapshot.sourceRunId", "snapshot.reviewDigest", "snapshot.selectedRecordIds", "snapshot.records"),
+    ...open(scope, "snapshot.revision", "snapshot.approvedBy", "snapshot.approvedAt")];
+}
+function approvedOcrRecordLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrPrivateLeaves(scope, `${prefix}recordId`, `${prefix}assertedEid`, `${prefix}fields.answers`, `${prefix}fields.blockingPaths`, `${prefix}fields.answersFingerprint`,
+    `${prefix}provenance.commandId`, `${prefix}provenance.createdAt`, `${prefix}provenance.pages`),
+    ...open(scope, `${prefix}discarded`, `${prefix}provenance.kind`)];
+}
+function contactSetLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrPrivateLeaves(scope, `${prefix}emplId`, `${prefix}displayedName`, `${prefix}rows`),
+    ...open(scope, ...["pageStateId", "observation", "viewAll", "rowCount", "observedAt"].map(path => `${prefix}${path}`))];
+}
+function contactAddressLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...open(scope, `${prefix}kind`), ...ocrPrivateLeaves(scope,
+    ...["address1", "address2", "city", "state", "postalCode", "country"].map(path => `${prefix}fields.${path}`))];
+}
+function contactInputLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrPrivateLeaves(scope, `${prefix}emplId`, `${prefix}expectedName`,
+    ...["name", "relationship", "primary", "cellPhone", "homePhone", "workPhone"].map(path => `${prefix}contact.${path}`)),
+    ...contactAddressLeaves(scope, `${prefix}contact.address.`)];
+}
+function contactEffectLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrPrivateLeaves(scope, ...["name", "relationship", "primary", "phone"].map(path => `${prefix}${path}`)),
+    ...contactAddressLeaves(scope, `${prefix}address.`)];
+}
+function contactPlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...open(scope, `${prefix}state`, `${prefix}rowIndex`, `${prefix}demotion`, `${prefix}demotion.rowIndex`, `${prefix}target.kind`, `${prefix}target.rowIndex`),
+    ...ocrPrivateLeaves(scope, `${prefix}setFingerprint`), ...contactSetLeaves(scope, `${prefix}before.`),
+    ...contactEffectLeaves(scope, `${prefix}effect.`), ...contactEffectLeaves(scope, `${prefix}demotion.effect.`)];
+}
+function contactProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...open(scope, `${prefix}kind`, `${prefix}source`), ...ocrPrivateLeaves(scope, `${prefix}emplId`, `${prefix}displayedName`),
+    ...contactEffectLeaves(scope, `${prefix}effect.`), ...contactSetLeaves(scope, `${prefix}contacts.`)];
+}
+function contactPlannedOutputLeaves(scope: EvidenceValueScope): unknown[] {
+  return [...contactInputLeaves(scope, "target."), ...contactPlanLeaves(scope, "target.plan."), ...ocrPrivateLeaves(scope, "changes", "demotionLine", "contactLine")];
+}
+
+function i9ReferenceLeaves(scope: EvidenceValueScope): unknown[] {
+  return ocrPrivateLeaves(scope,
+    ...["typeId", "libraryId", "versionId", "keys", "fields"].map(path => `reference.request.${path}`),
+    ...["libraryId", "version", "versionId", "versionName", "worksheets", "rows", "type.id", "type.name", "type.keyFieldId", "type.fields", "type.defaultWorkbookId"]
+      .map(path => `reference.snapshot.${path}`));
+}
+
+const PAYPATH_POSITION_FIELDS = ["effectiveDate", "positionChangeReason", "positionPool", "positionNumber"] as const;
+function payPathReadLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...person(scope, `${prefix}emplId`, `${prefix}displayedName`),
+    ...open(scope, `${prefix}pageStateId`, `${prefix}observedAt`, ...PAYPATH_POSITION_FIELDS.map(field => `${prefix}position.${field}`))];
+}
+function workStudyPlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...person(scope, `${prefix}emplId`, `${prefix}name`),
+    ...open(scope, ...["effectiveDate", "positionChangeReason", "positionPool", "comments"].map(field => `${prefix}${field}`),
+      ...PAYPATH_POSITION_FIELDS.map(field => `${prefix}current.${field}`))];
+}
+function workStudyProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...person(scope, `${prefix}emplId`, `${prefix}displayedName`),
+    ...open(scope, ...["kind", "effectiveDate", "transactionId", "action", "approvalStatus", "source"].map(field => `${prefix}${field}`))];
+}
+const WORK_STUDY_STAGED_FIELDS = ["effectiveDate", "positionChangeReason", "positionPool", "jobDataComments", "initiatorComments"] as const;
+
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...payPathReadLeaves(taskOutput("ucpath/read-paypath-position"), ""),
+  ...person(taskOutput("ucpath/stage-paypath-work-study"), "staged.emplId", "staged.displayedName"),
+  ...open(taskOutput("ucpath/stage-paypath-work-study"), "stagedPageState", "staged.pageStateId", "staged.observedAt",
+    ...WORK_STUDY_STAGED_FIELDS.map(field => `staged.values.${field}`)),
+  /* PeopleSoft alert text is free text that can name the employee. */
+  ...["stage", "submit"].map(verb => ({ scope: taskOutput(`ucpath/${verb}-paypath-work-study`), path: "alertText", classification: "direct-identifier", transform: "drop" })),
+  ...workStudyProofLeaves(taskOutput("ucpath/submit-paypath-work-study"), "receipt."),
+  ...workStudyProofLeaves(writeProof("ucpath/submit-paypath-work-study"), ""),
+  ...["match", "verify"].flatMap(verb => {
+    const scope = taskOutput(`ucpath/${verb}-paypath-work-study`);
+    return [...open(scope, "state", "reason", "matches", "observedAt", "evidence.source", "evidence.sourceState", "evidence.observedAt"),
+      ...onboardingPrivateLeaves(scope, "queryDigest", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"),
+      ...population(scope, "evidence"), ...workStudyProofLeaves(scope, "proof.")];
+  }),
+  /* PeopleSoft alert text is free text that can name the employee. */
+  { scope: taskOutput("ucpath/read-paypath-position"), path: "alertText", classification: "direct-identifier", transform: "drop" },
+  ...payPathReadLeaves(workflowResult("work-study-ucpath-auth"), ""),
+  ...workStudyPlanLeaves(taskOutput("workflow:work-study/read-transaction-plan"), ""),
+  ...["work-study", "work-study-transaction"].flatMap(id => [
+    ...workStudyPlanLeaves(workflowResult(id), "plan."), ...open(workflowResult(id), "state"), ...workStudyProofLeaves(workflowResult(id), "receipt."),
+  ]),
+  ...["work-study", "work-study-ucpath-auth", "work-study-transaction"].flatMap(id => [...person(workflowInput(id), "emplId"), ...open(workflowInput(id), "effectiveDate")]),
+  ...approvedOcrRecordLeaves(taskOutput("ocr/read-approved-record"), "record."),
+  ...approvedOcrSnapshotLeaves(taskOutput("ocr/read-approved-snapshot")),
+  ...approvedOcrSnapshotLeaves(workflowResult("emergency-contact-read-document")),
+  ...contactInputLeaves(taskOutput("workflow:emergency-contact-member/read-approved-contact"), ""),
+  ...contactPlannedOutputLeaves(taskOutput("workflow:emergency-contact-member/read-contact-plan")),
+  ...["ucpath/read-emergency-contacts", "ucpath/stage-emergency-contact"].flatMap(id => contactSetLeaves(taskOutput(id), "contacts.")),
+  ...["ucpath/match-emergency-contact-plan", "ucpath/verify-emergency-contact-plan"].flatMap(id => [
+    ...open(taskOutput(id), "state", "observedAt", "matches", "evidence.source", "evidence.sourceState", "evidence.observedAt"),
+    ...ocrPrivateLeaves(taskOutput(id), "reason", "queryDigest", "evidence", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"),
+    ...contactProofLeaves(taskOutput(id), "proof."),
+  ]),
+  ...open(taskOutput("ucpath/stage-emergency-contact"), "stagedPageState"),
+  ...contactProofLeaves(taskOutput("ucpath/save-emergency-contact"), "proof."),
+  ...contactProofLeaves(writeProof("ucpath/save-emergency-contact"), ""),
+  ...["emergency-contact-member", "emergency-contact-member-contact-plan", "emergency-contact-member-contact-preview"].flatMap(id => [
+    ...approvedOcrReferenceLeaves(workflowInput(id), "approval."), ...approvedOcrRecordLeaves(workflowInput(id), "record."),
+  ]),
+  ...["emergency-contact-member", "emergency-contact-member-contact-preview"].flatMap(id => [
+    ...open(workflowResult(id), "disposition"), ...contactProofLeaves(workflowResult(id), "proof."),
+  ]),
+  ...contactPlannedOutputLeaves(workflowResult("emergency-contact-member-contact-plan")),
+  ...["emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].flatMap(id => [
+    ...ocrArtifactLeaves(workflowInput(id), "document."), ...ocrRosterLeaves(workflowInput(id), "roster."),
+    ...open(workflowInput(id), "reading.kind"), ...ocrPrivateLeaves(workflowInput(id), "fileName", "readingId", "reading.actorId", "reading.assertions"),
+  ]),
+  ...[workflowResult("emergency-contact"), workflowResult("emergency-contact-members"), taskOutput("workflow:emergency-contact/read-result")].flatMap(scope => [
+    ...approvedOcrReferenceLeaves(scope, "approval."), ...ocrPrivateLeaves(scope, "members"),
+  ]),
+  ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-people"), "people"),
+  ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-requests"), "people", "children"),
+  ...i9ReferenceLeaves(taskOutput("workflow:i9-check-start/read-requests")),
+  ...[taskOutput("workflow:i9-check-start/read-rows"), taskOutput("workflow:i9-check-start/read-publication"),
+    workflowResult("i9-check-start"), workflowResult("i9-check-start-retention")].flatMap(scope => [
+    ...open(scope, "personCount"), ...ocrPrivateLeaves(scope, "batchKey", "tracker.rows", "people"), ...i9ReferenceLeaves(scope),
+  ]),
+  ...[taskOutput("workflow:i9-check-start/read-publication"), workflowResult("i9-check-start"), workflowResult("i9-check-start-retention")]
+    .flatMap(scope => [...ocrPrivateLeaves(scope, "workbook.libraryId", "workbook.operationId"), ...open(scope, "workbook.state", "workbook.version")]),
+  ...["i9-check-start", "i9-check-start-documents", "i9-check-start-roster-reference", "i9-check-start-retention"].flatMap(id => [
+    ...open(workflowInput(id), "asOf"), ...ocrPrivateLeaves(workflowInput(id), "documents", "reviewerName"),
+  ]),
+  ...ocrPrivateLeaves(workflowResult("i9-check-start-documents"), "people"),
+  ...ocrPrivateLeaves(workflowResult("i9-check-start-roster-reference"), "people", "children"),
+  ...i9ReferenceLeaves(workflowResult("i9-check-start-roster-reference")),
+  ...open(taskOutput("ocr/read-approved-records"), "state", "code"),
+  ...ocrPrivateLeaves(taskOutput("ocr/read-approved-records"), "sources"),
+  ...open(taskOutput("workbooks/read-reference"), "state", "reference.snapshot.version", "reference.request.fields", "reference.snapshot.type.fields"),
+  ...population(taskOutput("workbooks/read-reference"), "reference.snapshot.rows", "reference.snapshot.worksheets"),
+  ...["referenceDigest", "sources", "reference.request.typeId", "reference.request.libraryId", "reference.request.versionId", "reference.request.keys",
+    "reference.snapshot.libraryId", "reference.snapshot.versionId", "reference.snapshot.versionName", "reference.snapshot.type.id", "reference.snapshot.type.name",
+    "reference.snapshot.type.keyFieldId", "reference.snapshot.type.defaultWorkbookId"].map(path =>
+    ({ scope: taskOutput("workbooks/read-reference"), path, classification: "sensitive-hr", transform: "drop" })),
+  { scope: taskOutput("crm/search-document-records"), path: "records", classification: "direct-identifier", transform: "digest" },
+  { scope: taskOutput("crm/read-idocs"), path: "people", classification: "direct-identifier", transform: "digest" },
+  ...[taskOutput("workflow:crm-doc-download/read-document-rows"), workflowResult("crm-doc-download-reference")].flatMap(scope => [
+    ...population(scope, "people"), ...open(scope, "state"),
+    { scope, path: "referenceDigest", classification: "sensitive-hr", transform: "drop" },
+    { scope, path: "sourceDigests", classification: "sensitive-hr", transform: "drop" },
+  ]),
+  ...[taskOutput("workflow:crm-doc-download/read-worksheet-archives"), workflowResult("crm-doc-download"), workflowResult("crm-doc-download-package-worksheets")].flatMap(scope => [
+    ...population(scope, "worksheets", "collection.files"),
+    ...open(scope, "worksheetCount", "personCount", "documentCount", "collection.artifact.bytes", "collection.artifact.mediaType"),
+    ...["collection.artifact.id", "collection.artifact.sha256"].map(path => ({ scope, path, classification: "sensitive-hr", transform: "drop" })),
+  ]),
+  { scope: workflowResult("crm-doc-download-search-records"), path: "records", classification: "direct-identifier", transform: "digest" },
+  { scope: workflowResult("crm-doc-download-read-idocs"), path: "people", classification: "direct-identifier", transform: "digest" },
+  ...["crm-doc-download", "crm-doc-download-search-records", "crm-doc-download-reference", "crm-doc-download-read-idocs", "crm-doc-download-package-worksheets"].map(id =>
+    ({ scope: workflowInput(id), path: "people", classification: "direct-identifier", transform: "digest" })),
+  ...["crm-doc-download", "crm-doc-download-reference", "crm-doc-download-package-worksheets"].flatMap(id => [
+    ...open(gateResult(id, "document-row-choice"), "state", "decision"), ...population(gateResult(id, "document-row-choice"), "people"),
+    { scope: gateResult(id, "document-row-choice"), path: "referenceDigest", classification: "sensitive-hr", transform: "drop" },
+    { scope: gateResult(id, "document-row-choice"), path: "sourceDigests", classification: "sensitive-hr", transform: "drop" },
+
+  ]),
+  ...open(taskOutput("extraction/extract-pdf-pages"), "pageCount"),
+  ...ocrPrivateLeaves(taskOutput("extraction/extract-pdf-pages"), "pages"),
+  ...ocrManifestHeadLeaves(taskOutput("workflow:ocr/read-source-pages"), "manifest."),
+  ...[taskOutput("workflow:ocr-page/read-page-reading"), taskOutput("workflow:ocr-page/read-manual-reading")].flatMap(ocrPageReadingLeaves),
+  ...ocrReviewCheckpointLeaves(taskOutput("workflow:ocr/read-review-seed"), ""),
+  ...ocrPrivateLeaves(taskOutput("workflow:ocr/read-result"), "review.digest", "identities"),
+  ...["ocr", "ocr-source-pages"].flatMap(id => [
+    ...ocrArtifactLeaves(workflowInput(id), "document."),
+    ...ocrRosterLeaves(workflowInput(id), "roster."),
+    ...open(workflowInput(id), "approval", "formType", "reading.kind"),
+    ...ocrPrivateLeaves(workflowInput(id), "sourceRunId", "fileName", "readingId", "reading.actorId", "reading.assertions"),
+  ]),
+  ...["ocr-page", "ocr-page-reading"].flatMap(id => [
+    ...ocrPageInputLeaves(workflowInput(id), "page."),
+    ...open(workflowInput(id), "reading.kind"),
+    ...ocrPrivateLeaves(workflowInput(id), "reading.actorId"),
+    ...ocrExtractionLeaves(workflowInput(id), "reading.extraction."),
+    ...ocrPageReadingLeaves(workflowResult(id)),
+  ]),
+  ...ocrResultLeaves(workflowResult("ocr")),
+  ...ocrPrivateLeaves(workflowResult("ocr"), "approvedSnapshot", "approvedSnapshot.snapshotId", "approvedSnapshot.sourceRunId", "approvedSnapshot.digest"),
+  ...open(workflowResult("ocr"), "approvedSnapshot.revision"),
+  ...ocrManifestHeadLeaves(workflowResult("ocr-source-pages"), "manifest."),
+  ...ocrPrivateLeaves(gateResult("ocr", "approve-records"), "snapshotId", "sourceRunId", "digest"),
+  ...open(gateResult("ocr", "approve-records"), "revision"),
+  ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-hire-writes"].flatMap(id => [
+    ...open(workflowInput(id), "mode", "configuredJobEndDate", "roster.state", "roster.reason"),
+    ...onboardingPrivateLeaves(workflowInput(id), "email", "postalCodeOverride", "roster.row.references.legalName", "roster.row.references.livedName"),
+    ...onboardingRosterLeaves(workflowInput(id), "roster.binding."),
+    ...onboardingRosterLeaves(workflowInput(id), "roster.row.binding."),
+    ...open(gateResult(id, "roster-choice"), "decision"),
+    ...onboardingRosterLeaves(gateResult(id, "roster-choice"), "row.binding."),
+    ...onboardingPrivateLeaves(gateResult(id, "roster-choice"), "row.references.legalName", "row.references.livedName"),
+  ]),
+  ...[taskOutput("workflow:onboarding/read-hire-plan"), workflowResult("onboarding-crm-data")].flatMap(scope => onboardingPlanLeaves(scope)),
+  ...[taskOutput("workflow:onboarding/match-hire-subject"), workflowResult("onboarding-ucpath-search")].flatMap(scope => onboardingSubjectLeaves(scope)),
+  ...[taskOutput("workflow:onboarding/read-i9-lookup"), workflowResult("onboarding-i9-search")].flatMap(scope => onboardingLookupLeaves(scope)),
+  ...onboardingProfileLeaves(taskOutput("workflow:onboarding/read-i9-profile-plan")),
+  ...onboardingRosterLeaves(taskOutput("workflow:onboarding/read-write-plan"), "roster."),
+  ...onboardingSubjectLeaves(taskOutput("workflow:onboarding/read-write-plan"), "subject."),
+  ...open(taskOutput("workflow:onboarding/read-write-plan"), "hire.mode"),
+  ...onboardingPrivateLeaves(taskOutput("workflow:onboarding/read-write-plan"), "hire.expectedName", "hire.emplId", "comments", "i9",
+    ...["firstName", "lastName", "middleName", "preferredFirstName", "preferredLastName", "preferredMiddleName", "ssn", "dob", "address", "addressLine2", "city", "state", "postalCode", "phone", "email", "positionNumber", "departmentNumber", "recruitmentNumber", "employeeClassification", "hourlyRateMinor", "effectiveDate", "expectedJobEndDate"].map(path => `hire.employee.${path}`),
+    ...["firstName", "lastName", "middleName", "ssn", "dob", "email", "departmentNumber", "expectedName"].map(path => `i9.${path}`)),
+  ...["onboarding", "onboarding-hire-writes"].flatMap(id => [
+    ...open(gateResult(id, "hire-review"), "decision", "confirmedBy"),
+    ...onboardingPrivateLeaves(gateResult(id, "hire-review"), "emplId", "ruledOut"),
+    ...onboardingPlanLeaves(workflowResult(id), "plan."),
+    ...onboardingSubjectLeaves(workflowResult(id), "subject."),
+    ...open(workflowResult(id), "state", "i9.state", "hireWrite.state", "hireWrite.disposition",
+      "rosterAccess.state", "rosterAccess.version", "rosterAccess.receiptState", "rosterAccess.code", "rosterAccess.message"),
+    ...i9CreationProofLeaves(workflowResult(id), "i9.", true),
+    ...hireProofLeaves(workflowResult(id), "hireWrite.receipt."),
+    ...onboardingPrivateLeaves(workflowResult(id), "rosterAccess.operationId", "rosterAccess.libraryId"),
+  ]),
+  ...[false, true].flatMap(remote => {
+    const suffix = remote ? "remote-record" : "profile";
+    return [
+      ...i9CreationProofLeaves(writeProof(`i9/create-${suffix}`), "", remote),
+      ...i9CreationProofLeaves(taskOutput(`i9/create-${suffix}`), "receipt.", remote),
+      ...open(taskOutput(`i9/stage-${suffix}`), "stagedPageState"),
+      ...onboardingPrivateLeaves(taskOutput(`i9/stage-${suffix}`), "observedName"),
+      ...["match", "verify"].flatMap(verb => {
+        const scope = taskOutput(`i9/${verb}-${suffix}`);
+        return [...open(scope, "state", "reason", "matches", "observedAt", "evidence.source", "evidence.sourceState", "evidence.observedAt"),
+          ...onboardingPrivateLeaves(scope, "queryDigest", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"),
+          ...population(scope, "evidence"), ...i9CreationProofLeaves(scope, "proof.", remote)];
+      }),
+    ];
+  }),
+  ...hireProofLeaves(taskOutput("ucpath/read-hire-receipt")),
+  ...hireProofLeaves(writeProof("ucpath/create-hire")),
+  ...hireProofLeaves(taskOutput("ucpath/create-hire"), "receipt."),
+  ...open(taskOutput("ucpath/read-hire-findings"), "state", "observedAt", "source"),
+  ...population(taskOutput("ucpath/read-hire-findings"), "rows"),
+  ...onboardingPrivateLeaves(taskOutput("ucpath/read-hire-findings"), "queryDigest"),
+  ...open(taskOutput("ucpath/stage-hire"), "stagedPageState", "template", "reason", "transactionIdDisplay"),
+  ...onboardingPrivateLeaves(taskOutput("ucpath/stage-hire"), "observedName"),
+  ...["match", "verify"].flatMap(verb => {
+    const scope = taskOutput(`ucpath/${verb}-hire`);
+    return [...open(scope, "state", "reason", "matches", "observedAt", "evidence.source", "evidence.sourceState", "evidence.observedAt"),
+      ...onboardingPrivateLeaves(scope, "queryDigest", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"),
+      ...population(scope, "evidence"), ...hireProofLeaves(scope, "proof.")];
+  }),
+  ...[
+    "recordId", "recordUrl", "requestedEmail", "personalEmail", "workEmail", "recordFirstName", "recordLastName",
+    "department", "recruitmentNumber", "fields.positionNumber", "fields.firstName", "fields.lastName", "fields.middleName",
+    "fields.ssn", "fields.address", "fields.addressLine2", "fields.city", "fields.state", "fields.postalCode", "fields.wage",
+    "fields.dob", "fields.phone", "fields.email", "fields.appointment", "fields.effectiveDate", "fields.expectedJobEndDate",
+  ].map(path => ({ scope: taskOutput("crm/read-hire-data"), path, classification: "direct-identifier", transform: "digest" })),
+  ...["onbase", "onbase-source-page", "onbase-import-document"].flatMap(id => onbaseTargetLeaves(workflowInput(id))),
+  ...onbaseTargetLeaves(taskOutput("onbase/read-source-page")),
+  ...onbaseTargetLeaves(workflowResult("onbase-source-page")),
+  ...[workflowResult("onbase"), workflowResult("onbase-import-document"), taskOutput("onbase/upload-import")].flatMap(scope => [
+    ...onbaseSavedLeaves(scope, "savedDocument"),
+    ...open(scope, "disposition"),
+  ]),
+  ...onbaseSavedLeaves(writeProof("onbase/upload-import")),
+  ...person(taskOutput("onbase/stage-import"), "observedEid", "keywords.ucpathId", "keywords.lastName", "keywords.firstName"),
+  ...open(taskOutput("onbase/stage-import"), "stagedPageState", "keywords.documentName", "keywords.departmentName", "keywords.departmentCode",
+    "keywords.viceChancellor", "keywords.viceChancellorCode"),
+  { scope: taskOutput("onbase/stage-import"), path: "pageSha256", classification: "direct-identifier", transform: "drop" },
+  ...[taskOutput("onbase/match-import"), taskOutput("onbase/verify-import")].flatMap(scope => [
+    ...onbaseSavedLeaves(scope, "proof"),
+    ...open(scope, "state", "reason", "matches", "observedAt", "evidence.source", "evidence.sourceState", "evidence.observedAt"),
+    ...population(scope, "evidence"),
+    ...["queryDigest", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"].map(path => ({
+      scope, path, classification: "direct-identifier", transform: "drop",
+    })),
+  ]),
+  ...open(taskOutput("workflow:i9-check/read-match-outcome"), "shouldLookup"),
+  ...[taskOutput("workflow:i9-check/read-match-outcome"), taskOutput("workflow:i9-check/read-retention-row"), workflowResult("i9-check"), workflowResult("i9-check-roster-match"), workflowResult("i9-check-person-match"), workflowResult("i9-check-person-lookup")].flatMap(scope => [
+    ...open(scope, "identity.status", "identity.candidateCount", "identity.reason"),
+    ...person(scope, "identity.eid", "identity.name"),
+    ...population(scope, "identity.candidateEids"),
+  ]),
+  ...[taskOutput("workflow:i9-check/read-retention-row"), workflowResult("i9-check"), workflowResult("i9-check-roster-match")].flatMap(scope => [
+    ...person(scope, "row.employeeName", "row.ppsEid", "row.ucpathEmplId", "row.reviewerName"),
+    { scope, path: "row.recordId", classification: "direct-identifier", transform: "digest" },
+    ...open(scope, "row.hireDate", "row.separationDate", "row.foundInUcpath", "row.action", "row.notes"),
+  ]),
+  ...open(workflowResult("i9-check-person-match"), "shouldLookup"),
+  ...open(workflowResult("i9-check-person-lookup"), "shouldLookup"),
+  ...[workflowInput("i9-check"), workflowInput("i9-check-roster-match"), workflowInput("i9-check-person-match"), workflowInput("i9-check-person-lookup")].flatMap(scope => [
+    ...person(scope, "person.name", "person.firstName", "person.lastName", "person.dob", "roster.seed.ppsEid", "reviewerName"),
+    ...["person.ssn", "recordId", "ocrRunId"].map(path => ({ scope, path, classification: "direct-identifier", transform: "digest" })),
+    ...population(scope, "roster.rows"),
+    ...open(scope, "person.hireDate", "person.sourcePages", "roster.seed.separationDate", "asOf", "person.useMatch"),
+  ]),
+  ...open(taskOutput("workbooks/read-result"), "state", "version", "receiptState", "code", "message"),
+  ...["operationId", "libraryId"].map(path => ({ scope: taskOutput("workbooks/read-result"), path, classification: "direct-identifier", transform: "digest" })),
+  ...["i9-lookup", "i9-lookup-lookup"].flatMap(id => [
+    ...person(workflowInput(id), "lastName", "firstName"),
+    { scope: workflowInput(id), path: "ssn", classification: "direct-identifier", transform: "digest" },
+  ]),
+  ...[taskOutput("i9/read-section2-signer"), taskOutput("workflow:i9-lookup/read-result"), workflowResult("i9-lookup"), workflowResult("i9-lookup-lookup")].flatMap(scope => [
+    ...person(scope, "signerName", "profileId", "i9Id"),
+    ...open(scope, "i9Status"),
+  ]),
+
   /* person-lookup ingress */
-  ...person(PERSON_LOOKUP_INPUT, "name", "emplId", "lastName", "firstName", "dob"),
-  { scope: PERSON_LOOKUP_INPUT, path: "ssn", classification: "direct-identifier", transform: "digest" },
-  ...open(PERSON_LOOKUP_INPUT, "mode", "crmCheck", "keepNonHdh", "includeCrmDates"),
+  ...[PERSON_LOOKUP_INPUT,
+    ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates"].map(workflowInput),
+  ].flatMap(scope => [
+    ...person(scope, "name", "emplId", "lastName", "firstName", "dob"),
+    { scope, path: "ssn", classification: "direct-identifier", transform: "digest" },
+    ...open(scope, "mode", "crmCheck", "keepNonHdh", "includeCrmDates"),
+  ]),
 
       /* `selection.selected` is declared twice: as the `null` of the ambiguous arm and as the object the resolved arm carries. */
   ...population(SEARCH, "results", "selection.candidateEids"),
@@ -350,23 +842,15 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(taskOutput("crm/verify-onboarding-record"), "state", "code", "reason"),
   ...population(taskOutput("crm/search-onboarding-records"), "records"),
   ...open(taskOutput("crm/search-onboarding-records"), "state", "code", "reason"),
-  ...open(taskOutput("workflow:person-lookup/read-resolved-identity"),
-    "state", "shouldCheckCrm", "ucpathFound", "crmErrorCode", "selected", "selected.department", "selected.jobTitle", "selected.employeeStatus", "selected.hdh",
-    "selected.hrStatus", "selected.startDate", "selected.effectiveDate", "selected.terminationDate", "selected.terminationReason", "crmRecord",
-    "crmIdentity", "crmIdentity.department", "crmIdentity.firstDayOfService", "crmRecord.recordId", "crmRecord.recordUrl", "crmRecord.department", "crmRecord.firstDayOfService", "crmRecord.dateSigned", "crmState", "method"),
-  ...person(taskOutput("workflow:person-lookup/read-resolved-identity"), "selected.emplId", "selected.name", "crmRecord.emplId", "crmRecord.name", "crmIdentity.emplId", "crmIdentity.name", "recoveryEid"),
-  ...population(taskOutput("workflow:person-lookup/read-resolved-identity"), "candidateEids", "unselectedCrmRecords"),
-  ...open(ACTIVE_STATUS, "ucpathSelection", "state", "reason", "code", "hdh", "details.search", "details.department",
-    "details.hrStatus", "details.ucpath", "details.crm", "details.startDate", "details.endDate", "details.terminationReason", "details.foundInUcpath"),
-  ...person(ACTIVE_STATUS, "datesEid", "details.name", "details.eid", "details.matchedEid", "details.matchedName"),
-  ...population(ACTIVE_STATUS, "candidateEids"),
-  ...open(PERSON_LOOKUP_RESULT, "activeStatus.ucpathSelection", "activeStatus.state", "activeStatus.reason", "activeStatus.code", "activeStatus.hdh",
-    "activeStatus.details.search", "activeStatus.details.department", "activeStatus.details.hrStatus", "activeStatus.details.ucpath", "activeStatus.details.crm",
-    "activeStatus.details.startDate", "activeStatus.details.endDate", "activeStatus.details.terminationReason", "activeStatus.details.foundInUcpath",
-    "crmDates.state", "crmDates.dates.code", "crmDates.dates.state", "crmDates.dates.reason", "crmDates.dates.employmentDate", "crmDates.dates.oathDate"),
-  ...person(PERSON_LOOKUP_RESULT, "activeStatus.datesEid", "activeStatus.details.name", "activeStatus.details.eid", "activeStatus.details.matchedEid", "activeStatus.details.matchedName"),
-  ...population(PERSON_LOOKUP_RESULT, "activeStatus.candidateEids"),
-  ...person(PERSON_LOOKUP_RESULT, "crmDates.dates.emplId"),
+  ...resolvedIdentityLeaves(taskOutput("workflow:person-lookup/read-resolved-identity"), ""),
+  ...activeStatusLeaves(ACTIVE_STATUS, ""),
+  ...personLookupResultLeaves(PERSON_LOOKUP_RESULT),
+  ...resolvedIdentityLeaves(workflowResult("person-lookup-searching"), ""),
+  ...resolvedIdentityLeaves(workflowResult("person-lookup-cross-verify"), "identity"),
+  ...population(workflowResult("person-lookup-cross-verify"), "verifiedCrm.records", "crmResults.records"),
+  ...open(workflowResult("person-lookup-cross-verify"), "verifiedCrm.state", "verifiedCrm.code", "verifiedCrm.reason"),
+  ...activeStatusLeaves(workflowResult("person-lookup-active-status"), ""),
+  ...personLookupResultLeaves(workflowResult("person-lookup-crm-dates")),
 
         /* These describe the READ, not about the person, so they are open. */
   ...person(KRONOS_TIMECARD_INPUT, "emplId", "expectedName"),
@@ -435,7 +919,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
 
   /* workflow:separations/match-identity — the gate's decision packet. */
   ...identityPacketLeaves(MATCH_IDENTITY, "packet"),
-  ...open(MATCH_IDENTITY, "evidenceDigest"),
+  ...open(MATCH_IDENTITY, "evidenceDigest", "approvalRequired"),
 
         /* These are carried forward past the gate so the terminal result has no pre-gate ancestry. */
   ...open(VERIFY_IDENTITY_APPROVAL, "documentNumber"),
@@ -501,6 +985,10 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...person(UCPATH_PENDING_SET, "emplId"),
   ...population(UCPATH_PENDING_SET, "eligible", "protected"),
   ...open(UCPATH_PENDING_SET, "kind", "observedAt", "source"),
+  ...person(UCPATH_FINDINGS, "emplId"),
+  ...population(UCPATH_FINDINGS, "rows"),
+  ...open(UCPATH_FINDINGS, "state", "scannedRowCount", "completeness.state", "completeness.reason",
+    "completeness.reportedRowCount", "observedAt", "source"),
   ...filingPresenceLeaves(UCPATH_FILING_PRESENCE),
 
   /* separations-ucpath-termination terminal result */
@@ -552,7 +1040,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...savedFinalizationLeaves(KUALI_FINALIZATION_RESULT, "finalization.proof"),
 
         /* This names one action id, the timekeeper who files it, the search bound, and how the document was reached — the READ, never the person. */
-  ...person(SEPARATIONS_INPUT, "timekeeperName"),
+  ...person(SEPARATIONS_INPUT, "timekeeperName", "timekeeperInitials", "operatorEmployeeId"),
   ...open(SEPARATIONS_INPUT, "documentNumber", "searchTimeoutMs",
     "reRead.ordinal", "reRead.reason"),
 
@@ -604,9 +1092,17 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...sweepProofLeaves(writeProof("ucpath/delete-pending-terminations"), ""),
   ...savedFinalizationLeaves(writeProof("kuali/save-separation-finalization"), ""),
 
+  ...open(OCR_FORM_PAGE, "formType", "source.kind", "source.providerId", "readAt",
+    "sourceSha256", "sourcePage", "pageKind", "pageFingerprint", "hasRecord",
+    "record", "record.answersFingerprint"),
+  ...population(OCR_FORM_PAGE, "record.blockingPaths"),
+  ...["record.answers", "source.modelId"].map((path) => ({
+    scope: OCR_FORM_PAGE, path, classification: "sensitive-hr", transform: "drop",
+  })),
+
     /* The executor's own fixture contracts: test-local shapes that must name a manifest-known task, DECLARED rather than exempted, so the undeclared-leaf refusal stays exercised by a composed run. */
   ...person(OCR_FORM_PAGE, "subject", "eid"),
-  ...open(OCR_FORM_PAGE, "disposition", "providerState", "artifactSha", "artifactBytes"),
+  ...open(OCR_FORM_PAGE, "disposition", "providerState", "artifactSha", "artifactBytes", "value"),
 
   // Private Plan 1 form fixtures wrap their output in a namespace absent from active contracts.
   ...[KUALI_SEPARATION, OCR_FORM_PAGE, SEARCH, KUALI_MATCH_FINALIZATION, KUALI_VERIFY_FINALIZATION].flatMap((scope) => [
@@ -615,6 +1111,13 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     { scope, path: "fictional.comments", classification: "direct-identifier", transform: "drop" },
     { scope, path: "fictional.managerComments", classification: "direct-identifier", transform: "drop" },
   ]),
+
+  ...open(workflowResult("wiring-projection"), "done"),
+  { scope: workflowInput("wiring-projection"), path: "name", classification: "direct-identifier", transform: "drop" },
+  ...["archive.fileName", "archive.files", "archive.artifact.id"].map(path => ({
+    scope: taskOutput("workflow:wiring-projection/read-archive"), path, classification: "direct-identifier", transform: "drop",
+  })),
+  ...open(taskOutput("workflow:wiring-projection/read-archive"), "archive.artifact.sha256", "archive.artifact.bytes", "archive.artifact.mediaType"),
 
   /* The write-sequencer's sealed transaction fixture exercises every role
      through the same declaration refusal as production; it has no bypass. */

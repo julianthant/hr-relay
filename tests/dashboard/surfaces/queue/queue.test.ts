@@ -1,3 +1,4 @@
+import { isQueueMember } from "../../../../src/models/dashboard/queue-parent.js";
 import { createAwaitingQueueFixtures } from "../../../support/helpers/dashboard/awaiting-queue-fixtures.js";
 // @vitest-environment jsdom
 import assert_m0 from 'node:assert/strict';
@@ -5,18 +6,18 @@ import { act as act_m0,createElement as createElement_m0 } from 'react';
 import { createRoot as createRoot_m0,type Root as Root_m0 } from 'react-dom/client';
 import { it as it_m0 } from 'vitest';
 import { QueuePanel as QueuePanel_m0,type QueueHandlers as QueueHandlers_m0,type QueueViewState as QueueViewState_m0 } from '../../../../src/dashboard/surfaces/queue/queue.js';
-import { FIXTURE_NOW as FIXTURE_NOW_m0 } from '../../../parity/helpers/fixture-identity.js';
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from '../../../parity/helpers/fixture-queue.js';
+import { FIXTURE_NOW as FIXTURE_NOW_m0 } from '../../../mocks/helpers/fixture-identity.js';
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from '../../../mocks/helpers/fixture-queue.js';
 // @vitest-environment jsdom
 import assert_m1 from "node:assert/strict";
 import { createElement as createElement_m1 } from "react";
 import { renderToStaticMarkup as renderToStaticMarkup_m1 } from "react-dom/server";
 import { describe as describe_m1,it as it_m1 } from "vitest";
-import { orderMembers as orderMembers_m1,type MemberSurfaceWire as MemberSurfaceWire_m1 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import { orderMembers as orderMembers_m1,type QueueSurfaceWire as MemberSurfaceWire_m1 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueueRow as QueueRow_m1 } from "../../../../src/dashboard/surfaces/queue/queue.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m1,type QueueSurfaceWire as QueueSurfaceWire_m1 } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_NOW as FIXTURE_NOW_m1 } from "../../../parity/helpers/fixture-identity.js";
-import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1 } from "../../../parity/helpers/fixture-queue.js";
+import { FIXTURE_NOW as FIXTURE_NOW_m1 } from "../../../mocks/helpers/fixture-identity.js";
+import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1 } from "../../../mocks/helpers/fixture-queue.js";
 
 import assert_m2 from "node:assert/strict";
 import { createElement as createElement_m2 } from "react";
@@ -75,7 +76,7 @@ try {
 
   const operation = FIXTURE_DAY_WIRE_m0.queueSurfaces.find(row => row.surfaceKind === 'operation' && row.memberRunIds.length === 3);
   assert_m0.ok(operation && operation.surfaceKind === 'operation');
-  const members = FIXTURE_DAY_WIRE_m0.queueSurfaces.filter(row => row.surfaceKind === 'member' && operation.memberRunIds.includes(row.runId));
+  const members = FIXTURE_DAY_WIRE_m0.queueSurfaces.filter(row => isQueueMember(row) && operation.memberRunIds.includes(row.runId));
   const surfaces = [operation, ...members]; const label = () => 'Fixture'; const handlers = { onSelect() {} };
   const wells = new Set<string>();
   host = document.createElement('div'); document.body.append(host); root = createRoot_m0(host);
@@ -144,7 +145,7 @@ function render(surface: QueueSurfaceWire_m1, members: readonly MemberSurfaceWir
 describe_m1("approved mixed queue presentation", () => {
   it_m1("keeps mode hazards and the footer attempt while removing leading and info controls", () => {
     const base = single("done");
-    const row = QueueSurfaceWireSchema_m1.parse({ ...base, dryRun: true, resolvedInstances: base.resolvedInstances.map(instance => ({ ...instance, instance: "test" })) });
+    const row = QueueSurfaceWireSchema_m1.parse({ ...base, attempt: 7, dryRun: true, resolvedInstances: base.resolvedInstances.map(instance => ({ ...instance, instance: "test" })) });
     const host = render(row);
     const body = host.querySelector("[data-queue-body]");
     assert_m1.ok(body);
@@ -155,7 +156,7 @@ describe_m1("approved mixed queue presentation", () => {
     assert_m1.ok(host.textContent?.includes("Done"));
     assert_m1.equal(host.querySelector('[aria-label^="What is this row"]'), null);
     assert_m1.equal(body.querySelector('[aria-label^="Attempts for"]'), null);
-    assert_m1.equal(host.querySelector('[aria-label^="Attempts for"]')?.textContent, `#${row.attempt}`);
+    assert_m1.equal(host.querySelector('[aria-label^="Attempts for"]')?.textContent, "#1");
     const identity = [...host.querySelectorAll('span[title]')].find(element => element.getAttribute('title') === row.traceId);
     assert_m1.ok(identity);
     assert_m1.match(identity.textContent ?? "", /^[A-Z0-9]+\d{8}$/u);
@@ -202,7 +203,7 @@ describe_m1("approved mixed queue presentation", () => {
   it_m1("shows the served group counter and ordered member statuses in Name/Status columns", () => {
     const operation = FIXTURE_DAY_WIRE_m1.queueSurfaces.find(row => row.surfaceKind === "operation" && row.memberRunIds.length === 3);
     assert_m1.ok(operation && operation.surfaceKind === "operation");
-    const members = FIXTURE_DAY_WIRE_m1.queueSurfaces.filter((row): row is MemberSurfaceWire_m1 => row.surfaceKind === "member" && operation.memberRunIds.includes(row.runId));
+    const members = FIXTURE_DAY_WIRE_m1.queueSurfaces.filter((row): row is MemberSurfaceWire_m1 => isQueueMember(row) && operation.memberRunIds.includes(row.runId));
     const host = render(operation, members);
     assert_m1.equal(host.querySelector('[data-queue-member-count]')?.textContent?.trim(), `${operation.memberRollup.terminal}/${operation.memberRollup.total}`);
     assert_m1.deepEqual([...host.querySelectorAll("th")].map(cell => cell.textContent), ["Name", "Status"]);
@@ -235,6 +236,16 @@ const RUN_ID = "11111111-1111-4111-8111-111111111111";
 const { surface } = createAwaitingQueueFixtures(RUN_ID, HASH_A, HASH_B, NOW);
 
 describe_m2("the row's accessible name carries the age", () => {
+
+  it_m2("describes a linked served OCR review as logs and status", () => {
+    const row = surface({ gateOpenedAt: { state: "present", value: "2026-08-14T16:42:00.000Z" } });
+    const markup = renderToStaticMarkup_m2(createElement_m2(QueueRow_m2, {
+      surface: QueueSurfaceWireSchema_m1.parse({ ...row, linkedRuns: [{ runId: "22222222-2222-4222-8222-222222222222", partitionDay: "2026-08-14", workflowId: "ocr", label: "OCR", status: "awaiting-approval", panelKind: "review" }] }),
+      state: { openWells: new Set<string>(), nowIso: NOW }, handlers: { onSelect() {} }, workflowLabelOf: () => "OCR",
+    }));
+    assert_m2.match(markup, /Opening it shows the run&#x27;s logs and review status/);
+    assert_m2.doesNotMatch(markup, /starts the review/);
+  });
 
   it_m2("renders the production QueueRow press target with the composed gate age", () => {
     const row = surface({

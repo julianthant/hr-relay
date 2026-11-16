@@ -28,7 +28,7 @@ describe("single-flight login", () => {
 
   it("authenticates once for two concurrent leases on one worker/system", async () => {
     const harness = sessionFactoryHarness({ ucpath: () => healthyUcpathDriver() });
-    const manager = sessionManagerFor(harness, manualClock(new Date("2026-08-03T09:00:00.000Z")));
+    const manager = await sessionManagerFor(harness, manualClock(new Date("2026-08-03T09:00:00.000Z")));
     const need = { system: "ucpath", access: "read", session: "reuse-worker" } as const;
     const signal = new AbortController().signal;
     const order: string[] = [];

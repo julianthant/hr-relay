@@ -1,8 +1,6 @@
 
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "./admission-fixture.js";
 import type { MonotonicDeadlineScheduler } from "../../../src/backend/runtime/scheduling/deadline-scheduler.js";
 import {
   createDuoCeremonyGateFactory,
@@ -13,9 +11,10 @@ import { systemClock } from "../../../src/rules/time/clock.js";
 import type { Clock } from "../../../src/rules/time/clock.js";
 import { FingerprintSchema, WorkerIdSchema } from "../../../src/rules/identity/ids.js";
 import type { BrowserSystemId, WorkerId } from "../../../src/rules/identity/ids.js";
-import { AuthorityDatabase } from "./synthetic-database-admission.js";
+import { AuthorityDatabase, syntheticDatabasePath } from "./synthetic-database-admission.js";
 import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "./registered-workflows.js";
+import { closeFixtures } from "./duo-ceremony-cleanup.js";
 
 export const FIXTURE_DUO_CREDENTIAL_KEY = FingerprintSchema.parse("d0".repeat(32));
 
@@ -29,38 +28,34 @@ const realScheduler: MonotonicDeadlineScheduler = {
   },
 };
 
-export function openDuoCeremonyLeaseDatabase(clock: Clock): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-duo-lease-fixture-"));
-  return AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    clock,
+export async function openDuoCeremonyLeaseDatabase(clock: Clock, profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture): Promise<AuthorityDatabase> {
+  const profile = await profileFixture();
+  const database = AuthorityDatabase.open(
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock,
   );
+  closeFixtures.push(async () => { database.close(); await profile.close(); });
+  return database;
 }
 
 
-export function fixtureDuoCeremonyGates(
+export async function fixtureDuoCeremonyGates(
   clock: Clock = systemClock,
   scheduler: MonotonicDeadlineScheduler = realScheduler,
-): DuoCeremonyGateFactory {
-  let real: DuoCeremonyGateFactory | undefined;
-  const lazy: DuoCeremonyGateFactory = {
-    openGate: (input) => {
-      real ??= duoCeremonyGatesOver(openDuoCeremonyLeaseDatabase(clock), clock, scheduler);
-      return real.openGate(input);
-    },
-  };
-  return Object.freeze(lazy);
+  profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture,
+): Promise<DuoCeremonyGateFactory> {
+  return duoCeremonyGatesOver(await openDuoCeremonyLeaseDatabase(clock, profileFixture), clock, scheduler);
 }
+
 
 export function duoCeremonyGatesOver(
   database: AuthorityDatabase,
   clock: Clock,
-  scheduler: MonotonicDeadlineScheduler,
-  options: Readonly<{ sessionAcquireMs?: number; graceMs?: number; pollIntervalMs?: number }> = {},
+  scheduler: MonotonicDeadlineScheduler = realScheduler,
+  options: Readonly<{ sessionAcquireMs?: number; graceMs?: number; pollIntervalMs?: number; credentialKey?: string }> = {},
 ): DuoCeremonyGateFactory {
   return createDuoCeremonyGateFactory({
     leases: database.authority.duoCeremonyLeases,
-    credentialKey: FIXTURE_DUO_CREDENTIAL_KEY,
+    credentialKey: options.credentialKey === undefined ? FIXTURE_DUO_CREDENTIAL_KEY : FingerprintSchema.parse(options.credentialKey),
     clock,
     scheduler,
     sessionAcquireMs: options.sessionAcquireMs ?? FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
@@ -70,22 +65,23 @@ export function duoCeremonyGatesOver(
 }
 
 /** One open gate for a recipe test that drives `defineVerifiedLoginRecipe` directly. */
-export function fixtureDuoCeremonyGate(
+export async function fixtureDuoCeremonyGate(
   system: BrowserSystemId,
   workerId: WorkerId = WorkerIdSchema.parse("person-lookup-worker-1"),
   clock: Clock = systemClock,
-): DuoCeremonyGateHandle {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-duo-recipe-fixture-"));
-  const path = join(root, "authority.sqlite");
-  const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
+): Promise<DuoCeremonyGateHandle> {
+  const database = await openDuoCeremonyLeaseDatabase(clock);
+  const path = syntheticDatabasePath(database);
   testWorkerPorts(database, clock, { path, descriptor: personLookupDescriptor, poolIndex: 1 });
   const slot = database.authority.workerSlots.list(personLookupDescriptor.id).find(candidate => candidate.poolIndex === 1);
   assert.equal(slot?.workerId, workerId, "recipe gate must use its actually admitted worker");
-  return duoCeremonyGatesOver(database, clock, realScheduler).openGate({
+  const gate = duoCeremonyGatesOver(database, clock, realScheduler).openGate({
     workerId,
     system,
     envelopeDeadlineMonotonicMs: clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
     cancelCeremony: () => undefined,
     signal: new AbortController().signal,
   });
+  closeFixtures.push(() => { gate.dispose(); });
+  return gate;
 }

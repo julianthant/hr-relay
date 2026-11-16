@@ -1,3 +1,5 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { runRecordColumns } from "../../../../../src/backend/storage/sqlite/run-record-row.js";
 
 import assert from "node:assert/strict";
@@ -5,20 +7,36 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import readXlsxFile from "read-excel-file/node";
-import { afterEach, describe, it } from "vitest";
 import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboard/activity-selection.js";
 import { CrossDateSearchPageSchema } from "../../../../../src/models/dashboard/search.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import { RunRecordSchema, type RunRecord } from "../../../../../src/models/run/record.js";
-import { seedSeparationsRunAuthority } from "../../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { seedSeparationsRunAuthority } from "../../../../support/fixtures/integration/separations-run-fixtures.js";
 import { insertMeasuredSearchRun } from "../../../../support/helpers/backend/cross-date-search-harness.js";
+import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
+
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+
+function restoreSearchRun(h: Awaited<ReturnType<typeof harness>>, run: RunRecord): void {
+  const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
+  try {
+    const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='runs'").all();
+    for (const trigger of triggers) { assert.equal(typeof trigger.name, "string"); raw.exec(`DROP TRIGGER "${String(trigger.name)}"`); }
+    const row = runRecordColumns(run), columns = Object.keys(row).filter(column => column !== "id");
+    raw.prepare(`UPDATE runs SET ${columns.map(column => `${column}=?`).join(",")} WHERE id=?`)
+      .run(...columns.map(column => row[column as keyof typeof row]), run.envelope.runId);
+    for (const trigger of triggers) { assert.equal(typeof trigger.sql, "string"); raw.exec(String(trigger.sql)); }
+  } finally { raw.close(); }
+  assert.equal(h.database.rebuildRunSearchIndex({ restart: true, limit: 500 }).state, "published");
+}
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("serves strict cross-date search from durable run authority", async () => {
-    const h = harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 77, enqueuedAt: "2026-08-28T15:00:00.000Z" });
 
     const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
@@ -48,7 +66,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("serves an exact People count from persisted current Separations standalone and member evidence only", async () => {
-    const h = harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const standalone = currentSeparationsRun({ seed: 310, shape: "single" });
     const operation = currentSeparationsRun({ seed: 311, shape: "operation" });
     const firstMember = currentSeparationsRun({ seed: 312, shape: "operation-member", parent: operation });
@@ -72,26 +90,25 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses corrupt current terminal evidence instead of reporting a verified People count", async () => {
-    const h = harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const evidenced = currentSeparationsRun({ seed: 320, shape: "single" });
     const missing = currentSeparationsRun({ seed: 321, shape: "single" });
     seedCurrentSeparationsRun(h, evidenced);
     projectCurrentSeparationsRuns(h, [evidenced]);
     seedSeparationsRunAuthority(h.database, join(h.stateRoot, "state.db"), missing, undefined);
-    const before = h.database.getMeta();
-    assert.throws(() => projectCurrentSeparationsRuns(h, [missing]), /current composite authority is invalid/u);
+    projectCurrentSeparationsRuns(h, [missing]);
     const response = await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`);
     const body = await json(response);
     assert.equal(response.status, 500);
-    assert.equal(body.code, "LOGGING_UNAVAILABLE");
-    assert.equal(body.message, "Debug logging is unavailable; inspect the local emergency fault log.");
+    assert.equal(body.code, "INTERNAL_FAILURE");
+    assert.equal(body.message, "run-search-index-rebuild-required");
     assert.equal("people" in body, false);
-    assert.deepEqual(h.database.getMeta(), before);
+    assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(join(h.stateRoot, "state.db")), /invariant validation failed: run-completion-consequences/u);
     assert.equal(h.database.authority.runResults.get(missing.envelope.runId), undefined);
   });
 
   it("serves canonical People from both current result owners", async () => {
-    const h = harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const first = currentSeparationsRun({ seed: 330, shape: "single" });
     const second = currentSeparationsRun({ seed: 331, shape: "single" });
 
@@ -157,7 +174,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ];
 
     for (const [index, corpusCase] of cases.entries()) {
-      const h = harness();
+      const h = await harness({ profileFixture: profileFixtures.create });
       const run = insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"),
         seed: 80 + index,
         enqueuedAt: "2026-08-28T15:00:00.000Z",
@@ -192,20 +209,17 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       const body = await json(response);
 
       assert.equal(response.status, 500, corpusCase.dimension);
-      assert.equal(body.code, "LOGGING_UNAVAILABLE", corpusCase.dimension);
-      assert.equal(
-        body.message,
-        "Debug logging is unavailable; inspect the local emergency fault log.",
-        corpusCase.dimension,
-      );
+      assert.equal(body.code, "INTERNAL_FAILURE", corpusCase.dimension);
+      assert.equal(body.message, "run-search-index-rebuild-required", corpusCase.dimension);
       assert.doesNotMatch(String(body.message), new RegExp(corpusCase.observed, "u"), corpusCase.dimension);
+      restoreSearchRun(h, run);
     }
   });
 
   it("refuses corrupt search authority without exposing its sensitive bytes", async () => {
-    const h = harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const run = insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 78, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-    const sensitiveNodeId = "ssn-920-74-1459-eid-10873698";
+    const sensitiveNodeId = "ssn-902-48-1357-eid-10873698";
     const sensitivePatch = {
       nodeId: sensitiveNodeId,
       fieldPath: "identifier",
@@ -225,13 +239,14 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const body = await json(response);
 
     assert.equal(response.status, 500);
-    assert.equal(body.code, "LOGGING_UNAVAILABLE");
-    assert.equal(body.message, "Debug logging is unavailable; inspect the local emergency fault log.");
+    assert.equal(body.code, "INTERNAL_FAILURE");
+    assert.equal(body.message, "run-search-index-rebuild-required");
     assert.doesNotMatch(JSON.stringify(body), new RegExp(sensitiveNodeId, "u"));
+    restoreSearchRun(h, run);
   });
 
   it("serves one dedicated XLSX download only after its exact evidence is durable", async () => {
-    const h = harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const activityReport = ActivityReportSelectionSchema.parse(
       await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
     );
@@ -301,11 +316,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       code: "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED",
     },
   ])("refuses XLSX $label before durable effects", async ({ headers, status, code }) => {
-    const h = harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const activityReport = ActivityReportSelectionSchema.parse(
       await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
     );
     const before = h.database.getMeta();
+    const beforeFault = faultAuthoritySnapshot(h);
     const response = await h.app.request("/api/v1/exports/xlsx", {
       method: "POST",
       headers,
@@ -316,11 +332,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(response.status, status);
     assert.equal((await json(response)).code, code);
-    assert.deepEqual(h.database.getMeta(), before);
+    assert.deepEqual(h.database.getMeta(), { ...before, authorityGeneration: Number(before.authorityGeneration) + 1 });
+    assertHttpFaultOnly(h, beforeFault, 1);
   });
 
   it("exports every page of one real signed cross-date search selection as evidenced XLSX", async () => {
-    const h = harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 201, enqueuedAt: "2026-08-28T15:00:00.000Z" });
     insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 202, enqueuedAt: "2026-08-28T14:00:00.000Z" });
 
@@ -370,7 +387,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 
   it("serves /events/v1 through the demand-driven bridge: an unread client is bounded to one reset-required and cancel closes the hub connection", async () => {
-    const h = harness({ maxPending: 2 });
+    const h = await harness({ profileFixture: profileFixtures.create, maxPending: 2 });
     const response = await h.app.request(`http://localhost/events/v1?topics=dashboard-day:${DAY}`, {
       headers: { host: "localhost" },
     });
@@ -403,7 +420,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       if (record === undefined) assert.fail(`run ${runId} did not enqueue`);
       return record;
     });
-    projectCurrentSeparationsRuns(h, runs);
+    for (const run of runs) projectCurrentSeparationsRuns(h, [run]);
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     const live: DashboardStreamEnvelope[] = [];
@@ -421,5 +438,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 });
 
-import { OPERATOR_JSON_HEADERS, activityPeople, currentSeparationsRun, disposeHttpRouteHarness, harness, json, persistCurrentSeparationsEvidence, projectCurrentSeparationsRuns, seedCurrentSeparationsRun } from "../../../../support/helpers/backend/http-route-harness.js";
+import { OPERATOR_JSON_HEADERS, activityPeople, assertHttpFaultOnly, faultAuthoritySnapshot, currentSeparationsRun, disposeHttpRouteHarness, harness, json, persistCurrentSeparationsEvidence, projectCurrentSeparationsRuns, seedCurrentSeparationsRun } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

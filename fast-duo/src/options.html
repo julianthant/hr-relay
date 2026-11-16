@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Duo setup</title><link rel="stylesheet" href="styles.css"><script type="module" src="options.js"></script></head>
+<body>
+<div class="app">
+<header class="topbar"><a class="brand" href="options.html"><img class="brand-mark" src="icons/autopilot.svg" alt="" width="42" height="42"><span>Fast Duo<small>Relay sign-in setup</small></span></a><nav class="topbar-actions" aria-label="Setup tab"><button id="returnRelay" type="button" class="secondary compact" disabled>Return to Relay</button><button id="closeSetup" type="button" class="secondary compact">Close window</button></nav></header>
+<main>
+<div id="message" role="status" class="notice" hidden></div>
+<section id="accountsPage">
+<div class="page-heading"><div><h1>Duo setup for Relay</h1><p>Add and verify Security key and Touch ID.</p></div></div>
+<div class="workspace">
+<section aria-labelledby="accountListHeading"><div class="section-heading"><h2 id="accountListHeading">Relay sign-in methods</h2><span id="accountCount" class="muted"></span></div><div id="accountList" class="account-list" aria-busy="true"><p class="empty">Loading…</p></div></section>
+<aside class="setup-panel" aria-labelledby="editorTitle">
+<div id="editor">
+<h2 id="editorTitle" tabindex="-1">Set up Security key</h2>
+<p id="instruction" class="relay-instruction"></p>
+<button id="primaryAction" type="button" class="primary full" disabled>Set up Security key</button>
+<button id="cancelCapture" type="button" class="secondary full" hidden>Cancel setup</button>
+</div></aside>
+</div>
+</section>
+</main></div></body></html>

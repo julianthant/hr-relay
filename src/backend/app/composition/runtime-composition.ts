@@ -1,12 +1,14 @@
 
 import { z } from "zod";
+import { DashboardStopSchema } from "../../../models/runtime/dashboard-control.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
-import { DRY_RUN_SCENARIO_USAGE } from "../../runs/start/dry-run-scenario-runner.js";
 import { TEST_DATA_USAGE } from "../../runs/provenance/test-data-usage.js";
 import type { WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
 
 export interface RunningDashboard {
+  readonly shutdownRequested?: Promise<void>;
   readonly port: number;
+  readonly failure?: Promise<never>;
   stop(): Promise<void>;
 }
 
@@ -30,15 +32,13 @@ export interface RebuildRuntimeStart {
   readonly ocr?: OcrComposer;
   /** Explicit seam override for tests; production registers via `registerStorageComposer`. */
   readonly storage?: StorageComposer;
-  /** Explicit seam override for tests; production registers via `registerDryRunScenarioComposer`. */
-  readonly dryRunScenario?: DryRunScenarioComposer;
   /** Explicit seam override for tests; production registers via `registerTestDataComposer`. */
   readonly testData?: TestDataComposer;
 
   /** Explicit seam override for tests; production subscribes to the real process signals. */
   readonly signals?: RuntimeShutdownSignals;
   /** Publish readiness only after the dashboard owns shutdown. */
-  readonly dashboardReady?: () => void;
+  readonly dashboardReady?: () => void | Promise<void>;
 }
 
 export const DashboardFrontendSchema = z.enum(["vite-dev", "built-bundle"]);
@@ -66,11 +66,6 @@ type StorageComposer = (
   isolation: RuntimeIsolation,
   args: readonly string[],
 ) => Promise<{ readonly output: string; readonly exitCode: number }>;
-type DryRunScenarioComposer = (
-  isolation: RuntimeIsolation,
-  args: readonly string[],
-) => Promise<{ readonly output: string; readonly exitCode: 0 | 1 | 2 }>;
-
 type TestDataComposer = (
   isolation: RuntimeIsolation,
   args: readonly string[],
@@ -121,15 +116,6 @@ export function registerStorageComposer(composer: StorageComposer): void {
   registeredStorageComposer = composer;
 }
 
-let registeredDryRunScenarioComposer: DryRunScenarioComposer | undefined;
-
-export function registerDryRunScenarioComposer(composer: DryRunScenarioComposer): void {
-  if (registeredDryRunScenarioComposer !== undefined) {
-    throw new Error("a dry-run scenario composer is already registered; two compositions cannot own one runtime");
-  }
-  registeredDryRunScenarioComposer = composer;
-}
-
 let registeredTestDataComposer: TestDataComposer | undefined;
 
 export function registerTestDataComposer(composer: TestDataComposer): void {
@@ -153,17 +139,11 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     // Ref execution-and-sessions names no CLI subcommand for its worker (§3 names only the
     // `runWorker` loop), so `worker` is the recorded choice here.
     "  worker <workflow-id> --pool-index <positive-int> [--drain]  run one indexed browser worker (ref execution-and-sessions §3/§11)",
-    `  ${DRY_RUN_SCENARIO_USAGE}  execute one manifest case through the real dry-run runtime`,
     "  explain run <traceId|runId> [--json]  explain one run from authority (ref operator-trust §2.5)",
     "  explain diagnostics [--after <cursor>] [--through <cursor>] [--limit <1..1000>] [--run <runId>] [--json]  read one persisted debug page",
     "  explain diagnostics --boot [--json]  inspect the stopped boot fault spool without opening the database",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page",
-    "  storage retire-orphan-verification --acquisition <uuid> [--plan] [--json]  offline retirement of one abandoned sign-in reservation",
     "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces; exit 0 = authority healthy + reconciliation healthy + protected authority readable; backup reported, not gated)",
-    "  storage backup [--json]  write ONE verified authority backup + manifest — the only backup writer",
-    "  storage restore --from <manifest.json> [--json]  quarantine the suspect authority and swap in ONE named verified backup",
-    "  storage recover-admission --pid <owner-pid> | --empty  offline quarantine of a verified abandoned owner, or of an empty installation mutex; preserves its owner evidence",
-    "  storage recover-chatgpt-lock  offline removal of a ChatGPT credential lock whose owner process is gone; a live owner is refused",
     ...TEST_DATA_USAGE.map((line) => `  ${line}`),
   ].join("\n");
 }
@@ -178,11 +158,19 @@ function processShutdownSignals(): RuntimeShutdownSignals {
       const onTerminate = (): void => {
         handler("SIGTERM");
       };
+      const onMessage = (message: unknown): void => {
+        if (DashboardStopSchema.safeParse(message).success) onTerminate();
+      };
       process.on("SIGINT", onInterrupt);
       process.on("SIGTERM", onTerminate);
+      process.on("message", onMessage);
+      process.on("disconnect", onTerminate);
+      if (process.send !== undefined && !process.connected) onTerminate();
       return (): void => {
         process.removeListener("SIGINT", onInterrupt);
         process.removeListener("SIGTERM", onTerminate);
+        process.removeListener("message", onMessage);
+        process.removeListener("disconnect", onTerminate);
       };
     },
   };
@@ -192,25 +180,26 @@ function processShutdownSignals(): RuntimeShutdownSignals {
 async function ownDashboardUntilShutdown(
   running: RunningDashboard,
   signals: RuntimeShutdownSignals,
-  ready?: () => void,
+  ready?: () => void | Promise<void>,
 ): Promise<void> {
   let requestShutdown: (() => void) | undefined;
   const shutdownRequested = new Promise<void>((resolve) => {
     requestShutdown = resolve;
   });
-  const dispose = signals.subscribe(() => {
-    if (requestShutdown === undefined) {
-      throw new Error("a shutdown signal arrived before the dashboard registered its handler");
-    }
-    // Resolving twice is a no-op, so the second signal cannot start a second stop.
-    requestShutdown();
-  });
+  let dispose: (() => void) | undefined;
+  const failures: unknown[] = [];
   try {
-    ready?.();
-    await shutdownRequested;
-  } finally {
-    try { await running.stop(); } finally { dispose(); }
-  }
+    dispose = signals.subscribe(() => {
+      if (requestShutdown === undefined) throw new Error("a shutdown signal arrived before the dashboard registered its handler");
+      requestShutdown();
+    });
+    await ready?.();
+    await Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
+  } catch (error) { failures.push(error); }
+  try { await running.stop(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
+  try { dispose?.(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "dashboard lifetime and closure failed", { cause: failures[0] });
 }
 
 export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<void> {
@@ -247,7 +236,11 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
     const running = await compose(input.isolation, options);
     write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`);
     await ownDashboardUntilShutdown(running, input.signals ?? processShutdownSignals(), input.dashboardReady
-      ?? (() => { process.send?.({ type: "hrauto-dashboard-ready" }); }));
+      ?? (() => new Promise<void>((resolve, reject) => {
+        const send = process.send?.bind(process);
+        if (send === undefined || !process.connected) { resolve(); return; }
+        send({ type: "hrauto-dashboard-ready" }, (error: Error | null) => { if (error) reject(error); else resolve(); });
+      })));
     return;
   }
   if (command === "explain") {
@@ -313,24 +306,6 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
       closure: finished.closure,
       outcomes: finished.outcomes.map(({ state }) => state),
     }));
-    return;
-  }
-  if (command === "dry-run-scenario") {
-    const commandArgs = args.slice(1);
-    if (commandArgs.length === 1 && (commandArgs[0] === "help"
-      || commandArgs[0] === "--help" || commandArgs[0] === "-h")) {
-      write(`usage: ${DRY_RUN_SCENARIO_USAGE}`);
-      return;
-    }
-    const compose = input.dryRunScenario ?? registeredDryRunScenarioComposer;
-    if (compose === undefined) {
-      throw new Error(
-        "the dry-run-scenario command needs its composition seam; start it through src/cli.ts, which registers composeDryRunScenarioCommand",
-      );
-    }
-    const outcome = await compose(input.isolation, commandArgs);
-    write(outcome.output);
-    if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
     return;
   }
   throw new Error(`unknown rebuild command: ${command}`);

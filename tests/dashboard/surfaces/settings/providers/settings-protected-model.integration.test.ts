@@ -14,14 +14,14 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../.
 import { FixtureCommandBinding } from "../../../../support/helpers/dashboard/command-binding.js";
 import { syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
 
-const cleanups: (() => void)[] = [];
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   vi.restoreAllMocks();
 });
 
 async function mountRecovery() {
-  const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+  const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
   const sent: string[] = [];
   let loseReply = true;
   let available = true;
@@ -130,7 +130,7 @@ it("preserves a schema-admitted literal marker credential through exact-byte rec
 
 it("keeps the unknown original ID and draft while authority is absent, then replays exact bytes", async () => {
   const h = await mountRecovery();
-  await act(async () => h.controller().update("timekeeperName", "Retained operator"));
+  await act(async () => h.controller().update("ucpathUserId", "Retained operator"));
   await h.action(() => h.controller().submit());
   assert.equal(h.controller().save.state, "unconfirmed");
   const draft = structuredClone(h.controller().draft);
@@ -138,7 +138,7 @@ it("keeps the unknown original ID and draft while authority is absent, then repl
   const commandId = h.binding().executor.retainedAttempts()[0].request.commandId;
   h.setAvailable(false); await h.render();
   await h.action(() => h.controller().retry());
-  await act(async () => h.controller().update("timekeeperName", "Divergent operator"));
+  await act(async () => h.controller().update("ucpathUserId", "Divergent operator"));
   await h.action(() => h.controller().submit());
   assert.equal(h.sent.length, 1); assert.equal(h.controller().save.state, "unconfirmed");
   assert.equal(h.controller().locked, true); assert.deepEqual(h.controller().draft, draft);
@@ -147,4 +147,20 @@ it("keeps the unknown original ID and draft while authority is absent, then repl
   await h.action(() => h.controller().retry());
   assert.equal(h.sent.length, 2); assert.equal(h.sent[1], firstBody);
   assert.equal(h.controller().save.state, "applied"); assert.equal(h.controller().dirtyCount, 0);
+});
+
+it("writes a dialog-held credential only on explicit submit, never on the autosave timer or after reset", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }); cleanups.push(() => { vi.useRealTimers(); });
+  const h = await mountRecovery();
+  await act(async () => { h.controller().setExplicitSave(true); });
+  await act(async () => h.controller().update("ucpathUserId", "Held operator"));
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+  assert.equal(h.sent.length, 0, "no dispatch past the autosave timer while the dialog holds the draft");
+  await act(async () => h.controller().reset("ucpathUserId"));
+  await act(async () => { h.controller().setExplicitSave(false); await vi.advanceTimersByTimeAsync(5000); });
+  assert.equal(h.sent.length, 0, "no dispatch after Cancel");
+  await act(async () => { h.controller().setExplicitSave(true); });
+  await act(async () => h.controller().update("ucpathUserId", "Confirmed operator"));
+  await h.action(() => h.controller().submit());
+  assert.equal(h.sent.length, 1, "one dispatch for the confirmed Save");
 });

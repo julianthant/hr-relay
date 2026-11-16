@@ -3,7 +3,7 @@ import { parse as parseCsvSync } from "csv-parse/sync";
 import { Hono } from "hono";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
-import { mkdtempSync,rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import readXlsxFile from "read-excel-file/node";
@@ -22,11 +22,9 @@ import { registerActivityRoutes } from "../../../../../src/backend/transports/ht
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import type { ShellRouteDeps } from "../../../../../src/backend/transports/http/routes/shell-types.js";
 import { registerShellRoutes } from "../../../../../src/backend/transports/http/routes/shell.js";
-import { RunLogsStreamHub } from "../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import { createActivityQueries } from "../../../../../src/dashboard/client/queries/activity-queries.js";
 import { verifySelectionDownload } from "../../../../../src/dashboard/client/queries/selection-download.js";
 import { createDashboardTransport } from "../../../../../src/dashboard/client/transport.js";
-import { activityPresetRange,type ActivityRangePreset } from "../../../../../src/dashboard/surfaces/activity/activity-model.js";
 import { ActivityPopulationError } from "../../../../../src/backend/runs/queries/activity-population.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema } from "../../../../../src/models/dashboard/activity-population.js";
@@ -38,10 +36,11 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { sha256Hex } from "../../../../../src/rules/validation/sha256.js";
 import { CONFIG_SNAPSHOT } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { runRecordOf } from "../../../../support/helpers/backend/dashboard-harness.js";
+import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 
-const cleanup:(()=>void)[]=[];
-afterEach(()=>{for(const dispose of cleanup.splice(0))dispose();});
+const cleanup:(()=>void | Promise<void>)[]=[];
+afterEach(async ()=>{for(const dispose of cleanup.splice(0))await dispose();});
 const PRIVATE_ACTIVITY_LABEL = "Private Ingress Subject 10000000";
 const RANGE_AWARE_TODAY = "2026-09-26";
 const RANGE_AWARE_ACTIVITY_DAYS = [
@@ -55,11 +54,13 @@ const RANGE_AWARE_ACTIVITY_DAYS = [
   "2026-09-24",
   "2026-09-26",
 ] as const;
-const RANGE_AWARE_PRESETS: readonly ActivityRangePreset[] = [
-  "this-week", "today", "last-month", "last-3-months", "last-6-months", "last-year",
-];
 const RANGE_AWARE_SELECTIONS = Object.freeze([
-  ...RANGE_AWARE_PRESETS.map((preset) => ({ name: preset, ...activityPresetRange(preset, RANGE_AWARE_TODAY) })),
+  { name: "this-week", from: "2026-09-20", to: RANGE_AWARE_TODAY },
+  { name: "today", from: RANGE_AWARE_TODAY, to: RANGE_AWARE_TODAY },
+  { name: "last-month", from: "2026-08-27", to: RANGE_AWARE_TODAY },
+  { name: "last-3-months", from: "2026-06-27", to: RANGE_AWARE_TODAY },
+  { name: "last-6-months", from: "2026-03-27", to: RANGE_AWARE_TODAY },
+  { name: "last-year", from: "2025-09-27", to: RANGE_AWARE_TODAY },
   { name: "custom", from: "2026-09-22", to: "2026-09-24" },
 ]);
 
@@ -101,12 +102,13 @@ function shiftActivityVolumeSeries(report:ActivityReportWire):ActivityReportWire
   return {...report,volume:{...volume,buckets:volume.buckets.map((bucket,index)=>({...bucket,
     runs:bucket.runs+(index===source?-1:index===destination?1:0)}))}};
 }
-function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) {
-  const root=mkdtempSync(join(tmpdir(),"activity-selection-proof-")),path=join(root,"state.db");
+async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) {
+  const profile=await createBoundProfileFixture();
+  const scratch=mkdtempSync(join(tmpdir(),"activity-selection-proof-"));
   const clock=manualClock(new Date("2026-09-21T17:00:00Z"));
-  const database=AuthorityDatabase.open({path,busyTimeoutMs:500,migrationOwner:"activity-selection-proof"},clock);
+  const database=AuthorityDatabase.open({path:profile.path,busyTimeoutMs:500,migrationOwner:"activity-selection-proof"},clock);
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  cleanup.push(()=>{database.close();rmSync(root,{recursive:true,force:true});});
+  cleanup.push(async ()=>{database.close();await profile.close();rmSync(scratch,{recursive:true,force:true});});
   const activityDays: readonly string[] = options.rangeAware ? RANGE_AWARE_ACTIVITY_DAYS : ["2026-09-20", "2026-09-20", "2026-09-20"];
   for (const [index, day] of activityDays.entries()) {
     const seed = 3701 + index;
@@ -131,26 +133,18 @@ function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) 
     :composedActivity;
   const search=createCrossDateSearchService({clock,descriptors,sourceIdentity,cursorSigningKey:new Uint8Array(32).fill(42),
     authority:{readSnapshot:read=>database.withAuthorityReadSnapshot(()=>read({authorityGeneration:database.getMeta().authorityGeneration,searchRuns:input=>database.authority.runs.search(input)}))}});
-  const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts"))});
+  const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(scratch, ".tracker"), join(scratch, ".tracker/data/artifacts"))});
   const xlsx=createOperatorXlsxExportService({clock,ids:{uuid:randomUUID},sourceIdentity,artifacts,authority:database.authority.operatorXlsxExports,
     search,activityReport:(from,to,token)=>activity.readSelected(from,to,token)});
   const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));
   app.use("*",(c,next)=>{c.set("requestActorId",ActorIdSchema.parse("synthetic-operator"));return next();});
   registerActivityRoutes(app,{activity,activityPopulation});
-  const unavailable = (): never => { throw new Error("run-log-subscription-unavailable-in-activity-fixture"); };
-  const runLogsHub = new RunLogsStreamHub({
-    projection: { onChange: () => () => {}, cursor: unavailable, generation: unavailable,
-      buildDashboardDayWire: unavailable },
-    readRun: unavailable,
-    store: { tail: unavailable, snapshot: unavailable },
-  });
-  cleanup.push(() => runLogsHub.close());
-  registerShellRoutes(app,{bootstrap:{} as ShellRouteDeps["bootstrap"],search,xlsxExports:xlsx,hub:{} as ShellRouteDeps["hub"],runLogsHub});
+  registerShellRoutes(app,{bootstrap:{} as ShellRouteDeps["bootstrap"],search,xlsxExports:xlsx,hub:{} as ShellRouteDeps["hub"]});
   return {database,clock,activity,activityPopulation,search,xlsx,artifacts,sourceIdentity,app,activityDays,setShiftVolumeSeries:(value:boolean)=>{shiftVolumeSeries=value;}};
 }
 
 it("serves and exports the same reviewed Activity summary snapshot and refuses substitution after mutation",async()=>{
-  const f=fixture();await f.artifacts.ready;
+  const f=await fixture();await f.artifacts.ready;
   const report=ActivityReportSelectionSchema.parse(await (await f.app.request("http://localhost/api/v1/reports/activity?from=2026-09-20&to=2026-09-20")).json());
   assert.equal(report.totalRuns,3);assert.equal(report.inFlightRuns,3);
   const csv=await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({from:report.from,to:report.to,snapshot:report.snapshot.token})}`);
@@ -167,7 +161,7 @@ it("serves and exports the same reviewed Activity summary snapshot and refuses s
 });
 
 it("binds every preset and Custom range to one selected report in decoded CSV and XLSX bytes", async () => {
-  const f = fixture({ rangeAware: true });
+  const f = await fixture({ rangeAware: true });
   await f.artifacts.ready;
   for (const selection of RANGE_AWARE_SELECTIONS) {
     const expectedRuns = f.activityDays.filter((day) => day >= selection.from && day <= selection.to).length;
@@ -252,7 +246,7 @@ it("binds every preset and Custom range to one selected report in decoded CSV an
 });
 
 it("binds Activity volume series into the snapshot digest for CSV and XLSX downloads",async()=>{
-  const f=fixture({dynamicVolumeSeries:true});await f.artifacts.ready;
+  const f=await fixture({dynamicVolumeSeries:true});await f.artifacts.ready;
   const report=ActivityReportSelectionSchema.parse(await (await f.app.request("http://localhost/api/v1/reports/activity?from=2026-09-20&to=2026-09-20")).json());
   const generation=f.database.getMeta().authorityGeneration;
   assert.equal(report.volume.coveredRuns,report.totalRuns);
@@ -283,7 +277,7 @@ it("binds Activity volume series into the snapshot digest for CSV and XLSX downl
 });
 
 it("exports the complete ordered collected search values with coverage and exact snapshot ownership",async()=>{
-  const f=fixture();await f.artifacts.ready;
+  const f=await fixture();await f.artifacts.ready;
   const query={q:"",scope:"all" as const,facets:{from:"2026-09-20",to:"2026-09-20"},limit:1};
   const page=f.search.search(query),selection={kind:"search" as const,query,snapshot:{...page.snapshot,generatedAt:page.generatedAt}};
   assert.equal(page.results.length,1);assert.equal(page.totalMatches,3);
@@ -309,7 +303,7 @@ it("exports the complete ordered collected search values with coverage and exact
 });
 
 it("rejects report token tampering, mismatched range, foreign signer and expiry without returning a replacement report",async()=>{
-  const f=fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20");
+  const f=await fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20");
   assert.throws(()=>f.activity.readSelected(report.from,"2026-09-21",report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH" });
   assert.throws(()=>f.activity.readSelected(report.from,report.to,`${report.snapshot.token}x`),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
   const { activity: restarted }=composeActivity({database:f.database,clock:f.clock,descriptors:{resolve:()=>undefined},ledger:createTransactionHistory(f.database.authority)});
@@ -325,13 +319,31 @@ it("rejects report token tampering, mismatched range, foreign signer and expiry 
 });
 
 it("the client checks range and download filename, MIME, length, digest and selected-token identity before delivering bytes",async()=>{
-  const f=fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20"),controller=new AbortController();
+  const f=await fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20"),controller=new AbortController();
   let observedSignal:AbortSignal|undefined;
   const client=createActivityQueries(createDashboardTransport({baseUrl:"http://localhost",fetchImpl:(url,init)=>{
     observedSignal=init?.signal??undefined;return Promise.resolve(f.app.request(url,init));
   }}));
-  const read=await client.activityReport(report.from,report.to,controller.signal);assert.equal(observedSignal,controller.signal);
+  const read=await client.activityReport(report.from,report.to,controller.signal);assert.ok(observedSignal);assert.equal(observedSignal.aborted,false);
   const valid=await client.exportActivityCsv(read,controller.signal);assert.ok(valid.bytes.byteLength>0);
+  for (const operation of ["report", "download"] as const) {
+    const cancelled = new AbortController();
+    const reason = new Error("caller cancelled");
+    let transportSignal: AbortSignal | undefined;
+    const pendingClient = createActivityQueries(createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: (_url, init) => new Promise((_resolve, reject) => {
+      transportSignal = init?.signal ?? undefined;
+      assert.ok(transportSignal);
+      transportSignal.addEventListener("abort", () => reject(reason), { once: true });
+    }) }));
+    const pending = operation === "report" ? pendingClient.activityReport(report.from, report.to, cancelled.signal) : pendingClient.exportActivityCsv(read, cancelled.signal);
+    assert.ok(transportSignal);
+    assert.equal(transportSignal.aborted, false);
+    const rejected = assert.rejects(pending, /caller cancelled/u);
+    cancelled.abort(reason);
+    assert.equal(transportSignal.aborted, true);
+    assert.equal(transportSignal.reason, cancelled.signal.reason);
+    await rejected;
+  }
   const response=await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({from:read.from,to:read.to,snapshot:read.snapshot.token})}`);
   const bytes=await response.arrayBuffer(),expected={path:"CSV",filename:valid.filename,mediaType:valid.mediaType,token:read.snapshot.token};
   for(const header of ["content-type","content-disposition","content-length","etag","x-selection-digest"]) {
@@ -346,7 +358,7 @@ it("the client checks range and download filename, MIME, length, digest and sele
 
 
 it("retains complete unregistered open results and distinctive absence reasons in decoded JSON, CSV and XLSX", async () => {
-  const f = fixture();
+  const f = await fixture();
   const query = { q: "", scope: "all" as const, facets: { from: "2026-09-20", to: "2026-09-20" }, limit: 50 };
   const page = f.search.search(query);
   const results = page.results.map(result => CrossDateSearchResultSchema.parse({
@@ -401,7 +413,7 @@ it("retains complete unregistered open results and distinctive absence reasons i
 });
 
 it("serves the complete AP1 population and reuses its nested AS1 report for XLSX", async () => {
-  const f = fixture(); await f.artifacts.ready;
+  const f = await fixture(); await f.artifacts.ready;
   const range = { from: "2026-09-20", to: "2026-09-20" };
   const selected = ActivityPopulationSelectionSchema.parse(await (await f.app.request(`http://localhost/api/v1/reports/activity/population?${new URLSearchParams(range)}`)).json());
   assert.equal(selected.population.length, 3);
@@ -425,7 +437,7 @@ it("serves the complete AP1 population and reuses its nested AS1 report for XLSX
 });
 
 it("keeps population failures named and unexpected read diagnostics out of the response", async () => {
-  const f = fixture();
+  const f = await fixture();
   for (const [error, status, code] of [
     [new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH"), 500, "ACTIVITY_POPULATION_SOURCE_MISMATCH"],
     [new Error("private-read-diagnostic"), 500, "DASHBOARD_READ_FAILED"],

@@ -1,16 +1,27 @@
-import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
+import { ERROR_CATALOG,createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
+import { CredentialMaintenanceHold } from "../../../storage/configuration/canonical-credential-store.js";
+import { PreflightAdmissionRefusal, PreflightObservationChangedError } from "../../../../rules/preflight/preflight-admission.js";
+import { preflightRunnerTimeout } from "../../../../models/preflight/preflight.js";
+import { AssistantAuthorizationError } from "../../../assistant/authorization.js";
+import { OcrReviewRefusedError } from "../../../processing/ocr/review-authority.js";
+import { ProfileRuntimeStartFailedError,ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
+import { OcrSourceRefusedError } from "../../../runs/commands/ocr-source-service.js";
+import { StartupCrashRecoveryRefusedError } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ActivityPopulationError } from "../../../runs/queries/activity-population.js";
 import { ActivitySnapshotError } from "../../../runs/queries/activity-selection.js";
-import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
 import { ProtectedSubjectDisplayRefusedError } from "../../../runs/start/protected-input.js";
-import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
+import { CommandBrowserClosureError,CommandBrowserError } from "../../../runtime/browser/command-browser.js";
+import { ProfileBrowserRootRefusalError } from "../../../storage/admission/admission-identity.js";
+import { browserLoginFailure } from "../../../systems/browser-shared/login-contract.js";
+import { SharePointDownloadError } from "../../../systems/sharepoint/driver/interpreter.js";
+import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.js";
 
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
-import { LogIdentityRefusedError, DashboardReadFailedError, DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, ProjectionDegradedError, RequestIdentityRefusedError, SectionUnavailableError, TargetNotFoundError } from "../../../runs/commands/refusals.js";
-import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
+import { DashboardReadFailedError,DiagnosticBundleBytesMissingError,DiagnosticBundleCorruptError,LogDisplayRefusedError,LogIdentityRefusedError,ProjectionDegradedError,RequestIdentityRefusedError,SectionUnavailableError,TargetNotFoundError } from "../../../runs/commands/refusals.js";
 import { errorText } from "../../../runs/lifecycle/support.js";
+import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
 
 export type WireError = z.infer<typeof WireErrorSchema>;
 
@@ -22,15 +33,33 @@ export function wireError(code: string, message: string, retryable: boolean): Wi
 export function failureStatus(
   error: unknown,
 ): { status: 400 | 403 | 404 | 409 | 500; body: Record<string, unknown> } {
+  if (error instanceof CredentialMaintenanceHold) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  if (error instanceof OcrSourceRefusedError || error instanceof OcrReviewRefusedError) return { status: 409,
+    body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  if (error instanceof StartupCrashRecoveryRefusedError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  if (error instanceof AssistantAuthorizationError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof z.ZodError) {
     return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
   }
   const message = errorText(error);
+  if (error instanceof CommandBrowserError || error instanceof CommandBrowserClosureError) return {
+    status: error.code === "COMMAND_BROWSER_CLOSURE_UNPROVED" ? 500 : 409,
+    body: wireError(error.code, ERROR_CATALOG[error.code].text, false),
+  };
+  if (error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  if (error instanceof ProfileRuntimeStartFailedError) return { status: 500, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof DashboardReadFailedError) return { status: 500, body: wireError("DASHBOARD_READ_FAILED", ERROR_CATALOG.DASHBOARD_READ_FAILED.text, false) };
   if (error instanceof ActivitySnapshotError) return { status: 409, body: wireError(error.code, message, false) };
   if (error instanceof ActivityPopulationError) return { status: error.code === "ACTIVITY_POPULATION_RANGE_INVALID" || error.code === "ACTIVITY_POPULATION_BROWSE_INVALID" ? 400 : error.code === "ACTIVITY_POPULATION_SOURCE_MISMATCH" ? 500 : 409, body: wireError(error.code, message, false) };
-  if (error instanceof WorkbookLibraryError) return { status: error.code === "WORKBOOK_NOT_FOUND" ? 404 : error.code === "WORKBOOK_INVALID" ? 400 : error.code === "WORKBOOK_VERSION_CONFLICT" || error.code === "WORKBOOK_INTAKE_SOURCE_CONFLICT" ? 409 : 500, body: wireError(error.code, message, false) };
+  if (error instanceof WorkbookLibraryError) return { status: error.code === "WORKBOOK_NOT_FOUND" || error.code === "WORKBOOK_REVISION_UNAVAILABLE" ? 404 : error.code === "WORKBOOK_INVALID" ? 400 : error.code === "WORKBOOK_OPERATION_CONFLICT" || error.code === "WORKBOOK_VERSION_CONFLICT" || error.code === "WORKBOOK_VERSION_IN_USE" || error.code === "WORKBOOK_TYPE_IN_USE" || error.code === "WORKBOOK_LIBRARY_IN_USE" || error.code === "WORKBOOK_INTAKE_SOURCE_CONFLICT" || error.code === "WORKBOOK_METADATA_UNSUPPORTED" || error.code === "WORKBOOK_SYNC_LINK_REQUIRED" || error.code === "WORKBOOK_SYNC_CONTEXT_CHANGED" || error.code === "WORKBOOK_SYNC_IMPORT_FAILED" || error.code === "WORKBOOK_SYNC_LAYOUT_CHANGED" ? 409 : 500, body: wireError(error.code, message, false) };
+  if (error instanceof SharePointDownloadError) return { status: error.code === "SHAREPOINT_LINK_UNSUPPORTED" ? 400 : 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  const loginFailure = browserLoginFailure(error);
+  if (loginFailure?.system === "sharepoint") return { status: 409, body: wireError(loginFailure.code, ERROR_CATALOG[loginFailure.code].text, false) };
   if (error instanceof ProtectedSubjectDisplayRefusedError) return { status: 409, body: wireError(error.code, message, false) };
+  const timeout = preflightRunnerTimeout(error);
+  if (timeout !== undefined) {
+    return { status: 409, body: wireError("PREFLIGHT_TIMEOUT", `${ERROR_CATALOG.PREFLIGHT_TIMEOUT.text} (${timeout.check})`, false) };
+  }
   if (error instanceof PreflightAdmissionRefusal) return { status: 409, body: wireError(`PREFLIGHT_${error.reason.toUpperCase().replaceAll("-", "_")}`, message, false) };
   if (error instanceof TargetNotFoundError) {
     return { status: 404, body: wireError("TARGET_NOT_FOUND", message, false) };
@@ -43,7 +72,7 @@ export function failureStatus(
 
     return { status: 400, body: wireError("START_STEP_OMISSION_REFUSED", message, false) };
   }
-  if (error instanceof LogIdentityRefusedError) {
+  if (error instanceof LogIdentityRefusedError || error instanceof LogDisplayRefusedError) {
     return { status: 409, body: wireError(error.code,
       formatErrorCatalogFailure(createErrorCatalogFailure(error.code, {})).text, false) };
   }
@@ -61,6 +90,12 @@ export function failureStatus(
   }
   if (error instanceof DiagnosticBundleCorruptError) {
     return { status: 500, body: wireError("DIAGNOSTIC_BUNDLE_CORRUPT", message, false) };
+  }
+  if (error instanceof AggregateError) {
+    const changed = error.errors.find((failure) => failure instanceof PreflightObservationChangedError);
+    if (changed instanceof PreflightObservationChangedError) {
+      return { status: 409, body: wireError(`PREFLIGHT_${changed.reason.toUpperCase().replaceAll("-", "_")}`, errorText(changed), false) };
+    }
   }
   return { status: 500, body: wireError("INTERNAL_FAILURE", message, false) };
 }

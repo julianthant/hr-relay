@@ -1,19 +1,25 @@
+import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
+import { unusedWorkerPool } from "../backend/unused-worker-pool.js";
+import { PREFERENCES_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
+import { testProcessImport } from "../../compiled-process.js";
+import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
+import { testAdmittedWorker } from '../../fixtures/run-lifecycle-fixtures.js';
 import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { RunIdSchema, FailureIdSchema } from "../../../../src/rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { FailureResolutionCommandSchema } from "../../../../src/rules/commands/commands.js";
+import { FailureResolutionCommandSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER, UNSTORED_CONFIG_IDENTITY } from "../../fixtures/intake-kernel-seams.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { type foundationFixture, failure, terminalizeFixtureFailure, NOW } from "../database-foundation/fixtures.js";
 
-export function resolutionKernel(db: AuthorityDatabase, clock: ReturnType<typeof foundationFixture>["clock"], overrides: Partial<CommandKernelDependencies> = {}) {
+export function resolutionKernel(db: AuthorityDatabase, clock: Awaited<ReturnType<typeof foundationFixture>>["clock"], overrides: Partial<CommandKernelDependencies> = {}) {
   const unused = (): never => { throw new Error("unrelated executor reached"); };
   return createCommandKernel({
     authority: db, clock, ids: { uuid: randomUUID },
@@ -21,16 +27,22 @@ export function resolutionKernel(db: AuthorityDatabase, clock: ReturnType<typeof
     appVersion: "0.1.0",
     descriptors: { resolve: name => name === personLookupDescriptor.id ? personLookupDescriptor : undefined },
     configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-    workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused, stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } },
-    writeResolution: { resolvePresent: unused, resolveAbsent: unused }, ...overrides,
+    workerRuntime: { pool: unusedWorkerPool(unused) },
+    writeResolution: { recheck: unused, resolveAbsent: unused }, ...overrides,
   });
 }
-export function resolutionFixture(runId: string = failure().runId, failureId: string = failure().failureId) {
-  const f = diagnosticFoundation();
-  const run = runId === f.run.envelope.runId ? f.run : f.createRun(runId);
-  const record = { ...failure(), runId: RunIdSchema.parse(runId), failureId: FailureIdSchema.parse(failureId), traceId: run.envelope.traceId };
-  terminalizeFixtureFailure(f, run, record);
-  return { ...f, record, kernel: resolutionKernel(f.db, f.clock) };
+export async function resolutionFixture(runId: string = failure().runId, failureId: string = failure().failureId,
+  options: { sharedMachine?: true } = {}) {
+ const f = await diagnosticFoundation(options);
+ const held: { foundation: typeof f; primary?: unknown } = { foundation: f };
+ retainedResolutionOwners.add(held);
+ try {
+ const run = runId === f.run.envelope.runId ? f.run : f.createRun(runId);
+const record = { ...failure(), runId: RunIdSchema.parse(runId), failureId: FailureIdSchema.parse(failureId), traceId: run.envelope.traceId };
+terminalizeFixtureFailure(f, run, record);
+const result = { ...f, record, kernel: resolutionKernel(f.db, f.clock) };
+ retainedResolutionOwners.delete(held); return result;
+ } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 export function resolutionCommand(overrides: Record<string, unknown> = {}) {
   const record = failure();
@@ -42,11 +54,12 @@ export function resolutionCommand(overrides: Record<string, unknown> = {}) {
 }
 
 /** The production HTTP route/admission/kernel; unrelated routes deliberately have no fixture. */
-export function resolutionApp(f: ReturnType<typeof resolutionFixture>) {
+export function resolutionApp(f: Awaited<ReturnType<typeof resolutionFixture>>) {
   return createDashboardApp({
     ...composeActivity({ database: f.db, clock: f.clock, descriptors: { resolve: id => id === personLookupDescriptor.id ? personLookupDescriptor : undefined }, ledger: createTransactionHistory(f.db.authority) }),
     requestIdentity: createSoloRequestIdentityCheckpoint({ id: "local-operator", label: "Local operator" }),
-    bootstrap: { clock: f.clock, appVersion: "0.1.0" }, commandJournal: f.db.authority.commands,
+    bootstrap: { clock: f.clock, appVersion: "0.1.0" }, resolveWriteCommand: (request: CommandRequest) => resolveWriteCommandTarget(request, f.db.authority),
+    commandJournal: f.db.authority.commands,
     protectedCommandAcceptedAt: () => undefined,
     bulkCommandAcceptances: { withTransaction: () => { throw new Error("unrelated bulk route reached"); } },
     intake: UNWIRED_INTAKE_SERVICE,
@@ -55,7 +68,7 @@ export function resolutionApp(f: ReturnType<typeof resolutionFixture>) {
   } as unknown as DashboardAppDeps);
 }
 
-export function resolutionReadDeps(f: ReturnType<typeof resolutionFixture>) {
+export function resolutionReadDeps(f: Awaited<ReturnType<typeof resolutionFixture>>) {
   const reader = sqliteRunReader(f.db, f.clock);
   const trust = createReceiptService({ database: f.db, runReader: reader, descriptors: [personLookupDescriptor] });
   return { runReader: reader, trust, timeline: f.db.authority.timelineEvents } as unknown as RunDetailQueryDeps;
@@ -69,9 +82,8 @@ import { createReceiptService } from "../../../../src/backend/runs/trust/receipt
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { ConfigSchema } from "../../../../src/models/config/schema.js";
 import { defaultRuntimePaths } from "../../../../src/backend/app/config/runtime-paths.js";
@@ -82,27 +94,26 @@ import { QUEUED_RUN, RUN_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { id } from "../database-foundation/fixtures.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
-function diagnosticFoundation(){
- const root=mkdtempSync(join(realpathSync(tmpdir()),"foundation-baseline-"));const path=join(root,"state.db");const clock=manualClock(new Date(NOW));
- const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock);
+const retainedResolutionOwners = new Set<object>();
+async function diagnosticFoundation(options: { sharedMachine?: true }){
+ const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; db?: AuthorityDatabase; primary?: unknown } = {};
+ retainedResolutionOwners.add(held);
+ try {
+ const profile=await createBoundProfileFixture(options); held.profile = profile;const root=profile.stateRoot;const path=profile.path;const clock=manualClock(new Date(NOW));
+ const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock); held.db = db;
  const config=ConfigSchema.parse({paths:defaultRuntimePaths()});
- const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:sha256Hex(canonicalJsonStringify(config)),capturedAt:NOW,capturedBy:"local-operator",config,provenance:{}});
+ const snapshot=ConfigSnapshotRecordSchema.parse({ ...PREFERENCES_SNAPSHOT,configSnapshotId:id(90),revision:1,fingerprint:sha256Hex(canonicalJsonStringify(config)),capturedAt:NOW,capturedBy:"local-operator",config,provenance:{}});
  db.authority.runtimeConfig.initialize(snapshot);
- let admissionIdentity=10000;
+
  const createRun=(runId:string)=>{
- const workerId=db.withAuthorityTransaction(repositories=>{
+ const repositories = db.authority;
   const slots=repositories.workerSlots.list("person-lookup").filter(slot=>slot.retiredAt===null);
-  const free=slots.find(slot=>!repositories.runs.listByWorker(slot.workerId).some(run=>["claimed","validating","running"].includes(run.lifecycle.state)));
-  const poolIndex=free?.poolIndex??[1,2,3].find(index=>!slots.some(slot=>slot.poolIndex===index));
-  assert.ok(poolIndex!==undefined,"fixture exceeds genuine worker pool capacity");
-  const slot=admitDirectWorker(repositories,{commandId:id(admissionIdentity++),workflow:"person-lookup",poolIndex,
-    expectedPoolVersion:repositories.workerPools.get("person-lookup")?.version??0,processId:process.pid,
-    processAcquisitionId:id(admissionIdentity++),authorityPath:path,processLockRoot:join(root,"locks"),now:NOW},id(admissionIdentity++));
-  if(repositories.workerLeases.get(slot.workerId)===undefined)assert.equal(repositories.workerLeases.start({workerId:slot.workerId,
-    workflow:"person-lookup",browserSystems:workflowProjections(personLookupDescriptor).systems,processId:process.pid,
-    requestedBy:"local-operator",now:NOW}).state,"started");
-  return slot.workerId;
- });
+const free=slots.find(slot=>!repositories.runs.listByWorker(slot.workerId).some(run=>["claimed","validating","running"].includes(run.lifecycle.state)));
+const poolIndex=free?.poolIndex??[1,2,3].find(index=>!slots.some(slot=>slot.poolIndex===index));
+assert.ok(poolIndex!==undefined,"fixture exceeds genuine worker pool capacity");
+  const admitted = testAdmittedWorker(db, clock, { path, workflow: personLookupDescriptor.id, poolIndex,
+    browserSystems: workflowProjections(personLookupDescriptor).systems });
+  const workerId = admitted.workerId;
  db.authority.runs.enqueue({...QUEUED_RUN,input: { ...QUEUED_RUN.input, parsed: {
  schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output"), value: { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false },
  protectedBindings: [{kind:"test-data-local",inputPath:"emplId",name:"personLookupCanaryEid",sourceId:id(89)}] } },envelope:{...QUEUED_RUN.envelope,runId, itemId:runId, descriptorVersion:personLookupDescriptor.version, contractFingerprint:personLookupDescriptor.contractFingerprint,configFingerprint:snapshot.fingerprint,configSnapshotId:snapshot.configSnapshotId}});
@@ -112,17 +123,25 @@ function diagnosticFoundation(){
  return running.run;
  };
  const run=createRun(RUN_ID);
- return {root,path,clock,db,snapshot,run,createRun,dispose:()=>{db.close();rmSync(root,{recursive:true,force:true});}};
+ let disposeAttempted = false, disposeFailure: Error | undefined;
+  retainedResolutionOwners.delete(held);
+  return {root,path,clock,db,snapshot,run,createRun,profile,dispose:async ()=>{
+    if (disposeAttempted) { if (disposeFailure !== undefined) throw disposeFailure; return; }
+    disposeAttempted = true;
+    try { db.close(); await profile.close(); }
+    catch (error) { held.primary = error; disposeFailure = retainAuthoritySourceClosure([error], { admission: held }); retainedResolutionOwners.add(held); throw disposeFailure; }
+  }};
+} catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
-export function resolutionPeer(path: string) {
-  const child = fork(fileURLToPath(new URL("../backend/failure-resolution-peer.ts", import.meta.url)), [path], { execArgv: ["--import", "tsx"], silent: true });
+export async function resolutionPeer(path: string, lifetime: RuntimeLifetimeLock) {
+  const child = fork(fileURLToPath(new URL("../../../support/processes/failure-resolution-peer.ts", import.meta.url)), [path, String(lifetime.port)], { execArgv: ["--import", testProcessImport()], silent: true });
   let failure = "";
   child.stderr?.on("data", chunk => { failure += String(chunk); });
   const exited = new Promise<void>((resolve, reject) => {
-    child.once("exit", code => code === 0 ? resolve() : reject(new Error(`diagnostic peer exit ${String(code)}: ${failure}`)));
+    child.once("close", (code, signal) => code === 0 && signal === null ? resolve() : reject(new Error(`diagnostic peer exit ${String(code)}: ${failure}`)));
     child.once("error", reject);
   });
   const ready = new Promise<void>((resolve, reject) => {
@@ -132,6 +151,13 @@ export function resolutionPeer(path: string) {
     });
     child.once("error", reject);
   });
+  try { await lifetime.share(child); await ready; }
+  catch (error) {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    try { await exited; }
+    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: { child, lifetime } }); }
+    throw error;
+  }
   return { ready, exited, send: async (command: unknown) => {
     await ready;
     const result = new Promise<ReturnType<typeof CommandResultSchema.parse>>((resolve, reject) => {

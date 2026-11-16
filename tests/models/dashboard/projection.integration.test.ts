@@ -1,3 +1,4 @@
+import { isQueueTopLevel } from "../../../src/models/dashboard/queue-parent.js";
 import { createNotificationInboxTestWorld } from "../../support/helpers/backend/notification-inbox-world.js";
 import { createSeededDashboardWorld } from "../../support/helpers/seeded-dashboard-world.js";
 
@@ -13,7 +14,9 @@ import { describe } from "vitest";
 import { it } from "vitest";
 
 
-import { notificationWireOf } from "../../../src/models/dashboard/projection.js";
+import { notificationTitle, notificationWireOf } from "../../../src/models/dashboard/projection.js";
+import { projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
+import { FICTIONAL_PERSON } from "../../support/fixtures/person-lookup-presentation.js";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
 
 
@@ -22,6 +25,7 @@ import { NotificationWireSchema } from "../../../src/models/dashboard/projection
 
 import { LATER } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { UUID_1 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { UUID_2 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { UUID_7 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -95,10 +99,58 @@ afterEach(_afterEachFixture0);
   });
 });
 
+describe("command notices", () => {
+  const nowMs = Date.parse(LATER);
+  function notice(event: { kind: "command-unknown"; commandId: string } | { kind: "command-refused"; commandId: string; outcome: "rejected" | "conflict" } | { kind: "bulk-incomplete"; bulkCommandId: string }, overrides: Record<string, unknown> = {}) {
+    const projection = projectNotificationTrigger(event);
+    return record({ trigger: projection.trigger, channel: projection.channel, title: projection.title, summary: projection.summary, links: projection.links, dedupeFingerprint: projection.dedupeFingerprint, ...overrides });
+  }
+  it("serves stored closed text, priority until read or snoozed, and no command item without a command notice", () => {
+    const events = [
+      { kind: "command-unknown" as const, commandId: UUID_1 },
+      { kind: "command-refused" as const, commandId: UUID_1, outcome: "rejected" as const },
+      { kind: "command-refused" as const, commandId: UUID_1, outcome: "conflict" as const },
+      { kind: "bulk-incomplete" as const, bulkCommandId: UUID_1 },
+    ];
+    for (const event of events) {
+      const row = notice(event);
+      const wire = notificationWireOf(row, nowMs);
+      assert.equal(wire.kind, "command");
+      if (wire.kind !== "command") throw new Error("command wire");
+      assert.equal(wire.channel, "ping");
+      assert.equal(wire.title, row.title);
+      assert.equal(wire.summary, row.summary);
+      assert.equal(wire.priority, true);
+      assert.equal(wire.severity, event.kind === "command-unknown" ? "error" : "warning");
+      assert.equal(wire.title.includes(FICTIONAL_PERSON.name), false);
+      assert.equal(wire.summary.includes(FICTIONAL_PERSON.name), false);
+      assert.equal(wire.title.includes(FICTIONAL_PERSON.eid), false);
+      assert.equal(wire.summary.includes(FICTIONAL_PERSON.eid), false);
+    }
+    assert.equal(notificationTitle("command").includes(FICTIONAL_PERSON.name), false);
+    assert.equal(notificationTitle("command").includes(FICTIONAL_PERSON.eid), false);
+    const read = notificationWireOf(notice(events[0], { status: "read" }), nowMs);
+    assert.equal(read.kind, "command");
+    if (read.kind !== "command") throw new Error("command wire");
+    assert.equal(read.priority, false);
+    const snoozed = notificationWireOf(notice(events[0], { snooze: { state: "snoozed", until: "2026-07-31T19:00:00.000Z" } }), nowMs);
+    assert.equal(snoozed.kind, "command");
+    if (snoozed.kind !== "command") throw new Error("command wire");
+    assert.equal(snoozed.state, "snoozed");
+    assert.equal(snoozed.priority, false);
+    const expired = notificationWireOf(notice(events[0], { snooze: { state: "snoozed", until: "2026-07-31T17:00:30.000Z" } }), nowMs);
+    assert.equal(expired.kind, "command");
+    if (expired.kind !== "command") throw new Error("command wire");
+    assert.equal(expired.priority, true);
+    const ordinary = [record(), record({ trigger: "gate-waiting", title: "Needs you" })].map(row => notificationWireOf(row, nowMs));
+    assert.equal(ordinary.some(wire => wire.kind === "command"), false);
+  });
+});
+
 it("read/snooze commands preserve publication identity, count, and expired snooze evidence", async () => {
 try {
 
-  const { database, kernel } = harness();
+  const { database, kernel } = await harness();
   const initial = record({ snooze: { state: "snoozed", until: "2026-07-31T17:00:30.000Z" } });
   database.authority.notifications.create(initial);
   const before = notificationWireOf(initial, Date.parse(LATER));
@@ -113,7 +165,7 @@ try {
   assert.equal(after.title, "Run failed");
 
 } finally {
-_afterEachFixture0();
+await _afterEachFixture0();
 }
 });
 }
@@ -125,21 +177,21 @@ const { seedWorld } = createSeededDashboardWorld();
 
 const worlds: DashboardWorld[] = [];
 
-function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
-  const created = makeWorld(...args);
+async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
+  const created = await makeWorld(...args);
   worlds.push(created);
   return created;
 }
 
-const _afterEachFixture0 = () => {
-  for (const w of worlds.splice(0)) w.dispose();
+const _afterEachFixture0 = async () => {
+  for (const w of worlds.splice(0)) await w.dispose();
 };
 
 describe("THE run/queue projection", () => {
 afterEach(_afterEachFixture0);
 
-  it("folds the seeded world into one payload whose three count renderings agree by construction", () => {
-    const w = world();
+  it("folds the seeded world into one payload whose three count renderings agree by construction", async () => {
+    const w = await world();
     seedWorld(w);
     const day = w.projection.buildDashboardDayWire(DAY);
     DashboardDayWireSchema.parse(day);
@@ -149,7 +201,7 @@ afterEach(_afterEachFixture0);
     assert.equal(runIds.includes(uuidOf(7)), true);
     assert.equal(day.queueSurfaces.length, 9);
 
-    const topLevel = day.queueSurfaces.filter(({ surfaceKind }) => surfaceKind !== "member");
+    const topLevel = day.queueSurfaces.filter(isQueueTopLevel);
     const workflowTotal = day.workflowCounts.reduce((sum, { count }) => sum + count, 0);
     const statusTotal = day.statusCounts.reduce((sum, { count }) => sum + count, 0);
     assert.equal(workflowTotal, topLevel.length);
@@ -198,8 +250,8 @@ afterEach(_afterEachFixture0);
     return surface;
   }
 
-  it("the wire refuses a gate instant on a row that is not waiting", () => {
-    const w = world();
+  it("the wire refuses a gate instant on a row that is not waiting", async () => {
+    const w = await world();
     seedWorld(w);
     const running = rowOf(w, 2);
     assert.equal(QueueSurfaceWireSchema.safeParse({

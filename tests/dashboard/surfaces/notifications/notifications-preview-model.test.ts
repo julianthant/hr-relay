@@ -4,10 +4,10 @@ import { applyNotificationReads,notificationView } from "../../../../src/dashboa
 import { approveMockRun,initialMockDraft,mockRunsForDraft,seedMockRuns } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { discardMockReview } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
-import { FIXTURE_DAY,FIXTURE_NOW } from "../../../parity/helpers/fixture-identity.js";
-import { FIXTURE_DAY_WIRE,FIXTURE_IDS } from "../../../parity/helpers/fixture-queue.js";
+import { FIXTURE_DAY,FIXTURE_NOW } from "../../../mocks/helpers/fixture-identity.js";
+import { FIXTURE_DAY_WIRE,FIXTURE_IDS } from "../../../mocks/helpers/fixture-queue.js";
 
-const input = { day: FIXTURE_DAY, nowIso: FIXTURE_NOW, rows: FIXTURE_DAY_WIRE.queueSurfaces, runs: seedMockRuns(), workflowLabel: () => "Person Lookup" };
+const input = { day: FIXTURE_DAY, nowIso: FIXTURE_NOW, anchorIso: FIXTURE_NOW, rows: FIXTURE_DAY_WIRE.queueSurfaces, runs: seedMockRuns(), workflowLabel: () => "Person Lookup" };
 function ready(state = notificationPreviewState("normal", input)) {
   if (state.state !== "ready") throw new Error("Expected ready notification preview");
   return state;
@@ -48,7 +48,9 @@ describe("interactive notification destinations", () => {
       ["detect-test.pdf", "3 of 4 records ready for approval"],
       ["i9.pdf", "2 of 2 records ready for approval"],
     ]);
-    for (const item of documents) expect(item).toMatchObject({ workflow: "OCR", action: "Review records", destination: { kind: "preview-run", records: true } });
+    for (const item of documents) expect(item).toMatchObject({ action: "Review records", destination: { kind: "preview-run", records: true } });
+    expect(documents.some(item => item.workflow === "OCR")).toBe(false);
+    expect(documents.find(item => item.subject === "emergency-contacts.pdf")?.workflow).toBe("Emergency Contact");
     const missing = ready(notificationPreviewState("normal", { ...input, rows: input.rows.filter(row => row.runId !== FIXTURE_IDS.parkedRun), runs: input.runs.filter(run => run.workflowId !== "ocr") }));
     expect(missing.items.some(item => item.subject === "EID 10777012" || item.workflow === "OCR")).toBe(false);
     expect(state.items.some(item => item.subject === "sick-hours.pdf")).toBe(false);
@@ -63,9 +65,9 @@ describe("interactive notification destinations", () => {
   });
   it("opens OCR review and reflects approval/discard without changing read state", () => {
     const before = ready();
-    const item = before.items.find(item => item.destination.kind === "preview-run" && item.destination.runId === "mock:emergency-contact:sample:ocr")!;
-    expect(item.destination).toEqual({ kind: "preview-run", runId: "mock:emergency-contact:sample:ocr", day: FIXTURE_DAY, records: true });
-    const approved = ready(notificationPreviewState("normal", { ...input, runs: approveMockRun(input.runs, item.destination.kind === "preview-run" ? item.destination.runId : "") }));
+    const item = before.items.find(item => item.destination.kind === "preview-run" && item.destination.runId === "mock:emergency-contact:sample")!;
+    expect(item.destination).toEqual({ kind: "preview-run", runId: "mock:emergency-contact:sample", day: FIXTURE_DAY, records: true });
+    const approved = ready(notificationPreviewState("normal", { ...input, runs: approveMockRun(input.runs, item.destination.kind === "preview-run" ? `${item.destination.runId}:ocr` : "") }));
     expect(approved.items.find(row => row.id === item.id)).toMatchObject({ title: "Records approved", tone: "positive", action: "View records", read: false });
     expect(notificationView(approved, "attention").shown.map(row => row.id)).not.toContain(item.id);
     const discarded = ready(notificationPreviewState("normal", { ...input, runs: discardMockReview(input.runs, "mock:emergency-contact:sample:ocr") }));
@@ -74,6 +76,20 @@ describe("interactive notification destinations", () => {
     expect(notificationView(read, "attention").shown.map(row => row.id)).toContain(item.id);
     expect(notificationView(applyNotificationReads(approved, { [item.id]: true }), "all").unread).toBe(2);
   });
+  it("keeps records capability for empty, approved and discarded canonical record runs", () => {
+    const source = input.runs.find(run => run.id === "mock:emergency-contact:sample:ocr")!;
+    const parent = input.runs.find(run => run.id === source.parentId)!;
+    expect(parent).toBeDefined();
+    for (const state of [{ approved: false }, { approved: true }, { approved: false, discarded: true }]) {
+      const run = { ...source, ...state, records: [] };
+      const runs = [parent, run];
+      const model = ready(notificationPreviewState("normal", { ...input, runs }));
+      const item = model.items.find(item => item.destination.kind === "preview-run")!;
+      expect(item).toMatchObject({ read: false, destination: { records: true } });
+      expect(notificationDestinationRefusal(item.destination, { ...input, runs })).toBeUndefined();
+      expect(model.items.filter(item => item.destination.kind === "preview-run")).toHaveLength(1);
+    }
+  });
   it("adds notifications for new completed runs and delegated OCR approvals, not unfinished parents", () => {
     const done = mockRunsForDraft("onboarding", { ...initialMockDraft("onboarding"), text: "new.hire@example.com", dryRun: true }, 51);
     const pending = mockRunsForDraft("emergency-contact", { ...initialMockDraft("emergency-contact"), files: [{ name: "new-contact.pdf", size: 100, digest: "synthetic" }] }, 52);
@@ -81,7 +97,7 @@ describe("interactive notification destinations", () => {
     const added = state.items.filter(item => { const destination = item.destination; return destination.kind === "preview-run" && [...done, ...pending].some(run => run.id === destination.runId); });
     expect(added).toHaveLength(2);
     expect(added[0]).toMatchObject({ subject: "new.hire@example.com", title: "Run completed", detail: "Dry run complete", destination: { kind: "preview-run", runId: done[0].id, records: false } });
-    expect(added[1]).toMatchObject({ subject: "new-contact.pdf", title: "Records ready for approval", destination: { kind: "preview-run", runId: pending[1].id, records: true } });
+    expect(added[1]).toMatchObject({ subject: "new-contact.pdf", title: "Records ready for approval", destination: { kind: "preview-run", runId: pending[0].id, records: true } });
     const read = applyNotificationReads(state, Object.fromEntries(state.items.map(item => [item.id, true])));
     expect(notificationView(read, "all").unread).toBe(0);
     expect(notificationView(read, "attention").shown).not.toHaveLength(0);
@@ -109,7 +125,7 @@ describe("interactive notification destinations", () => {
     expect(later.items.find(item => item.title === "Run failed")!.age).toBe("1 hr ago");
     expect(before.items.some(item => item.id === "sample-archive")).toBe(false);
     const fresh = ready(notificationPreviewState("normal", { ...input, eventTimes: { "mock:emergency-contact:sample:ocr": FIXTURE_NOW } }));
-    expect(fresh.items.find(item => item.destination.kind === "preview-run" && item.destination.runId === "mock:emergency-contact:sample:ocr")!.age).toBe("Just now");
+    expect(fresh.items.find(item => item.destination.kind === "preview-run" && item.destination.runId === "mock:emergency-contact:sample")!.age).toBe("Just now");
     expect(() => notificationPreviewState("normal", { ...input, nowIso: "invalid" })).toThrow("NOTIFICATION_PREVIEW_TIME_INVALID");
   });
   it("keeps read overrides attached to the exact run and day", () => {

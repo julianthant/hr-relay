@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en"><title>Synthetic UCPath contacts</title><body>
+<label id="PERALL_SEC_SRCH_EMPLID_LBL" for="PERALL_SEC_SRCH_EMPLID">Empl ID</label>
+<select id="PERALL_SEC_SRCH_EMPLID$op"><option>begins with</option></select>
+<input id="PERALL_SEC_SRCH_EMPLID" aria-labelledby="PERALL_SEC_SRCH_EMPLID_LBL PERALL_SEC_SRCH_EMPLID$op">
+<button id="PTS_CFG_CL_WRK_PTS_SRCH_BTN">Search</button>
+<div id="editor" hidden></div><div id="address" hidden></div>
+<div id="WAIT_win0" hidden></div>
+<span class="PSGRIDCOUNTER">9 of 9</span>
+<script>
+const fixture = __FIXTURE__;
+const storedRows = sessionStorage.getItem('contact-fixture-persisted');
+const state = { rows: storedRows === null ? structuredClone(fixture.page.rows) : JSON.parse(storedRows), paged: true, saves: Number(sessionStorage.getItem('contact-fixture-saves') ?? 0), actions: [], searches: [], modalIndex: null };
+const editor = document.getElementById('editor');
+const address = document.getElementById('address');
+const labels = { address1: 'Address 1', address2: 'Address 2', city: 'City', state: 'State', postalCode: 'Postal' };
+const addressIds = { address1: 'ADDRESS1', address2: 'ADDRESS2', city: 'CITY', state: 'STATE', postalCode: 'POSTAL' };
+const fields = { name: 'CONTACT_NAME', relationship: 'RELATIONSHIP', primary: 'PRIMARY_CONTACT', phone: 'PHONE', sameAddressAsEmployee: 'SAME_ADDRESS_EMPL' };
+function element(tag, attributes, text) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+  if (text) node.textContent = text;
+  return node;
+}
+function render() {
+  editor.replaceChildren();
+  editor.append(element('span', { id: 'PERSON_NPC_VW_EMPLID' }, fixture.page.displayedEid));
+  editor.append(element('span', { id: 'PERSON_NAME_NAME' }, fixture.page.displayedName));
+  const grid = element('div', { id: '$ICField2$scrolli$0' });
+  const header = element('div', { class: 'PSLEVEL1SCROLLAREAHEADER' });
+  header.append(element('span', { class: 'PSGRIDCOUNTER' }, `1 of ${fixture.totalRows ?? state.rows.length}`));
+  const disabled = state.rows.length === 1 || fixture.disabledViewAll;
+  const toggle = disabled
+    ? element('span', { class: 'PSHEADERHYPERLINKD' }, 'View All')
+    : element('a', { href: '#', class: 'PSHEADERHYPERLINK' }, state.paged ? 'View All' : 'View 1');
+  toggle.onclick = event => {
+    event.preventDefault();
+    if (disabled) { state.actions.push('disabled-view-all'); throw new Error('fixture forbids clicking disabled View All'); }
+    state.actions.push('view-all'); state.paged = !state.paged; render();
+  };
+  header.append(toggle);
+  grid.append(header);
+  editor.append(grid);
+  for (const row of state.paged ? state.rows.slice(0, 1) : state.rows) {
+    for (const [key, field] of Object.entries(fields)) {
+      const id = `EMERGENCY_CNTCT_${field}$${row.rowIndex}`;
+      let node;
+      if (key === 'relationship') {
+        node = element('select', { id });
+        for (const label of ['', 'Parent', 'Friend', 'Spouse']) {
+          const option = element('option', { value: label }, label || '(Invalid Value)');
+          option.selected = row.relationship === label;
+          node.append(option);
+        }
+      } else {
+        node = element('input', { id, type: typeof row[key] === 'boolean' ? 'checkbox' : 'text' });
+        if (typeof row[key] === 'boolean') node.checked = row[key];
+        else node.value = row[key];
+      }
+      const update = () => {
+        state.actions.push(`${key}:${row.rowIndex}`);
+        row[key] = node.type === 'checkbox' ? node.checked : node.value;
+        if (key === 'relationship' && fixture.changeProtected) state.rows[0].primary = !state.rows[0].primary;
+        if (key === 'name' && fixture.loseName) { row.name = ''; node.value = ''; }
+        if (key !== 'name' && key !== 'phone') render();
+      };
+      node.addEventListener(key === 'name' || key === 'phone' ? 'input' : 'change', update);
+      grid.append(node);
+    }
+    const samePhone = element('input', { id: `EMERGENCY_CNTCT_SAME_PHONE_EMPL$${row.rowIndex}`, type: 'checkbox' });
+    samePhone.checked = fixture.readOnlyControls.samePhoneAsEmployee;
+    samePhone.onchange = () => { state.actions.push(`same-phone:${row.rowIndex}`); };
+    const edit = element('input', { id: `DERIVED_ADDR_UPDATE_ADDRESS$${row.rowIndex}`, type: 'button', value: 'Edit Address' });
+    edit.onclick = () => openAddress(row.rowIndex);
+    grid.append(samePhone, edit);
+  }
+  const add = element('button', {}, 'Add a new row at row 1');
+  add.onclick = () => {
+    state.actions.push('add-row');
+    state.rows.unshift({ name: '', relationship: '', primary: false, phone: '', sameAddressAsEmployee: false, address: null });
+    state.rows.forEach((row, rowIndex) => { row.rowIndex = rowIndex; });
+    state.paged = true;
+    render();
+  };
+  const save = element('input', { id: '#ICSave', name: '#ICSave', type: 'button', value: 'Save' });
+  // Assumption until live proof: Save settles without a message and a new search exposes persisted rows.
+  save.onclick = () => {
+    state.saves++;
+    sessionStorage.setItem('contact-fixture-saves', String(state.saves));
+    if (!fixture.saveResponse) throw new Error('fixture forbids Save');
+    if (fixture.saveResponse === 'persist') sessionStorage.setItem('contact-fixture-persisted', JSON.stringify(state.rows));
+  };
+  editor.append(add, save);
+}
+function openAddress(index) {
+  state.actions.push(`address:${index}`);
+  address.replaceChildren();
+  editor.hidden = true;
+  address.hidden = false;
+  state.modalIndex = index;
+  for (const [key, label] of Object.entries(labels)) {
+    const node = element('input', { id: `DERIVED_ADDRESS_${addressIds[key]}`, 'aria-label': label, 'data-field': key });
+    node.value = state.rows[index].address?.[key] ?? '';
+    address.append(node);
+  }
+  const country = element('span', { id: 'DERIVED_ADDRESS_COUNTRY$36$' }, state.rows[index].address?.country ?? '');
+  address.append(country);
+  for (const [key, label] of [['address3', 'Address 3'], ['county', 'County']]) {
+    const node = element('input', { id: `DERIVED_ADDRESS_${key.toUpperCase()}`, 'aria-label': label });
+    node.value = fixture.readOnlyControls[key];
+    node.oninput = () => { state.actions.push(`${key}:${index}`); };
+    address.append(node);
+  }
+  const cancel = element('input', { id: 'DERIVED_ADDRESS_CANCEL_PB$34$', type: 'button', value: 'Cancel' });
+  cancel.onclick = () => { address.replaceChildren(); address.hidden = true; editor.hidden = false; state.modalIndex = null; };
+  const ok = element('input', { id: 'DERIVED_ADDRESS_OK_PB$33$', type: 'button', value: 'OK' });
+  ok.onclick = () => {
+    state.rows[index].address = { ...Object.fromEntries([...address.querySelectorAll('input[data-field]')].map(node => [node.dataset.field, node.value || null])), country: country.textContent || null };
+    state.actions.push(`address-ok:${index}`);
+    address.hidden = true;
+    address.replaceChildren();
+    editor.hidden = false;
+    state.modalIndex = null;
+    render();
+  };
+  address.append(cancel, ok);
+}
+document.getElementById('PTS_CFG_CL_WRK_PTS_SRCH_BTN').onclick = () => { state.searches.push(document.getElementById('PERALL_SEC_SRCH_EMPLID').value); editor.hidden = false; render(); };
+window.contactFixtureState = state;
+</script></body></html>

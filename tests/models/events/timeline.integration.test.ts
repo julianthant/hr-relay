@@ -1,18 +1,11 @@
+import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../src/models/config/authority.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { mkdirSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
-import { readFileSync } from "node:fs";
-import { realpathSync } from "node:fs";
-import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach } from "vitest";
-import { describe } from "vitest";
-import { it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { TimelineAppendSchema } from "../../../src/models/events/timeline.js";
 import { AuthoritySchemaVersionError } from "../../../src/backend/storage/sqlite/authority-database.js";
@@ -21,17 +14,22 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { insertMeasuredSearchRun } from "../../support/helpers/backend/cross-date-search-harness.js";
 import { foundationFixture } from "../../support/helpers/database-foundation/fixtures.js";
 import { storageTree } from "../../support/helpers/integration/storage-recovery-fixture.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import { upgradeStorage } from "../../support/helpers/synthetic-storage-admission.js";
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { createBoundProfileFixture, openBoundDatabaseFixture } from "../../support/helpers/admission-fixture.js";
+import { detachBoundFixtureWorkers } from "../../support/helpers/synthetic-database-admission.js";
+import { releaseSeededWriteOwners } from "../../support/helpers/timeline-write-fixture.js";
+import { AuthorityDatabase, upgradeStorage } from "../../support/helpers/synthetic-storage-admission.js";
+
 
 {
 
 describe("cross-date search authority read", () => {
 
-  it("authenticates complete retained actor sources and keeps frozen actors through genuine ordinary pruning", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-search-actor-"));
-    const path=join(root,"authority.db"),clock=manualClock(new Date("2026-11-01T16:00:00.000Z"));
-    const database=AuthorityDatabase.open({path,busyTimeoutMs:1000,migrationOwner:"search-actor-test"},clock);
+  it("authenticates complete retained actor sources and keeps frozen actors through genuine ordinary pruning", async () => {
+    const clock=manualClock(new Date("2026-11-01T16:00:00.000Z"));
+    const opened=await openBoundDatabaseFixture("search-actor-test",clock,1000);
+    const path=opened.path;
+    const database=opened.database;
     const raw=new DatabaseSync(path);
     try {
       const run=insertMeasuredSearchRun(database,{seed:983,enqueuedAt:"2026-08-01T16:00:00.000Z",authorityPath:path});
@@ -75,14 +73,13 @@ describe("cross-date search authority read", () => {
         if(fault === "erase")raw.prepare("UPDATE run_search SET actor_source_json=NULL,actor_id=NULL,metadata_json=json_set(metadata_json,'$.metadata.actor',json(?)) WHERE run_id=?")
           .run('{"state":"unavailable","reason":"not-recorded"}',e.runId);
         else raw.prepare("UPDATE run_search SET actor_source_json=json_set(actor_source_json,'$[0].event.payload.event.actorId','forged-actor'),actor_id='forged-actor',metadata_json=json_set(metadata_json,'$.metadata.actor.value','forged-actor') WHERE run_id=?").run(e.runId);
-        const generation=database.getMeta().authorityGeneration;
+        const nonmatchingSearch=()=>database.authority.runs.search({q:"NONMATCH",scope:"run",facets:{actor:"nonmatching-actor"},limit:1});
         const unrelatedBefore=database.authority.runs.get(unrelated.envelope.runId);assert.ok(unrelatedBefore);
+        assert.throws(nonmatchingSearch,/run-search-index-rebuild-required/u);
+        assert.equal(database.authority.runs.updatePresentation({runId:unrelated.envelope.runId,expectedVersion:unrelatedBefore.version,displayName:`Unrelated ${fault}`,now:clock.now().toISOString()}).state,"applied");
+        assert.throws(nonmatchingSearch,/run-search-index-rebuild-required/u);
+        const generation=database.getMeta().authorityGeneration;
         const sourceBefore=raw.prepare("SELECT * FROM timeline_events ORDER BY cursor").all();
-        assert.throws(()=>database.authority.runs.search({q:"NONMATCH",scope:"run",facets:{actor:"nonmatching-actor"},limit:1}),/run-search-index-rebuild-required/u);
-        assert.throws(()=>database.authority.runs.updatePresentation({runId:unrelated.envelope.runId,expectedVersion:unrelated.version,displayName:"Must not mutate",now:clock.now().toISOString()}),/run-search-retained-actor-source-mismatch/u);
-        assert.deepEqual(database.authority.runs.get(unrelated.envelope.runId),unrelatedBefore);
-        assert.equal(database.getMeta().authorityGeneration,generation);
-        assert.deepEqual(raw.prepare("SELECT * FROM timeline_events ORDER BY cursor").all(),sourceBefore);
         assert.throws(()=>{
           const unexpected=AuthorityDatabase.open({path,busyTimeoutMs:1000,migrationOwner:"search-post-prune-corrupt-reopen"},clock);
           unexpected.close();
@@ -95,12 +92,13 @@ describe("cross-date search authority read", () => {
         },/run-search-retained-actor-source-mismatch/u);
         assert.deepEqual([readFileSync(path),readFileSync(`${path}-wal`)],corruptBytes);
         assert.equal(database.getMeta().authorityGeneration,generation);
+        assert.deepEqual(raw.prepare("SELECT * FROM timeline_events ORDER BY cursor").all(),sourceBefore);
         raw.prepare("UPDATE run_search SET actor_source_json=?,actor_id=?,metadata_json=? WHERE run_id=?").run(saved.actor_source_json,saved.actor_id,saved.metadata_json,e.runId);
       }
       const reopened=AuthorityDatabase.open({path,busyTimeoutMs:1000,migrationOwner:"search-post-prune-genuine-reopen"},clock);
       try { assert.deepEqual(reopened.authority.runs.search({q:e.runId,scope:"run",facets:{},limit:1}),before); }
       finally { reopened.close(); }
-    } finally { raw.close();database.close();rmSync(root,{recursive:true,force:true}); }
+    } finally { raw.close(); releaseSeededWriteOwners(database, clock.now().toISOString()); await opened.close(); }
   });
 });
 }
@@ -108,21 +106,22 @@ describe("cross-date search authority read", () => {
 {
 
 const roots: string[] = [];
+const pendingProfiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const clock = manualClock(new Date("2026-10-01T12:00:00.000Z"));
-const _afterEachFixture0 = () => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
-function fresh() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "storage-upgrade-"));
-  roots.push(root);
-  mkdirSync(join(root, "artifacts"), { mode: 0o700 });
-  const path = join(root, "state.db");
-  const input = { stateRoot: root, processLockRoot: join(root, "locks"), plan: false };
-  return { root, path, input, run: (plan = false) => upgradeStorage({ ...input, plan }, clock) };
+const _afterEachFixture0 = async () => {
+  for (const profile of pendingProfiles.splice(0)) await profile.close();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+};
+async function fresh() {
+  const profile = await createBoundProfileFixture({ pending: "storage" });
+  pendingProfiles.push(profile);
+  const input = { stateRoot: profile.stateRoot, processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false };
+  return { admission: profile.admission, root: profile.stateRoot, path: profile.path, input, run: (plan = false) => upgradeStorage(profileBrowserClosure, { ...input, plan }, clock) };
 }
 function rows(path: string) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
-    assert.equal(tables.length, 36);
     assert.deepEqual(tables.map(row => row.name), AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort());
     return Object.fromEntries(tables.map(row => {
       assert.equal(typeof row.name, "string");
@@ -135,34 +134,34 @@ describe("stopped native SQLite initialization", () => {
 afterEach(_afterEachFixture0);
 
   it("leaves a fresh root untouched when exclusive restore admission fails and permits exact rerun", async () => {
-    const f = fresh(); const before = storageTree(f.root);
-    await assert.rejects(upgradeStorage(f.input, clock, () => { throw new Error("injected-admission-failure"); }),
-      /injected-admission-failure/u);
+    const f = await fresh(); const before = storageTree(f.root);
+    const expired = f.admission.acquireOfflineMaintenance(); expired.release();
+    await assert.rejects(upgradeStorage(profileBrowserClosure, f.input, clock, expired), /offline-maintenance-unissued/u);
     assert.equal(existsSync(f.path), false);
     assert.deepEqual(storageTree(f.root), before);
     assert.equal((await f.run()).state, "initialized");
   });
   it("preserves complete populated current authority and stale claimed lifecycle bytes without recovery", async () => {
-    const f = foundationFixture();
+    const f = await foundationFixture();
     try {
       const run = f.db.authority.runs.get(f.run.envelope.runId);
       assert.ok(run); assert.equal(run.lifecycle.state, "running");
       const generation = f.db.getMeta().authorityGeneration;
-      f.db.close();
+      detachBoundFixtureWorkers(f.db); f.db.close();
       const before = rows(f.path); const bytes = readFileSync(f.path);
-      const input = { stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan: true };
-      assert.equal((await upgradeStorage(input, clock)).state, "planned");
+      const input = { stateRoot: f.root, processLockRoot: join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan: true };
+      assert.equal((await upgradeStorage(profileBrowserClosure, input, clock)).state, "planned");
       assert.deepEqual(readFileSync(f.path), bytes);
-      assert.equal((await upgradeStorage({ ...input, plan: false }, clock)).state, "already-upgraded");
+      assert.equal((await upgradeStorage(profileBrowserClosure, { ...input, plan: false }, clock)).state, "already-upgraded");
       assert.deepEqual(rows(f.path), before); assert.deepEqual(readFileSync(f.path), bytes);
       const reopened = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "stale-current-readback" }, clock);
       try { assert.deepEqual(reopened.authority.runs.get(run.envelope.runId), run);
         assert.equal(reopened.getMeta().authorityGeneration, generation); }
       finally { reopened.close(); }
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
-  it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1, 29, 46, 999])("refuses schema %s without conversion or source I/O repair", async version => {
-    const f = fresh(); await f.run();
+  it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1, 46, 999])("refuses schema %s without conversion or source I/O repair", async version => {
+    const f = await fresh(); await f.run();
     const raw = new DatabaseSync(f.path);
     try { raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`); }
     finally { raw.close(); }
@@ -172,9 +171,9 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(storageTree(f.root), before);
   });
   it("refuses a missing selected snapshot before healthy open or upgrade with all bytes unchanged", async () => {
-    const f = foundationFixture();
+    const f = await foundationFixture();
     try {
-      const snapshotId = f.snapshot.configSnapshotId; f.db.close();
+      const snapshotId = f.snapshot.configSnapshotId; detachBoundFixtureWorkers(f.db); f.db.close();
       const raw = new DatabaseSync(f.path);
       try {
         raw.exec("PRAGMA foreign_keys=OFF");
@@ -186,13 +185,13 @@ afterEach(_afterEachFixture0);
       } finally { raw.close(); }
       const before = storageTree(f.root);
       assert.throws(() => AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "missing-snapshot-boot" }, clock));
-      for (const plan of [true, false]) await assert.rejects(upgradeStorage({
-        stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan }, clock));
+      for (const plan of [true, false]) await assert.rejects(upgradeStorage(profileBrowserClosure, {
+        stateRoot: f.root, processLockRoot: join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan }, clock));
       assert.deepEqual(storageTree(f.root), before);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
   it("preserves exact native multi-day events and immutable replay through stopped no-op upgrade", async () => {
-    const f = foundationFixture();
+    const f = await foundationFixture();
     try {
       const inputs = ["2026-07-31", "2026-07-31", "2026-07-31", "2026-08-01"].map((day, i) =>
         TimelineAppendSchema.parse({ schemaVersion: 1, eventId: randomUUID(), scope: { kind: "client", clientId: "upgrade-fixture" },
@@ -202,8 +201,8 @@ afterEach(_afterEachFixture0);
       const retained = inputs.map(input => f.db.authority.timelineEvents.append(input).record);
       assert.equal(retained.length, 4); assert.equal(new Set(retained.map(event => event.eventId)).size, 4);
       assert.deepEqual(retained.map(event => event.retentionDate), ["2026-07-31", "2026-07-31", "2026-07-31", "2026-08-01"]);
-      f.db.close(); const before = rows(f.path);
-      assert.equal((await upgradeStorage({ stateRoot: f.root, processLockRoot: join(f.root, "locks"), plan: false }, clock)).state, "already-upgraded");
+      detachBoundFixtureWorkers(f.db); f.db.close(); const before = rows(f.path);
+      assert.equal((await upgradeStorage(profileBrowserClosure, { stateRoot: f.root, processLockRoot: join(f.profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false }, clock)).state, "already-upgraded");
       assert.deepEqual(rows(f.path), before);
       const db = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "native-timeline-replay" }, clock);
       try {
@@ -215,7 +214,7 @@ afterEach(_afterEachFixture0);
         }
         assert.equal(db.getMeta().authorityGeneration, generation);
       } finally { db.close(); }
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });
 }

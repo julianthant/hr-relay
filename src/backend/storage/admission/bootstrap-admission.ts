@@ -1,40 +1,37 @@
-import { lstatSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { acquireExclusiveRuntimeAdmission, acquireInitialRuntimeAdmission, acquireSharedRuntimeAdmission,
-  type RuntimeAdmission } from "./admission.js";
-import { AdmissionMutexBusyError, admissionMutexOwnerProvenDead, recoverAbandonedAdmissionMutexAtStartup, type ExistingAuthorityEvidence, type RuntimePair } from "./installation.js";
+import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
+import { RuntimeLifetimeLock } from "./lifetime-lock.js";
+import { retainAuthoritySourceClosure, hasUnprovedSourceClosure } from "../source-closure.js";
+import { RuntimeAdmission } from "./admission.js";
 
-function verifyKnownDefaultAuthority(pair: RuntimePair, inspection: RuntimeAdmission): ExistingAuthorityEvidence {
-  const path = join(pair.stateRoot, "state.db");
-  const authority = AuthorityDatabase.inspectExistingReadOnly(inspection, path);
-  return Object.freeze({ kind: "verified-existing", pair, authorityGeneration: authority.authorityGeneration,
-    databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) });
+export function acquireEntrypointAdmission(workspace: string, mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock): RuntimeAdmission {
+  if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
+  lifetime.assertHeld();
+  return RuntimeAdmission.acquireMachine(workspace, mode, lifetime);
 }
 
-function initializeKnownDefaultAuthority(pair: RuntimePair, initialization: RuntimeAdmission): void {
-  const authority = AuthorityDatabase.open(initialization, {
-    path: join(pair.stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "runtime-bootstrap",
-  });
-  authority.close();
-}
-
-export function acquireEntrypointAdmission(workspace: string, mode: "shared" | "exclusive",
-  beforeInitialAuthorityOpen?: (pair: RuntimePair) => void): RuntimeAdmission {
-  const control = resolve(workspace, ".tracker/control");
-  if (lstatSync(control, { throwIfNoEntry: false }) === undefined) {
-    const first = acquireInitialRuntimeAdmission(workspace,
-      (pair, inspection) => { beforeInitialAuthorityOpen?.(pair); return verifyKnownDefaultAuthority(pair, inspection); },
-      (pair, initialization) => { beforeInitialAuthorityOpen?.(pair); initializeKnownDefaultAuthority(pair, initialization); });
-    if (mode === "exclusive") return first;
-    first.release();
+export async function acquireDashboardEntrypointAdmission(browserClosure: ProfileBrowserClosure, workspace: string, mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock): Promise<RuntimeAdmission> {
+  const admission = acquireDashboard(workspace, mode, lifetime);
+  try {
+    if (!admission.requiresFlatStoreMigration()) return admission;
+  } catch (error) {
+    if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission });
+    try { admission.release(); }
+    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission }); }
+    throw error;
   }
-  const acquire = (): RuntimeAdmission => mode === "exclusive"
-    ? acquireExclusiveRuntimeAdmission(workspace) : acquireSharedRuntimeAdmission(workspace);
-  try { return acquire(); }
+  admission.release();
+  const stopped = RuntimeAdmission.acquireStoppedMachineControlMaintenance(workspace, lifetime);
+  try { await stopped.startCleanFlatStore(browserClosure); }
   catch (error) {
-    if (!(error instanceof AdmissionMutexBusyError) || !admissionMutexOwnerProvenDead(workspace)) throw error;
-    recoverAbandonedAdmissionMutexAtStartup(workspace);
-    return acquire();
+    if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: stopped });
+    try { stopped.release(); }
+    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: stopped }); }
+    throw error;
   }
+  stopped.release();
+  return acquireDashboard(workspace, mode, lifetime);
+}
+
+function acquireDashboard(workspace: string, mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock): RuntimeAdmission {
+  return RuntimeAdmission.acquireDashboard(workspace, mode, lifetime);
 }

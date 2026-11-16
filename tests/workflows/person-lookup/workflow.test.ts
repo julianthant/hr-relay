@@ -21,6 +21,19 @@ describe("workflow definition public equivalence characterization", () => {
       ],
     });
   });
+  it("declares retained check states and status notes without exposing internal matching codes", () => {
+    const fields = personLookupDescriptor.timeline.flatMap(group => group.operatorFields ?? []);
+    for (const [label, nodeId, fieldPath] of [
+      ["CRM", "crm-identity", "crmState"],
+      ["UCPath", "active-status", "details.ucpath"],
+      ["CRM", "active-status", "details.crm"],
+      ["Status note", "active-status", "reason"],
+    ]) assert.ok(fields.some(field => field.label === label && field.sources.some(source =>
+      source.nodeId === nodeId && source.kind === "output" && source.fieldPath === fieldPath)), `${nodeId}.${fieldPath}`);
+    const methods = fields.filter(field => field.sources.some(source => source.fieldPath === "method"));
+    assert.equal(methods.length, 2);
+    for (const field of methods) assert.ok(field.label === "How found" && field.display?.cases.length === 7);
+  });
   it("carries the complete typed input declaration through a JSON surface round trip", () => {
     const surface = personLookupDescriptor.surfaces.inputRun;
     assert.ok(surface?.typedInput);
@@ -92,6 +105,7 @@ describe("workflow definition public equivalence characterization", () => {
       "enabled": [
         "retry",
         "restart",
+        "recover-run",
         "cancel",
         "bump",
         "rename",
@@ -226,125 +240,17 @@ describe("workflow definition public equivalence characterization", () => {
         "key": "active-state",
         "label": "Outcome",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "state"
+          "kind": "result",
+          "fieldPath": "activeStatus.state"
         },
         "display": "badge"
-      },
-      {
-        "key": "detail-search",
-        "label": "Search",
-        "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.search"
-        },
-        "display": "text"
-      },
-      {
-        "key": "detail-name",
-        "label": "Name",
-        "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.name"
-        },
-        "display": "text"
       },
       {
         "key": "detail-eid",
         "label": "EID",
         "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.eid"
-        },
-        "display": "text"
-      },
-      {
-        "key": "detail-department",
-        "label": "Dept",
-        "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.department"
-        },
-        "display": "text"
-      },
-      {
-        "key": "detail-hr-status",
-        "label": "HR Status",
-        "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.hrStatus"
-        },
-        "display": "text"
-      },
-      {
-        "key": "detail-ucpath",
-        "label": "UCPath",
-        "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.ucpath"
-        },
-        "display": "text"
-      },
-      {
-        "key": "detail-crm",
-        "label": "CRM",
-        "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.crm"
-        },
-        "display": "text"
-      },
-      {
-        "key": "detail-start-date",
-        "label": "Start Date",
-        "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.startDate"
-        },
-        "display": "text"
-      },
-      {
-        "key": "detail-end-date",
-        "label": "End Date",
-        "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.endDate"
-        },
-        "display": "text"
-      },
-      {
-        "key": "detail-termination-reason",
-        "label": "Term Reason",
-        "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.terminationReason"
-        },
-        "display": "text"
-      },
-      {
-        "key": "detail-found-in-ucpath",
-        "label": "Found in UCPath",
-        "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.foundInUcpath"
-        },
-        "display": "text"
-      },
-      {
-        "key": "detail-matched-eid",
-        "label": "Matched EID",
-        "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.matchedEid"
-        },
-        "display": "text"
-      },
-      {
-        "key": "detail-matched-name",
-        "label": "Matched Name",
-        "source": {
-          "nodeId": "active-status",
-          "fieldPath": "details.matchedName"
+          "kind": "result",
+          "fieldPath": "activeStatus.details.eid"
         },
         "display": "text"
       }
@@ -420,7 +326,7 @@ describe("workflow definition public equivalence characterization", () => {
   },
   "module": {
     "role": {
-      "kind": "standalone"
+      "kind": "composition"
     },
     "stores": [
       {

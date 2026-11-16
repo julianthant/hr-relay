@@ -1,121 +1,201 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { acquireSharedRuntimeAdmission, RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { acquireSharedRuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createContentAddressedArtifactWriter, pendingDiagnosticArtifacts } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { createFirstInstallCustodyFixture } from "../../../support/helpers/storage/first-install-custody-fixtures.js";
-import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
+import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
+import { insertUnboundOcrExtraction } from "../../../support/fixtures/storage/ocr-extractions.js";
+import { OcrPageInputSchema } from "../../../../src/models/workflows/ocr/source-manifest.js";
+
+const retainedFixtureOwners: unknown[] = [];
+
+it.each(["unbound-source", "source-bound"] as const)("retains %s OCR bytes while reclaiming stopped diagnostic stages", async binding => {
+  const profile = await createBoundProfileFixture();
+  const admission = profile.admission, clock = manualClock(new Date("2026-01-01T12:00:00.000Z"));
+  try {
+    const writer = createContentAddressedArtifactWriter({ admission });
+    const bytes = Buffer.from("synthetic contact page 1");
+    const shared = await writer.stageDiagnostic(bytes, { mediaType: "image/png" }, "ordinary"); shared.publish();
+    const unrelated = await writer.stageDiagnostic(Buffer.from("unreferenced OCR stage"), { mediaType: "image/png" }, "ordinary"); unrelated.publish();
+    const input = OcrPageInputSchema.parse({ ...sourceFixture(1).inputs[0], image: shared.ref });
+    const reading = donePage(input).output;
+    const database = AuthorityDatabase.open(admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "ocr-retention-proof" }, clock,
+      undefined, undefined, undefined, boundProfileCredentials(admission));
+    let stored;
+    try {
+      if (binding === "source-bound") stored = database.authority.ocrExtractions.insert(reading).record;
+      else {
+        const raw = new DatabaseSync(profile.path);
+        try { stored = insertUnboundOcrExtraction(raw, reading.extraction); } finally { raw.close(); }
+      }
+    } finally { database.close(); }
+    const path = join(admission.artifactRoot, `${shared.ref.sha256}.artifact`), before = readFileSync(path);
+    const databaseBytes = readFileSync(profile.path);
+    const report = await withOfflineMaintenance(admission, operation => upgradeStorage(profileBrowserClosure, admission,
+      { stateRoot: admission.stateRoot, processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false }, clock, operation));
+    assert.deepEqual(report.diagnostics, { reclaimedStages: 2, retainedStages: 0, capacityWarning: false });
+    assert.deepEqual(readFileSync(path), before);
+    assert.deepEqual(readFileSync(profile.path), databaseBytes);
+    assert.equal(existsSync(join(admission.artifactRoot, `${unrelated.ref.sha256}.artifact`)), false);
+    assert.deepEqual(pendingDiagnosticArtifacts(admission), []);
+    const reopened = AuthorityDatabase.open(admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "ocr-retention-proof" }, clock,
+      undefined, undefined, undefined, boundProfileCredentials(admission));
+    try { assert.deepEqual(reopened.authority.ocrExtractions.get(stored.extractionId), stored); }
+    finally { reopened.close(); }
+  } finally { await profile.close(); }
+});
 
 {
 
 it("uses the existing stopped upgrade maintenance door without changing authority or plan bytes", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "diagnostic-maintenance-")));
+  const profile = await createBoundProfileFixture();
+  const root = profile.workspace;
   const clock = manualClock(new Date("2026-01-01T12:00:00.000Z"));
-  const admission = RuntimeAdmission.acquireInitial(root, (pair, inspection) => ({ kind: "verified-existing", pair,
-    authorityGeneration: AuthorityDatabase.inspectExistingReadOnly(inspection, join(pair.stateRoot, "state.db")).authorityGeneration,
-    databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(pair.stateRoot, "state.db")) }), (pair, initialization) => {
-    AuthorityDatabase.open(initialization, { path: join(pair.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "diagnostic-maintenance" }, clock).close();
-  });
+  const admission = profile.admission;
+  const profileId = admission.profileBinding.profileId;
+  let primary: { error: unknown } | undefined = undefined;
   const stateRoot = admission.stateRoot, artifactRoot = admission.artifactRoot;
   const input = { stateRoot, processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot), plan: false };
   try {
     const noWork = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade"], clock, root, admission);
-    assert.deepEqual(noWork, { output: "storage upgrade: already-upgraded (v5 → v5)\ncredentials: unchanged", exitCode: 0 });
+    assert.deepEqual(noWork, { output: `storage upgrade: already-upgraded (v${CURRENT_AUTHORITY_SCHEMA_VERSION} → v${CURRENT_AUTHORITY_SCHEMA_VERSION})
+credentials: unchanged`, exitCode: 0 });
     const writer = createContentAddressedArtifactWriter({ admission });
     const ordinary = await writer.stageDiagnostic(Buffer.from("ordinary pending"), { mediaType: "application/json" }, "ordinary"); ordinary.publish();
     const pinned = await writer.stageDiagnostic(Buffer.from("protected pending"), { mediaType: "application/json" }, "pinned"); pinned.publish();
     const before = readdirSync(artifactRoot).sort();
     const databasePath = join(stateRoot, "state.db"), databaseBytes = readFileSync(databasePath);
     const inspection = AuthorityDatabase.inspectExistingReadOnly(admission, databasePath);
-    const plan = await upgradeStorage(admission, { ...input, plan: true }, clock);
+    const plan = await withOfflineMaintenance(admission, operation => upgradeStorage(profileBrowserClosure, admission, { ...input, plan: true }, clock, operation));
     assert.equal(plan.state, "planned"); assert.equal(plan.diagnostics, undefined);
     assert.deepEqual(readdirSync(artifactRoot).sort(), before); assert.deepEqual(readFileSync(databasePath), databaseBytes);
-    const live = acquireRuntimeProcessLock({ processLockRoot: input.processLockRoot, name: "live-smoke", pid: process.pid }, clock);
-    try { await assert.rejects(upgradeStorage(admission, input, clock), /runtime-active/u); assert.deepEqual(readdirSync(artifactRoot).sort(), before); }
+    const live = admission.acquireOfflineMaintenance(); live.consume();
+    try { await assert.rejects(upgradeStorage(profileBrowserClosure, admission, input, clock, live), /offline-maintenance-already-consumed/u); assert.deepEqual(readdirSync(artifactRoot).sort(), before); }
     finally { live.release(); }
-    const report = await upgradeStorage(admission, input, clock);
+    const report = await withOfflineMaintenance(admission, operation => upgradeStorage(profileBrowserClosure, admission, input, clock, operation));
     assert.deepEqual(report.diagnostics, { reclaimedStages: 1, retainedStages: 1, capacityWarning: true });
     assert.equal(existsSync(join(artifactRoot, `${ordinary.ref.sha256}.artifact`)), false);
     assert.equal(existsSync(join(artifactRoot, `${pinned.ref.sha256}.artifact`)), true);
     assert.deepEqual(pendingDiagnosticArtifacts(admission), [pinned.ref]);
     const cli = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade"], clock, root, admission);
-    assert.deepEqual(cli, { output: "storage upgrade: already-upgraded (v5 → v5)\ncredentials: unchanged\ndiagnostic stages: 0 reclaimed, 1 retained; retained evidence remains budget-accounted", exitCode: 0 });
+    assert.deepEqual(cli, { output: `storage upgrade: already-upgraded (v${CURRENT_AUTHORITY_SCHEMA_VERSION} → v${CURRENT_AUTHORITY_SCHEMA_VERSION})
+credentials: unchanged
+diagnostic stages: 0 reclaimed, 1 retained; retained evidence remains budget-accounted`, exitCode: 0 });
     assert.deepEqual(readFileSync(databasePath), databaseBytes);
     const after = AuthorityDatabase.inspectExistingReadOnly(admission, databasePath);
     assert.equal(after.authorityGeneration, inspection.authorityGeneration);
     assert.equal(after.authorityContentFingerprint, inspection.authorityContentFingerprint);
-    admission.release();
-    const shared = acquireSharedRuntimeAdmission(root);
-    try { await assert.rejects(upgradeStorage(shared, input, clock), /exclusive offline admission required/u); }
-    finally { shared.release(); }
-  } finally { admission.release(); rmSync(root, { recursive: true, force: true }); }
+    try { admission.release(); profile.machine.release(); }
+    catch (error) { throw retainAuthoritySourceClosure([error], { admission, directory: { profile } }); }
+    const sharedMachine = acquireSharedRuntimeAdmission(root, profile.lifetime);
+    const sharedOwners: { machine: typeof sharedMachine; admission?: ReturnType<typeof sharedMachine.admitProfile>; profile: typeof profile; primary?: unknown } = {
+      machine: sharedMachine, profile,
+    };
+    retainedFixtureOwners.push(sharedOwners);
+    let sharedPrimary: { error: unknown } | undefined;
+    try {
+      const shared = sharedMachine.admitProfile(profileId);
+      sharedOwners.admission = shared;
+      await assert.rejects(withOfflineMaintenance(shared, operation => upgradeStorage(profileBrowserClosure, shared, input, clock, operation)), /exclusive installation authority required/u);
+    } catch (error) { sharedPrimary = { error }; sharedOwners.primary = error; }
+    if (!(sharedPrimary?.error instanceof AuthoritySourceClosureUnprovedError)) {
+      try { sharedOwners.admission?.release(); sharedMachine.release(); }
+      catch (cleanup) {
+        throw retainAuthoritySourceClosure(sharedPrimary === undefined ? [cleanup] : [sharedPrimary.error, cleanup], {
+          ...(sharedOwners.admission === undefined ? {} : { admission: sharedOwners.admission }), directory: sharedOwners,
+        });
+      }
+    }
+    if (sharedPrimary !== undefined) throw sharedPrimary.error;
+  } catch (error) { primary = { error }; }
+  if (primary?.error instanceof AuthoritySourceClosureUnprovedError) {
+    retainedFixtureOwners.push({ profile, primary: primary.error });
+    throw primary.error;
+  }
+  try { await profile.close(); }
+  catch (cleanup) {
+    throw retainAuthoritySourceClosure(primary === undefined ? [cleanup] : [primary.error, cleanup], { admission, directory: { profile } });
+  }
+  if (primary !== undefined) throw primary.error;
 });
 }
 
 {
 
-const roots:string[]=[];
-const _afterEachFixture0 = ()=>{vi.restoreAllMocks();for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});};
-function fixture() {
-  const root=mkdtempSync(join(tmpdir(),"relay-native-authority-"));roots.push(root);
-  const path=join(root,"authority.sqlite");
-  const admission=RuntimeAdmission.syntheticFixture(path);
-  const open=()=>AuthorityDatabase.open(admission,{path,busyTimeoutMs:250,migrationOwner:"native-test"});
-  return {path,open,admission};
+const fixtures: { cleanup(): void }[] = [];
+const _afterEachFixture0 = () => {
+  vi.restoreAllMocks();
+  for (const fixture of fixtures.splice(0)) fixture.cleanup();
+};
+async function fixture() {
+  const profile = await createBoundProfileFixture();
+  const credentials = boundProfileCredentials(profile.admission);
+  const owner = { profile, closureFailed: false };
+  const databases = new Set<AuthorityDatabase>();
+  const close = (database: AuthorityDatabase | DatabaseSync, primary?: unknown) => {
+    try { database.close(); if (database instanceof AuthorityDatabase) databases.delete(database); }
+    catch (error) {
+      owner.closureFailed = true;
+      const retained = retainAuthoritySourceClosure(primary === undefined ? [error] : [primary, error], { database, admission: profile.admission, directory: { profile } });
+      retainedFixtureOwners.push({ owner, database, databases, retained });
+      throw retained;
+    }
+  };
+  const open = () => {
+    try { const database = AuthorityDatabase.open(profile.admission, {path: profile.path,busyTimeoutMs:250,migrationOwner:"native-test"},
+      undefined, undefined, undefined, undefined, credentials); databases.add(database); return database; }
+    catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) {
+        owner.closureFailed = true; retainedFixtureOwners.push({ owner, error });
+      }
+      throw error;
+    }
+  };
+  const result = { path: profile.path, open, close, async cleanup() {
+    if (owner.closureFailed) return;
+    for (const database of databases) close(database);
+    try { await profile.close(); }
+    catch (error) {
+      owner.closureFailed = true;
+      const retained = retainAuthoritySourceClosure([error], { admission: profile.admission, directory: { profile } });
+      retainedFixtureOwners.push({ owner, databases, retained });
+      throw retained;
+    }
+  } };
+  fixtures.push(result);
+  return result;
 }
 describe("native authority admission",()=>{
 afterEach(_afterEachFixture0);
 
-  it.each([0,1,48,99])("refuses version %i without rewriting its header or retained rows",version=>{
-    const f=fixture();f.open().close();
-    const db=new DatabaseSync(f.path);db.exec(`PRAGMA user_version=${String(version)}`);
-    const baseline=db.prepare("SELECT * FROM database_upgrades").all();db.close();
+  it.each([0,1,48,99])("refuses version %i without rewriting its header or retained rows",async version=>{
+    const f=await fixture();f.close(f.open());
+    const db=new DatabaseSync(f.path);
+    let baseline: ReturnType<ReturnType<DatabaseSync["prepare"]>["all"]>;
+    let primary: { error: unknown } | undefined;
+    try {
+      db.exec(`PRAGMA user_version=${String(version)}`);
+      baseline=db.prepare("SELECT * FROM database_upgrades").all();
+    } catch (error) { primary = { error }; throw error; }
+    finally { f.close(db, primary?.error); }
     expect(f.open).toThrow(AuthoritySchemaVersionError);
     const after=new DatabaseSync(f.path,{readOnly:true});
+    let afterPrimary: { error: unknown } | undefined;
     try {expect(after.prepare("PRAGMA user_version").get()?.user_version).toBe(version);
       expect(after.prepare("SELECT * FROM database_upgrades").all()).toEqual(baseline);}
-    finally {after.close();}
-  });
-});
-}
-
-{
-
-const roots: string[] = [];
-const _afterEachFixture0 = () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
-
-describe("first installation worker custody", () => {
-afterEach(_afterEachFixture0);
-
-  function initialFixture() {
-    return createFirstInstallCustodyFixture(roots, HASH_A);
-  }
-  it("retains blocking first-install custody on an AuthorityDatabase opening callback failure", () => {
-    const f = initialFixture();
-    vi.spyOn(AuthorityDatabase, "open").mockImplementation(() => {
-      expect(f.snapshot().processLocks.workers.state).toBe("active"); throw new Error("initial-open-fault");
-    });
-    expect(f.acquire).toThrow("initial-open-fault");
-    expect(f.snapshot().processLocks.workers.state).toBe("active"); f.custody().release();
-  });
-  it("retains blocking custody through a first-install close fault", () => {
-    const f = initialFixture();
-    const originalClose = Object.getOwnPropertyDescriptor(AuthorityDatabase.prototype, "close")?.value as (this: AuthorityDatabase) => void;
-    vi.spyOn(AuthorityDatabase.prototype, "close").mockImplementation(function (this: AuthorityDatabase) {
-      expect(f.snapshot().processLocks.workers.state).toBe("active");
-      originalClose.call(this); throw new Error("initial-close-unproved");
-    });
-    expect(f.acquire).toThrow("initial-close-unproved");
-    expect(f.snapshot().processLocks.workers.state).toBe("active"); f.custody().release();
+    catch (error) { afterPrimary = { error }; throw error; }
+    finally {f.close(after, afterPrimary?.error);}
   });
 });
 }

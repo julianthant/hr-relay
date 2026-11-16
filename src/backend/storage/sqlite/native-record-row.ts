@@ -1,3 +1,6 @@
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { PredecessorRunRecordSchema } from "../../../models/run/record.js";
+import { runSettlementContext } from "./run-settlement-row.js";
 import { confirmationPublicationFromRow } from "../../../models/events/confirmed-operation.js";
 import { WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
 import { validateNotificationPublicationArray } from "./notification-publications.js";
@@ -12,6 +15,13 @@ import { type AuthorityTableName } from "../../../models/config/authority.js";
 
 const RowSchema = z.record(z.string(), z.union([z.string(),z.number(),z.null()]));
 const fields = {
+  workflow_workbook_selections: {workflow_id:"workflowId",revision:"revision",accepted_command_id:"acceptedCommandId",used_at:"usedAt"},
+  ocr_source_uploads: {id:"artifact.id",created_at:"uploadedAt"},
+  ocr_review_revisions: {id:"id",run_id:"sourceRunId",revision:"revision",command_id:"origin.commandId",created_at:"createdAt"},
+  ocr_approved_snapshots: {id:"snapshotId",run_id:"sourceRunId",revision:"revision",created_at:"approvedAt"},
+  assistant_model_preference: {id:"id",profile_id:"profileId",revision:"revision",command_id:"commandId",audit_id:"auditId",updated_at:"updatedAt"},
+  assistant_chats: {id:"id",profile_id:"profileId",epoch:"epoch",created_at:"createdAt",expires_at:"expiresAt"},
+  assistant_actions: {id:"id",chat_id:"chatId",command_id:"command.commandId",revision:"revision",state:"state",created_at:"createdAt",expires_at:"expiresAt"},
   database_upgrades: {id:"recordKey",upgrade_id:"upgradeId",phase:"phase",backup_digest:"backup.sha256",created_at:"recordedAt"},
   settings_snapshots: {id:"configSnapshotId",revision:"revision",fingerprint:"fingerprint",captured_at:"capturedAt"},
   command_audits: {id:"auditId",command_id:"request.commandId",code:"result.code",created_at:"completedAt"},
@@ -27,11 +37,9 @@ const fields = {
   write_intents: {id:"writeIntentId",system:"system",idempotency_key:"idempotencyKey",idempotency_key_digest:"idempotencyKeyDigest",status:"status",generation:"generation",run_id:"runId",created_at:"createdAt",updated_at:"updatedAt"},
   write_attempts: {id:"writeAttemptId",intent_id:"writeIntentId",generation:"generation",run_id:"runId",created_at:"recordedAt"},
   worker_pools: {workflow:"workflow",desired_workers:"desiredWorkers",version:"version",created_at:"createdAt",updated_at:"updatedAt"},
-  worker_leases: {id:"workerId",worker_id:"workerId",workflow:"workflow",lease_generation:"leaseGeneration",control_revision:"controlRevision",state:"lifecycle.state",directive:"control.directive",heartbeat_at:"lifecycle.heartbeatAt",version:"version",created_at:"createdAt",updated_at:"updatedAt"},
   auth_leases: {credential_key:"credentialKey",generation:"generation",holder_worker_id:"holder.workerId",holder_system:"holder.system",state:"state",expires_at:"expiresAt",version:"version",updated_at:"updatedAt"},
   notifications: {id:"notificationId",actor_id:"actorId",dedupe_fingerprint:"dedupeFingerprint",status:"status",seen_count:"count",version:"version",created_at:"createdAt",updated_at:"updatedAt"},
   notification_states: {id:"concern",updated_at:"observedAt"},
-  explorer_overrides: {id:"workflowId",revision:"revision",command_id:"appliedCommandId"},
   diagnostic_snapshots: {id:"bundleId",run_id:"runId",origin_kind:"origin.kind",failure_id:"origin.failureId",content_digest:"contentDigest",retention_kind:"retention.kind",purge_after:"retention.purgeAfter",created_at:"createdAt"},
   diagnostic_files: {snapshot_id:"bundleId",artifact_id:"attachment.artifactId",kind:"attachment.kind",digest:"attachment.digest",sensitivity:"attachment.sensitivity",created_at:"createdAt"},
   dryrun_results: {id:"resultId",scenario_id:"scenarioId",workflow:"workflow",subject_label:"subjectLabel",manifest_digest:"manifestDigest",verdict:"verdict",execution_state:"execution.state",run_id:"execution.runId",trace_id:"execution.traceId",wall_time_ms:"wallTimeMs",created_at:"recordedAt"},
@@ -45,7 +53,7 @@ function valueAt(record: unknown, path: string): string | number | null {
   return z.union([z.string(),z.number()]).parse(value);
 }
 export function isNativeOrdinaryTable(table: AuthorityTableName): table is NativeOrdinaryTable { return Object.hasOwn(fields,table); }
-export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: unknown): unknown {
+export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: unknown, schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION): unknown {
   const row = RowSchema.parse(input);
   let record: unknown;
   if (table === "run_results") {
@@ -57,7 +65,22 @@ export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: u
   }
   const object = z.record(z.string(),z.unknown()).parse(record);
   const extras: Record<string,string | number | null> = {};
-  if (table === "run_checkpoints") {
+  if (schemaVersion >= 20 && table === "run_results") {
+    const terminal = schemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION ? runSettlementContext(row, PredecessorRunRecordSchema) : runSettlementContext(row);
+    if (terminal.lifecycle.state !== "terminal"
+      || ([["runId","runId"],["workflow","workflowId"],["attempt","attempt"],["descriptorVersion","descriptorVersion"],
+        ["contractFingerprint","contractFingerprint"],["configSnapshotId","configSnapshotId"],["configFingerprint","configFingerprint"]] as const).some(
+        ([field,key]) => Reflect.get(terminal.envelope,field) !== object[key])) throw new Error("run-settlement-result-mismatch");
+    if (terminal.completion === undefined) {
+      const evidence = z.object({ value: z.object({ kind: z.literal("lifecycle-evidence"), appliedVersion: z.number().int().positive() }) }).parse(object.result).value;
+      if (evidence.appliedVersion !== terminal.version) throw new Error("run-settlement-context-mismatch");
+    }
+    extras.id = `${String(object.runId)}:${terminal.version}`;
+    extras.settlement_version = terminal.version;
+    extras.terminal_run_json = z.string().parse(row.terminal_run_json);
+  } else if (schemaVersion >= 20 && table === "run_receipts") {
+    extras.settlement_version = z.number().int().positive().parse(row.settlement_version);
+  } else if (table === "run_checkpoints") {
     extras.id = checkpointRecordKey(RunCheckpointRecordSchema.parse(record));
     extras.output_digest = deriveCheckpointOutputDigest(object.output);
   } else if (table === "gate_results") extras.id = `${String(object.runId)}:${String(object.gateId)}`;

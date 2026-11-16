@@ -1,7 +1,4 @@
-import type { LogRowWire } from "../../../../src/models/dashboard/run-detail.js";
-import { createConfirmedActionPublisher } from "../../../../src/backend/logs/confirmed-action-publisher.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
-import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
@@ -14,7 +11,6 @@ import { ucpathDriver } from "../../../../src/backend/systems/ucpath/driver-decl
 import { ucpathSession } from "../../../../src/backend/systems/ucpath/session-provider.js";
 import { ucpathStore } from "../../../../src/backend/systems/ucpath/task-registry.js";
 import { NoteWireSchema } from "../../../../src/models/events/types.js";
-import type { RunRecord } from "../../../../src/models/run/record.js";
 import { SearchPersonOrg, SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { NodeIdSchema, TraceIdSchema } from "../../../../src/rules/identity/ids.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
@@ -24,108 +20,9 @@ import { UUID_4, UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtu
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, recordingLogger, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, actionBindingSessions, cleanup } = createRunExecutorTestWorld();
+const {executorHarness, enqueueAndClaim, SIGNAL, readPersistedNotes, cleanup } = createRunExecutorTestWorld();
 
 afterEach(cleanup);
-
-describe("complete operation display action binding", () => {
-
-  it("binds real early confirmation publications to their later buffered action rows by exact identity", async () => {
-    const harness = executorHarness({ descriptor: actionBindingCompiled.descriptor, sessions: actionBindingSessions({ lifecycle: true }) });
-    const { database, clock } = harness.authority;
-    const claimed = enqueueAndClaim(database, actionBindingQueuedRun(clock.now().toISOString(), { protectedValue: false }),
-      clock.now().toISOString(), ACTION_BINDING_WORKFLOW_ID);
-    const logs = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
-    const publisher = createConfirmedActionPublisher({ workerId: claimed.claim.workerId, streamId: "logs-native-fixture", clock, capacity: 100,
-      append: event => {
-        const run = database.authority.runs.get(event.action.runId); assert.ok(run);
-        logs.emitConfirmedAction(event, run);
-      } });
-    const result = await executeClaimedRun({ ...harness.deps, taskNotes: logs, confirmedActionPublisher: publisher }, { ...claimed, signal: SIGNAL });
-    assert.equal(result.state, "done");
-    const authority = database.authority.runs.get(claimed.run.envelope.runId); assert.ok(authority);
-    const deps = { timeline: database.authority.timelineEvents,
-      projection: { runLogSnapshot: () => ({ entries: [] }) }, descriptors: { resolve: () => undefined },
-    } as unknown as RunDetailQueryDeps;
-    const section = buildRunLogsSection(deps, authority.envelope.runId, undefined, authority);
-    assert.equal(section.section, "logs");
-    if (section.section !== "logs") throw new Error("expected logs");
-    assert.ok((section.payload.confirmedActions?.length ?? 0) > 0);
-    assert.equal(section.payload.confirmedActionBindings?.length, section.payload.confirmedActions?.length);
-    let early = 0;
-    for (const binding of section.payload.confirmedActionBindings ?? []) {
-      const target: LogRowWire | undefined = section.payload.rows?.find(row => row.logId === binding.logId); assert.ok(target?.native);
-      const stored = database.authority.timelineEvents.get(binding.native.eventId); assert.ok(stored);
-      assert.equal(binding.native.order, stored.cursor);
-      assert.equal(binding.native.runId, authority.envelope.runId);
-      assert.equal(binding.native.traceId, authority.envelope.traceId);
-      assert.equal(binding.native.attempt, authority.envelope.attempt);
-      assert.equal(binding.native.nodeId, "search");
-      if (binding.native.order < target.native.order) early++;
-    }
-    assert.ok(early > 0, "confirmation publication precedes the buffered target in native delivery order");
-    const row = section.payload.rows?.find(row => row.kind === "note" && row.native !== undefined);
-    assert.ok(row?.native);
-    assert.equal(database.authority.timelineEvents.get(row.native.eventId)?.cursor, row.native.order);
-    const missingTargets = { ...deps, timeline: { ...deps.timeline,
-      page: (input: Parameters<typeof deps.timeline.page>[0]) => deps.timeline.page(input).filter(record =>
-        record.payload.kind !== "note" || record.payload.note.action?.operation === undefined),
-    } };
-    assert.throws(() => buildRunLogsSection(missingTargets, authority.envelope.runId, undefined, authority), /ACTION_TARGET_IDENTITY_MISMATCH/);
-    const actionNote = database.authority.timelineEvents.page({ runId: authority.envelope.runId }).find(record =>
-      record.payload.kind === "note" && record.payload.note.action?.operation !== undefined);
-    assert.ok(actionNote);
-    const { cursor: _cursor, ...duplicate } = actionNote;
-    database.authority.timelineEvents.append({ ...duplicate, eventId: UUID_4 });
-    assert.throws(() => buildRunLogsSection(deps, authority.envelope.runId, undefined, authority), /ACTION_TARGET_IDENTITY_MISMATCH/);
-  });
-
-  it("refuses missing complete snapshots at record admission and corrupt snapshots before a driver opens", async () => {
-    const missingHarness = executorHarness({ descriptor: actionBindingCompiled.descriptor });
-    const missingQueued = actionBindingQueuedRun(missingHarness.authority.clock.now().toISOString());
-    const { operationDisplaySnapshot: _snapshot, ...missingEnvelope } = missingQueued.envelope;
-    assert.throws(
-      () => RunRecordSchema.parse({ ...missingQueued, envelope: missingEnvelope }),
-      /complete run fixture-operation-action-binding is missing its frozen operation display snapshot/u,
-    );
-    assert.equal(missingHarness.sessions.opens(), 0);
-
-    assert.throws(
-      () => buildRunLogsSection({
-        stateRoot: missingHarness.authority.stateRoot,
-        timeline: missingHarness.authority.database.authority.timelineEvents,
-        projection: { runLogSnapshot: () => ({ entries: [] }) },
-        descriptors: { resolve: () => undefined },
-      } as unknown as RunDetailQueryDeps, UUID_5, undefined, {
-        ...missingQueued,
-        envelope: missingEnvelope,
-      }),
-      /complete run fixture-operation-action-binding is missing its frozen operation display snapshot/u,
-    );
-
-    const corruptHarness = executorHarness({ descriptor: actionBindingCompiled.descriptor });
-    const corruptClaim = enqueueAndClaim(
-      corruptHarness.authority.database,
-      actionBindingQueuedRun(corruptHarness.authority.clock.now().toISOString()),
-      corruptHarness.authority.clock.now().toISOString(),
-      ACTION_BINDING_WORKFLOW_ID,
-    );
-    const snapshot = corruptClaim.run.envelope.operationDisplaySnapshot;
-    assert.ok(snapshot);
-    const corrupt = {
-      ...corruptClaim.run,
-      envelope: {
-        ...corruptClaim.run.envelope,
-        operationDisplaySnapshot: { ...snapshot, contentDigest: "0".repeat(64) },
-      },
-    } as RunRecord;
-    await assert.rejects(
-      () => executeClaimedRun(corruptHarness.deps, { ...corruptClaim, run: corrupt, signal: SIGNAL }),
-      /corrupt frozen operation display snapshot digest/u,
-    );
-    assert.equal(corruptHarness.sessions.opens(), 0);
-  });
-});
 
 describe("person-lookup full walk", () => {
 
@@ -152,7 +49,7 @@ describe("person-lookup full walk", () => {
       },
       crm: () => healthyCrmDriver(),
     });
-    const harness = executorHarness({ sessions, autoFireAtOrBelowMs: 2_500 });
+    const harness = await executorHarness({ sessions, autoFireAtOrBelowMs: 2_500 });
     const { database, clock, stateRoot: _stateRoot } = harness.authority;
     const logs = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const stdout = recordingLogger();
@@ -274,8 +171,8 @@ describe("person-lookup full walk", () => {
   });
 });
 
-it("retains a task screenshot association and native node without exposing raw actions", () => {
-  const harness = executorHarness();
+it("retains a task screenshot association and native node without exposing raw actions", async () => {
+  const harness = await executorHarness();
   const { database, clock } = harness.authority;
   const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
   const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
@@ -289,7 +186,39 @@ it("retains a task screenshot association and native node without exposing raw a
   assert.ok(section.section === "logs");
   const row = section.payload.rows?.find(row => row.kind === "note");
   assert.ok(row?.kind === "note");
+  assert.equal(row.note.message, "Screenshot");
   assert.deepEqual(row.note.screenshot, { bundleId: UUID_4, artifactId: UUID_5, sessionId });
+  assert.equal(row.note.operatorAction?.sessionId, sessionId);
   assert.equal(row.native?.nodeId, "searching");
   assert.equal("action" in row.note, false);
+});
+
+it("serves registered operator labels for the normal legacy Person Lookup actions without raw targets or values", async () => {
+  const harness = await executorHarness();
+  const { database, clock } = harness.authority;
+  const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+  const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
+  const address = { runId: claimed.run.envelope.runId, attempt: claimed.run.envelope.attempt, traceId: claimed.run.envelope.traceId,
+    spanPath: taskSpanPath(claimed.run.envelope.traceId, NodeIdSchema.parse("searching"), 1, claimed.claim.claimGeneration) };
+  for (const action of [{ kind: "typed" as const, targetId: "ucpath.person-org.eid-input", value: "10000001" },
+    { kind: "clicked" as const, targetId: "ucpath.person-org.search-button" },
+    { kind: "read" as const, targetId: "ucpath.person-org.name-display", value: "Quillan, Petra A." }]) {
+    notes.emitRunAction({ workflow: claimed.run.envelope.workflow, address, action: { ...action, at: clock.now().toISOString() } }, claimed.run);
+  }
+  const deps = { timeline: database.authority.timelineEvents, projection: { runLogSnapshot: () => ({ entries: [] }) }, descriptors: { resolve: () => undefined } } as unknown as RunDetailQueryDeps;
+  const section = buildRunLogsSection(deps, claimed.run.envelope.runId, undefined, claimed.run);
+  assert.ok(section.section === "logs");
+  const rows = section.payload.rows?.filter(row => row.kind === "note") ?? [];
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows.map(row => Reflect.get(row.note, "operatorAction")), [
+    { kind: "fill", label: "Person Org EID input", registryLabel: true, system: "ucpath" },
+    { kind: "click", label: "Person Org Search button", registryLabel: true, system: "ucpath" },
+    { kind: "read", label: "Person Org displayed name", registryLabel: true, system: "ucpath" },
+  ]);
+  assert.deepEqual(rows.map(row => row.note.message), [
+    "Fill: Person Org EID input", "Click: Person Org Search button", "Read: Person Org displayed name",
+  ]);
+  assert.equal(new Set(rows.map(row => row.native?.eventId)).size, 3);
+  assert.ok(rows.every(row => row.native?.nodeId === "searching"));
+  assert.doesNotMatch(JSON.stringify(rows.map(row => Reflect.get(row.note, "operatorAction"))), /targetId|value|10000001|Quillan/u);
 });

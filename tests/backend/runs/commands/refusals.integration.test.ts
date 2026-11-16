@@ -15,11 +15,11 @@ import { DAY, makeWorld, queuedEventOf as queuedEventBase_m1, runRecordOf as run
 
 {
 
-const worlds: ReturnType<typeof trustWorld>[] = [];
-function fixture() { const value = trustWorld(); worlds.push(value); return value; }
-const _afterEachFixture0 = () => { vi.restoreAllMocks(); for (const value of worlds.splice(0).reverse()) value.dispose(); };
+const worlds: Awaited<ReturnType<typeof trustWorld>>[] = [];
+async function fixture() { const value = await trustWorld(); worlds.push(value); return value; }
+const _afterEachFixture0 = async () => { vi.restoreAllMocks(); for (const value of worlds.splice(0).reverse()) await value.dispose(); };
 
-function inbox(value: ReturnType<typeof trustWorld>) {
+function inbox(value: Awaited<ReturnType<typeof trustWorld>>) {
   let id = 7000;
   return createNotificationInbox({ authority: value.database, runReader: value.reader, clock: value.world.clock,
     ids: { uuid: () => uuidOf(id++) }, actorId: "local-operator" });
@@ -29,7 +29,7 @@ describe("canonical trust linkage", () => {
 afterEach(_afterEachFixture0);
 
   it("keeps independent retry receipts and notification replay, then refuses deleted live doors", async () => {
-    const f = fixture(); const source = f.fail(f.create(10), 11); const id = source.envelope.runId;
+    const f = await fixture(); const source = f.fail(f.create(10), 11); const id = source.envelope.runId;
     const sourceReceipt = canonicalJsonStringify(f.receipts.ensureReceipt(id));
     const notifications = inbox(f);
     const failedEvent = (runId: string) => {
@@ -88,21 +88,21 @@ function queuedEventOf(w: DashboardWorld, input: Parameters<typeof runRecordBase
 
 const worlds: DashboardWorld[] = [];
 
-function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
-  const created = makeWorld(...args);
+async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
+  const created = await makeWorld(...args);
   worlds.push(created);
   return created;
 }
 
-const _afterEachFixture0 = () => {
-  for (const w of worlds.splice(0)) w.dispose();
+const _afterEachFixture0 = async () => {
+  for (const w of worlds.splice(0)) await w.dispose();
 };
 
 describe("THE run/queue projection", () => {
 afterEach(_afterEachFixture0);
 
-  it("degrades on an unfoldable event, schedules the guarded rebuild, and recovers from JSONL", () => {
-    const w = world({ collectRebuilds: true });
+  it("degrades on an unfoldable event, schedules the guarded rebuild, and recovers from JSONL", async () => {
+    const w = await world({ collectRebuilds: true });
     queuedEventOf(w, { seed: 1 });
     // A claim for a run with no run.queued cannot fold; apply must not throw
     // into the emitting path.

@@ -124,6 +124,31 @@ function viewToggleHarness(input: Readonly<{
 }
 
 describe("strict UCPath Person Org operation", () => {
+  it("does not publish search results or drill after the awaited search revokes the session", async () => {
+    let current = true;
+    const rows = parsePersonOrgGridRows([
+      [EID_A, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "John Smith"],
+    ]);
+    const harness = pageHarness({ outcomes: [{ kind: "grid", rows }], details: { 0: detail(EID_A, "John Smith") } });
+    const captured: string[] = [];
+    const stalePublications: string[] = [];
+    await assert.rejects(withBrowserActionNotes(manualClock(new Date("2026-10-12T00:00:00Z")), () => searchPersonOrgWithPagePort(() => {
+      if (!current) throw new Error("session revoked");
+    }, {
+      ...harness.port,
+      search: async query => {
+        const outcome = await harness.port.search(query);
+        current = false;
+        return outcome;
+      },
+    }, { kind: "by-name", name: "Smith, John", keepNonHdh: false }),
+    notes => { captured.push(...notes.map(note => note.targetId)); },
+    note => { if (!current) stalePublications.push(note.targetId); }), /session revoked/u);
+    assert.equal(harness.calls.some(call => call.startsWith("drill:")), false);
+    assert.deepEqual(captured, ["ucpath.person-org.search-attempt"]);
+    assert.deepEqual(stalePublications, []);
+  });
+
   it("expands enabled View All and accepts only verified complete toggle states", async () => {
     const enabled = viewToggleHarness({
       text: "View All",
@@ -231,7 +256,7 @@ describe("strict UCPath Person Org operation", () => {
         await toggle.port.click();
         rows = parsePersonOrgGridRows([
           [EID_A, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "John Smith"],
-          [EID_B, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "Jane Smith"],
+          [EID_B, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "John Smith"],
         ]);
       },
     };
@@ -240,10 +265,10 @@ describe("strict UCPath Person Org operation", () => {
       outcomes: [{ kind: "grid", rows }],
       details: {
         0: detail(EID_A, "John Smith"),
-        1: detail(EID_B, "Jane Smith"),
+        1: detail(EID_B, "John Smith"),
       },
     });
-    const output = await searchPersonOrgWithPagePort(harness.port, {
+    const output = await searchPersonOrgWithPagePort(() => undefined, harness.port, {
       kind: "by-name",
       name: "Smith, John",
       keepNonHdh: true,
@@ -270,6 +295,105 @@ describe("strict UCPath Person Org operation", () => {
     ]);
   });
 
+  it("rejects a prefix-only single grid result before drilling or reading its record", async () => {
+    const rows = parsePersonOrgGridRows([
+      [EID_A, "0", "Active", "SDCMP", "004921", "Fictional analyst", "Quillanmore", "Petral Quillanmore"],
+    ]);
+    const harness = pageHarness({ outcomes: [{ kind: "grid", rows }] });
+    const output = await searchPersonOrgWithPagePort(() => undefined, harness.port, {
+      kind: "by-name", name: "Quillan, Petra", keepNonHdh: true,
+    });
+    assert.deepEqual(output.results, []);
+    assert.equal(output.selection.status, "not-found");
+    assert.deepEqual(harness.calls, ["name:Quillan,Petra"]);
+  });
+
+  it("rejects a prefix-only auto-drilled detail", async () => {
+    const harness = pageHarness({ outcomes: [{ kind: "detail", detail: detail(EID_A, "Quillanmore, Petral") }] });
+    const output = await searchPersonOrgWithPagePort(() => undefined, harness.port, {
+      kind: "by-name", name: "Quillan, Petra", keepNonHdh: true,
+    });
+    assert.equal(output.selection.status, "not-found");
+    assert.deepEqual(output.results, []);
+  });
+
+  it("rejects several prefix-only grid results without drilling any record", async () => {
+    const rows = parsePersonOrgGridRows([
+      [EID_A, "0", "Active", "SDCMP", "004921", "Fictional analyst", "Quillanmore", "Petral Quillanmore"],
+      [EID_B, "0", "Active", "SDCMP", "004921", "Fictional analyst", "Quillanfar", "Petram Quillanfar"],
+    ]);
+    const harness = pageHarness({ outcomes: [{ kind: "grid", rows }] });
+    const output = await searchPersonOrgWithPagePort(() => undefined, harness.port, {
+      kind: "by-name", name: "Quillan, Petra", keepNonHdh: true,
+    });
+    assert.equal(output.selection.status, "not-found");
+    assert.deepEqual(output.results, []);
+    assert.deepEqual(harness.calls, ["name:Quillan,Petra"]);
+  });
+
+  it("selects only the exact name among several prefix results and reopens its actual row", async () => {
+    const rows = parsePersonOrgGridRows([
+      [EID_B, "0", "Active", "SDCMP", "004921", "Fictional analyst", "Quillanmore", "Petral Quillanmore"],
+      [EID_A, "0", "Active", "SDCMP", "004921", "Fictional analyst", "Quillan", "Petra Quillan"],
+    ]);
+    const harness = pageHarness({ outcomes: [{ kind: "grid", rows }], details: { 1: detail(EID_A, "Petra Quillan") } });
+    const output = await searchPersonOrgWithPagePort(() => undefined, harness.port, {
+      kind: "by-name", name: "QUILLAN,  PETRA", keepNonHdh: true,
+    });
+    assert.equal(output.selection.selected?.emplId, EID_A);
+    assert.deepEqual(output.selection.candidateEids, [EID_A]);
+    assert.deepEqual(harness.calls, ["name:Quillan,Petra", "drill:1", "return", "drill:1"]);
+  });
+
+  it("keeps name-variant attempts bound to the original full name", async () => {
+    const harness = pageHarness({ outcomes: [
+      { kind: "detail", detail: detail(EID_B, "Quillan, Petra Mirabel") },
+      { kind: "detail", detail: detail(EID_B, "Quillan, Petra") },
+      { kind: "detail", detail: detail(EID_A, "Petra Mira Quillan") },
+    ] });
+    const output = await searchPersonOrgWithPagePort(() => undefined, harness.port, {
+      kind: "by-name", name: "Quillan, Petra Mira", keepNonHdh: true,
+    });
+    assert.equal(output.selection.selected?.emplId, EID_A);
+    assert.deepEqual(harness.calls, ["name:Quillan,Petra Mira", "name:Quillan,Petra", "name:Quillan,Mira"]);
+    const miss = pageHarness({ outcomes: [
+      { kind: "detail", detail: detail(EID_B, "Quillan, Petra Mirabel") },
+      { kind: "detail", detail: detail(EID_B, "Quillan, Petra") },
+      { kind: "detail", detail: detail(EID_B, "Quillan, Mira") },
+    ] });
+    const absent = await searchPersonOrgWithPagePort(() => undefined, miss.port, {
+      kind: "by-name", name: "Quillan, Petra Mira", keepNonHdh: true,
+    });
+    assert.equal(absent.selection.status, "not-found");
+    assert.deepEqual(absent.results, []);
+  });
+
+  for (const kind of ["grid", "detail"] as const) for (const initiallyAbsent of [false, true]) for (const reversed of [false, true]) {
+    it(`${kind} ${reversed ? "rejects the reversed person" : "accepts the original person"} for a comma-free name ${initiallyAbsent ? "after initial absence" : "on the first query"}`, async () => {
+      const emplId = reversed ? EID_B : EID_A;
+      const name = reversed ? "Quillan Petra" : "Petra Quillan";
+      const rows = parsePersonOrgGridRows([
+        [emplId, "0", "Active", "SDCMP", "004921", "Fictional analyst", reversed ? "Petra" : "Quillan", name],
+      ]);
+      const outcome: PersonOrgSearchPageOutcome = kind === "grid" ? { kind, rows } : { kind, detail: detail(emplId, name) };
+      const absent: PersonOrgSearchPageOutcome = { kind: "not-found", marker: "No matching values were found" };
+      const harness = pageHarness({
+        outcomes: initiallyAbsent ? [absent, outcome] : reversed ? [outcome, absent] : [outcome],
+        details: { 0: detail(emplId, name) },
+      });
+      const output = await searchPersonOrgWithPagePort(() => undefined, harness.port, {
+        kind: "by-name", name: "Petra Quillan", keepNonHdh: true,
+      });
+      assert.equal(output.selection.status, reversed ? "not-found" : "resolved");
+      assert.deepEqual(output.selection.candidateEids, reversed ? [] : [EID_A]);
+      if (reversed) assert.deepEqual(output.results, []);
+      else assert.equal(output.selection.selected?.name, "Quillan, Petra");
+      assert.deepEqual(harness.calls.filter(call => call.startsWith("name:")), initiallyAbsent || reversed
+        ? ["name:Quillan,Petra", "name:Petra,Quillan"] : ["name:Quillan,Petra"]);
+      assert.deepEqual(harness.calls.filter(call => call.startsWith("drill:")), !reversed && kind === "grid" ? ["drill:0", "drill:0"] : []);
+    });
+  }
+
   it("selects active, then HDH, then highest employment record", () => {
     const selected = selectPreferredAssignmentDetails([
       assignment({ emplRecord: "9", hrStatus: "Inactive" }),
@@ -282,7 +406,7 @@ describe("strict UCPath Person Org operation", () => {
 
   it("resolves an EID only from the observed detail subject", async () => {
     const harness = pageHarness({ outcomes: [{ kind: "detail", detail: detail(EID_A, "Johnnie Battistessa") }] });
-    const output = await searchPersonOrgWithPagePort(harness.port, { kind: "by-eid", emplId: EID_A });
+    const output = await searchPersonOrgWithPagePort(() => undefined, harness.port, { kind: "by-eid", emplId: EID_A });
     assert.equal(output.selection.status, "resolved");
     assert.equal(output.selection.selected?.emplId, EID_A);
     assert.equal(output.selection.selected?.name, "Battistessa, Johnnie");
@@ -292,24 +416,24 @@ describe("strict UCPath Person Org operation", () => {
   it("never overwrites a mismatched observed EID with the query", async () => {
     const harness = pageHarness({ outcomes: [{ kind: "detail", detail: detail(EID_B, "Wrong Person") }] });
     await assert.rejects(
-      searchPersonOrgWithPagePort(harness.port, { kind: "by-eid", emplId: EID_A }),
+      searchPersonOrgWithPagePort(() => undefined, harness.port, { kind: "by-eid", emplId: EID_A }),
       new RegExp(`expected ${directIdentifierDisplay(EID_A)} but observed ${directIdentifierDisplay(EID_B)}`),
     );
   });
 
-  it("drills every SDCMP result, proves row-to-detail subjects, and preserves ambiguity", async () => {
+  it("drills every exact SDCMP result, proves row-to-detail subjects, and preserves ambiguity", async () => {
     const rows = parsePersonOrgGridRows([
       [EID_A, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "John Smith", ""],
-      [EID_B, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "Jane Smith", ""],
+      [EID_B, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "John Smith", ""],
     ]);
     const harness = pageHarness({
       outcomes: [{ kind: "grid", rows }],
       details: {
         0: detail(EID_A, "John Smith"),
-        1: detail(EID_B, "Jane Smith"),
+        1: detail(EID_B, "John Smith"),
       },
     });
-    const output = await searchPersonOrgWithPagePort(harness.port, {
+    const output = await searchPersonOrgWithPagePort(() => undefined, harness.port, {
       kind: "by-name",
       name: "Smith, John",
       keepNonHdh: false,
@@ -322,7 +446,7 @@ describe("strict UCPath Person Org operation", () => {
   it("restores the verified grid and reopens only the selected person before capture", async () => {
     const rows = parsePersonOrgGridRows([
       [EID_A, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "John Smith"],
-      [EID_B, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "Jane Smith"],
+      [EID_B, "0", "Active", "SDCMP", "004921", "Dining Assistant", "Smith", "John Smith"],
     ]);
     for (const departments of [["HOUSING/DINING/HOSPITALITY", "CHEMISTRY"], ["CHEMISTRY", "CHEMISTRY"], ["HOUSING/DINING/HOSPITALITY", "HOUSING/DINING/HOSPITALITY"]]) {
       let surface = "results";
@@ -330,24 +454,24 @@ describe("strict UCPath Person Org operation", () => {
       const port: PersonOrgPagePort = {
         search: async () => { surface = "results"; return { kind: "grid", rows }; },
         drill: async index => { surface = `detail:${index}`; recordBrowserAction("clicked", "fixture.drill");
-          return detail(index === 0 ? EID_A : EID_B, index === 0 ? "John Smith" : "Jane Smith", { department: departments[index] }); },
+          return detail(index === 0 ? EID_A : EID_B, index === 0 ? "John Smith" : "John Smith", { department: departments[index] }); },
         returnToResults: async () => { surface = "results"; return rows; },
       };
-      const output = await withBrowserActionNotes(manualClock(new Date("2026-10-12T00:00:00Z")), () => searchPersonOrgWithPagePort(port, { kind: "by-name", name: "Smith, John", keepNonHdh: false }), notes => { actions.push(...notes.map(note => note.targetId)); });
+      const output = await withBrowserActionNotes(manualClock(new Date("2026-10-12T00:00:00Z")), () => searchPersonOrgWithPagePort(() => undefined, port, { kind: "by-name", name: "Smith, John", keepNonHdh: false }), notes => { actions.push(...notes.map(note => note.targetId)); });
       assert.equal(surface, output.selection.selected === null ? "results" : "detail:0");
       assert.equal(output.selection.status, departments[0] === "CHEMISTRY" ? "not-found" : departments[1] === "CHEMISTRY" ? "resolved" : "ambiguous");
       assert.ok(actions.indexOf("ucpath.person-org.search-results") < actions.indexOf("fixture.drill"));
     }
-    const base: PersonOrgPagePort = { search: async () => ({ kind: "grid", rows }), drill: async index => detail(index === 0 ? EID_A : EID_B, index === 0 ? "John Smith" : "Jane Smith", { department: index === 0 ? "HOUSING/DINING/HOSPITALITY" : "CHEMISTRY" }), returnToResults: async () => rows };
-    await assert.rejects(searchPersonOrgWithPagePort({ ...base, returnToResults: async () => [rows[0]] }, { kind: "by-name", name: "Smith, John", keepNonHdh: false }), /results changed/);
+    const base: PersonOrgPagePort = { search: async () => ({ kind: "grid", rows }), drill: async index => detail(index === 0 ? EID_A : EID_B, index === 0 ? "John Smith" : "John Smith", { department: index === 0 ? "HOUSING/DINING/HOSPITALITY" : "CHEMISTRY" }), returnToResults: async () => rows };
+    await assert.rejects(searchPersonOrgWithPagePort(() => undefined, { ...base, returnToResults: async () => [rows[0]] }, { kind: "by-name", name: "Smith, John", keepNonHdh: false }), /results changed/);
     let drills = 0;
-    await assert.rejects(searchPersonOrgWithPagePort({ ...base, drill: async index => { drills++; return { ...await base.drill(index), startDate: drills === 3 ? "10/01/2026" : "" }; } }, { kind: "by-name", name: "Smith, John", keepNonHdh: false }), /selected detail changed/);
+    await assert.rejects(searchPersonOrgWithPagePort(() => undefined, { ...base, drill: async index => { drills++; return { ...await base.drill(index), startDate: drills === 3 ? "10/01/2026" : "" }; } }, { kind: "by-name", name: "Smith, John", keepNonHdh: false }), /selected detail changed/);
   });
 
   it("keeps the reviewed non-HDH option explicit", async () => {
     const nonHdh = detail(EID_A, "Bea Morrow", { department: "CHEMISTRY" });
     const filtered = pageHarness({ outcomes: [{ kind: "detail", detail: nonHdh }] });
-    const absent = await searchPersonOrgWithPagePort(filtered.port, {
+    const absent = await searchPersonOrgWithPagePort(() => undefined, filtered.port, {
       kind: "by-name",
       name: "Morrow, Bea",
       keepNonHdh: false,
@@ -355,7 +479,7 @@ describe("strict UCPath Person Org operation", () => {
     assert.equal(absent.selection.status, "not-found");
 
     const retained = pageHarness({ outcomes: [{ kind: "detail", detail: nonHdh }] });
-    const found = await searchPersonOrgWithPagePort(retained.port, {
+    const found = await searchPersonOrgWithPagePort(() => undefined, retained.port, {
       kind: "by-name",
       name: "Morrow, Bea",
       keepNonHdh: true,
@@ -381,7 +505,7 @@ describe("strict UCPath Person Org operation", () => {
       returnToResults: () => Promise.reject(new Error("unused")),
     };
     await assert.rejects(
-      searchPersonOrgWithPagePort(searchFailure, { kind: "by-eid", emplId: EID_A }),
+      searchPersonOrgWithPagePort(() => undefined, searchFailure, { kind: "by-eid", emplId: EID_A }),
       /results extraction failed/,
     );
 
@@ -390,7 +514,7 @@ describe("strict UCPath Person Org operation", () => {
     ]);
     const drillFailure = pageHarness({ outcomes: [{ kind: "grid", rows }] });
     await assert.rejects(
-      searchPersonOrgWithPagePort(drillFailure.port, {
+      searchPersonOrgWithPagePort(() => undefined, drillFailure.port, {
         kind: "by-name",
         name: "Smith, John",
         keepNonHdh: true,
@@ -403,7 +527,7 @@ describe("strict UCPath Person Org operation", () => {
       details: { 0: detail(EID_B, "John Smith") },
     });
     await assert.rejects(
-      searchPersonOrgWithPagePort(wrongDetail.port, {
+      searchPersonOrgWithPagePort(() => undefined, wrongDetail.port, {
         kind: "by-name",
         name: "Smith, John",
         keepNonHdh: true,

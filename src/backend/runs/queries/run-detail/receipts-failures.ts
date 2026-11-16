@@ -1,3 +1,6 @@
+import { failureCodeFromTaskCode } from "../../../../models/failures/error-catalog.js";
+import { StartPlanRequestSchema, type StartPlanRequest } from "../../../../models/dashboard/start-plan.js";
+import { RerunRefusedError, previewRerunWarnings } from "../../start/rerun.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
 import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
 import { projectFailureDisplay } from "../../../../models/dashboard/failure-display.js";
@@ -9,6 +12,9 @@ import {
   RunDetailSectionResponseSchema,
   type RunDetailSectionResponse,
 } from "../../../../models/dashboard/run-detail.js";
+import type { FailureDetailWire } from "../../../../models/dashboard/run-detail.js";
+import type { RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
+import { projectDecision } from "../../decisions/project-decision.js";
 import {
   projectFailureForOperator,
   type FailureRecord,
@@ -17,6 +23,7 @@ import { projectReceiptForOperator } from "../../../../models/trust/evidence.js"
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../../models/trust/diagnostic.js";
 import type { RunRecord } from "../../../../models/run/record.js";
+import type { AnyWorkflowDescriptor } from "../../../../workflow-kit/workflow.js";
 import type { RunDetailQueryDeps, RunDetailTrustDeps } from "../run-detail-types.js";
 import { requireTrustRun, assertTrustEvidenceIdentity } from "../../trust/run-reader.js";
 import { DiagnosticBundleCorruptError } from "../../commands/refusals.js";
@@ -90,16 +97,75 @@ export function buildReceiptFailureSection(
     traceId: failure.traceId, spanPath: source.spanPath,
     ...(failure.nodeId === undefined ? {} : { nodeId: failure.nodeId }),
   } };
-  return RunDetailSectionResponseSchema.parse({
-    section: "failure",
-    payload: { state: "available", value: { ...native, ...failureDetailWire(
+  const value = FailureDetailWireSchema.parse({ ...native,
+    ...failureRecovery(deps, authority, failure), ...failureDetailWire(
       runId,
       failure,
       trust,
       retainedRunProtectedBindings(authority).length > 0,
       deps.captures,
-    ) } },
+    ) });
+  return RunDetailSectionResponseSchema.parse({
+    section: "failure",
+    payload: { state: "available", value: { ...value, decision: failureDecision(value) } },
   });
+}
+
+/** One decision per failure: a served correction is D10, a failure after a committed or verified write is D8 (Mark as failed or a note), anything else D7. */
+export function failureDecision(failure: FailureDetailWire): RunDecisionWire {
+  // Both close the failure through annotate-failure; neither runs, retries or files anything.
+  const annotate = { via: "command" as const, family: "failure-resolution", type: "annotate-failure" };
+  const resolvable = failure.resolution?.capture.resolution.status === "unresolved";
+  const addNote = resolvable ? [{ id: "add-note", send: annotate, input: { kind: "text" as const, label: "Note" } }] : [];
+  const recovery = failure.recovery;
+  if (recovery !== undefined) {
+    // The run's typed input never crosses this wire, except a rejected value the correction declares display-safe.
+    const { correction, retry } = recovery;
+    return projectDecision("correct-value", [
+      { id: "retry-with-value", send: { via: "start-plan" }, label: correction.actionLabel, confirm: recovery.confirm,
+        input: { kind: "text", label: correction.label, ...(correction.placeholder === undefined ? {} : { placeholder: correction.placeholder }), ...(correction.pattern === undefined ? {} : { pattern: correction.pattern }), ...(recovery.prefill === undefined ? {} : { prefill: recovery.prefill }) } },
+      { id: "check-again", send: { via: "action", actionKey: retry.key }, ...(retry.kind === "command" && retry.confirm !== undefined ? { confirm: retry.confirm } : {}) },
+    ]);
+  }
+  if (failure.writeState === "committed" || failure.writeState === "verified") {
+    return projectDecision("failed-after-write", [...(resolvable ? [{ id: "mark-as-failed", send: annotate }] : []), ...addNote]);
+  }
+  return projectDecision("failed-retryable", addNote);
+}
+
+export function failureRecovery(deps: RunDetailQueryDeps, run: RunRecord, failure: FailureRecord): object {
+  const canonical = deps.canonical;
+  const descriptor = canonical?.descriptors.resolve(run.envelope.workflow);
+  const correction = descriptor?.failureCorrections?.find(entry => entry.nodeId === failure.nodeId && failureCodeFromTaskCode(entry.code) === failure.code);
+  if (canonical === undefined || descriptor === undefined || correction === undefined || failure.writeState !== "not-attempted"
+    || descriptor.contractFingerprint !== run.envelope.contractFingerprint || descriptor.version !== run.envelope.descriptorVersion) return {};
+  const request = correctionStartRequest(canonical, descriptor, run, { failureCorrection: { failureId: failure.failureId, inputField: correction.inputField } });
+  if (request === undefined) return {};
+  const rejected = correction.displaySafe === true ? (run.input.parsed.value as Record<string, unknown> | null)?.[correction.inputField] : undefined;
+  return { recovery: { correction, expectedVersion: run.version, ...(typeof rejected === "string" && rejected !== "" ? { prefill: rejected } : {}),
+    retry: { kind: "command", command: "retry", key: "check-again", label: "Check again", intent: "neutral", placement: ["banner"], expectedVersion: run.version,
+      confirm: { title: "Check again", body: "Retry this run from its retained checkpoints.", confirmLabel: "Check again", tone: "neutral" } },
+    confirm: { title: correction.actionLabel, body: "Relay reads the entered value in the real system before continuing. Identity still requires operator approval.", confirmLabel: correction.actionLabel, tone: "neutral" },
+    request } };
+}
+
+/** The one-field rerun a correction card sends, or undefined when the canonical rerun owner refuses the source (uncertain writes, incompatible evidence). */
+export function correctionStartRequest(canonical: NonNullable<RunDetailQueryDeps["canonical"]>, descriptor: AnyWorkflowDescriptor, run: RunRecord,
+  correction: Readonly<{ failureCorrection: { failureId: string; inputField: string } }> | Readonly<{ gateCorrection: { gateId: string; inputField: string } }>): StartPlanRequest | undefined {
+  const source = { runId: run.envelope.runId, expectedVersion: run.version, intent: "rerun" as const,
+    selectedStepKeys: descriptor.timeline.filter(step => !run.envelope.stepOmissions?.some(omission => omission.step === step.key)).map(step => step.key),
+    ...correction };
+  try {
+    const warnings = canonical.database.withAuthorityReadSnapshot(() => previewRerunWarnings(canonical.database.authority, descriptor, source));
+    if (warnings.warnings.length > 0) return undefined;
+  } catch (error) {
+    if (error instanceof RerunRefusedError) return undefined;
+    throw error;
+  }
+  return StartPlanRequestSchema.parse({ workflowId: descriptor.id, rerunSource: source, submissions: [{}],
+    selectedStepKeys: source.selectedStepKeys, dryRun: run.envelope.dryRun, browserMode: run.envelope.browserMode ?? "headless",
+    captureBrowserScreenshots: run.envelope.captureBrowserScreenshots ?? false, priority: run.envelope.priority,
+    ...(run.envelope.requestedInstance === undefined ? {} : { requestedInstance: run.envelope.requestedInstance }) });
 }
 
 function receiptAbsenceReason(authority: RunRecord, trust?: RunDetailTrustDeps): string {
@@ -129,7 +195,7 @@ function failureDetailWire(
   return FailureDetailWireSchema.parse({
     runId,
     failureId: projected.failureId,
-    ...(resolution === undefined ? {} : {resolution:{capability:trust.failureResolution?.capability(),capture:projectFailureResolution(resolution, protectedInput)}}),
+    ...(resolution === undefined ? {} : {resolution:{capture:projectFailureResolution(resolution, protectedInput)}}),
     traceId: projected.traceId,
     attempt: projected.attempt,
     workflowId: projected.workflowId,

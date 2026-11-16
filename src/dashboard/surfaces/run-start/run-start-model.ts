@@ -1,11 +1,12 @@
-import type { RunWorkers } from "../../../models/run/envelope.js";
-import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { WorkbookActiveSelectionSchema } from "../../../models/dashboard/workbook-library.js";
+import type { WorkbookLibraryEntry } from "../../../models/dashboard/workbook-library.js";
 import {
   stepOmissionFactsSchema,
   type StepOmissionField,
   type StepOmissionForm,
 } from "../../../models/workflow/step-omission.js";
-import { inputRunValueNoun, parseInputRunText, toRawSubmission, type InputParserSpec, type InputRunSurface, type TypedInputSurface, type TypedInputDraft } from "../../../models/workflow/ingress.js";
+import { inputRunValueNoun, parseInputRunText, toRawSubmission, type InputParserSpec, type InputRunSurface, parseTypedDate, type TypedDateControl, type TypedInputSurface, type TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { CANONICAL_FIELDS } from "../../../models/fields/registry.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
@@ -17,14 +18,45 @@ export interface RunInputPreview {
 }
 export function typedInputMode(surface: TypedInputSurface, draft: TypedInputDraft) {
   const value = draft[surface.modeField] ?? surface.initialMode;
+  if (value === null) return undefined;
   const mode = surface.modes.find(candidate => candidate.value === value);
   if (mode === undefined) throw new Error(`Undeclared input mode: ${String(value)}`);
   return mode;
 }
 
-export function typedInputDefaults(surface: TypedInputSurface, mode = surface.initialMode): TypedInputDraft {
+/** The date controls the chosen mode shows, each one shared date typed as MM/DD/YYYY. */
+export function typedDateControls(surface: TypedInputSurface, mode: string): readonly TypedDateControl[] {
+  return surface.controls.filter((control): control is TypedDateControl => "kind" in control && control.modes.includes(mode));
+}
+
+/** Each date as typed, refused with the control's declared wording when required and missing or not a real day. */
+function typedDates(surface: TypedInputSurface, mode: string, draft: TypedInputDraft): Record<string, string> {
+  return Object.fromEntries(typedDateControls(surface, mode).flatMap(control => {
+    const value = draft[control.field];
+    const text = typeof value === "string" ? value.trim() : "";
+    if (text === "" ? control.required : parseTypedDate(text) === undefined) throw new Error(control.refusal);
+    return text === "" ? [] : [[control.field, text]];
+  }));
+}
+
+/** A surface that submits no mode has one mode, so its records name none. */
+function recordMode(surface: TypedInputSurface, record: Record<string, JsonValue>): string | undefined {
+  if (surface.submitsMode === false) return surface.modes[0]?.value;
+  const value = record[surface.modeField];
+  return typeof value === "string" ? value : undefined;
+}
+
+export const usDateText = (value: string): string | undefined => {
+  if (parseTypedDate(value) !== undefined) return value;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  return iso === null ? undefined : `${iso[2]}/${iso[3]}/${iso[1]}`;
+};
+
+export function typedInputDefaults(surface: TypedInputSurface, mode: string | null = surface.initialMode): TypedInputDraft {
+  if (mode === null) return {};
   const selected = typedInputMode(surface, { [surface.modeField]: mode });
-  return { [surface.modeField]: mode, ...Object.fromEntries(selected.defaults.map(({ field, value }) => {
+  if (selected === undefined) throw new Error(`Choose ${surface.modeLabel}.`);
+  return { [surface.modeField]: mode, ...Object.fromEntries(typedDateControls(surface, mode).map(control => [control.field, ""])), ...Object.fromEntries(selected.defaults.map(({ field, value }) => {
     if (value.kind === "count") throw new Error("Typed input controls require text or boolean defaults");
     return [field, value.kind === "text" ? value.text : value.value];
   })) };
@@ -32,7 +64,7 @@ export function typedInputDefaults(surface: TypedInputSurface, mode = surface.in
 
 export function typedControlAvailable(surface: TypedInputSurface, draft: TypedInputDraft, field: string): boolean {
   const control = surface.controls.find(candidate => candidate.field === field);
-  return control !== undefined && control.modes.includes(typedInputMode(surface, draft).value)
+  return control !== undefined && control.modes.includes(typedInputMode(surface, draft)?.value ?? "")
     && control.requires.every(required => draft[required] === true);
 }
 
@@ -41,7 +73,7 @@ export function changeTypedInput(surface: TypedInputSurface, draft: TypedInputDr
     ...Object.fromEntries(surface.controls.filter(control => control.placement === "hidden" && draft[control.field] !== undefined).map(control => [control.field, draft[control.field]])) }
     : { ...draft, [field]: value };
   for (const control of surface.controls) {
-    if (control.placement !== "hidden" && !typedControlAvailable(surface, next, control.field)) next[control.field] = false;
+    if (!("kind" in control) && control.placement !== "hidden" && !typedControlAvailable(surface, next, control.field)) next[control.field] = false;
   }
   return next;
 }
@@ -53,9 +85,11 @@ function typedRecord(input: JsonValue): Record<string, JsonValue> {
 
 export function typedInputText(surface: TypedInputSurface, input: JsonValue): string {
   const record = typedRecord(input);
-  const modeValue = record[surface.modeField];
-  if (typeof modeValue !== "string") throw new Error("Typed input source has no mode");
-  const display = typedInputMode(surface, { [surface.modeField]: modeValue }).display;
+  const modeValue = recordMode(surface, record);
+  if (modeValue === undefined) throw new Error("Typed input source has no mode");
+  const selected = typedInputMode(surface, { [surface.modeField]: modeValue });
+  if (selected === undefined) throw new Error("Typed input source has no mode");
+  const display = selected.display;
   if (display.kind === "first-present") {
     const value = display.fields.map(field => record[field]).find(value => value !== undefined);
     if (typeof value !== "string" || value.length === 0) throw new Error("Typed input source has no display identity");
@@ -71,15 +105,20 @@ export function typedInputText(surface: TypedInputSurface, input: JsonValue): st
 
 export function restoreTypedInput(surface: TypedInputSurface, input: JsonValue): TypedInputDraft {
   const record = typedRecord(input);
-  const mode = record[surface.modeField];
-  if (typeof mode !== "string") throw new Error("Typed input source has no mode");
+  const mode = recordMode(surface, record);
+  if (mode === undefined) throw new Error("Typed input source has no mode");
   const draft = { ...typedInputDefaults(surface, mode) };
+  const dateFields = new Set(typedDateControls(surface, mode).map(control => control.field));
   for (const field of Object.keys(draft)) {
+    if (field === surface.modeField && surface.submitsMode === false) continue;
     const value = record[field];
     if (typeof value !== typeof draft[field]) throw new Error(`Typed input source field ${field} is invalid`);
-    if (typeof value === "string" || typeof value === "boolean") draft[field] = value;
+    const text = dateFields.has(field) && typeof value === "string" ? usDateText(value) : value;
+    if (text === undefined) throw new Error(`Typed input source field ${field} is invalid`);
+    if (typeof text === "string" || typeof text === "boolean") draft[field] = text;
   }
   const selected = typedInputMode(surface, draft);
+  if (selected === undefined) throw new Error("Typed input source has no mode");
   if (selected.parser.kind === "name-tuple") {
     const parser = selected.parser;
     for (const field of [parser.familyName, parser.givenName]) {
@@ -104,12 +143,14 @@ export function restoreTypedInput(surface: TypedInputSurface, input: JsonValue):
 
 function parseTypedEntries(surface: TypedInputSurface, text: string, draft: TypedInputDraft): readonly JsonValue[] {
   const mode = typedInputMode(surface, draft);
-  const options = Object.fromEntries(mode.defaults.map(({ field }) => [field, draft[field]]));
+  if (mode === undefined) throw new Error(`Choose ${surface.modeLabel}.`);
+  const options = { ...Object.fromEntries(mode.defaults.map(({ field }) => [field, draft[field]])), ...typedDates(surface, mode.value, draft) };
+  const named = surface.submitsMode === false ? {} : { [surface.modeField]: mode.value };
   for (const control of surface.controls) {
     if (options[control.field] === true && !typedControlAvailable(surface, draft, control.field)) throw new Error(`${control.label} requires its declared mode and options`);
   }
   const parser = mode.parser;
-  if (parser.kind === "entries") return parseInputRunText(parser.spec, text).map(entry => JsonValueSchema.parse({ ...toRawSubmission(entry), [surface.modeField]: mode.value, ...options }));
+  if (parser.kind === "entries") return parseInputRunText(parser.spec, text).map(entry => JsonValueSchema.parse({ ...toRawSubmission(entry), ...named, ...options }));
   return text.split(parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
     const fields = entry.split(",").map(field => field.trim());
     const fail = () => new Error(formatErrorCatalogFailure(createErrorCatalogFailure(parser.missingIdentifiersCode, {})).text);
@@ -125,7 +166,7 @@ function parseTypedEntries(surface: TypedInputSurface, text: string, draft: Type
       return [[identifier.field, identifier.canonicalField === "ssn" ? CANONICAL_FIELDS.ssn.schema.parse(value) : value]];
     }));
     if (Object.keys(values).length === 0) throw fail();
-    return JsonValueSchema.parse({ [surface.modeField]: mode.value,
+    return JsonValueSchema.parse({ ...named,
       [parser.familyName]: CANONICAL_FIELDS.fullName.schema.parse(family), [parser.givenName]: CANONICAL_FIELDS.fullName.schema.parse(given), ...values, ...options });
   });
 }
@@ -135,12 +176,13 @@ export function previewRunInput(surface: InputRunSurface, text: string, draft: T
   try {
     if (surface.typedInput !== undefined) {
       const declaration = surface.typedInput;
-      const values = { ...typedInputDefaults(declaration, String(draft[declaration.modeField] ?? declaration.initialMode)), ...draft };
-      const mode = typedInputMode(declaration, values);
+      const mode = typedInputMode(declaration, draft);
+      if (mode === undefined) throw new Error(`Choose ${declaration.modeLabel}.`);
+      const values = { ...typedInputDefaults(declaration, mode.value), ...draft };
       if (sourceInput !== undefined) restoreTypedInput(declaration, sourceInput);
       const source = sourceInput === undefined ? undefined : typedRecord(sourceInput);
-      const people = source !== undefined && source[declaration.modeField] === mode.value && text === typedInputText(declaration, source)
-        ? [JsonValueSchema.parse({ ...source, ...Object.fromEntries(mode.defaults.map(({ field }) => [field, values[field]])) })]
+      const people = source !== undefined && recordMode(declaration, source) === mode.value && text === typedInputText(declaration, source)
+        ? [JsonValueSchema.parse({ ...source, ...Object.fromEntries(mode.defaults.map(({ field }) => [field, values[field]])), ...typedDates(declaration, mode.value, values) })]
         : parseTypedEntries(declaration, text, values);
       const unique = new Map<string, JsonValue>();
       for (const person of people) {
@@ -175,16 +217,6 @@ export const START_DOOR_ABSENCE = Object.freeze({
 });
 export type StartDoorAbsenceCode = keyof typeof START_DOOR_ABSENCE;
 
-/** Describe implemented enqueue behavior; an unsupported supersede policy must not claim it replaces running work. */
-export const ENQUEUE_POLICY_MEANING: Readonly<Record<EnqueuePolicy, string>> = Object.freeze({
-  "reject-active": "Refuse overlapping subject runs",
-  "supersede-active": "Replace the active runs shown in the final review",
-  "allow-parallel": "Starts regardless of what is already running for the same subject",
-});
-
-/** Enqueue policy has no per-start override; a selector would offer an ignored choice. */
-export const ENQUEUE_POLICY_REASON = "Fixed by this workflow.";
-
 /** the two queue priorities `StartPlanIngress` accepts */
 export type StartPriority = "interactive" | "bulk";
 export type BrowserMode = "headless" | "headed";
@@ -212,7 +244,6 @@ export interface StartRequestShape {
   workflowId: string;
   text: string;
   dryRun: boolean;
-  workers: RunWorkers;
   browserMode: BrowserMode;
   captureBrowserScreenshots: boolean;
   priority: StartPriority;
@@ -227,7 +258,6 @@ export function startRequestFingerprint(request: StartRequestShape): string {
     request.workflowId,
     request.text,
     request.dryRun,
-    request.workers,
     request.browserMode,
     request.captureBrowserScreenshots,
     request.priority,
@@ -435,4 +465,23 @@ export function toggleStepSelection(
   const stillForced = forcedStepOmissions(steps, [...selected]);
   for (const forced of stillForced.keys()) selected.delete(forced);
   return Object.freeze(steps.filter((candidate) => selected.has(candidate.key)).map((candidate) => candidate.key));
+}
+
+export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
+  selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,
+  eligibleSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[], writable: boolean,
+  selectedRows?: { typeId: string; rows: readonly { sheetId: string; rowId: string }[] }) {
+  if (requiredTypes.length > 1 || selectedRows !== undefined && (selectedRows.rows.length !== submissionCount || !requiredTypes.includes(selectedRows.typeId))) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
+  return Array.from({ length: submissionCount }, (_, index) => requiredTypes.map(typeId => {
+    const selection = selections[typeId];
+    const entry = catalog.find(entry => entry.libraryId === selection?.libraryId);
+    if (!entry || entry.state.removed || entry.state.origin.kind !== 'local'
+      || !entry.state.versions.some(version => version.id === selection.versionId)
+      || writable && entry.state.selectedVersionId !== selection.versionId
+      || !eligibleSources.some(source => source.libraryId === selection.libraryId && source.versionId === selection.versionId && source.sheetId === selection.sheetId))
+      throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
+    return WorkbookActiveSelectionSchema.parse({ entry: index + 1, libraryId: entry.libraryId, versionId: selection.versionId,
+      sheetId: selection.sheetId, expectedVersion: entry.version,
+      ...(selectedRows?.typeId === typeId ? { selectedRow: { sheetId: selectedRows.rows[index].sheetId, rowId: selectedRows.rows[index].rowId } } : {}) });
+  })).flat();
 }

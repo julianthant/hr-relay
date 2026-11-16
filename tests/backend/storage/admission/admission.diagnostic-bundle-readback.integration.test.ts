@@ -1,11 +1,10 @@
 import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { createProfileFixtureSet, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,readFileSync,rmSync,writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync,rmSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterAll,afterEach,describe,it } from "vitest";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import {
 DiagnosticBundleBytesMissingError,
@@ -36,43 +35,58 @@ import { RUN_ID,sequentialIdFactory } from "../../../support/fixtures/phase1f-ru
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const ARTIFACT_ROOT = ".tracker/data/artifacts";
 const JSON_BYTES = Uint8Array.from([0x5b, 0x5d]);
 
 interface Fixture {
   readonly root: string;
+  readonly artifactRoot: string;
   readonly database: AuthorityDatabase;
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
   readonly artifactReader: ReturnType<typeof createServerVerifiedArtifactReader>;
   readonly sourceReads: number[];
 }
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
-function fixture(): Fixture {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-diagnostic-readback-"));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "diagnostic-readback-test" },
-    manualClock(new Date(NOW)),
-  );
-  const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ARTIFACT_ROOT)) });
+async function fixture(): Promise<Fixture> {
+  const profile = await profileFixtures.create();
+  const root = profile.stateRoot;
+  let database: AuthorityDatabase;
+  try {
+    database = AuthorityDatabase.open(
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: 'entrypoint' },
+      manualClock(new Date(NOW)), undefined, undefined, undefined, boundProfileCredentials(profile.admission),
+    );
+  } catch (primary) {
+    const failures: unknown[] = [primary];
+    try { await profile.close(); }
+    catch (cleanup) { failures.push(cleanup); }
+    if (failures.length > 1) throw new AggregateError(failures, 'diagnostic fixture acquisition failed', { cause: primary });
+    throw primary;
+  }
+  disposers.push(async () => {
+    database.close();
+    await profile.close();
+  });
+  const artifacts = createContentAddressedArtifactWriter({ admission: profile.admission });
   const sourceReads: number[] = [];
   const artifactReader = createServerVerifiedArtifactReader({
-    admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ARTIFACT_ROOT)),
+    admission: profile.admission,
     observeIo(kind, bytes) {
       if (kind === "source-read") sourceReads.push(bytes);
     },
   });
+  const readiness = await Promise.allSettled([artifacts.ready, artifactReader.ready]);
+  const failures = readiness.flatMap(result => result.status === 'rejected' ? [result.reason as unknown] : []);
+  if (failures.length > 0) throw new AggregateError(failures, 'diagnostic fixture readiness failed', { cause: failures[0] });
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
-  disposers.push(() => {
-    database.close();
-    rmSync(root, { recursive: true, force: true });
-  });
-  return { root, database, artifacts, artifactReader, sourceReads };
+  return { root, artifactRoot: profile.admission.artifactRoot, database, artifacts, artifactReader, sourceReads };
 }
 
 function captureService(value: Fixture, prefix = "d") {
@@ -123,7 +137,7 @@ function artifactRefOf(attachment: DiagnosticBundle["attachments"][number]): Art
 }
 
 function artifactPath(value: Fixture, ref: ArtifactRef): string {
-  return join(value.root, ARTIFACT_ROOT, `${ref.sha256}.artifact`);
+  return join(value.artifactRoot, `${ref.sha256}.artifact`);
 }
 
 type StoredMutation =
@@ -180,7 +194,7 @@ async function collectBytes(body: ReadableStream<Uint8Array>): Promise<Buffer> {
 
 describe("diagnostic bundle readback", () => {
   it("round-trips the writer through verified bytes and canonical manifest", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureService(value).capture({
       trigger: "operator-request",
       runId: RUN_ID,
@@ -211,7 +225,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("refuses a missing id and a traversal-shaped id", async () => {
-    const value = fixture();
+    const value = await fixture();
     const deps = bundleDeps(value);
 
     await assert.rejects(() => readDiagnosticBundle(deps, "00000000-0000-4000-8000-000000000099"), TargetNotFoundError);
@@ -219,7 +233,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("normalizes repository and durable-schema failures to path-free corruption", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureService(value).capture({
       trigger: "operator-request",
       runId: RUN_ID,
@@ -266,7 +280,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("rejects a foreign durable bundle identity before serving its wire or manifest", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureService(value).capture({
       trigger: "operator-request",
       runId: RUN_ID,
@@ -302,7 +316,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("rejects a bad bundle digest", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureService(value).capture({
       trigger: "operator-request",
       runId: RUN_ID,
@@ -327,7 +341,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("compares the attachment index bundle id, created instant and attachment identity before byte I/O", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureConsoleBundle(value);
     const indexed = value.database.authority.diagnosticBundles.listAttachments(bundle.bundleId);
     const indexedRow = indexed[0];
@@ -370,7 +384,7 @@ describe("diagnostic bundle readback", () => {
   it.each(["missing", "corrupt"] as const)(
     "preserves a %s physical artifact as a typed path-free bundle failure",
     async (mutation) => {
-      const value = fixture();
+      const value = await fixture();
       const bundle = await captureConsoleBundle(value);
       const attachment = bundle.attachments[0];
       if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -393,7 +407,7 @@ describe("diagnostic bundle readback", () => {
   );
 
   it("keeps a multi-attachment missing/corrupt result in the typed bundle failure family", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureService(value).capture({
       trigger: "operator-request",
       runId: RUN_ID,
@@ -436,7 +450,7 @@ describe("diagnostic bundle readback", () => {
   it.each(["operational-and-missing", "two-operational"] as const)(
     "keeps %s multi-attachment failures operational and retains every cause",
     async (failureShape) => {
-      const value = fixture();
+      const value = await fixture();
       const bundle = await captureService(value).capture({
         trigger: "operator-request",
         runId: RUN_ID,
@@ -492,7 +506,7 @@ describe("diagnostic bundle readback", () => {
   );
 
   it("reuses one completed exact-ref proof within a request pass and a new pass re-verifies", async () => {
-    const value = fixture();
+    const value = await fixture();
     const first = await captureConsoleBundle(value, "d", "local-operator");
     const second = await captureConsoleBundle(value, "e", "review-operator");
     const firstAttachment = first.attachments[0];
@@ -522,7 +536,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("refuses an aborted request before reusing its completed exact-ref proof", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureConsoleBundle(value);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -540,7 +554,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("preserves the exact request abort through bundle and generic byte queries", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureConsoleBundle(value);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -562,7 +576,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("never shares a completed proof between conflicting exact refs", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureConsoleBundle(value);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -578,7 +592,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("does not retain a failed verification as a completed pass proof", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureConsoleBundle(value);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -596,7 +610,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("preserves indexed physical absence as a typed verifier error", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureConsoleBundle(value);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -617,7 +631,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("returns an exact retained single-use byte lease with no source tails", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureConsoleBundle(value);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -648,7 +662,7 @@ describe("diagnostic bundle readback", () => {
     "stored size",
     "stored media type",
   ] as const)("refuses %s before publishing a generic byte lease", async (mutation) => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureConsoleBundle(value);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -671,7 +685,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("refuses conflicting metadata for one indexed artifact before reader I/O", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureConsoleBundle(value);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -707,7 +721,7 @@ describe("diagnostic bundle readback", () => {
   });
 
   it("rejects an attachment index with a mismatched artifact id before reader I/O", async () => {
-    const value = fixture();
+    const value = await fixture();
     const bundle = await captureConsoleBundle(value);
 
     await assert.rejects(

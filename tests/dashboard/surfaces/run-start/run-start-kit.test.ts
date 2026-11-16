@@ -4,15 +4,15 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,it } from "vitest";
 import {
-EnqueueResultBanner,
 LockedFact,
 PlanPreview,
 StartChoiceControl,
+TypedInput,
 } from "../../../../src/dashboard/surfaces/run-start/run-start-kit.js";
-import { ENQUEUE_POLICY_REASON } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { fmtClock } from "../../../../src/dashboard/surfaces/shared/status/format.js";
+import { InputRunSurfaceSchema } from "../../../../src/models/workflow/ingress.js";
+import { WORK_STUDY_INPUT_PARSER, WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-study/input.js";
 import { StartPlanWireSchema as StartPlanResponseSchema,type StartPlanWire as StartPlanResponse } from "../../../../src/models/dashboard/start-plan.js";
-import { CommandResultSchema,type CommandResult } from "../../../../src/rules/commands/commands.js";
 
 /** what a sighted operator can read with no pointer: the markup minus its tooltips */
 function withoutTooltips(markup: string): string {
@@ -41,7 +41,6 @@ const HASH = "a".repeat(64);
 /** parsed through the real wire schema, so a fixture cannot outlive its contract */
 const PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
   wireVersion: 1,
-  workers: "auto",
   startPlanId: "5a000000-0000-4000-8000-000000000001",
   workflowId: "person-lookup",
   expectedVersion: 4,
@@ -74,12 +73,12 @@ describe("a locked value states its reason on screen", () => {
       createElement(LockedFact, {
         label: "Active-run policy",
         value: "Refuse overlapping subject runs",
-        reason: ENQUEUE_POLICY_REASON,
+        reason: "Fixed by this workflow.",
       }),
     );
 
     assert.ok(
-      textOf(withoutTooltips(markup)).includes(ENQUEUE_POLICY_REASON),
+      textOf(withoutTooltips(markup)).includes("Fixed by this workflow."),
       "the reason is reachable only by hovering",
     );
     assert.ok(textOf(markup).includes("Active-run policy"), "the fact is unlabelled");
@@ -91,12 +90,12 @@ describe("a locked value states its reason on screen", () => {
       createElement(LockedFact, {
         label: "Active-run policy",
         value: "Refuse overlapping subject runs",
-        reason: ENQUEUE_POLICY_REASON,
+        reason: "Fixed by this workflow.",
       }),
     );
     assert.doesNotMatch(markup, /title="/u, "the reason went back onto a tooltip as well");
     assert.equal(
-      occurrences(textOf(markup), ENQUEUE_POLICY_REASON),
+      occurrences(textOf(markup), "Fixed by this workflow."),
       1,
       "a screen reader reads this locked value's reason more than once",
     );
@@ -168,69 +167,18 @@ describe("the plan draws one card per proposed row", () => {
   });
 });
 
-describe("result banner uses its own words", () => {
-  const applied: Exclude<CommandResult, { state: "pending" }> = nonPendingResult({
-    state: "applied",
-    commandId: "3a000000-0000-4000-8000-000000000001",
-    affectedTargets: [{
-      family: "start",
-      workflowId: "person-lookup",
-      startPlanId: "5a000000-0000-4000-8000-000000000001",
-      expectedVersion: 4,
-    }],
-  });
+describe("Work Study's typed input", () => {
+  const surface = InputRunSurfaceSchema.parse({ placeholder: "10000001, 10000002", parser: WORK_STUDY_INPUT_PARSER, typedInput: WORK_STUDY_TYPED_INPUT });
+  const render = (draft: Record<string, string>) => renderToStaticMarkup(createElement(TypedInput, {
+    surface, workflowId: "work-study", text: "", onText: () => undefined, preview: { entries: [], submissions: [], problem: null }, draft }));
 
-  const rejected: Exclude<CommandResult, { state: "pending" }> = nonPendingResult({
-    state: "rejected",
-    commandId: "3a000000-0000-4000-8000-000000000002",
-    code: "policy-refused",
-    message: "A run for this subject is already unfinished.",
-  });
-
-  const conflict: Exclude<CommandResult, { state: "pending" }> = nonPendingResult({
-    state: "conflict",
-    commandId: "3a000000-0000-4000-8000-000000000003",
-    currentVersion: 7,
-    message: "The start plan was built against version 4.",
-  });
-
-  const noop = (): void => undefined;
-
-  it("says Close on a settled start and Dismiss on a refusal", () => {
-    // Closing a receipt and dismissing a refusal are different acts; one word
-    // for both makes them read as the same one.
-    assert.ok(
-      textOf(renderToStaticMarkup(
-        createElement(EnqueueResultBanner, { result: applied, onDismiss: noop }),
-      )).includes("Close"),
-    );
-    const refusalText = textOf(renderToStaticMarkup(
-      createElement(EnqueueResultBanner, { result: rejected, onDismiss: noop }),
-    ));
-    assert.ok(refusalText.includes("Dismiss"));
-    assert.ok(!refusalText.includes("Close"), "a refusal is dismissed, not closed");
-  });
-
-  it("gives the conflict arm the one exit it has", () => {
-
-    const text = textOf(renderToStaticMarkup(
-      createElement(EnqueueResultBanner, { result: conflict, onReload: noop, onDismiss: noop }),
-    ));
-    assert.ok(text.includes("Reload the form"), "the conflict banner has no exit");
-    assert.ok(text.includes("7"), "the version the server actually holds is not shown");
-  });
-
-  it("still draws a conflict when no reload handler is wired, rather than a bare banner claim", () => {
-    const text = textOf(renderToStaticMarkup(
-      createElement(EnqueueResultBanner, { result: conflict }),
-    ));
-    assert.ok(text.includes("The start plan moved under this form"));
-    assert.ok(!text.includes("Reload the form"), "an unwired control was offered anyway");
+  it("asks for the Effective date as a typed date, not a switch, and offers no mode choice", () => {
+    const markup = render({ effectiveDate: "08/03/2026" });
+    assert.ok(markup.includes("Effective date"), "no Effective date row");
+    assert.ok(markup.includes("The day the change takes effect."), "the row note is missing");
+    assert.ok(markup.includes('value="08/03/2026"'), "the typed date is not shown");
+    assert.ok(!markup.includes('role="switch"'), "the date is rendered as a switch");
+    assert.ok(markup.includes('aria-label="Employee IDs"'), "the Employee IDs box is missing");
+    assert.ok(!/role="radiogroup"|role="tablist"/u.test(markup), "a mode choice is offered for a single-mode surface");
   });
 });
-
-function nonPendingResult(input: unknown): Exclude<CommandResult, { state: "pending" }> {
-  const result = CommandResultSchema.parse(input);
-  if (result.state === "pending") throw new Error("Start fixture cannot be pending");
-  return result;
-}

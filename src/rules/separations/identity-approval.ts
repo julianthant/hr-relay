@@ -1,8 +1,9 @@
 /** Separations identity authority: the typed operator result for a name-only selection and the fold that either verifies supplied-EID evidence or consumes that result. */
 import { z } from "zod";
 import { EidSchema, FingerprintSchema, type Fingerprint } from "../identity/ids.js";
-import { directIdentifierDisplay } from "../redaction/redaction.js";
+import { maskEidsInText, maskedEid } from "../redaction/redaction.js";
 import {
+  IdentityApprovalShapeSchema,
   IdentityEvidencePacketSchema,
   deriveIdentityEvidenceDigest,
 } from "./identity-evidence.js";
@@ -13,7 +14,7 @@ export const IdentityApprovalChoiceSchema = z.enum([
   "checked",
   /** The EID the document's NAME resolves to, when that is a different person. */
   "name-search",
-  /** An EID the approver typed. It must still be one the packet SHOWED. */
+  /** Another EID the packet SHOWED. */
   "manual",
 ]);
 export type IdentityApprovalChoice = z.infer<typeof IdentityApprovalChoiceSchema>;
@@ -42,7 +43,7 @@ export const ApprovedIdentitySubjectSchema = z.strictObject({
   /** The name UCPath displayed for the checked EID, carried onto the receipt. */
   ucpathName: z.string().min(1),
   nameTier: z.enum(["same", "similar", "different"]),
-  approvalShape: z.enum(["one-click", "choose-a-candidate", "type-the-eid"]),
+  approvalShape: IdentityApprovalShapeSchema,
 });
 export type ApprovedIdentitySubject = z.infer<typeof ApprovedIdentitySubjectSchema>;
 
@@ -85,10 +86,8 @@ export type IdentityApprovalVerification = z.infer<typeof IdentityApprovalVerifi
 
 function choiceFor(packet: IdentityEvidencePacket, eid: string): IdentityApprovalChoice | undefined {
   if (eid === packet.emplId) return "checked";
-  if (packet.nameSearch.status === "resolved" && eid === packet.nameSearch.candidate.eid) {
-    return "name-search";
-  }
-  return packet.approvableEids.includes(EidSchema.parse(eid)) ? "manual" : undefined;
+  if (!packet.approvableEids.includes(EidSchema.parse(eid))) return undefined;
+  return packet.nameSearch.status === "resolved" && eid === packet.nameSearch.candidate.eid ? "name-search" : "manual";
 }
 
 /** The identity-authority check, run as a real node so every refusal has a durable code: the decision, the packet digest, that the EID was SHOWN, and that `chosenFrom` agrees. */
@@ -108,7 +107,7 @@ export function verifyIdentityApproval(
     });
   }
 
-  if (result !== undefined && packet.emplIdSource !== "name-resolved") {
+  if (result !== undefined && packet.emplIdSource !== "name-resolved" && packet.emplIdSource !== "operator-entered") {
     return IdentityApprovalVerificationSchema.parse({
       state: "refused",
       code: "identity-supplied-eid-unproved",
@@ -117,11 +116,11 @@ export function verifyIdentityApproval(
   }
 
   if (result === undefined) {
-    if (packet.emplIdSource === "name-resolved") {
+    if (packet.emplIdSource === "name-resolved" || packet.emplIdSource === "operator-entered") {
       return IdentityApprovalVerificationSchema.parse({
         state: "refused",
         code: "identity-approval-required",
-        reason: "an EID resolved by name requires an operator identity decision",
+        reason: "a name-resolved or operator-entered EID requires an operator identity decision",
       });
     }
     if (packet.emplIdSource === "document-eid" && packet.documentEidText !== packet.emplId) {
@@ -158,7 +157,8 @@ export function verifyIdentityApproval(
     return IdentityApprovalVerificationSchema.parse({
       state: "refused",
       code: "identity-approval-rejected",
-      reason: `an operator rejected the identity for separation document ${packet.documentNumber}: `
+      // The packet's values carry full IDs (a typed one among them); the failure text reaches warnings.
+      reason: maskEidsInText(`an operator rejected the identity for separation document ${packet.documentNumber}: `
         + `${result.reason}. What they were shown: ${
           disagreements.length === 0
             ? "every compared field agreed"
@@ -166,7 +166,7 @@ export function verifyIdentityApproval(
               .map(({ field, documentValue, ucpathValue }) =>
                 `${field} — document ${JSON.stringify(documentValue)} vs UCPath ${JSON.stringify(ucpathValue)}`)
               .join("; ")
-        }.`,
+        }.`),
     });
   }
   const actual = choiceFor(packet, result.eid);
@@ -174,8 +174,8 @@ export function verifyIdentityApproval(
     return IdentityApprovalVerificationSchema.parse({
       state: "refused",
       code: "identity-approval-eid-not-shown",
-      reason: `EID ${directIdentifierDisplay(result.eid)} was approved for separation document ${packet.documentNumber}, and the `
-        + `identity packet never showed it (it showed ${packet.approvableEids.map(directIdentifierDisplay).join(", ")}). A typed EID `
+      reason: `EID ${maskedEid(result.eid)} was approved for separation document ${packet.documentNumber}, and the `
+        + `identity packet never showed it (it showed ${packet.approvableEids.map(maskedEid).join(", ")}). A typed EID `
         + "is an assertion, not evidence: nothing in this run read that person, so there is nothing to approve.",
     });
   }
@@ -183,7 +183,7 @@ export function verifyIdentityApproval(
     return IdentityApprovalVerificationSchema.parse({
       state: "refused",
       code: "identity-approval-choice-mismatch",
-      reason: `the approval labels EID ${directIdentifierDisplay(result.eid)} as "${result.chosenFrom}", and on this packet it is `
+      reason: `the approval labels EID ${maskedEid(result.eid)} as "${result.chosenFrom}", and on this packet it is `
         + `"${actual}". A receipt that mislabels where an approved identity came from states something false about the human decision it records.`,
     });
   }

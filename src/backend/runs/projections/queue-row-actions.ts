@@ -17,12 +17,14 @@ type QueueStatus = QueueSurfaceWire["status"];
 
 
 export interface QueueRowActionFacts {
+  readonly pauseControl?: QueueSurfaceWire["pauseControl"];
   readonly status: QueueStatus;
+  readonly recoverySource?: "failed" | "interrupted";
+  readonly crashed?: boolean;
   /** the CAS target every served command binds to */
   readonly rowRevision: number;
   /** ref workflow-model's envelope flag — decides whether a re-run can touch a real system */
   readonly dryRun: boolean;
-  /** a delegated child; the kernel refuses generic retry for one */
   readonly isChild: boolean;
   /** the run is parked on a fenced write whose outcome is unknown (ref write-safety ) */
   readonly parkedWrite: boolean;
@@ -32,10 +34,9 @@ export interface QueueRowActionFacts {
   readonly isMember: boolean;
 
   readonly named: boolean;
-  /** the workflow's own label, for confirm copy that names what is about to run */
-  readonly workflowLabel: string;
   /** ref dashboard-surfaces's `has-review-panel` condition input */
   readonly hasReviewPanel: boolean;
+  readonly batchMemberRetryAvailable?: boolean;
 }
 
 /** The verbs this projection may serve, each a member of `ActionCommandKeySchema`. */
@@ -97,19 +98,6 @@ function cancelBody(facts: QueueRowActionFacts): string {
   return `${scope}Cancelling is final: a cancelled run is never resumed, only run again.`;
 }
 
-// Deleting a run does not delete its permanent external-write idempotency record.
-function deleteBody(facts: QueueRowActionFacts): string {
-  const scope = facts.memberCount > 0
-    ? "This removes the run and every row it owns from the database — results, checkpoints, receipts, "
-      + `diagnostics, and its write ledger — and its ${String(facts.memberCount)} delegated members with it. `
-    : "This removes the run and every row it owns from the database — results, checkpoints, receipts, "
-      + "diagnostics, and its write ledger. ";
-  return `${scope}If this run wrote to ${facts.workflowLabel}'s systems, the permanent idempotency key `
-    + "that stops the same write from being submitted twice is released with it. "
-    + "This is final; there is no undo.";
-}
-
-
 function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
   const placement = placementOf(command);
   const base = { command, expectedVersion: facts.rowRevision, kind: "command", placement } as const;
@@ -142,7 +130,6 @@ function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
         icon: "delete",
         confirm: {
           title: facts.memberCount > 0 ? "Delete this group" : "Delete this run",
-          body: deleteBody(facts),
           confirmLabel: "Delete",
           tone: "destructive",
         },
@@ -168,13 +155,28 @@ export function queueRowActions(
   facts: QueueRowActionFacts,
 ): ActionDescriptorWire[] {
   if (policy === undefined) return [];
-  const rerun = !facts.isChild && !facts.parkedWrite
+  const retry = facts.batchMemberRetryAvailable === true && facts.status === "failed" && !facts.isChild && !facts.parkedWrite
+    && policyEnables(policy, "retry", facts)
+    ? [ActionDescriptorWireSchema.parse({ key: "retry-batch-member", label: "Retry", kind: "command", command: "retry",
+      expectedVersion: facts.rowRevision, intent: "neutral", icon: "retry", placement: ["banner"] })] : [];
+  const recover = facts.recoverySource !== undefined && !facts.isChild && !facts.parkedWrite
+    && policyEnables(policy, "recover-run", facts)
+    ? [ActionDescriptorWireSchema.parse({ key: "recover-run", label: facts.crashed ? "Rerun" : "Recover completed steps", kind: "command",
+      command: "recover-run", expectedVersion: facts.rowRevision, intent: "neutral", icon: "retry", placement: ["footer", "menu"],
+      confirm: { title: "Recover completed steps", body: "Continue using authenticated completed steps. Unfinished work runs again. Uncertain writes require their own resolution.",
+        confirmLabel: "Recover", tone: "neutral" } })] : [];
+  const rerun = (!facts.crashed || recover.length === 0) && !facts.isChild && !facts.parkedWrite
     && ["done", "failed", "partial"].includes(facts.status)
     && (policyEnables(policy, "retry", facts) || policyEnables(policy, "restart", facts))
     ? [ActionDescriptorWireSchema.parse({ key: "rerun", label: "Rerun", kind: "navigation",
       navigate: { kind: "rerun", expectedVersion: facts.rowRevision },
       intent: "primary", icon: "retry", placement: ["footer", "menu", "data"] })] : [];
-  return [...rerun, ...SERVED_ORDER
+  const pause = facts.pauseControl?.command;
+  const pauseActions = pause === undefined ? [] : [ActionDescriptorWireSchema.parse({
+    key: pause, kind: "command", command: pause, expectedVersion: facts.pauseControl?.expectedVersion,
+    label: pause === "pause" ? "Pause after this step" : "Resume", intent: "neutral", icon: pause, placement: ["footer"],
+  })];
+  return [...pauseActions, ...retry, ...rerun, ...recover, ...SERVED_ORDER
     .filter((command) => policyEnables(policy, command, facts) && KERNEL_ADMITS[command](facts))
     .map((command) => ActionDescriptorWireSchema.parse(describe(command, facts)))];
 }

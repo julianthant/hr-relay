@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { default as assert } from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID as randomUUID_m0 } from "node:crypto";
@@ -150,11 +151,12 @@ describe("native logging authority", () => {
 
 describe("loopback debug reporting", () => {
   it("admits strict reports and sanitizes once while rejecting secrets in unknown fields", async () => {
-    const f = resolutionFixture();
+    const f = await resolutionFixture();
     try {
       const app = resolutionApp(f);
       const send = (body: unknown, origin = "http://localhost") => app.request("http://localhost/api/v1/debug/errors", { method: "POST", headers: { origin, host: "localhost", "content-type": "application/json" }, body: JSON.stringify(body) });
-      const report = { reportId: randomUUID_m0(), clientId: "browser-1", release: "test", route: "/", surface: "app", code: "CLIENT_FAILED", message: "token=CANARY" };
+      const report = { reportId: randomUUID_m0(), clientId: "browser-1", release: "test", route: "/", surface: "app",
+        code: "INTERNAL_FAILURE", reason: "cause-unavailable", message: "UnknownError", stack: "UnknownError\n    at assets/index-abc.js:1:2" };
       const firstResponse = await send(report); assert.equal(firstResponse.status, 201, await firstResponse.text());
       const rows = f.db.authority.timelineEvents.page({});
       assert.equal(rows.filter(row => row.payload.kind === "debug" && row.payload.event.category === "client").length, 1);
@@ -165,7 +167,19 @@ describe("loopback debug reporting", () => {
       for (let i = 0; i < 27; i++) assert.equal((await send({ ...report, reportId: randomUUID_m0() })).status, 201);
       assert.equal((await send(report)).status, 429);
       assert.equal(JSON.stringify(f.db.authority.timelineEvents.page({})).includes("CANARY"), false);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
+  });
+  it("refuses a closed cause row that carries message text or a private frame", async () => {
+    const f = await resolutionFixture();
+    try {
+      const app = resolutionApp(f);
+      const send = (body: unknown) => app.request("http://localhost/api/v1/debug/errors", { method: "POST", headers: { origin: "http://localhost", host: "localhost", "content-type": "application/json" }, body: JSON.stringify(body) });
+      const report = { reportId: randomUUID_m0(), clientId: "browser-1", release: "test", route: "/", surface: "app",
+        code: "INTERNAL_FAILURE", reason: "cause-unavailable", message: "UnknownError", stack: "UnknownError\n    at assets/index-abc.js:1:2" };
+      assert.equal((await send({ ...report, message: "token=CANARY" })).status, 400);
+      assert.equal((await send({ ...report, stack: "UnknownError\n    at /Users/CANARY/record.js:1:2" })).status, 400);
+      assert.equal(JSON.stringify(f.db.authority.timelineEvents.page({})).includes("CANARY"), false);
+    } finally { await f.dispose(); }
   });
 });
 }
@@ -180,7 +194,7 @@ const probe = String.raw`
   import { AuthorityDatabase } from './tests/support/helpers/synthetic-storage-admission.ts';
   import { localDatePart } from './src/rules/time/clock.ts';
   const [instant, localDay, cutoff, retained] = process.argv.slice(1);
-  const f = resolutionFixture();
+  const f = await resolutionFixture();
   const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
   try {
     f.clock.setWall(new Date(instant));
@@ -216,7 +230,7 @@ const probe = String.raw`
     const other = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: 'retention-reopen' }, f.clock);
     try { assert.deepEqual(other.authority.timelineEvents.page({}), f.db.authority.timelineEvents.page({})); }
     finally { other.close(); }
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 `;
 
 for (const [label, tz, instant, localDay, cutoff, retained] of [
@@ -227,7 +241,7 @@ for (const [label, tz, instant, localDay, cutoff, retained] of [
 ] as const) {
   it(`retains and prunes resolution history with ordinary events: ${label}`, () => {
     const child = spawnSync(process.execPath,
-      ["--import", "tsx", "--input-type=module", "-e", probe, instant, localDay, cutoff, retained],
+      ["--import", testProcessImport(), "--input-type=module", "-e", probe, instant, localDay, cutoff, retained],
       { cwd: process.cwd(), env: { ...process.env, TZ: tz }, encoding: "utf8", timeout: 20_000 });
     assert.equal(child.status, 0, `${child.error?.message ?? ""}${child.stdout}${child.stderr}`);
   });

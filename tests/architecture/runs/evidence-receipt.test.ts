@@ -1,16 +1,15 @@
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { BUILD_MANIFEST } from "../../../src/workflow-kit/validation/build-manifest.js";
+import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { seedPersonLookupExitRun } from "../../support/fixtures/receipt-run-fixtures.js";
 import {
+  descriptorRuntimeNodes,
   workflowProjections,
   workflowTerminalResultExecution,
 } from "../../../src/workflow-kit/workflow.js";
@@ -30,7 +29,7 @@ import { RunEvidenceReceiptSchema } from "../../../src/models/trust/evidence.js"
 import { RedactedFieldSchema, retainLocalEvidenceValue } from "../../../src/rules/redaction/redaction.js";
 import { SECRET_SPECS } from "../../../src/models/config/secrets.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS, CHILD_ONLY_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { STEP_PROOF_DESCRIPTORS } from "../../../src/backend/app/registries/step-proof-modules.js";
 
 import { separationsKualiFinalizationDescriptor } from "../../support/helpers/registered-workflows.js";
@@ -43,6 +42,8 @@ import {
 } from "../../support/fixtures/receipt-run-fixtures.js";
 import {
   GATE_DECISIONS,
+  SNAPSHOT_APPROVAL_DECISIONS,
+  findSnapshotApprovalDecision,
   findGateDecision,
   gateDecisionFor,
 } from "../../../src/models/trust/gate-decisions.js";
@@ -52,8 +53,9 @@ import {
   WriteFixtureSaveCommit,
 } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
+import { namedFileOutputDescriptor } from "../../support/fixtures/named-file-output-workflow.js";
 
-const RECEIPT_DESCRIPTORS = [...WORKFLOW_DESCRIPTORS, ...STEP_PROOF_DESCRIPTORS];
+const RECEIPT_DESCRIPTORS = [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_DESCRIPTORS, namedFileOutputDescriptor];
 
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();
@@ -66,23 +68,23 @@ function kualiReceipt() {
   });
 }
 
-const roots: string[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const databases: AuthorityDatabase[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) await profile.close();
 });
 
 
-function personLookupReceipt() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-receipt-guard-"));
-  roots.push(root);
+async function personLookupReceipt() {
+  const profile = await createBoundProfileFixture();
+  profiles.push(profile);
   const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "evidence-receipt-guard" },
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "evidence-receipt-guard" },
     manualClock(new Date("2026-08-04T00:11:13.500Z")),
   );
-  testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
+  testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: profile.path, descriptor: personLookupDescriptor, poolIndex: 1 });
   databases.push(database);
   const seeded = seedPersonLookupExitRun(database);
   return buildRunEvidenceReceipt({
@@ -96,8 +98,8 @@ function personLookupReceipt() {
 /* ── half 1: receipt strictness ──────────────────────────────────────────── */
 
 describe("evidence receipt — strictness", () => {
-  it("rejects an unknown key at every level of a real receipt", () => {
-    const receipt = JSON.parse(JSON.stringify(personLookupReceipt())) as Record<string, unknown>;
+  it("rejects an unknown key at every level of a real receipt", async () => {
+    const receipt = JSON.parse(JSON.stringify(await personLookupReceipt())) as Record<string, unknown>;
     assert.equal(RunEvidenceReceiptSchema.safeParse(receipt).success, true);
     assert.equal(
       RunEvidenceReceiptSchema.safeParse({ ...receipt, extra: 1 }).success,
@@ -392,7 +394,7 @@ const CANARIES = Object.freeze({
   password: "hunter2-CORRECT-HORSE",
   cookie: "sessionid=abc123; Path=/; HttpOnly",
   storageState: '{"cookies":[{"name":"JSESSIONID","value":"S3CR3T"}]}',
-  ssn: "920-74-1459",
+  ssn: "902-48-1357",
   privateKey: "-----BEGIN PRIVATE KEY-----MIIEvQ-----END PRIVATE KEY-----",
 });
 
@@ -501,15 +503,22 @@ describe("evidence receipt — declared classification coverage", () => {
   it("declares a decision and a classification for every registered gate node", () => {
     let gateNodes = 0;
     for (const descriptor of RECEIPT_DESCRIPTORS) {
-      for (const node of descriptor.nodes) {
+      for (const node of descriptorRuntimeNodes(descriptor)) {
         if (node.kind !== "gate") continue;
         gateNodes++;
-        const declaration = gateDecisionFor(String(descriptor.id), String(node.id));
         const scope: EvidenceValueScope = EvidenceValueScopeSchema.parse({
           kind: "gate-result",
           workflowId: descriptor.id,
           gateId: node.id,
         });
+        const snapshot = findSnapshotApprovalDecision(String(descriptor.id), String(node.id));
+        if (snapshot !== undefined) {
+          assert.equal(node.result, snapshot.result);
+          for (const path of Object.keys(snapshot.result.shape)) classifyEvidenceLeaf(scope, path);
+          assert.equal(findGateDecision(String(descriptor.id), String(node.id)), undefined);
+          continue;
+        }
+        const declaration = gateDecisionFor(String(descriptor.id), String(node.id));
         // The declared paths must classify, or the very leaves the decision is
         // read from could not be shown beside it.
         classifyEvidenceLeaf(scope, declaration.decisionPath);
@@ -532,19 +541,23 @@ describe("evidence receipt — declared classification coverage", () => {
         `orphan gate decision ${declaration.workflowId}/${declaration.gateId}`,
       );
     }
+    for (const declaration of SNAPSHOT_APPROVAL_DECISIONS) {
+      assert.ok(gateNodeKeys.has(`${declaration.workflowId} ${declaration.gateId}`),
+        `orphan snapshot approval ${declaration.workflowId}/${declaration.gateId}`);
+    }
     const workflowIds = new Set(RECEIPT_DESCRIPTORS.map(({ id }) => String(id)));
 
     const descriptorTaskIds = new Set(RECEIPT_DESCRIPTORS.flatMap((descriptor) =>
       workflowProjections(descriptor).contracts.map((contract) => String(contract.id))));
     const taskIds = new Set([
       ...descriptorTaskIds,
-      ...BUILD_MANIFEST.tasks.map(({ id }) => String(id)),
+      ...taskStoreRegistry.stores.flatMap(store => Object.values(store.tasks).map(task => String(task.contract.id))),
       ...WRITE_FIXTURE_TASK_IDS.map(String),
     ]);
 
     const commitTaskIds = new Set([
       ...RECEIPT_DESCRIPTORS.flatMap((descriptor) =>
-        descriptor.nodes.flatMap((node) =>
+        descriptorRuntimeNodes(descriptor).flatMap((node) =>
           node.kind === "transaction" ? [String(node.commit.uses.id)] : [])),
       String(WriteFixtureCommit.id),
       String(WriteFixtureSaveCommit.id),

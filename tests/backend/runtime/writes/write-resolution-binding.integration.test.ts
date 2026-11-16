@@ -1,9 +1,6 @@
 
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterAll, afterEach,describe,it } from "vitest";
 import {
 evaluateWriteResolutionBinding,
 requireWriteResolutionBinding,
@@ -39,35 +36,32 @@ writeFixtureDescriptorAfterUnrelatedEdit,
 writeFixtureDescriptorAtVersion2,
 writeFixtureDescriptorWithDependencyAfterUnrelatedEdit,
 writeFixtureDescriptorWithMovedKey,
+writeFixtureDescriptorWithMovedKeySameContract,
 writeFixtureQueuedRun,
 writeFixtureSaveDescriptorAfterUnrelatedEdit,
 } from "../../../support/fixtures/write-sequencer-fixtures.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { openBoundDatabaseFixture, createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
+
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
 
 const COMMIT_TASK_ID = "ucpath/submit-write-fixture";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 
-function repositories(): WriteBindingRepositories {
-  const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-write-binding-"));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "write-binding-test" },
-    clock,
-  );
-  disposers.push(() => {
-    database.close();
-    rmSync(root, { recursive: true, force: true });
-  });
-  return database.authority;
+async function repositories(): Promise<WriteBindingRepositories> {
+  const opened = await openBoundDatabaseFixture("write-binding-test", manualClock(new Date(WRITE_FIXTURE_NOW)), undefined, undefined, undefined, undefined, profileFixtures.create);
+  disposers.push(async () => await opened.close());
+  return opened.database.authority;
 }
 
-function parkedRun(overrides: Readonly<{ parsedSchemaHash?: string; parsedValue?: unknown }> = {}): RunRecord {
+function parkedRun(overrides: Readonly<{ parsedSchemaHash?: string; parsedValue?: unknown; buildId?: string }> = {}): RunRecord {
   const raw = writeFixtureQueuedRun();
+  if (overrides.buildId !== undefined) (raw.envelope as { buildId: string }).buildId = overrides.buildId;
   if (overrides.parsedSchemaHash !== undefined) {
     const input = raw.input as { parsed: { schemaHash: string } };
     input.parsed.schemaHash = overrides.parsedSchemaHash;
@@ -121,19 +115,20 @@ function parkedIntent(overrides: Readonly<{ proofTaskId?: string }> = {}): Write
   });
 }
 
-function evaluate(
+async function evaluate(
   descriptor: Parameters<typeof evaluateWriteResolutionBinding>[0]["descriptor"],
-  options: Readonly<{ parsedSchemaHash?: string; parsedValue?: unknown; proofTaskId?: string }> = {},
-): WriteResolutionBinding {
+  options: Readonly<{ parsedSchemaHash?: string; parsedValue?: unknown; proofTaskId?: string; buildId?: string }> = {},
+): Promise<WriteResolutionBinding> {
   return evaluateWriteResolutionBinding({
     arm: "operator-confirmed-absent",
     descriptor,
     run: parkedRun({
       ...(options.parsedSchemaHash === undefined ? {} : { parsedSchemaHash: options.parsedSchemaHash }),
       ...(options.parsedValue === undefined ? {} : { parsedValue: options.parsedValue }),
+      ...(options.buildId === undefined ? {} : { buildId: options.buildId }),
     }),
     intent: parkedIntent({ ...(options.proofTaskId === undefined ? {} : { proofTaskId: options.proofTaskId }) }),
-    repositories: repositories(),
+    repositories: await repositories(),
   });
 }
 
@@ -144,8 +139,8 @@ function stateOf(binding: WriteResolutionBinding, check: WriteBindingCheck): str
 }
 
 describe("write-resolution binding — what a parked write may survive", () => {
-  it("reports identical when the contract closure is byte-identical", () => {
-    const binding = evaluate(writeFixtureDescriptor);
+  it("reports identical for the same contract under the same build", async () => {
+    const binding = await evaluate(writeFixtureDescriptor);
     assert.equal(binding.state, "identical");
     assert.ok(binding.state === "identical");
     assert.equal(binding.contractFingerprint, writeFixtureDescriptor.contractFingerprint);
@@ -153,12 +148,25 @@ describe("write-resolution binding — what a parked write may survive", () => {
     assert.deepEqual(
       binding.checks.filter((check) => check.state !== "held"),
       [],
-      "byte identity of the closure proves every check at once",
+      "same contract and same build prove every check at once",
     );
   });
 
-  it("stays resolvable after an unrelated edit anywhere in the contract closure", () => {
-    const binding = evaluate(writeFixtureDescriptorAfterUnrelatedEdit);
+  it("runs every identity check when the contract is equal but the approving build differs", async () => {
+    const otherBuild = "0".repeat(64);
+    const compatible = await evaluate(writeFixtureDescriptor, { buildId: otherBuild });
+    assert.ok(compatible.state === "compatible", "equal contracts under another build are not proof of identical code");
+    assert.deepEqual(compatible.checks.filter((check) => check.state !== "held"), []);
+    assert.equal(compatible.checks.some((check) => check.detail.includes("same contract and same build")), false);
+
+    const moved = await evaluate(writeFixtureDescriptorWithMovedKeySameContract, { buildId: otherBuild });
+    assert.equal(writeFixtureDescriptorWithMovedKeySameContract.contractFingerprint, writeFixtureDescriptor.contractFingerprint);
+    assert.ok(moved.state === "incompatible", "a changed key under an equal contract must refuse, not shortcut");
+    assert.equal(moved.moved, "permanent-key-identity");
+  });
+
+  it("stays resolvable after an unrelated edit anywhere in the contract closure", async () => {
+    const binding = await evaluate(writeFixtureDescriptorAfterUnrelatedEdit);
     assert.ok(binding.state === "compatible", "an incidental closure move is not a semantic move");
     assert.equal(binding.storedContractFingerprint, writeFixtureDescriptor.contractFingerprint);
     assert.equal(binding.currentContractFingerprint, WRITE_FIXTURE_MOVED_FINGERPRINT);
@@ -176,13 +184,13 @@ describe("write-resolution binding — what a parked write may survive", () => {
       descriptor: writeFixtureDescriptorAfterUnrelatedEdit,
       run: parkedRun(),
       intent: parkedIntent(),
-      repositories: repositories(),
+      repositories: await repositories(),
     });
     assert.equal(String(required.node.id), WRITE_FIXTURE_NODE_ID);
   });
 
-  it("refuses loudly when the commit bind makes the permanent key name another transaction", () => {
-    const binding = evaluate(writeFixtureDescriptorWithMovedKey);
+  it("refuses loudly when the commit bind makes the permanent key name another transaction", async () => {
+    const binding = await evaluate(writeFixtureDescriptorWithMovedKey);
     assert.ok(binding.state === "incompatible");
     assert.equal(binding.moved, "permanent-key-identity");
     assert.equal(
@@ -201,20 +209,20 @@ describe("write-resolution binding — what a parked write may survive", () => {
     assert.ok(binding.message.includes("[MOVED] permanent-key-identity"));
     assert.ok(binding.message.includes("[skip]  binding-proof-identity"));
     assert.equal(stateOf(binding, "binding-proof-identity"), "not-evaluated");
-    assert.throws(
-      () => requireWriteResolutionBinding({
-        arm: "operator-confirmed-present",
+    await assert.rejects(
+      async () => requireWriteResolutionBinding({
+        arm: "recheck",
         descriptor: writeFixtureDescriptorWithMovedKey,
         run: parkedRun(),
         intent: parkedIntent(),
-        repositories: repositories(),
+        repositories: await repositories(),
       }),
       /permanent-key-identity moved/,
     );
   });
 
-  it("refuses a declared version bump and never re-derives it away", () => {
-    const binding = evaluate(writeFixtureDescriptorAtVersion2);
+  it("refuses a declared version bump and never re-derives it away", async () => {
+    const binding = await evaluate(writeFixtureDescriptorAtVersion2);
     assert.ok(binding.state === "incompatible");
     assert.equal(binding.moved, "descriptor-version");
     assert.ok(binding.message.includes("a version bump declares that semantics moved"));
@@ -223,31 +231,31 @@ describe("write-resolution binding — what a parked write may survive", () => {
     }
   });
 
-  it("refuses when the transaction that commits this task left the graph", () => {
-    const binding = evaluate(writeFixtureSaveDescriptorAfterUnrelatedEdit);
+  it("refuses when the transaction that commits this task left the graph", async () => {
+    const binding = await evaluate(writeFixtureSaveDescriptorAfterUnrelatedEdit);
     assert.ok(binding.state === "incompatible");
     assert.equal(binding.moved, "transaction-node");
     assert.ok(binding.message.includes(COMMIT_TASK_ID));
     assert.equal(stateOf(binding, "permanent-key-identity"), "not-evaluated");
   });
 
-  it("refuses when the run's stored input is bound to a superseded canonical schema", () => {
+  it("refuses when the run's stored input is bound to a superseded canonical schema", async () => {
     const stale = FingerprintSchema.parse("c".repeat(64));
-    const binding = evaluate(writeFixtureDescriptorAfterUnrelatedEdit, { parsedSchemaHash: stale });
+    const binding = await evaluate(writeFixtureDescriptorAfterUnrelatedEdit, { parsedSchemaHash: stale });
     assert.ok(binding.state === "incompatible");
     assert.equal(binding.moved, "canonical-input");
     assert.ok(binding.message.includes(stale.slice(0, 12)), "the stored canonical schema hash must be named");
     assert.equal(stateOf(binding, "permanent-key-identity"), "not-evaluated");
   });
 
-  it("classifies missing dependency evidence separately from schema failure", () => {
-    const missing = evaluate(writeFixtureDescriptorWithDependencyAfterUnrelatedEdit);
+  it("classifies missing dependency evidence separately from schema failure", async () => {
+    const missing = await evaluate(writeFixtureDescriptorWithDependencyAfterUnrelatedEdit);
     assert.ok(missing.state === "incompatible");
     const missingCheck = missing.checks.find((check) => check.check === "permanent-key-identity");
     assert.equal(missingCheck?.rederiveFailure?.category, "missing-evidence");
     assert.match(missingCheck?.rederiveFailure?.evidenceDigest ?? "", /^[a-f0-9]{64}$/u);
 
-    const invalid = evaluate(writeFixtureDescriptorAfterUnrelatedEdit, { parsedValue: { eid: "not-an-eid" } });
+    const invalid = await evaluate(writeFixtureDescriptorAfterUnrelatedEdit, { parsedValue: { eid: "not-an-eid" } });
     assert.ok(invalid.state === "incompatible");
     const invalidCheck = invalid.checks.find((check) => check.check === "permanent-key-identity");
     assert.equal(invalidCheck?.rederiveFailure?.category, "schema-failure");
@@ -257,8 +265,8 @@ describe("write-resolution binding — what a parked write may survive", () => {
     );
   });
 
-  it("refuses when the retained binding proof is bound to another task", () => {
-    const binding = evaluate(writeFixtureDescriptorAfterUnrelatedEdit, { proofTaskId: "ucpath/save-write-fixture" });
+  it("refuses when the retained binding proof is bound to another task", async () => {
+    const binding = await evaluate(writeFixtureDescriptorAfterUnrelatedEdit, { proofTaskId: "ucpath/save-write-fixture" });
     assert.ok(binding.state === "incompatible");
     assert.equal(binding.moved, "binding-proof-identity");
     assert.ok(binding.message.includes("ucpath/save-write-fixture"));

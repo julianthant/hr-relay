@@ -2,14 +2,11 @@ import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixture
 
 
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
 import { deriveCanonicalPerson } from "../../../src/rules/runs/summary-derivation.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { CURRENT_SEPARATIONS_RESULT,TERMINAL_SEPARATIONS_RUN } from "../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { CURRENT_SEPARATIONS_RESULT,TERMINAL_SEPARATIONS_RUN } from "../../support/fixtures/integration/separations-run-fixtures.js";
 
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { deriveRunResultDigest,deriveTerminalDependencyDigest,RunResultRecordSchema } from "../../../src/models/run/result.js";
@@ -18,15 +15,15 @@ import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-va
 
 import { SeparationsResultSchema } from "../../../src/workflows/separations/workflow.js";
 import {
-activityPersonPseudonymResultRecord,
+separationsRunResultRecord,
 seedTerminalSeparationsResult,
-} from "../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+} from "../../support/fixtures/integration/separations-run-fixtures.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import {
 COMPOSITION_NOW,
 compositionQueuedRun,
 } from "../../support/helpers/separations-composition-fixtures.js";
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+import { openBoundDatabaseFixture } from "../../support/helpers/admission-fixture.js";
 
 const SEPARATIONS_RESULT = CURRENT_SEPARATIONS_RESULT;
 
@@ -124,27 +121,27 @@ describe("canonical activity person", () => {
       else assert.deepEqual(deriveCanonicalPerson(fixture.run,fixture.result??null),{state:"unavailable",reason:"canonical-result-unavailable"},fixture.name);
     }
   });
-  it("returns unavailable for an absent canonical run without minting identity rows",()=>{
-    const root=mkdtempSync(join(realpathSync(tmpdir()),"canonical-person-")),path=join(root,"state.db");
-    const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"canonical-person"},manualClock(new Date(COMPOSITION_NOW)));
+  it("returns unavailable for an absent canonical run without minting identity rows",async ()=>{
+    const opened=await openBoundDatabaseFixture("canonical-person",manualClock(new Date(COMPOSITION_NOW)));
+    const db=opened.database;
     try {const before=db.getMeta();assert.deepEqual(db.canonicalPerson(TERMINAL_RUN.envelope.runId),{state:"unavailable",reason:"canonical-live-run-unavailable"});assert.deepEqual(db.getMeta(),before);}
-    finally{db.close();rmSync(root,{recursive:true,force:true});}
+    finally{await opened.close();}
   });
-  it("reads the exact approved subject repeatedly without a generation key or write",()=>{
-    const root=mkdtempSync(join(realpathSync(tmpdir()),"canonical-person-")),path=join(root,"state.db");
-    const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"canonical-person"},manualClock(new Date(COMPOSITION_NOW)));
+  it("reads the exact approved subject repeatedly without a generation key or write",async ()=>{
+    const opened=await openBoundDatabaseFixture("canonical-person",manualClock(new Date(COMPOSITION_NOW)));
+    const db=opened.database;
     try {
       db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-      seedTerminalSeparationsResult(db,path);const before=db.getMeta();
+      seedTerminalSeparationsResult(db,opened.path);const before=db.getMeta();
       for(let n=0;n<3;n++)assert.deepEqual(db.canonicalPerson(TERMINAL_SEPARATIONS_RUN.envelope.runId),{state:"available",identity:CURRENT_SEPARATIONS_RESULT.approved.emplId});
       assert.deepEqual(db.getMeta(),before);
-      const raw=new DatabaseSync(path,{readOnly:true});try {assert.deepEqual(raw.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'activity_person_pseudonym%'").all(),[]);}finally{raw.close();}
-    }finally{db.close();rmSync(root,{recursive:true,force:true});}
+      const raw=new DatabaseSync(opened.path,{readOnly:true});try {assert.deepEqual(raw.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'activity_person_pseudonym%'").all(),[]);}finally{raw.close();}
+    }finally{await opened.close();}
   });
   it("uses approved identity even when later transaction and finalization identities differ",()=>{
     const base=CURRENT_SEPARATIONS_RESULT;
     const finalization=base.finalization;if(!("proof" in finalization))throw new Error("performed finalization required");
-    const result=activityPersonPseudonymResultRecord(TERMINAL_SEPARATIONS_RUN,{...base,termination:{...base.termination,emplId:"10800001"},finalization:{...finalization,proof:{...finalization.proof,observedEid:"10800002"}}});
+    const result=separationsRunResultRecord(TERMINAL_SEPARATIONS_RUN,{...base,termination:{...base.termination,emplId:"10800001"},finalization:{...finalization,proof:{...finalization.proof,observedEid:"10800002"}}});
     assert.deepEqual(deriveCanonicalPerson(TERMINAL_SEPARATIONS_RUN,result),{state:"available",identity:base.approved.emplId});
   });
 });

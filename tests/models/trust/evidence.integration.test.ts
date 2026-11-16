@@ -9,14 +9,14 @@ const { seedWorld } = createSeededDashboardWorld();
 
 const worlds: DashboardWorld[] = [];
 
-function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
-  const created = makeWorld(...args);
+async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
+  const created = await makeWorld(...args);
   worlds.push(created);
   return created;
 }
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
+afterEach(async () => {
+  for (const w of worlds.splice(0)) await w.dispose();
 });
 
 describe("the queue row's served facts", () => {
@@ -28,8 +28,8 @@ describe("the queue row's served facts", () => {
     return surface;
   }
 
-  it("three distinct absences, and never a fabricated zero", () => {
-    const w = world();
+  it("three distinct absences, and never a fabricated zero", async () => {
+    const w = await world();
     seedWorld(w);
 
     const running = rowOf(w, 2).warnings;

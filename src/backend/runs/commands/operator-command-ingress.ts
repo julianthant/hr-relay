@@ -1,10 +1,10 @@
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
-import { LiveWorkerResetRequestSchema, CommandIdentityConflictError, BulkRunCommandRequestSchema, CommandResultSchema, CommandRequestSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, deriveBulkRunCommandFingerprint, type BulkRunCommandAcceptanceRecord, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandResult, type CommandRequest } from "../../../rules/commands/commands.js";
+import { CommandIdentityConflictError, BulkRunCommandRequestSchema, CommandResultSchema, CommandRequestSchema, GateArmAnswerRequestSchema, type GateArmAnswerRequest, IdentityGateAnswerRequestSchema, type IdentityGateAnswerRequest, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, deriveBulkRunCommandFingerprint, type BulkRunCommandAcceptanceRecord, type BulkRunCommandRequest, type BulkRunCommandResponse, type CommandResult, type CommandRequest } from "../../../rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
-import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
+import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import { RequestIdentityRefusedError } from "./refusals.js";
 
 function refuseForeignActorClaim(input: unknown): void {
@@ -34,7 +34,8 @@ type CommandJournalRead = Readonly<{
 }>;
 
 const OrdinarySettingsIngressRequestSchema = SettingsCommandRequestSchema.extend({
-  payload: SettingsCommandRequestSchema.shape.payload.extend({ patch: z.unknown() }),
+  payload: z.strictObject({ settingsSchemaHash: FingerprintSchema, patchFingerprint: FingerprintSchema,
+    patch: z.unknown() }),
 });
 const ProtectedSettingsIngressRequestSchema = ProtectedSettingsCommandRequestSchema.extend({
   payload: ProtectedSettingsCommandRequestSchema.shape.payload.extend({ entries: z.unknown() }),
@@ -98,10 +99,6 @@ function parseOperatorCommand(input: unknown, clock: Clock): CommandIngressDecis
   const parsed = CommandRequestSchema.safeParse(stamped);
   if (parsed.success) {
     const request = parsed.data;
-    if (request.type === "stop-worker" && !LiveWorkerResetRequestSchema.safeParse(request).success) return {
-      state: "refused", response: CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
-        code: "invalid-state", message: "worker-reset-authority-unavailable" }) };
-
     if (request.family === "settings") {
       if (request.type === "apply-settings") {
         if (request.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) return settingsRequestRefusal(request.commandId, "schema-mismatch", "settings.json");
@@ -240,6 +237,11 @@ function acceptOperatorBulkCommand(
   return Object.freeze({ state: "accepted", request: accepted.request });
 }
 
+/** An identity answer resolved to the kernel command it names, or refused with an operator sentence. */
+export type IdentityGateAnswerResolution =
+  | Readonly<{ state: "accepted"; request: CommandRequest }>
+  | Readonly<{ state: "refused"; code: "invalid-state" | "command-divergent"; message: string }>;
+
 export interface OperatorCommandIngress {
   submit(
     input: unknown,
@@ -247,7 +249,7 @@ export interface OperatorCommandIngress {
   ): Promise<CommandResult>;
   executeBulk(
     input: unknown,
-    execute: (accepted: BulkRunCommandRequest) => BulkRunCommandResponse,
+    execute: (accepted: BulkRunCommandRequest) => BulkRunCommandResponse | Promise<BulkRunCommandResponse>,
   ): Promise<BulkRunCommandResponse>;
 }
 
@@ -257,6 +259,8 @@ export function createOperatorCommandIngress(input: Readonly<{
   journal: CommandJournalRead;
   protectedCommandAcceptedAt: (commandId: string) => string | undefined;
   bulkAcceptances: BulkCommandAcceptanceAuthority;
+  resolveIdentityGateAnswer: (answer: IdentityGateAnswerRequest, journaled: CommandRequest | undefined) => IdentityGateAnswerResolution;
+  resolveGateArmAnswer: (answer: GateArmAnswerRequest, journaled: CommandRequest | undefined) => IdentityGateAnswerResolution;
 }>): OperatorCommandIngress {
   const tails = new Map<string, Promise<void>>();
   const serialize = async <Result>(keys: readonly string[], work: () => Promise<Result>): Promise<Result> => {
@@ -285,20 +289,33 @@ export function createOperatorCommandIngress(input: Readonly<{
       command: unknown,
       execute: (accepted: CommandRequest) => Promise<CommandResult>,
     ): Promise<CommandResult> {
-      const ingress = parseOperatorCommand(command, input.clock);
-      if (ingress.state === "refused") return Promise.resolve(ingress.response);
-      return serialize([`command:${ingress.request.commandId}`], async () => {
+      const run = async (request: CommandRequest): Promise<CommandResult> => {
         try {
-          return await execute(stampOperatorCommand(ingress.request, input.clock, input.journal, input.protectedCommandAcceptedAt));
+          return await execute(stampOperatorCommand(request, input.clock, input.journal, input.protectedCommandAcceptedAt));
         } catch (error) {
           if (!(error instanceof CommandIdentityConflictError)) throw error;
-          return CommandResultSchema.parse({ state: "rejected", commandId: ingress.request.commandId, code: "command-divergent", message: error.message });
+          return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message });
         }
-      });
+      };
+      const provenanced = withOperatorProvenance(command, input.clock);
+      const identity = IdentityGateAnswerRequestSchema.safeParse(provenanced), arm = GateArmAnswerRequestSchema.safeParse(provenanced);
+      const answer = identity.success ? { commandId: identity.data.commandId, resolve: (journaled: CommandRequest | undefined) => input.resolveIdentityGateAnswer(identity.data, journaled) }
+        : arm.success ? { commandId: arm.data.commandId, resolve: (journaled: CommandRequest | undefined) => input.resolveGateArmAnswer(arm.data, journaled) } : undefined;
+      if (answer !== undefined) {
+        const { commandId } = answer;
+        return serialize([`command:${commandId}`], async () => {
+          const resolved = answer.resolve(input.journal.get(commandId));
+          return resolved.state === "accepted" ? run(resolved.request)
+            : CommandResultSchema.parse({ state: "rejected", commandId, code: resolved.code, message: resolved.message });
+        });
+      }
+      const ingress = parseOperatorCommand(command, input.clock);
+      if (ingress.state === "refused") return Promise.resolve(ingress.response);
+      return serialize([`command:${ingress.request.commandId}`], () => run(ingress.request));
     },
     executeBulk(
       command: unknown,
-      execute: (accepted: BulkRunCommandRequest) => BulkRunCommandResponse,
+      execute: (accepted: BulkRunCommandRequest) => BulkRunCommandResponse | Promise<BulkRunCommandResponse>,
     ): Promise<BulkRunCommandResponse> {
       const intent = parseOperatorBulkCommand(command, input.clock);
       if (intent.state === "refused") return Promise.resolve(intent.response);
@@ -308,7 +325,7 @@ export function createOperatorCommandIngress(input: Readonly<{
             acceptOperatorBulkCommand(intent.request, input.clock, repository));
           return acceptance.state === "refused"
             ? acceptance.response
-            : execute(acceptance.request);
+            : await execute(acceptance.request);
         } catch (error) {
           if (!(error instanceof CommandIdentityConflictError)) throw error;
           return Object.freeze({ state: "refused", code: "command-divergent", message: error.message });

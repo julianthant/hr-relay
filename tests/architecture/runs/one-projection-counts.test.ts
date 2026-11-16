@@ -1,3 +1,5 @@
+import { isQueueTopLevel } from "../../../src/models/dashboard/queue-parent.js";
+import { syntheticDatabasePath } from "../../support/helpers/synthetic-database-admission.js";
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { ledgerCommitFixture, fixtureUuid } from "../../support/fixtures/ledger-projection-fixtures.js";
@@ -72,7 +74,7 @@ function countFieldConstructions(filePath: string, content = readFileSync(filePa
         const admitted = relative(REPO_ROOT, filePath).replaceAll("\\", "/") === MOCK_COUNT_OWNER
           && parent !== undefined && ts.isFunctionDeclaration(parent) && parent.name?.text === "mockWorkflowCounts"
           && parent.parameters.length === 1 && parent.parameters[0].name.getText(source) === "runs"
-          && parent.body?.getText(source).replace(/\s+/gu, "") === '{returnMOCK_WORKFLOWS.map(flow=>{constrows=runs.filter(run=>run.workflowId===flow.id);returnWorkflowCountWireSchema.parse({workflowId:flow.id,count:rows.length,statusCounts:mockQueueCounts(rows)});});}'
+          && parent.body?.getText(source).replace(/\s+/gu, "") === '{returnMOCK_WORKFLOWS.filter(flow=>flow.id!=="ocr").map(flow=>{constrows=runs.filter(run=>run.workflowId===flow.id);returnWorkflowCountWireSchema.parse({workflowId:flow.id,count:rows.length,statusCounts:mockQueueCounts(rows)});});}'
           && name.text === "statusCounts";
         if (!admitted) found.push(name.text);
       }
@@ -150,12 +152,12 @@ describe("one-projection-counts", () => {
   });
 
   const worlds: DashboardWorld[] = [];
-  afterEach(() => {
-    for (const world of worlds.splice(0)) world.dispose();
+  afterEach(async () => {
+    for (const world of worlds.splice(0)) await world.dispose();
   });
 
-  it("proves badge total == status sum == rendered rows by construction over a hostile seeded world", () => {
-    const world = makeWorld();
+  it("proves badge total == status sum == rendered rows by construction over a hostile seeded world", async () => {
+    const world = await makeWorld();
     worlds.push(world);
 
     queuedEventOf(world, { seed: 1 }); // plain queued
@@ -207,7 +209,7 @@ describe("one-projection-counts", () => {
     // The three renderings, each read off the ONE payload:
     const workflowPanelTotal = payload.workflowCounts.reduce((sum, { count }) => sum + count, 0);
     const statusBarSum = payload.statusCounts.reduce((sum, { count }) => sum + count, 0);
-    const renderedQueueRows = payload.queueSurfaces.filter(({ surfaceKind }) => surfaceKind !== "member").length;
+    const renderedQueueRows = payload.queueSurfaces.filter(isQueueTopLevel).length;
 
     assert.equal(workflowPanelTotal, statusBarSum);
     assert.equal(statusBarSum, renderedQueueRows);
@@ -231,7 +233,7 @@ describe("one-projection-counts", () => {
     for (const [index, instance] of [[0, "prod"], [1, "test"]] as const) {
       const fixture = ledgerCommitFixture(index, { instance, confirmedAt: instantOffsetOf(0),
         runId: fixtureUuid(`one-projection-run-${String(index)}`), itemId: fixtureUuid(`one-projection-item-${String(index)}`) });
-      seedAtomicWriteOwner(world.database, fixture.commit, join(world.stateRoot, "authority.db"));
+      seedAtomicWriteOwner(world.database, fixture.commit, syntheticDatabasePath(world.database));
       assert.equal(fenceWriteFixture(world.database, { intent: fixture.intent, attempt: fixture.attempt }).state, "fenced");
       world.database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
     }
@@ -245,4 +247,3 @@ describe("one-projection-counts", () => {
     assert.equal(report.totalRuns, 6);
   });
 });
-import { join } from "node:path";

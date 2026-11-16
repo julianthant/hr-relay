@@ -1,3 +1,4 @@
+import { WorkbookActiveSelectionSchema } from "../../../models/dashboard/workbook-library.js";
 import { type ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
 import { admitProtectedInput, hasProtectedSubject, protectedSubjectDisplay, protectedSubjectMatchKey } from "./protected-input.js";
 import { errorText } from "../lifecycle/support.js";
@@ -16,7 +17,7 @@ import {
   IsoInstantSchema,
   PositiveIntSchema,
 } from "../../../rules/identity/ids.js";
-import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape, RunWorkers } from "../../../models/run/envelope.js";
+import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape } from "../../../models/run/envelope.js";
 import type { StepOmissions } from "../../../models/workflow/step-omission.js";
 import { InstanceSelectionSchema } from "../../../models/run/envelope.js";
 import { isTerminalRunState, type RunRecord } from "../../../models/run/record.js";
@@ -29,9 +30,18 @@ import {
 } from "../../../models/run/start-plan.js";
 import type { PlannedRun, StartPlanRecord, StartRefusal } from "../../../models/run/start-plan.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { bindRunWorkbookReference, parseRunWorkbookReference, type WorkbookReferenceLookup } from "../../../models/dashboard/workbooks.js";
+import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
+import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { parseTypedDate, type TypedDateControl } from "../../../models/workflow/ingress.js";
+import { z } from "zod";
+import { workbookInputBinding } from "../workbooks.js";
 
 
 export interface StartPlannerDeps {
+  readonly workbooks?: Pick<WorkbookLibraryService, "createReferenceCapture">;
   readonly protectedSecrets?: ProtectedSecretSource;
 
   readonly authority: Readonly<{
@@ -44,6 +54,7 @@ export interface StartPlannerDeps {
 }
 
 export interface StartPlanRequest {
+  readonly workbookReferences?: readonly z.infer<typeof WorkbookActiveSelectionSchema>[];
   readonly descriptor: AnyWorkflowDescriptor;
   readonly protectedSubmissionBindings?: readonly ProtectedInputBinding[];
   readonly retainedInputs?: readonly SchemaBoundCanonicalValue[];
@@ -51,7 +62,6 @@ export interface StartPlanRequest {
   readonly submissions: readonly unknown[];
   readonly requestedInstance?: InstanceSelection;
   readonly dryRun: boolean;
-  readonly workers?: RunWorkers;
   // Dashboard starts require explicit choices; retained non-dashboard callers may omit them.
   readonly browserMode?: BrowserPresentationMode;
   /** Omission retains the pre-capture behavior (no browser screenshot). */
@@ -64,6 +74,8 @@ export interface StartPlanRequest {
   readonly configSnapshotId: string;
   readonly plannedBy: string;
   readonly rerun?: RerunPlan;
+  /** A gate correction replaces exactly this parked run, which must be the item's only active run. */
+  readonly supersedeRunId?: string;
 }
 
 export function resolveInstances(
@@ -100,14 +112,52 @@ export function dryRunRefusalMessage(descriptor: AnyWorkflowDescriptor): string 
     return `${descriptor.id} has no transaction node, so a dry run would be indistinguishable from a real `
       + "run; start it for real or not at all";
   }
+  if (support.reason === "descendant-declares-unsupported") {
+    return `${descriptor.id} reaches ${support.workflowId} transaction node "${support.nodeId}", which declares dryRun:"unsupported"; start it for real or not at all`;
+  }
   return `${descriptor.id} transaction node "${support.nodeId}" declares dryRun:"unsupported"; `
     + "start it for real or not at all";
 }
 
+/** Each declared date control is one value for the whole start: any entry without a valid MM/DD/YYYY date, or with a different one, refuses every entry; otherwise the ingress parse receives its ISO date. */
+function applyTypedDates(descriptor: AnyWorkflowDescriptor, submissions: readonly JsonValue[]):
+  Readonly<{ submissions: readonly JsonValue[] }> | Readonly<{ refusal: string }> {
+  const surface = descriptor.surfaces.inputRun?.typedInput;
+  const controls = (surface?.controls ?? []).filter((control): control is TypedDateControl => "kind" in control && control.kind === "date");
+  if (surface === undefined || controls.length === 0) return { submissions };
+  const records = submissions.map(submission => {
+    const fields = z.record(z.string(), JsonValueSchema).safeParse(submission);
+    return fields.success ? { ...fields.data } : undefined;
+  });
+  for (const control of controls) {
+    const dates = new Set<string>();
+    for (const record of records) {
+      if (record === undefined) {
+        if (control.required) return { refusal: control.refusal };
+        continue;
+      }
+      const mode = surface.submitsMode === false ? surface.modes[0].value : record[surface.modeField];
+      if (typeof mode !== "string" || !control.modes.includes(mode) || !control.requires.every(field => record[field] === true)) continue;
+      const typed = record[control.field];
+      if ((typed === undefined || typed === "") && !control.required) {
+        delete record[control.field];
+        continue;
+      }
+      const date = typeof typed === "string" ? parseTypedDate(typed) : undefined;
+      if (date === undefined) return { refusal: control.refusal };
+      dates.add(date);
+      record[control.field] = date;
+    }
+    if (dates.size > 1) return { refusal: `${control.label} must be one date for every entry in this start.` };
+  }
+  return { submissions: submissions.map((submission, index) => records[index] ?? submission) };
+}
+
 export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): StartPlanRecord {
   const { descriptor } = request;
+  const selections = WorkbookActiveSelectionSchema.array().parse(request.workbookReferences ?? []);
+  if (selections.some(selection => selection.entry > request.submissions.length)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
 
-  const admittedSubmissions = admitProtectedInput(descriptor, request.submissions, deps.protectedSecrets, request.retainedInputs, request.protectedSubmissionBindings);
   const rawSubmissions: JsonValue[] = [];
   for (let index = 0; index < request.submissions.length; index += 1) {
     if (!Object.hasOwn(request.submissions, index)) {
@@ -125,7 +175,11 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       );
     }
   }
+  const typedDates = applyTypedDates(descriptor, rawSubmissions);
+  const admittedSubmissions = admitProtectedInput(descriptor, "submissions" in typedDates ? typedDates.submissions : rawSubmissions,
+    deps.protectedSecrets, request.retainedInputs, request.protectedSubmissionBindings);
   const planning = workflowPlanning(descriptor);
+  const inputBinding = workbookInputBinding(descriptor.canonicalInput);
   const now = IsoInstantSchema.parse(deps.clock.now().toISOString());
   const ingressSchemaHash = deriveSchemaHash(descriptor.input, "input");
   const canonicalSchemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
@@ -134,6 +188,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
   const planned: PlannedRun[] = [];
   const refused: StartRefusal[] = [];
   const seenItemIds = new Set<string>();
+  const captureReference = deps.workbooks?.createReferenceCapture();
 
   for (const [index, rawInput] of rawSubmissions.entries()) {
     const entry = PositiveIntSchema.parse(index + 1);
@@ -145,13 +200,71 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       refuse("dry-run-unsupported", dryRunRefusalMessage(descriptor));
       continue;
     }
+    if ("refusal" in typedDates) {
+      refuse("input-invalid", typedDates.refusal);
+      continue;
+    }
 
     let parsed: unknown;
     let canonicalInput: unknown;
+    let lookups: readonly WorkbookReferenceLookup[];
     try {
       // This is the one and only ingress parse for this raw submission.
-      parsed = planning.parseInput(admittedSubmissions[index].admitted);
-      canonicalInput = planning.parseCanonicalInput(parsed);
+      inputBinding?.assertSubmission(rawInput);
+      const admitted = planning.parseInput(admittedSubmissions[index].admitted);
+      parsed = admitted.input;
+      lookups = admitted.lookups;
+    } catch (error) {
+      refuse("input-invalid", admittedSubmissions[index].bindings.length > 0 ? "workflow input is invalid" : errorText(error));
+      continue;
+    }
+
+    const references = selections.filter(selection => selection.entry === entry);
+    const requirement = planning.workbookReference;
+    if (lookups.length !== (requirement === undefined ? 0 : 1)
+      || lookups.some(lookup => lookup.typeId !== requirement?.id)) {
+      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
+    }
+    const sourceIdentity = (selection: typeof references[number]) => JSON.stringify([selection.libraryId, selection.versionId, selection.sheetId]);
+    if ((requirement === undefined ? references.length !== 0 : references.length < 1 || references.length > MAX_SELECTED_WORKBOOK_SOURCES)
+      || new Set(references.map(sourceIdentity)).size !== references.length) {
+      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
+    }
+    let workbookReferences: SchemaBoundCanonicalValue[] | undefined;
+    if (references.length > 0) {
+      if (captureReference === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); continue; }
+      try {
+        workbookReferences = references.map(({ entry: _entry, ...selection }) => {
+          const lookup = lookups[0];
+          if (lookup === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          if (selection.selectedRow !== undefined) {
+            const capability = descriptor.surfaces.inputRun?.workbookRows;
+            const fields = z.record(z.string(), z.unknown()).safeParse(parsed).data;
+            const inputKey = z.string().safeParse(capability === undefined || fields === undefined ? undefined : fields[capability.inputField]).data;
+            if (capability === undefined || requirement === undefined || capability.typeId !== requirement.id
+              || "mode" in lookup || inputKey === undefined || !lookup.keys.includes(inputKey)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          }
+          if (requirement === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          const reference = { ...lookup, libraryId: selection.libraryId, versionId: selection.versionId,
+            ...(selection.selectedRow === undefined ? {} : { selectedRow: selection.selectedRow }),
+            ...("mode" in lookup ? { expectedVersion: selection.expectedVersion } : {}) };
+          const snapshot = captureReference({ kind: "selected-source", typeId: requirement.id,
+            keyFieldId: requirement.keyFieldId, fields: planning.requiredWorkbookFields,
+            writableFields: requirement.writableFields,
+            mode: requirement.mode, keys: "mode" in lookup ? [] : lookup.keys,
+            libraryId: selection.libraryId, versionId: selection.versionId, sheetId: selection.sheetId,
+            expectedVersion: selection.expectedVersion,
+            ...(selection.selectedRow === undefined ? {} : { selectedRow: selection.selectedRow }) });
+          return bindRunWorkbookReference(reference, snapshot);
+        });
+      } catch (error) {
+        if (!(error instanceof WorkbookLibraryError)) throw error;
+        refuse("capability-unavailable", error.message); continue;
+      }
+    }
+    try {
+      canonicalInput = planning.parseCanonicalInput(inputBinding === undefined
+        ? parsed : inputBinding.bind(parsed, workbookReferences, now));
     } catch (error) {
       refuse("input-invalid", admittedSubmissions[index].bindings.length > 0 ? "workflow input is invalid" : errorText(error));
       continue;
@@ -159,28 +272,33 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
 
     const bindings = admittedSubmissions[index].bindings;
     const protectedSubject = hasProtectedSubject(bindings);
-    const matchKey = protectedSubject ? protectedSubjectMatchKey(bindings, canonicalInput) : planning.matchKey(parsed);
+    const matchKey = protectedSubject ? protectedSubjectMatchKey(bindings, canonicalInput) : planning.matchKey(canonicalInput);
     const itemId = deriveItemId(descriptor.id, matchKey);
     if (seenItemIds.has(itemId)) {
       refuse("active-run-exists", `entry ${String(entry)} repeats ${matchKey}, which is already in this plan`);
       continue;
     }
 
-    if (descriptor.enqueue === "reject-active") {
-      const active = deps.authority.authority.runs
-        .listByItem({ workflow: descriptor.id, itemId })
-        .filter((run) => !isTerminalRunState(run.lifecycle));
-      if (active.length > 0) {
-        refuse("active-run-exists", `${matchKey} already has an active run (${active[0].envelope.traceId})`);
-        continue;
-      }
+    const itemRuns = deps.authority.authority.runs.listByItem({ workflow: descriptor.id, itemId });
+    const active = itemRuns.filter((run) => !isTerminalRunState(run.lifecycle));
+    if (request.supersedeRunId !== undefined && !active.some((run) => run.envelope.runId === request.supersedeRunId)) {
+      refuse("active-run-exists", `${matchKey} is not the item of the run this correction replaces`);
+      continue;
+    }
+    const blocking = active.filter((run) => run.envelope.runId !== request.supersedeRunId);
+    if (descriptor.enqueue === "reject-active" && blocking.length > 0) {
+      refuse("active-run-exists", `${matchKey} already has an active run (${blocking[0].envelope.traceId})`);
+      continue;
     }
 
-    const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(parsed), subtitle: planning.subtitle(parsed) }));
+    const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(canonicalInput), subtitle: planning.subtitle(canonicalInput) }));
+    // A dry run publishes nothing, so it plans no outputs.
+    const outputs = request.dryRun ? [] : planning.plannedOutputs(canonicalInput, (workbookReferences ?? []).map(reference => parseRunWorkbookReference(reference)));
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
-      ...(descriptor.enqueue !== "supersede-active" ? {} : { supersedeTargets: startSupersedeTargets(
-        deps.authority.authority.runs.listByItem({ workflow: descriptor.id, itemId })) }),
+      ...(outputs.length === 0 ? {} : { outputs }),
+      ...(workbookReferences === undefined ? {} : { workbookReferences }),
+      ...(descriptor.enqueue !== "supersede-active" && request.supersedeRunId === undefined ? {} : { supersedeTargets: startSupersedeTargets(itemRuns) }),
       itemId,
       ...display,
       rawInput,
@@ -206,7 +324,6 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     shape: request.shape,
     priority: request.priority,
     dryRun: request.dryRun,
-    workers: request.workers ?? "auto",
     ...(request.browserMode === undefined ? {} : { browserMode: request.browserMode }),
     captureBrowserScreenshots: request.captureBrowserScreenshots ?? false,
     ...(request.stepOmissions === undefined ? {} : { stepOmissions: request.stepOmissions }),

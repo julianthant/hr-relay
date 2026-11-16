@@ -3,7 +3,7 @@ import { CONFIG_ROUTE_KEYS } from "../config/schema.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema, auditRuntimeEnvironmentInventory } from "./runtime-environment.js";
 import { BrowserSystemIdSchema, ProviderCapabilityIdSchema, ScenarioIdSchema } from "../../rules/identity/ids.js";
-import { SECRET_FILE_SPECS, SECRET_SPECS, SecretFileNameSchema, SecretNameSchema } from "../config/secrets.js";
+import { SECRET_SPECS, SecretNameSchema } from "../config/secrets.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS, PreflightScenarioIdSchema } from "../trust/preflight-scenarios.js";
 import { PreflightCheckIdSchema, RuntimeCapabilitySchema } from "../preflight/preflight-contract.js";
 import { auditPreflightSemanticRegistry } from "../../rules/preflight/preflight-semantics.js";
@@ -124,6 +124,20 @@ export const PROVIDER_ADAPTER_SPECS = deepFreeze(ProviderAdapterSpecSchema.array
   { provider: "nominatim", capabilities: ["geocode.nominatim"], endpoint: "https://nominatim.openstreetmap.org/search", consumer: "provider-adapter" },
 ]));
 
+export const LocalProviderAdapterSpecSchema = z.discriminatedUnion("capability", [
+  z.strictObject({ capability: z.literal("workbooks.library"), owner: z.literal("src/backend/processing/providers/workbook-library-adapter.ts"),
+    dependency: z.literal("storage.sqlite"), check: z.literal("authority.health") }),
+  z.strictObject({ capability: z.literal("ocr.approved-snapshot"), owner: z.literal("src/backend/processing/providers/ocr-approved-snapshot-adapter.ts"),
+    dependency: z.literal("storage.sqlite"), check: z.literal("authority.health") }),
+  z.strictObject({ capability: z.literal("ocr.review"), owner: z.literal("src/backend/processing/providers/ocr-review-adapter.ts"),
+    dependency: z.literal("storage.sqlite"), check: z.literal("authority.health") }),
+]);
+export const LOCAL_PROVIDER_ADAPTER_SPECS = deepFreeze(LocalProviderAdapterSpecSchema.array().parse([
+  { capability: "workbooks.library", owner: "src/backend/processing/providers/workbook-library-adapter.ts", dependency: "storage.sqlite", check: "authority.health" },
+  { capability: "ocr.approved-snapshot", owner: "src/backend/processing/providers/ocr-approved-snapshot-adapter.ts", dependency: "storage.sqlite", check: "authority.health" },
+  { capability: "ocr.review", owner: "src/backend/processing/providers/ocr-review-adapter.ts", dependency: "storage.sqlite", check: "authority.health" },
+]));
+
 const ProviderBackedFeatureCapabilitySchema = z.never();
 
 export const FeatureRuntimeSpecSchema = z.strictObject({
@@ -141,7 +155,7 @@ export const FEATURE_RUNTIME_SPECS = deepFreeze(FeatureRuntimeSpecSchema.array()
 
 export const RuntimeDependencySpecSchema = z.strictObject({
   id: RuntimeDependencyIdSchema,
-  kind: z.enum(["runtime", "browser", "config", "path", "storage", "port", "endpoint", "secret", "provider", "feature", "process"]),
+  kind: z.enum(["runtime", "browser", "config", "path", "storage", "port", "endpoint", "secret", "provider", "feature"]),
   requirement: z.enum(["blocking", "optional"]),
   capabilities: z.array(RuntimeCapabilitySchema).min(1),
   check: PreflightCheckIdSchema,
@@ -149,7 +163,6 @@ export const RuntimeDependencySpecSchema = z.strictObject({
   scenario: PreflightScenarioIdSchema,
   justification: z.string().min(1),
   secretNames: z.array(SecretNameSchema).optional(),
-  secretFiles: z.array(SecretFileNameSchema).optional(),
 });
 
 function endpointDependencies() {
@@ -195,7 +208,7 @@ export const RUNTIME_DEPENDENCIES = deepFreeze(RuntimeDependencySpecSchema.array
   { id: "runtime.node", kind: "runtime", requirement: "blocking", capabilities: ["dashboard.serve", "executor.run"], check: "runtime.compatibility", consumer: "runtime-composition", scenario: "preflight/runtime-mismatch", justification: "both runtime surfaces require the pinned Node engine" },
   { id: "runtime.package-lock", kind: "runtime", requirement: "blocking", capabilities: ["dashboard.serve", "executor.run"], check: "runtime.compatibility", consumer: "runtime-composition", scenario: "preflight/runtime-mismatch", justification: "both runtime surfaces require dependencies matching the reviewed package lock" },
   { id: "browser.chromium", kind: "browser", requirement: "blocking", capabilities: ["executor.run"], check: "browser.assets", consumer: "system-driver", scenario: "preflight/browser-missing", justification: "executor tasks cannot launch their isolated browser without Chromium" },
-  { id: "browser.duo-extension", kind: "browser", requirement: "blocking", capabilities: ["executor.run"], check: "browser.assets", consumer: "system-driver", scenario: "preflight/browser-missing", justification: "authenticated executor tasks require the registered isolated Duo credential asset", secretFiles: ["duoWebauthnCredential"] },
+  { id: "browser.duo-extension", kind: "browser", requirement: "blocking", capabilities: ["executor.run"], check: "browser.assets", consumer: "system-driver", scenario: "preflight/browser-missing", justification: "authenticated executor tasks require the registered isolated Duo credential asset" },
   { id: "config.resolved", kind: "config", requirement: "blocking", capabilities: ["dashboard.serve", "executor.run"], check: "config.valid", consumer: "runtime-composition", scenario: "preflight/config-invalid", justification: "dashboard and executor decisions require one strict resolved config snapshot" },
   { id: "path.state", kind: "path", requirement: "blocking", capabilities: ["dashboard.serve", "executor.run"], check: "filesystem.health", consumer: "authority-storage", scenario: "preflight/low-disk", justification: "runtime authority requires a writable isolated state root" },
   { id: "path.artifact", kind: "path", requirement: "blocking", capabilities: ["dashboard.serve", "executor.run"], check: "filesystem.health", consumer: "artifact-storage", scenario: "preflight/low-disk", justification: "runtime evidence requires a writable isolated artifact root" },
@@ -206,9 +219,8 @@ export const RUNTIME_DEPENDENCIES = deepFreeze(RuntimeDependencySpecSchema.array
   { id: "port.frontend", kind: "port", requirement: "blocking", capabilities: ["dashboard.serve"], check: "ports.available", consumer: "dashboard-startup", scenario: "preflight/port-busy", justification: "the isolated dashboard frontend cannot serve on an occupied reserved port" },
   { id: "fiscal.current", kind: "config", requirement: "blocking", capabilities: ["workflow.kuali-fill"], check: "fiscal.current", consumer: "workflow-enqueue", scenario: "preflight/fiscal-stale", justification: "Kuali date fills require the current fiscal-year values and must never reuse stale dates" },
   { id: "secret.ucpath-sso", kind: "secret", requirement: "blocking", capabilities: ["system.ucpath.prod", "system.crm.prod", "system.onbase.prod", "system.kuali.prod", "system.servicenow.prod", "system.i9.prod", "system.new-kronos.prod", "system.old-kronos.prod"], check: "secrets.ucpath-sso", consumer: "workflow-enqueue", scenario: "preflight/workflow-secret-missing", justification: "selected SSO-backed system instances require both UCPath SSO credential fields", secretNames: ["ucpathUserId", "ucpathPassword"] },
-  { id: "secret.timekeeper", kind: "secret", requirement: "blocking", capabilities: ["workflow.kuali-fill"], check: "secrets.timekeeper", consumer: "workflow-enqueue", scenario: "preflight/workflow-secret-missing", justification: "Kuali fill descriptors require an operator timekeeper identity", secretNames: ["timekeeperName"] },
+  { id: "profile.timekeeper", kind: "runtime", requirement: "blocking", capabilities: ["workflow.kuali-fill"], check: "profile.identity", consumer: "workflow-enqueue", scenario: "preflight/workflow-secret-missing", justification: "Kuali fill descriptors require an operator timekeeper identity" },
   { id: "secret.sharepoint-roster", kind: "secret", requirement: "blocking", capabilities: ["workflow.sharepoint-download", "system.sharepoint.prod"], check: "secrets.sharepoint-roster", consumer: "workflow-enqueue", scenario: "preflight/workflow-secret-missing", justification: "the selected roster download requires its registered SharePoint source URL", secretNames: ["sharepointOnboardingRosterUrl"] },
-  { id: "process.orphans", kind: "process", requirement: "optional", capabilities: ["dashboard.serve"], check: "process.orphans", consumer: "cli-doctor", scenario: "preflight/orphan-process", justification: "stale processes are operator-visible health debt but do not make authority unreadable" },
   ...featureDependencies(),
   ...endpointDependencies(),
   ...providerDependencies(),
@@ -291,9 +303,8 @@ export const PREFLIGHT_CHECKS = deepFreeze(PreflightCheckSpecSchema.array().pars
   { id: "ports.available", scope: "dashboard", severity: "error", runner: "io", dependencies: ["port.backend", "port.frontend"], capabilities: ["dashboard.serve"], consumer: "dashboard-startup", scenarios: ["preflight/port-busy"], timeoutMs: 1_000, redaction: "safe-summary", remediation: "free the reserved rebuild ports" },
   { id: "fiscal.current", scope: "workflow", severity: "error", runner: "pure", dependencies: ["fiscal.current"], capabilities: ["workflow.kuali-fill"], consumer: "workflow-enqueue", scenarios: ["preflight/fiscal-stale"], timeoutMs: 1_000, redaction: "safe-summary", remediation: "configure a non-stale current-fiscal-year entry" },
   { id: "secrets.ucpath-sso", scope: "system", severity: "error", runner: "pure", dependencies: ["secret.ucpath-sso"], capabilities: ["system.ucpath.prod", "system.crm.prod", "system.onbase.prod", "system.kuali.prod", "system.servicenow.prod", "system.i9.prod", "system.new-kronos.prod", "system.old-kronos.prod"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure ucpathUserId and ucpathPassword in protected Settings" },
-  { id: "secrets.timekeeper", scope: "workflow", severity: "error", runner: "pure", dependencies: ["secret.timekeeper"], capabilities: ["workflow.kuali-fill"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure timekeeperName in protected Settings" },
+  { id: "profile.identity", scope: "workflow", severity: "error", runner: "pure", dependencies: ["profile.timekeeper"], capabilities: ["workflow.kuali-fill"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "sign in to the profile whose name should be used for timekeeping" },
   { id: "secrets.sharepoint-roster", scope: "workflow", severity: "error", runner: "pure", dependencies: ["secret.sharepoint-roster"], capabilities: ["workflow.sharepoint-download", "system.sharepoint.prod"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure sharepointOnboardingRosterUrl in protected Settings" },
-  { id: "process.orphans", scope: "dashboard", severity: "warning", runner: "io", dependencies: ["process.orphans"], capabilities: ["dashboard.serve"], consumer: "cli-doctor", scenarios: ["preflight/orphan-process"], timeoutMs: 2_000, redaction: "safe-summary", remediation: "review and explicitly clear stale rebuild processes or leases" },
   ...featureChecks(),
   ...endpointChecks(),
   ...providerChecks(),
@@ -305,6 +316,7 @@ export const RuntimeDependencyRegistrySchema = z.strictObject({
   scenarios: z.array(ScenarioIdSchema).min(1),
   systems: z.array(SystemRuntimeSpecSchema).min(1),
   providers: z.array(ProviderAdapterSpecSchema).min(1),
+  localProviders: z.array(LocalProviderAdapterSpecSchema).min(1),
   features: z.array(FeatureRuntimeSpecSchema),
   dependencies: z.array(RuntimeDependencySpecSchema).min(1),
   checks: z.array(PreflightCheckSpecSchema).min(1),
@@ -316,6 +328,7 @@ export const RUNTIME_DEPENDENCY_REGISTRY = deepFreeze(RuntimeDependencyRegistryS
   scenarios: PREFLIGHT_SCENARIO_MANIFESTS.map(({ id }) => id),
   systems: SYSTEM_RUNTIME_SPECS,
   providers: PROVIDER_ADAPTER_SPECS,
+  localProviders: LOCAL_PROVIDER_ADAPTER_SPECS,
   features: FEATURE_RUNTIME_SPECS,
   dependencies: RUNTIME_DEPENDENCIES,
   checks: PREFLIGHT_CHECKS,
@@ -406,7 +419,14 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
     }
   }
 
-  const providerCapabilities = new Set(registry.providers.flatMap(({ capabilities }) => capabilities));
+  const providerCapabilities = new Set([...registry.providers.flatMap(({ capabilities }) => capabilities), ...registry.localProviders.map(({ capability }) => capability)]);
+  unique(registry.localProviders.map(({ capability }) => capability), "local provider capabilities");
+  for (const provider of registry.localProviders) {
+    if (!registry.dependencies.some(({ id }) => id === provider.dependency)
+      || !registry.checks.some(check => check.id === provider.check && check.dependencies.some(id => id === provider.dependency))) {
+      violations.push(`local provider ${provider.capability} has no admitted storage dependency check`);
+    }
+  }
   const providersById = new Map(registry.providers.map((provider) => [provider.provider, provider]));
   for (const provider of ProviderIdSchema.options) {
     if (!providersById.has(provider)) violations.push(`provider ${provider} has no adapter or explicit target disposition`);
@@ -448,7 +468,6 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
   for (const dependency of registry.dependencies) {
     unique(dependency.capabilities, `dependency ${dependency.id} capabilities`);
     unique(dependency.secretNames ?? [], `dependency ${dependency.id} secret names`);
-    unique(dependency.secretFiles ?? [], `dependency ${dependency.id} secret files`);
     if (!registeredConsumers.has(dependency.consumer)) violations.push(`dependency ${dependency.id} names missing consumer ${dependency.consumer}`);
     const check = checks.get(dependency.check);
     if (check === undefined) {
@@ -503,16 +522,10 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
   const secretDependencyByName = {
     ucpathUserId: "secret.ucpath-sso",
     ucpathPassword: "secret.ucpath-sso",
-    timekeeperName: "secret.timekeeper",
     sharepointOnboardingRosterUrl: "secret.sharepoint-roster",
   } as const satisfies Record<z.infer<typeof SecretNameSchema>, string>;
-  const secretFileDependencyByName = {
-    duoWebauthnCredential: "browser.duo-extension",
-  } as const satisfies Record<z.infer<typeof SecretFileNameSchema>, string>;
   const referencedSecretNames = registry.dependencies.flatMap(({ secretNames }) => secretNames ?? []);
-  const referencedSecretFiles = registry.dependencies.flatMap(({ secretFiles }) => secretFiles ?? []);
   unique(referencedSecretNames, "runtime secret-name references");
-  unique(referencedSecretFiles, "runtime secret-file references");
   for (const secret of SECRET_SPECS) {
     if (!referencedSecretNames.includes(secret.name)) violations.push(`secret ${secret.name} has no runtime dependency consumer`);
     const owner = secretDependencyByName[secret.name];
@@ -520,22 +533,10 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
       violations.push(`secret ${secret.name} is not owned by dependency ${owner}`);
     }
   }
-  for (const secretFile of SECRET_FILE_SPECS) {
-    if (!referencedSecretFiles.includes(secretFile.name)) violations.push(`secret file ${secretFile.name} has no runtime dependency consumer`);
-    const owner = secretFileDependencyByName[secretFile.name];
-    if (!dependencies.get(RuntimeDependencyIdSchema.parse(owner))?.secretFiles?.includes(secretFile.name)) {
-      violations.push(`secret file ${secretFile.name} is not owned by dependency ${owner}`);
-    }
-  }
   for (const dependency of registry.dependencies) {
     for (const secret of dependency.secretNames ?? []) {
       if (secretDependencyByName[secret] !== dependency.id) {
         violations.push(`dependency ${dependency.id} cannot own secret ${secret}`);
-      }
-    }
-    for (const secretFile of dependency.secretFiles ?? []) {
-      if (secretFileDependencyByName[secretFile] !== dependency.id) {
-        violations.push(`dependency ${dependency.id} cannot own secret file ${secretFile}`);
       }
     }
   }

@@ -107,8 +107,6 @@ export const SourceSurfaceIdSchema = slugText<"SourceSurfaceId">("source surface
 export const WorkerIdSchema = slugText<"WorkerId">("worker id must be kebab-case");
 export const GateIdSchema = slugText<"GateId">("gate id must be kebab-case");
 export const DelegationEdgeIdSchema = slugText<"DelegationEdgeId">("delegation edge id must be kebab-case");
-/** The identity that holds a ledger partition's projection lease (ref write-safety ). */
-export const LedgerProjectorIdSchema = slugText<"LedgerProjectorId">("ledger projector id must be kebab-case");
 
 /** `<code>-<HHMMSS>-<runId4>`; the code segment is deliberately wider than the writer's current rule because this schema is a READER of durable stored ids. */
 export const TraceIdSchema = brandedText<"TraceId">(
@@ -132,10 +130,10 @@ export const ErrorCodeSchema = brandedText<"ErrorCode">(
 export const IsoInstantSchema = z.iso.datetime({ offset: true }).brand<"IsoInstant">();
 export const DateOnlySchema = z.iso.date().brand<"DateOnly">();
 export const LocalDateSchema = z.iso.date().brand<"LocalDate">();
-export const EidSchema = brandedText<"Eid">(/^10\d{6}$/, "EID must be eight digits beginning with 10");
+export const EID_PATTERN = /^10\d{6}$/;
+export const EidSchema = brandedText<"Eid">(EID_PATTERN, "EID must be eight digits beginning with 10");
 export const PositiveIntSchema = z.number().int().positive().brand<"PositiveInt">();
 export const NonNegativeIntSchema = z.number().int().nonnegative().brand<"NonNegativeInt">();
-export const MoneyMinorUnitsSchema = z.number().int().brand<"MoneyMinorUnits">();
 export const ProjectionCursorSchema = brandedText<"ProjectionCursor">(
   /^pc:[1-9]\d*$/,
   "projection cursor must be pc:<positive integer>",
@@ -152,12 +150,15 @@ export const BrowserSystemIdSchema = z.enum([
   "old-kronos",
   "sharepoint",
 ]);
-export const ServiceSystemIdSchema = z.enum(["extraction", "normalization", "ocr", "roster"]);
+export const ServiceSystemIdSchema = z.enum(["extraction", "normalization", "ocr", "roster", "workbooks"]);
 export const SystemIdSchema = z.union([BrowserSystemIdSchema, ServiceSystemIdSchema]);
 export const ProviderCapabilityIdSchema = z.enum([
   "ocr.extract",
+  "ocr.approved-snapshot",
+  "ocr.review",
   "geocode.census",
   "geocode.nominatim",
+  "workbooks.library",
 ]);
 
 export const TaskStoreIdSchema = z.union([
@@ -165,7 +166,7 @@ export const TaskStoreIdSchema = z.union([
   z.templateLiteral(["workflow:", WorkflowIdSchema]),
 ]);
 export const TaskIdSchema = brandedText<"TaskId">(
-  /^(?:(?:ucpath|crm|onbase|kuali|servicenow|i9|new-kronos|old-kronos|sharepoint|extraction|normalization|ocr|roster)|workflow:[a-z0-9]+(?:-[a-z0-9]+)*)\/[a-z0-9]+(?:-[a-z0-9]+)*$/,
+  /^(?:(?:ucpath|crm|onbase|kuali|servicenow|i9|new-kronos|old-kronos|sharepoint|extraction|normalization|ocr|roster|workbooks)|workflow:[a-z0-9]+(?:-[a-z0-9]+)*)\/[a-z0-9]+(?:-[a-z0-9]+)*$/,
   "task id must be <registered-store>/<kebab-case-operation>",
 );
 

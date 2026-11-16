@@ -1,34 +1,23 @@
+import { BrowserProfileStillClosingError, BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
+import { mockBrowserRootPort } from "../../../support/helpers/browser/browser-roots.js";
+import { fixtureDuoSigningSource, fixtureWorkflowWorker } from "../../../support/helpers/browser/duo-signing.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import { chmodSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join,resolve as resolvePath } from "node:path";
-import { runInNewContext } from "node:vm";
-import type { Worker } from "playwright";
 import { tsImport } from "tsx/esm/api";
-import { describe,it } from "vitest";
+import { beforeEach, describe,it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import {
-assertDuoAutopilotReady,
-BrowserProfileAdmissionSchema,
-browserSignInFingerprint,
-DuoProvisioningError,
-PlaywrightWorkerSessionFactory,
-ProfileCustodyUnavailableError,
-workerProfileDirectory,
-type BrowserDeadlineScheduler
-} from "../../../../src/backend/runtime/browser/browser-session-factory.js";
-
+import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { assertFastDuoReady, BrowserProfileAdmissionSchema, browserSignInFingerprint, DuoProvisioningError, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError, workerProfileDirectory, type BrowserDeadlineScheduler } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import type {
-AuthenticatedApplicationEvidence
+AuthenticatedApplicationEvidence, SystemLoginContext
 } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import type { Config } from "../../../../src/models/config/schema.js";
-
 import { FingerprintSchema,WorkerIdSchema,WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { fixtureDuoCeremonyGate } from "../../../support/helpers/duo-ceremony-fixtures.js";
@@ -57,7 +46,7 @@ const { fakePage, verifierFor, fakeLauncher, recordingBindings, withTempRuntime,
 
 const WORKFLOW_ID = WorkflowIdSchema.parse("person-lookup");
 
-const OPEN_INPUT = {
+const OPEN_INPUT_BASE = {
   workerId: WORKER_ID,
   workflowId: WORKFLOW_ID,
   system: "ucpath",
@@ -66,10 +55,54 @@ const OPEN_INPUT = {
   acceptDownloads: false,
   exclusive: false,
   signal: new AbortController().signal,
-  duoCeremony: fixtureDuoCeremonyGate("ucpath", WORKER_ID, CLOCK),
 } as const;
+let OPEN_INPUT: typeof OPEN_INPUT_BASE & { readonly duoCeremony: SystemLoginContext["duoCeremony"] };
+beforeEach(() => {
+  let ceremony: ReturnType<typeof fixtureDuoCeremonyGate> | undefined;
+  OPEN_INPUT = { ...OPEN_INPUT_BASE, duoCeremony: {
+    async withCeremony(run) {
+      const gate = await (ceremony ??= fixtureDuoCeremonyGate("ucpath", WORKER_ID, CLOCK));
+      return gate.withCeremony(run);
+    },
+  } };
+});
+
+// Browser and Duo broker closure failures arrive joined; match the exact underlying cause.
+const closureCause = (pattern: RegExp) => (error: unknown): boolean => error instanceof BrowserSessionClosureUnprovedError
+  && error.errors.some(cause => cause instanceof Error && pattern.test(cause.message));
 
 describe("worker browser session factory", () => {
+  it("probes native availability without profile reset, credential reads, provisioning or login", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const native = fakeLauncher(); let profileAdmissions = 0, secretReads = 0, logins = 0;
+      const binding = recordingBindings().ucpath; assert.ok(binding);
+      const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
+        scheduler: NEVER_SCHEDULER, slotOrdinal: () => 1, newSessionId: () => SESSION_ID,
+        protectedSecrets: { read: () => { secretReads++; throw new Error("probe must not read credentials"); } },
+        assertCurrent: () => undefined,
+      admitProfile: async input => { profileAdmissions++; return BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 1, resetRequired: true }); },
+        bindings: { ucpath: { ...binding, login: async () => { logins++; throw new Error("probe must not log in"); } } }, launcher: native.launcher });
+      await factory.probeProfile({ workerId: WORKER_ID, system: "ucpath", signal: new AbortController().signal });
+      assert.equal(native.launches().length, 1); assert.equal(native.contextClosed(), true);
+      assert.equal(profileAdmissions, 0); assert.equal(secretReads, 0); assert.equal(logins, 0);
+      assert.equal(existsSync(workerProfileDirectory({ profileRoot: config.paths.browserProfileRoot, slotOrdinal: 1, system: "ucpath" })), true);
+    });
+  });
+  it("maps Chromium profile-in-use refusal without reserving the queued run's next acquisition", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const harness = fakeLauncher(); let launches = 0;
+      const factory = factoryFor(config, { ...harness, launcher: { launch: async input => {
+        launches++;
+        if (launches === 1) throw new Error("Failed to create a ProcessSingleton for your profile directory.");
+        return harness.launcher.launch(input);
+      } } }, recordingBindings());
+      await assert.rejects(factory.open(OPEN_INPUT), BrowserProfileStillClosingError);
+      const resource = await factory.open(OPEN_INPUT);
+      assert.equal(launches, 2);
+      await resource.close({ reason: "worker-stop" });
+      assert.equal(harness.contextClosed(), true);
+    });
+  });
   it("refuses a second launch of the stable profile after an uncertain launcher rejection", async () => {
     await withTempRuntime(async ({config}) => {
       let launches = 0;
@@ -87,8 +120,8 @@ describe("worker browser session factory", () => {
   it("derives every profile segment from the isolation contract and an absolute root", () => {
     // Assert production path derivation as a string; never create or remove a real runtime profile root.
     const production = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config.paths;
-    assert.equal(production.browserProfileRoot, resolvePath(rebuildRuntimeIsolation.browserProfileRoot));
-    assert.equal(production.duoCredential, resolvePath(".tracker/data/credentials/duo-webauthn.json"));
+    assert.equal(production.browserProfileRoot, join(applicationDataWorkspace(), rebuildRuntimeIsolation.browserProfileRoot));
+    assert.equal(production.duoCredential, join(applicationDataWorkspace(), rebuildRuntimeIsolation.stateRoot, "credentials", "duo-webauthn.json"));
 
     const profileRoot = join(tmpdir(), "hrauto-profile-derivation");
     const directory = workerProfileDirectory({ profileRoot: profileRoot, slotOrdinal: 1, system: "ucpath" });
@@ -122,7 +155,8 @@ describe("worker browser session factory", () => {
       const resource = await factory.open(OPEN_INPUT);
       const launch = harness.launches()[0];
       assert.ok(launch);
-      assert.equal(launch.extensionDirectory, config.paths.duoExtensionDir);
+      assert.equal(launch.extensionDirectory, join(String(launch.profileDirectory), "relay-extension"));
+      assert.equal(launch.nativeOnly, true);
       assert.equal(launch.headless, config.browser.headless);
       assert.equal(launch.downloadsPath, config.paths.downloadsDir);
       assert.deepEqual(launch.viewport, {
@@ -148,7 +182,8 @@ describe("worker browser session factory", () => {
     await withTempRuntime(async ({ config }) => {
       const launcher = fakeLauncher();
       const count = async () => 0;
-      const frames = [0, 1, 2].map(frameId => ({ ...launcher.page.mainFrame(), locator: (selector: string) => ({ selector, frameId, count }) }));
+      const filter = function <T>(this: T): T { return this; };
+      const frames = [0, 1, 2].map(frameId => ({ ...launcher.page.mainFrame(), locator: (selector: string) => ({ selector, frameId, count, filter }) }));
       launcher.page.frames = () => frames;
       let screenshotOptions: unknown;
       const originalScreenshot = launcher.page.screenshot;
@@ -159,7 +194,7 @@ describe("worker browser session factory", () => {
       const screenshot = await resource.screenshot?.();
       assert.ok(screenshot?.state === "available");
       assert.deepEqual(Buffer.from(screenshot.bytes), PNG.sync.write(new PNG({ width: config.display.screenWidth + 24, height: config.display.screenHeight })));
-      assert.deepEqual(screenshotOptions, { type: "png", clip: { x: 0, y: 0, width: config.display.screenWidth + 24, height: Math.min(config.display.screenHeight, 1200) }, mask: frames.map((_, frameId) => ({ selector: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$0"]', frameId, count })) });
+      assert.deepEqual(screenshotOptions, { type: "png", clip: { x: 0, y: 0, width: config.display.screenWidth + 24, height: Math.min(config.display.screenHeight, 1200) }, mask: frames.map((_, frameId) => ({ selector: '[id="DERIVED_HCR_SM_SM_CHAR_INPUT$0"]', frameId, count, filter })) });
       assert.deepEqual(
         { width: screenshot.width, height: screenshot.height },
         { width: config.display.screenWidth + 24, height: config.display.screenHeight },
@@ -231,7 +266,7 @@ describe("worker browser session factory", () => {
       const child = {
         ...launcher.page.mainFrame(),
         url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
-        locator: (selector: string) => ({ selector, count: async () => 0 }),
+        locator: (selector: string) => { const locator = { selector, count: async () => 0, filter: () => locator }; return locator; },
       };
       const frames = [...launcher.page.frames(), child];
       launcher.page.frames = () => frames;
@@ -263,7 +298,7 @@ describe("worker browser session factory", () => {
           const child = {
             ...launcher.page.mainFrame(),
             url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
-            locator: (selector: string) => ({ selector, count: async () => present && selector.includes(control) ? 1 : 0 }),
+            locator: (selector: string) => { const locator = { selector, count: async () => present && selector.includes(control) ? 1 : 0, filter: () => locator }; return locator; },
           };
           const frames = [...launcher.page.frames(), child];
           launcher.page.frames = () => frames;
@@ -289,7 +324,7 @@ describe("worker browser session factory", () => {
         const child = {
           ...launcher.page.mainFrame(),
           url: () => "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/embedded",
-          locator: (selector: string) => ({ selector, count: async () => 0 }),
+          locator: (selector: string) => { const locator = { selector, count: async () => 0, filter: () => locator }; return locator; },
         };
         const mainFrames = launcher.page.frames();
         let frames = event === "frameattached" ? mainFrames : [...mainFrames, child];
@@ -335,8 +370,8 @@ describe("worker browser session factory", () => {
         paths: { ...config.paths, duoExtensionDir: join(root, "absent-extension") },
       };
       assert.throws(
-        () => { assertDuoAutopilotReady({ ...missingExtension, features: { ...config.features, duoWebAuthn: true } }); },
-        /Duo Autopilot extension is not loadable/,
+        () => { assertFastDuoReady({ ...missingExtension, features: { ...config.features, duoWebAuthn: true } }); },
+        /Fast Duo extension is not loadable/,
       );
 
       const missingCredential: Config = {
@@ -344,8 +379,8 @@ describe("worker browser session factory", () => {
         paths: { ...config.paths, duoCredential: join(root, "absent.json") },
       };
       assert.throws(
-        () => { assertDuoAutopilotReady({ ...missingCredential, features: { ...config.features, duoWebAuthn: true } }); },
-        /duoWebauthnCredential is unavailable/,
+        () => { assertFastDuoReady({ ...missingCredential, features: { ...config.features, duoWebAuthn: true } }); },
+        /Duo extension session provisioning could not be verified/,
       );
 
       const loosePermissions = join(root, "loose.json");
@@ -353,17 +388,17 @@ describe("worker browser session factory", () => {
       chmodSync(loosePermissions, 0o644);
       assert.throws(
         () => {
-          assertDuoAutopilotReady({
+          assertFastDuoReady({
             ...config, features: { ...config.features, duoWebAuthn: true },
             paths: { ...config.paths, duoCredential: loosePermissions },
-          });
+          }, fixtureDuoSigningSource({ assertCurrent() { throw new DuoProvisioningError(); } }));
         },
-        /duoWebauthnCredential is unavailable/,
+        /Duo extension session provisioning could not be verified/,
       );
 
       // Feature off is an explicit operator decision, not a silent skip.
       assert.doesNotThrow(() => {
-        assertDuoAutopilotReady({
+        assertFastDuoReady({
           ...missingExtension,
           features: { ...config.features, duoWebAuthn: false },
         });
@@ -445,7 +480,7 @@ describe("worker browser session factory", () => {
       const harness = fakeLauncher({ page });
       const verifier = verifierFor();
       const evidence: AuthenticatedApplicationEvidence[] = [];
-      const factory = new PlaywrightWorkerSessionFactory({
+      const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(),
         config,
         protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-value" }),
         isolation: rebuildRuntimeIsolation,
@@ -453,7 +488,8 @@ describe("worker browser session factory", () => {
         scheduler: NEVER_SCHEDULER,
         slotOrdinal: () => 1,
     newSessionId: () => SESSION_ID,
-    admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 7, resetRequired: false })),
+    assertCurrent: () => undefined,
+      admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 7, resetRequired: false })),
         bindings: recordingBindings({ verify: verifier.verify }),
         launcher: harness.launcher,
         onAuthenticationEvidence: (observed) => evidence.push(observed),
@@ -478,6 +514,7 @@ describe("worker browser session factory", () => {
           verify: verifierFor({
             authenticated: false,
             reason: "the PeopleSoft signon form is still present on the page",
+            check: "sign-in-form-absent",
           }).verify,
         }),
       );
@@ -515,7 +552,7 @@ describe("worker browser session factory", () => {
       const silentResource = await factoryFor(config, silent, recordingBindings()).open(OPEN_INPUT);
       await assert.rejects(
         silentResource.close({ reason: "worker-stop" }),
-        /never emitted its context close event/,
+        closureCause(/never emitted its context close event/u),
       );
 
       // A page that refuses to close is not "closed enough".
@@ -523,7 +560,7 @@ describe("worker browser session factory", () => {
       const stuckResource = await factoryFor({ ...config, paths: { ...config.paths, browserProfileRoot: `${config.paths.browserProfileRoot}-stuck` } }, stuck, recordingBindings()).open(OPEN_INPUT);
       await assert.rejects(
         stuckResource.close({ reason: "worker-stop" }),
-        /injected page close failure/,
+        closureCause(/injected page close failure/u),
       );
 
       // A close that hangs must hit its bounded proof deadline, not wait forever.
@@ -536,12 +573,12 @@ describe("worker browser session factory", () => {
       ).open(OPEN_INPUT);
       await assert.rejects(
         hangingResource.close({ reason: "worker-stop" }),
-        /did not complete within its .*proof deadline/,
+        closureCause(/did not complete within its .*proof deadline/u),
       );
     });
   });
 
-  it("refuses a system with no landed binding and an exclusive lease it cannot honor", async () => {
+  it("refuses an unbound system and an exclusive request for a system without that policy", async () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher();
       const factory = factoryFor(
@@ -557,7 +594,7 @@ describe("worker browser session factory", () => {
       );
       await assert.rejects(
         factory.open({ ...OPEN_INPUT, exclusive: true }),
-        /exclusive OnBase lease is not landed/,
+        /browser-session-exclusivity-mismatch/,
       );
       assert.deepEqual(harness.launches(), [], "no browser may be launched for a refused session");
     });
@@ -575,51 +612,29 @@ describe("required profile custody admission", () => {
       assert.equal(harness.contextClosed(), true);
     });
   });
-  it("provisions only trusted session storage and verifies the injected credential", async () => {
+  it("provisions Fast Duo for the retained operator before exposing a login page", async () => {
     await withTempRuntime(async ({ config }) => {
       const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" };
       writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
-      const calls: string[] = [];
-      let stored: unknown;
-      const serviceWorker = { url: () => `chrome-extension://${"a".repeat(32)}/src/background.js`,
-        evaluate: async (operation: (credentials: unknown) => Promise<void>, credentials: unknown) => {
-          const previous: unknown = Reflect.get(globalThis, "chrome");
-          Reflect.set(globalThis, "chrome", { storage: { local: { get: () => { calls.push("local:get"); return {}; } }, session: {
-            setAccessLevel: (value: unknown) => { assert.deepEqual(value, { accessLevel: "TRUSTED_CONTEXTS" }); calls.push("session:access"); },
-            set: (value: unknown) => { stored = value; calls.push("session:set"); }, get: () => stored,
-          } } });
-          try { await operation(credentials); } finally { if (previous === undefined) Reflect.deleteProperty(globalThis, "chrome"); else Reflect.set(globalThis, "chrome", previous); }
-        },
-      } as unknown as Worker;
-      const harness = fakeLauncher({ serviceWorker });
-      const resource = await factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings()).open(OPEN_INPUT);
-      try {
-        assert.deepEqual(calls, ["local:get", "session:access", "session:set"]);
-        assert.deepEqual(stored, { duoCredentials: [credential] });
-      } finally { await resource.close({ reason: "worker-stop" }); }
+      const broker = fixtureWorkflowWorker();
+      const serviceWorker = broker.worker;
+      const resource = await factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, fakeLauncher({ serviceWorker }), recordingBindings()).open(OPEN_INPUT);
+      try { assert.deepEqual(broker.installed.map(args => [...args]), [[]]); }
+      finally { await resource.close({ reason: "worker-stop" }); }
     });
   });
-  it("provisions Duo from the runtime-compiled source in an isolated scope whose storage sorts keys", async () => {
+  it("provisions Fast Duo from runtime-compiled source in an isolated worker scope", async () => {
     await withTempRuntime(async ({ config }) => {
       const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" };
       writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
       const runtime = await tsImport("../../../../src/backend/runtime/browser/browser-session-factory.ts", import.meta.url) as
         typeof import("../../../../src/backend/runtime/browser/browser-session-factory.js");
-      let stored: unknown;
-      const sortedKeys = (value: object) => Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
-      const chrome = { storage: { local: { get: () => ({}) },
-        session: { setAccessLevel: () => undefined, set: (value: unknown) => { stored = value; },
-          get: () => ({ duoCredentials: (stored as { duoCredentials: object[] }).duoCredentials.map(sortedKeys) }) } } };
-      const serviceWorker = { url: () => `chrome-extension://${"a".repeat(32)}/src/background.js`,
-        evaluate: (operation: (credentials: unknown) => Promise<void>, credentials: unknown) =>
-          runInNewContext(`(${operation.toString()})(credentials)`, { chrome, credentials }) as Promise<void>,
-      } as unknown as Worker;
-      const duoConfig = { ...config, features: { ...config.features, duoWebAuthn: true } };
-      const resource = await factoryFor(duoConfig, fakeLauncher({ serviceWorker }), recordingBindings(), NEVER_SCHEDULER, undefined,
+      const broker = fixtureWorkflowWorker();
+      const serviceWorker = broker.worker;
+      const resource = await factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, fakeLauncher({ serviceWorker }), recordingBindings(), NEVER_SCHEDULER, undefined,
         runtime.PlaywrightWorkerSessionFactory).open(OPEN_INPUT);
-      try {
-        assert.equal(JSON.stringify(stored), JSON.stringify({ duoCredentials: [credential] }));
-      } finally { await resource.close({ reason: "worker-stop" }); }
+      try { assert.equal(JSON.stringify(broker.installed), "[[]]"); }
+      finally { await resource.close({ reason: "worker-stop" }); }
     });
   });
   it("separates sign-in identity from viewport, presentation and private values", async () => {
@@ -662,10 +677,11 @@ describe("required profile custody admission", () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher({ page: fakePage() });
       let launches = 0;
-      const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
+      const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
         scheduler: NEVER_SCHEDULER, slotOrdinal: () => 1, newSessionId: () => SESSION_ID,
         protectedSecrets: protectedSecretSource({}), bindings: recordingBindings(),
-        admitProfile: () => Promise.reject(new ProfileCustodyUnavailableError()),
+        assertCurrent: () => undefined,
+      admitProfile: () => Promise.reject(new ProfileCustodyUnavailableError()),
         launcher: { launch: input => { launches += 1; return harness.launcher.launch(input); } },
       });
       await assert.rejects(factory.open(OPEN_INPUT), ProfileCustodyUnavailableError);
@@ -677,10 +693,11 @@ describe("required profile custody admission", () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher({ page: fakePage() });
       let launches = 0;
-      const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
+      const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
         scheduler: NEVER_SCHEDULER, slotOrdinal: () => 1, newSessionId: () => SESSION_ID,
         protectedSecrets: protectedSecretSource({}), bindings: recordingBindings(),
-        admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, configFingerprint: OTHER_FINGERPRINT, profileRevision: 7, resetRequired: false })),
+        assertCurrent: () => undefined,
+      admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, configFingerprint: OTHER_FINGERPRINT, profileRevision: 7, resetRequired: false })),
         launcher: { launch: input => { launches += 1; return harness.launcher.launch(input); } },
       });
       await assert.rejects(factory.open(OPEN_INPUT), ProfileCustodyUnavailableError);

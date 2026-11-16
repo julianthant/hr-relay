@@ -1,19 +1,19 @@
+import { detachBoundFixtureWorkers } from "../../../support/helpers/synthetic-database-admission.js";
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import assert from "node:assert/strict";
-import {readFileSync, readdirSync, statSync } from "node:fs";
+import {readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../../src/models/config/protected-settings.js";
 import { localDatePart } from "../../../../src/rules/time/clock.js";
 import { COMMAND_FIXTURES, NOTIFICATION, NOW, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 
-const {CLOCK, composeStorageCommand, drillPaths, open, seedRealShapedAuthority, takeBackup, corrupt, cleanup } = createStorageRestoreTestWorld();
+const {CLOCK, composeStorageCommand, repairAutomatically, drillPaths, open, seedRealShapedAuthority, takeBackup, corrupt, cleanup } = createStorageRestoreTestWorld();
 
 const CommandIdentitySchema = z.object({ commandId: z.string().min(1) });
 
@@ -27,14 +27,14 @@ function seededCommandId(): string {
 describe("corruption → degraded → restore → rebuild, through the CLI", () => {
 
   it("names the corruption read-only, restores the named backup, and keeps every authority family", async () => {
-    const paths = drillPaths();
+    const paths = await drillPaths();
     const credentialDirectory = join(paths.stateRoot, "credentials");
     const credentialPath = join(credentialDirectory, "protected.json");
-    const credentialOutcome = createCredentialStore({ admission:paths.admission,stateRoot: paths.stateRoot }).apply(
+    const credentialOutcome = paths.credentials.apply(
       ProtectedSettingsApplyInputSchema.parse({
         commandId: "a7111111-1111-4111-8111-111111111111",
         commandFingerprint: "1".repeat(64),
-        expectedRevision: 1,
+        expectedRevision: paths.credentials.read().revision,
         protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
         writeId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         entries: { ucpathPassword: { set: "restore-independent-credential-canary" } },
@@ -51,13 +51,15 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
       workerId: "restored-worker", spanPath: "worker/restored-worker", name: "Restored worker" });
     const retainedTimeline = database.authority.timelineEvents.page({});
     const generation = database.getMeta().authorityGeneration;
-    const manifestPath = await takeBackup(database, paths);
+    await takeBackup(database, paths);
 
     database.authority.notifications.create(NOTIFICATION);
+    detachBoundFixtureWorkers(database);
     database.close();
     const before = readFileSync(paths.authorityPath);
 
     corrupt(paths);
+    const afterCorruption = readFileSync(paths.authorityPath);
 
     // 1 — the doctor degrades READ-ONLY and names the corruption.
     const degraded = await composeStorageCommand(
@@ -72,35 +74,21 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     const authority = Reflect.get(report as object, "authority") as Record<string, unknown>;
     assert.equal(authority["state"], "degraded");
     const cause = authority["cause"] as Record<string, unknown>;
-    assert.equal(cause["code"], "authority-corrupt");
+    assert.equal(cause["code"], "authority-schema-mismatch");
 
     assert.equal(
       readFileSync(paths.authorityPath).equals(before),
       false,
       "the corruption itself must have changed the file",
     );
-    const afterDoctor = readFileSync(paths.authorityPath);
+    assert.deepEqual(readFileSync(paths.authorityPath), afterCorruption, "doctor must not mutate the corrupt source");
 
-    // 2 — the restore, through the operator's command, naming ONE manifest.
-    const restored = await composeStorageCommand(
-      rebuildRuntimeIsolation,
-      ["restore", "--from", manifestPath],
-      CLOCK,
-      paths.repoRoot,
-    );
+    const oldAdmission = paths.admission;
+    const restored = await repairAutomatically(paths);
     assert.equal(restored.exitCode, 0, restored.output);
-    assert.match(restored.output, /authority restore — restored/u);
-    assert.match(restored.output, /projections rebuilt: true/u);
-
-    // 3 — the suspect database is preserved, byte-identical to what the
-    // doctor saw. It is evidence, not garbage.
-    const quarantined = readdirSync(join(paths.stateRoot, "backups", "suspects"));
-    const suspects = quarantined.filter((name) => name.endsWith(".sqlite"));
-    assert.equal(suspects.length, 1, quarantined.join(","));
-    assert.equal(
-      readFileSync(join(paths.stateRoot, "backups", "suspects", suspects[0] ?? "")).equals(afterDoctor),
-      true,
-    );
+    assert.equal(z.object({ state: z.literal("restored"), projectionRebuilt: z.literal(true) }).parse(JSON.parse(restored.output)).state, "restored");
+    paths.renewAfterRestore();
+    assert.throws(() => oldAdmission.assertProfileRuntime());
 
     // 4 — every family the exit criterion names survived.
     const reopened = open(paths);
@@ -116,7 +104,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
         WRITE_INTENT_ATTEMPTING,
       );
       assert.equal(reopened.getMeta().authorityGeneration, generation);
-      const world = makeWorld({ reader: sqliteRunReader(reopened, CLOCK) });
+      const world = await makeWorld({ reader: sqliteRunReader(reopened, CLOCK) });
       try {
         assert.equal(world.projection.runFold(seeded.runId), undefined);
         assert.equal(world.projection.queueSurface(seeded.runId)?.status, "running",
@@ -130,7 +118,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
         assert.deepEqual(reopened.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
           WRITE_INTENT_ATTEMPTING);
       } finally {
-        world.dispose();
+        await world.dispose();
       }
       // The post-backup row is gone — the restore restored the BACKUP, not a merge.
       assert.equal(reopened.authority.notifications.get(NOTIFICATION.notificationId), undefined);

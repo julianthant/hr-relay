@@ -1,3 +1,7 @@
+import type { EvidenceSchemaReader } from "../storage/evidence-schema-admission.js";
+import { checkpointRecordKey, type RunCheckpointRecord } from "./checkpoint.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import type { DryRunBinding, DryRunScope } from "./dry-run.js";
 import type { ProtectedInputBinding } from "../write-safety/protected-input.js";
 /** Bundle-safe workflow graph vocabulary: the node shapes a descriptor is made of, operational type surfaces rather than durable-data boundaries. */
 import { z } from "zod";
@@ -19,7 +23,7 @@ import {
   NonNegativeIntSchema,
   RunIdSchema,
 } from "../../rules/identity/ids.js";
-import type { DelegationEdgeId, FailureId, ItemId, NodeId, RunId, WorkflowId } from "../../rules/identity/ids.js";
+import type { DelegationEdgeId, FailureId, ItemId, NodeId, RunId, StableRecordId, WorkflowId } from "../../rules/identity/ids.js";
 import type { RetryPolicy } from "../sessions/session.js";
 import type { DelegationPolicy } from "./delegation-policy.js";
 import type { NodeCondition } from "./node-condition.js";
@@ -41,9 +45,9 @@ export type AnyWorkflowRef = WorkflowRef<z.ZodType, z.ZodType>;
 /** The widest scope a runtime switch may see; never a source of inference. */
 export interface RuntimeScope {
   readonly input: JsonValue;
+  readonly dryRun?: DryRunScope;
   readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: JsonObject;
-  readonly configuration?: Readonly<Record<string, JsonValue>>;
 }
 
 export interface WorkflowGateSource<
@@ -85,6 +89,8 @@ export interface TaskStepNode<Scope, C extends AnyReadTaskContract> extends Grap
   readonly when?: NodeCondition;
   /** Resume policy — REQUIRED, no default (ref workflow-model ). */
   readonly replay: "checkpoint" | "always-rerun";
+  /** A dry run binds and checks this local publication, then stops before its provider call. */
+  readonly dryRun?: "stop-before-publish";
 }
 
 /** Contract-typed downstream values project the durable outcome without minting another schema. */
@@ -107,10 +113,15 @@ export function projectTransactionOutcome<C extends AnyCommitTaskContract>(
   commit: C,
   storedValue: unknown,
   context: string,
+  retained?: Readonly<{ checkpoint: RunCheckpointRecord; schemaReader?: EvidenceSchemaReader }>,
 ): TypedTransactionOutcome<C> {
   const outcome = TransactionOutcomeSchema.parse(storedValue);
+  if (retained !== undefined && canonicalJsonStringify(retained.checkpoint.output.value) !== canonicalJsonStringify(storedValue))
+    throw new Error("transaction-projection-source-changed");
   const outputSchemaHash = deriveSchemaHash(commit.output, "output");
-  if (outcome.output.schemaHash !== outputSchemaHash) {
+  const outputHash = retained?.schemaReader?.({ kind: "checkpoint-output", id: checkpointRecordKey(retained.checkpoint) },
+    retained.checkpoint, outcome.output.schemaHash, outputSchemaHash) ?? outcome.output.schemaHash;
+  if (outputHash !== outputSchemaHash) {
     throw new Error(
       `${context}: stored transaction outcome binds commit output schema ${outcome.output.schemaHash}, `
       + `and ${commit.id} now declares ${outputSchemaHash}`,
@@ -118,7 +129,9 @@ export function projectTransactionOutcome<C extends AnyCommitTaskContract>(
   }
   const proofSchema = commit.writeSafety.completion.proofSchema;
   const proofSchemaHash = deriveSchemaHash(proofSchema, "output");
-  if (outcome.proof.schemaHash !== proofSchemaHash) {
+  const proofHash = retained?.schemaReader?.({ kind: "checkpoint-proof", id: checkpointRecordKey(retained.checkpoint) },
+    retained.checkpoint, outcome.proof.schemaHash, proofSchemaHash) ?? outcome.proof.schemaHash;
+  if (proofHash !== proofSchemaHash) {
     throw new Error(
       `${context}: stored transaction outcome binds completion proof schema ${outcome.proof.schemaHash}, `
       + `and ${commit.id} now declares ${proofSchemaHash}`,
@@ -148,6 +161,7 @@ export interface TransactionNode<
   readonly prepare: Readonly<{ uses: P; bind: (scope: Scope) => z.input<P["input"]> }>;
     // Bind commit input before probes; never include ephemeral prepare output in durable transaction identity.
   readonly commit: Readonly<{ uses: C; bind: (scope: Scope) => z.input<C["input"]> }>;
+  readonly previewBind?: (scope: Scope) => DryRunBinding | undefined;
   /** Same context/page lease from prepare start through commit verification. */
   readonly leaseScope: "transaction";
   readonly dryRun: "stop-after-prepare" | "unsupported";
@@ -235,27 +249,32 @@ export const DelegationManifestRefSchema = z.strictObject({
 });
 export type DelegationManifestRef = z.infer<typeof DelegationManifestRefSchema>;
 
-interface ChildRunNodeBase<Target extends AnyWorkflowRef> extends GraphNodeBase {
+export interface ChildRunIdentityContext {
+  readonly canonicalItemId: ItemId;
+}
+
+interface ChildRunNodeBase<Scope, Target extends AnyWorkflowRef> extends GraphNodeBase {
   readonly kind: "child-run";
+  readonly sourceRecordIds?: (scope: Scope) => readonly (readonly StableRecordId[])[];
   readonly edgeId: DelegationEdgeId;
   readonly target: Target;
-  readonly deriveChildItemId: (input: z.output<Target["input"]>) => ItemId;
+  readonly deriveChildItemId: (input: z.output<Target["input"]>, context: ChildRunIdentityContext) => ItemId;
   readonly policy: DelegationPolicy;
 }
 export type ChildRunNode<Scope, Target extends AnyWorkflowRef> =
-  | (ChildRunNodeBase<Target> & Readonly<{
+  | (ChildRunNodeBase<Scope, Target> & Readonly<{
     cardinality: "one";
     bind: (scope: Scope) => z.input<Target["input"]>;
     await: "terminal";
     join: "one";
   }>)
-  | (ChildRunNodeBase<Target> & Readonly<{
+  | (ChildRunNodeBase<Scope, Target> & Readonly<{
     cardinality: "many";
     bind: (scope: Scope) => readonly z.input<Target["input"]>[];
     await: "terminal";
     join: "all" | "all-settled";
   }>)
-  | (ChildRunNodeBase<Target> & Readonly<{
+  | (ChildRunNodeBase<Scope, Target> & Readonly<{
     cardinality: "one" | "many";
     bind: (scope: Scope) => z.input<Target["input"]> | readonly z.input<Target["input"]>[];
     await: "none";

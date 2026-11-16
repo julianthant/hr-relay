@@ -31,11 +31,11 @@ const VALIDATING_BACKFILL_GAPS = {
     }),
 };
 
-function harness(options: { maxPending?: number; retention?: number } = {}): {
+async function harness(options: { maxPending?: number; retention?: number } = {}): Promise<{
   w: DashboardWorld;
   hub: DashboardStreamHub;
-} {
-  const w = makeWorld();
+}> {
+  const w = await makeWorld();
   worlds.push(w);
   const hub = createDashboardStreamHub({
     projection: w.projection,
@@ -47,9 +47,9 @@ function harness(options: { maxPending?: number; retention?: number } = {}): {
   return { w, hub };
 }
 
-afterEach(() => {
+afterEach(async () => {
   for (const hub of hubs.splice(0)) hub.close();
-  for (const w of worlds.splice(0)) w.dispose();
+  for (const w of worlds.splice(0)) await w.dispose();
 });
 
 async function drain(connection: {
@@ -79,7 +79,7 @@ function applyEnvelope(
 
 describe("Stream convergence: authoritative snapshots across create, delete, and terminalization", () => {
   it("converges to authoritative snapshot on create, status transition, delete, and terminalization", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({ day: DAY });
 
@@ -168,7 +168,7 @@ describe("Stream convergence: authoritative snapshots across create, delete, and
   });
 
   it("prevents late or delayed patches from resurrecting deleted rows", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     queuedEventOf(w, { seed: 2 });
     const run2Id = runRecordOf({ seed: 2 }).envelope.runId;
@@ -201,7 +201,7 @@ describe("Stream convergence: authoritative snapshots across create, delete, and
   });
 
   it("resumes with fresh snapshot when cursor crosses a snapshot or deletion boundary", async () => {
-    const { w, hub } = harness({ retention: 64 });
+    const { w, hub } = await harness({ retention: 64 });
     queuedEventOf(w, { seed: 1 });
     const connection1 = await hub.connect({ day: DAY });
     const cursorBeforeDelete = w.projection.cursor();
@@ -231,7 +231,7 @@ describe("Stream convergence: authoritative snapshots across create, delete, and
   });
 
   it("snapshots an expired cursor and avoids resnapshotting at the current cursor", async () => {
-    const { w, hub } = harness({ retention: 4 });
+    const { w, hub } = await harness({ retention: 4 });
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     const connection = await hub.connect({ day: DAY });
@@ -266,7 +266,7 @@ describe("Stream convergence: authoritative snapshots across create, delete, and
   });
 
   it("enforces bounded backpressure by sending reset-required on buffer overflow", async () => {
-    const { w, hub } = harness({ maxPending: 3 });
+    const { w, hub } = await harness({ maxPending: 3 });
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
 

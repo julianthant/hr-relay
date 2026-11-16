@@ -22,9 +22,9 @@ import {
 } from "../support/helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../support/helpers/registered-workflows.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 const SIGNAL = new AbortController().signal;
@@ -54,7 +54,7 @@ describe("failure, retry, and resume", () => {
     };
     const registry = defineTaskStoreRegistry(stores, corpus);
 
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     const deps: RunExecutorDependencies = {
@@ -62,7 +62,7 @@ describe("failure, retry, and resume", () => {
       descriptor: personLookupDescriptor,
       stores: registry,
       authority: database,
-      sessions: sessionManagerFor(happySessionHarness(), clock),
+      sessions: await sessionManagerFor(happySessionHarness(), clock),
       emitter: createTimelineEmitter({ repository: database.authority.timelineEvents, clock }),
       clock,
       ids: sequentialIdFactory("b"),
@@ -75,6 +75,8 @@ describe("failure, retry, and resume", () => {
     const slot = database.authority.workerSlots.list(WORKFLOW_ID).find(slot => slot.poolIndex === 1 && slot.retiredAt === null);
     if (slot === undefined) throw new Error("executor-fixture-worker-missing");
     database.authority.runs.enqueue(personLookupQueuedRun());
+    const claimMember1 = database.authority.workerSlots.get(slot.workerId);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
     const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: slot.workerId, now });
     if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
     const claim = { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration };

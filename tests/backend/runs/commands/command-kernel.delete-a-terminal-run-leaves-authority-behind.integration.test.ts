@@ -9,11 +9,12 @@ import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflo
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { HASH_A, HASH_B, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, rejectActiveDescriptor, createHarness, createPlan, startCommand, runCommand } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, createPlan, startCommand, runCommand } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -39,8 +40,8 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     return run.version + 1;
   }
 
-  it("refuses a run that is not terminal, and leaves it exactly as it was", () => {
-    const harness = createHarness();
+  it("refuses a run that is not terminal, and leaves it exactly as it was", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
     const before = harness.database.authority.runs.get(runId);
     assert.ok(before !== undefined);
@@ -55,8 +56,8 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     assert.equal(harness.database.authority.deletedRuns.get(runId), undefined);
   });
 
-  it("CASes the caller's version before it reads anything else", () => {
-    const harness = createHarness();
+  it("CASes the caller's version before it reads anything else", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
     const version = settle(harness, runId);
 
@@ -65,8 +66,8 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     assert.ok(harness.database.authority.runs.get(runId) !== undefined);
   });
 
-  it("deletes a cancelled run entirely, keeps the journal, and refuses a second delete by name", () => {
-    const harness = createHarness();
+  it("deletes a cancelled run entirely, keeps the journal, and refuses a second delete by name", async () => {
+    const harness = await createHarness();
     const runId = startOne(harness, rejectActiveDescriptor, "10800000");
     const version = settle(harness, runId);
     const generationBefore = harness.database.getMeta().authorityGeneration;
@@ -87,7 +88,7 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     assert.equal(tombstone.workflow, "kernel-reject");
     assert.deepEqual(tombstone.removed.filter(({ table }) => table === "runs"), [{ table: "runs", rows: 1 }]);
     assert.ok(harness.database.authority.commands.get(command.commandId) !== undefined, "the delete is journaled");
-    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore + 1);
+    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore + 2);
 
     const again = harness.kernel.execute(runCommand("delete", runId, version));
     assert.equal(again.state, "rejected");
@@ -96,8 +97,50 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
 
 
 
-  it("deletes a tree leaves-first, and refuses the tree while any member is not terminal", () => {
-    const harness = createHarness();
+  it("deletes ordinary grouped children without inventing delegation authority", async () => {
+    const harness = await createHarness();
+    const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
+    const parent = harness.database.authority.runs.get(parentId); assert.ok(parent);
+    const childId = "aaaaaaaa-5555-4555-8555-aaaaaaaaaaaa";
+    const child = kernelRejectMemberRecord(parent, parentId, childId, "ordinary:delete", "kr-170000-5555", "members", NOW);
+    assert.equal(harness.database.authority.runs.enqueue(child).state, "inserted");
+    const parentVersion = settle(harness, parentId);
+    settle(harness, childId);
+    assert.deepEqual(harness.database.authority.dependencies.listByParentRun(parentId), []);
+    assert.deepEqual(harness.database.authority.delegationManifests.listByParentRun(parentId), []);
+    const deleted = harness.kernel.execute(runCommand("delete", parentId, parentVersion));
+    assert.equal(deleted.state, "applied");
+    if (deleted.state === "applied") assert.deepEqual(deleted.affectedTargets, [{ family: "run", runId: childId }, { family: "run", runId: parentId }]);
+    for (const runId of [childId, parentId]) {
+      assert.equal(harness.database.authority.runs.get(runId), undefined);
+      assert.ok(harness.database.authority.deletedRuns.get(runId));
+    }
+  });
+
+  it("refuses an ordinary child with a foreign trace before deleting either run", async () => {
+    const harness = await createHarness();
+    const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
+    const parent = harness.database.authority.runs.get(parentId); assert.ok(parent);
+    const childId = "aaaaaaaa-6666-4666-8666-aaaaaaaaaaaa";
+    const child = kernelRejectMemberRecord(parent, parentId, childId, "foreign:delete", "kr-170000-6666", "members", NOW);
+    child.envelope.parent.tracePrefix = "kr-170000-ffff";
+    assert.equal(harness.database.authority.runs.enqueue(child).state, "inserted");
+    const parentVersion = settle(harness, parentId);
+    settle(harness, childId);
+    const generation = harness.database.getMeta().authorityGeneration;
+    const command = runCommand("delete", parentId, parentVersion);
+    assert.throws(() => harness.kernel.execute(command), /ordinary-tree-child-binding-mismatch/u);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.equal(harness.database.getMeta().authorityGeneration, generation + 1);
+    for (const runId of [childId, parentId]) {
+      assert.ok(harness.database.authority.runs.get(runId));
+      assert.equal(harness.database.authority.deletedRuns.get(runId), undefined);
+    }
+  });
+
+  it("deletes a tree leaves-first, and refuses the tree while any member is not terminal", async () => {
+    const harness = await createHarness();
     const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
     const parent = harness.database.authority.runs.get(parentId);
     assert.ok(parent !== undefined);

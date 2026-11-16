@@ -4,7 +4,7 @@ import { createPreflightReportService,type PreflightReportRuntime } from "../../
 import type { createPreflightAuthority } from "../../../../src/models/preflight/preflight.js";
 import { buildPreflightReport,requiredPreflightChecks } from "../../../../src/models/preflight/preflight.js";
 import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
-import { PreflightAdmissionRefusal } from "../../../../src/rules/preflight/preflight-admission.js";
+import { PreflightAdmissionRefusal, PreflightAdmissionScopeSchema } from "../../../../src/rules/preflight/preflight-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
 const clock = manualClock(new Date("2026-09-19T12:00:00Z"));
@@ -23,6 +23,21 @@ const dashboard = { readLatest: () => report, execute: async () => { throw new E
 const selection = { workflowId: WorkflowIdSchema.parse("person-lookup") };
 const other = { workflowId: WorkflowIdSchema.parse("kuali-fill") };
 const signal = new AbortController().signal;
+
+it("tags expired dashboard readiness while preserving its last report and a future-clock refusal", () => {
+  const currentClock = manualClock(new Date(report.checkedAt));
+  const runtime: PreflightReportRuntime = { currentScope: () => PreflightAdmissionScopeSchema.parse(scope),
+    admission: { read: () => report, prepare: async () => report } };
+  const service = createPreflightReportService({ dashboard, runtime, clock: currentClock });
+  assert.deepEqual(service.read(), { state: "present", report });
+  currentClock.advanceWall(60_000);
+  assert.deepEqual(service.read(), { state: "unavailable", code: "PREFLIGHT_EVIDENCE_EXPIRED",
+    reason: "Preflight evidence expired; re-check readiness.", lastCompleted: report });
+  currentClock.setWall(new Date(Date.parse(report.checkedAt) - 1));
+  const future = service.read();
+  assert.equal(future.state, "unavailable");
+  assert.equal("code" in future, false);
+});
 
 it("retains completed failed verdicts for the selected workflow while expiry and changed scope remain unavailable", async () => {
   const start = clock.monotonicMs();

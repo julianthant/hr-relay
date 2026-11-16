@@ -6,14 +6,14 @@ import {
 type IdentityGateDetail
 } from "../../../../src/dashboard/surfaces/run-detail/identity/identity-ceremony.js";
 import type { CommandAction } from "../../../../src/dashboard/app/commands/command-dispatch.js";
-import { IdentityGateDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
+import { identityReviewWire } from "./identity-review-wire.js";
+import type { ActionDescriptorWire } from "../../../../src/models/dashboard/actions.js";
 
 
 
 import type { IdentityEvidencePacket } from "../../../../src/rules/separations/identity-evidence.js";
 import {
 buildIdentityEvidencePacket,
-deriveIdentityEvidenceDigest,
 } from "../../../../src/rules/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../../src/rules/separations/write-plan.js";
 
@@ -34,7 +34,6 @@ export function createIdentityCeremonyFixtures(
   NOW: string,
   CHECKED: string,
   NAME_SEARCH: string,
-  RESULT_SCHEMA_HASH: string,
   runId: (n: number) => string,
 ) {
   function jobRows() {
@@ -85,33 +84,18 @@ hdh: true,
 
   const CHOOSE = packetOf({ documentName: "Hernandez, Jose Santos", searchResolvesEid: NAME_SEARCH });
 
-  const TYPE_EID = packetOf({ documentName: "Okonkwo, Adaeze", searchResolvesEid: NAME_SEARCH });
+  const NAME_MISMATCH = packetOf({ documentName: "Okonkwo, Adaeze", searchResolvesEid: NAME_SEARCH });
 
   function gateDetail(packet: IdentityEvidencePacket, overrides: Record<string, unknown> = {}): IdentityGateDetail {
-    const nameSearchEid = packet.nameSearch.status === "resolved" ? packet.nameSearch.candidate.eid : undefined;
-    return IdentityGateDetailWireSchema.parse({
+    const { actions, ...rest } = overrides;
+    return identityReviewWire(packet, {
       runId: runId(1),
-      gateId: "identity-approval",
       label: "Identity Approval",
       parkedAt: NOW,
-      resumeAt: "approval",
       expectedVersion: 3,
-      resultSchemaHash: RESULT_SCHEMA_HASH,
-      evidenceDigest: deriveIdentityEvidenceDigest(packet),
-      packet,
-
-      options: packet.approvableEids.map((eid) => ({
-        eid: String(eid),
-        chosenFrom: String(eid) === String(packet.emplId)
-          ? "checked"
-          : String(eid) === String(nameSearchEid) ? "name-search" : "manual",
-        displayName: String(eid) === String(packet.emplId) ? packet.ucpathName : `EID ${String(eid)}`,
-        origin: "a UCPath search on the document's name listed this EID",
-      })),
-      approvalShape: packet.approvalShape,
-      actions: [identityApprovalAction("Approve the chosen EID")],
-      ...overrides,
+      actions: (actions as ActionDescriptorWire[] | undefined) ?? [identityApprovalAction("Approve the chosen person")],
+      overrides: rest,
     });
   }
-  return { jobRows, packetOf, ONE_CLICK, CHOOSE, TYPE_EID, gateDetail };
+  return { jobRows, packetOf, ONE_CLICK, CHOOSE, NAME_MISMATCH, gateDetail };
 }

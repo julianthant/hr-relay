@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { REVIEWED_CATCH_DEFAULTS } from "./reviewed-catch-defaults.js";
+import { REVIEWED_CATCH_DEFAULTS, type ReviewedCatchDefault } from "./reviewed-catch-defaults.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, extname, relative, resolve } from "node:path";
 import ts from "typescript";
@@ -98,8 +98,8 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
     roots: ["src"],
     fixture: {
       files: {
-        "src/domain/bad.ts": "import { core } from \"../core/core.js\"; export const bad = core;\n",
-        "src/core/core.ts": "export const core = true;\n",
+        "src/models/bad.ts": "import { task } from \"../workflow-kit/task.js\"; export const bad = task;\n",
+        "src/workflow-kit/task.ts": "export const task = true;\n",
       },
       expected: /layer inversion/,
     },
@@ -131,8 +131,9 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
           "}",
           "",
         ].join("\n"),
+        "src/dashboard/surfaces/shell/app-logo.ts": "export const plate = \"#245d9e\", glyph = \"#ffffff\", stray = \"#123456\";\n",
       },
-      expected: /(?=[\s\S]*palette color)(?=[\s\S]*arbitrary z-index)(?=[\s\S]*reduced-motion)(?=[\s\S]*image without alt)/,
+      expected: /(?=[\s\S]*palette color)(?=[\s\S]*raw hex color)(?=[\s\S]*arbitrary z-index)(?=[\s\S]*reduced-motion)(?=[\s\S]*image without alt)/,
     },
   },
 };
@@ -207,12 +208,17 @@ function defaultUsesInHandler(root: ts.Block): readonly string[] {
   return uses;
 }
 
-export function auditFailLoudCatchDefaults(path: string, content: string): readonly string[] {
-  const violations: string[] = [];
+interface CatchFinding {
+  readonly owner: ts.TryStatement | ts.CallExpression;
+  readonly message: string;
+}
+
+function catchDefaultFindings(path: string, content: string): readonly CatchFinding[] {
+  const findings: CatchFinding[] = [];
   visit(parseContent(path, content), (node) => {
     if (ts.isCatchClause(node)) {
       for (const use of defaultUsesInHandler(node.block)) {
-        violations.push(`${path}: catch ${use} a bare default`);
+        findings.push({ owner: node.parent, message: `${path}: catch ${use} a bare default` });
       }
     }
     if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)
@@ -221,24 +227,54 @@ export function auditFailLoudCatchDefaults(path: string, content: string): reado
     if (!handler || (!ts.isArrowFunction(handler) && !ts.isFunctionExpression(handler))) return;
     if (ts.isBlock(handler.body)) {
       for (const use of defaultUsesInHandler(handler.body)) {
-        violations.push(`${path}: promise catch ${use} a bare default`);
+        findings.push({ owner: node, message: `${path}: promise catch ${use} a bare default` });
       }
     } else if (isBareDefault(handler.body)) {
-      violations.push(`${path}: promise catch returns a bare default`);
+      findings.push({ owner: node, message: `${path}: promise catch returns a bare default` });
     }
   });
-  return violations;
+  return findings;
+}
+
+export function auditFailLoudCatchDefaults(path: string, content: string): readonly string[] {
+  return catchDefaultFindings(path, content).map(finding => finding.message);
+}
+
+export function auditReviewedCatchDefaults(
+  path: string, content: string, reviewed: ReviewedCatchDefault,
+): readonly string[] {
+  const findings = catchDefaultFindings(path, content);
+  const source = parseContent(path, content);
+  const counts = new Map<string, number>();
+  for (const owner of new Set(findings.map(finding => finding.owner))) {
+    const kind = ts.isTryStatement(owner) ? "try" : "promise";
+    const sha256 = createHash("sha256").update(content.slice(owner.getStart(source), owner.end)).digest("hex");
+    const key = `${kind}:${sha256}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  let matches = true;
+  for (const pin of reviewed.statements) {
+    const key = `${pin.kind}:${pin.sha256}`;
+    if (!Number.isInteger(pin.occurrences) || pin.occurrences <= 0 || counts.get(key) !== pin.occurrences) matches = false;
+    counts.delete(key);
+  }
+  if (matches && counts.size === 0 && findings.length > 0) return [];
+  return [
+    ...findings.map(finding => finding.message),
+    ...(findings.length === 0 ? [`${path}: stale reviewed catch classification`] : []),
+    `${path}: reviewed catch source changed; re-review required`,
+  ];
 }
 
 function auditBareDefaults(files: readonly string[]): string[] {
   const violations: string[] = [];
   for (const file of files) {
-    const content=readFileSync(file, "utf8");
-    const findings=auditFailLoudCatchDefaults(file,content);
-    const reviewed=REVIEWED_CATCH_DEFAULTS.find(entry=>normalize(file).endsWith(`/${entry.path}`));
-    if (reviewed !== undefined && createHash("sha256").update(content).digest("hex") === reviewed.sha256) {
-      if (findings.length === 0) violations.push(`${file}: stale reviewed catch classification`);
-    } else violations.push(...findings, ...(reviewed === undefined ? [] : [`${file}: reviewed catch source changed; re-review required`]));
+    const content = readFileSync(file, "utf8");
+    const path = normalize(file);
+    const reviewed = REVIEWED_CATCH_DEFAULTS.find(entry => path.endsWith(`/${entry.path}`));
+    violations.push(...(reviewed === undefined
+      ? auditFailLoudCatchDefaults(path, content)
+      : auditReviewedCatchDefaults(path, content, reviewed)));
   }
   return violations;
 }
@@ -358,11 +394,17 @@ function auditCycles(files: readonly string[]): string[] {
 }
 
 const LAYERS = new Map([
-  ["base", 0], ["domain", 0], ["validation", 0],
-  ["infra", 1], ["services", 1], ["systems", 1], ["stores", 1],
-  ["core", 2],
-  ["control", 3], ["workflows", 3], ["server", 3],
+  ["models", 0], ["rules", 0],
+  ["workflow-kit", 1],
+  ["workflows", 3], ["dashboard", 3], ["cli.ts", 3],
 ]);
+
+type LayeringImport = readonly [source: string, target: string];
+
+const LAYERING_RATCHET: readonly LayeringImport[] = [
+  ["models/dashboard/bootstrap.ts", "workflow-kit/validation/module-role.ts"],
+  ["models/dashboard/explorer.ts", "workflow-kit/validation/module-role.ts"],
+];
 
 function layer(path: string): number | undefined {
   const parts = normalize(path).split("/");
@@ -370,29 +412,40 @@ function layer(path: string): number | undefined {
   if (first === "backend") {
     if (parts[1] === "app") return parts[2] === "config" || parts[2] === "host" ? 1 : 3;
     if (parts[1] === "transports") return 3;
-    if (["runs", "runtime", "logs"].includes(parts[1] ?? "")) return 2;
-    if (["accounts", "systems", "processing", "workflow-tasks", "storage", "workbooks"].includes(parts[1] ?? "")) return 1;
+    if (["assistant", "profiles", "runs", "runtime", "logs"].includes(parts[1] ?? "")) return 2;
+    if (["accounts", "systems", "processing", "storage", "workbooks"].includes(parts[1] ?? "")) return 1;
     return undefined;
   }
   return first ? LAYERS.get(first) : undefined;
 }
 
-function auditLayering(files: readonly string[], root: string): string[] {
+function auditLayering(files: readonly string[], root: string, ratchet: readonly LayeringImport[]): string[] {
   const violations: string[] = [];
+  const allowed = new Set(ratchet.map(([source, target]) => `${source}: layer inversion imports ${target}`));
+  const remaining = new Set(allowed);
   for (const file of files) {
     const sourceRelative = normalize(relative(root, file));
     const sourceLayer = layer(sourceRelative);
-    if (sourceRelative.startsWith("backend/") && sourceLayer === undefined) {
-      violations.push(`${sourceRelative}: unclassified backend responsibility`);
+    if (sourceLayer === undefined) {
+      violations.push(`${sourceRelative}: ${sourceRelative.startsWith("backend/")
+        ? "unclassified backend responsibility" : "unclassified source root"}`);
+      continue;
     }
-    if (sourceLayer === undefined) continue;
     for (const specifier of moduleSpecifiers(file)) {
       const target = resolveModule(file, specifier);
       if (!target) continue;
-      const targetLayer = layer(normalize(relative(root, target)));
+      const targetRelative = normalize(relative(root, target));
+      const targetLayer = layer(targetRelative);
       if (targetLayer !== undefined && sourceLayer < targetLayer) {
-        violations.push(`${sourceRelative}: layer inversion imports ${normalize(relative(root, target))}`);
+        const finding = `${sourceRelative}: layer inversion imports ${targetRelative}`;
+        if (allowed.has(finding)) remaining.delete(finding);
+        else violations.push(finding);
       }
+    }
+  }
+  for (const [source, target] of ratchet) {
+    if (remaining.has(`${source}: layer inversion imports ${target}`)) {
+      violations.push(`stale layering ratchet: ${source} -> ${target}`);
     }
   }
   return violations;
@@ -436,6 +489,9 @@ function auditConventions(files: readonly string[], root: string): string[] {
 }
 
 
+const APP_ICON_FILE = "src/dashboard/surfaces/shell/app-logo.ts";
+const APP_ICON_COLORS = /#245d9e|#ffffff/gi;
+
 function auditFrontend(files: readonly string[]): string[] {
   const palette = /\b(?:bg|text|border|ring|from|to|via|fill|stroke)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|100|200|300|400|500|600|700|800|900|950)\b/;
   const hex = /#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?\b/;
@@ -444,7 +500,8 @@ function auditFrontend(files: readonly string[]): string[] {
     visit(parse(file), (node) => {
       if (ts.isStringLiteralLike(node) || ts.isJsxText(node)) {
         if (palette.test(node.text)) violations.push(`${file}: palette color class`);
-        if (hex.test(node.text.replace(/#4ade80|#fbbf24/gi, ""))) violations.push(`${file}: raw hex color`);
+        const allowed = normalize(file).endsWith(APP_ICON_FILE) ? APP_ICON_COLORS : /#4ade80|#fbbf24/gi;
+        if (hex.test(node.text.replace(allowed, ""))) violations.push(`${file}: raw hex color`);
         return;
       }
       // Inspect image elements through the AST so prose mentioning an img tag cannot count as a client.
@@ -494,7 +551,9 @@ function resolveFiles(name: RebuildRatchetName, repoRoot: string): RebuildRatche
   return { state: "active", files, violations: [] };
 }
 
-export function auditRebuildRatchetArm(name: RebuildRatchetName, repoRoot: string): RebuildRatchetAudit {
+export function auditRebuildRatchetArm(
+  name: RebuildRatchetName, repoRoot: string, layeringRatchet: readonly LayeringImport[] = LAYERING_RATCHET,
+): RebuildRatchetAudit {
   const resolved = resolveFiles(name, repoRoot);
   if (resolved.state === "planned-absent") return resolved;
   const tempRoot = resolve(repoRoot, "src");
@@ -506,7 +565,7 @@ export function auditRebuildRatchetArm(name: RebuildRatchetName, repoRoot: strin
     case "inline-selectors-workflows": violations = auditInlineSelectors(resolved.files); break;
     case "evaluate-named-fn": violations = auditEvaluate(resolved.files); break;
     case "import-cycles": violations = auditCycles(resolved.files); break;
-    case "control-layering": violations = auditLayering(resolved.files, tempRoot); break;
+    case "control-layering": violations = auditLayering(resolved.files, tempRoot, layeringRatchet); break;
     case "code-conventions": violations = auditConventions(resolved.files, repoRoot); break;
     case "frontend-tailwind-compliance": violations = auditFrontend(resolved.files); break;
   }

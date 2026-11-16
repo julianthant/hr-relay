@@ -14,10 +14,11 @@ import { z } from "zod";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import { ENTRY_PATTERNS } from "../../../src/models/workflow/ingress.js";
 import { ENTRY_PATTERN_NOUNS } from "../../../src/models/workflow/ingress.js";
-import { InputRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
+import { InputRunSurfaceSchema, UploadRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
 import { inputRunParserLabel } from "../../../src/models/workflow/ingress.js";
 import { inputRunSeparatorLabel } from "../../../src/models/workflow/ingress.js";
 import { inputRunValueNoun } from "../../../src/models/workflow/ingress.js";
+import { parseTypedDate } from "../../../src/models/workflow/ingress.js";
 import type { InputRunExample } from "../../../src/models/workflow/ingress.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
@@ -38,6 +39,23 @@ const PARSER = InputParserSpecSchema.parse({
 });
 
 describe("run-surface ingress", () => {
+  it("retains a declared workbook row source for a parser-emitted field", () => {
+    const surface = { placeholder: "Employee IDs", parser: PARSER };
+    const workbookRows = { typeId: "employee-roster", inputField: "emplId" };
+    assert.deepEqual(InputRunSurfaceSchema.parse({ ...surface, workbookRows }), { ...surface, workbookRows });
+    assert.deepEqual(InputRunSurfaceSchema.parse(surface), surface);
+  });
+
+  it("refuses malformed workbook row declarations and fields the parser does not emit", () => {
+    const surface = { placeholder: "Employee IDs", parser: PARSER };
+    for (const workbookRows of [
+      { typeId: "", inputField: "emplId" }, { typeId: " \t\n", inputField: "emplId" },
+      { typeId: 1, inputField: "emplId" }, { typeId: "employee-roster", inputField: "employee_id" },
+      { typeId: "employee-roster" }, { typeId: "employee-roster", inputField: "emplId", sheetId: "people" },
+      { typeId: "employee-roster", inputField: "email" }, { typeId: "employee-roster", inputField: "keepNonHdh" },
+    ]) assert.throws(() => InputRunSurfaceSchema.parse({ ...surface, workbookRows }));
+  });
+
   it("splits typed text into one entry per intended run and classifies each", () => {
     const entries = parseInputRunText(PARSER, " 10873698 ; Battistessa, Johnnie\n10101010 ");
     assert.deepEqual(entries.map((entry) => entry.sourceText), [
@@ -384,4 +402,60 @@ describe("a declared input-run example", () => {
     );
   });
 });
+
+describe("typed input controls", () => {
+  const EID_PARSER = { split: { kind: "delimited", delimiters: [",", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }] };
+  const mode = (value: string) => ({ value, label: "Employee IDs", inputLabel: "Employee IDs", hint: "Separate IDs with commas.", placeholder: "10000001",
+    defaults: [], parser: { kind: "entries", spec: EID_PARSER }, display: { kind: "first-present", fields: ["emplId"] }, identityFields: ["emplId"] });
+  const dateControl = { kind: "date", field: "effectiveDate", label: "Effective date", placement: "input", modes: ["eids"], requires: [],
+    required: true, refusal: "Choose a valid effective date." };
+  const surface = (controls: readonly unknown[], extra: Record<string, unknown> = {}) => ({ placeholder: "10000001", parser: EID_PARSER,
+    typedInput: { modeField: "mode", modeLabel: "Input", initialMode: "eids", description: "Each ID starts one run.", modes: [mode("eids")], controls, ...extra } });
+
+  it("accepts a date control with its label, required flag and refusal, beside an unchanged boolean control", () => {
+    const parsed = InputRunSurfaceSchema.parse(surface([dateControl,
+      { field: "crmCheck", label: "CRM check", placement: "input", modes: ["eids"], requires: [] }]));
+    assert.deepEqual(parsed.typedInput?.controls, [dateControl,
+      { field: "crmCheck", label: "CRM check", placement: "input", modes: ["eids"], requires: [] }]);
+  });
+
+  it.each([
+    ["an unknown kind", { ...dateControl, kind: "time" }],
+    ["a date control without its refusal", { ...dateControl, refusal: undefined }],
+    ["a date control without its required flag", { ...dateControl, required: undefined }],
+    ["a date control placed on a step", { ...dateControl, placement: "step" }],
+  ])("refuses %s", (_name, control) => {
+    assert.equal(InputRunSurfaceSchema.safeParse(surface([control])).success, false);
+  });
+
+  it("keeps the mode out of submissions only for a surface with exactly one mode", () => {
+    assert.equal(InputRunSurfaceSchema.parse(surface([dateControl], { submitsMode: false })).typedInput?.submitsMode, false);
+    assert.equal(InputRunSurfaceSchema.safeParse(surface([dateControl], { submitsMode: false, modes: [mode("eids"), mode("names")] })).success, false);
+    assert.equal(InputRunSurfaceSchema.safeParse(surface([dateControl], { submitsMode: true })).success, false);
+  });
+
+  it.each([
+    ["08/03/2026", "2026-08-03"],
+    ["02/29/2028", "2028-02-29"],
+  ])("reads the typed date %s as %s", (text, iso) => {
+    assert.equal(parseTypedDate(text), iso);
+  });
+
+  it.each(["", "8/3/2026", "2026-08-03", "02/30/2026", "02/29/2026", "13/01/2026", " 08/03/2026"])("refuses the typed date %j", (text) => {
+    assert.equal(parseTypedDate(text), undefined);
+  });
+});
 }
+
+describe("PDF start declarations", () => {
+  const surface = { title: { segments: [{ kind: "literal", text: "PDFs" }] }, fields: [], successMessage: { segments: [{ kind: "literal", text: "Queued" }] },
+    accepts: [{ mediaType: "application/pdf", extensions: [".pdf"], maxBytes: 1_000_000 }] };
+  const batch = { documentsField: "documents", asOfField: "asOf", reviewerField: "reviewerName" };
+  const single = { documentField: "document", fileNameField: "fileName", readingIdField: "readingId", fixed: { reading: { kind: "subscription" } } };
+  it("accepts the batch declaration and the per-document declaration, and nothing mixed", () => {
+    assert.ok(UploadRunSurfaceSchema.safeParse({ ...surface, pdfInput: batch }).success);
+    assert.ok(UploadRunSurfaceSchema.safeParse({ ...surface, pdfInput: single }).success);
+    assert.ok(!UploadRunSurfaceSchema.safeParse({ ...surface, pdfInput: { ...batch, ...single } }).success);
+    assert.ok(!UploadRunSurfaceSchema.safeParse({ ...surface, pdfInput: { documentField: "document" } }).success);
+  });
+});

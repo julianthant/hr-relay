@@ -1,6 +1,8 @@
 ---
 name: hr-scan
 description: Scan HR documents into structured data — scanner PDFs (Xerox Scan_*.pdf), rosters, I-9 stacks, onboarding packets, Kuali/UCPath printouts — by recognizing the document SHAPE first (a remembered catalog in references/document-shapes.md that this skill extends every time it meets a new type), then extracting only the fields that shape carries, in parallel transcribe-only readers, deduping, resolving people to EIDs through person-lookup when asked, flagging ambiguity BY PAGE NUMBER, and emitting the requested artifact (spreadsheet, worklist for hr-manage, intake bundle for the rebuild's OCR/intake gate). Never copies SSNs into transcripts or artifacts. Invoke on `/hr-scan PATH`, "read this scan", "make me a spreadsheet of these people", "what documents are in this stack", "add the EIDs".
+metadata:
+  exposed: "true"
 ---
 
 # /hr-scan — documents in, structured data out, faster every time
@@ -8,7 +10,7 @@ description: Scan HR documents into structured data — scanner PDFs (Xerox Scan
 HR documents are predictable. The skill's memory is **`references/document-shapes.md`**: one entry per document type (how to recognize it, what fields it carries and where, what to ignore, known traps). Read it first; extend it last. A shape you have seen once should never be re-derived.
 
 ## 0 · Rails
-- **No SSNs** leave the page: never transcribe, store, or echo one (an SSN written as `8462`/`949-34-5573` means blank — say "blank", not the digits). No full DOBs in artifacts unless the artifact's purpose requires one and the operator said so.
+- **No SSNs** leave the page: never transcribe, store, or echo one (an SSN written as `8462`/`901-73-8462` means blank — say "blank", not the digits). No full DOBs in artifacts unless the artifact's purpose requires one and the operator said so.
 - Readers are **transcribe-only**: a reader reports what is on the page; the decision about what it means happens here, in one place.
 - Ambiguity is reported **by page number** ("p. 7: 'Hernandez, J.' could be Jose or Juan — two candidates in the lookup"), never resolved by guessing.
 - Live lookups are pre-authorized (person-lookup against UCPath/CRM, Duo hands-off) — don't ask.
@@ -22,20 +24,17 @@ HR documents are predictable. The skill's memory is **`references/document-shape
 
 ## 2 · Extract (parallel, transcribe-only)
 
-- Dispatch one reader per block (or per ~10 pages): `sup_terra` for clean print, `sup_sol` for
-  handwriting or poor scans, always at high reasoning. Set native `agent_type` to that exact role,
-  use `fork_turns: "none"`, and begin `task_name` with `sup_terra_scan_` or `sup_sol_scan_`.
-  Never substitute `default`, `worker`, `explorer`, or a bare model override; if the role is
-  unavailable, stop and report it. Native roles enforce a 240k context window and compact at 220k.
-  Paste the shape's field list and rails into each self-contained brief.
+- When parallel readers are authorized, dispatch one transcribe-only reader per block (or per
+  ~10 pages). Follow the operator's selected models and the dispatch tool's role instructions;
+  model and role selection do not belong in this skill. Paste the shape's field list and rails
+  into each self-contained brief. Without delegation authorization, extract the blocks directly.
   Readers return one JSON row per document: `{page_range, fields{...}, confidence, unreadable:[...]}`.
-  Blocks run in parallel; never one agent for the whole stack.
-- For the rebuild's own pipeline (spreadsheets/photos destined for a workflow), prefer the platform gate: `npm run cli -- ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>` (D151/D158 — the ONE extraction gate) and the intake surface; hr-scan's job is then to classify and hand over, not to parse by hand.
+- For Relay's own pipeline (spreadsheets/photos destined for a workflow), prefer the platform gate: `npm run cli -- ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>` (D151/D158 — the ONE extraction gate) and the intake surface; hr-scan's job is then to classify and hand over, not to parse by hand.
 - Merge rows; **dedupe** people by normalized `last, first middle` (+ DOB-year when present); keep the first page each appears on.
 
 ## 3 · Resolve (when asked: "add EIDs", "who are these people")
 
-- Person-lookup via the rebuild workflow (`hr-person-lookup` skill if generated, else hr-manage: run `person-lookup` for each name, parallel workers) — N parallel as the operator said (default 5).
+- Person-lookup via the Relay workflow (`hr-person-lookup` skill if generated, else hr-manage: run `person-lookup` for each name, parallel workers) — N parallel as the operator said.
 - Outcomes per person: `matched (EID, source)` · `ambiguous (k candidates — listed)` · `not-found` · `blocked (system down / needs <label>)`. Ambiguous and not-found rows go to the operator with their page numbers; never pick a candidate.
 
 ## 4 · Emit

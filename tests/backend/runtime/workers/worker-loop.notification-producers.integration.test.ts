@@ -6,7 +6,7 @@ import { createWriteSequencer } from "../../../../src/backend/runtime/writes/wri
 import { WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { testRunLifecycle, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../../../support/helpers/phase1f-executor-harness.js";
 
@@ -31,15 +31,15 @@ describe("canonical notification producers", () => {
         workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID), workerId: WorkerIdSchema.parse(f.db.authority.workerSlots.list(WRITE_FIXTURE_WORKFLOW_ID)[0].workerId),
         descriptor: writeFixtureDescriptor, stores, authority: f.db, sessionFactory: sessions.factory, emitter,
         clock: f.clock, ids, scheduler, taskDeadlineMs: 60_000, sessionAcquireMs: 20_000,
-        duoCeremony: fixtureDuoCeremonyGates(f.clock), heartbeatIntervalMs: 600_000, idleRepollMs: 1_000,
+        duoCeremony: await fixtureDuoCeremonyGates(f.clock), heartbeatIntervalMs: 600_000, idleRepollMs: 1_000,
         log, stopSignal: new AbortController().signal, exitWhenIdle: true,
         writeSequencerFor: manager => createWriteSequencer({ lifecycle: testRunLifecycle(f.db, f.clock), stores,
           authority: f.db, sessions: manager, emitter, clock: f.clock, ids, scheduler, taskDeadlineMs: 60_000,
-          operator: "local-operator", log, resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT }),
+          operator: "local-operator", log  }),
       });
       await createTrustNotifications({ database: f.db, reader: f.reader, clock: f.clock, ids: sequentialIdFactory("b") }).observer.observe();
       expect(f.inbox.list("local-operator").map(row => row.trigger)).toEqual(["write-parked"]);
       expect(JSON.stringify(f.inbox.list("local-operator"))).not.toContain("private park");
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 });

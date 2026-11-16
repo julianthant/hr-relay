@@ -136,12 +136,14 @@ function elementRecipe(id: ElementId): Extract<KualiLocatorRecipe, { kind: "role
 }
 
 
-async function exactlyOne(page: Page, id: ElementId): Promise<Locator> {
+async function exactlyOne(assertCurrent: () => void, page: Page, id: ElementId): Promise<Locator> {
   const recipe = elementRecipe(id);
   const locator = page.getByRole(recipe.role, { name: recipe.name, exact: recipe.exact });
   try {
+    assertCurrent();
     await locator.first().waitFor({ state: "visible", timeout: FIELD_TIMEOUT_MS });
   } catch (error) {
+    assertCurrent();
     // Not a swallow: an element that never renders is a page we cannot act on,
     // and the count check below would report "0" without saying why.
     throw new Error(
@@ -150,6 +152,7 @@ async function exactlyOne(page: Page, id: ElementId): Promise<Locator> {
       { cause: error },
     );
   }
+  assertCurrent();
   const count = await locator.count();
   if (count !== 1) {
     throw new Error(
@@ -157,6 +160,7 @@ async function exactlyOne(page: Page, id: ElementId): Promise<Locator> {
       + "exactly one is required and there is no fallback — refusing to act on an ambiguous page",
     );
   }
+  assertCurrent();
   return locator;
 }
 
@@ -208,18 +212,22 @@ type DocumentNumberProbe =
   | { readonly state: "unavailable"; readonly reason: string };
 
 
-async function probeDocumentNumberHeading(page: Page, actionId: string): Promise<DocumentNumberProbe> {
+async function probeDocumentNumberHeading(assertCurrent: () => void, page: Page, actionId: string): Promise<DocumentNumberProbe> {
   const heading = page.getByRole("heading", { level: 1, name: DOCUMENT_NUMBER_HEADING_NAME });
   // A BOUNDED WAIT FOR THE SAME FACT, not a fallback: when no document-number
   // heading renders inside the bound, the identical refusal below still fires.
   try {
+    assertCurrent();
     await heading.first().waitFor({ state: "attached", timeout: STATE_TIMEOUT_MS });
   } catch {
+    assertCurrent();
     // Not a swallow: the timeout IS the observation, and the count check turns
     // it into the loud refusal an immediately-absent heading produced.
   }
+  assertCurrent();
   const count = await heading.count();
   if (count === 0) {
+    assertCurrent();
     return {
       state: "unavailable",
       reason: `Kuali action ${actionId} did not render a document-number heading within `
@@ -228,27 +236,33 @@ async function probeDocumentNumberHeading(page: Page, actionId: string): Promise
     };
   }
   if (count !== 1) {
+    assertCurrent();
     return {
       state: "unavailable",
       reason: `Kuali action ${actionId} rendered ${String(count)} document-number headings; exactly one is `
         + "required and there is no fallback — refusing to identify an ambiguous page",
     };
   }
+  assertCurrent();
   const raw = await heading.textContent({ timeout: STATE_TIMEOUT_MS });
   const trimmed = (raw ?? "").trim();
   const parsed = KualiDocumentNumberSchema.safeParse(trimmed);
   if (!parsed.success) {
+    assertCurrent();
     return {
       state: "unavailable",
       reason: `Kuali action ${actionId} heading "${trimmed}" is not a document number`,
     };
   }
+  assertCurrent();
   return { state: "read", documentNumber: parsed.data };
 }
 
-async function readDocumentNumberHeading(page: Page, actionId: string): Promise<string> {
-  const probe = await probeDocumentNumberHeading(page, actionId);
+async function readDocumentNumberHeading(assertCurrent: () => void, page: Page, actionId: string): Promise<string> {
+  assertCurrent();
+  const probe = await probeDocumentNumberHeading(assertCurrent, page, actionId);
   if (probe.state === "unavailable") throw new Error(probe.reason);
+  assertCurrent();
   return probe.documentNumber;
 }
 
@@ -279,14 +293,18 @@ type StagedExpectation = Readonly<{
 }>;
 
 /** Every Kuali input read trims; a padded value is the norm, not an anomaly. */
-async function readTrimmedInput(page: Page, id: ElementId): Promise<string> {
-  const locator = await exactlyOne(page, id);
+async function readTrimmedInput(assertCurrent: () => void, page: Page, id: ElementId): Promise<string> {
+  assertCurrent();
+  const locator = await exactlyOne(assertCurrent, page, id);
+  assertCurrent();
   const raw = await locator.inputValue({ timeout: FIELD_TIMEOUT_MS });
+  assertCurrent();
   return raw.trim();
 }
 
-async function readDisplayedEid(page: Page): Promise<string> {
-  const value = await readTrimmedInput(page, KUALI_RRSS_EID_FIELD);
+async function readDisplayedEid(assertCurrent: () => void, page: Page): Promise<string> {
+  assertCurrent();
+  const value = await readTrimmedInput(assertCurrent, page, KUALI_RRSS_EID_FIELD);
   const parsed = EidSchema.safeParse(value);
   if (!parsed.success) {
     throw new Error(
@@ -294,16 +312,19 @@ async function readDisplayedEid(page: Page): Promise<string> {
       + "refusing to bind a subject to an unreadable identifier",
     );
   }
+  assertCurrent();
   return parsed.data;
 }
 
 // Kuali text gadgets debounce into controlled React state; a DOM value alone is not model-commit proof.
 // Stamp React props before the interaction so a model update cannot be missed.
 async function stampModelProps(
+  assertCurrent: () => void,
   handle: ElementHandle<SVGElement | HTMLElement>,
   documentNumber: string,
   what: string,
 ): Promise<void> {
+  assertCurrent();
   const stamped = await handle.evaluate((node, marker) => {
     const element = node as unknown as Record<string, unknown>;
     const propsKey = Object.keys(element).find((key) => key.startsWith("__reactProps"));
@@ -318,16 +339,19 @@ async function stampModelProps(
       + "the fence on an unprovable staging",
     );
   }
+  assertCurrent();
 }
 
 /** Half two: wait for the parent re-render that the model update causes. */
 async function awaitModelPropsReplaced(
+  assertCurrent: () => void,
   page: Page,
   handle: ElementHandle<SVGElement | HTMLElement>,
   documentNumber: string,
   what: string,
 ): Promise<void> {
   try {
+    assertCurrent();
     await page.waitForFunction((bound: { node: SVGElement | HTMLElement; marker: string }) => {
       const element = bound.node as unknown as Record<string, unknown>;
       const propsKey = Object.keys(element).find((key) => key.startsWith("__reactProps"));
@@ -336,6 +360,7 @@ async function awaitModelPropsReplaced(
       return previous !== undefined && element[propsKey] !== previous;
     }, { node: handle, marker: STAGED_PROPS_MARKER }, { timeout: MODEL_COMMIT_TIMEOUT_MS, polling: 50 });
   } catch (error) {
+    assertCurrent();
     // Not a swallow: the timeout IS the observation that the model never took
     // the value, and continuing would click Save on a payload without it.
     throw new Error(
@@ -345,6 +370,7 @@ async function awaitModelPropsReplaced(
       { cause: error },
     );
   }
+  assertCurrent();
 }
 
 // Verify staged values under the exact form keys in the Save payload for this action ID.
@@ -406,7 +432,7 @@ function stagedWireValues(expected: StagedExpectation): readonly (readonly [stri
 }
 
 // GraphQL refusals can return HTTP 200; inspect refusal fields, then verify persisted values separately.
-async function assertSubmitNotRefused(response: Response, documentNumber: string): Promise<void> {
+async function assertSubmitNotRefused(assertCurrent: () => void, response: Response, documentNumber: string): Promise<void> {
   if (!response.ok()) {
     throw new Error(
       `Kuali answered HTTP ${String(response.status())} to the save on document ${documentNumber}; `
@@ -415,8 +441,10 @@ async function assertSubmitNotRefused(response: Response, documentNumber: string
   }
   let body: unknown;
   try {
+    assertCurrent();
     body = await response.json();
   } catch (error) {
+    assertCurrent();
     // Not a swallow: an unreadable answer means we cannot tell a refusal from
     // an acceptance, which is precisely the uncertainty this driver must raise.
     throw new Error(
@@ -456,6 +484,7 @@ async function assertSubmitNotRefused(response: Response, documentNumber: string
         + JSON.stringify(result.validations).slice(0, 400),
     });
   }
+  assertCurrent();
 }
 
 // Read form type from document.title; page-wide text can match app lists and dialog rows.
@@ -463,37 +492,46 @@ const DOCUMENT_TITLE_FORM_NAME = /^Form - (.+) - Kuali$/u;
 
 
 // The document title can arrive after route paint; wait for the same fact within a bounded deadline.
-async function readDocumentFormType(page: Page): Promise<
+async function readDocumentFormType(assertCurrent: () => void, page: Page): Promise<
   { readonly state: "read"; readonly formType: string }
   | { readonly state: "unreadable"; readonly observedTitle: string }
 > {
   try {
+    assertCurrent();
     await page.waitForFunction(
       (pattern: string) => new RegExp(pattern, "u").test(document.title),
       DOCUMENT_TITLE_FORM_NAME.source,
       { timeout: STATE_TIMEOUT_MS, polling: 100 },
     );
   } catch {
+    assertCurrent();
     // Not a swallow: the timeout IS the observation, and the check below turns
     // it into a refusal that quotes whatever the page actually titled itself.
   }
+  assertCurrent();
   const title = await page.title();
   const matched = DOCUMENT_TITLE_FORM_NAME.exec(title);
   const formType = matched?.[1]?.trim();
   if (formType === undefined || formType.length === 0) {
+    assertCurrent();
     return { state: "unreadable", observedTitle: title };
   }
+  assertCurrent();
   return { state: "read", formType };
 }
 
-async function waitForDocumentReady(page: Page, actionId: string): Promise<string> {
+async function waitForDocumentReady(assertCurrent: () => void, page: Page, actionId: string): Promise<string> {
+  assertCurrent();
   assertExactKualiDocumentUrl(page.url(), actionId);
-  const documentNumber = await readDocumentNumberHeading(page, actionId);
-  await exactlyOne(page, KUALI_RRSS_EID_FIELD);
+  assertCurrent();
+  const documentNumber = await readDocumentNumberHeading(assertCurrent, page, actionId);
+  assertCurrent();
+  await exactlyOne(assertCurrent, page, KUALI_RRSS_EID_FIELD);
+  assertCurrent();
   return documentNumber;
 }
 
-export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRrssDocumentDriver {
+export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: Page, clock: Clock): KualiRrssDocumentDriver {
   // The ONE time source (ref clock-config-secrets): every observation instant this driver stamps
   // comes from the injected clock, never from `new Date()`.
   const now = (): string => IsoInstantSchema.parse(clock.now().toISOString());
@@ -516,33 +554,46 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     // any staging is gone — the same invariant `openDocument` maintains.
     staged = undefined;
     matchedActionListNumber = undefined;
+    assertCurrent();
     await page.goto(actionListUrl(), {
       waitUntil: "domcontentloaded",
       timeout: NAVIGATION_TIMEOUT_MS,
     });
+    assertCurrent();
     recordBrowserAction("opened", "kuali.action-list");
 
-    const search = await exactlyOne(page, KUALI_ACTION_LIST_SEARCH_INPUT);
-    const go = await exactlyOne(page, KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
+    assertCurrent();
+    const search = await exactlyOne(assertCurrent, page, KUALI_ACTION_LIST_SEARCH_INPUT);
+    assertCurrent();
+    const go = await exactlyOne(assertCurrent, page, KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
+    assertCurrent();
     await search.fill(documentNumber, { timeout: FIELD_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("typed", KUALI_ACTION_LIST_SEARCH_INPUT, documentNumber);
+    assertCurrent();
     await go.click({ timeout: FIELD_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("clicked", KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
 
     const matched = documentLinks(page, documentNumber);
     try {
+      assertCurrent();
       await matched.first().waitFor({ state: "attached", timeout: ACTION_LIST_FILTER_TIMEOUT_MS });
     } catch {
+      assertCurrent();
       // No matched action is a valid absence; the observation below retains the list contents and zero links.
     }
+    assertCurrent();
     const matchedLinks = await matched.evaluateAll((elements) => elements.map((element) => ({
       name: (element.textContent ?? "").trim(),
       href: element.getAttribute("href"),
     })));
+    assertCurrent();
     const listed = await page
       .getByRole("link", { name: BARE_DOCUMENT_NUMBER_NAME })
       .evaluateAll((elements) => elements.map((element) => (element.textContent ?? "").trim()));
     if (matchedLinks.length > 0) matchedActionListNumber = documentNumber;
+    assertCurrent();
     return KualiActionListObservationSchema.parse({
       pageStateId: KUALI_ACTION_LIST_READY,
       space: KUALI_RRSS_SPACE_ID,
@@ -565,23 +616,29 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     const expectedNumber = KualiDocumentNumberSchema.parse(input.documentNumber);
     // Navigation discards Kuali's form model; clear retained staging proof before reload.
     staged = undefined;
+    assertCurrent();
     await page.goto(documentUrl(actionId), {
       waitUntil: "domcontentloaded",
       timeout: NAVIGATION_TIMEOUT_MS,
     });
+    assertCurrent();
     recordBrowserAction("opened", "kuali.separation-document");
-    const observedNumber = await waitForDocumentReady(page, actionId);
+    assertCurrent();
+    const observedNumber = await waitForDocumentReady(assertCurrent, page, actionId);
     if (observedNumber !== expectedNumber) {
       throw new Error(
         `Kuali action ${actionId} opened document ${observedNumber}, but the run named ${expectedNumber}; `
         + "action ids are not stable across workflow steps — refusing to act on a different document",
       );
     }
-    return {
+    assertCurrent();
+    const result = {
       actionId,
       documentNumber: observedNumber,
-      observedEid: await readDisplayedEid(page),
+      observedEid: await readDisplayedEid(assertCurrent, page),
     };
+    assertCurrent();
+    return result;
   }
 
   /* ── The separation-document read (2i chunk 2) ─────────────────────────── */
@@ -591,7 +648,9 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     readonly selected: string;
     readonly options: readonly string[];
   }> {
-    const locator = await exactlyOne(page, id);
+    assertCurrent();
+    const locator = await exactlyOne(assertCurrent, page, id);
+    assertCurrent();
     const read = await locator.evaluate((node) => {
       const select = node as HTMLSelectElement;
       const options = Array.from(select.options).map((option) => option.text);
@@ -604,12 +663,17 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         `Kuali ${id} has no option text at its selected index; refusing to guess which option is chosen`,
       );
     }
+    assertCurrent();
     return { selected: read.selected.trim(), options: read.options.map((option) => option.trim()) };
   }
 
   async function readCheckbox(id: ElementId): Promise<boolean> {
-    const locator = await exactlyOne(page, id);
-    return locator.isChecked({ timeout: FIELD_TIMEOUT_MS });
+    assertCurrent();
+    const locator = await exactlyOne(assertCurrent, page, id);
+    assertCurrent();
+    const result = await locator.isChecked({ timeout: FIELD_TIMEOUT_MS });
+    assertCurrent();
+    return result;
   }
 
 
@@ -619,14 +683,17 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
   ): Promise<Locator> {
     const locator = page.getByRole(role, { name, exact: true });
     try {
+      assertCurrent();
       await locator.first().waitFor({ state: "attached", timeout: FIELD_TIMEOUT_MS });
     } catch (error) {
+      assertCurrent();
       throw new Error(
         `Kuali driver-internal control role="${role}" name="${name}" never attached within `
         + `${String(FIELD_TIMEOUT_MS)}ms; refusing to read a document that does not show it`,
         { cause: error },
       );
     }
+    assertCurrent();
     const count = await locator.count();
     if (count !== 1) {
       throw new Error(
@@ -634,19 +701,26 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         + "exactly one is required and there is no fallback",
       );
     }
+    assertCurrent();
     return locator;
   }
 
   async function readInternalText(name: string): Promise<string> {
+    assertCurrent();
     const locator = await exactlyOneInternal("textbox", name);
-    return (await locator.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
+    assertCurrent();
+    const result = (await locator.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
+    assertCurrent();
+    return result;
   }
 
   async function readInternalSelect(name: string): Promise<{
     readonly selected: string;
     readonly options: readonly string[];
   }> {
+    assertCurrent();
     const locator = await exactlyOneInternal("combobox", name);
+    assertCurrent();
     const read = await locator.evaluate((node) => {
       const select = node as HTMLSelectElement;
       return {
@@ -660,6 +734,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         + "refusing to guess which option is chosen",
       );
     }
+    assertCurrent();
     return { selected: read.selected.trim(), options: read.options.map((option) => option.trim()) };
   }
 
@@ -684,15 +759,20 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     // A navigation discards Kuali's in-page form model; nothing this read does
     // may leave a staging behind that a later `commit` could click on.
     staged = undefined;
+    assertCurrent();
     await page.goto(documentUrl(actionId), {
       waitUntil: "domcontentloaded",
       timeout: NAVIGATION_TIMEOUT_MS,
     });
+    assertCurrent();
     recordBrowserAction("opened", "kuali.separation-document");
+    assertCurrent();
     assertExactKualiDocumentUrl(page.url(), actionId);
 
-    const heading = await probeDocumentNumberHeading(page, actionId);
+    assertCurrent();
+    const heading = await probeDocumentNumberHeading(assertCurrent, page, actionId);
     if (heading.state === "unavailable") {
+      assertCurrent();
       return KualiSeparationDocumentReadSchema.parse({
         state: "document-unavailable",
         actionId,
@@ -702,6 +782,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       });
     }
     if (heading.documentNumber !== expectedNumber) {
+      assertCurrent();
       return KualiSeparationDocumentReadSchema.parse({
         state: "document-number-mismatch",
         actionId,
@@ -712,8 +793,10 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     }
 
 
-    const formType = await readDocumentFormType(page);
+    assertCurrent();
+    const formType = await readDocumentFormType(assertCurrent, page);
     if (formType.state === "unreadable") {
+      assertCurrent();
       return KualiSeparationDocumentReadSchema.parse({
         state: "document-unavailable",
         actionId,
@@ -725,6 +808,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       });
     }
     if (formType.formType !== KUALI_SEPARATION_FORM_TYPE) {
+      assertCurrent();
       return KualiSeparationDocumentReadSchema.parse({
         state: "not-a-separation-document",
         actionId,
@@ -734,9 +818,11 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       });
     }
 
-    const rawEid = await readTrimmedInput(page, KUALI_RRSS_EID_FIELD);
+    assertCurrent();
+    const rawEid = await readTrimmedInput(assertCurrent, page, KUALI_RRSS_EID_FIELD);
     const parsedEid = rawEid.length === 0 ? undefined : EidSchema.safeParse(rawEid);
     if (parsedEid !== undefined && !parsedEid.success) {
+      assertCurrent();
       return KualiSeparationDocumentReadSchema.parse({
         state: "unreadable-eid",
         actionId,
@@ -746,12 +832,13 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       });
     }
 
+    assertCurrent();
     const dates: { field: "lastDayWorked" | "separationDate" | "terminationEffectiveDate"; raw: string }[] = [
-      { field: "lastDayWorked", raw: await readTrimmedInput(page, KUALI_RRSS_LAST_DAY_WORKED_FIELD) },
-      { field: "separationDate", raw: await readTrimmedInput(page, KUALI_RRSS_SEPARATION_DATE_FIELD) },
+      { field: "lastDayWorked", raw: await readTrimmedInput(assertCurrent, page, KUALI_RRSS_LAST_DAY_WORKED_FIELD) },
+      { field: "separationDate", raw: await readTrimmedInput(assertCurrent, page, KUALI_RRSS_SEPARATION_DATE_FIELD) },
       {
         field: "terminationEffectiveDate",
-        raw: await readTrimmedInput(page, KUALI_RRSS_TERMINATION_EFF_DATE_FIELD),
+        raw: await readTrimmedInput(assertCurrent, page, KUALI_RRSS_TERMINATION_EFF_DATE_FIELD),
       },
     ];
     const parsedDates = new Map<string, KualiDateField>();
@@ -767,6 +854,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       if (value === null) {
         // S8, kept verbatim: a non-blank date we cannot read is a refusal that
         // names the field and the value, never a blank and never a guess.
+        assertCurrent();
         return KualiSeparationDocumentReadSchema.parse({
           state: "unparseable-date",
           actionId,
@@ -784,13 +872,19 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       return value;
     };
 
+    assertCurrent();
     const terminationType = await readSelect(KUALI_RRSS_TERMINATION_TYPE_FIELD);
+    assertCurrent();
     const department = await readSelect(KUALI_RRSS_DEPARTMENT_FIELD);
+    assertCurrent();
     const division = await readInternalSelect(INTERNAL_DIVISION_FIELD);
+    assertCurrent();
     const employeeType = await readInternalSelect(INTERNAL_EMPLOYEE_TYPE_FIELD);
+    assertCurrent();
     const studentTitleCode = await readInternalSelect(INTERNAL_STUDENT_TITLE_CODE_FIELD);
 
-    const rawTransactionNumber = await readTrimmedInput(page, KUALI_RRSS_TRANSACTION_NUMBER_FIELD);
+    assertCurrent();
+    const rawTransactionNumber = await readTrimmedInput(assertCurrent, page, KUALI_RRSS_TRANSACTION_NUMBER_FIELD);
     const transactionNumber: KualiTransactionNumberField = rawTransactionNumber.length === 0
       ? { state: "absent", reason: "the transaction-number control is present on the form and holds no value" }
       : KualiTransactionNumberSchema.safeParse(rawTransactionNumber).success
@@ -804,9 +898,11 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         };
 
 
+    assertCurrent();
     const finalPayChoice = await readFinalPayChoice(heading.documentNumber);
 
-    return KualiSeparationDocumentReadSchema.parse({
+    assertCurrent();
+    const result = KualiSeparationDocumentReadSchema.parse({
       state: "read",
       document: KualiSeparationDocumentSchema.parse({
         pageStateId: KUALI_RRSS_SEPARATION_READY,
@@ -814,14 +910,14 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         documentNumber: heading.documentNumber,
         formType: { observed: formType.formType, matches: true },
         employee: {
-          name: textField(await readTrimmedInput(page, KUALI_RRSS_EMPLOYEE_NAME_FIELD)),
+          name: textField(await readTrimmedInput(assertCurrent, page, KUALI_RRSS_EMPLOYEE_NAME_FIELD)),
           eid: parsedEid === undefined || !parsedEid.success
             ? { state: "absent", reason: "the EID control is present on the form and holds no value" }
             : { state: "present", value: parsedEid.data },
           employeeType: optionField(employeeType.selected),
           studentTitleCode: optionField(studentTitleCode.selected),
           division: optionField(division.selected),
-          location: textField(await readTrimmedInput(page, KUALI_RRSS_LOCATION_FIELD)),
+          location: textField(await readTrimmedInput(assertCurrent, page, KUALI_RRSS_LOCATION_FIELD)),
         },
         separation: {
           terminationType: optionField(terminationType.selected),
@@ -831,14 +927,14 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         },
         timekeeper: {
           requestAcknowledged: await readCheckbox(KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX),
-          name: textField(await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD)),
-          comments: textField(await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD)),
+          name: textField(await readTrimmedInput(assertCurrent, page, KUALI_RRSS_TIMEKEEPER_FIELD)),
+          comments: textField(await readTrimmedInput(assertCurrent, page, KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD)),
         },
         finalTransactions: {
           terminationEffectiveDate: dateField("terminationEffectiveDate"),
           department: optionField(department.selected),
-          payrollTitleCode: textField(await readTrimmedInput(page, KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD)),
-          payrollTitle: textField(await readTrimmedInput(page, KUALI_RRSS_PAYROLL_TITLE_FIELD)),
+          payrollTitleCode: textField(await readTrimmedInput(assertCurrent, page, KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD)),
+          payrollTitle: textField(await readTrimmedInput(assertCurrent, page, KUALI_RRSS_PAYROLL_TITLE_FIELD)),
           submittedTerminationTemplate: await readCheckbox(KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX),
           transactionNumber,
           finalPay: finalPayChoice === undefined
@@ -856,20 +952,32 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         observedAt: now(),
       }),
     });
+    assertCurrent();
+    return result;
   }
 
   /* ── The finalization write (chunk 5) ──────────────────────────────────── */
 
+  async function readInternalChecked(name: string): Promise<boolean> {
+    assertCurrent();
+    const locator = await exactlyOneInternal("radio", name);
+    assertCurrent();
+    const result = await locator.isChecked({ timeout: FIELD_TIMEOUT_MS });
+    assertCurrent();
+    return result;
+  }
+
   // No Final Pay radio is explicit absence; two selected radios are an ambiguous page and refuse.
   async function readFinalPayChoice(documentNumber: string): Promise<KualiFinalPayChoice | undefined> {
+    assertCurrent();
     const checks: readonly (readonly [KualiFinalPayChoice, boolean])[] = [
       ["submitted-final-pay-request",
-        await (await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_SUBMITTED)).isChecked({ timeout: FIELD_TIMEOUT_MS })],
+        await readInternalChecked(INTERNAL_FINAL_PAY_SUBMITTED)],
       ["does-not-need-final-pay-student", await readCheckbox(KUALI_RRSS_FINAL_PAY_STUDENT_RADIO)],
       ["does-not-need-final-pay-transfer",
-        await (await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_TRANSFER)).isChecked({ timeout: FIELD_TIMEOUT_MS })],
+        await readInternalChecked(INTERNAL_FINAL_PAY_TRANSFER)],
       ["other",
-        await (await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_OTHER)).isChecked({ timeout: FIELD_TIMEOUT_MS })],
+        await readInternalChecked(INTERNAL_FINAL_PAY_OTHER)],
     ];
     const selected = checks.filter(([, checked]) => checked);
     if (selected.length > 1) {
@@ -878,6 +986,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         + "once; a radio group with two selections is a page we cannot describe",
       );
     }
+    assertCurrent();
     return selected[0]?.[0];
   }
 
@@ -886,26 +995,31 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     readonly fields: KualiObservedFinalizationFields;
     readonly departmentOptions: readonly string[];
   }> {
+    assertCurrent();
     const department = await readSelect(KUALI_RRSS_DEPARTMENT_FIELD);
+    assertCurrent();
     const finalPay = await readFinalPayChoice(documentNumber);
-    return {
+    assertCurrent();
+    const result = {
       fields: KualiObservedFinalizationFieldsSchema.parse({
         department: department.selected,
-        payrollTitleCode: await readTrimmedInput(page, KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD),
-        payrollTitle: await readTrimmedInput(page, KUALI_RRSS_PAYROLL_TITLE_FIELD),
+        payrollTitleCode: await readTrimmedInput(assertCurrent, page, KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD),
+        payrollTitle: await readTrimmedInput(assertCurrent, page, KUALI_RRSS_PAYROLL_TITLE_FIELD),
         requestAcknowledged: await readCheckbox(KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX),
-        timekeeperName: await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD),
+        timekeeperName: await readTrimmedInput(assertCurrent, page, KUALI_RRSS_TIMEKEEPER_FIELD),
 
-        lastDayWorked: await readTrimmedInput(page, KUALI_RRSS_LAST_DAY_WORKED_FIELD),
-        separationDate: await readTrimmedInput(page, KUALI_RRSS_SEPARATION_DATE_FIELD),
-        terminationEffectiveDate: await readTrimmedInput(page, KUALI_RRSS_TERMINATION_EFF_DATE_FIELD),
+        lastDayWorked: await readTrimmedInput(assertCurrent, page, KUALI_RRSS_LAST_DAY_WORKED_FIELD),
+        separationDate: await readTrimmedInput(assertCurrent, page, KUALI_RRSS_SEPARATION_DATE_FIELD),
+        terminationEffectiveDate: await readTrimmedInput(assertCurrent, page, KUALI_RRSS_TERMINATION_EFF_DATE_FIELD),
         submittedTerminationTemplate: await readCheckbox(KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX),
-        transactionNumber: await readTrimmedInput(page, KUALI_RRSS_TRANSACTION_NUMBER_FIELD),
+        transactionNumber: await readTrimmedInput(assertCurrent, page, KUALI_RRSS_TRANSACTION_NUMBER_FIELD),
         finalPay: finalPay ?? null,
-        timekeeperComments: await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD),
+        timekeeperComments: await readTrimmedInput(assertCurrent, page, KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD),
       }),
       departmentOptions: department.options,
     };
+    assertCurrent();
+    return result;
   }
 
   // Kuali can drop fill input; verify readback and wait for the document model before fencing.
@@ -915,7 +1029,9 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     what: string,
     documentNumber: string,
   ): Promise<void> {
-    const field = await exactlyOne(page, id);
+    assertCurrent();
+    const field = await exactlyOne(assertCurrent, page, id);
+    assertCurrent();
     const handle = await field.elementHandle({ timeout: FIELD_TIMEOUT_MS });
     if (handle === null) {
       throw new Error(
@@ -923,22 +1039,33 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       );
     }
     try {
-      await stampModelProps(handle, documentNumber, what);
+      assertCurrent();
+      await stampModelProps(assertCurrent, handle, documentNumber, what);
+      assertCurrent();
       await field.fill(value, { timeout: FIELD_TIMEOUT_MS });
+      assertCurrent();
       recordBrowserAction("typed", id, value);
+      assertCurrent();
       let displayed = (await field.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
       if (displayed !== value) {
+        assertCurrent();
         await field.clear({ timeout: FIELD_TIMEOUT_MS });
+        assertCurrent();
         recordBrowserAction("cleared", id);
+        assertCurrent();
         await field.pressSequentially(value, { delay: 30, timeout: FIELD_TIMEOUT_MS });
+        assertCurrent();
         recordBrowserAction("typed", id, value);
+        assertCurrent();
         displayed = (await field.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
       }
       if (displayed !== value) return;
-      await awaitModelPropsReplaced(page, handle, documentNumber, what);
+      assertCurrent();
+      await awaitModelPropsReplaced(assertCurrent, page, handle, documentNumber, what);
     } finally {
       await handle.dispose();
     }
+    assertCurrent();
   }
 
   // Stamp discrete controls before interaction; unlike text gadgets they may update without debounce.
@@ -948,6 +1075,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     what: string,
     documentNumber: string,
   ): Promise<void> {
+    assertCurrent();
     const handle = await locator.elementHandle({ timeout: FIELD_TIMEOUT_MS });
     if (handle === null) {
       throw new Error(
@@ -955,26 +1083,38 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       );
     }
     try {
-      await stampModelProps(handle, documentNumber, what);
+      assertCurrent();
+      await stampModelProps(assertCurrent, handle, documentNumber, what);
+      assertCurrent();
       await act();
-      await awaitModelPropsReplaced(page, handle, documentNumber, what);
+      assertCurrent();
+      await awaitModelPropsReplaced(assertCurrent, page, handle, documentNumber, what);
     } finally {
       await handle.dispose();
     }
+    assertCurrent();
   }
 
 
   async function finalPayLocator(choice: KualiFinalPayChoice): Promise<Locator> {
     if (choice === "does-not-need-final-pay-student") {
-      return exactlyOne(page, KUALI_RRSS_FINAL_PAY_STUDENT_RADIO);
+      const result = await exactlyOne(assertCurrent, page, KUALI_RRSS_FINAL_PAY_STUDENT_RADIO);
+      assertCurrent();
+      return result;
     }
     if (choice === "submitted-final-pay-request") {
-      return exactlyOneInternal("radio", INTERNAL_FINAL_PAY_SUBMITTED);
+      const result = await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_SUBMITTED);
+      assertCurrent();
+      return result;
     }
     if (choice === "does-not-need-final-pay-transfer") {
-      return exactlyOneInternal("radio", INTERNAL_FINAL_PAY_TRANSFER);
+      const result = await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_TRANSFER);
+      assertCurrent();
+      return result;
     }
-    return exactlyOneInternal("radio", INTERNAL_FINAL_PAY_OTHER);
+    const result = await exactlyOneInternal("radio", INTERNAL_FINAL_PAY_OTHER);
+    assertCurrent();
+    return result;
   }
 
   async function stageSeparationFinalization(
@@ -983,10 +1123,12 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     const target = KualiFinalizationTargetSchema.parse(input);
     const fields = kualiFinalizationFields(target.variables);
     staged = undefined;
+    assertCurrent();
     const view = await openDocument({
       actionId: target.actionId,
       documentNumber: target.documentNumber,
     });
+    assertCurrent();
     const before = await readFinalizationFields(view.documentNumber);
 
     // Preserve the comments read upstream; a changed field must refuse instead of overwriting an edit.
@@ -1008,72 +1150,101 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     }
 
     // ONE pass, every field, from the staged variables only.
-    const departmentControl = await exactlyOne(page, KUALI_RRSS_DEPARTMENT_FIELD);
+    assertCurrent();
+    const departmentControl = await exactlyOne(assertCurrent, page, KUALI_RRSS_DEPARTMENT_FIELD);
+    assertCurrent();
     await stageDiscrete(
       departmentControl,
       async () => {
+        assertCurrent();
         await departmentControl.selectOption({ label: fields.department }, { timeout: FIELD_TIMEOUT_MS });
+        assertCurrent();
         recordBrowserAction("selected", KUALI_RRSS_DEPARTMENT_FIELD, fields.department);
+        assertCurrent();
       },
       "department",
       view.documentNumber,
     );
+    assertCurrent();
     await stageText(KUALI_RRSS_PAYROLL_TITLE_CODE_FIELD, fields.payrollTitleCode, "payroll title code", view.documentNumber);
+    assertCurrent();
     await stageText(KUALI_RRSS_PAYROLL_TITLE_FIELD, fields.payrollTitle, "payroll title", view.documentNumber);
-    const acknowledged = await exactlyOne(page, KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX);
+    assertCurrent();
+    const acknowledged = await exactlyOne(assertCurrent, page, KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX);
+    assertCurrent();
     await stageDiscrete(
       acknowledged,
       async () => {
+        assertCurrent();
         await acknowledged.setChecked(fields.requestAcknowledged, { timeout: FIELD_TIMEOUT_MS });
+        assertCurrent();
         recordBrowserAction("set", KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX, fields.requestAcknowledged);
+        assertCurrent();
       },
       "request acknowledged",
       view.documentNumber,
     );
+    assertCurrent();
     await stageText(KUALI_RRSS_TIMEKEEPER_FIELD, fields.timekeeperName, "timekeeper name", view.documentNumber);
 
+    assertCurrent();
     await stageText(
       KUALI_RRSS_LAST_DAY_WORKED_FIELD,
       fields.lastDayWorked,
       "last day worked",
       view.documentNumber,
     );
+    assertCurrent();
     await stageText(
       KUALI_RRSS_SEPARATION_DATE_FIELD,
       fields.separationDate,
       "separation date",
       view.documentNumber,
     );
+    assertCurrent();
     await stageText(
       KUALI_RRSS_TERMINATION_EFF_DATE_FIELD,
       fields.terminationEffectiveDate,
       "termination effective date",
       view.documentNumber,
     );
-    const template = await exactlyOne(page, KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX);
+    assertCurrent();
+    const template = await exactlyOne(assertCurrent, page, KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX);
+    assertCurrent();
     await stageDiscrete(
       template,
       async () => {
+        assertCurrent();
         await template.setChecked(fields.submittedTerminationTemplate, { timeout: FIELD_TIMEOUT_MS });
+        assertCurrent();
         recordBrowserAction("set", KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX, fields.submittedTerminationTemplate);
+        assertCurrent();
       },
       "submitted termination template",
       view.documentNumber,
     );
+    assertCurrent();
     await stageText(KUALI_RRSS_TRANSACTION_NUMBER_FIELD, fields.transactionNumber, "transaction number", view.documentNumber);
+    assertCurrent();
     const finalPay = await finalPayLocator(fields.finalPay);
+    assertCurrent();
     await stageDiscrete(
       finalPay,
       async () => {
+        assertCurrent();
         await finalPay.check({ timeout: FIELD_TIMEOUT_MS });
+        assertCurrent();
         recordBrowserAction("checked", "kuali.rrss.final-pay", fields.finalPay);
+        assertCurrent();
       },
       "final pay radio",
       view.documentNumber,
     );
+    assertCurrent();
     await stageText(KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD, fields.timekeeperComments, "timekeeper comments", view.documentNumber);
 
     // Every control read back, against the exact staged field set.
+    assertCurrent();
     const after = await readFinalizationFields(view.documentNumber);
     const mismatches = compareKualiFinalizationFields(fields, after.fields);
     if (mismatches.length > 0) {
@@ -1084,13 +1255,15 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     }
     // The Save button must already resolve uniquely BEFORE the fence: a page
     // that cannot name exactly one Save is a page we must not fence on.
-    await exactlyOne(page, KUALI_RRSS_SAVE_BUTTON);
+    assertCurrent();
+    await exactlyOne(assertCurrent, page, KUALI_RRSS_SAVE_BUTTON);
     staged = {
       kind: "finalization",
       actionId: view.actionId,
       documentNumber: view.documentNumber,
       fields,
     };
+    assertCurrent();
     return KualiFinalizationStagingSchema.parse({
       stagedPageState: KUALI_RRSS_FINALIZATION_STAGED,
       actionId: view.actionId,
@@ -1111,14 +1284,18 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     try {
       // The reload IS the proof mechanism. Reading the in-page form model would
       // report the staged values whether or not the save landed.
+      assertCurrent();
       await page.reload({ waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS });
+      assertCurrent();
       const view = await openDocument({
         actionId: target.actionId,
         documentNumber: target.documentNumber,
       });
+      assertCurrent();
       const observed = await readFinalizationFields(view.documentNumber);
       const mismatches = compareKualiFinalizationFields(expected, observed.fields);
       if (mismatches.length === 0) {
+        assertCurrent();
         return KualiFinalizationReadBackSchema.parse({
           state: "present",
           proof: KualiSavedFinalizationProofSchema.parse({
@@ -1132,6 +1309,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
           observedAt: now(),
         });
       }
+      assertCurrent();
       return KualiFinalizationReadBackSchema.parse({
         state: "absent",
         actionId: view.actionId,
@@ -1142,8 +1320,10 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         observedAt: now(),
       });
     } catch (error) {
+      assertCurrent();
       // A failed check is NOT "found nothing". Everything that throws becomes
       // `unknown`, which parks — it can never become retry authority.
+      assertCurrent();
       return KualiFinalizationReadBackSchema.parse({
         state: "unknown",
         reason: `Kuali finalization reload read-back failed: ${error instanceof Error ? error.message : "non-Error thrown"}`,
@@ -1161,9 +1341,14 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
           + "matched a document here, and there is no number to read that would not be a guess",
         );
       }
+      assertCurrent();
       return matched;
     }
-    if (id === KUALI_RRSS_DISPLAYED_EID) return readDisplayedEid(page);
+    if (id === KUALI_RRSS_DISPLAYED_EID) {
+      const result = await readDisplayedEid(assertCurrent, page);
+      assertCurrent();
+      return result;
+    }
     throw new Error(`Kuali driver has no observation recipe for ${id}`);
   }
 
@@ -1181,29 +1366,42 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         + "staged re-submits the document unchanged and Kuali still answers 200 with `Form saved`",
       );
     }
-    const save = await exactlyOne(page, KUALI_RRSS_SAVE_BUTTON);
+    assertCurrent();
+    const save = await exactlyOne(assertCurrent, page, KUALI_RRSS_SAVE_BUTTON);
     // Arm the observation BEFORE the click: the mutation is issued within a
     // second of it, and a listener attached afterwards would race it.
+    assertCurrent();
     const settled = page.waitForResponse(
-      (response) => response.url().includes(KUALI_GRAPHQL_PATH)
-        && (response.request().postData() ?? "").includes(KUALI_SUBMIT_OPERATION),
+      (response) => {
+        assertCurrent();
+        return response.url().includes(KUALI_GRAPHQL_PATH)
+        && (response.request().postData() ?? "").includes(KUALI_SUBMIT_OPERATION);
+      },
       { timeout: SUBMIT_OBSERVE_TIMEOUT_MS },
     );
+    void settled.catch(() => { /* The original promise is awaited below unless revocation refuses. */ });
+    assertCurrent();
     await save.click({ timeout: FIELD_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("clicked", KUALI_RRSS_SAVE_BUTTON);
     // Wait for the specific save mutation response; networkidle and Form saved do not prove retained values.
     let response: Response;
     try {
+      assertCurrent();
       response = await settled;
     } catch (error) {
+      assertCurrent();
       throw new Error(
         `Kuali Save on document ${expectation.documentNumber} issued no answered ${KUALI_SUBMIT_OPERATION} `
         + `within ${String(SUBMIT_OBSERVE_TIMEOUT_MS)}ms; the click cannot be described and the outcome is unknown`,
         { cause: error },
       );
     }
+    assertCurrent();
     assertSubmitCarriedValue(response.request(), expectation);
-    await assertSubmitNotRefused(response, expectation.documentNumber);
+    assertCurrent();
+    await assertSubmitNotRefused(assertCurrent, response, expectation.documentNumber);
+    assertCurrent();
     return UiActionProofSchema.parse({ elementId: id, effect: "external-commit", performed: true });
   }
 

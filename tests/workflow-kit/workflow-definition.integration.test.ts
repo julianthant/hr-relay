@@ -1,6 +1,7 @@
+import { projectWorkbookCompatibilityFromRepository } from "../../src/backend/workbooks/workbook-library-service.js";
 import assert from "node:assert/strict";
 import { describe,expect,it } from "vitest";
-import { descriptorSetHash } from "../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../src/backend/app/registries/workflow-registry.js";
 import { taskStoreRegistry } from "../../src/backend/app/registries/task-registry.js";
 import { WORKFLOW_MODULES } from "../../src/backend/app/registries/workflow-registry.js";
 import { buildBootstrap } from "../../src/backend/runs/queries/bootstrap.js";
@@ -13,13 +14,13 @@ import { manualClock } from "../../src/rules/time/clock.js";
 import { composeWorkflowModule,workflowEntryKinds } from "../../src/workflow-kit/workflow-definition.js";
 import { explorerQueryDeps } from "../support/fixtures/explorer-seams.js";
 import { healthyDashboardPreflightReport } from "../support/fixtures/preflight-seams.js";
-import { compileFixtureWorkflow,everyEntryKindWorkflow,fixtureBuildManifest } from "../support/fixtures/workflow-definition-fixtures.js";
+import { compileFixtureWorkflow,everyEntryKindWorkflow } from "../support/fixtures/workflow-definition-fixtures.js";
 import { AT,makeWorld,queuedEventOf,taskEventsOf,uuidOf } from "../support/helpers/backend/dashboard-harness.js";
 
 const EXPLORER_HASH = FingerprintSchema.parse("c".repeat(64));
 
 describe("registry-wide conformance covers every explicit entry kind", () => {
-  it("projects a definition using task, parallel, delegate, gate and transaction entries through bootstrap/start, Explorer and the detail timeline", () => {
+  it("projects a definition using task, parallel, delegate, gate and transaction entries through bootstrap/start, Explorer and the detail timeline", async () => {
     const compiled = compileFixtureWorkflow(everyEntryKindWorkflow);
     const fixtureModule = composeWorkflowModule(compiled, taskStoreRegistry.stores);
     expect(workflowEntryKinds(everyEntryKindWorkflow).toSorted())
@@ -42,7 +43,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
       nodes: group.nodes.map(({ id: nodeId }) => String(nodeId)),
     }))).toEqual(expectedGroups);
 
-    const world = makeWorld();
+    const world = await makeWorld();
     try {
       const bootstrap = buildBootstrap({
         appVersion: "0.1.0",
@@ -51,8 +52,10 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
         descriptorSetHash: descriptorSetHash(modules.map((module) => module.descriptor.contractFingerprint)),
         settingsSchemaHash: descriptorSetHash(["settings-schema"]),
         projection: world.projection,
+        actorLabel: () => "Fixture Operator",
         authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
-        backupSummary: () => "current",
+        workbookCompatibility: workflows => projectWorkbookCompatibilityFromRepository(world.database.authority.workbooks, workflows),
+
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       });
       const start = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows)
@@ -65,7 +68,6 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
       const explorer = buildWorkflowExplorer({
         ...explorerQueryDeps(manualClock(AT), EXPLORER_HASH),
         modules,
-        buildManifest: fixtureBuildManifest([id]),
       });
       const explorerWorkflow = explorer.workflows.find((workflow) => String(workflow.id) === id);
       assert.ok(explorerWorkflow !== undefined, `${id} is absent from Explorer`);
@@ -101,7 +103,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
           .find((node) => String(node.id) === nodeId)?.label),
       })));
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 });

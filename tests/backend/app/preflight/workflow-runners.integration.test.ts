@@ -1,3 +1,5 @@
+import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
+import { fixtureDuoSigningSource } from "../../../support/helpers/browser/duo-signing.js";
 import assert from "node:assert/strict";
 import { chmodSync,mkdirSync,mkdtempSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,7 +28,7 @@ function fixture(capabilities: readonly RuntimeCapability[]) {
   const input: RuntimePreflightRunnerInput = {
     scope: PreflightAdmissionScopeSchema.parse({ configSnapshotId: "11111111-1111-4111-8111-111111111111", configFingerprint: "a".repeat(64), descriptorFingerprint: "b".repeat(64), requestedCapabilities: capabilities }),
     config, protectedSecrets: { read: initialProtectedStoreRecord }, providerAvailability: {},
-    dashboard: { repoRoot: root, stateRoot: root, artifactRoot: root, processLockRoot: join(root, "locks"), backendPort: 0, frontendPort: 0, clock, listLiveWorkerProcesses: () => [],
+    dashboard: { repoRoot: root, stateRoot: root, artifactRoot: root, backendPort: 0, frontendPort: 0, clock,
       authorityHealth: { check: PreflightCheckIdSchema.parse("authority.health"), kind: "io", async run() { throw new Error("unselected authority detector ran"); } } },
   };
   const observe = async (name: string, useFactory = false) => {
@@ -37,7 +39,7 @@ function fixture(capabilities: readonly RuntimeCapability[]) {
   return { root, clock, config, input, observe };
 }
 function protectedRecord(omit?: string) {
-  const values = { ucpathUserId: "SYNTHETIC_PRIVATE_PERSON", ucpathPassword: "SYNTHETIC_PRIVATE_SECRET", timekeeperName: "SYNTHETIC_PRIVATE_PERSON", sharepointOnboardingRosterUrl: "https://example.invalid/SYNTHETIC_PRIVATE_PATH" };
+  const values = { ucpathUserId: "SYNTHETIC_PRIVATE_PERSON", ucpathPassword: "SYNTHETIC_PRIVATE_SECRET", sharepointOnboardingRosterUrl: "https://example.invalid/SYNTHETIC_PRIVATE_PATH" };
   return ProtectedStoreRecordSchema.parse({ ...initialProtectedStoreRecord(), revision: 2,
     entries: Object.fromEntries(Object.entries(values).filter(([name]) => name !== omit).map(([name,value],index) => [name, {value, valueId: `${String(index+1).repeat(8)}-1111-4111-8111-111111111111`, updatedAt: "2026-09-19T12:00:00.000Z"}])),
     lastApplied: { commandId: "77777777-7777-4777-8777-777777777777", commandFingerprint: "7".repeat(64), expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "88888888-8888-4888-8888-888888888888" },
@@ -45,6 +47,21 @@ function protectedRecord(omit?: string) {
 }
 
 describe("registered workflow detectors", () => {
+  it("checks admitted profile identity without a stored timekeeper setting or exposing its name", async () => {
+    const f = fixture(["workflow.kuali-fill"]);
+    const source = protectedSecretSource({ profileName: "Synthetic Middle Operator" });
+    f.input.protectedSecrets.read = source.read;
+    const healthy = await f.observe("profile.identity", true);
+    assert.equal(healthy.state, "healthy");
+    assert.doesNotMatch(healthy.summary, /Synthetic|Middle|Operator|SMO/u);
+    f.input.protectedSecrets.read = initialProtectedStoreRecord;
+    assert.equal((await f.observe("profile.identity", true)).state, "unhealthy");
+    f.input.protectedSecrets.read = () => { throw new Error("private-profile-fixture-detail"); };
+    const unknown = await f.observe("profile.identity", true);
+    assert.equal(unknown.state, "unhealthy");
+    assert.doesNotMatch(unknown.summary, /private-profile-fixture-detail/u);
+  });
+
   for (const dependency of RUNTIME_DEPENDENCIES.filter(candidate => candidate.secretNames !== undefined)) {
     for (const name of dependency.secretNames ?? []) it(`detects and rechecks ${name} without exposing source data`, async () => {
       const f = fixture(dependency.capabilities);
@@ -101,13 +118,16 @@ describe("registered workflow detectors", () => {
     assert.match((await f.observe("browser.assets", true)).summary, /Chromium.*unavailable/u);
     writeFileSync(executable, "synthetic executable", { mode: 0o700 });
     assert.match((await f.observe("browser.assets", true)).summary, /manifest.*unavailable/u);
-    mkdirSync(f.config.paths.duoExtensionDir); writeFileSync(join(f.config.paths.duoExtensionDir, "manifest.json"), "{}");
-    assert.match((await f.observe("browser.assets", true)).summary, /duoWebauthnCredential.*unavailable/u);
+    mkdirSync(f.config.paths.duoExtensionDir); writeFileSync(join(f.config.paths.duoExtensionDir, "workflow-manifest.json"), "{}");
+    assert.match((await f.observe("browser.assets", true)).summary, /backend signing source.*unavailable/u);
+    Reflect.set(f.input, "duo", fixtureDuoSigningSource());
     writeFileSync(f.config.paths.duoCredential, "SYNTHETIC_PRIVATE_SECRET", { mode: 0o600 });
     assert.equal((await f.observe("browser.assets", true)).state, "healthy");
+    Reflect.set(f.input, "duo", fixtureDuoSigningSource({ assertCurrent() { throw new Error("SYNTHETIC_PRIVATE_SECRET"); } }));
     chmodSync(f.config.paths.duoCredential, 0o644);
     const unsafe = await f.observe("browser.assets", true);
     assert.equal(unsafe.state, "unhealthy"); assert.doesNotMatch(JSON.stringify(unsafe), /SYNTHETIC_PRIVATE|setup-detectors-/u);
+    Reflect.set(f.input, "duo", fixtureDuoSigningSource());
     chmodSync(f.config.paths.duoCredential, 0o600);
     assert.equal((await f.observe("browser.assets", true)).state, "healthy");
     assert.equal(launch.mock.calls.length, 0);

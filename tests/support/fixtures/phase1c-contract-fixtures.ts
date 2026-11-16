@@ -1,11 +1,12 @@
-import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
-import { sha256Hex } from "../../../src/rules/validation/sha256.js";
+import { NEUTRAL_PERSON_PREFERENCES, derivePersonPreferencesFingerprint } from "../../../src/models/config/person-preferences.js";
 import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../../src/models/config/schema.js";
 import { sourceColumnId } from "../../../src/models/intake/mapping.js";
+import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import {
-  deriveIdempotencyKeyDigest,
-  deriveWriteBindingProofDigest,
+deriveIdempotencyKeyDigest,
+deriveWriteBindingProofDigest,
 } from "../../../src/rules/write-safety/write-safety.js";
 
 export const UUID_1 = "11111111-1111-4111-8111-111111111111";
@@ -36,7 +37,8 @@ const RUN_TARGET = { runId: UUID_2, expectedVersion: 1 };
 const INTAKE_TARGET = { intakeSessionId: UUID_3, expectedVersion: 1 };
 
 const SOURCE_COLUMN_ID = sourceColumnId("Employee ID#", 1);
-const WORKER_TARGET = { workerId: "worker-1", expectedVersion: 1 };
+const WORKER_MEMBER = { workerId: "worker-1", lifetimeId: UUID_3, expectedVersion: 1 };
+const WORKER_TARGET = { ...WORKER_MEMBER, workflowId: "onboarding" };
 
 
 export const VERSION_BUMP_CHANGE_RECORD = {
@@ -61,36 +63,35 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "worker-browser", type: "stop-worker", target: WORKER_TARGET },
   { ...BASE_COMMAND, family: "worker-browser", type: "pause-worker", target: WORKER_TARGET },
   { ...BASE_COMMAND, family: "worker-browser", type: "resume-worker", target: WORKER_TARGET },
-  { ...BASE_COMMAND, family: "worker-browser", type: "refresh-browser", target: { ...WORKER_TARGET, browserSessionId: UUID_4 } },
-  { ...BASE_COMMAND, family: "worker-browser", type: "reopen-browser", target: { ...WORKER_TARGET, browserSessionId: UUID_4 } },
+  { ...BASE_COMMAND, family: "worker-browser", type: "refresh-browser", target: { ...WORKER_MEMBER, browserSessionId: UUID_4 } },
+  { ...BASE_COMMAND, family: "worker-browser", type: "reopen-browser", target: { ...WORKER_MEMBER, browserSessionId: UUID_4 } },
   { ...BASE_COMMAND, family: "settings", type: "apply-settings", target: { expectedRevision: 1 }, payload: { settingsSchemaHash: HASH_A, patchFingerprint: HASH_B, patch: { "browser.headless": { set: false } } } },
-  ...["retry", "restart", "cancel", "bump", "delete"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
+  ...["retry", "recover-run", "cancel", "bump", "delete"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
   { ...BASE_COMMAND, family: "run", type: "rename", target: RUN_TARGET, payload: { displayName: "Summer onboarding" } },
-  { ...BASE_COMMAND, family: "run", type: "resolve-write-present", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: HASH_A }, payload: { occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST, proof: { schemaHash: HASH_A, value: "receipt-123" }, evidenceNote: "Confirmed in the target system" } },
-  { ...BASE_COMMAND, family: "run", type: "resolve-write-absent", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: HASH_A }, payload: { occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST, evidenceNote: "Confirmed absent in the target system" } },
+  { ...BASE_COMMAND, family: "run", type: "recheck-write", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: HASH_A }, payload: { occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST } },
+  { ...BASE_COMMAND, family: "run", type: "resolve-write-absent", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: HASH_A }, payload: { occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST } },
   { ...BASE_COMMAND, family: "gate", type: "resolve-gate", target: { runId: UUID_2, gateId: "identity-approval", expectedVersion: 1 }, payload: { result: { schemaHash: HASH_A, value: "approved" } } },
   { ...BASE_COMMAND, family: "notification", type: "notification-read", target: { notificationId: UUID_3, actorId: "local-operator", expectedVersion: 1 } },
   { ...BASE_COMMAND, family: "notification", type: "notification-unread", target: { notificationId: UUID_3, actorId: "local-operator", expectedVersion: 1 } },
   { ...BASE_COMMAND, family: "notification", type: "notification-snooze", target: { notificationId: UUID_3, actorId: "local-operator", expectedVersion: 1 } },
   { ...BASE_COMMAND, family: "notification", type: "notification-unsnooze", target: { notificationId: UUID_3, actorId: "local-operator", expectedVersion: 1 } },
-  { ...BASE_COMMAND, family: "storage-relocation", type: "plan-storage-relocation",
-    target: { installationId: UUID_2, sourceGeneration: 1, sourcePair: { stateRoot: "/source/state", artifactRoot: "/source/artifacts" }, expectedRevision: 0 },
-    payload: { writeId: UUID_3, desiredPair: { stateRoot: "/target/state", artifactRoot: "/target/artifacts" }, desiredDigest: HASH_A, requestFingerprint: HASH_B } },
-  { ...BASE_COMMAND, family: "storage-relocation", type: "cancel-storage-relocation",
-    target: { installationId: UUID_2, sourceGeneration: 1, sourcePair: { stateRoot: "/source/state", artifactRoot: "/source/artifacts" }, expectedRevision: 1 },
-    payload: { writeId: UUID_4, cancelledPlanCommandId: UUID_1, cancelledPlanDigest: HASH_A, requestFingerprint: HASH_B } },
-  {
-    ...BASE_COMMAND,
-    family: "explorer",
-    type: "apply-explorer-edit",
-    target: {
-      workflowId: "onboarding",
-      expectedVersion: 1,
-      contractFingerprint: HASH_A,
-      expectedOverrideRevision: 0,
-    },
-    payload: { changes: [{ kind: "workflow-label", value: "Reviewed onboarding" }] },
-  },
+  { ...BASE_COMMAND, family: "notification", type: "notification-read-all", target: { actorId: "local-operator", members: [{ notificationId: UUID_3, expectedVersion: 1 }], matchingCount: 1 } },
+  { ...BASE_COMMAND, family: "notification", type: "notification-unread-all", target: { actorId: "local-operator", members: [{ notificationId: UUID_3, expectedVersion: 1 }], matchingCount: 1 } },
+  { ...BASE_COMMAND, family: "notification", type: "notification-snooze-all", target: { actorId: "local-operator", members: [{ notificationId: UUID_3, expectedVersion: 1 }], matchingCount: 1 } },
+  { ...BASE_COMMAND, family: "notification", type: "notification-unsnooze-all", target: { actorId: "local-operator", members: [{ notificationId: UUID_3, expectedVersion: 1 }], matchingCount: 1 } },
+  ...["pause", "resume"].map(type => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
+  { ...BASE_COMMAND, family: "application", type: "pause-all", target: { runtimeGeneration: 1 }, payload: { targets: [RUN_TARGET] } },
+  { ...BASE_COMMAND, family: "application", type: "pause-all-and-quit", target: { runtimeGeneration: 1 }, payload: { confirmed: true, targets: [RUN_TARGET] } },
+  { ...BASE_COMMAND, family: "run", type: "resolve-workbook-reference-row", target: { runId: UUID_1, expectedVersion: 1,
+    libraryId: UUID_2, typeId: "onboarding-roster", referenceDigest: HASH_A, key: "hire@example.test",
+    workbookVersion: 2, gateId: "roster-choice" }, payload: { sheetId: "sheet-1", rowId: "row-1" } },
+  { ...BASE_COMMAND, family: "ocr-review", type: "correct-ocr-record", target: { runId: UUID_2, expectedRevision: 1 },
+    payload: { recordId: `${HASH_A}#emergency-contact#1`, assertedEid: null,
+      fields: { answers: [{ path: "employee.name", state: "absent", reason: "blank" }], blockingPaths: ["employee.name"], answersFingerprint: HASH_A } } },
+  ...["discard-ocr-record", "restore-ocr-record"].map(type => ({ ...BASE_COMMAND, family: "ocr-review", type,
+    target: { runId: UUID_2, expectedRevision: 1 }, payload: { recordId: `${HASH_A}#emergency-contact#1` } })),
+  { ...BASE_COMMAND, family: "ocr-review", type: "add-ocr-record", target: { runId: UUID_2, expectedRevision: 1 },
+    payload: { pages: [{ pageKind: "emergency-contact", sourcePage: 1 }] } },
 ];
 
 export const SUBJECT_EVIDENCE = {
@@ -216,7 +217,9 @@ export const NOTIFICATION = {
 };
 
 const CONFIG_BODY=ConfigSchema.parse({ paths: defaultRuntimePaths() });
+export const PREFERENCES_SNAPSHOT = { preferences: NEUTRAL_PERSON_PREFERENCES, preferencesFingerprint: derivePersonPreferencesFingerprint(NEUTRAL_PERSON_PREFERENCES) };
 export const CONFIG_SNAPSHOT = {
+  ...PREFERENCES_SNAPSHOT,
   configSnapshotId: UUID_1,
   revision: 1,
   fingerprint: sha256Hex(canonicalJsonStringify(CONFIG_BODY)),

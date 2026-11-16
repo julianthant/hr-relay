@@ -2,7 +2,6 @@ import { createDryRunPreviewResultTestWorld } from "../../support/helpers/backen
 import { createRunIntegrationTestWorld } from "../../support/helpers/run-integration-world.js";
 import { default as assert } from "node:assert/strict";
 
-import { rmSync } from "node:fs";
 
 
 import { afterEach } from "vitest";
@@ -65,8 +64,8 @@ const {CLAIM, openDatabase, startRunning, resultRequest, cleanup } = createRunIn
 describe("atomic success terminal authority", () => {
 afterEach(cleanup);
 
-  it("rejects the former schema-valid complete/empty-dependencies fabrication bypass", () => {
-    const database = openDatabase();
+  it("rejects the former schema-valid complete/empty-dependencies fabrication bypass", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const resultValue = { schemaHash: HASH_A, value: { complete: true } };
     const fabricated = {
@@ -102,10 +101,13 @@ afterEach(cleanup);
     );
     assert.equal(database.authority.runResults.get(RUN_ID), undefined);
     assert.equal(database.authority.runs.get(RUN_ID)?.completion, undefined);
+    const cancelled = database.authority.runs.transition({ runId: RUN_ID, expectedVersion: running.version, claim: CLAIM,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: LATER }, now: LATER });
+    assert.equal(cancelled.state, "applied");
   });
 
-  it("rejects run/outbox identity, stale claim/version, generic done, and non-running success", () => {
-    const database = openDatabase();
+  it("rejects run/outbox identity, stale claim/version, generic done, and non-running success", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const { result, authorization, factoryAuthorization } = resultRequest(database, running);
     assert.throws(() => database.terminalizeSuccess({
@@ -183,7 +185,7 @@ describe("separations — start planning through the existing service", () => {
 }
 
 {
-const { roots, openDatabases, kualiOpen, PREVIEW_RESULT_SCHEMA_HASH, harness } = createDryRunPreviewResultTestWorld();
+const { cleanup, PREVIEW_RESULT_SCHEMA_HASH, harness } = createDryRunPreviewResultTestWorld();
 
 function terminalRun(database: AuthorityDatabase) {
   const record = database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -191,15 +193,11 @@ function terminalRun(database: AuthorityDatabase) {
   return record;
 }
 
-describe("a dry run previews its transaction node and ends there", () => {
-afterEach(() => {
-  for (const open of kualiOpen.splice(0)) open.dispose();
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+describe("a dry run retains transaction preview accounting", () => {
+afterEach(cleanup);
 
   it("settles a previewed run with a preview record and NOTHING durable from the write half", async () => {
-    const h = harness();
+    const h = await harness();
     await h.run();
 
     const record = terminalRun(h.database);
@@ -218,18 +216,21 @@ afterEach(() => {
     const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
     assert.equal(preview.kind, "dry-run-preview");
     assert.equal(preview.externalCommit, "none");
-    assert.equal(preview.stoppedAtNodeId, WRITE_FIXTURE_NODE_ID);
-    assert.equal(preview.preview.kind, "transaction-dry-run-preview");
-    assert.equal(preview.preview.probe.state, "absent");
-    assert.equal(preview.preview.outcome.state, "would-prepare");
+    assert.equal(preview.coverage.state, "full");
+    const transaction = preview.steps.find(step => step.nodeId === WRITE_FIXTURE_NODE_ID);
+    assert.ok(transaction?.state === "transaction-preview");
+    assert.equal(transaction.preview.kind, "transaction-dry-run-preview");
+    assert.equal(transaction.preview.probe.state, "absent");
+    assert.equal(transaction.preview.outcome.state, "would-prepare");
     assert.equal(
-      preview.preview.outcome.state === "would-prepare" ? preview.preview.outcome.subject.state : undefined,
+      transaction.preview.outcome.state === "would-prepare" ? transaction.preview.outcome.subject.state : undefined,
       "match",
     );
 
 
     const support = workflowDryRunSupport(writeFixtureDescriptor);
-    assert.equal(support.state === "supported" ? support.stopsAt : "", preview.stoppedAtNodeId);
+    assert.ok(support.state === "supported" && "firstTransactionNodeId" in support);
+    assert.equal(support.state === "supported" ? support.firstTransactionNodeId : "", transaction.nodeId);
 
 
     assert.equal(
@@ -267,7 +268,7 @@ afterEach(() => {
   });
 
   it("previews an already-present subject as an OUTCOME, staging nothing and writing nothing", async () => {
-    const h = harness();
+    const h = await harness();
     await h.run({ probe: { state: "present", proof: { transactionId: "T900001" } } });
 
     const record = terminalRun(h.database);
@@ -276,8 +277,10 @@ afterEach(() => {
     assert.ok(result);
     assert.equal(result.resultSchemaHash, PREVIEW_RESULT_SCHEMA_HASH);
     const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
-    assert.equal(preview.preview.probe.state, "present");
-    assert.deepEqual(preview.preview.outcome, { state: "already-present", proofSource: "live-probe" });
+    const transaction = preview.steps.find(step => step.nodeId === WRITE_FIXTURE_NODE_ID);
+    assert.ok(transaction?.state === "transaction-preview");
+    assert.equal(transaction.preview.probe.state, "present");
+    assert.deepEqual(transaction.preview.outcome, { state: "already-present", proofSource: "live-probe" });
     assert.equal(preview.externalCommit, "none");
 
     assert.deepEqual(h.world.events, ["probe"], "the probe settled it; no page was ever staged");
@@ -306,7 +309,7 @@ afterEach(() => {
   });
 
   it("refuses the preview when the probe cannot answer, rather than staging anyway", async () => {
-    const h = harness();
+    const h = await harness();
     await h.run({
       probe: { state: "unknown", reason: "the grid never rendered", observedAt: WRITE_FIXTURE_NOW },
     });

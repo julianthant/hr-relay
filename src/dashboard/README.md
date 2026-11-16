@@ -19,7 +19,7 @@ The browser application starts at `app/main.tsx` and mounts `DashboardApp` from
 | `surfaces/notifications/` | Bell, inbox, destination models, and local preview producer |
 | `surfaces/settings/` | Settings composition and local styles |
 | `surfaces/settings/editor/` | Served fields, drafts, autosave, protected authority, and command attempts |
-| `surfaces/settings/general/` | General, appearance, ChatGPT account port, performance, path picker, and relocation |
+| `surfaces/settings/general/` | General, appearance, ChatGPT account port, performance, ordinary path pickers, and read-only app-data paths |
 | `surfaces/settings/navigation/` | Settings search and keyboard preferences |
 | `surfaces/settings/preflight/`, `routes/`, `storage/`, `providers/` | Readiness, route display, doctor reports, and protected-value controls |
 | `surfaces/settings/catalog/` | Retained row vocabulary model, without a catalog page |
@@ -48,13 +48,16 @@ from their subfolders. Canonical wire contracts live under `src/models/dashboard
 live under `src/rules/commands/`. Browser imports never reach backend composition or task registries.
 
 `app/workflow-sources.ts` reads `config/dashboard-workflow-sources.json`. Each workflow is explicitly
-`mock` or `served`; all configured workflows currently select `mock`. An undeclared ID throws
-`WORKFLOW_SOURCE_UNDECLARED`. A served failure never falls back to a mock.
+`mock`, `served` or `hidden`. Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and the public I-9 Check PDF parent select `served`.
+OCR and I-9 Lookup are hidden children. The I-9 Check person child has no source entry.
+Other configured workflows select `mock`. An undeclared ID throws `WORKFLOW_SOURCE_UNDECLARED`.
+A served failure never falls back to a mock. I-9 Check's live acceptance is blocked pending the
+operator's choice of ordinary execution with local publication or a separate preview implementation.
 
 Bootstrap, Settings, Preflight, storage, and the served intake workspace use the typed client.
 Current Logs, worker cards, Analytics, Explorer, notifications, and workflow runs have local
 producers. Retained client methods do not prove those consumers are wired. The
-[current frontend mock wiring checklist](../../docs/rebuild/reference/frontend-backend-integration.md#current-frontend-mock-wiring-checklist)
+[current frontend mock wiring checklist](../../docs/reference/frontend-backend-integration.md#current-frontend-mock-wiring-checklist)
 names each replacement seam and its acceptance contract.
 
 ## Navigation
@@ -75,5 +78,5 @@ running BFF for dashboard data. `npm run web:build` builds dashboard and specime
 `http://localhost:5174/kit.html` shows the primitives.
 
 Read [AGENTS.md](AGENTS.md) before edits, [DESIGN.md](DESIGN.md) for tokens and layout,
-[PARITY.md](PARITY.md) for visual verification, and [dashboard surfaces](../../docs/rebuild/reference/dashboard-surfaces.md)
+[MOCKS.md](MOCKS.md) for the mock scene runner, and [dashboard surfaces](../../docs/reference/dashboard-surfaces.md)
 for mounted behavior. `tests/perf/frontend/` contains the isolated Queue/Logs performance fixture.

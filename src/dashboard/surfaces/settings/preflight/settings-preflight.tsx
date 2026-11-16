@@ -1,7 +1,9 @@
+import { usePreflightOcr } from "./preflight-ocr-model.js";
+import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { ReactNode } from "react";
 import { CapabilitiesSection } from "./settings-capabilities.js";
-import { Badge, Banner, BodySection, Button, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsText, Field } from "../../../ds/ui.js";
+import { Badge, BodySection, Button, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsText, Field, Notice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { usePreflightActions } from "./preflight-actions-model.js";
 import { usePreflightScope } from "./preflight-client.js";
@@ -14,20 +16,7 @@ import type { EditableSettingsWire } from "../../../../models/dashboard/settings
 import "../../shared/run-evidence/diagnostic-presentation.css";
 import { LoadingRegion, SettingsRowsSkeleton, SkeletonText } from "../../shared/loading/loading.js";
 import { fmtClock, fmtInstantDay } from "../../shared/status/format.js";
-
-const CHECK_COPY: Record<string, { name: string; description: string }> = {
-  "runtime.compatibility": { name: "Runtime compatibility", description: "Checks Node.js and installed dependencies for this release." },
-  "browser.assets": { name: "Browser tools", description: "Checks the required browser and extension files." },
-  "config.valid": { name: "Runtime settings", description: "Checks current configuration validity." },
-  "filesystem.health": { name: "Files and disk space", description: "Checks required directories and free space." },
-  "authority.health": { name: "Data store readiness", description: "Checks the data store and run records for this scope." },
-  "ports.available": { name: "Network ports", description: "Checks the dashboard's reserved ports." },
-  "fiscal.current": { name: "Current fiscal year", description: "Checks the workflow's fiscal year configuration." },
-  "secrets.ucpath-sso": { name: "UCPath sign-in", description: "Checks the username and password required for UCPath sign-in." },
-  "secrets.timekeeper": { name: "Timekeeper name", description: "Checks the timekeeper name needed by this workflow." },
-  "secrets.sharepoint-roster": { name: "SharePoint roster", description: "Checks the onboarding roster location used by this workflow." },
-  "process.orphans": { name: "Unfinished processes", description: "Checks for stale processes or worker leases." },
-};
+import { CHECK_COPY } from "./preflight-check-copy.js";
 
 function checkCopy(id: string): { name: string; description: string } {
   return CHECK_COPY[id] ?? {
@@ -48,7 +37,6 @@ export function PreflightScopeSelect() {
 
 const SECRET_FIELDS = {
   "secrets.ucpath-sso": [{ name: "ucpathUserId", label: "UCPath username" }, { name: "ucpathPassword", label: "UCPath password" }],
-  "secrets.timekeeper": [{ name: "timekeeperName", label: "Timekeeper name" }],
   "secrets.sharepoint-roster": [{ name: "sharepointOnboardingRosterUrl", label: "SharePoint onboarding roster URL" }],
 } as const;
 
@@ -95,7 +83,7 @@ function SettingsPreflightCheck({ check, protectedSettings }: { check: Preflight
   </div>;
 }
 
-function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, children }: { title: string; subtitle?: string; checks: readonly PreflightCheckWire[]; children?: ReactNode; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
+function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, children, pending = false }: { pending?: boolean; title: string; subtitle?: string; checks: readonly PreflightCheckWire[]; children?: ReactNode; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   return <BodySection title={title} description={subtitle}>
     {children ? <div role="group" aria-label={title} className="preflight-readiness-content">
       {checks.length > 0 && <div className="workflow-readiness-requirements"><h3 className="workflow-readiness-subheading">Requirements</h3><FormGroup label="Workflow requirements"><div role="list">
@@ -104,7 +92,7 @@ function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, ch
       {children}
     </div> : <FormGroup label={title}><div role="list">
       {checks.length === 0
-        ? <div className="diagnostic-empty-group">No checks were returned for this group.</div>
+        ? !pending && <div className="diagnostic-empty-group">No checks were returned for this group.</div>
         : checks.map(check => <SettingsPreflightCheck key={check.id} check={check} protectedSettings={protectedSettings} />)}
     </div></FormGroup>}
   </BodySection>;
@@ -112,7 +100,10 @@ function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, ch
 
 function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workflowLabels }: { workflowLabels?: ReadonlyMap<string, string>; preflight: PreflightRerunState; onRerun: () => void; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   const scope = usePreflightScope();
+  const { snapshot: ocr, testOcr } = usePreflightOcr();
+  const ocrBusy = ocr.state === "loading";
   const displayed = preflight.state === "completed" || preflight.state === "historical" || preflight.state === "refreshing" ? preflight : undefined;
+  const show = useDelayedLoading(displayed === undefined && preflight.state !== "refused");
   const busy = preflight.state === "running" || preflight.state === "refreshing";
   const previousMessage = preflight.state === "historical" ? preflight.message : preflight.state === "refreshing" ? preflight.previousMessage : undefined;
   const historical = previousMessage !== undefined;
@@ -128,13 +119,21 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
           <option value="dashboard">Dashboard</option>
           {scope.workflows.map(workflow => <option key={workflow.id} value={workflow.id}>{workflow.label}</option>)}
         </Select>
-      <Button variant="secondary" onClick={onRerun} disabled={busy || preflight.state === "idle"} aria-busy={busy}>Run preflight</Button>
     </>} />
     {scope.state === "unavailable" && <p className="diagnostic-status">Workflow scopes could not be read.</p>}
     <BodySection title="Status">
-    {preflight.state === "refused" && <Banner tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
-    {historical && <Banner tone="warning" title="Previous result">{previousMessage} Run preflight for current readiness.</Banner>}
-    {preflight.state !== "refused" && (displayed === undefined ? <LoadingRegion label="Loading readiness"><FormGroup label="Readiness summary" className="diagnostic-summary"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} value={<SkeletonText className="w-32" />} /></FormGroup></LoadingRegion> : <FormGroup label="Readiness summary" className="diagnostic-summary">
+      <div className="mb-[var(--ds-space-heading-content)] flex flex-wrap gap-2">
+        <Button variant="secondary" onClick={onRerun} disabled={busy || preflight.state === "idle"} aria-busy={busy}>Run preflight</Button>
+        <Button variant="secondary" onClick={() => { void testOcr(); }} disabled={ocr.state === "disabled" || ocrBusy || ocr.state === "uncertain"} loading={ocrBusy}>Test OCR</Button>
+      </div>
+      {ocr.state === "disabled" && <p className={cn(dsText.meta, "mb-[var(--ds-space-heading-content)] font-normal text-[13px] text-[color:var(--ds-fg-secondary)]")}><span>OCR test unavailable</span> <span>{ERROR_CATALOG[ocr.code].text}</span></p>}
+      {ocr.state !== "idle" && ocr.state !== "loading" && ocr.state !== "disabled" && <Notice
+        tone={ocr.state === "completed" ? "success" : ocr.state === "failed" ? "danger" : "warning"}
+        title={ocr.state === "completed" ? "OCR test completed" : ocr.state === "uncertain" ? "OCR test outcome uncertain" : ocr.state === "refused" ? "OCR test refused" : "OCR test failed"}
+        description={ocr.state === "completed" ? `Model: ${ocr.model}` : ERROR_CATALOG[ocr.code].text} />}
+    {preflight.state === "refused" && <Notice tone="warning" title="Readiness unavailable" description={preflight.message} />}
+    {historical && <Notice sticky tone="warning" title="Readiness check is out of date" description={`${previousMessage} Run it again in Settings > Preflight.`} />}
+    {preflight.state !== "refused" && (displayed === undefined ? show && <LoadingRegion label="Loading readiness"><FormGroup label="Readiness summary" className="diagnostic-summary"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} value={<SkeletonText className="w-32" />} /></FormGroup></LoadingRegion> : <FormGroup label="Readiness summary" className="diagnostic-summary">
       <ResultRow controlWidth="wide" label={<span className="diagnostic-summary-label">
         <StatusDot status={busy ? "running" : historical ? "queued" : verdict === "fail" ? "failed" : verdict === "warning" ? "doneWarnings" : "verifiedDone"} />
         {busy ? "Checking readiness…" : historical ? "Previous check" : attentionCount === 0 ? "Ready to run" : `${attentionCount} ${attentionCount === 1 ? "check needs" : "checks need"} attention`}
@@ -148,11 +147,11 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
       </SettingsPreflightGroup>
       <SettingsPreflightGroup title="Runtime" subtitle="Compatibility, browser tools, storage, and local resources." checks={runtimeChecks} protectedSettings={historical ? undefined : protectedSettings} />
     </>}
-    {displayed === undefined && preflight.state !== "refused" && <>
-      <SettingsPreflightGroup title="Workflow readiness" checks={[]}>
+    {displayed === undefined && <>
+      <SettingsPreflightGroup title="Workflow readiness" checks={[]} pending>
         {workflowLabels && <CapabilitiesSection integrated workflowLabels={workflowLabels} workflowId={scope.selected === "dashboard" ? undefined : scope.selected} />}
       </SettingsPreflightGroup>
-      <BodySection title="Runtime" description="Compatibility, browser tools, storage, and local resources."><LoadingRegion label="Loading readiness checks"><FormGroup label="Runtime checks loading"><SettingsRowsSkeleton rows={6} presentation="result" copy={["runtime.compatibility", "browser.assets", "config.valid", "filesystem.health", "authority.health", "ports.available"].map(id => ({ label: CHECK_COPY[id].name, description: CHECK_COPY[id].description }))} /></FormGroup></LoadingRegion></BodySection>
+      {preflight.state !== "refused" && <BodySection title="Runtime" description="Compatibility, browser tools, storage, and local resources.">{show && <LoadingRegion label="Loading readiness checks"><FormGroup label="Runtime checks loading"><SettingsRowsSkeleton rows={6} presentation="result" copy={["runtime.compatibility", "browser.assets", "config.valid", "filesystem.health", "authority.health", "ports.available"].map(id => ({ label: CHECK_COPY[id].name, description: CHECK_COPY[id].description }))} /></FormGroup></LoadingRegion>}</BodySection>}
     </>}
   </section>;
 }
@@ -173,8 +172,8 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
       <Button size="sm" variant="secondary" onClick={onRerun} disabled={busy || preflight.state === "idle"} aria-busy={busy}>Run preflight</Button>
     </div>
     {preflight.state === "idle" && <span className={dsText.meta}>No current preflight report. Loading readiness…</span>}
-    {preflight.state === "refused" && <Banner tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
-    {previousMessage !== undefined && <Banner tone="warning" title="Previous result">{previousMessage} Run preflight for current readiness.</Banner>}
+    {preflight.state === "refused" && <Notice tone="warning" title="Readiness unavailable" description={preflight.message} />}
+    {previousMessage !== undefined && <Notice sticky tone="warning" title="Readiness check is out of date" description={`${previousMessage} Run it again in Settings > Preflight.`} />}
     {displayed !== undefined && <>
       <span className={cn(dsText.meta, "break-words text-[color:var(--ds-fg-muted)]")}>
         Last checked <time dateTime={displayed.report.checkedAt}>{fmtInstantDay(displayed.report.checkedAt)} {fmtClock(displayed.report.checkedAt)}</time>
@@ -183,7 +182,7 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
         {displayed.checks.map(check => <div key={check.id} className="settings-preflight-item">
           <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
             <Badge tone={check.verdict === "fail" ? "danger" : check.verdict === "warning" ? "warning" : "success"}>{check.verdict}</Badge>
-            <span className={cn(dsText.ui, "break-words font-medium")}>{checkCopy(check.id).name}</span>
+            <span className={cn(dsText.ui, "break-words")}>{checkCopy(check.id).name}</span>
           </div>
           <span className={cn(dsText.body, "break-words text-[color:var(--ds-fg-muted)]")}>{checkCopy(check.id).description}</span>
           {check.verdict !== "pass" && <span className={cn(dsText.body, "break-words text-[color:var(--ds-fg-muted)]")}>{check.detail}</span>}

@@ -2,7 +2,7 @@ import { createRunQueueProjectionTestWorld } from "../../../support/helpers/back
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { declareProjectionWorker, atDayOffset, claimEventOf, DAY, dayOffsetOf, instantOffsetOf, notificationRecordOf, runEndedEventOf, traceOf, uuidOf, workerLeaseOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { declareProjectionWorker, atDayOffset, claimEventOf, DAY, dayOffsetOf, instantOffsetOf, notificationRecordOf, runEndedEventOf, traceOf, uuidOf, workerMemberOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
 const {world, runRecordOf, queuedEventOf, CLAIM, cleanup } = createRunQueueProjectionTestWorld();
 
@@ -14,7 +14,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
 
   function seedWorkerSpans(w: DashboardWorld, workerId = "person-lookup-worker-1"): void {
     declareProjectionWorker(w.authority, workerId, Number(workerId.split("-").at(-1)));
-    w.authority.putWorkerLease(workerLeaseOf({ workerId }));
+    w.authority.putWorkerMember(workerMemberOf(w.authority, { workerId }));
     w.writer.emit({
       t: "span.started", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       workerId, spanPath: `worker/person-lookup/${workerId}`, name: "person-lookup",
@@ -28,12 +28,12 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     });
   }
 
-  it("returns a requeued run to the queue, preserves its attempt, and frees the worker holding it", () => {
-    const w = world();
+  it("returns a requeued run to the queue, preserves its attempt, and frees the worker holding it", async () => {
+    const w = await world();
     seedWorkerSpans(w);
     queuedEventOf(w, { seed: 1 });
-    w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...CLAIM, workerLifetime: { membershipRevision: 1, leaseGeneration: 1 } }, claimGeneration: 1 }));
-    w.authority.putWorkerLease(workerLeaseOf({ lifecycle: { state: "busy", startedAt: instantOffsetOf(0), heartbeatAt: instantOffsetOf(0), runId: uuidOf(1) } }));
+    w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...CLAIM }, claimGeneration: 1 }));
+    w.authority.putWorkerMember(workerMemberOf(w.authority, { activity: { state: "busy", runId: uuidOf(1) } }));
     claimEventOf(w, 1);
     assert.equal(w.projection.queueSurface(uuidOf(1))?.status, "running");
     assert.deepEqual(
@@ -42,7 +42,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     );
 
     w.authority.put(runRecordOf({ seed: 1, attempt: 1, claimGeneration: 1, lifecycle: { state: "queued" } }));
-    w.authority.putWorkerLease(workerLeaseOf());
+    w.authority.putWorkerMember(workerMemberOf(w.authority));
     w.writer.emit({
       t: "run.requeued", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1),
@@ -63,8 +63,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.deepEqual(card.currentRun, { state: "absent", reason: "no current claimed run" });
   });
 
-  it("closes an open gate on resolution and records the key and digest that resolved it", () => {
-    const w = world();
+  it("closes an open gate on resolution and records the key and digest that resolved it", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, lifecycle: { state: "parked-gate", gateId: "approval", parkedAt: instantOffsetOf(0), resumeAt: "approval" } });
     w.writer.emit({
       t: "gate.opened", ts: w.clock.now().toISOString(), workflow: "person-lookup",
@@ -90,8 +90,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     ]);
   });
 
-  it("closes a task span an earlier process opened without inventing when it started", () => {
-    const w = world();
+  it("closes a task span an earlier process opened without inventing when it started", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     // A restart: the end arrives for a span whose start belonged to a process
@@ -111,8 +111,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.equal(span?.startedAt, undefined);
   });
 
-  it("frees the worker when the run it held ends, then marks the standing card failed when the worker stops", () => {
-    const w = world();
+  it("frees the worker when the run it held ends, then marks the standing card failed when the worker stops", async () => {
+    const w = await world();
     seedWorkerSpans(w);
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
@@ -127,7 +127,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.equal(idle.state, "idle");
     assert.deepEqual(idle.currentRun, { state: "absent", reason: "no current claimed run" });
 
-    // Only durable lease settlement closes a worker card; ending a span is an observation.
+    // Only the pool's observed exit closes a worker card; ending a span is an observation.
     w.writer.emit({
       t: "span.ended", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       workerId: "person-lookup-worker-1", spanPath: "worker/person-lookup/person-lookup-worker-1",
@@ -135,29 +135,21 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     });
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0].state, "idle");
 
-    w.authority.putWorkerLease(workerLeaseOf({
-      lifecycle: {
-        state: "stopped",
-        startedAt: instantOffsetOf(0),
-        stoppedAt: instantOffsetOf(0, 9_000),
-        reason: "shutdown",
-      },
-      directive: "stop",
-      version: 3,
-    }));
+    w.authority.putWorkerMember(workerMemberOf(w.authority, { state: "exited", version: 3,
+      exit: { code: 0, signal: null, at: instantOffsetOf(0, 9_000), outcome: "stopped", settlement: "settled" } }));
     const stopped = w.projection.buildDashboardDayWire(DAY).workerCards[0];
     assert.equal(stopped.state, "failed");
-    assert.equal(stopped.stopReason, "shutdown");
+    assert.equal(stopped.stopReason, "operator");
     assert.deepEqual(stopped.currentRun, { state: "absent", reason: "no current claimed run" });
   });
 
-  it("orders worker cards by id and draws only the workers AUTHORITY names", () => {
-    const w = world();
+  it("orders worker cards by id and draws only the workers AUTHORITY names", async () => {
+    const w = await world();
 
     seedWorkerSpans(w, "person-lookup-worker-2");
     seedWorkerSpans(w, "person-lookup-worker-1");
     declareProjectionWorker(w.authority, "person-lookup-worker-3", 3);
-    w.authority.putWorkerLease(workerLeaseOf({ workerId: "person-lookup-worker-3" }));
+    w.authority.putWorkerMember(workerMemberOf(w.authority, { workerId: "person-lookup-worker-3" }));
     w.writer.emit({
       t: "span.started", kind: "worker", ts: w.clock.now().toISOString(), workflow: "person-lookup",
       workerId: "person-lookup-worker-4", spanPath: "worker/person-lookup/person-lookup-worker-4",
@@ -172,8 +164,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.deepEqual(cards[2].browsers, []);
   });
 
-  it("refuses a replayed run.queued rather than folding a second identity over the first", () => {
-    const w = world({ collectRebuilds: true });
+  it("refuses a replayed run.queued rather than folding a second identity over the first", async () => {
+    const w = await world({ collectRebuilds: true });
     const queued = queuedEventOf(w, { seed: 1 });
     // Identity attributes are write-once. A second `run.queued` for the same
     // run would silently reset the attempt, the members and the details.
@@ -188,8 +180,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.equal(w.projection.buildDashboardDayWire(DAY).queueSurfaces.length, 1);
   });
 
-  it("refuses a RUN span that ended as skipped — skipped is a task-span outcome", () => {
-    const w = world({ collectRebuilds: true });
+  it("refuses a RUN span that ended as skipped — skipped is a task-span outcome", async () => {
+    const w = await world({ collectRebuilds: true });
     queuedEventOf(w, { seed: 1 });
     // The wire union permits the shape (one outcome enum serves both span
     // kinds); the fold is what knows a run cannot be conditionally skipped.
@@ -201,8 +193,22 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces)", () => {
     assert.match(w.projection.health().lastError ?? "", /skipped is a task-span outcome/);
   });
 
-  it("orders the month calendar, the workflow badges and the inbox deterministically", () => {
-    const w = world();
+  it("counts running and queued runs apart in the workflow's status counts", async () => {
+    const w = await world();
+    for (const [seed, workerId] of [[1, "person-lookup-worker-1"], [2, "person-lookup-worker-2"]] as const) {
+      queuedEventOf(w, { seed });
+      w.authority.put(runRecordOf({ seed, lifecycle: { state: "running", ...CLAIM, workerId }, claimGeneration: 1, version: 2 }));
+      claimEventOf(w, seed, workerId);
+    }
+    queuedEventOf(w, { seed: 3 });
+
+    assert.deepEqual(w.projection.buildDashboardDayWire(DAY).workflowCounts, [
+      { workflowId: "person-lookup", count: 3, statusCounts: [{ status: "queued", count: 1 }, { status: "running", count: 2 }] },
+    ]);
+  });
+
+  it("orders the month calendar, the workflow badges and the inbox deterministically", async () => {
+    const w = await world();
     atDayOffset(w, 0);
     queuedEventOf(w, { seed: 1 });
     queuedEventOf(w, { seed: 2, workflow: "separations-kuali-finalization" });

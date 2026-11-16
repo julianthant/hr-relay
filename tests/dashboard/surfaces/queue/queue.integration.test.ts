@@ -11,7 +11,8 @@ partition,
 queueRowAccessibleName,
 queueRowTitle,
 rowInfoFacts,
-visibleRunIds
+visibleQueueKeys,
+queueScopeWorkflow
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueuePanel,QueueRow } from "../../../../src/dashboard/surfaces/queue/queue.js";
 import {
@@ -27,6 +28,10 @@ uuidOf,
 } from "../../../support/fixtures/dashboard/fixture-day.js";
 import { summaryFixture } from "../../../support/helpers/backend/served-database-surfaces-fixtures.js";
 import { id } from "../../../support/helpers/database-foundation/fixtures.js";
+
+import { queueParentFixture } from "../../../support/helpers/dashboard/queue-parent-fixture.js";
+import { queueKeyboardEntries, queueMemberKey, queueMemberSelection } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import type { QueueRecordMember } from "../../../../src/models/dashboard/projection.js";
 
 const rows = FIXTURE_DAY_WIRE.queueSurfaces;
 
@@ -60,12 +65,67 @@ function rowMarkup(surface: QueueSurfaceWire): string {
 }
 
 describe("Queue consumes the served day boundary", () => {
+  it("keeps shared lookup records individually selectable and targets failed pages at their own logs", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const source = rowWhere(row => row.surfaceKind === "operation" && row.memberRunIds.length === 3);
+    assert.equal(source.surfaceKind, "operation");
+    if (source.surfaceKind !== "operation") throw new Error("operation fixture changed shape");
+    const members = source.memberRunIds.map(runId => rowWhere(row => row.runId === runId));
+    const owner = { runId: source.runId, workflowId: "ocr", partitionDay: FIXTURE_DAY, label: "OCR", status: "awaiting-approval", panelKind: "review" };
+    const refs = [1, 2, 3].map(page => ({ runId: source.runId, recordId: `${"a".repeat(64)}#emergency-contact#${page}` }));
+    const surface = QueueSurfaceWireSchema.parse({ ...source, title: "Three source records", recordMembers: {
+      runIds: source.memberRunIds, members: [...refs.map((record, index) => ({ kind: "record", record,
+        title: index === 1 ? "Example, Robin" : "Example, Avery", status: "awaiting-approval", statusLabel: "Needs lookup",
+        childRunIds: [members[index === 1 ? 1 : 0].runId], target: { ...owner, section: "review", record } })),
+      { kind: "page-failure", ownerRunId: source.runId, sourcePage: 9, title: "Page 9", status: "failed", statusLabel: "Failed",
+        childRunIds: [members[2].runId], target: { ...owner, runId: members[2].runId, workflowId: "ocr-page", label: "OCR page", panelKind: "run", status: "failed", section: "logs" } }],
+    } });
+    assert.equal(surface.surfaceKind, "operation");
+    if (surface.surfaceKind !== "operation" || surface.recordMembers === undefined) throw new Error("record fixture missing");
+    const served = [surface, ...members];
+    const keys = visibleQueueKeys(served);
+    assert.equal(new Set(keys).size, 5);
+    assert.ok(members.every(member => !keys.includes(member.runId)));
+    const recordMembers = surface.recordMembers;
+    assert.deepEqual(queueKeyboardEntries(served).filter(entry => entry.kind === "record").map(entry => entry.member),
+      [recordMembers.members[3], ...recordMembers.members.slice(0, 3)]);
+    const host = document.createElement("div"); document.body.append(host);
+    const root = createRoot(host);
+    const selected: QueueRecordMember[] = [], native: string[] = [];
+    try {
+      await act(async () => root.render(createElement(QueuePanel, {
+        surfaces: served, state: { nowIso: FIXTURE_NOW, openWells: new Set<string>(), selectedMember: queueMemberSelection(recordMembers.members[1]) },
+        handlers: { onSelect: runId => native.push(runId), onOpenMember: member => selected.push(member) },
+        workflowLabelOf: () => "Fixture", panelLabel: "Fixture", day: FIXTURE_DAY,
+      })));
+      for (const member of surface.recordMembers.members) {
+        const key = queueMemberKey(queueMemberSelection(member));
+        const line = [...host.querySelectorAll<HTMLTableRowElement>("tr[data-demo-row-id]")].find(line => line.dataset.demoRowId === key);
+        assert.ok(line);
+        for (const target of [line, ...line.cells]) {
+          selected.length = 0;
+          await act(async () => target.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+          assert.deepEqual(selected, [member]);
+        }
+        const name = line.querySelector<HTMLButtonElement>("button[aria-pressed]"); assert.ok(name);
+        assert.equal(name.type, "button"); assert.equal(name.tabIndex, 0);
+        assert.doesNotMatch(name.className, /underline/u);
+        selected.length = 0;
+        await act(async () => name.click());
+        assert.deepEqual(selected, [member]);
+        assert.doesNotMatch(line.textContent ?? "", /Retry/u);
+      }
+      assert.deepEqual(native, []);
+      assert.equal(host.querySelectorAll('button[aria-pressed="true"]').length, 1);
+      if (source.memberPreview.state === "present") assert.ok(!host.textContent?.includes(source.memberPreview.value));
+    } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+  });
   it("keeps operation members contained once while keyboard traversal reaches the same loaded rows", () => {
     const operation = rowWhere((row) => row.surfaceKind === "operation" && row.memberRunIds.length === 3);
     assert.equal(operation.surfaceKind, "operation");
     if (operation.surfaceKind !== "operation") throw new Error("operation fixture changed shape");
     const selected = rows.filter((row) => row.runId === operation.runId
-      || (row.lineage.state === "child" && row.lineage.parentRunId === operation.runId));
+      || (row.parent !== null && row.parent.runId === operation.runId));
 
     const partitioned = partition(selected);
     assert.deepEqual(partitioned.top.map((row) => row.runId), [operation.runId]);
@@ -73,7 +133,7 @@ describe("Queue consumes the served day boundary", () => {
       new Set((partitioned.membersOf.get(operation.runId) ?? []).map((row) => row.runId)),
       new Set(operation.memberRunIds),
     );
-    assert.deepEqual(new Set(visibleRunIds(selected)), new Set([operation.runId, ...operation.memberRunIds]));
+    assert.deepEqual(new Set(visibleQueueKeys(selected)), new Set([operation.runId, ...operation.memberRunIds]));
 
     const markup = panelMarkup(selected);
     assert.equal((markup.match(new RegExp(`data-demo-row-id="${operation.runId}"`, "gu")) ?? []).length, 1);
@@ -83,8 +143,78 @@ describe("Queue consumes the served day boundary", () => {
     assert.match(markup, new RegExp(`${operation.memberRollup.terminal} of ${operation.memberRollup.total} finished; ${operation.memberRollup.failed} failed`, "u"));
   });
 
-  it("retains every row when bounded summary pages are assembled, then applies only the requested scope", () => {
-    const f = summaryFixture();
+  it("retains nested inline context, failure lines, linked gates and keyboard traversal", () => {
+    const base = rowWhere(row => row.surfaceKind === "single");
+    const parent = QueueSurfaceWireSchema.parse({ ...base, surfaceKind: "operation", runId: uuidOf(4301), parent: null,
+      title: "Outer group", memberRunIds: [uuidOf(4302)], memberRollup: { total: 1, terminal: 0, failed: 0 },
+      memberPreview: { state: "present", value: "Inner group" } });
+    const nested = QueueSurfaceWireSchema.parse({ ...parent, runId: uuidOf(4302), workflowId: "ocr", title: "Inner group",
+      parent: queueParentFixture(parent.runId, { workflowId: parent.workflowId }), memberRunIds: [uuidOf(4303)],
+      memberRollup: { total: 1, terminal: 1, failed: 1 }, linkedRuns: [{ runId: uuidOf(4304), workflowId: "i9-lookup",
+        partitionDay: FIXTURE_DAY, label: "I-9 lookup", panelKind: "review", status: "awaiting-approval" }] });
+    const failed = QueueSurfaceWireSchema.parse({ ...base, runId: uuidOf(4303), workflowId: "ocr-page", title: "Page 9",
+      parent: queueParentFixture(nested.runId, { visibility: "hidden-unless-failed", workflowId: nested.workflowId }),
+      status: "failed", endedAt: { state: "present", value: FIXTURE_NOW } });
+    const served = [parent, nested, failed];
+    assert.equal(queueScopeWorkflow(failed, served), parent.workflowId);
+    assert.equal(queueScopeWorkflow(nested, served), parent.workflowId);
+    assert.deepEqual(visibleQueueKeys(served), [parent.runId, nested.runId, failed.runId]);
+    const markup = panelMarkup(served);
+    for (const row of served) assert.equal((markup.match(new RegExp(`data-demo-row-id="${row.runId}"`, "gu")) ?? []).length, 1);
+    assert.match(markup, /I-9 lookup/u);
+    assert.match(markup, /Members of Inner group/u);
+    assert.match(markup, /Page 9/u);
+  });
+
+  it("selects the member from the whole line and retains its keyboard button", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const operation = rowWhere((row) => row.surfaceKind === "operation" && row.memberRunIds.length === 3);
+    assert.equal(operation.surfaceKind, "operation");
+    if (operation.surfaceKind !== "operation") throw new Error("operation fixture changed shape");
+    const members = operation.memberRunIds.map(runId => rowWhere(row => row.runId === runId));
+    const member = members[0];
+    assert.ok(member);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const opened: string[] = [];
+    try {
+      await act(async () => root.render(createElement(QueuePanel, {
+        surfaces: [operation, ...members],
+        state: { nowIso: FIXTURE_NOW, selectedRunId: operation.runId, openWells: new Set<string>() },
+        handlers: { onSelect: runId => opened.push(runId) },
+        workflowLabelOf: () => "Fixture",
+        panelLabel: "Fixture",
+        day: FIXTURE_DAY,
+      })));
+      const line = host.querySelector<HTMLTableRowElement>(`tr[data-demo-row-id="${member.runId}"]`);
+      assert.ok(line);
+      const status = line.querySelector("td:last-child span");
+      assert.ok(status);
+      for (const target of [line, ...line.cells, status]) {
+        opened.length = 0;
+        await act(async () => { target.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+        assert.deepEqual(opened, [String(member.runId)]);
+      }
+      const name = line.querySelector<HTMLButtonElement>("button[aria-pressed]");
+      assert.ok(name);
+      assert.equal(name.tagName, "BUTTON");
+      assert.equal(name.type, "button");
+      assert.equal(name.tabIndex, 0);
+      name.focus();
+      assert.equal(document.activeElement, name);
+      opened.length = 0;
+      await act(async () => name.click());
+      assert.deepEqual(opened, [String(member.runId)]);
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("retains every row when bounded summary pages are assembled, then applies only the requested scope", async () => {
+    const f = await summaryFixture();
     try {
       const selectedIds = [id(9761), id(9762), id(9763)];
       const now = "2026-09-09T12:00:00.000Z";
@@ -103,21 +233,22 @@ describe("Queue consumes the served day boundary", () => {
       } while (after !== undefined);
       assert.deepEqual(seen, selectedIds);
       const served = f.projection.buildDashboardDayWire("2026-09-09").queueSurfaces;
-      assert.deepEqual(visibleRunIds(served), seen);
+      assert.deepEqual(visibleQueueKeys(served), seen);
       const markup = panelMarkup(served);
       for (const runId of seen) assert.equal(markup.split(`data-demo-row-id="${runId}"`).length - 1, 1);
       assert.deepEqual(queryQueueSummaries(f.db, { workflow: "person-lookup", status: "failed", limit: 1 }).items, []);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 
   it("renders one queue row for repeated item attempts and opens the exact selected run", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    const first = rowWhere((row) => row.surfaceKind === "single" && row.status === "failed");
+    const first = QueueSurfaceWireSchema.parse({ ...rowWhere((row) => row.surfaceKind === "single" && row.status === "failed"), attempt: 7, startedAt: "2026-08-03T16:00:00.000Z" });
     const newest = QueueSurfaceWireSchema.parse({
       ...first,
       runId: uuidOf(9710),
       itemId: first.itemId,
       attempt: first.attempt + 1,
+      startedAt: "2026-08-03T17:00:00.000Z",
       status: "done",
       endedAt: { state: "present", value: FIXTURE_NOW },
     });
@@ -141,14 +272,122 @@ describe("Queue consumes the served day boundary", () => {
       const trigger = host.querySelector<HTMLButtonElement>(`button[aria-label="Attempts for ${queueRowTitle(newest)}"]`);
       assert.ok(trigger);
       await act(async () => trigger.click());
-      const attempt = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(node => node.textContent?.includes(`#${first.attempt}`));
+      const attempt = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(node => node.textContent?.includes("#1"));
       assert.ok(attempt);
-      assert.match(attempt.textContent ?? "", new RegExp(`#${String(first.attempt)}.*Failed`, "u"));
+      assert.match(attempt.textContent ?? "", /#1.*Failed/u);
       await act(async () => attempt.click());
       assert.deepEqual(opened, [String(first.runId)]);
-      assert.deepEqual(groupQueueAttempts([first, newest])[0]?.attempts.map((entry) => entry.runId), [first.runId, newest.runId]);
+      assert.equal(first.attempt, 7);
+      assert.equal(newest.attempt, 8);
+      await act(async () => root.render(createElement(QueuePanel, {
+        surfaces: [first, newest],
+        state: { nowIso: FIXTURE_NOW, selectedRunId: first.runId, openWells: new Set<string>(), panelWorkflowId: "person-lookup" },
+        handlers: { onSelect: (runId) => opened.push(runId) },
+        workflowLabelOf: () => "Person Lookup",
+        panelLabel: "Person Lookup",
+        day: FIXTURE_DAY,
+      })));
+      assert.equal(host.querySelector("button[title=\"Attempt 1\"]")?.textContent?.trim(), "#1");
+      assert.deepEqual(groupQueueAttempts([first, newest])[0]?.attempts.map((entry) => entry.runId), [newest.runId, first.runId]);
     } finally {
       await act(async () => root.unmount());
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("renames a row title in place only when the host offers it: Enter and blur save, Escape cancels, empty restores", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const source = rowWhere((candidate) => candidate.surfaceKind === "single" && candidate.parent === null);
+    const row = source.actions.some((action) => action.kind === "command" && action.command === "rename") ? source
+      : QueueSurfaceWireSchema.parse({ ...source, actions: [...source.actions, {
+        key: "rename", label: "Rename run…", intent: "neutral", icon: "rename", placement: ["menu"],
+        kind: "command", command: "rename", expectedVersion: source.rowRevision,
+      }] });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const renamed: [string, string][] = [];
+    const draw = (onRenameTitle?: (runId: string, name: string) => void) => createElement(QueuePanel, {
+      surfaces: [row],
+      state: { nowIso: FIXTURE_NOW, openWells: new Set<string>(), panelWorkflowId: row.workflowId },
+      handlers: { onSelect: () => undefined, ...(onRenameTitle === undefined ? {} : { onRenameTitle }) },
+      workflowLabelOf: () => "Person Lookup",
+      panelLabel: "Person Lookup",
+      day: FIXTURE_DAY,
+    });
+    const title = () => host.querySelector<HTMLElement>("[data-demo-row-title]");
+    const input = () => host.querySelector<HTMLInputElement>('input[aria-label="Run name"]');
+    const edit = async (value: string, settle: "Enter" | "Escape" | "blur") => {
+      await act(async () => title()?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+      const field = input();
+      assert.ok(field);
+      assert.equal(field.value, queueRowTitle(row));
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(field, value);
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => {
+        if (settle === "blur") field.blur();
+        else field.dispatchEvent(new KeyboardEvent("keydown", { key: settle, bubbles: true }));
+      });
+      assert.equal(input(), null);
+    };
+    try {
+      await act(async () => root.render(draw()));
+      await act(async () => title()?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+      assert.equal(input(), null);
+      await act(async () => root.render(draw((runId, name) => renamed.push([runId, name]))));
+      await edit("  April contacts  ", "Enter");
+      await edit("Ignored", "Escape");
+      await edit("  May roster  ", "blur");
+      await edit("", "Enter");
+      assert.deepEqual(renamed, [[row.runId, "April contacts"], [row.runId, "May roster"], [row.runId, ""]]);
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("shows the served name on the row and again after a fresh mount", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const source = rowWhere((candidate) => candidate.surfaceKind === "single" && candidate.parent === null);
+    const row = QueueSurfaceWireSchema.parse({
+      ...source,
+      title: "Jordan",
+      displayName: { state: "present", value: "April contacts" },
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const draw = () => createElement(QueuePanel, {
+      surfaces: [row],
+      state: { nowIso: FIXTURE_NOW, openWells: new Set<string>(), panelWorkflowId: row.workflowId },
+      handlers: { onSelect: () => undefined },
+      workflowLabelOf: () => "Person Lookup",
+      panelLabel: "Person Lookup",
+      day: FIXTURE_DAY,
+    });
+    const root = createRoot(host);
+    try {
+      await act(async () => root.render(draw()));
+      assert.equal(host.querySelector("[data-demo-row-title]")?.textContent, "April contacts");
+      await act(async () => root.unmount());
+      const reloaded = createRoot(host);
+      await act(async () => reloaded.render(draw()));
+      assert.equal(host.querySelector("[data-demo-row-title]")?.textContent, "April contacts");
+      const restored = QueueSurfaceWireSchema.parse({ ...row, displayName: { state: "absent", reason: "the operator has not renamed this run" } });
+      await act(async () => reloaded.render(createElement(QueuePanel, {
+        surfaces: [restored],
+        state: { nowIso: FIXTURE_NOW, openWells: new Set<string>(), panelWorkflowId: row.workflowId },
+        handlers: { onSelect: () => undefined },
+        workflowLabelOf: () => "Person Lookup",
+        panelLabel: "Person Lookup",
+        day: FIXTURE_DAY,
+      })));
+      assert.equal(host.querySelector("[data-demo-row-title]")?.textContent, "Jordan");
+      await act(async () => reloaded.unmount());
+    } finally {
       host.remove();
       vi.unstubAllGlobals();
     }

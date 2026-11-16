@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { assertAuthenticatedApplication } from "../../../../src/backend/systems/browser-shared/authenticated-application.js";
+import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
 import { verifyCrmAuthenticatedApplication } from "../../../../src/backend/systems/crm/session.js";
+import { projectFailureForOperator } from "../../../../src/models/trust/failure.js";
+import { NodeIdSchema, TaskIdSchema } from "../../../../src/rules/identity/ids.js";
+import { TaskError } from "../../../../src/workflow-kit/errors.js";
+import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { verifyKualiAuthenticatedApplication } from "../../../../src/backend/systems/kuali/session.js";
 import { verifyNewKronosAuthenticatedApplication } from "../../../../src/backend/systems/new-kronos/session.js";
 import { isAuthenticatedUcpathAppUrl, isUcpathPostSsoLanding, verifyUcpathAuthenticatedApplication } from "../../../../src/backend/systems/ucpath/session.js";
@@ -39,14 +46,14 @@ describe("authenticated application URL identity", () => {
     ];
     for (const [name, url] of rejected) {
       it(`${fixture.system} refuses ${name} despite retained positive application evidence`, async () => {
-        const { context } = contextFor({ url, elements, cookies: fixture.cookies }, undefined, fixture.system);
+        const { context } = await contextFor({ url, elements, cookies: fixture.cookies }, undefined, fixture.system);
         const probe = await fixture.verify(context);
         assert.equal(probe.authenticated, false);
       });
     }
     for (const url of fixture.legitimate) {
       it(`${fixture.system} retains the evidenced application route ${new URL(url).pathname}`, async () => {
-        const { context } = contextFor({ url, elements, cookies: fixture.cookies }, undefined, fixture.system);
+        const { context } = await contextFor({ url, elements, cookies: fixture.cookies }, undefined, fixture.system);
         assert.equal((await fixture.verify(context)).authenticated, true);
       });
     }
@@ -58,7 +65,7 @@ describe("authenticated application URL identity", () => {
     [cases[0], "/HR/ONB_SearchOnboardings"], [cases[1], "/APP/api/v0/graphql"],
     [cases[2], "/WFD/home"], [cases[3], "/psc/ucphrprd/employee/hrms/c/app"]] as const) {
     it(`${fixture.system} requires the evidenced path-segment boundary ${pathname}`, async () => {
-      const { context } = contextFor({ url: `https://${fixture.host}${pathname}`, elements, cookies: fixture.cookies }, undefined, fixture.system);
+      const { context } = await contextFor({ url: `https://${fixture.host}${pathname}`, elements, cookies: fixture.cookies }, undefined, fixture.system);
       assert.equal((await fixture.verify(context)).authenticated, false);
     });
   }
@@ -69,5 +76,61 @@ describe("authenticated application URL identity", () => {
       "http://ucpath.universityofcalifornia.edu/", "https://ucpath.universityofcalifornia.edu:8443/"]) {
       assert.equal(isUcpathPostSsoLanding(url), false);
     }
+  });
+
+  it("stores a refused CRM sign-in with the check and the page origin and path", async () => {
+    const { context } = await contextFor({
+      url: "https://act-crm.my.site.com/login?EMPLID=10456712#frag-canary",
+      elements,
+      cookies: [],
+    }, undefined, "crm");
+    let refusal: unknown;
+    try {
+      await assertAuthenticatedApplication("crm", context, verifyCrmAuthenticatedApplication);
+    } catch (error) {
+      refusal = error;
+    }
+    assert.ok(refusal instanceof BrowserLoginError);
+    const taskId = TaskIdSchema.parse("crm/read-onboarding-record");
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+      error: new TaskError(taskId, refusal.code, refusal.message, { cause: refusal }),
+      occurredAt: "2026-08-29T08:00:00.000Z" });
+    assert.equal(failure.debug?.signInRefusal?.check, "application-route");
+    assert.equal(failure.debug?.signInRefusal?.system, "crm");
+    assert.equal(failure.debug?.signInRefusal?.pageOrigin, "https://act-crm.my.site.com");
+    assert.equal(failure.debug?.signInRefusal?.pagePath, undefined);
+    assert.equal(projectFailureForOperator(failure).summary, "CRM sign-in failed.");
+    const stored = JSON.stringify(failure);
+    assert.equal(stored.includes("10456712"), false);
+    assert.equal(stored.includes("frag-canary"), false);
+  });
+
+  it("names evidence-system when the probe names a different system", async () => {
+    const { context } = await contextFor({
+      url: "https://act-crm.my.site.com/hr/ONB_SearchOnboardings",
+      elements,
+      cookies: [],
+    }, undefined, "crm");
+    let refusal: unknown;
+    try {
+      await assertAuthenticatedApplication("crm", context, async () => ({
+        authenticated: true,
+        evidence: { system: "kuali", url: context.page.url(), positive: "other system", negative: "other system" },
+      }));
+    } catch (error) {
+      refusal = error;
+    }
+    assert.ok(refusal instanceof BrowserLoginError);
+    assert.equal(refusal.check, "evidence-system");
+    const taskId = TaskIdSchema.parse("crm/read-onboarding-record");
+    const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+      error: new TaskError(taskId, refusal.code, refusal.message, { cause: refusal }),
+      occurredAt: "2026-08-29T08:00:00.000Z" });
+    assert.equal(failure.debug?.signInRefusal?.check, "evidence-system");
+    assert.equal(failure.debug?.signInRefusal?.pageOrigin, "https://act-crm.my.site.com");
+    assert.equal(failure.debug?.signInRefusal?.pagePath, "/hr/ONB_SearchOnboardings");
+    assert.equal(JSON.stringify(failure).includes("kuali"), false);
   });
 });

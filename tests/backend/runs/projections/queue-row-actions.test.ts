@@ -1,7 +1,9 @@
 
 import assert from "node:assert/strict";
+import { queueParentFixture } from "../../../support/helpers/dashboard/queue-parent-fixture.js";
 import { describe,it } from "vitest";
 import { z } from "zod";
+import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../../src/backend/runs/commands/command-kernel.js";
 import {
 queueRowActions,
@@ -38,7 +40,6 @@ function factsFor(status: Status, over: Partial<QueueRowActionFacts> = {}): Queu
     memberCount: 0,
     isMember: false,
     named: false,
-    workflowLabel: "Person Lookup",
     hasReviewPanel: false,
     ...over,
   };
@@ -46,6 +47,48 @@ function factsFor(status: Status, over: Partial<QueueRowActionFacts> = {}): Queu
 
 const keysFor = (status: Status, over: Partial<QueueRowActionFacts> = {}): string[] =>
   queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status, over)).map(({ key }) => key);
+
+it("serves one header Retry only for a failed Lookup batch root and preserves Rerun", () => {
+  const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed", { batchMemberRetryAvailable: true }));
+  const retry = actions.filter(action => action.kind === "command" && action.command === "retry");
+  assert.equal(retry.length, 1);
+  assert.deepEqual(retry[0].placement, ["banner"]);
+  assert.ok(retry[0].kind === "command");
+  assert.equal(retry[0].expectedVersion, 7);
+  assert.ok(actions.some(action => action.key === "rerun"));
+  for (const status of QueueStatusSchema.options) if (status !== "failed") assert.ok(!keysFor(status, { batchMemberRetryAvailable: true }).includes("retry-batch-member"));
+  for (const over of [{ isChild: true }, { parkedWrite: true }, { batchMemberRetryAvailable: false }]) {
+    assert.ok(!keysFor("failed", { batchMemberRetryAvailable: true, ...over }).includes("retry-batch-member"));
+  }
+  assert.deepEqual(queueRowActions({ enabled: [] }, factsFor("failed", { batchMemberRetryAvailable: true })), []);
+});
+
+it("serves footer pause/resume only from the projected control with its exact CAS version", () => {
+  assert.ok(!keysFor("running").includes("pause"));
+  for (const command of ["pause", "resume"] as const) {
+    const pauseControl = { state: command === "pause" ? "running" as const : "paused" as const, command, expectedVersion: PositiveIntSchema.parse(7) };
+    const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("running", { pauseControl }));
+    const control = actions.find(action => action.key === command);
+    assert.ok(control?.kind === "command");
+    assert.equal(control.command, command);
+    assert.equal(control.expectedVersion, 7);
+    assert.deepEqual(control.placement, ["footer"]);
+    assert.ok(actions.some(action => action.key === "cancel"));
+  }
+  for (const state of ["pause-pending", "unavailable"] as const) {
+    const actions = keysFor("running", { pauseControl: { state, expectedVersion: PositiveIntSchema.parse(7) } });
+    assert.ok(!actions.includes("pause") && !actions.includes("resume"));
+  }
+});
+
+it("offers one crash Rerun through checkpoint recovery and keeps Delete", () => {
+  const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed", { crashed: true, recoverySource: "failed" }));
+  assert.deepEqual(actions.filter(action => action.placement.includes("footer")).map(action => [action.label, action.kind]), [["Rerun", "command"], ["Delete run", "command"]]);
+  const rerun = actions.find(action => action.label === "Rerun");
+  assert.ok(rerun?.kind === "command");
+  assert.equal(rerun.command, "recover-run");
+  assert.ok(rerun.confirm);
+});
 
 /** The whole row, so the wire's own CAS/uniqueness refinement is the assertion. */
 function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): unknown {
@@ -57,7 +100,7 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
     workflowId: "person-lookup",
     traceId: "pl-120000-1111",
     attempt: 1,
-    lineage: facts.isChild ? { state: "child", parentRunId: uuid(3) } : { state: "root" },
+    parent: facts.isChild ? queueParentFixture(uuid(3), { visibility: "linked" }) : null,
     actorId: "local-operator",
     appVersion: { state: "present", value: "0.1.0" },
     descriptorVersion: 1,
@@ -68,9 +111,6 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
     priority: "interactive",
     runNumber: { state: "present", value: 1 },
     session: { state: "absent", reason: "This fixture has no run session." },
-    // A delegated child of a non-operation parent is `linked`: it keeps its own
-    // row, so `executeRetry` refusing it is the shape this fixture exercises.
-    containment: facts.isChild ? "linked" : "root",
     linkedRuns: [],
     facts: { state: "absent", reason: `run is ${status} and has no served facts in this fixture` },
     startedAt: NOW,
@@ -92,7 +132,7 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
     availableSections: ["logs"],
     actions: queueRowActions(STANDARD_WORKFLOW_ACTIONS, facts),
     rowRevision: facts.rowRevision,
-    surfaceKind: facts.isChild ? "member" : "single",
+    surfaceKind: "single",
   });
 }
 
@@ -141,6 +181,11 @@ describe("queue-row action descriptors — the per-status set", () => {
       rerun: ["footer", "menu", "data"],
       rename: ["menu"],
 
+      delete: ["footer", "menu"],
+    });
+    assert.deepEqual(placements("failed"), {
+      rerun: ["footer", "menu", "data"],
+      rename: ["menu"],
       delete: ["footer", "menu"],
     });
     for (const status of QueueStatusSchema.options) {
@@ -205,8 +250,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     }
   });
 
-  // The delete warning is unconditional; the projector cannot know whether a terminal run fenced a write.
-  it("names the released idempotency key, the rows, and the group in the delete confirm", () => {
+  it("serves plain delete confirmations for a run and a group", () => {
     const single = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("done"))
       .find(({ key }) => key === "delete");
     assert.ok(single?.kind === "command" && single.command === "delete");
@@ -216,22 +260,14 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.equal(single.confirm?.title, "Delete this run");
     assert.equal(single.confirm?.confirmLabel, "Delete");
     assert.equal(single.confirm?.tone, "destructive");
-    assert.match(single.confirm?.body ?? "", /results, checkpoints, receipts, diagnostics, and its write ledger/);
-    assert.match(
-      single.confirm?.body ?? "",
-      /permanent idempotency key that stops the same write from being submitted twice is released with it/,
-    );
-    assert.match(single.confirm?.body ?? "", /Person Lookup's systems/);
-    assert.match(single.confirm?.body ?? "", /This is final; there is no undo\./);
+    assert.equal(single.confirm?.body, undefined);
 
     const group = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed", { memberCount: 9 }))
       .find(({ key }) => key === "delete");
     assert.ok(group?.kind === "command");
     assert.equal(group.label, "Delete group");
     assert.equal(group.confirm?.title, "Delete this group");
-    assert.match(group.confirm?.body ?? "", /its 9 delegated members with it/);
-    // The idempotency sentence does not become optional for a group.
-    assert.match(group.confirm?.body ?? "", /permanent idempotency key/);
+    assert.equal(group.confirm?.body, undefined);
   });
 
   /** The demo's group row: one key `FooterActions` titles with the blast radius. */
@@ -346,4 +382,21 @@ describe("queue-row action descriptors — every served verb has a command behin
       );
     }
   });
+});
+
+it("offers explicit checkpoint recovery only from canonical failed/interrupted facts, alongside ordinary Rerun", () => {
+  for (const recoverySource of ["failed", "interrupted"] as const) {
+    const facts = { ...factsFor("failed"), recoverySource };
+    const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, facts);
+    assert.ok(actions.some(action => action.key === "rerun" && action.kind === "navigation"));
+    const recover = actions.find(action => action.key === "recover-run");
+    assert.ok(recover?.kind === "command");
+    assert.equal(recover.command, "recover-run");
+    assert.equal(recover.expectedVersion, facts.rowRevision);
+    assert.equal(recover.confirm?.confirmLabel, "Recover");
+    assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, { ...facts, parkedWrite: true }).some(action => action.key === "recover-run"), false);
+    assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, { ...facts, isChild: true }).some(action => action.key === "recover-run"), false);
+  }
+  assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("done")).some(action => action.key === "recover-run"), false);
+  assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("partial")).some(action => action.key === "recover-run"), false);
 });

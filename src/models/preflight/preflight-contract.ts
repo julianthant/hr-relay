@@ -6,6 +6,7 @@ import {
   CommandIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
+  RunIdSchema,
   SourceSurfaceIdSchema,
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
@@ -85,9 +86,24 @@ export const PreflightSelectionSchema = z.strictObject({
 export type PreflightSelection = z.infer<typeof PreflightSelectionSchema>;
 export const PreflightReadinessWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("present"), report: PreflightReportWireSchema }),
-  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1), lastCompleted: PreflightReportWireSchema.optional() }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1),
+    code: z.literal("PREFLIGHT_EVIDENCE_EXPIRED").optional(), lastCompleted: PreflightReportWireSchema.optional() }),
 ]);
 export type PreflightReadinessWire = z.infer<typeof PreflightReadinessWireSchema>;
+
+export const PreflightRefusalCodeSchema = z.enum(["PREFLIGHT_OBSERVATION_CHANGED", "PREFLIGHT_BLOCKED", "PREFLIGHT_TIMEOUT"]);
+export const WorkerPreflightRefusalSchema = z.strictObject({
+  state: z.literal("preflight-refused"), code: PreflightRefusalCodeSchema, runId: RunIdSchema.optional(),
+  summary: z.string().min(1).max(4096).optional(),
+});
+export type WorkerPreflightRefusal = z.infer<typeof WorkerPreflightRefusalSchema>;
+/** What a standing worker is waiting out. Cleared on the next claim or idle poll. */
+export const WorkerRefusalStandingSchema = z.strictObject({
+  code: PreflightRefusalCodeSchema,
+  summary: z.string().min(1).max(4096).optional(),
+  retryAt: IsoInstantSchema,
+});
+export type WorkerRefusalStanding = z.infer<typeof WorkerRefusalStandingSchema>;
 
 export const PreflightRerunCommandRequestSchema = z.strictObject({
   commandId: CommandIdSchema,

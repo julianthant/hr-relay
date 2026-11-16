@@ -50,15 +50,18 @@ export function isAuthenticatedCrmUrl(rawUrl: string): boolean {
 export const verifyCrmAuthenticatedApplication: AuthenticatedApplicationVerifier = async (
   context,
 ): Promise<AuthenticationProbe> => verifyUcsdAuthenticatedApplication(SYSTEM, context.page, {
+  assertCurrent: context.assertCurrent,
   urlIsApplication: isAuthenticatedCrmUrl,
   urlRefusal: "the observed URL is not the ACT CRM Communities application; the Communities login page shares this host and is refused here",
   positive: async () => probeSessionCookie(context.page, {
+    assertCurrent: context.assertCurrent,
     name: SALESFORCE_SESSION_COOKIE,
     domainSuffix: SALESFORCE_COOKIE_DOMAIN,
     issuer: "ACT CRM Salesforce Communities",
   }),
   additionalAbsences: [
     async () => probeAbsentControl(context.page, {
+      assertCurrent: context.assertCurrent,
       selector: COMMUNITIES_LOGIN_SELECTOR,
       description: "the Salesforce Communities login form",
     }),
@@ -67,17 +70,23 @@ export const verifyCrmAuthenticatedApplication: AuthenticatedApplicationVerifier
 
 // Wait for the SSO form before selecting login type; verify its value again after reload. An absent picker is a valid entry state.
 async function ensureActiveDirectorySelected(context: SystemLoginContext, token: DuoCeremonyLeaseToken): Promise<void> {
+  context.assertCurrent();
   const { page, config } = context;
   const picker = page.locator(LOGIN_TYPE_SELECTOR).first();
+  context.assertCurrent();
   if (await picker.count() === 0) return;
   try {
+    context.assertCurrent();
     if (await picker.inputValue({ timeout: config.timeouts.navigationMs }) === ACTIVE_DIRECTORY_VALUE) return;
+    context.assertCurrent();
     await picker.selectOption(
       { label: ACTIVE_DIRECTORY_OPTION },
       { timeout: config.timeouts.navigationMs },
     );
+    context.assertCurrent();
     recordBrowserAction("selected", "crm.sso.login-type", ACTIVE_DIRECTORY_OPTION);
   } catch (error) {
+    context.assertCurrent();
     throw new BrowserLoginError(
       SYSTEM,
       "sso-form",
@@ -87,9 +96,12 @@ async function ensureActiveDirectorySelected(context: SystemLoginContext, token:
     );
   }
 
+  context.assertCurrent();
   await waitForSsoForm(SYSTEM, context, token);
+  context.assertCurrent();
   const settled = await page.locator(LOGIN_TYPE_SELECTOR).first()
     .inputValue({ timeout: config.timeouts.navigationMs });
+  context.assertCurrent();
   if (settled !== ACTIVE_DIRECTORY_VALUE) {
     throw new BrowserLoginError(
       SYSTEM,
@@ -104,18 +116,22 @@ export const crmLoginRecipe = defineVerifiedLoginRecipe({
   system: SYSTEM,
   verify: verifyCrmAuthenticatedApplication,
   navigate: async (context): Promise<void> => {
+    context.assertCurrent();
     const { page, config } = context;
     const loginUrl = resolveSystemLoginUrl(config, SYSTEM, context.instance, context.label);
     abortIfCancelled(SYSTEM, "navigate-login-entry", context);
     try {
+      context.assertCurrent();
       await raceCancellation(
-        page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs }),
+        () => page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs }),
         SYSTEM,
         "navigate-login-entry",
         context,
       );
+      context.assertCurrent();
       recordBrowserAction("opened", "crm.login-entry");
     } catch (error) {
+      context.assertCurrent();
       if (error instanceof BrowserLoginError) throw error;
       throw new BrowserLoginError(
         SYSTEM,
@@ -129,13 +145,19 @@ export const crmLoginRecipe = defineVerifiedLoginRecipe({
 
   },
   ceremony: async (context, token): Promise<void> => {
+    context.assertCurrent();
     const { config } = context;
     // The form must exist BEFORE its login type can be read: the entry route is
     // still redirecting into `a5.ucsd.edu` when `goto` resolves.
+    context.assertCurrent();
     await waitForSsoForm(SYSTEM, context, token);
+    context.assertCurrent();
     await ensureActiveDirectorySelected(context, token);
+    context.assertCurrent();
     await fillSsoCredentials(SYSTEM, context, token);
+    context.assertCurrent();
     await submitSsoForm(SYSTEM, context, token);
+    context.assertCurrent();
     await waitForAuthenticatedLanding(
       SYSTEM,
       context,
@@ -143,5 +165,6 @@ export const crmLoginRecipe = defineVerifiedLoginRecipe({
       isAuthenticatedCrmUrl,
       config.timeouts.duoApprovalCrmSeconds * 1_000,
     );
+    context.assertCurrent();
   },
 });

@@ -21,9 +21,9 @@ import {
 import { sequentialIdFactory, RUN_ID, WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 function deadlineInvocationIssues(content: string): readonly string[] {
@@ -78,7 +78,7 @@ function deadlineInvocationIssues(content: string): readonly string[] {
       const lease = calls(node.elseStatement, "deps.sessions.withDriver");
       if (lease.length !== 1 || lease[0].arguments[2]?.getText(source) !== "controller.signal") issues.push("browser lease acquisition must use the armed signal");
       for (const arm of [node.thenStatement, node.elseStatement]) {
-        if (!arm.getText(source).includes("confirmedInvocation?.withNotes") || !arm.getText(source).includes("withBrowserActionNotes")) issues.push("invocations must preserve the notes wrapper");
+        if (!arm.getText(source).includes("withBrowserActionNotes")) issues.push("invocations must preserve the notes wrapper");
       }
     }
     ts.forEachChild(node, inspect);
@@ -113,7 +113,7 @@ describe("bounded task deadline", () => {
       source.replace("() => raceAbortable(", "() => unbounded("),
       source.replace("deps.sessions.withDriver(need, instanceSelection, controller.signal", "deps.sessions.withDriver(need, instanceSelection, unrelated.signal"),
       source.replace("controller.signal, contract.id,", "unrelated.signal, contract.id,"),
-      source.replace("confirmedInvocation?.withNotes", "confirmedInvocation?.other"),
+      source.replace("withBrowserActionNotes(clock", "otherNotes(clock"),
       source.replace("controller.signal, contract.id, retain,", "controller.signal, contract.id,"),
       source.replace("controller.signal, contract.id, retain,", "controller.signal, contract.id, unrelated,"),
       source.replace("deps.retainCallback?.({ runId,", "deps.otherCallback?.({ runId,"),
@@ -126,7 +126,7 @@ describe("bounded task deadline", () => {
   });
 
   it("bounds a task that never settles and ignores its abort signal", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     let wedged: (() => void) | undefined;
     const started = new Promise<void>((resolve) => {
@@ -149,12 +149,9 @@ describe("bounded task deadline", () => {
     const member = database.authority.workerSlots.list(WORKFLOW_ID).find((slot) => slot.poolIndex === 1);
     assert.ok(member);
     const workerId = member.workerId;
-    const lease = database.authority.workerLeases.get(workerId);
-    assert.ok(lease);
     const claimed = database.authority.runs.claimNext({
       workflow: WORKFLOW_ID,
       workerId,
-      workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
       now: clock.now().toISOString(),
     });
     assert.equal(claimed.state, "claimed");
@@ -165,7 +162,7 @@ describe("bounded task deadline", () => {
       descriptor: personLookupDescriptor,
       stores: taskStoreRegistry,
       authority: database,
-      sessions: sessionManagerFor(sessions, authority.clock),
+      sessions: await sessionManagerFor(sessions, authority.clock),
       emitter: recordingEmitter().emitter,
       clock: authority.clock,
       ids: sequentialIdFactory("e"),

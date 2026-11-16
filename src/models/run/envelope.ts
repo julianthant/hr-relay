@@ -1,3 +1,4 @@
+import { RunContinuationSchema } from "./continuation.js";
 /** The `RunEnvelope` — kernel-owned state beside the workflow-constant input: `dryRun` lives here, requested is not resolved, and resume affordances are attempt-scoped. */
 import { SourceBoundRunSchema } from "./rerun.js";
 import { z } from "zod";
@@ -15,10 +16,7 @@ import {
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
 import { CheckpointPatchSchema, FreshnessOverrideSchema } from "../workflow/checkpoint.js";
-import {
-  WorkflowOperationDisplaySnapshotSchema,
-  requireWorkflowOperationDisplaySnapshot,
-} from "../workflow/operation-display-snapshot.js";
+import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { StepOmissionsSchema } from "../workflow/step-omission.js";
 
 export const SystemInstanceSchema = z.enum(["prod", "test"]);
@@ -28,8 +26,6 @@ export type SystemInstance = z.infer<typeof SystemInstanceSchema>;
 export const RunShapeSchema = z.enum(["single", "preview", "operation", "operation-member"]);
 export type RunShape = z.infer<typeof RunShapeSchema>;
 
-export const RunWorkersSchema = z.union([z.literal("auto"), z.number().int().min(1).max(8)]);
-export type RunWorkers = z.infer<typeof RunWorkersSchema>;
 
 /** Server-stamped from the run surface; children inherit their root's value. */
 export const RunPrioritySchema = z.enum(["interactive", "bulk"]);
@@ -54,7 +50,7 @@ export const RunParentSchema = z.strictObject({
 });
 export type RunParent = z.infer<typeof RunParentSchema>;
 
-export const RunEnvelopeSchema = z.strictObject({
+const RUN_ENVELOPE_SHAPE = {
   runId: RunIdSchema,
   workflow: WorkflowIdSchema,
   /** The logical-item key half: `(workflow, itemId)` — ref workflow-model. */
@@ -63,10 +59,11 @@ export const RunEnvelopeSchema = z.strictObject({
   traceId: TraceIdSchema,
   descriptorVersion: PositiveIntSchema,
   contractFingerprint: FingerprintSchema,
-    /* Stamped for older enqueues so a missing complete snapshot cannot be quietly read as a legacy run. */
+  /** The app build that approved this run's writes; a delegated child carries its parent's. */
+  buildId: FingerprintSchema,
+  /** Recorded by older enqueues; nothing writes or reads either field now. */
   operationDisplayCapability: z.enum(["legacy", "complete"]).optional(),
-    /** Present only for a complete display minted with this exact run. */
-  operationDisplaySnapshot: WorkflowOperationDisplaySnapshotSchema.optional(),
+  operationDisplaySnapshot: JsonValueSchema.optional(),
   requestedInstance: InstanceSelectionSchema.optional(),
   resolvedInstance: InstanceSelectionSchema,
   configFingerprint: FingerprintSchema,
@@ -85,6 +82,7 @@ export const RunEnvelopeSchema = z.strictObject({
     /** Present only on a Restart-from-start attempt; carried unchanged through a requeue. */
   recovery: RunRecoveryModeSchema.optional(),
   sourceBound: SourceBoundRunSchema.optional(),
+  continuation: RunContinuationSchema.optional(),
   /** A resumable graph-node id, never an internal transaction arm (ref workflow-model ). */
   startAt: NodeIdSchema.optional(),
   injected: z.array(CheckpointPatchSchema).min(1).optional(),
@@ -93,35 +91,9 @@ export const RunEnvelopeSchema = z.strictObject({
     /* The attempt at the ITEM, not at this run: every component of the `(workflow, itemId)` checkpoint key is item-scoped, so a new run for an item takes the item's NEXT attempt. */
   attempt: PositiveIntSchema,
   enqueuedAt: IsoInstantSchema,
-}).superRefine((envelope, context) => {
-  if (envelope.operationDisplayCapability === "complete" && envelope.operationDisplaySnapshot === undefined) {
-    context.addIssue({
-      code: "custom",
-      path: ["operationDisplaySnapshot"],
-      message: `complete run ${envelope.workflow} is missing its frozen operation display snapshot`,
-    });
-  }
-  if (envelope.operationDisplayCapability === "legacy" && envelope.operationDisplaySnapshot !== undefined) {
-    context.addIssue({
-      code: "custom",
-      path: ["operationDisplaySnapshot"],
-      message: `legacy run ${envelope.workflow} cannot carry a complete operation display snapshot`,
-    });
-  }
-  if (envelope.operationDisplaySnapshot !== undefined) {
-    try {
-      requireWorkflowOperationDisplaySnapshot(envelope.operationDisplaySnapshot, {
-        workflowId: envelope.workflow,
-        definitionFingerprint: envelope.contractFingerprint,
-      });
-    } catch (error) {
-      context.addIssue({
-        code: "custom",
-        path: ["operationDisplaySnapshot"],
-        message: error instanceof Error ? error.message : "operation display snapshot is corrupt",
-      });
-    }
-  }
+};
+
+function refineRunEnvelope(envelope: z.infer<z.ZodObject<Omit<typeof RUN_ENVELOPE_SHAPE, "buildId">>>, context: z.RefinementCtx): void {
   if (envelope.retryOf === envelope.runId) {
     context.addIssue({ code: "custom", path: ["retryOf"], message: "a run cannot be a cross-run retry of itself" });
   }
@@ -177,7 +149,15 @@ export const RunEnvelopeSchema = z.strictObject({
       }
     }
   }
-});
+}
+
+export const RunEnvelopeSchema = z.strictObject(RUN_ENVELOPE_SHAPE).superRefine(refineRunEnvelope);
+const { buildId: _buildId, ...PREDECESSOR_ENVELOPE_SHAPE } = RUN_ENVELOPE_SHAPE;
+/** A pre-22 envelope. A build id already stored is kept; the upgrade does not insert one. */
+export const PredecessorRunEnvelopeSchema = z.union([
+  z.strictObject(PREDECESSOR_ENVELOPE_SHAPE).superRefine(refineRunEnvelope),
+  RunEnvelopeSchema,
+]);
 export type RunEnvelope = z.infer<typeof RunEnvelopeSchema>;
 
 /** The envelope for the next attempt with every single-resume affordance gone, and with `nextAttempt` supplied by authority, never computed. */

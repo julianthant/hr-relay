@@ -1,8 +1,11 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync,lstatSync,readFileSync,readdirSync,renameSync,truncateSync,writeFileSync } from "node:fs";
+import { existsSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,renameSync,rmSync,truncateSync,writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { fileURLToPath } from "node:url";
 import { it } from "vitest";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
@@ -12,8 +15,8 @@ import { DiagnosticAttachmentSchema,DiagnosticBundleSchema,type DiagnosticBundle
 import { failure,foundationFixture,terminalizeFixtureFailure } from "../../../support/helpers/database-foundation/fixtures.js";
 import { syntheticStateRoot } from "../../../support/helpers/synthetic-storage-admission.js";
 
-function fixture() {
-  const f = foundationFixture();
+async function fixture(options: { sharedMachine?: true } = {}) {
+  const f = await foundationFixture(options);
   const admission = syntheticStateRoot(f.root);
   const writer = createContentAddressedArtifactWriter({ admission });
   const service = createDiagnosticCaptureService({ authority: f.db.authority, artifacts: writer, clock: f.clock, ids: { uuid: randomUUID } });
@@ -21,7 +24,7 @@ function fixture() {
     configFingerprint: f.snapshot.fingerprint, descriptorFingerprint: f.run.envelope.contractFingerprint, fields: [],
     attachments: [{ kind: "console-summary" as const, mediaType: "application/json", sensitivity: "redacted" as const, bytes: Buffer.from(text) }] });
   const inventory = () => existsSync(admission.artifactRoot) ? readdirSync(admission.artifactRoot).sort() : [];
-  return { ...f, admission, writer, service, request, inventory, dispose: () => { admission.release(); f.dispose(); } };
+  return { ...f, admission, writer, service, request, inventory, dispose: () => f.dispose() };
 }
 
 function withAttachments(base: DiagnosticBundle, attachments: DiagnosticBundle["attachments"]) {
@@ -32,7 +35,7 @@ function withAttachments(base: DiagnosticBundle, attachments: DiagnosticBundle["
 }
 
 it("prepares no final bytes, commits the canonical shared winner and removes only its witness", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     const prepared = await f.service.prepare(f.request());
     assert.equal(f.inventory().length, 1); assert.ok(f.inventory()[0]?.endsWith(".diagnostic.tmp"));
@@ -44,11 +47,11 @@ it("prepares no final bytes, commits the canonical shared winner and removes onl
     assert.deepEqual(reopenedService.persist(stored), stored);
     assert.deepEqual(f.inventory(), [`${winner.sha256}.artifact`]);
     assert.deepEqual(pendingDiagnosticArtifacts(f.admission), []);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
 it("keeps rollback publication budget-accounted, preserves generic reuse, and retries without duplicate metadata", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     const prepared = await f.service.prepare(f.request());
     assert.throws(() => f.db.withAuthorityTransaction(() => { f.service.persist(prepared); throw new Error("after-publication"); }), /after-publication/u);
@@ -58,16 +61,16 @@ it("keeps rollback publication budget-accounted, preserves generic reuse, and re
     const shared = await f.writer.put(f.request().attachments[0].bytes, { mediaType: "application/json" });
     f.service.discard(prepared);
     assert.equal(f.inventory().length, 2); assert.equal(shared.sha256, pending[0]?.sha256);
-    assert.throws(() => f.db.reclaimPendingDiagnostics(), /installation-required/u);
+    assert.equal(existsSync(join(f.admission.artifactRoot, `${shared.sha256}.artifact`)), true);
     const stored = f.service.persist(prepared);
     assert.deepEqual(f.service.persist(prepared), stored);
     assert.equal(f.db.authority.diagnosticBundles.listByRun(f.run.envelope.runId).length, 1);
     assert.deepEqual(f.inventory(), [`${shared.sha256}.artifact`]);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
 it("uses the real fixed-1GiB repository boundary once per unique digest and publishes nothing on repeated refusals", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     const prepared = await f.service.prepare(f.request());
     const unit = 32 * 1024 * 1024;
@@ -88,12 +91,14 @@ it("uses the real fixed-1GiB repository boundary once per unique digest and publ
     const shared = await f.service.capture(f.request());
     assert.deepEqual(shared.attachments, stored.attachments);
     assert.deepEqual(f.inventory(), before);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
 const sourceUrl = (relative: string) => new URL(relative, import.meta.url).href;
 function child(source: string) {
-  const process = spawn(globalThis.process.execPath, ["--import", "tsx", "--input-type=module", "-e", source], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), stdio: ["ignore", "pipe", "pipe"] });
+  const process = spawn(globalThis.process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", source], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), stdio: ["ignore", "pipe", "pipe", "ipc"] });
+  assert.ok(process.stdout);
+  assert.ok(process.stderr);
   let stdout = "", stderr = "";
   process.stdout.on("data", bytes => { stdout += String(bytes); });
   process.stderr.on("data", bytes => { stderr += String(bytes); });
@@ -105,29 +110,40 @@ function child(source: string) {
 }
 
 it("admits simultaneous native captures in separate processes without duplicate shared bytes", async () => {
-  const f = fixture();
+  const f = await fixture({ sharedMachine: true });
   try {
-    const source = `import { AuthorityDatabase } from ${JSON.stringify(sourceUrl("../../../support/helpers/synthetic-storage-admission.ts"))};
-      import { syntheticStateRoot } from ${JSON.stringify(sourceUrl("../../../support/helpers/synthetic-storage-admission.ts"))};
+    const clock = JSON.stringify(f.clock.now().toISOString());
+    const source = `import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/admission/lifetime-lock.ts"))};
+      import { acquireSharedRuntimeAdmission } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/admission/admission.ts"))};
+      import { createProfileRegistry } from ${JSON.stringify(sourceUrl("../../../../src/backend/profiles/registry.ts"))};
+      import { createCredentialStore } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/configuration/credential-store.ts"))};
+      import { AuthorityDatabase } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/sqlite/authority-database.ts"))};
       import { createContentAddressedArtifactWriter } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.ts"))};
       import { createDiagnosticCaptureService } from ${JSON.stringify(sourceUrl("../../../../src/backend/logs/diagnostics/diagnostic-capture.ts"))};
       import { manualClock } from ${JSON.stringify(sourceUrl("../../../../src/rules/time/clock.ts"))};
+      import { join } from 'node:path';
       import { randomUUID } from 'node:crypto';
-      const db=AuthorityDatabase.open({path:${JSON.stringify(f.path)},busyTimeoutMs:5000,migrationOwner:'concurrent-diagnostic'},manualClock(new Date(${JSON.stringify(f.clock.now().toISOString())})));
-      const admission=syntheticStateRoot(${JSON.stringify(f.root)});
-      const service=createDiagnosticCaptureService({authority:db.authority,artifacts:createContentAddressedArtifactWriter({admission}),clock:manualClock(new Date(${JSON.stringify(f.clock.now().toISOString())})),ids:{uuid:randomUUID}});
+      const lifetime=await WorkerRuntimeLifetimeLock.receive(${f.profile.lifetime.port},()=>process.exit(1));
+      const machine=acquireSharedRuntimeAdmission(${JSON.stringify(f.profile.workspace)},lifetime);
+      const admission=machine.admitProfile(${JSON.stringify(f.profile.admission.profileBinding.profileId)});
+      const credentials=createCredentialStore({admission,stateRoot:admission.stateRoot,});
+      const clock=manualClock(new Date(${clock}));
+      const db=AuthorityDatabase.open(admission,{path:${JSON.stringify(f.path)},busyTimeoutMs:5000,migrationOwner:'concurrent-diagnostic'},clock,undefined,undefined,undefined,credentials);
+      const service=createDiagnosticCaptureService({authority:db.authority,artifacts:createContentAddressedArtifactWriter({admission}),clock,ids:{uuid:randomUUID}});
       try {await service.capture({...${JSON.stringify(f.request())},attachments:[{kind:'console-summary',mediaType:'application/json',sensitivity:'redacted',bytes:Buffer.from('shared concurrent bytes')}]});}
-      finally {db.close();admission.release();}`;
+      finally {db.close();admission.release();machine.release();}
+      process.exit(0);`;
     const a = child(source), b = child(source);
+    await Promise.all([f.profile.lifetime.share(a.process), f.profile.lifetime.share(b.process)]);
     await Promise.all([a.exited, b.exited]);
     const rows = f.db.authority.diagnosticBundles.listByRun(f.run.envelope.runId);
     assert.equal(rows.length, 2); assert.deepEqual(rows[0]?.attachments, rows[1]?.attachments);
     assert.equal(f.inventory().length, 1); assert.equal(pendingDiagnosticArtifacts(f.admission).length, 0);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
 it("disposes failed pre-publication writes and refuses replaced stage custody without touching replacement bytes", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     const failing = createContentAddressedArtifactWriter({ admission: f.admission,
       injectFault: step => { if (step === "temp-written") throw new Error("stage-write-fault"); } });
@@ -141,11 +157,11 @@ it("disposes failed pre-publication writes and refuses replaced stage custody wi
     assert.deepEqual(readFileSync(path), bytes); assert.deepEqual(readFileSync(held), bytes);
     assert.throws(() => stage.publish(), /custody-changed/u);
     assert.equal(f.inventory().filter(entry => entry.endsWith(".artifact")).length, 0);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
 it("keeps generic shared bytes while an uncommitted pinned diagnostic publication is in flight", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     terminalizeFixtureFailure(f, f.run, failure());
     const ordinary = await f.service.capture(f.request());
@@ -158,11 +174,11 @@ it("keeps generic shared bytes while an uncommitted pinned diagnostic publicatio
     assert.deepEqual(pinned.attachments, ordinary.attachments);
     assert.deepEqual(readFileSync(finalPath), bytes);
     assert.equal(pendingDiagnosticArtifacts(f.admission).length, 0);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
 it("bounds sparse diagnostic envelopes before parsing or publication while preserving oversized evidence", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
     const stage = await f.writer.stageDiagnostic(Buffer.from("bounded bytes"), { mediaType: "application/json" }, "ordinary");
     const name = f.inventory()[0]; assert.ok(name);
@@ -172,18 +188,50 @@ it("bounds sparse diagnostic envelopes before parsing or publication while prese
     assert.throws(() => stage.publish(), /diagnostic-stage-size-exceeded/u);
     assert.equal(lstatSync(path).size, 20 * 1024 * 1024);
     assert.deepEqual(f.inventory(), [name]);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 
-it("admits the maximum diagnostic attachment envelope and leaves an absent artifact root absent during empty cleanup", async () => {
-  const f = fixture();
+it("refuses diagnostic stage cleanup without an installation", () => {
+  const root = mkdtempSync(join(tmpdir(), "diagnostic-cleanup-"));
   try {
+    const artifacts = join(root, "artifacts");
+    mkdirSync(artifacts, { mode: 0o700 });
+    const admission = RuntimeAdmission.syntheticRoots(root, artifacts);
+    assert.throws(() => reclaimDiagnosticStages(admission, () => false), /diagnostic-stage-cleanup-installation-required/u);
+    rmSync(artifacts, { recursive: true });
+    assert.equal(reclaimDiagnosticStages(admission, () => false), 0);
+    assert.equal(existsSync(artifacts), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("admits the maximum diagnostic attachment envelope", async () => {
+  const f = await fixture();
+  try {
+    if (existsSync(f.admission.artifactRoot) && readdirSync(f.admission.artifactRoot).length === 0) rmSync(f.admission.artifactRoot, { recursive: true });
     assert.equal(reclaimDiagnosticStages(f.admission, () => false), 0);
     assert.equal(existsSync(f.admission.artifactRoot), false);
+    mkdirSync(f.admission.artifactRoot, { recursive: true, mode: 0o700 });
     const stage = await f.writer.stageDiagnostic(Buffer.alloc(10 * 1024 * 1024, 1), { mediaType: "image/png" }, "ordinary");
     assert.deepEqual(pendingDiagnosticArtifacts(f.admission), [stage.ref]);
     assert.equal(stage.publish().bytes, 10 * 1024 * 1024);
     stage.dispose();
     assert.equal(pendingDiagnosticArtifacts(f.admission).length, 0);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
+});
+
+it("lists managed artifact references by sha256 regardless of row order, so stopped-upgrade inventories compare equal", async () => {
+  const f = await fixture();
+  try {
+    terminalizeFixtureFailure(f, f.run, failure());
+    const texts = ["{\"n\":1}", "{\"n\":2}", "{\"n\":3}", "{\"n\":4}"];
+    const bundles = [];
+    for (const pair of [texts.slice(0, 2), texts.slice(2)]) {
+      const request = f.request();
+      bundles.push(await f.service.capture({ ...request, attachments: pair.map(text => ({ ...request.attachments[0], bytes: Buffer.from(text) })) }));
+    }
+    const captured = bundles.flatMap(bundle => bundle.attachments.map(attachment => attachment.digest));
+    const sorted = [...captured].sort();
+    assert.notDeepEqual(captured, sorted, "fixture must capture files out of sha256 order");
+    assert.deepEqual(f.db.readManagedArtifactReferences().map(reference => reference.sha256), sorted);
+  } finally { await f.dispose(); }
 });

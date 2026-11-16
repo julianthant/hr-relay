@@ -10,8 +10,8 @@ import { fixtureUuid } from "../../../support/fixtures/ledger-projection-fixture
 import { HISTORY_NOW,historyWorld } from "../../../support/helpers/storage/transaction-history-fixture.js";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-it("keeps authenticated transaction and Activity facts available when unrelated diagnostic bytes are missing", () => {
-  const w = historyWorld({ terminalize: true });
+it("keeps authenticated transaction and Activity facts available when unrelated diagnostic bytes are missing", async () => {
+  const w = await historyWorld({ terminalize: true });
   try {
     const fixture = w.commit(79, { confirmedAt: HISTORY_NOW });
     const runId = fixture.commit.transaction.runId;
@@ -56,5 +56,5 @@ it("keeps authenticated transaction and Activity facts available when unrelated 
     assert.deepEqual(readFileSync(path), original);
     assert.deepEqual(observe(), before);
     assert.deepEqual(stable(), identity);
-  } finally { w.dispose(); }
+  } finally { await w.dispose(); }
 });

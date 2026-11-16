@@ -1,157 +1,162 @@
 # Relay
 
-Relay is the production rebuild of `hr-automation`. It is a local desktop app for one HR operator. It runs on one machine and is never hosted. Until cutover,
-`/Users/julianhein/Projects/hr-automation` is production and the rollback asset.
+Read [README.md](README.md) for the product, [architecture](docs/ARCHITECTURE.md) for its design,
+the [codebase map](docs/reference/codebase-structure.md) for owners, and the
+[terminology reference](docs/reference/terminology.md) for project vocabulary.
 
 ## What to build
 
-- Start with the assigned brief and its folder's README, then the
-  [codebase map](docs/rebuild/reference/codebase-structure.md). Work only on the assigned task.
-- Work assigned through a brief follows that brief and its folder's README. Receipts, notes and
-  handoffs go in the brief's evidence folder inside `.work/`, never in a commit.
-- The roadmap at docs/roadmap/roadmap.md lists the key implementations and their status.
-  Update it only when the operator or your brief asks.
-- Build the wiring base first: every dashboard component connected to the backend, with no
-  workflow-specific behavior. Then wire workflows one at a time, in this order: Person Lookup,
-  Separations, then the operator's order.
-- A workflow is wired across Run, Rerun, Queue rows, Logs, Explorer, OCR/Records where it has them,
-  notifications and Analytics. It is done after a dry run and operator sign-off.
-- The production codebase (`/Users/julianhein/Projects/hr-automation`) holds each workflow's complete
-  behavior. Read it, and port by copying with the legacy commit and path recorded in the task's evidence folder.
-- A workflow is coded only against its operator-approved walkthrough: steps, sub-steps, log-panel
-  timeline, results and scenarios.
-- Each workflow switches from mock to served data through one static per-workflow switch. Never fall
-  back from served to mock at runtime. A served failure shows its failure state.
+- Work from your ticket in the shared Concord ledger: claim it, read its brief, load the skills on
+  its `Skills:` line, and record progress, commits, check results, unrun obligations and open
+  decisions on it. Work only on the ticket. Read the codebase map and the
+  [roadmap](docs/roadmap/roadmap.md); update the roadmap only when asked.
+- Treat the main checkout's ignored `.work/` as scratch: per-task evidence at absolute paths from
+  worktrees, deleted when the task merges. Never commit it. Read `.work/operations.md` there
+  for machine constraints.
 
 ## Codebase
 
-One person builds and maintains this codebase. Keep it organized, clean and easy to follow.
+- Keep one home per concept. Update the codebase map in the same commit as a move.
+- Keep only current code and current documentation. Delete replaced code and obsolete tests.
+  Stored-data changes use forward migrations that remove the readers they replace. Add no
+  compatibility readers, shims, old-code backups, history comments or change ledgers.
+- Add a layer only for a second real use. Prefer one cohesive module to many tiny files.
+- Add a guard only for a real recurring mistake, with its reason in `docs/guard-inventory.json`.
+- Mirror source once under `tests/`: drop `src/`, retain `scripts/`, `fast-duo/` and root paths.
+  Put `<module>.test.ts` beside `<module>.integration.test.ts`; split files over about 800 lines
+  by topic. Keep architecture, mocks, perf and types in their own trees; shared fixtures and
+  helpers belong in `tests/support/`.
+- Use kebab-case filenames, named exports, `.js` relative imports and `.tsx` only in the dashboard.
+  Use recursively strict Zod schemas at durable, wire and config boundaries; no unchecked casts
+  or `any`. Read time through `src/rules/time/clock.ts`; keep `manualClock` test-only.
+- Keep workflow definitions browser-safe: value imports only from Zod, `src/models/**`,
+  `src/rules/**` and audited `src/workflow-kit/**`. Read the authoring guide for source layout.
+- Freeze registry exports recursively at module load. Use structured errors rather than
+  `console.*` in `src/`. Add failure codes and display text together in
+  `src/models/failures/error-catalog.ts`.
+- Keep instructions in `AGENTS.md` only. Do not create `CLAUDE.md`.
 
-The repository holds only the current version. No compatibility readers, old migration steps, porting or change records, lesson files, history or backups of old code. A stored-data change ships as a forward migration that deletes the reader it replaces.
+## Conventions
 
-- Each concept has one home. [docs/rebuild/reference/codebase-structure.md](docs/rebuild/reference/codebase-structure.md)
-  is the map. Update it in the same commit as any move.
-- A change deletes the code it replaces. No shims, parallel old and new paths, commented-out code or
-  unused exports.
-- Add a layer only when it has a second real use. Prefer one cohesive module over many tiny files.
-- Tests mirror source once under tests/: drop src/; keep full paths for scripts/,
-  duo-autopilot/ and root configs.
-  Unit <module>.test.ts and integration <module>.integration.test.ts sit together;
-  split files over about 800 lines by topic. Architecture/parity/perf/types stay in
-  their own trees; fixtures and helpers live in tests/support/.
-  Delete tests for behavior that no longer exists.
-- Add a guard only to prevent a real, recurring mistake, and record its reason in
-  `docs/rebuild/guard-inventory.json`.
-- Comments: only where the code cannot say it, in a few words.
-- Docs describe the system as it is now. When a rule changes, update its owning doc in the same
-  commit. Keep history out of the repository.
-- Instructions live only in `AGENTS.md` files. Never add `CLAUDE.md`.
+- Give each piece of work one name and use it everywhere. A feature is `<area>-<deliverable>`; the
+  area is a screen name, a workflow ID, or a non-screen area such as `storage`, `workers` or `ci`.
+  A ticket is `<feature> / <lane>`; a lane is one to three words, unique within its feature.
 
-## Dashboard
+| Thing | Name |
+| --- | --- |
+| Ticket ID | `<feature>-NN` |
+| Feature branch | `feature/<feature>`: from `origin/staging`, one PR into `staging` |
+| Ticket branch | `task/<feature>/<lane>`: from its feature branch, merged back with `--no-ff`, no PR |
+| Standalone fix | `fix/<area>-<symptom>`: one ticket, one PR into `staging` |
+| Chore | `chore/<area>-<change>`: tooling, tests or docs with no product change; one PR into `staging` |
+| Hotfix | `hotfix/<area>-<symptom>`: from `main`, one PR into `main` titled `Hotfix: <what it fixes>`; the same commits reach `staging` through a `fix/*` PR |
+| Design | `design/<area>`: mock with real components for operator approval, never merged |
+| Worktree | `.worktrees/<feature>.<lane>`; the feature's own checkout is `.worktrees/<feature>` |
+| PR title | `<Area>: <what the operator gets>` |
+| Spec | `.work/specs/<feature>.md` |
+| Evidence | `.work/evidence/<feature>/<lane>/`, deleted when the ticket merges |
 
-- Replace mock data with real data. Keep every component exactly as it is: use all of them, add none,
-  remove none.
-- Wiring changes producers, view-model inputs, ports, client methods, hooks, callbacks and the
-  backend. A component file changes only to receive data instead of importing a mock, and it renders
-  identically.
-- The component set is fixed, but what a workflow shows follows the real workflow. Its Explorer
-  timeline, Run and Rerun steps and Logs steps may change in count, order, text, branches and
-  sources, built only from existing components. Generate the Explorer timeline from the workflow's
-  registered definition, never by hand.
-- If real behavior needs a changed or new component, describe it (what, where, why) and ask the
-  operator. Approved components are built first in a UI-only task (components and mock data, no
-  backend), then wired.
-- Extend `src/dashboard/client/index.ts` and the shared models in `src/models/**`. Never add a second
-  API or type layer. Keep each view model's loading, empty, failure, refusal and uncertain states.
-- Read `src/dashboard/AGENTS.md` before any dashboard change.
-
-## Backend
-
-- Only the operator, through the dashboard, uses the backend. No agent or external API access.
-- Build for one operator on one machine. Add nothing for several users, remote clients or hosting.
-- Keep every HR write protection: dry runs, write intents and parked writes, receipts and evidence,
-  and never retrying an UNKNOWN submit.
-- The only AI is OCR through the operator's ChatGPT subscription, connected in Settings with OpenAI's
-  open-source "Sign in with ChatGPT" flow (OAuth with PKCE, loopback redirect, Responses API). Store
-  its tokens only in the local credential store. Add no other AI provider.
-- Every failure has a defined error code, and the dashboard shows the text mapped to that code. The
-  browser-safe home for codes and text is `src/models/failures/error-catalog.ts`; add them together.
-- Use TypeScript, Hono, SQLite, HTTP and SSE. Keep HTTP parsing and app composition thin.
-  Repositories own durable storage.
-- Read `src/backend/AGENTS.md`, and the system's `src/backend/systems/<system>/AGENTS.md` before
-  touching a system driver.
+- Use no other branch prefix. Run `npm run names:check` before the first push and before opening a
+  PR.
+- Keep the main checkout on a clean `staging` and work only in `.worktrees/`. A ticket lives on one
+  machine with its tests; work moves between machines only as pushed branches.
+- Leave no stash behind at the end of a session: commit to the ticket branch.
+- Merge a ticket branch into its feature branch only after the reviewer clears its SHA, then remove
+  its worktree and branch in the same step.
+- Separate backend and UI lanes for one area; merge the backend first.
+- Read `.work/operations.md` in the main checkout for machine roles, slots and ports.
 
 ## Git
 
-- Never push without explicit instruction. Work on a dedicated branch, in a separate worktree for
-  concurrent work. Verify base, path and ownership before editing.
-- Worktrees live in the main checkout's gitignored `.worktrees/<branch>/` folder.
-- Stage exact paths and commit by logical category. Never switch, reset or repurpose another
-  checkout.
-- The operator launches every task and chooses every integration into `master`.
-- Briefs, receipts and evidence live in the main checkout's gitignored `.work/` folder; worktrees
-  write there by absolute path. Remove a task's evidence folder once nothing needs it.
-  Cleanup removes a worktree's registration and its folder, after its evidence and unknown files are
-  saved.
+- Keep `main` as released production and `staging` as operator-preview integration.
+
+### PR and release flow
+
+- The `dev-auto` (orchestrator), `duo` (coder and reviewer pair) and `ship` (publish to merge)
+  skills hold the lane, review-loop and PR procedure. Load the one your ticket names.
+- Changes reach `staging` only through a PR. Never push directly to `main` or `staging`. Merge the
+  latest base into your branch; never rebase or force-push. Never merge a PR by hand.
+- Workflow behavior PRs wait for a live dry run and operator sign-off. Required check names live
+  in [repository governance](docs/repository-governance.md).
+- Refer repairs requiring workflow/CI configuration edits, HR write-path changes, weakened guards
+  or expanded scope to the operator with `needs-human`.
+- The main checkout owns runtime state, credentials and ports.
+- Release only on the operator's explicit go: merge `staging` into `main` with a merge commit,
+  then sync `main` back into `staging`.
 
 ## Checks
 
-- During a task: focused tests for the changed behavior, `npm run lint`, and the affected static and
-  generated checks. Update tests when behavior changes, and say when none exist.
-- Before work is proposed for `master`: `npm run typecheck`, `npm run lint`, `npm run web:build`,
-  `npm run test:parity`, then `npm run test:coverage` alone, then `npm run test:perf`. Coverage selects
-  the unit, integration and architecture suites without perf, so don't run those three separately.
-- A lint failure is a task failure. Keep assertions, test membership, isolation, coverage floors and
-  timeouts. Never report an unrun check as passed.
-- Generate derived files at their source. Never hand-edit them.
+- Run tests only in an orchestrator-granted local slot. CI-path lanes run typecheck and lint
+  serially. Pause local tests during operator live runs. Run full suites only in a granted slot; PR
+  CI supplies the feature's full run. Run native proofs on platform-matching machines.
+- Before clearing a push, pass the whole architecture suite and the unit and integration tests
+  affected by the diff against `origin/staging`. On the main Mac, run `npm run test:pc` without
+  file arguments. On a backend host, run `npx vitest run --project architecture`, then
+  `npx vitest run --project unit --project integration --changed=origin/staging` in the ticket's
+  checkout under its assigned test slot.
+- Before review/push, complete typecheck, lint/static checks and source generators whose inputs
+  changed; report unrun tests for the reviewer and CI. Never commit a failure caused by the change;
+  a demonstrated base failure may proceed with its evidence recorded.
+- Docs-only changes need link, whitespace and affected generated-output checks and any tests that
+  parse the edited documents; prose alone needs no runtime suite.
+- Staging PRs run portable Ubuntu unit, integration and architecture suites plus static and
+  privacy. Keep `NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` out of Ubuntu shards,
+  retaining release coverage. Local unit and integration runs skip those files unless
+  `RELAY_TEST_NATIVE=1`. Add new native proofs to `scripts/test/ci-files.ts`.
+- Only the operator starts full-release CI; agents never dispatch or rerun CI workflows.
+- Native proofs run in CI only for operator-started releases. Release checks run the selected
+  unit, integration and architecture suites, including native proofs; ready pull requests also
+  build the web bundle for perf and smoke, while manual releases skip those jobs.
+- Keep the published head's PR CI as the merge proof. Never run macOS-native proofs
+  on the PC. Keep machine slot details in `.work/operations.md`.
+- Refresh `scripts/test/ci-durations.json` when job end times spread more than a minute. Generate
+  derived files through their source, never by hand.
+- Before local coverage, verify free memory, no swap pressure and no listener on the runtime
+  backend port; a resource refusal leaves the gate unrun.
+- Before publication, stage the exact candidate and run `npm run privacy:check`; inspect its prose
+  and images too. Keep public instructions free of local paths, machine/account identities,
+  terminal handles, secrets and employee identifiers.
 
 ## Runtime safety
 
-- Fail loud. Missing or corrupt data and failed checks never become defaults, cached values,
-  alternate selectors or swallowed results. Throw a named error, or return a distinct unknown that
-  the caller checks. Allow a fallback only for a valid expected case with recorded verification.
-- Never log secret or canary values.
-- Never import, invoke, proxy or read production (`hr-automation`) state. Port by copying, record the
-  source commit and path in the task's evidence folder, then verify live. Never delete production files. Prefix cross-repo paths
-  with `legacy:`.
-- `config/runtime-isolation.json` owns the rebuild's ports, browser session and state, artifact,
-  lock and auth roots. Read the operating reference before changing authority or path resolution.
-  Preserve settings/database coupling, terminal tombstones, explicit verified backups and the current
-  boot/upgrade authority. Never discard one authority half to hide a mismatch.
-- Never overwrite an existing `.env` or print credentials. Before configuration or live work, read
-  the operating reference's Environment section. An unavailable subject blocks before secret access
-  or browser launch. Never substitute canaries.
-- Read-only selectors, login checks, collectors and dry runs are pre-authorized. Transaction
-  verification uses `dryRun=true`: no UCPath submit, no Kuali finalization. A transaction-free
-  live read creates no transactions and no durable effects. Never retry an UNKNOWN submit.
-- Browser work uses playwright-cli, headless by default. Snapshot before choosing locators. Duo
-  Autopilot needs full Chromium (`duo-autopilot/README.md`). Close only your own sessions, and skip a
-  system that is down while continuing with the rest.
+- Fail loud on missing or corrupt data and failed checks: throw a named error naming the offending
+  field or value, or propagate a distinct unknown that the caller checks. A fallback needs a valid
+  expected case and recorded verification (live evidence for selectors or page state, tests for
+  pure logic); unless both are clearly met, throw. Never turn a failed check into a default,
+  cached result, alternate selector or swallowed success. Retry the same transient operation only
+  where its write policy permits it. Swallow an optional failure only when no caller depends on it.
+- Preserve dry runs, write intents, parked writes, receipts, evidence and UNKNOWN/no-retry behavior.
+  Transaction verification uses `dryRun=true`: no UCPath submit or Kuali finalization.
+  A transaction-free live read creates no transactions and no durable effects.
+- Port workflow behavior by copying production reference code and recording its commit and path
+  in task evidence, then verify live. Prefix cross-repo paths `legacy:`. Never import, invoke,
+  proxy or read production state, delete production files, or make committed gates depend on legacy.
+- Before changing authority or path resolution, read the operating reference and
+  `config/runtime-isolation.json`. Preserve database/settings coupling, terminal tombstones,
+  verified backups and boot/upgrade authority. Never discard one authority half to hide a mismatch.
+- Before configuration or live work, read the operating reference's Environment section.
+  Preserve existing `.env` files. Never print credentials or log secret or canary values. Reject
+  unavailable subjects before secret reads or browser launch; never substitute canaries or use
+  settings/credentials as test-input fallbacks.
+- Read-only selectors, login checks, collectors and live dry runs are pre-authorized. Use headless
+  sessions by default and snapshot before choosing locators. Fast Duo requires full Chromium;
+  read `fast-duo/README.md`. Close only owned sessions; skip unavailable systems and continue
+  with the rest.
 
 ## Read by task
 
-`ref <slug>` means `docs/rebuild/reference/<slug>.md`. Read only the relevant sections.
+`ref <slug>` means `docs/reference/<slug>.md`. Read relevant sections, not whole catalogs.
 
 | Task | Read first |
 | --- | --- |
-| Any task | The assigned brief, its folder's README, the [codebase map](docs/rebuild/reference/codebase-structure.md) and the [roadmap](docs/roadmap/roadmap.md) |
-| Workflow | `ref task-contract`, `ref workflow-model`, `ref stores`, [authoring guide](docs/rebuild/guides/workflow-authoring.md) |
-| Dashboard, client, CLI | `src/dashboard/AGENTS.md`, `ref frontend-backend-integration`, `ref dashboard-surfaces`; use `/ui` for frontend work |
+| Workflow | `ref task-contract`, `ref workflow-model`, `ref stores`, [authoring guide](docs/guides/workflow-authoring.md) |
+| Backend, CLI composition | [Backend instructions](src/backend/AGENTS.md) |
+| Dashboard, client, CLI | [Dashboard instructions](src/dashboard/AGENTS.md) or the backend's, `ref frontend-backend-integration`, `ref dashboard-surfaces` |
+| Dashboard mock variants | [`ui-mock`](.agents/skills/ui-mock/SKILL.md) |
 | Settings, config, secrets | `ref clock-config-secrets` |
-| Worker, browser, external write | `ref execution-and-sessions`, `ref write-safety`, the system's `AGENTS.md` |
+| Worker, browser, external write | `ref execution-and-sessions`, `ref write-safety`, the system's `AGENTS.md` before its driver |
 | Intake, OCR, Edit Data | `ref data-intake-and-edit-data` |
 | Tests and guards | `ref guards-and-tests` |
-| Environment, porting, conventions | The [operating reference](.agents/skill-library/repository-work/REFERENCE.md) |
-
-## Commands
-
-| Purpose | Command |
-| --- | --- |
-| Dev backend + Vite | `npm run dashboard` (Ctrl+C stops both) |
-| Production bundle and server | `npm run web:build`, then `npm run dashboard:prod` |
-| Workflow dry run | `npm run cli -- dry-run-scenario <workflow> --subject <label>`; absent manifests must report unavailable before execution |
-| Remove leftover test runs | `npm run test:reap` |
-| Visual contract | `npm run test:parity` (desktop only) |
-| Workflow manifest | `npm run build:manifest`, then `npm run build:manifest:check` |
-| Store catalog | `npm run stores:catalog`, then `npm run stores:catalog:check` |
-| Roadmap | `npm run roadmap`, then `npm run roadmap:check` |
+| Relay failure | [`hr-debug`](.agents/skills/hr-debug/SKILL.md) |
+| Live dry run | [`/verify`](.agents/skills/verify/SKILL.md) and its [feature map](.agents/skills/verify/features/README.md) |
+| Environment, porting, conventions | [Operating reference](.agents/skills/hr-manage/references/operating-reference.md) |

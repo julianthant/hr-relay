@@ -1,4 +1,5 @@
 import type { CommandExecutionOptions, CommandExecutionScope, CommandOutcome } from "../../../app/commands/command-executor.js";
+import { attemptUnresolved, commandAttemptView } from "../../../app/commands/command-outcome.js";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
@@ -11,7 +12,7 @@ import { checkedSettingsResult, commandSaveState, settingsScopeRecoveryState, pr
 type ProtectedDraftOperation = { readonly kind: "set"; readonly raw: string } | { readonly kind: "clear" };
 type ProtectedDraft = Partial<Record<ProtectedSettingsName, ProtectedDraftOperation>>;
 function protectedValue(name: ProtectedSettingsName, raw: string): unknown {
-  return ProtectedValueSchemas[name].parse(name === "activityPersonPseudonym" ? JSON.parse(raw) as unknown : raw);
+  return ProtectedValueSchemas[name].parse(raw);
 }
 export function useProtectedSettings(input: {
   actorId: string; readReady: boolean; document: EditableSettingsWire | undefined; refresh: () => Promise<EditableSettingsWire>; readCurrent: () => Promise<EditableSettingsWire>; acceptReadback: (document: EditableSettingsWire) => void; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener;
@@ -22,11 +23,12 @@ export function useProtectedSettings(input: {
   const [draft, setDraft] = useState<ProtectedDraft>({});
   const [errors, setErrors] = useState<Partial<Record<ProtectedSettingsName, string>>>({});
   const [save, setSave] = useState<SettingsSaveState>({ state: "idle" });
+  const [explicitSave, setExplicitSave] = useState(false);
   const pending = useRef<string | undefined>(undefined);
   const busy = useRef(false);
   const recoveryFailure = useRef<CommandOutcome | undefined>(undefined);
   const attemptScope = useRef<CommandExecutionScope | undefined>(undefined);
-  const retained = binding?.executor.retainedAttempts().find(attempt => (attempt.state === "pending" || attempt.outcome?.kind === "uncertain") && attempt.scope.actorId === binding.scope.actorId
+  const retained = binding?.executor.retainedAttempts().find(attempt => attemptUnresolved(attempt) && attempt.scope.actorId === binding.scope.actorId
     && attempt.request.family === "settings" && attempt.request.type === "apply-protected-settings");
   if (pending.current === undefined && retained?.request.family === "settings" && retained.request.type === "apply-protected-settings") {
     pending.current = retained.request.commandId;
@@ -36,7 +38,7 @@ export function useProtectedSettings(input: {
   const update = (name: ProtectedSettingsName, raw: string): void => {
     if (!input.readReady || busy.current || pending.current !== undefined || available?.state !== "available" || !available.rows.some(row => row.name === name)) return;
     let error: string | undefined;
-    try { protectedValue(name, raw); } catch { error = name === "activityPersonPseudonym" ? "Enter JSON with keyHex (64 lowercase hex characters) and keyGeneration (activity-person-…)." : "Enter a valid value for this credential."; }
+    try { protectedValue(name, raw); } catch { error = "Enter a valid value for this credential."; }
     setDraft(previous => ({ ...previous, [name]: { kind: "set", raw } }));
     setErrors(previous => ({ ...previous, [name]: error })); setSave({ state: "idle" });
   };
@@ -87,7 +89,8 @@ export function useProtectedSettings(input: {
         binding.feedback(outcome);
         if (document !== undefined) input.acceptReadback(document);
         if (outcome.kind === "conflict") void input.refresh().catch(() => undefined);
-        if (outcome.kind !== "uncertain" && !(outcome.kind === "refused" && outcome.reason === "locked")) pending.current = undefined;
+        const view = commandAttemptView(outcome);
+        if (view.view !== "unknown" && !(view.view === "call-refused" && view.reason === "locked")) pending.current = undefined;
         const next = outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome); setSave(next);
         if (outcome.kind === "confirmed" && document?.protectedSettings.state === "available") {
           setDraft({}); setErrors({});
@@ -117,12 +120,12 @@ export function useProtectedSettings(input: {
   };
   const autosave = useEffectEvent(submit);
   useEffect(() => {
-    if (!input.readReady || available?.state !== "available" || save.state !== "idle"
+    if (explicitSave || !input.readReady || available?.state !== "available" || save.state !== "idle"
       || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined)) return;
     const timer = window.setTimeout(() => autosave(), 1200);
     return () => window.clearTimeout(timer);
-  }, [available, draft, errors, input.readReady, save.state]);
+  }, [available, draft, errors, explicitSave, input.readReady, save.state]);
   const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
   return { draft, errors, save: pending.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save.state === "idle" && retained?.outcome !== undefined ? commandSaveState(retained.outcome) : save, dirtyCount: Object.keys(draft).length, locked: !input.readReady || save.state === "saving" || pending.current !== undefined,
-    update, clear, reset, discard, submit, retry };
+    explicitSave, setExplicitSave, update, clear, reset, discard, submit, retry };
 }

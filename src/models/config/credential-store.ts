@@ -1,6 +1,18 @@
 import { z } from "zod";
-import { ProtectedStoreRecordSchema, type ProtectedSettingsApplyInput, type ProtectedStoreRecord } from "./protected-settings.js";
+import { IsoInstantSchema } from "../../rules/identity/ids.js";
+import {
+  ProtectedSettingsLastAppliedSchema,
+  ProtectedStoreRecordSchema,
+  type ProtectedSettingsApplyInput,
+  type ProtectedSettingsName,
+  type ProtectedStoreRecord,
+} from "./protected-settings.js";
 import { SettingsApplyRefusalSchema } from "./settings.js";
+
+export const CredentialEraseInputSchema = ProtectedSettingsLastAppliedSchema.extend({
+  updatedAt: IsoInstantSchema,
+});
+export type CredentialEraseInput = z.infer<typeof CredentialEraseInputSchema>;
 
 /** A protected write has settled in the credential authority; public callers see value-free presence metadata only. */
 export const CredentialStoreApplyOutcomeSchema = z.union([
@@ -9,14 +21,24 @@ export const CredentialStoreApplyOutcomeSchema = z.union([
 ]);
 export type CredentialStoreApplyOutcome = z.infer<typeof CredentialStoreApplyOutcomeSchema>;
 
+export interface CredentialEntryWriter {
+  readonly commandFingerprint: string;
+  readonly operation: "set" | "clear" | "erase";
+}
+
 /** The independent, non-database authority for protected settings. */
 export interface CredentialStore {
   read(): ProtectedStoreRecord;
-  /** Authorized command-path lookup; recovers a stale writer before returning value-free retry time. */
+  /** Return the latest accepted command time without changing credential authority. */
   acceptedAt(commandId: string): string | undefined;
   /** Value-free, read-only ownership retained across failed audits and SQLite restore. */
   ownsCommandId(this: void, commandId: string): boolean;
   apply(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome;
+  /**
+   * Value-free and read-only: for each protected entry, the fingerprint and operation of the newest authenticated receipt that
+   * marked it. An entry no receipt has marked is absent; an unreadable or unauthenticated history throws.
+   */
+  lastEntryWriters(this: void): Readonly<Partial<Record<ProtectedSettingsName, CredentialEntryWriter>>>;
   /** Verify the exact most-recent application without performing a write. */
   verifyReplay(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome;
 }

@@ -46,7 +46,6 @@ PanelHeader,
 Popover,
 PopoverContent,
 PopoverTrigger,
-Refusal,
 SectionLabel,
 Select,
 Tab,
@@ -61,7 +60,7 @@ TH,
 THead,
 TR,
 useDsEnterTransition,
-Well,
+Well, Notice,
 } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { useIntakeClient as useDashboardClient } from "./intake-client.js";
@@ -122,41 +121,11 @@ function Arriving({ children }: { children: ReactNode }) {
   );
 }
 
-function ProblemNotice({ problem, onDismiss }: { problem: CommandProblem; onDismiss: () => void }) {
-  const action = (
-    <Button size="sm" variant="ghost" onClick={onDismiss}>
-      Dismiss
-    </Button>
-  );
-  if (problem.kind === "rejected") {
-    return (
-      <Arriving>
-        <Refusal title="The server refused that" code={problem.code} outcome="nothing changed" action={action}>
-          {problem.message}
-        </Refusal>
-      </Arriving>
-    );
-  }
-  if (problem.kind === "confirmation-required") return <Banner tone="warning" title="Confirmation required" action={action}>{problem.message}</Banner>;
-  if (problem.kind === "conflict") {
-    return (
-      <Arriving>
-        <Banner tone="warning" title="This session moved while you were reading it" action={action}>
-          <span className="flex flex-col gap-[var(--ds-space-snug)]">
-            <span>{problem.message}</span>
-            <MetaLine items={[`now at version ${String(problem.currentVersion)}`, "nothing was enqueued"]} />
-          </span>
-        </Banner>
-      </Arriving>
-    );
-  }
-  return (
-    <Arriving>
-      <Banner tone="danger" title="Command status needs verification" action={action}>
-        {problem.message}
-      </Banner>
-    </Arriving>
-  );
+function ProblemNotice({ problem }: { problem: CommandProblem }) {
+  if (problem.kind === "rejected") return <Notice tone="danger" title="Request refused" description={problem.message} />;
+  if (problem.kind === "confirmation-required") return <Notice tone="warning" title="Confirmation required" description={problem.message} />;
+  if (problem.kind === "conflict") return <Notice tone="warning" title="Session changed" description={problem.message} />;
+  return <Notice tone="danger" title="Command status unverified" description={problem.message} />;
 }
 
 /* ── source band ──────────────────────────────────────────────────────────── */
@@ -1026,9 +995,7 @@ function RerunStageView({ session }: { session: IntakeSessionWire }) {
   if (stage.kind === "same-plan") {
     return (
       <section className="flex flex-col gap-[var(--ds-space-cozy)]">
-        <Banner tone="warning" title="This file has already been enqueued, with this exact plan">
-          Running it again would file the same rows a second time. Nothing has changed since.
-        </Banner>
+        <Notice sticky tone="warning" title="Already enqueued with this plan" description="Running it again files the same rows twice." />
         <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
           <MetaLine items={[`manifest ${shortHash(stage.manifestId)}…`, `made ${fmtClock(stage.createdAt)}`]} />
           <IdentifierPopover
@@ -1289,9 +1256,7 @@ function IntakeSessionWorkspace({
     }
     if (resource.state === "failed") {
       return (
-        <Banner tone="danger" title="This intake session could not be read">
-          {resource.message}
-        </Banner>
+        <Notice sticky tone="danger" title="Intake session could not be read" description={resource.message} />
       );
     }
     const session = resource.session;
@@ -1303,7 +1268,7 @@ function IntakeSessionWorkspace({
           onInspect={(selection) => issue(session, { type: "inspect-intake", payload: selection }, "inspect")}
         />
 
-        {problem !== null && <ProblemNotice problem={problem} onDismiss={() => setProblem(null)} />}
+        {problem !== null && <ProblemNotice problem={problem} />}
         {recovery !== null && <Button variant="secondary" disabled={pending !== null} onClick={recovery.retry}>Recover exact command</Button>}
 
         <Tabs

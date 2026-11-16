@@ -103,6 +103,15 @@ describe("secrets single source", () => {
     assert.deepEqual(auditSoleRunnerInvocation(runnerInvocationProductionSources()), []);
   });
 
+  it("recomputes packed runner queries when the same source path changes", () => {
+    const path = "src/packed-runner-control.ts";
+    const safe = "const packed = { run: () => undefined }; packed.run();";
+    const unsafe = 'import { runCli } from "./cli.js"; const packed = { run: runCli }; packed.run();';
+    assert.deepEqual(auditSoleRunnerInvocation([{ path, content: safe }]), []);
+    assert.ok(auditSoleRunnerInvocation([{ path, content: unsafe }]).length > 0);
+    assert.deepEqual(auditSoleRunnerInvocation([{ path, content: safe }]), []);
+  });
+
   it("rejects key-refusal, admission, selector and wrapper tampering", () => {
     const path = "src/backend/app/bootstrap/secure-env-bootstrap.ts";
     const content = readFileSync(join(REPO_ROOT, path), "utf8");
@@ -111,22 +120,40 @@ describe("secrets single source", () => {
     for (const candidate of [
       content.replace("assertNoMigratedEnvironmentKeys()))", "(() => undefined)()))"),
       content.replace('entrypointArgs[0] === "test-data"', 'entrypointArgs[0] === "dashboard"'),
-      content.replace("acquireEntrypointAdmission(workspace, requested, beforeInitialAuthorityOpen)", "undefined"),
+      content.replace("acquireEntrypointAdmission(workspace, requested, rootLifetime())))(mode, lifetime.lock)", "undefined)))(mode, lifetime.lock)"),
+      content.replace("const mode =", "acquireEntrypointAdmission(workspace, requested, rootLifetime()); const mode ="),
       content.replace('if (selector === "cli" || selector === "test-target-document-number") return selector;', 'return "cli";'),
       content.replace('from "../../../models/config/secrets.js"', 'from "../../../models/config/forged-secrets.js"'),
       content.replace("const runCli =", "assertNoMigratedEnvironmentKeys = () => undefined; const runCli ="),
-      content.replace('import { assertNoMigratedEnvironmentKeys }', 'import { assertNoMigratedEnvironmentKeys as forged }'),
+      content.replace('assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment', 'assertNoMigratedEnvironmentKeys as forged,hostAwareResolutionEnvironment'),
       content.replace('await runCli(admission, () => {', 'await runCli(admission); await runCli(admission, () => {'),
-      content.replace('bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)', 'bootDiagnostics ? acquireEntrypointAdmission(workspace, requested)'),
-      content.replace('const custody = initialWorkerCustody;', 'const custody = undefined;'),
-      content.replace('initialWorkerCustody = undefined;', 'initialWorkerCustody = custody;'),
+      content.replace('bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace, rootLifetime())', 'bootDiagnostics ? acquireEntrypointAdmission(workspace, requested, rootLifetime())'),
+      content.replace('}, lifetime);', '}, undefined);'),
+      content.replace('dashboardOwnsAdmission = true;', 'dashboardOwnsAdmission = false;'),
+      content.replace('await runCli(admission,', 'await runCli(undefined,'),
+      content.replace('}, lifetime);', '}, lifetime, undefined);'),
       content.replace('!bootDiagnostics &&', ''),
-      content.replace('acquireExclusiveRuntimeAdmission, type RuntimeAdmission', 'forgedAdmission, type RuntimeAdmission'),
-    ]) assert.ok(audit(candidate).length > 0, candidate);
+      content.replace('{ acquireExclusiveRuntimeAdmission,RuntimeAdmission }', '{ forgedAdmission,RuntimeAdmission }'),
+    ]) {
+      assert.notEqual(candidate, content, "bootstrap tampering fixture must change its source");
+      assert.ok(audit(candidate).length > 0, candidate);
+    }
     const wrapperPath = "scripts/dev/secure-env-bootstrap.ts";
     const wrapper = readFileSync(join(REPO_ROOT, wrapperPath), "utf8");
     assert.deepEqual(auditSoleRunnerInvocation([{ path, content }, { path: wrapperPath, content: wrapper }]), []);
-    for (const candidate of [wrapper + '\nawait runSecureEnvironmentBootstrap();', wrapper.replace('entryPath !== undefined &&', ''), wrapper.replace('bootstrap/secure-env-bootstrap.js', 'bootstrap/forged.js')]) {
+    const captureBeforeGraph = [
+      "  // The build id is frozen before the application graph loads, so it names the code this process runs.",
+      "  const { captureBuildId } = await import(\"../../src/backend/runtime/build-id.js\");",
+      "  captureBuildId();",
+      "",
+    ].join("\n");
+    const missingCapture = wrapper.replace(captureBeforeGraph, "");
+    const lateCapture = wrapper.replace(
+      'const { captureBuildId } = await import("../../src/backend/runtime/build-id.js");\n  captureBuildId();\n  const { runSecureEnvironmentBootstrap } = await import("../../src/backend/app/bootstrap/secure-env-bootstrap.js");\n  await runSecureEnvironmentBootstrap(args);',
+      'const { runSecureEnvironmentBootstrap } = await import("../../src/backend/app/bootstrap/secure-env-bootstrap.js");\n  await runSecureEnvironmentBootstrap(args);\n  const { captureBuildId } = await import("../../src/backend/runtime/build-id.js");\n  captureBuildId();',
+    );
+    for (const candidate of [wrapper + '\nawait runSecureEnvironmentBootstrap();', wrapper.replace('entryPath !== undefined &&', ''), wrapper.replace('bootstrap/secure-env-bootstrap.js', 'bootstrap/forged.js'), missingCapture, lateCapture]) {
+      assert.notEqual(candidate, wrapper);
       assert.ok(auditSoleRunnerInvocation([{ path, content }, { path: wrapperPath, content: candidate }]).length > 0);
     }
   });
@@ -449,6 +476,13 @@ describe("secrets single source", () => {
       }),
       [],
     );
+  });
+
+  it("rejects a direct SystemRoot read in the picker while admitting the canonical accessor", () => {
+    const source = "export function windowsSystemRoot() { return process.env.SystemRoot; }";
+    assert.deepEqual(auditSecretsSingleSource(inventoryEnvironmentAccesses(SECRET_OWNER, source)), []);
+    assert.equal(auditSecretsSingleSource(inventoryEnvironmentAccesses(
+      "src/backend/transports/http/native-path-picker.ts", source)).length, 1);
   });
 
   it("rejects direct, aliased, destructured, global, imported, and mutating access outside the owner", () => {

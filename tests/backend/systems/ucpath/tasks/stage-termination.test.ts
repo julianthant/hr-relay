@@ -23,6 +23,7 @@ function run(observedRecord: string, failure?: Error) {
       return { ...staging, observedEmplRecord: observedRecord };
     } },
     signal: new AbortController().signal,
+    captureScreenshot: async () => { throw new Error("This task fixture has no screenshot surface"); },
     log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
     fail: (code: string, message: string): never => { throw new TaskError(UcpathStageTermination.id, code, message); },
     recordData: (points) => { recorded.push(points); },

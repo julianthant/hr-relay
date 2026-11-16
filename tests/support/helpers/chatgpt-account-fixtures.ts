@@ -1,27 +1,34 @@
+import { completedResponseStream } from "./chatgpt-response-stream.js";
 import { generateKeyPairSync, sign } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { createChatGptAccountService, type ChatGptAuthorization } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 
-export function chatGptFixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "chatgpt-service-"))), admission = RuntimeAdmission.syntheticRoots(root, root);
+import { createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "./admission-fixture.js";
+
+export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  const profile = ownedAdmission === undefined ? await profileFixture() : undefined;
+  const admission = ownedAdmission ?? profile?.admission;
+  if (admission === undefined) throw new Error("actual profile fixture admission required");
+  const root = admission.stateRoot;
   const clock = manualClock(new Date("2026-10-12T12:00:00.000Z"));
   const keys = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const jwk = { ...keys.publicKey.export({ format: "jwk" }), kid: "fixture-key", alg: "RS256", use: "sig" };
   let nonce = "", count = 0;
   const calls: { url: string; init: RequestInit }[] = [];
   let claimsPatch: { [key: string]: unknown } = {}, grantedScopes = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct";
-  let sse = 'data: {"type":"response.output_text.delta","delta":"Synthetic form"}\n\ndata: {"type":"response.completed"}\n\n';
+  let sse = completedOcrStream("Synthetic form");
+  let models: unknown = { models: [{ slug: "gpt-6.1-sol", display_name: "GPT-6.1 Sol", visibility: "list" }] };
+  let modelsHook: ((init?: RequestInit) => Promise<Response>) | undefined;
+  let revocationHook: (() => Promise<void>) | undefined;
   let revocationStatus = 200, discoveryPatch: { [key: string]: unknown } = {};
-  let tokenHook: (() => Promise<void>) | undefined, tokenPatch: { [key: string]: unknown } = {}, tokenStatus = 200, tamperSignature = false;
+  let tokenHook: (() => Promise<void>) | undefined, tokenPatch: { [key: string]: unknown } = {}, tokenStatus = 200, tokenError = "invalid_grant", tamperSignature = false;
   let responseHook: ((init: RequestInit) => Response) | undefined;
   function idToken() {
     const header = Buffer.from(JSON.stringify({ alg: "RS256", kid: "fixture-key" })).toString("base64url");
     const claims = Buffer.from(JSON.stringify({ iss: "https://auth.openai.com", aud: "oaiapp_fixture", sub: "synthetic-subject", name: "Synthetic Operator",
-      email: "synthetic@example.com", exp: clock.nowMs() / 1000 + 3600, iat: clock.nowMs() / 1000, nonce, ...claimsPatch })).toString("base64url");
+      email: "synthetic@example.com", exp: Math.floor(clock.nowMs() / 1000) + 3600, iat: Math.floor(clock.nowMs() / 1000), nonce, ...claimsPatch })).toString("base64url");
     return `${header}.${claims}.${tamperSignature ? "AAAA" : sign("RSA-SHA256", Buffer.from(`${header}.${claims}`), keys.privateKey).toString("base64url")}`;
   }
   const transport: typeof fetch = async (input, init = {}) => {
@@ -31,14 +38,16 @@ export function chatGptFixture() {
     if (url.endsWith("/jwks")) return Response.json({ keys: [jwk] });
     if (url.endsWith("/oauth/token")) {
       await tokenHook?.(); count++;
-      if (tokenStatus !== 200) return Response.json({ error: "invalid_grant" }, { status: tokenStatus });
+      if (tokenStatus !== 200) return Response.json({ error: tokenError }, { status: tokenStatus });
       return Response.json({ access_token: `synthetic-access-${String(count)}`, refresh_token: `synthetic-refresh-${String(count)}`, id_token: idToken(),
         token_type: "Bearer", expires_in: 3600, scope: grantedScopes, ...tokenPatch });
     }
-    if (url.endsWith("/revoke")) return new Response(revocationStatus === 200 ? "" : "synthetic-unavailable", { status: revocationStatus });
+    if (url.endsWith("/revoke")) { await revocationHook?.(); return new Response(revocationStatus === 200 ? "" : "synthetic-unavailable", { status: revocationStatus }); }
+    if (url.endsWith("/models")) return modelsHook === undefined ? Response.json(models) : modelsHook(init);
     if (url.endsWith("/responses")) return responseHook?.(init) ?? new Response(sse, { headers: { "Content-Type": "text/event-stream" } });
     throw new Error("Unexpected synthetic URL");
   };
+  const repository = createChatGptCredentialRepository({ admission, stateRoot: root });
   const service = createChatGptAccountService({ admission, stateRoot: root, clock, fetch: transport });
   async function callback(attempt: ChatGptAuthorization, patch: { [key: string]: string | null } = {}) {
     const authorize = new URL(attempt.authorizationUrl); nonce = authorize.searchParams.get("nonce") ?? "";
@@ -49,14 +58,23 @@ export function chatGptFixture() {
     return fetch(callback);
   }
   async function connected(usePlan = true) { const attempt = await service.signIn({ usePlan }); await callback(attempt); return attempt.completion; }
-  async function cleanup() { await service.close(); admission.release(); rmSync(root, { recursive: true, force: true }); }
-  return { root, admission, clock, service, transport, calls, callback, connected, cleanup,
+  async function cleanup() {
+    await service.close();
+    await profile?.close();
+  }
+  return { root, admission, clock, service, repository, transport, calls, callback, connected, cleanup,
     setClaims(patch: { [key: string]: unknown }) { claimsPatch = patch; },
+    setModels(value: unknown) { models = value; }, setModelsHook(hook: (init?: RequestInit) => Promise<Response>) { modelsHook = hook; },
     setScopes(scopes: string) { grantedScopes = scopes; }, setSse(value: string) { sse = value; },
-    setRevocation(status: number) { revocationStatus = status; }, setDiscovery(patch: { [key: string]: unknown }) { discoveryPatch = patch; },
+    setRevocation(status: number) { revocationStatus = status; }, setRevocationHook(hook: () => Promise<void>) { revocationHook = hook; }, setDiscovery(patch: { [key: string]: unknown }) { discoveryPatch = patch; },
     setTokenHook(hook: () => Promise<void>) { tokenHook = hook; },
     setToken(patch: { [key: string]: unknown }) { tokenPatch = patch; },
-    setTokenStatus(status: number) { tokenStatus = status; }, tamperSignature() { tamperSignature = true; },
+    setTokenStatus(status: number, error = "invalid_grant") { tokenStatus = status; tokenError = error; }, tamperSignature() { tamperSignature = true; },
     setResponse(hook: (init: RequestInit) => Response) { responseHook = hook; },
   };
 }
+
+export function completedOcrStream(text: string, model = "gpt-6.1-sol"): string {
+  return completedResponseStream([{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text }] }], model);
+}
+

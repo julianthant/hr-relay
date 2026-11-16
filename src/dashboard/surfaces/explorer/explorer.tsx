@@ -1,12 +1,14 @@
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { useMemo, useState } from "react";
-import { Button, EmptyState } from "../../ds/ui.js";
+import { Button, EmptyState, Notice } from "../../ds/ui.js";
 import { ExplorerTimeline } from "./explorer-flow.js";
+import { ExplorerSpecView } from "./explorer-spec-view.js";
+import { PERSON_LOOKUP_SPEC } from "./explorer-spec-fixtures.js";
 import { buildExplorerPreview, previewFieldSource } from "./explorer-fixture.js";
 import { blockedAfter, DEFAULT_SCENARIO, type PreviewScenario } from "./explorer-flow-model.js";
 import { buildEmergencyContactMock, buildOnboardingMock, DEFAULT_MOCK_SCENARIO, mockFieldSource, updateMockScenario } from "./explorer-mock-fixtures.js";
-import { buildWorkflowMock, explorerWorkflowOptions, explorerRecoveryWorkflow, DEFAULT_EXPLORER_WORKFLOW_ID, initialWorkflowChoices, updateWorkflowChoice, workflowContractSource } from "./explorer-workflow-model.js";
+import { buildWorkflowMock, explorerWorkflowOptions, explorerRecoveryWorkflow, initialWorkflowChoices, updateWorkflowChoice, workflowContractSource } from "./explorer-workflow-model.js";
 import { MOCK_WORKFLOWS } from "../workflows/mocks/workflow-mock-catalog.js";
 
 import type { DashboardClient } from "../../client/index.js";
@@ -14,14 +16,14 @@ import { useExplorerWiring } from "../../state/explorer-wiring-adapter.js";
 import { formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 export function WorkflowExplorer({ catalog, client }: { catalog: readonly WorkflowCatalogEntry[]; client?: DashboardClient }) {
   const workflows = useMemo(() => explorerWorkflowOptions(catalog), [catalog]);
-  const [workflowId, setWorkflowId] = useViewState("explorerWorkflow", DEFAULT_EXPLORER_WORKFLOW_ID);
+  const [workflowId, setWorkflowId] = useViewState("explorerWorkflow", explorerRecoveryWorkflow(catalog));
   const id = MOCK_WORKFLOWS.find(flow => flow.id === workflowId.replace(/^fixture-/u, ""))?.id;
   const served = catalog.find(entry => entry.id === workflowId && entry.source === "served");
-  const resource = useExplorerWiring(client, served?.id, served?.served?.version);
   const [identity, setIdentity] = useState({ client, workflowId, epoch: 0 });
   const [scenario, setScenario] = useState<PreviewScenario>(DEFAULT_SCENARIO);
   const [mockScenario, setMockScenario] = useState(DEFAULT_MOCK_SCENARIO);
   const [choices, setChoices] = useState(initialWorkflowChoices());
+  const resource = useExplorerWiring(client, served?.id, served?.served?.version);
   if (identity.client !== client || identity.workflowId !== workflowId) {
     setIdentity({ client, workflowId, epoch: identity.epoch + (identity.client !== client ? 1 : 0) }); setScenario(DEFAULT_SCENARIO); setMockScenario(DEFAULT_MOCK_SCENARIO);
     setChoices(initialWorkflowChoices(id));
@@ -31,11 +33,13 @@ export function WorkflowExplorer({ catalog, client }: { catalog: readonly Workfl
     steps: buildExplorerPreview(scenario), summary: "Kuali request → UCPath termination → Kuali completion", completion: "Separation filed and Kuali document verified",
     path: { step: 17, control: "preview-pending" }, stopAfter: blockedAfter(scenario),
   }, [workflowId, mockScenario, scenario]);
+  if (workflowId === "fixture-person-lookup") return <ExplorerSpecView key={workflowId} spec={PERSON_LOOKUP_SPEC} workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId} />;
   if (!workflow || (!served && !id)) return <EmptyState title="Workflow unavailable" description="Choose a registered workflow to inspect its steps." action={<Button onClick={() => setWorkflowId(explorerRecoveryWorkflow(catalog))}>Open Separations</Button>} />;
   if (served) {
-    const steps = resource.state === "ready" ? resource.projection.steps : [{ number: 1, title: served.label, parts: [{ kind: "note" as const, text: resource.state === "loading" ? "Loading workflow definition" : resource.state === "unavailable" ? resource.reason : resource.state === "refused" ? formatErrorCatalogFailure(resource.failure).text : "Workflow unavailable" }] }];
-    return <ExplorerTimeline key={identity.epoch} workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId} title={served.label} steps={steps} scenario={scenario} onScenario={setScenario} onMockChoice={() => undefined}
-      sourceFor={field => resource.state === "ready" ? resource.projection.sources.get(field.source ?? "") : undefined} summary="Registered workflow definition" completion="No run values are available." path={{ step: 1, control: "explorer-step-1" }} />;
+    const projection = resource.state === "ready" ? resource.projection : resource.state === "refused" ? resource.previous : undefined;
+    const steps = projection !== undefined ? projection.steps : [{ number: 1, title: served.label, parts: [{ kind: "note" as const, text: resource.state === "loading" ? "Loading workflow definition" : resource.state === "unavailable" ? resource.reason : resource.state === "refused" ? formatErrorCatalogFailure(resource.failure).text : "Workflow unavailable" }] }];
+    return <>{resource.state === "refused" && projection !== undefined && <Notice tone="warning" title="Workflow definition unavailable" description={formatErrorCatalogFailure(resource.failure).text} />}<ExplorerTimeline key={identity.epoch} workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId} title={served.label} steps={steps} scenario={scenario} onScenario={setScenario} onMockChoice={(key, value) => setChoices(current => ({ ...current, [key.replace(/^workflow:/u, "")]: value }))}
+      sourceFor={field => projection?.sources.get(field.source ?? "")} summary="Registered workflow definition" completion={projection?.completion} stopAfter={projection?.stopAfter} path={{ step: 1, control: "explorer-step-1" }} /></>;
   }
   if (!id) throw new Error(`explorer-mock-workflow-unknown: ${workflowId}`);
   const activeFlow = ["fixture-separations", "fixture-onboarding", "fixture-emergency-contact"].includes(workflowId) ? flow : buildWorkflowMock(id, choices);

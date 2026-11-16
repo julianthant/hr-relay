@@ -1,6 +1,7 @@
 export {
   AuthorityDatabase,
   AuthorityDatabaseOptionsSchema,
+  AuthorityFormatUnsupportedError,
   AuthorityMetaSchema,
   AuthoritySchemaInspectionSchema,
   ImmutableInsertDispositionSchema,
@@ -27,11 +28,6 @@ export {
   OfflineRestoreOptionsSchema,
 } from "./offline-restore.js";
 export {
-  RecoveryStopProofStore,
-  RecoveryStopProofStoreOptionsSchema,
-  StoppedSystemProofIssueRequestSchema,
-} from "./recovery-stop-proof.js";
-export {
   AuthorityBackupManifestSchema,
   AuthorityBackupRequestSchema,
   AuthorityBackupRunReportSchema,
@@ -44,16 +40,12 @@ export {
   OfflineRestoreReportSchema,
   OfflineRestoreRequestSchema,
   RestoreCandidateSchema,
-  RecoveryProcessLockStateSchema,
-  RecoveryRuntimeLockSnapshotSchema,
-  StoppedSystemProofSchema,
   SpanAuthorityRunRootSchema,
   StorageDoctorReportSchema,
   StorageHealthCauseSchema,
 } from "./recovery-contracts.js";
 export {
   doctorAuthorityStorage,
-  summarizeBackupHealth,
   summarizeSpanAuthorityReconciliation,
   StorageDoctorOptionsSchema,
 } from "./storage-doctor.js";

@@ -23,16 +23,18 @@ import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js"
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
 import { deriveIdentityEvidenceDigest } from "../../../../src/rules/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../../src/rules/separations/write-plan.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
-import { HASH_A, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { HASH_A, HASH_B, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, identityCheckDescriptor, createHarness, nextCommandId, _createPlan, startCommand } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, identityCheckDescriptor, DESCRIPTOR_SET, createHarness, nextCommandId, _createPlan, startCommand } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -76,10 +78,10 @@ describe("gate resolution", () => {
     const started = harness.kernel.execute(startCommand(plan));
     assert.equal(started.state, "applied");
     const runId = singleAppliedRunId(started);
-    const { workerId, workerLifetime } = testAdmittedWorker(harness.database, harness.clock, {
-      path: join(harness.stateRoot, "kernel.sqlite"), workflow: identityCheckDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
+    const { workerId } = testAdmittedWorker(harness.database, harness.clock, {
+      path: join(harness.stateRoot, "state.db"), workflow: identityCheckDescriptor.id, poolIndex: 1, browserSystems: ["ucpath"],
     });
-    const claimed = harness.database.authority.runs.claimNext({ workflow: identityCheckDescriptor.id, workerId, workerLifetime, now: NOW });
+    const claimed = harness.database.authority.runs.claimNext({ workflow: identityCheckDescriptor.id, workerId, now: NOW });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") throw new Error("unreachable");
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
@@ -97,6 +99,7 @@ describe("gate resolution", () => {
     };
     const output = MatchIdentityOutputSchema.parse({
       packet,
+      approvalRequired: ["name-resolved", "operator-entered"].includes(packet.emplIdSource),
       evidenceDigest: deriveIdentityEvidenceDigest(packet),
     });
     const checkpoint = harness.database.authority.runCheckpoints.insert({
@@ -109,7 +112,7 @@ describe("gate resolution", () => {
       output: { schemaHash: deriveSchemaHash(task.uses.output, "output"), value: output },
       descriptorVersion: identityCheckDescriptor.version,
       contractFingerprint: identityCheckDescriptor.contractFingerprint,
-      implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, task.uses.id),
+      implFingerprint: taskImplFingerprint(task.uses),
       provenance: [],
       writtenAt: NOW,
     });
@@ -133,7 +136,7 @@ describe("gate resolution", () => {
     assert.equal(checkpointEvent.payload.workflow, identityCheckDescriptor.id);
     assert.equal(checkpointEvent.payload.attempt, claimed.run.envelope.attempt);
     assert.equal(Number(checkpointEvent.payload.claimGeneration), Number(claimed.run.claimGeneration));
-    const lifecycleBase = { workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW };
+    const lifecycleBase = { workerId, claimedAt: NOW, heartbeatAt: NOW };
     let version: number = claimed.run.version;
     for (const state of ["validating", "running"] as const) {
       const outcome = harness.database.authority.runs.transition({
@@ -192,16 +195,28 @@ describe("gate resolution", () => {
     if (result.state === "rejected") assert.equal(result.code, expectedCode);
     assert.deepEqual(harness.database.authority.runs.get(runId), beforeRun);
     assert.equal(harness.database.authority.gateResults.get(`${runId}:${command.target.gateId}`), undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "rejected");
+    assert.equal(harness.database.getMeta().authorityGeneration, beforeGeneration + 2);
     assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeEvents);
     return result;
   }
 
-  it("confirms the real gate node through typed transport and retains uncertainty for divergent readback", async () => {
-    const harness = createHarness();
+  it("refuses gate resolution after a fingerprint change even when every timeline node remains", async () => {
+    const descriptors = [...DESCRIPTOR_SET];
+    const harness = await createHarness(undefined, { descriptors });
     const staged = stageIdentityGateRun(harness);
-    const world = makeWorld();
+    const index = descriptors.findIndex(descriptor => descriptor.id === identityCheckDescriptor.id);
+    assert.ok(index >= 0);
+    descriptors[index] = { ...identityCheckDescriptor, contractFingerprint: FingerprintSchema.parse(HASH_B) };
+    assertGateRefusalHasNoMutation(harness, staged.runId,
+      gateCommand(staged.runId, staged.version, identityResult(staged)), "schema-mismatch");
+  });
+
+  it("confirms the real gate node through typed transport and retains uncertainty for divergent readback", async () => {
+    const harness = await createHarness();
+    const staged = stageIdentityGateRun(harness);
+    const world = await makeWorld();
     try {
       const reader = sqliteRunReader(harness.database, harness.clock);
       const deps: RunDetailQueryDeps = {
@@ -258,11 +273,11 @@ describe("gate resolution", () => {
       fault = "none";
       assert.equal((await executor.replay(command.commandId, options)).kind, "confirmed");
       assert.equal(harness.database.authority.gateResults.listByRun(staged.runId).length, 1);
-    } finally { world.dispose(); }
+    } finally { await world.dispose(); }
   });
 
-  it("rolls back gate result, resume and command when the required SQLite event cannot persist", () => {
-    const harness = createHarness();
+  it("rolls back the gate result when its event cannot persist, then applies the admitted command", async () => {
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness);
     const gate = descriptorRuntimeNodes(identityCheckDescriptor)
       .find((node) => node.kind === "gate" && String(node.id) === "identity-approval");
@@ -271,13 +286,14 @@ describe("gate resolution", () => {
     const before = harness.database.authority.runs.get(staged.runId);
     const generation = harness.database.getMeta().authorityGeneration;
     const history = harness.database.authority.timelineEvents.page({});
-    using raw = new DatabaseSync(join(harness.stateRoot, "kernel.sqlite"));
+    using raw = new DatabaseSync(join(harness.stateRoot, "state.db"));
     raw.exec("CREATE TRIGGER injected_gate_event_failure BEFORE INSERT ON timeline_events BEGIN SELECT RAISE(ABORT, 'injected gate event failure'); END");
     assert.throws(() => harness.kernel.execute(command), /injected gate event failure/);
     assert.deepEqual(harness.database.authority.runs.get(staged.runId), before);
     assert.equal(harness.database.authority.gateResults.get(`${staged.runId}:identity-approval`), undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, generation);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.equal(harness.database.getMeta().authorityGeneration, generation + 1);
     assert.deepEqual(harness.database.authority.timelineEvents.page({}), history);
     raw.exec("DROP TRIGGER injected_gate_event_failure");
     assert.equal(harness.kernel.execute(command).state, "applied");
@@ -293,8 +309,8 @@ describe("gate resolution", () => {
     assert.equal(harness.database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "span" && event.payload.event.t === "gate.resolved").length, 1);
   });
 
-  it("parses the descriptor's exact gate schema, stores the result, and resumes at the parked node", () => {
-    const harness = createHarness();
+  it("parses the descriptor's exact gate schema, stores the result, and resumes at the parked node", async () => {
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness);
     const gateNode = descriptorRuntimeNodes(identityCheckDescriptor)
       .find((node) => node.kind === "gate" && String(node.id) === "identity-approval");
@@ -326,8 +342,8 @@ describe("gate resolution", () => {
     assert.equal(resumed?.envelope.startAt, "approval");
   });
 
-  it("refuses a decision bound to the previous write plan before writing authority", () => {
-    const harness = createHarness();
+  it("refuses a decision bound to the previous write plan before writing authority", async () => {
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness, "name-resolved", {
       currentReason: "the current run does not compose a separation write plan",
       previousReason: "the approved packet showed a prior write plan",
@@ -345,8 +361,8 @@ describe("gate resolution", () => {
     );
   });
 
-  it("records an explicit rejection by the command actor and resumes at the declared node", () => {
-    const harness = createHarness();
+  it("records an explicit rejection by the command actor and resumes at the declared node", async () => {
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness);
     const result = harness.kernel.execute(gateCommand(staged.runId, staged.version, {
       schemaHash: deriveSchemaHash(IdentityApprovalResultSchema, "output"),
@@ -363,8 +379,8 @@ describe("gate resolution", () => {
     assert.equal(resumed?.envelope.startAt, "approval");
   });
 
-  it("refuses a newer item checkpoint from an unlinked claim before writing authority", () => {
-    const harness = createHarness();
+  it("refuses a newer item checkpoint from an unlinked claim before writing authority", async () => {
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness);
     const sibling = harness.database.authority.runCheckpoints.insert({
       ...staged.checkpoint,
@@ -380,8 +396,8 @@ describe("gate resolution", () => {
     );
   });
 
-  it("refuses a gate whose declared condition is now false before writing authority", () => {
-    const harness = createHarness();
+  it("refuses a gate whose declared condition is now false before writing authority", async () => {
+    const harness = await createHarness();
     const staged = stageIdentityGateRun(harness, "document-eid");
     assertGateRefusalHasNoMutation(
       harness,

@@ -97,6 +97,18 @@ describe("the Activity report's CSV export", () => {
     ));
   });
 
+  it("exports workflow attention, labelled typical means and plain per-workflow failure reasons", () => {
+    const csv = activityReportCsv(FILLED);
+    assert.ok(csv.includes("Needs attention,Typical time: successful root mean (ms),Successful roots measured,Successful roots unmeasured"));
+    assert.ok(csv.includes(",1,12000,1,0\r\n"));
+    assert.ok(csv.includes("Code,Runs,Transient,Sample run ids,Workflow,Label,Reason"));
+    assert.ok(csv.includes("retired-workflow,workflow registration is unavailable,This failure code is not in the current catalog. Review the recorded local evidence."));
+    const absent = ActivityReportWireSchema.parse({ ...FILLED, workflows: FILLED.workflows.map(workflow => ({ ...workflow,
+      typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 1,
+        meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } } })) });
+    assert.ok(activityReportCsv(absent).includes(",1,no successful root run in range carries a duration,0,1\r\n"));
+  });
+
   it("says the failure block is empty rather than leaving a headerless hole", () => {
     assert.ok(lines(activityReportCsv(EMPTY)).includes(
       "No run in this range settled with a structured failure.",

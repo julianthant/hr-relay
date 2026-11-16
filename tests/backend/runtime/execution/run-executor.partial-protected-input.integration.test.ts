@@ -1,3 +1,4 @@
+import { retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { requireLifecycleApplied,workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -14,15 +15,18 @@ import { protectedSecretSource } from "../../../support/helpers/protected-secret
 import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { testDataInputSource } from "../../../support/helpers/test-data/test-data-source.js";
 
+const retainedPartialInputOwners = new Set<object>();
+
 it("refuses partial signer metadata from a genuinely admitted private producer before executor scope or effects", async () => {
-  const h = sourceBoundHarness(separationsDescriptor);
+  const h = await sourceBoundHarness(separationsDescriptor);
+  retainedPartialInputOwners.add(h);
   try {
     const source = testDataInputSource({ separationsKualiFinalizationCanaryDocumentNumber: "4502" });
     const document = source.read("separationsKualiFinalizationCanaryDocumentNumber");
     assert.ok(document);
     const documentBinding = ProtectedInputBindingSchema.parse({ kind: "test-data-local", inputPath: "documentNumber",
       name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: document.valueId });
-    const secretSource = protectedSecretSource({ timekeeperName: "Synthetic signer" });
+    const secretSource = protectedSecretSource({ profileName: "Synthetic signer" });
     let credentialReads = 0;
     const snapshot = h.database.authority.runtimeConfig.get();
     assert.ok(snapshot);
@@ -35,7 +39,7 @@ it("refuses partial signer metadata from a genuinely admitted private producer b
     assert.equal(plan.refused.length, 0);
     const planned = plan.planned[0];
     assert.ok(planned);
-    assert.deepEqual(planned.input.protectedBindings?.map(binding => binding.kind), ["test-data-local", "protected-store"]);
+    assert.deepEqual(planned.input.protectedBindings?.map(binding => binding.kind), ["test-data-local", "profile"]);
     const runId = h.ids.uuid();
     const run = buildQueuedRun({ descriptor: separationsDescriptor, runId, itemId: planned.itemId,
       traceId: deriveTraceId(separationsDescriptor.code, runId, h.clock), rawInput: planned.rawInput,
@@ -65,5 +69,8 @@ it("refuses partial signer metadata from a genuinely admitted private producer b
     assert.deepEqual(h.world.events, []);
     assert.deepEqual(h.database.authority.runs.get(run.envelope.runId), claimed);
     assert.equal(h.database.getMeta().authorityGeneration, generation);
-  } finally { h.dispose(); }
+    assert.equal(h.lifecycle.requeue({ commandId: h.ids.uuid(), runId: claimed.envelope.runId, expectedVersion: claimed.version, cause: "recovery", claim: { workerId: slot.workerId, claimGeneration: claimed.claimGeneration } }).state, "applied");
+    await h.dispose();
+    retainedPartialInputOwners.delete(h);
+  } catch (error) { throw retainAuthoritySourceClosure([error], { admission: h }); }
 });

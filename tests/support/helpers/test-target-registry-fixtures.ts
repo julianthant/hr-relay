@@ -16,7 +16,7 @@ const SUBJECT = {
     reason: "No live fixture exists.",
   },
   provenance: {
-    document: "docs/rebuild/reference/guards-and-tests.md",
+    document: "docs/reference/guards-and-tests.md",
     section: "§10.5",
   },
   usagePolicy: "read-only",

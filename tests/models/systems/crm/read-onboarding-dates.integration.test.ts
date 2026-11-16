@@ -13,8 +13,8 @@ afterEach(cleanup);
 
 describe("atomic success terminal authority", () => {
 
-  it("rejects not-run evidence contradicted by a stored checkpoint for the terminal attempt", () => {
-    const database = openDatabase();
+  it("rejects not-run evidence contradicted by a stored checkpoint for the terminal attempt", async () => {
+    const database = await openDatabase();
     const running = startRunning(database);
     const { result, authorization, factoryAuthorization } = resultRequest(database, running);
     const crmDates = ReadOnboardingDatesOutputSchema.parse({

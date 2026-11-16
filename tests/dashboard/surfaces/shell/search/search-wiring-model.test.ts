@@ -26,13 +26,14 @@ const input = () => {
   const runs = seedMockRuns();
   const onboarding = runs.find(run => run.workflowId === "onboarding");
   const ocr = runs.find(run => run.workflowId === "ocr" && !run.approved);
-  assert.ok(onboarding && ocr);
+  const host = runs.find(run => run.id === ocr?.parentId);
+  assert.ok(onboarding && ocr && host);
   return {
     today: "2026-08-04",
     day: FIXTURE_DAY_WIRE.day,
     rows: FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.surfaceKind === "single").slice(0, 2),
     workflowLabel: (workflowId: string) => workflowId === "person-lookup" ? "Person Lookup" : workflowId,
-    mockRuns: [onboarding, ocr],
+    mockRuns: [onboarding, host, ocr],
   };
 };
 
@@ -40,8 +41,8 @@ describe("workspace search wiring", () => {
   it("keeps queue and mock search order, identities, labels, states and destinations", () => {
     const searchInput = input();
     const [queued, running] = searchInput.rows;
-    const [onboarding, ocr] = searchInput.mockRuns;
-    assert.ok(queued && running && onboarding && ocr);
+    const [onboarding, host, ocr] = searchInput.mockRuns;
+    assert.ok(queued && running && onboarding && host && ocr);
 
     const data = buildWorkspaceSearchData(searchInput);
     assert.deepEqual(data.results, [
@@ -51,8 +52,8 @@ describe("workspace search wiring", () => {
         state: statusAccessibleName(dsStatusOf(running.status)), destination: { kind: "run", runId: String(running.runId), day: searchInput.day } },
       { id: onboarding.id, publicId: mockRunDisplayId(onboarding), subject: onboarding.title, workflow: mockWorkflow(onboarding.workflowId).label, day: searchInput.day,
         state: mockRunStatus(onboarding), destination: { kind: "preview-run", runId: onboarding.id, day: searchInput.day, records: false } },
-      { id: ocr.id, publicId: mockRunDisplayId(ocr), subject: ocr.title, workflow: mockWorkflow(ocr.workflowId).label, day: searchInput.day,
-        state: mockRunStatus(ocr), destination: { kind: "preview-run", runId: ocr.id, day: searchInput.day, records: true } },
+      { id: host.id, publicId: mockRunDisplayId(host), subject: host.title, workflow: mockWorkflow(host.workflowId).label, day: searchInput.day,
+        state: mockRunStatus(host), destination: { kind: "preview-run", runId: host.id, day: searchInput.day, records: true } },
     ]);
   });
 

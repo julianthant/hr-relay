@@ -1,7 +1,7 @@
 /** The plain-data presentation/policy vocabularies a descriptor carries; every one of these is a CLOSED union, never a free string. */
 import { z } from "zod";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
-import { NodeIdSchema, slugSchema, TaskIdSchema } from "../../rules/identity/ids.js";
+import { BrowserSystemIdSchema, NodeIdSchema, slugSchema, TaskIdSchema } from "../../rules/identity/ids.js";
 
 /** Compile-time icon union; the dashboard's icon map is exhaustive, so a name added here without a component fails to compile rather than rendering a hole. */
 export const ICON_NAMES = [
@@ -60,8 +60,8 @@ export const EnqueuePolicySchema = z.enum(["reject-active", "supersede-active", 
 export type EnqueuePolicy = z.infer<typeof EnqueuePolicySchema>;
 
 export const CommandActionIdSchema = z.enum([
-  "retry", "restart", "cancel", "bump", "rename", "delete",
-  "edit-checkpoint", "resolve-write-present", "resolve-write-absent",
+  "retry", "restart", "recover-run", "cancel", "bump", "rename", "delete",
+  "edit-checkpoint", "recheck-write", "resolve-write-absent",
 ]);
 export const NavigationActionIdSchema = z.enum(["open-review", "open-evidence"]);
 export const WorkflowActionIdSchema = z.enum([
@@ -86,7 +86,7 @@ export type WorkflowActionPolicy = z.infer<typeof WorkflowActionPolicySchema>;
 /** The action set every ordinary workflow gets; a descriptor opts into more, never fewer by accident, and the narrowing that keeps `delete` safe is the kernel's own. */
 export const STANDARD_WORKFLOW_ACTIONS: WorkflowActionPolicy = Object.freeze(
   WorkflowActionPolicySchema.parse({
-    enabled: ["retry", "restart", "cancel", "bump", "rename", "delete"],
+    enabled: ["retry", "restart", "recover-run", "cancel", "bump", "rename", "delete"],
   }),
 );
 
@@ -111,17 +111,24 @@ export const WorkflowCapabilitiesSchema = z.strictObject({
 });
 export type WorkflowCapabilities = z.infer<typeof WorkflowCapabilitiesSchema>;
 
-/* ── projections over node outputs ───────────────────────────────────────── */
+/* ── presentation projections ────────────────────────────────────────────── */
 
-/** The declared patch set: every `SpanPatched` key is validated against this list, and the coverage guard proves every `fieldPath` exists in the producing node's own output schema. */
+const DetailConditionSchema = z.strictObject({
+  source: z.strictObject({ kind: z.enum(["input", "result"]), fieldPath: ContractFieldPathSchema }),
+  equals: z.union([z.string(), z.number(), z.boolean()]),
+});
+export type DetailCondition = z.input<typeof DetailConditionSchema>;
+
 export const DetailProjectionSpecRuntimeSchema = z.strictObject({
   key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "detail key must be kebab-case"),
   label: z.string().min(1),
-  source: z.strictObject({
-    nodeId: NodeIdSchema,
-    fieldPath: ContractFieldPathSchema,
-  }),
-  display: z.enum(["text", "eid", "date", "count", "badge"]),
+  source: z.union([
+    z.strictObject({ nodeId: NodeIdSchema, fieldPath: ContractFieldPathSchema }),
+    z.strictObject({ kind: z.literal("result"), fieldPath: ContractFieldPathSchema }),
+    z.strictObject({ kind: z.literal("input-title") }),
+  ]),
+  display: z.enum(["text", "eid", "date", "count", "badge", "person-name"]),
+  when: DetailConditionSchema.optional(),
 });
 export type DetailProjectionSpecRuntime = z.infer<typeof DetailProjectionSpecRuntimeSchema>;
 
@@ -129,8 +136,16 @@ export type DetailProjectionSpecRuntime = z.infer<typeof DetailProjectionSpecRun
 export const SubjectProjectionSpecRuntimeSchema = z.strictObject({
   nodeId: NodeIdSchema,
   fieldPath: ContractFieldPathSchema,
+  eidFieldPath: ContractFieldPathSchema.optional(),
 });
 export type SubjectProjectionSpecRuntime = z.infer<typeof SubjectProjectionSpecRuntimeSchema>;
+
+export const ResultTitleProjectionSchema = z.strictObject({
+  fieldPath: ContractFieldPathSchema,
+  display: z.literal("person-name"),
+  protectedInput: z.literal("eid").optional(),
+});
+export type ResultTitleProjection = z.input<typeof ResultTitleProjectionSchema>;
 
 export const ResultSubtitleProjectionSchema = z.strictObject({
   fieldPath: ContractFieldPathSchema,
@@ -171,10 +186,38 @@ export type WorkflowStepOf<Key extends string> = z.infer<ReturnType<typeof Workf
 
 export const StartStepSelectionSchema = z.strictObject({ inputField: z.string().regex(/^[a-z][A-Za-z0-9]*$/u), selectedWhen: z.boolean() });
 
+export const OperatorFieldDisplaySchema = z.strictObject({
+  cases: z.array(z.strictObject({ value: z.union([z.string(), z.number(), z.boolean()]), text: z.string().trim().min(1) })).min(1),
+}).superRefine((display, context) => {
+  if (new Set(display.cases.map(entry => entry.value)).size !== display.cases.length) {
+    context.addIssue({ code: "custom", path: ["cases"], message: "operator display values must be unique typed literals" });
+  }
+});
+export interface OperatorFieldDisplay {
+  readonly cases: readonly Readonly<{ value: string | number | boolean; text: string }>[];
+}
+export interface WorkflowOperatorField {
+  readonly visibility?: "logs";
+  readonly example?: string;
+  readonly label: string;
+  readonly display?: OperatorFieldDisplay;
+  readonly sources: readonly Readonly<{ nodeId: string; kind: "input" | "output"; fieldPath: string }>[];
+}
+export const WorkflowOperatorFieldSchema = z.strictObject({
+  visibility: z.literal("logs").optional(),
+  example: z.string().trim().min(1).optional(),
+  label: z.string().trim().min(1),
+  display: OperatorFieldDisplaySchema.optional(),
+  sources: z.array(z.strictObject({ nodeId: NodeIdSchema, kind: z.enum(["input", "output"]), fieldPath: ContractFieldPathSchema })).min(1),
+});
+
 export const TimelineCategorySpecSchema = z.strictObject({
   key: TimelineCategoryKeySchema,
   label: z.string().min(1),
   selection: StartStepSelectionSchema.optional(),
+  description: z.string().trim().min(1).optional(),
+  operatorFields: z.array(WorkflowOperatorFieldSchema).optional(),
+  system: z.union([BrowserSystemIdSchema, z.literal("local")]).optional(),
   nodes: z.array(NodeIdSchema).min(1),
 });
 export type TimelineCategorySpec = z.infer<typeof TimelineCategorySpecSchema>;
@@ -184,6 +227,9 @@ export const TimelineCategoryProjectionSchema = z.strictObject({
   key: TimelineCategoryKeySchema,
   label: z.string().min(1),
   selection: StartStepSelectionSchema.optional(),
+  description: z.string().trim().min(1).optional(),
+  operatorFields: z.array(WorkflowOperatorFieldSchema).optional(),
+  system: z.union([BrowserSystemIdSchema, z.literal("local")]).optional(),
   nodes: z.array(z.strictObject({ id: NodeIdSchema, label: z.string().min(1) })).min(1),
 });
 export type TimelineCategoryProjection = z.infer<typeof TimelineCategoryProjectionSchema>;
@@ -196,7 +242,8 @@ export const NodePurposeSpecSchema = z.strictObject({
 export type NodePurposeSpec = z.infer<typeof NodePurposeSpecSchema>;
 
 /** Sinks are a closed infrastructure registry, deliberately keyed by sink kind, never by workflow. */
-export const ArtifactSinkIdSchema = z.enum(["xlsx-retention"]);
+export const ArtifactSinkIdSchema = z.enum(["xlsx-retention", "documents-file"]);
+export const ArtifactSinkKeySchema = z.union([z.literal("xlsx-retention"), z.string().regex(/^documents-file-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u)]);
 export type ArtifactSinkId = z.infer<typeof ArtifactSinkIdSchema>;
 
 export const DurableArtifactProjectionSpecRuntimeSchema = z.strictObject({

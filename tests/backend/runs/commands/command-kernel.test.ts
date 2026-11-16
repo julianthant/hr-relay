@@ -70,16 +70,16 @@ it("derives one hour from the kernel clock and preserves read state through Snoo
   assert.deepEqual(h.row().snooze, { state: "not-snoozed" });
 });
 
-it("refuses stale, actor mismatch, pinned and payload-injected commands without state or journal changes", () => {
+it("stores stale, actor mismatch and pinned notification refusals without changing the notification", () => {
   const h = harness();
   const stale = h.kernel.execute(h.command(1, "notification-unsnooze", 9));
-  assert.equal(stale.state, "rejected"); assert.equal(h.row().version, 1); assert.equal(h.commands.size, 0);
+  assert.equal(stale.state, "rejected"); assert.equal(h.row().version, 1); assert.ok(h.commands.get(commandId(1))?.audit);
   const foreign = h.kernel.execute(h.command(2, "notification-snooze", 1, "foreign-actor"));
-  assert.equal(foreign.state, "rejected"); assert.equal(h.commands.size, 0);
+  assert.equal(foreign.state, "rejected"); assert.ok(h.commands.get(commandId(2))?.audit);
   assert.equal(CommandRequestSchema.safeParse({ ...h.command(3, "notification-snooze", 1), payload: { until: NOW } }).success, false);
   h.pin();
   assert.equal(h.kernel.execute(h.command(4, "notification-unsnooze", 1)).state, "rejected");
-  assert.equal(h.row().version, 1); assert.equal(h.commands.size, 0);
+  assert.equal(h.row().version, 1); assert.ok(h.commands.get(commandId(4))?.audit);
 });
 
 it("returns exact replay and refuses divergent reuse without another update", () => {

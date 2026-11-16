@@ -85,9 +85,9 @@ describe("canonical input snapshot", () => {
       const expected = deriveSchemaHash(descriptor.canonicalInput, "output");
       const stored = { schemaHash: expected, value };
       const before = canonicalJsonStringify(stored);
-      assert.equal(canonicalJsonStringify(parseCanonicalInputSnapshot(descriptor.canonicalInput, stored)), canonicalJsonStringify(value));
+      assert.equal(canonicalJsonStringify(parseCanonicalInputSnapshot<z.ZodType>(descriptor.canonicalInput, stored)), canonicalJsonStringify(value));
       assert.equal(canonicalJsonStringify(stored), before);
-      assert.throws(() => parseCanonicalInputSnapshot(descriptor.canonicalInput, { ...stored, schemaHash: "0".repeat(64) }), /bound to schema.*will not be re-derived from ingress/u);
+      assert.throws(() => parseCanonicalInputSnapshot<z.ZodType>(descriptor.canonicalInput, { ...stored, schemaHash: "0".repeat(64) }), /bound to schema.*will not be re-derived from ingress/u);
     }
   });
 });

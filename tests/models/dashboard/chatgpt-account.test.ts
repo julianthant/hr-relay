@@ -1,8 +1,20 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { ChatGptAccountStateSchema, ChatGptAuthorizationUrlSchema, ChatGptSignInCompletionSchema, ChatGptSignInStartResultSchema, ChatGptSignOutResultSchema } from "../../../src/models/dashboard/chatgpt-account.js";
+import { ChatGptAccountStatusSchema, ChatGptConnectionStatusSchema, ChatGptAccountStateSchema, ChatGptAuthorizationUrlSchema, ChatGptSignInCompletionSchema, ChatGptSignInStartResultSchema } from "../../../src/models/dashboard/chatgpt-account.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 const attemptId = "00000000-0000-4000-8000-000000000001";
+it("requires strict status outcomes, canonical failure codes and explicitly unknown usage reset", () => {
+  const connection = { state: "completed", checkedAt: "2026-10-12T12:00:00.000Z", failureCode: null };
+  const status = { account: { state: "signed-out" }, connection, usage: { state: "unavailable", reason: "signed-out" } };
+  assert.equal(ChatGptAccountStatusSchema.safeParse(status).success, true);
+  for (const extra of [{ checkId: attemptId }, { failureCode: "CHATGPT_CONNECTION_FAILED" }, { accessToken: "private" }, { checkedAt: "invalid" }])
+    assert.equal(ChatGptConnectionStatusSchema.safeParse({ ...connection, ...extra }).success, false);
+  assert.equal(ChatGptConnectionStatusSchema.safeParse({ ...connection, state: "refused", failureCode: "CHATGPT_CONNECTION_FAILED" }).success, true);
+  assert.equal(ChatGptConnectionStatusSchema.safeParse({ ...connection, state: "refused", failureCode: "WORKBOOK_INVALID" }).success, false);
+  assert.equal(ChatGptAccountStatusSchema.safeParse({ ...status, usage: { state: "available", resetAt: null } }).success, true);
+  assert.equal(ChatGptAccountStatusSchema.safeParse({ ...status, usage: { state: "limit-reached", resetAt: "2026-10-13T00:00:00Z" } }).success, false);
+  assert.equal(ChatGptAccountStatusSchema.safeParse({ ...status, usage: { state: "unavailable" } }).success, false);
+});
 it("keeps account and lifecycle responses recursively strict and token-free", () => {
   const account = { state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2026-10-12T12:00:00.000Z", planUsage: "enabled" };
   assert.equal(ChatGptAccountStateSchema.safeParse(account).success, true);
@@ -10,11 +22,14 @@ it("keeps account and lifecycle responses recursively strict and token-free", ()
     assert.equal(ChatGptAccountStateSchema.safeParse({ ...account, [token]: "synthetic" }).success, false);
     assert.equal(ChatGptSignInCompletionSchema.safeParse({ state: "completed", attemptId, account: { ...account, [token]: "synthetic" } }).success, false);
   }
-  assert.equal(ChatGptSignOutResultSchema.safeParse({ state: "signed-out", remoteRevocation: "unconfirmed" }).success, true);
   assert.equal(ChatGptSignInStartResultSchema.safeParse({ state: "started", attemptId, authorizationUrl: "https://auth.openai.com/api/accounts/authorize?state=synthetic", expiresAt: account.expiresAt }).success, true);
 });
 it("admits only the authorization origin/path and fixed registered error text", () => {
   for (const url of ["https://foreign.example/api/accounts/authorize", "https://auth.openai.com/other", "https://user@auth.openai.com/api/accounts/authorize", "https://auth.openai.com/api/accounts/authorize#token"]) assert.equal(ChatGptAuthorizationUrlSchema.safeParse(url).success, false);
   assert.equal(ChatGptAccountStateSchema.safeParse({ state: "unavailable", code: "CHATGPT_AUTH_INVALID", message: "raw secret" }).success, false);
   assert.equal(ChatGptSignInCompletionSchema.safeParse({ state: "refused", attemptId, code: "CHATGPT_AUTH_INVALID", message: ERROR_CATALOG.CHATGPT_AUTH_INVALID.text }).success, true);
+});
+it("carries no identity on a signed-out account", () => {
+  assert.equal(ChatGptAccountStateSchema.safeParse({ state: "signed-out" }).success, true);
+  assert.equal(ChatGptAccountStateSchema.safeParse({ state: "signed-out", account: { email: "synthetic@example.com" } }).success, false);
 });

@@ -1,4 +1,4 @@
-import { importSpreadsheet, spreadsheetCsv, spreadsheetXlsx, type EditableWorkbook, type EditableSheet } from './spreadsheet-editor-model.js';
+import { importWorkbook as importSpreadsheet, writeWorkbookCsv as spreadsheetCsv, writeWorkbookXlsx as spreadsheetXlsx, type EditableWorkbook, type EditableSheet } from '../../../rules/spreadsheets/workbook-io.js';
 type Request = { kind: 'import'; name: string; data: ArrayBuffer } | { kind: 'xlsx'; document: EditableWorkbook } | { kind: 'csv'; sheet: EditableSheet };
 self.onmessage = async (event: MessageEvent<Request>) => {
   try {

@@ -1,12 +1,14 @@
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { ProtectedStoreRecordSchema, type ProtectedStoreRecord } from "../../../models/config/protected-settings.js";
+import { readProfileIdentity } from "../../../models/config/secrets.js";
+import type { ProfileIdentity } from "../../../models/profiles/profile-identity.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
-import { ProtectedInputBindingsSchema, protectedInputBindings, type ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
+import { PROFILE_INITIALS_INPUT_PATH, ProtectedInputBindingsSchema, protectedDeclarationPaths, protectedInputBindings, type ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
 import { projectFailureDisplay } from "../../../models/dashboard/failure-display.js";
 import { ErrorCodeSchema } from "../../../rules/identity/ids.js";
 import type { ProtectedSecretSource } from "../../../models/config/secrets.js";
+import { ProfileInitialsSchema } from "../../../models/profiles/profile.js";
 
 
 export function hasProtectedSubject(bindings: readonly ProtectedInputBinding[]): boolean {
@@ -56,19 +58,19 @@ export function admitProtectedInput(
   const declarations = descriptor.protectedInputs ?? [];
   for (const submission of submissions) {
     for (const declaration of declarations) {
-      if (submission !== null && typeof submission === "object" && Object.hasOwn(submission, declaration.inputPath)) {
-        throw new Error(`caller-supplied protected input ${declaration.name} is refused`);
+      for (const inputPath of protectedDeclarationPaths(declaration)) {
+        if (submission !== null && typeof submission === "object" && Object.hasOwn(submission, inputPath)) {
+          throw new Error(`caller-supplied protected input ${inputPath} is refused`);
+        }
       }
     }
   }
-  let record: ProtectedStoreRecord | undefined;
-  if (declarations.length > 0 && retained === undefined) {
-    if (source === undefined) throw new Error("protected input timekeeperName source is unavailable");
-    try { record = ProtectedStoreRecordSchema.parse(source.read()); }
-    catch { throw new Error("protected input timekeeperName source is unreadable"); }
-    for (const declaration of declarations) {
-      if (record.entries[declaration.name] === undefined) throw new Error(`protected input ${declaration.name} is absent`);
-    }
+  let identity: ProfileIdentity | undefined;
+  if (declarations.length > 0) {
+    if (source === undefined) throw new Error("protected input timekeeperName profile is unavailable");
+    identity = readProfileIdentity(source);
+    if (!ProfileInitialsSchema.safeParse(identity.initials).success)
+      throw new Error("protected input timekeeperInitials is refused: the profile's stored Timekeeper initials are not 1-8 letters A-Z");
   }
   if (retained !== undefined && retained.length !== submissions.length) throw new Error("retained input count mismatch");
   return submissions.map((submission, index) => {
@@ -95,21 +97,11 @@ export function admitProtectedInput(
     const bindings: ProtectedInputBinding[] = inputBindings.filter(({ inputPath }) =>
       !declarations.some((declaration) => declaration.inputPath === inputPath));
     for (const declaration of declarations) {
-      if (retained !== undefined) {
-        const prior = retained[index];
-        const value = prior?.value;
-        if (value === null || typeof value !== "object" || Array.isArray(value)
-          || !Object.hasOwn(value, declaration.inputPath)) throw new Error(`retained protected input ${declaration.name} is absent`);
-        admitted[declaration.inputPath] = JsonValueSchema.parse(Reflect.get(value, declaration.inputPath));
-        const binding = protectedInputBindings(value, prior?.protectedBindings).find(({ name }) => name === declaration.name);
-        if (binding === undefined) throw new Error(`retained protected input ${declaration.name} binding is absent`);
-        bindings.push(binding);
-      } else {
-        const entry = record?.entries[declaration.name];
-        if (entry === undefined) throw new Error(`protected input ${declaration.name} is absent`);
-        admitted[declaration.inputPath] = entry.value;
-        bindings.push({ ...declaration, kind: "protected-store", valueId: entry.valueId });
-      }
+      if (identity === undefined) throw new Error("protected input profile identity is absent");
+      // One profile identity read supplies the timekeeper's name and stored initials.
+      admitted[declaration.inputPath] = identity.displayName;
+      admitted[PROFILE_INITIALS_INPUT_PATH] = identity.initials;
+      bindings.push({ ...declaration, kind: "profile", profileId: identity.profileId, sessionEpoch: identity.sessionEpoch });
     }
     return { raw, admitted, bindings };
   });

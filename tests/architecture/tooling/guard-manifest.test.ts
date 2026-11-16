@@ -1,33 +1,37 @@
-import { REVIEWED_CATCH_DEFAULTS } from "./helpers/reviewed-catch-defaults.js";
-import { createHash } from "node:crypto";
-import { existsSync, globSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
-import inventory from "../../../docs/rebuild/guard-inventory.json" with { type: "json" };
-import vitestConfig, {
-  REBUILD_ARCHITECTURE_TEST_INCLUDE,
-  REBUILD_ARCHITECTURE_TEST_EXCLUDE,
-  REBUILD_COVERAGE_EXCLUSIONS,
-  REBUILD_COVERAGE_FLOORS,
-  REBUILD_TEST_PROJECTS,
-  REBUILD_TEST_REPORTERS,
-  REBUILD_UNIT_TEST_EXCLUDE,
-  REBUILD_UNIT_TEST_INCLUDE,
-  REBUILD_INTEGRATION_TEST_INCLUDE,
-  REBUILD_INTEGRATION_TEST_EXCLUDE,
-  REBUILD_PERF_TEST_INCLUDE,
-  REBUILD_PERF_TEST_EXCLUDE,
-} from "../../../vitest.config.js";
-import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
+import { createHash } from "node:crypto";
+import { existsSync,globSync,mkdirSync,readFileSync,rmSync,writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname,join,relative } from "node:path";
+import ts from "typescript";
+import { describe,it } from "vitest";
+import inventory from "../../../docs/guard-inventory.json" with { type: "json" };
 import { projectOwnershipViolations } from "../../../scripts/test/project-policy.js";
+import { spreadsheetValueMatches } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js";
+import vitestConfig,{
+REBUILD_ARCHITECTURE_TEST_EXCLUDE,
+REBUILD_ARCHITECTURE_TEST_INCLUDE,
+REBUILD_COVERAGE_EXCLUSIONS,
+REBUILD_COVERAGE_FLOORS,
+REBUILD_INTEGRATION_TEST_EXCLUDE,
+REBUILD_INTEGRATION_TEST_INCLUDE,
+REBUILD_PERF_TEST_EXCLUDE,
+REBUILD_PERF_TEST_INCLUDE,
+REBUILD_TEST_PROJECTS,
+REBUILD_TEST_REPORTERS,
+REBUILD_UNIT_TEST_EXCLUDE,
+REBUILD_UNIT_TEST_INCLUDE,
+nativeRunExcludes,
+} from "../../../vitest.config.js";
+import { REPO_ROOT,walkFiles } from "../support/helpers/guard-files.js";
 import {
-  auditFailLoudCatchDefaults,
-  auditRebuildRatchetArm,
-  rebuildRatchetFixture,
-  REQUIRED_REBUILD_RATCHET_NAMES,
+auditFailLoudCatchDefaults,
+auditReviewedCatchDefaults,
+auditRebuildRatchetArm,
+rebuildRatchetFixture,
+REQUIRED_REBUILD_RATCHET_NAMES,
 } from "./helpers/ratchet-arms.js";
+import { REVIEWED_CATCH_DEFAULTS, type ReviewedCatchDefault } from "./helpers/reviewed-catch-defaults.js";
 
 const ARCHITECTURE_ROOT = join(REPO_ROOT, inventory.architectureRoot);
 const packageJson = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
@@ -122,7 +126,7 @@ export function architectureProjectViolations({
   const violations: string[] = [];
   const normalized = command.trim().replace(/\s+/g, " ");
   const exactCommand =
-    "tsx scripts/test/runner.ts run --project architecture --passWithNoTests=false";
+    "vitest run --project architecture --passWithNoTests=false";
   if (normalized !== exactCommand) {
     violations.push(
       `test:architecture must select only the named architecture project; expected '${exactCommand}'`,
@@ -131,14 +135,23 @@ export function architectureProjectViolations({
   if (JSON.stringify(unitInclude) !== JSON.stringify(["tests/**/*.test.ts"])) {
     violations.push("unit project include must remain tests/**/*.test.ts");
   }
-  if (JSON.stringify(unitExclude) !== JSON.stringify(["tests/**/*.integration.test.ts", "tests/architecture/**", "tests/parity/**", "tests/perf/**"])) {
-    violations.push("unit project must exclude integration suffixes, architecture, parity, and perf");
+  if (JSON.stringify(unitExclude) !== JSON.stringify([
+    "tests/**/*.integration.test.ts",
+    "tests/architecture/**",
+    "tests/mocks/**",
+    "tests/perf/**",
+    ...nativeRunExcludes(process.env.RELAY_TEST_NATIVE),
+  ])) {
+    violations.push("unit project must exclude integration suffixes, architecture, mocks, perf, and local native files unless RELAY_TEST_NATIVE=1");
   }
   if (JSON.stringify(integrationInclude) !== JSON.stringify(["tests/**/*.integration.test.ts"])) {
     violations.push("integration project must include every recursive tests/**/*.integration.test.ts file");
   }
-  if (JSON.stringify(integrationExclude) !== JSON.stringify(["tests/perf/**"])) {
-    violations.push("integration project must exclude tests/perf/**");
+  if (JSON.stringify(integrationExclude) !== JSON.stringify([
+    "tests/perf/**",
+    ...nativeRunExcludes(process.env.RELAY_TEST_NATIVE),
+  ])) {
+    violations.push("integration project must exclude tests/perf/** and local native files unless RELAY_TEST_NATIVE=1");
   }
   if (
     JSON.stringify(architectureInclude) !==
@@ -148,15 +161,15 @@ export function architectureProjectViolations({
       "architecture project must include every recursive tests/architecture/**/*.test.ts file",
     );
   }
-  if (architectureExclude.length !== 0) {
-    violations.push(
-      `architecture project exclude must remain empty; received ${JSON.stringify(architectureExclude)}`,
-    );
+  if (JSON.stringify(architectureExclude) !== JSON.stringify([])) {
+    violations.push("architecture project must not exclude tests");
   }
   if (JSON.stringify(perfInclude) !== JSON.stringify(["tests/perf/**/*.test.ts"])) {
     violations.push("perf project must include every tests/perf/**/*.test.ts file");
   }
-  if (perfExclude.length !== 0) violations.push("perf project exclude must remain empty");
+  if (JSON.stringify(perfExclude) !== JSON.stringify([])) {
+    violations.push("perf project must not exclude tests");
+  }
   if (JSON.stringify(reporters) !== JSON.stringify(["verbose"])) {
     violations.push("every Vitest entry point must use the single verbose streaming reporter from config");
   }
@@ -167,18 +180,24 @@ export function testProjectTopologyViolations(
   root: string,
   definitions: readonly TestProjectDefinition[] = REBUILD_TEST_PROJECTS,
 ): string[] {
-  const all = globSync(["tests/**/*.test.ts", "tests/**/*.test.tsx"], { cwd: root }).sort();
+  const collect = (patterns: readonly string[]) => globSync([...patterns], { cwd: root }).map(path => path.replaceAll("\\", "/"));
+  const all = collect(["tests/**/*.test.ts", "tests/**/*.test.tsx"]).sort();
   const projects = definitions.map(({ name, include, exclude }) => {
-    const excluded = new Set(globSync([...exclude], { cwd: root }));
-    const collected = globSync([...include], { cwd: root }).filter((path) => !excluded.has(path));
+    const excluded = new Set(collect(exclude));
+    const collected = collect(include).filter((path) => !excluded.has(path));
     return { name, files: collected };
   });
-  const parity = all.filter((path) => path.startsWith("tests/parity/"));
-  const runtime = all.filter((path) => !path.startsWith("tests/parity/"));
-  const violations = projectOwnershipViolations(runtime, projects.map((project) => ({
-    ...project, files: project.files.filter((path) => !path.startsWith("tests/parity/")),
-  })));
-  for (const path of parity) {
+  const mocks = all.filter((path) => path.startsWith("tests/mocks/"));
+  const runtime = all.filter((path) => !path.startsWith("tests/mocks/"));
+  const optedOut = new Set(nativeRunExcludes(process.env.RELAY_TEST_NATIVE));
+  const violations = projectOwnershipViolations(
+    runtime.filter((path) => !optedOut.has(path)),
+    projects.map((project) => ({
+      ...project,
+      files: project.files.filter((path) => !path.startsWith("tests/mocks/")),
+    })),
+  );
+  for (const path of mocks) {
     const owners = projects.filter(({ files }) => files.includes(path)).map(({ name }) => name);
     if (owners.length > 0) violations.push(`${path}: expected no Vitest projects, found ${owners.join(", ")}`);
   }
@@ -294,7 +313,7 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root, "tests/architecture/guard.test.ts", "export {};\n");
       writeFixture(root, "tests/models/real.integration.test.ts", "export {};\n");
       writeFixture(root, "tests/perf/shape.integration.test.ts", "export {};\n");
-      writeFixture(root, "tests/parity/scene.test.ts", "export {};\n");
+      writeFixture(root, "tests/mocks/scene.test.ts", "export {};\n");
       assert.deepEqual(testProjectTopologyViolations(root), []);
       const missingPerf = REBUILD_TEST_PROJECTS.filter(({ name }) => name !== "perf");
       assert.match(testProjectTopologyViolations(root, missingPerf).join("\n"),
@@ -304,11 +323,11 @@ describe("reviewed architecture guard manifest", () => {
         : project);
       assert.match(testProjectTopologyViolations(root, integrationPerfLeak).join("\n"),
         /tests\/perf\/shape\.integration\.test\.ts: expected exactly one Vitest project, found integration, perf/u);
-      const parityLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
-        ? { ...project, exclude: project.exclude.filter((pattern) => pattern !== "tests/parity/**") }
+      const mockLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
+        ? { ...project, exclude: project.exclude.filter((pattern) => pattern !== "tests/mocks/**") }
         : project);
-      assert.deepEqual(testProjectTopologyViolations(root, parityLeak), [
-        "tests/parity/scene.test.ts: expected no Vitest projects, found unit",
+      assert.deepEqual(testProjectTopologyViolations(root, mockLeak), [
+        "tests/mocks/scene.test.ts: expected no Vitest projects, found unit",
       ]);
       writeFixture(root, "tests/support/helpers/helper.test.ts", "export {};\n");
       writeFixture(root, "tests/types/input.integration.test.ts", "export {};\n");
@@ -383,7 +402,6 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runs/commands/command-application.ts",
       "src/backend/runs/commands/command-kernel.ts",
       "src/backend/runs/commands/command-refusal.ts",
-      "src/backend/runs/start/dry-run-scenario-runner.ts",
       "src/backend/runs/provenance/evidence-receipt.ts",
       "src/backend/runs/lifecycle/failure-resolution.ts",
       "src/backend/processing/providers/provider-client.ts",
@@ -400,22 +418,16 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runtime/scheduling/deadline-scheduler.ts",
       "src/backend/runtime/gates/duo-ceremony-gate.ts",
       "src/backend/runtime/gates/gate-source-runtime.ts",
-      "src/backend/runtime/writes/operation-action-binding.ts",
       "src/backend/runtime/writes/receipt-derivation-binding.ts",
       "src/backend/runtime/gates/repeat-proof.ts",
-      "src/backend/runtime/checkpoints/run-checkpoint-reader.ts",
+      "src/backend/storage/sqlite/run-continuation.ts",
       "src/backend/runtime/execution/run-executor.ts",
       "src/backend/runtime/execution/run-failure.ts",
       "src/backend/runtime/workers/worker-loop.ts",
       "src/backend/runtime/workers/worker-sessions.ts",
-      "src/backend/runtime/writes/write-recovery.ts",
+      "src/**/*recovery*.ts",
       "src/backend/runtime/writes/write-resolution-binding.ts",
       "src/backend/runtime/writes/write-sequencer.ts",
-      "src/backend/runs/archive/archive-runtime-version-changes.ts",
-      "src/backend/runs/lifecycle/archive-terminal-runs.ts",
-      "src/backend/runs/archive/archive-version-changes.ts",
-      "src/backend/storage/sqlite/run-lifecycle-storage.ts",
-      "src/backend/storage/maintenance/storage-relocation-plans.ts",
     ];
     const thresholds = vitestConfig.test?.coverage?.thresholds as Record<string, unknown> | undefined;
     assert.ok(thresholds);
@@ -439,7 +451,7 @@ describe("reviewed architecture guard manifest", () => {
       try {
         const fixture = rebuildRatchetFixture(name);
         for (const [path, content] of Object.entries(fixture.files)) writeFixture(root, path, content);
-        const result = auditRebuildRatchetArm(name, root);
+        const result = auditRebuildRatchetArm(name, root, []);
         assert.equal(result.state, "active", `${name} fixture did not activate its scanner`);
         assert.ok(result.files.length > 0, `${name} fixture resolved no files`);
         assert.match(result.violations.join("\n"), fixture.expected, `${name} fixture bypassed its executable arm`);
@@ -449,29 +461,115 @@ describe("reviewed architecture guard manifest", () => {
     }
   });
 
-  it("pins reviewed catch behavior and rejects any changed source with the original scanner",()=>{
-    const root=join(tmpdir(),`hrauto-reviewed-catches-${process.pid}-${Date.now()}`);
+  it("keeps reviewed spreadsheet validation failures distinct from missing field definitions", () => {
+    assert.equal(spreadsheetValueMatches("personalEmail", "invalid@"), false);
+    assert.equal(spreadsheetValueMatches("personalEmail", ""), true);
+    assert.throws(() => spreadsheetValueMatches("unregistered-field", "value"), /SPREADSHEET_FIELD_NOT_FOUND/u);
+  });
+
+  it("pins reviewed catch statements while permitting edits outside them", () => {
+    const root = join(tmpdir(), `hrauto-reviewed-catches-${process.pid}-${Date.now()}`);
+    const pinnedStatements = (entry: ReviewedCatchDefault, source: string): readonly ts.Node[] => {
+      const ast = ts.createSourceFile(entry.path, source, ts.ScriptTarget.Latest, true);
+      const statements: ts.Node[] = [];
+      const visit = (node: ts.Node): void => {
+        if (ts.isTryStatement(node) || ts.isCallExpression(node)) {
+          const sha256 = createHash("sha256").update(source.slice(node.getStart(ast), node.end)).digest("hex");
+          if (entry.statements.some(pin => pin.sha256 === sha256)) statements.push(node);
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(ast);
+      return statements;
+    };
     try {
-      for(const entry of REVIEWED_CATCH_DEFAULTS) {
-        const source=readFileSync(join(REPO_ROOT,entry.path),"utf8");
-        assert.equal(createHash("sha256").update(source).digest("hex"),entry.sha256);
-        assert.ok(auditFailLoudCatchDefaults(entry.path,source).length>0);
-        const target=join(root,entry.path);mkdirSync(dirname(target),{recursive:true});writeFileSync(target,source);
+      for (const entry of REVIEWED_CATCH_DEFAULTS) {
+        const source = readFileSync(join(REPO_ROOT, entry.path), "utf8");
+        assert.ok(auditFailLoudCatchDefaults(entry.path, source).length > 0);
+        const statements = pinnedStatements(entry, source);
+        assert.equal(statements.length, entry.statements.reduce((sum, pin) => sum + pin.occurrences, 0));
+        assert.ok(statements.length > 0);
+        writeFixture(root, entry.path, source);
       }
-      assert.deepEqual(auditRebuildRatchetArm("fail-loud-catch-default",root).violations,[]);
-      for(const entry of REVIEWED_CATCH_DEFAULTS) {
-        const target=join(root,entry.path),source=readFileSync(target,"utf8");
-        writeFileSync(target,source+"\ntry { broken(); } catch { return []; }\n");
-        const violations=auditRebuildRatchetArm("fail-loud-catch-default",root).violations;
-        assert.ok(violations.some(value=>value.includes("catch returns a bare default")));
-        assert.ok(violations.some(value=>value.includes("re-review required")));
-        writeFileSync(target,source + "\n// source-byte control\n");
-        const changedBytes = auditRebuildRatchetArm("fail-loud-catch-default",root).violations;
-        assert.ok(changedBytes.some(value=>value.includes(entry.path) && value.includes("re-review required")));
-        assert.ok(changedBytes.some(value=>value.includes(entry.path) && value.includes("bare default")));
-        writeFileSync(target,source);
+      assert.deepEqual(auditRebuildRatchetArm("fail-loud-catch-default", root).violations, []);
+      for (const entry of REVIEWED_CATCH_DEFAULTS) {
+        const target = join(root, entry.path), source = readFileSync(target, "utf8");
+        writeFileSync(target, source + "\ntry { broken(); } catch { return []; }\n");
+        const violations = auditRebuildRatchetArm("fail-loud-catch-default", root).violations;
+        assert.ok(violations.some(value => value.includes("catch returns a bare default")));
+        assert.ok(violations.some(value => value.includes("re-review required")));
+        writeFileSync(target, source + "\n// outside source-byte control\nconst outsideReviewedStatement = 1;\n");
+        assert.deepEqual(auditRebuildRatchetArm("fail-loud-catch-default", root).violations, []);
+        const statement = pinnedStatements(entry, source)[0];
+        assert.ok(statement);
+        const inside = statement.end - 1;
+        writeFileSync(target, source.slice(0, inside) + "/* inside source-byte control */" + source.slice(inside));
+        const changedBytes = auditRebuildRatchetArm("fail-loud-catch-default", root).violations;
+        assert.ok(changedBytes.some(value => value.includes(entry.path) && value.includes("re-review required")));
+        assert.ok(changedBytes.some(value => value.includes(entry.path) && value.includes("bare default")));
+        writeFileSync(target, source);
+        assert.deepEqual(auditRebuildRatchetArm("fail-loud-catch-default", root).violations, []);
       }
-    } finally {rmSync(root,{recursive:true,force:true});}
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("requires exact finding-bearing statement multisets and retains each finding", () => {
+    const path = "fixture.ts";
+    const guarded = "try { work(); } catch { return []; } finally { cleanup(); }";
+    const promise = "request().catch(() => { audit(); return {}; })";
+    const pin = (source: string, kind: "try" | "promise", occurrences = 1) => ({
+      kind, sha256: createHash("sha256").update(source).digest("hex"), occurrences,
+    });
+    const reviewed = (statements: ReviewedCatchDefault["statements"]): ReviewedCatchDefault => ({
+      path, reason: "Fixture review", statements,
+    });
+    const assertRejected = (source: string, entry: ReviewedCatchDefault): void => {
+      const violations = auditReviewedCatchDefaults(path, source, entry);
+      assert.ok(violations.some(value => value.includes("re-review required")), source);
+      for (const finding of auditFailLoudCatchDefaults(path, source)) assert.ok(violations.includes(finding));
+    };
+    const tryReview = reviewed([pin(guarded, "try")]);
+    assert.deepEqual(auditReviewedCatchDefaults(path, guarded, tryReview), []);
+    for (const changed of [
+      guarded.replace("work()", "differentWork()"),
+      guarded.replace("return []", "audit(); return []"),
+      guarded.replace("cleanup()", "differentCleanup()"),
+      guarded.replace("work();", "work(); /* byte control */"),
+    ]) assertRejected(changed, tryReview);
+    const promiseReview = reviewed([pin(promise, "promise")]);
+    assert.deepEqual(auditReviewedCatchDefaults(path, promise, promiseReview), []);
+    for (const changed of [promise.replace("request()", "otherRequest()"), promise.replace("audit()", "otherAudit()")]) {
+      assertRejected(changed, promiseReview);
+    }
+    assert.deepEqual(auditReviewedCatchDefaults(path, `// outside\nconst extra = 1;\n${guarded}`, tryReview), []);
+    assertRejected(`${guarded}\ntry { other(); } catch { return false; }`, tryReview);
+    assertRejected("", tryReview);
+    assertRejected(guarded, reviewed([]));
+    assertRejected(guarded, reviewed([pin(guarded, "try", 0)]));
+    assertRejected(guarded, reviewed([pin(guarded, "try", -1)]));
+    assertRejected(guarded, reviewed([pin(guarded, "try", 1.5)]));
+    assertRejected(guarded, reviewed([pin(guarded, "promise")]));
+    assertRejected(guarded, reviewed([pin(guarded, "try"), pin(guarded, "try")]));
+    assertRejected(`${guarded}\n${guarded}`, tryReview);
+    assertRejected(guarded, reviewed([pin(guarded, "try", 2)]));
+    assert.deepEqual(auditReviewedCatchDefaults(path, `${promise};\n${promise};`, reviewed([pin(promise, "promise", 2)])), []);
+    assertRejected(`${promise};\n${promise};\n${promise};`, reviewed([pin(promise, "promise", 2)]));
+    const safe = "try { work(); } catch (error) { throw error; }";
+    assertRejected(`${guarded}\n${safe}`, reviewed([pin(guarded, "try"), pin(safe, "try")]));
+    assertRejected(safe, reviewed([pin(safe, "try")]));
+    const multiple = "try { work(); } catch { const fallback = null; recovered = false; return []; }";
+    const multipleFindings = auditFailLoudCatchDefaults(path, multiple);
+    assert.deepEqual(multipleFindings, [
+      `${path}: catch initializes a bare default`, `${path}: catch assigns a bare default`, `${path}: catch returns a bare default`,
+    ]);
+    assert.deepEqual(auditReviewedCatchDefaults(path, multiple, reviewed([pin(multiple, "try")])), []);
+    assertRejected(multiple, reviewed([pin(multiple, "try", 3)]));
+    const inner = "try { nested(); } catch { return []; }";
+    const outer = `try { work(); } catch { ${inner} return false; }`;
+    assert.equal(auditFailLoudCatchDefaults(path, outer).length, 2);
+    assert.deepEqual(auditReviewedCatchDefaults(path, outer, reviewed([pin(outer, "try"), pin(inner, "try")])), []);
+    assertRejected(outer, reviewed([pin(outer, "try")]));
+    assertRejected(outer, reviewed([pin(inner, "try")]));
   });
 
   it("distinguishes erased type dependencies from runtime cycles without relaxing layering",()=>{
@@ -490,6 +588,18 @@ describe("reviewed architecture guard manifest", () => {
     } finally {rmSync(root,{recursive:true,force:true});}
   });
 
+  it("rejects source files without a classified root", () => {
+    const root = join(tmpdir(), `hrauto-unclassified-layers-${process.pid}-${Date.now()}`);
+    try {
+      writeFixture(root, "src/unclassified/value.ts", "export const value = true;\n");
+      writeFixture(root, "src/unclassified.ts", "export const value = true;\n");
+      assert.deepEqual([...auditRebuildRatchetArm("control-layering", root, []).violations].sort(), [
+        "unclassified.ts: unclassified source root",
+        "unclassified/value.ts: unclassified source root",
+      ]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("classifies backend responsibilities and refuses lower-to-higher imports",()=>{
     const root=join(tmpdir(),`hrauto-backend-layers-${process.pid}-${Date.now()}`);
     try {
@@ -499,32 +609,85 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root,"src/backend/workbooks/library.ts","export const library = true;\n");
       writeFixture(root,"src/backend/systems/browser-shared/adapter.ts","export const adapter = true;\n");
       writeFixture(root,"src/backend/app/worker/compose.ts","export const compose = true;\n");
-      writeFixture(root,"src/base/pure.ts","export const pure = true;\n");
-      writeFixture(root,"src/domain/value.ts","export const value = true;\n");
-      writeFixture(root,"src/validation/pure.ts","export const pure = true;\n");
-      assert.deepEqual(auditRebuildRatchetArm("control-layering",root).violations,[]);
+      writeFixture(root,"src/models/value.ts","export const value = true;\n");
+      writeFixture(root,"src/rules/pure.ts","export const pure = true;\n");
+      writeFixture(root,"src/workflow-kit/task.ts","export const task = true;\n");
+      writeFixture(root,"src/workflows/workflow.ts","export const workflow = true;\n");
+      writeFixture(root,"src/dashboard/view.tsx","export const view = true;\n");
+      writeFixture(root,"src/cli.ts","export const cli = true;\n");
+      assert.deepEqual(auditRebuildRatchetArm("control-layering",root,[]).violations,[]);
       writeFixture(root,"src/backend/storage/repository.ts",'import { boot } from "../app/boot.js"; export const repository = boot;\n');
       writeFixture(root,"src/backend/systems/browser-shared/adapter.ts",'import { engine } from "../../runtime/engine.js"; export const adapter = engine;\n');
       writeFixture(root,"src/backend/runtime/engine.ts",'import type { compose } from "../app/worker/compose.js"; export type Engine = typeof compose;\n');
       writeFixture(root,"src/backend/workbooks/library.ts",'import { engine } from "../runtime/engine.js"; import { compose } from "../app/worker/compose.js"; export const library = [engine, compose];\n');
-      writeFixture(root,"src/base/pure.ts",'import { boot } from "../backend/app/boot.js"; export const pure = boot;\n');
-      writeFixture(root,"src/domain/value.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Value = typeof engine;\n');
-      writeFixture(root,"src/validation/pure.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Pure = typeof engine;\n');
+      writeFixture(root,"src/models/value.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Value = typeof engine;\n');
+      writeFixture(root,"src/rules/pure.ts",'import { boot } from "../backend/app/boot.js"; export const pure = boot;\n');
+      writeFixture(root,"src/workflow-kit/task.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Task = typeof engine;\n');
       writeFixture(root,"src/backend/accounts/account-service.ts",'import { boot } from "../app/boot.js"; import { engine } from "../runtime/engine.js"; export const service = { boot, engine };\n');
       writeFixture(root,"src/backend/misc/helper.ts","export const helper = true;\n");
-      const issues=auditRebuildRatchetArm("control-layering",root).violations.join("\n");
+      const issues=auditRebuildRatchetArm("control-layering",root,[]).violations.join("\n");
       assert.match(issues,/backend\/storage\/repository\.ts: layer inversion imports backend\/app\/boot\.ts/u);
       assert.match(issues,/backend\/systems\/browser-shared\/adapter\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/runtime\/engine\.ts: layer inversion imports backend\/app\/worker\/compose\.ts/u);
       assert.match(issues,/backend\/workbooks\/library\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/workbooks\/library\.ts: layer inversion imports backend\/app\/worker\/compose\.ts/u);
-      assert.match(issues,/base\/pure\.ts: layer inversion imports backend\/app\/boot\.ts/u);
-      assert.match(issues,/domain\/value\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
-      assert.match(issues,/validation\/pure\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/models\/value\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/rules\/pure\.ts: layer inversion imports backend\/app\/boot\.ts/u);
+      assert.match(issues,/workflow-kit\/task\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/accounts\/account-service\.ts: layer inversion imports backend\/app\/boot\.ts/u);
       assert.match(issues,/backend\/accounts\/account-service\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/misc\/helper\.ts: unclassified backend responsibility/u);
     } finally {rmSync(root,{recursive:true,force:true});}
+  });
+
+  it("ratchets exact layering import pairs and rejects stale entries", () => {
+    const root = join(tmpdir(), `hrauto-layering-ratchet-${process.pid}-${Date.now()}`);
+    const source = "models/value.ts";
+    const target = "workflow-kit/task.ts";
+    const ratchet = [[source, target]] as const;
+    const importTask = 'import type { Task } from "../workflow-kit/task.js"; export type Value = Task;\n';
+    try {
+      writeFixture(root, `src/${source}`, importTask);
+      writeFixture(root, `src/${target}`, "export type Task = string;\n");
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, []);
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, []).violations, [
+        "models/value.ts: layer inversion imports workflow-kit/task.ts",
+      ]);
+      writeFixture(root, "src/models/other.ts", importTask);
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, [
+        "models/other.ts: layer inversion imports workflow-kit/task.ts",
+      ]);
+      rmSync(join(root, "src/models/other.ts"));
+      writeFixture(root, "src/workflow-kit/other.ts", "export type Task = string;\n");
+      writeFixture(root, `src/${source}`, importTask.replace("task.js", "other.js"));
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, [
+        "models/value.ts: layer inversion imports workflow-kit/other.ts",
+        "stale layering ratchet: models/value.ts -> workflow-kit/task.ts",
+      ]);
+      writeFixture(root, `src/${source}`, "export type Value = string;\n");
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, [
+        "stale layering ratchet: models/value.ts -> workflow-kit/task.ts",
+      ]);
+      rmSync(join(root, `src/${source}`));
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, [
+        "stale layering ratchet: models/value.ts -> workflow-kit/task.ts",
+      ]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("checks workflow, dashboard and CLI layers as dependency targets", () => {
+    for (const target of ["workflows/workflow.ts", "dashboard/view.tsx", "cli.ts"]) {
+      const root = join(tmpdir(), `hrauto-layer-target-${process.pid}-${Date.now()}`);
+      try {
+        writeFixture(root, `src/${target}`, "export type Value = string;\n");
+        writeFixture(root, "src/models/value.ts", "export type Value = string;\n");
+        assert.deepEqual(auditRebuildRatchetArm("control-layering", root, []).violations, []);
+        writeFixture(root, "src/models/value.ts", `export type { Value } from "../${target.replace(/\.tsx?$/u, ".js")}";\n`);
+        assert.deepEqual(auditRebuildRatchetArm("control-layering", root, []).violations, [
+          `models/value.ts: layer inversion imports ${target}`,
+        ]);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    }
   });
 
   it("keeps fail-loud catch scanning semantic across multi-statement and nested handlers", () => {

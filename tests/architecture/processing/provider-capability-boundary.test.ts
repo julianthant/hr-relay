@@ -34,8 +34,7 @@ function isNetworkOwner(path: string): boolean {
 }
 
 function isProviderConsumer(path: string): boolean {
-  return path.startsWith("src/stores/")
-    || path.startsWith("src/workflows/")
+  return path.startsWith("src/workflows/")
     || (path.startsWith("src/backend/processing/") && !path.startsWith("src/backend/processing/providers/"))
     || path.startsWith("src/backend/systems/")
     || path.startsWith("src/workflows/");
@@ -155,11 +154,11 @@ describe("provider capability boundary", () => {
     const fixture = readFileSync(resolve(REPO_ROOT, "tests/types/task-contracts.typecheck.ts"), "utf8");
     assert.match(fixture, /provider clients are narrowed to the declared capability/u);
     assert.match(fixture, /ctx\.providers\["ocr\.extract"\]/u);
-    assert.deepEqual(Object.keys(PROVIDER_CAPABILITY_CONFIG_KEYS).sort(), ProviderCapabilityIdSchema.options.filter(capability => capability !== "ocr.extract").sort());
-    assert.equal(new Set(Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS)).size, ProviderCapabilityIdSchema.options.length - 1);
+    assert.deepEqual(Object.keys(PROVIDER_CAPABILITY_CONFIG_KEYS).sort(), ProviderCapabilityIdSchema.options.filter(capability => capability !== "ocr.extract" && capability !== "workbooks.library" && capability !== "ocr.approved-snapshot" && capability !== "ocr.review").sort());
+    assert.equal(new Set(Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS)).size, ProviderCapabilityIdSchema.options.length - 4);
     const config = ConfigSchema.parse({ paths: defaultRuntimePaths() });
     for (const capability of ProviderCapabilityIdSchema.options) {
-      if (capability !== "ocr.extract") assert.doesNotThrow(() => providerInvocationConfig(config, capability));
+      if (capability !== "ocr.extract" && capability !== "workbooks.library" && capability !== "ocr.approved-snapshot" && capability !== "ocr.review") assert.doesNotThrow(() => providerInvocationConfig(config, capability));
       assert.equal(createDeterministicProviderHarness(capability, [{
         kind: "throw",
 
@@ -169,12 +168,17 @@ describe("provider capability boundary", () => {
     assert.deepEqual(
       gitVisibleFiles(["src/backend/processing/providers"]).map((path) => relative(REPO_ROOT, path).replaceAll("\\", "/")),
       [
+        "src/backend/processing/providers/chatgpt-ocr-adapter.ts",
         "src/backend/processing/providers/deterministic-provider.ts",
         "src/backend/processing/providers/geocode-adapters.ts",
         "src/backend/processing/providers/nominatim-owner.ts",
+        "src/backend/processing/providers/ocr-approved-snapshot-adapter.ts",
+        "src/backend/processing/providers/ocr-review-adapter.ts",
         "src/backend/processing/providers/provider-client.ts",
+        "src/backend/processing/providers/sharepoint-browser-transport.ts",
+        "src/backend/processing/providers/workbook-library-adapter.ts",
       ].sort(),
-      "the deterministic harness and Census/Nominatim adapters are the complete provider modules",
+      "the registered local workbook, subscription OCR, deterministic, geocoding and bounded SharePoint transport modules are the complete provider modules",
     );
     assert.deepEqual(
       gitVisibleFiles(["src/backend/app/host/local-vite-probe.ts"])

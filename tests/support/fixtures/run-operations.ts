@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../helpers/backend/unused-worker-pool.js";
 import { Hono } from "hono";
 import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -42,13 +43,13 @@ export function installRunOperationsRoutes(app: DashboardApp, setup: Awaited<Ret
   const kernel = createCommandKernel({ lifecycle, authority: database, clock, ids, appVersion: "0.1.0", descriptors,
     preflight: runtime.admission, configIdentity: identity,
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
-    writeResolution: { resolvePresent: unexpected, resolveAbsent: unexpected },
-    workerRuntime: { pool: { planPoolWorkerCount: unexpected, spawnPoolWorker: unexpected, refreshPoolBrowser: unexpected, reopenPoolBrowser: unexpected, stopPoolWorker: unexpected, pausePoolWorker: unexpected, resumePoolWorker: unexpected } } });
+    writeResolution: { recheck: unexpected, resolveAbsent: unexpected },
+    workerRuntime: { pool: unusedWorkerPool(unexpected) } });
   const queueApp: DashboardApp = new Hono();
   queueApp.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });
   const projection = createOperatorProjection({ database, clock, stateRoot: setup.fixture.stateRoot, appVersion: "0.1.0",
     descriptorSetHash: FIXTURE_DESCRIPTOR_HASH, ledger: createTransactionHistory(database.authority), descriptors,
-    reader: { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle),
+    reader: { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), withRunTreeSnapshot: lifecycle.withRunTreeSnapshot.bind(lifecycle),
       summaries: { ...composeQueueSummaries(database), activity: unexpected } } });
   registerQueueRoutes(queueApp, { startPlans: plans, queue: { day: day => {
     projection.rebuildFromTimeline();

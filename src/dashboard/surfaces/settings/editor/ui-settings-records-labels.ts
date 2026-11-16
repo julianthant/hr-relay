@@ -2,6 +2,11 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
 import type { EditorValue } from "../../../../models/dashboard/settings-editor.js";
 
+export const PROFILE_WORKFLOW_FACTS = [
+  { key: "displayName", label: "Timekeeper name", target: "profile.displayName" },
+  { key: "initials", label: "Timekeeper initials", target: "profile.initials" },
+] as const;
+
 const PROVIDER_NAMES: Readonly<Record<string, string>> = Object.freeze({
   geocodeCensus: "Census geocoding",
   geocodeNominatim: "Nominatim geocoding",

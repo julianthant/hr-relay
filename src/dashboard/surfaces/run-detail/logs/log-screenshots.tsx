@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, Minus, Monitor, Plus, RotateCw } from "lucide-react";
-import { Select, Button, Dialog, DialogContent, DialogTrigger, IconButton } from "../../../ds/ui.js";
+import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, LockKeyhole, Minus, Monitor, Plus, RotateCw } from "lucide-react";
+import { Select, Button, Dialog, DialogContent, DialogTrigger, IconButton, SegmentedChoice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { LogScreenshot } from "./log-feed-model.js";
 import { captureGeometry, captureKindLabel, captureLoadProblem, captureSourceDimensions, type CaptureMode } from "./log-screenshots-model.js";
@@ -19,17 +19,17 @@ function CaptureImage({ screenshot, className, style, eager = false, onFailure, 
     }, () => { if (element.isConnected) { setProblem("Screenshot could not be loaded."); onFailure?.(); } });
   }} />;
 }
-function CapturePreview({ screenshot, onChoose }: { screenshot: LogScreenshot; onChoose: (button: HTMLButtonElement) => void }) {
+function CapturePreview({ screenshot, onChoose, submit = false }: { screenshot: LogScreenshot; submit?: boolean; onChoose: (button: HTMLButtonElement) => void }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  return <figure className="log-capture" data-kind={screenshot.kind}>
-    <div className="log-capture-header"><span><Monitor aria-hidden className="size-3.5" />{screenshot.system ?? "Capture"}</span><span>{captureKindLabel(screenshot.kind)}</span></div>
+  return <figure className={cn("log-capture", submit && "log-capture--submit")} data-kind={screenshot.kind} data-log-capture-id={screenshot.logId}>
+    {!submit && <div className="log-capture-header"><span><Monitor aria-hidden className="size-3.5" />{screenshot.system ?? "Capture"}</span><span>{captureKindLabel(screenshot.kind)}</span></div>}
     <DialogTrigger asChild><button type="button" onClick={event => onChoose(event.currentTarget)} className="log-capture-open" aria-label={`Enlarge screenshot captured at ${screenshot.time}`}>
       <div className="log-capture-viewport"><CaptureImage key={`${screenshot.src}-${screenshot.width}-${screenshot.height}-${attempt}`} screenshot={screenshot} onFailure={() => setFailed(true)} /></div>
       {!failed && <span className="log-capture-expand"><Expand aria-hidden className="size-3.5" /></span>}
       {screenshot.kind === "form" && !failed && <span className="log-form-hint">Full form · open to scroll</span>}
     </button></DialogTrigger>
-    <figcaption><span className={screenshot.label === "Failed action" ? "text-ui-danger" : undefined}>{screenshot.label ?? captureKindLabel(screenshot.kind)}</span>{failed && <Button size="sm" variant="ghost" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</figcaption>
+    <figcaption><span className={screenshot.label === "Failed action" ? "text-ui-danger" : undefined}>{screenshot.label ?? screenshot.time}</span>{submit && !failed && <time className="tabular-nums text-ui-muted">{screenshot.time}</time>}{failed && <Button size="sm" variant="ghost" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</figcaption>
   </figure>;
 }
 function ImagePane({ capture, mode, zoom, rotation, onScale }: { capture: LogScreenshot; mode: CaptureMode; zoom?: number; rotation: number; onScale?: (scale: number) => void }) {
@@ -74,22 +74,27 @@ function CaptureWorkspace({ screenshots, selected, choose }: { screenshots: read
     if (event.key.toLowerCase() === "r") { event.preventDefault(); setRotation(value => (value + 90) % 360); }
   }}>
     {screenshots.length > 1 && <aside className="log-capture-sidebar" aria-label="Capture selection"><p>{screenshots.length} {screenshots.length === 1 ? "capture" : "captures"}</p>{screenshots.map((item, index) => <button key={`${item.src}-${index}`} type="button" className="log-capture-tab" aria-pressed={index === selected} onClick={() => switchCapture(index)}><img src={item.src} alt="" loading="lazy" /><strong>{item.system ?? "Capture"}</strong><span>{item.label ?? captureKindLabel(item.kind)}</span></button>)}</aside>}
-    <div className="log-image-workspace"><div className="log-viewer-toolbar"><div className="log-sizing">{([["width", "Fit width"], ["whole", "Whole image"], ["actual", "100%"]] as const).map(([value, label]) => <Button key={value} size="sm" variant="ghost" aria-pressed={mode === value && zoom === undefined} onClick={() => reset(value)}>{label}</Button>)}</div>
-      <IconButton label="Zoom out" icon={<Minus aria-hidden className="size-3.5" />} onClick={() => zoomBy(-1)} disabled={(zoom ?? scale) <= .1} /><span className="log-zoom" role="status">{Math.round((zoom ?? scale) * 100)}%</span><IconButton label="Zoom in" icon={<Plus aria-hidden className="size-3.5" />} onClick={() => zoomBy(1)} disabled={(zoom ?? scale) >= 4} />
-      <IconButton label="Rotate image" icon={<RotateCw aria-hidden className="size-3.5" />} onClick={() => setRotation(value => (value + 90) % 360)} />{screenshots.length > 1 && <IconButton label="Compare captures" icon={<Columns2 aria-hidden className="size-3.5" />} aria-pressed={compare} onClick={() => { setCompare(value => !value); reset("whole"); }} />}
-      <span className="log-dimensions">{capture.width} × {capture.height}</span><IconButton label="Previous screenshot" icon={<ChevronLeft aria-hidden className="size-3.5" />} disabled={selected === 0} onClick={() => switchCapture(selected - 1)} /><span className="text-caption tabular-nums">{selected + 1} / {screenshots.length}</span><IconButton label="Next screenshot" icon={<ChevronRight aria-hidden className="size-3.5" />} disabled={selected === screenshots.length - 1} onClick={() => switchCapture(selected + 1)} />
+    <div className="log-image-workspace"><div className="log-viewer-toolbar"><SegmentedChoice label="Image size" hideLabel value={zoom === undefined ? mode : "width"} onChange={reset} options={[{ value: "width", label: "Fit width" }, { value: "whole", label: "Whole image" }, { value: "actual", label: "100%" }]} />
+      <IconButton size="md" label="Zoom out" icon={<Minus aria-hidden className="size-4" />} onClick={() => zoomBy(-1)} disabled={(zoom ?? scale) <= .1} /><span className="log-zoom" role="status">{Math.round((zoom ?? scale) * 100)}%</span><IconButton size="md" label="Zoom in" icon={<Plus aria-hidden className="size-4" />} onClick={() => zoomBy(1)} disabled={(zoom ?? scale) >= 4} />
+      <IconButton size="md" label="Rotate image" icon={<RotateCw aria-hidden className="size-4" />} onClick={() => setRotation(value => (value + 90) % 360)} />{screenshots.length > 1 && <IconButton size="md" label="Compare captures" icon={<Columns2 aria-hidden className="size-4" />} aria-pressed={compare} onClick={() => { setCompare(value => !value); reset("whole"); }} />}
+      <span className="log-dimensions">{capture.width} × {capture.height}</span><IconButton size="md" label="Previous screenshot" icon={<ChevronLeft aria-hidden className="size-4" />} disabled={selected === 0} onClick={() => switchCapture(selected - 1)} /><span className="text-caption tabular-nums">{selected + 1} / {screenshots.length}</span><IconButton size="md" label="Next screenshot" icon={<ChevronRight aria-hidden className="size-4" />} disabled={selected === screenshots.length - 1} onClick={() => switchCapture(selected + 1)} />
     </div><div className={cn("log-image-panes", compare && "log-image-panes--compare")}><div className="log-image-pane">{compare && <div className="log-pane-title">{capture.system ?? "Capture"}<span>{capture.label}</span></div>}<ImagePane capture={capture} mode={mode} zoom={zoom} rotation={rotation} onScale={setScale} /></div>{compare && screenshots[other] && <div className="log-image-pane"><div className="log-pane-title">{screenshots[other].system ?? "Capture"}<span>{screenshots[other].label}</span></div><ImagePane capture={screenshots[other]} mode={mode} zoom={zoom} rotation={rotation} /></div>}</div>
     <div className="log-viewer-caption"><span>{captureKindLabel(capture.kind)}</span>{compare && <label>Compare with<Select aria-label="Comparison capture" value={other} onChange={event => setOther(Number(event.target.value))}>{screenshots.map((item, index) => index !== selected && <option key={index} value={index}>{item.system ?? "Capture"} · {item.label ?? index + 1}</option>)}</Select></label>}</div></div>
   </div>;
 }
-export function LogScreenshots({ screenshots }: { screenshots: readonly LogScreenshot[] }) {
+export function LogScreenshots({ screenshots, presentation }: { screenshots: readonly LogScreenshot[]; presentation?: "submit" }) {
   const [selected, setSelected] = useState(0);
   const opener = useRef<HTMLButtonElement>(null);
   if (!screenshots.length) return null;
   const capture = screenshots[selected];
   if (!capture) throw new Error("log-screenshot-selection-missing");
   const browsers = screenshots.length > 1 && screenshots.every(item => item.kind === "browser");
-  return <Dialog><div className={cn("log-capture-group", browsers && "log-capture-group--browsers", screenshots.length === 1 && "log-capture-group--single")} aria-label="Screenshots">{screenshots.map((item, index) => <CapturePreview key={`${item.src}-${item.width}-${item.height}-${index}`} screenshot={item} onChoose={button => { opener.current = button; setSelected(index); }} />)}</div>
+  return <Dialog><div className={cn("log-capture-group", browsers && "log-capture-group--browsers", screenshots.length === 1 && "log-capture-group--single", presentation === "submit" && "log-capture-group--submit")} aria-label="Screenshots">{screenshots.map((item, index) => <CapturePreview key={`${item.src}-${item.width}-${item.height}-${index}`} screenshot={item} submit={presentation === "submit"} onChoose={button => { opener.current = button; setSelected(index); }} />)}</div>
     <DialogContent className="ui-theme-scope log-viewer-dialog font-ui text-ui-primary" title={`${capture.system ?? "Capture"} · ${capture.label ?? captureKindLabel(capture.kind)}`} description={<span className="sr-only">Captured screenshot viewer</span>} size="xl" onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }}><CaptureWorkspace screenshots={screenshots} selected={selected} choose={setSelected} /></DialogContent>
   </Dialog>;
+}
+
+export function RequiredCaptureStatus({ state, position }: { state: "required" | "pre-submit-failed" | "post-submit-unknown" | "post-submit-proved"; position?: "Before submit" | "After submit" }) {
+  if (state === "required") return <div className="required-capture-row"><div><span className="font-medium">Screenshots</span><p className="text-caption text-ui-muted">Required by this workflow.</p></div><span className="flex items-center gap-2 text-caption"><LockKeyhole aria-hidden className="size-3.5 text-ui-muted" />Always on</span></div>;
+  return <figure className="log-capture log-capture--submit log-capture--unavailable" role="status"><div className="log-capture-missing"><ImageOff aria-hidden className="size-5" /><span>Not captured</span></div><figcaption><span>{position ?? (state === "pre-submit-failed" ? "Before submit" : "After submit")}</span><span>{state === "pre-submit-failed" ? "Submit not clicked" : state === "post-submit-unknown" ? "Write outcome unknown" : "Browser closed first"}</span></figcaption><span className="sr-only">{state === "pre-submit-failed" ? "Stopped before submit. No submit was clicked." : state === "post-submit-unknown" ? "The write outcome is unknown; check UCPath without submitting again." : "The separately proved write outcome is preserved; do not submit again."}</span></figure>;
 }

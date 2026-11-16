@@ -15,7 +15,7 @@ export const CrmDiscoveryOutputSchema = z.discriminatedUnion("state", [
 export const CrmSearchOnboardingRecords = defineTaskContract({
   id: taskId("crm/search-onboarding-records"), title: "Cross-check identity", effect: "read",
   input: z.strictObject({ name: z.string().min(1).optional(), eid: EidSchema.optional() }).refine(input => input.name !== undefined || input.eid !== undefined), output: CrmDiscoveryOutputSchema,
-  errorCodes: ["PERSON_LOOKUP_CRM_CHECK_FAILED"],
+  errorCodes: ["PERSON_LOOKUP_CRM_CHECK_FAILED", "BROWSER_SCREENSHOT_CAPTURE_FAILED"],
   subject: { kind: "none", reason: "discovery reads exact displayed identities before the workflow resolves one" },
   freshness: { defaultMaxAgeMs: 3600000, defaultOverride: "forbidden" }, provenance: { default: "live" },
   scenarios: ["person-lookup/s7", "person-lookup/s11", "person-lookup/f2"],

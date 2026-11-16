@@ -21,7 +21,6 @@ import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-loo
 import { FixtureReadReceipt, fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
 import { HASH_A, HASH_B, LATER, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { fixtureBuildManifest } from "../../../support/fixtures/workflow-definition-fixtures.js";
 import { FixtureCanonicalInput, stepOmissionTerminalDescriptor } from "../../../support/fixtures/workflow/step-omission-terminal-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
@@ -443,7 +442,7 @@ describe("canonical awaited child terminal evidence", () => {
         result: result(z.strictObject({ state: z.literal("done") }), [child], ({ outputs }) => z.object({ state: z.literal("done") }).parse(outputs.child)) };
     },
   });
-  const parentDescriptor = compileWorkflow(parentDefinition(), { manifest: fixtureBuildManifest(["fixture-child-result-parent"]) }).descriptor;
+  const parentDescriptor = compileWorkflow(parentDefinition()).descriptor;
   const parentRun = () => ({ ...runningRun(), envelope: { ...runningRun().envelope, runId: "00000000-0000-4000-8000-000000000bad",
     workflow: parentDescriptor.id, descriptorVersion: parentDescriptor.version, contractFingerprint: parentDescriptor.contractFingerprint } });
   const evidence = () => {

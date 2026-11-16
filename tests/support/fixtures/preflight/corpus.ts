@@ -1,3 +1,6 @@
+import { createPreflightProfileFixtureSet } from "./profile-fixture.js";
+import nativeFs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { vi } from "vitest";
 import childProcess from "node:child_process";
 import { chromium } from "playwright";
@@ -27,11 +30,11 @@ export function preflightFaultCases() {
     const variants = dependency.secretNames !== undefined ? dependency.secretNames
       : system !== undefined ? system.routes
       : feature !== undefined ? PROVIDER_ADAPTER_SPECS.filter(provider=>provider.capabilities.includes(feature.providerCapability)).map(provider=>provider.provider)
-      : dependency.id === "browser.duo-extension" ? ["extension", "duoWebauthnCredential"] : [dependency.id];
+      : dependency.id === "browser.duo-extension" ? ["extension", "backend-signer"] : [dependency.id];
     return variants.map(variant=>({dependency, variant}));
   });
 }
-async function inject(f: ReturnType<typeof runtimeFixture>, entry: Case): Promise<() => Promise<void> | void> {
+async function inject(f: Awaited<ReturnType<typeof runtimeFixture>>, entry: Case): Promise<() => Promise<void> | void> {
   const id = entry.dependency.id;
   const replace = (path: string, value: string): (()=>void) => { const previous = readFileSync(path); writeFileSync(path,value); return ()=>{writeFileSync(path,previous);}; };
   if (id === "runtime.node") {
@@ -42,9 +45,28 @@ async function inject(f: ReturnType<typeof runtimeFixture>, entry: Case): Promis
     const undo=[replace(pkgPath,JSON.stringify(pkg)),replace(lockPath,JSON.stringify(lock))];return()=>{for(const restore of undo)restore();};
   }
   if (id === "runtime.package-lock") return replace(join(f.root,"package-lock.json"), "{}");
-  if (id === "browser.chromium" || id === "browser.duo-extension" || id === "path.state" || id === "path.artifact") {
-    const path = id === "browser.chromium" ? f.executable : id === "path.state" ? f.stateRoot : id === "path.artifact" ? f.artifactRoot
-      : entry.variant === "extension" ? join(f.input.config.paths.duoExtensionDir,"manifest.json") : f.input.config.paths.duoCredential;
+  if (id === "path.state") {
+    f.admission.assertLive();
+    const originalAccess = nativeFs.accessSync;
+    let injected = false;
+    const access = vi.spyOn(nativeFs, "accessSync").mockImplementation((path, mode) => {
+      if (String(path) === f.stateRoot && mode === (nativeFs.constants.R_OK | nativeFs.constants.W_OK)) {
+        injected = true;
+        throw Object.assign(new Error("synthetic-state-root-unavailable"), { code: "ENOENT" });
+      }
+      return originalAccess(path, mode);
+    });
+    syncBuiltinESMExports();
+    return () => { access.mockRestore(); syncBuiltinESMExports(); assert.equal(injected, true); f.admission.assertLive(); };
+  }
+  if (id === "browser.duo-extension" && entry.variant === "backend-signer") {
+    const source = f.input.duo; assert.ok(source);
+    Reflect.deleteProperty(f.input, "duo");
+    return () => { Reflect.set(f.input, "duo", source); };
+  }
+  if (id === "browser.chromium" || id === "browser.duo-extension" || id === "path.artifact") {
+    const path = id === "browser.chromium" ? f.executable : id === "path.artifact" ? f.artifactRoot
+      : join(f.input.config.paths.duoExtensionDir,"workflow-manifest.json");
     renameSync(path,`${path}.parked`); return()=>{renameSync(`${path}.parked`,path);};
   }
   if (id === "config.resolved") {
@@ -65,11 +87,7 @@ async function inject(f: ReturnType<typeof runtimeFixture>, entry: Case): Promis
   }
   if (id === "fiscal.current") {const previous=f.input.config.annualDates;f.input.config.annualDates={};return()=>{f.input.config.annualDates=previous;};}
   if (id.startsWith("secret.")) {f.setProtected(populatedProtectedRecord(entry.variant));return()=>{f.setProtected(populatedProtectedRecord());};}
-  if (id === "process.orphans") {
-    Reflect.set(f.input.dashboard,"listLiveWorkerProcesses",()=>[{workerId:"synthetic-worker",processId:987654321}]);
-    Reflect.set(f.input.dashboard,"observeProcess",()=>({state:"gone"}));
-    return()=>{Reflect.set(f.input.dashboard,"listLiveWorkerProcesses",()=>[]);Reflect.deleteProperty(f.input.dashboard,"observeProcess");};
-  }
+  if (id === "profile.timekeeper") {f.setProfileAvailable(false);return()=>{f.setProfileAvailable(true);};}
   const system=SYSTEM_RUNTIME_SPECS.find(candidate=>id.startsWith(`endpoint.${candidate.system}.`));
   if(system!==undefined) {
     const routes=f.input.config.urls[system.configKey].prod;assert.ok(routes);
@@ -120,23 +138,26 @@ export async function executePreflightCorpus(transform?: (runners: readonly Pref
   const spawn = vi.spyOn(childProcess,"spawn").mockImplementation(()=>{actionCount++;throw new Error("Corpus attempted a process launch");});
   const fetch = vi.spyOn(globalThis,"fetch").mockImplementation(()=>{externalCommitCount++;throw new Error("Corpus attempted an external request");});
   try {
+  const profiles = await createPreflightProfileFixtureSet();
+  try {
   for(const entry of preflightFaultCases()) {
-    const f=runtimeFixture(entry.dependency.capabilities);let undo:(()=>Promise<void>|void)|undefined;
+    const f=await runtimeFixture(entry.dependency.capabilities, profiles.create);let undo:(()=>Promise<void>|void)|undefined;
     try {
       const feature=FEATURE_RUNTIME_SPECS.find(candidate=>candidate.dependency===entry.dependency.id);
       if(feature!==undefined) for(const key of Object.keys(f.input.providerAvailability)) if(key.endsWith(`/${feature.providerCapability}`))Reflect.set(f.input.providerAvailability,key,key.startsWith(`${entry.variant}/`));
       assert.equal((await f.report()).results.every(result=>result.status==="pass"||result.status==="warning"),true,"healthy control failed");
       assert.equal((await f.report()).results.find(result=>result.check===entry.dependency.check)?.status,"pass");
       undo=await inject(f,entry);
-      const databaseBefore=readFileSync(entry.dependency.id === "path.state" ? `${f.stateRoot}.parked/state.db` : f.databasePath);
+      const databaseBefore=readFileSync(f.databasePath);
       const report=await f.report(transform);
-      assert.deepEqual(readFileSync(entry.dependency.id === "path.state" ? `${f.stateRoot}.parked/state.db` : f.databasePath),databaseBefore,"detectors mutated authority");
+      assert.deepEqual(readFileSync(f.databasePath),databaseBefore,"detectors mutated authority");
       await undo();undo=undefined;
       assert.equal((await f.report()).results.find(result=>result.check===entry.dependency.check)?.status,"pass","explicit restoration did not re-check healthy");
       executions.push(ExecutionSchema.parse({scenario:entry.dependency.scenario,dependency:entry.dependency.id,variant:entry.variant,check:entry.dependency.check,report,
         terminal:report.results.some(result=>result.status==="fail")?"failed":"partial",actionCount,externalCommitCount,evidence:[`preflight.${entry.dependency.scenario.slice("preflight/".length)}`],reportDigest:sha256Hex(canonicalJsonStringify(report)),restored:true}));
-    } finally {await undo?.();f.close();}
+    } finally {try {await undo?.();} finally {await f.close();}}
   }
   auditPreflightExecutions(executions);return executions;
+  } finally {await profiles.close();}
   } finally {launch.mockRestore();persistent.mockRestore();spawn.mockRestore();fetch.mockRestore();}
 }

@@ -13,7 +13,7 @@ class Child extends EventEmitter {
   close(code = 0): void { this.exitCode = code; this.emit("exit", code, null); this.emit("close", code, null); }
 }
 
-async function launch(timeout = 1000) {
+async function launch() {
   vi.resetModules();
   const children: Child[] = [];
   mocks.spawn.mockReset().mockImplementation(() => {
@@ -22,8 +22,7 @@ async function launch(timeout = 1000) {
   const signals = new EventEmitter();
   const output: string[] = [];
   const module = await import("../../../scripts/dev/dashboard.js");
-  const done = module.runDevDashboard({ startupTimeoutMs: timeout, signals,
-    writeError: message => output.push(message) });
+  const done = module.runDevDashboard({ signals, writeError: message => output.push(message) });
   return { children, signals, output, done };
 }
 
@@ -55,16 +54,17 @@ describe("dashboard launcher", () => {
     assert.match(output.join(""), /bff stopped/u);
   });
 
-  it("times out readiness and waits for backend shutdown", async () => {
+  it("starts the web when readiness arrives after 31s and prints the progress line once", async () => {
     vi.useFakeTimers();
-    const { children, done, output } = await launch(100);
-    await vi.advanceTimersByTimeAsync(100);
+    const { children, signals, done, output } = await launch();
+    await vi.advanceTimersByTimeAsync(31_000);
     assert.equal(children.length, 1);
-    assert.deepEqual(children[0].kill.mock.calls, [["SIGTERM"]]);
-    let settled = false; void done.then(() => { settled = true; });
-    await Promise.resolve(); assert.equal(settled, false);
-    children[0].close(); assert.equal(await done, 1);
-    assert.match(output.join(""), /readiness timed out/u);
+    assert.deepEqual(output.filter(line => line.includes("still starting")), ["[dashboard] still starting (preparing saved data)...\n"]);
+    children[0].emit("message", { type: "hrauto-dashboard-ready" });
+    assert.equal(children.length, 2);
+    assert.deepEqual(children[0].kill.mock.calls, []);
+    signals.emit("SIGINT"); children.forEach(child => child.close());
+    assert.equal(await done, 0);
   });
 
   it.each([0, 1])("stops and awaits the sibling when child %i exits", async index => {

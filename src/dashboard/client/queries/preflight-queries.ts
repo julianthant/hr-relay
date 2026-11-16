@@ -34,7 +34,7 @@ export function createPreflightQueries(transport: DashboardTransport): Preflight
         ? await transport.requestJson("/api/v1/preflight")
         : await transport.requestJson(`/api/v1/preflight?selection=${encodeURIComponent(JSON.stringify(PreflightSelectionSchema.parse(selection)))}`);
       return parseOrThrow(PreflightReadinessWireSchema, "GET /api/v1/preflight", response);
-      } catch { throw new DashboardClientError({ kind: "schema", code: "PREFLIGHT_READ_UNAVAILABLE", message: ERROR_CATALOG.PREFLIGHT_READ_UNAVAILABLE.text }); }
+      } catch (cause) { throw new DashboardClientError({ kind: "schema", code: "PREFLIGHT_READ_UNAVAILABLE", message: ERROR_CATALOG.PREFLIGHT_READ_UNAVAILABLE.text, cause }); }
     },
     async readiness() {
       const boot = parseOrThrow(FrontendBootstrapWireSchema, "GET /api/v1/bootstrap", await transport.requestJson("/api/v1/bootstrap"));
@@ -60,6 +60,6 @@ export function createPreflightQueries(transport: DashboardTransport): Preflight
       return result;
       } catch (error) {
         if (error instanceof DashboardClientError && error.code === "COMMAND_RESULT_IDENTITY_MISMATCH") throw error;
-        throw new DashboardClientError({ kind: "schema", code: "PREFLIGHT_RERUN_UNAVAILABLE", message: ERROR_CATALOG.PREFLIGHT_RERUN_UNAVAILABLE.text }); }
+        throw new DashboardClientError({ kind: "schema", code: "PREFLIGHT_RERUN_UNAVAILABLE", message: ERROR_CATALOG.PREFLIGHT_RERUN_UNAVAILABLE.text, cause: error }); }
     }
 }); }

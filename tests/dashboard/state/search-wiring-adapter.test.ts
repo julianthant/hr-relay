@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
-import { readSearchSnapshot, searchResults, useSearchWiring, searchMessage } from "../../../src/dashboard/state/search-wiring-adapter.js";
+import { paletteSheets, readSearchSnapshot, searchResults, withQueueSubjects, useLibrarySheets, useSearchWiring, searchMessage, workspaceSearchQuery } from "../../../src/dashboard/state/search-wiring-adapter.js";
 import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../../../src/models/dashboard/search.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
+import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import type { NavbarData } from "../../../src/dashboard/surfaces/shell/search/navbar-view-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -40,13 +41,49 @@ it("keeps unavailable subject explicit without inventing an alias or destination
   const row = searchResults(snapshot)[0]; assert.equal(row.subject, searchMessage("SEARCH_SUBJECT_UNAVAILABLE")); assert.equal(row.publicId, undefined);
   assert.deepEqual(row.destination, { kind: "run", runId: missing.results[0].runId, day: "2026-08-03" });
 });
+it("shows the queue's display label for a raw run state", async () => {
+  const states = ["parked-gate", "parked-write", "done", "failed", "queued", "interrupted"] as const;
+  const labelled = CrossDateSearchPageSchema.parse({ ...zeroMatchSearchPage(), totalMatches: states.length, results: states.map((state, n) => ({ ...result(n), state })) });
+  const snapshot = await readSearchSnapshot({ searchRuns: async () => labelled }, { q: "x" }, new AbortController().signal);
+  assert.deepEqual(searchResults(snapshot).map(row => row.state), ["Review", "Write parked", "Done", "Failed", "Queued", "Write parked"]);
+});
+it("tells a rejected library read apart from an empty library", async () => {
+  let reject = true;
+  const client = { workbookList: async () => { if (reject) throw new Error("storage"); return []; } };
+  let seen: ReturnType<typeof useLibrarySheets> | undefined;
+  function Probe({ tick }: { tick: number }) { seen = useLibrarySheets(client, tick >= 0); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(createElement(Probe, { tick: 0 })));
+  assert.equal(seen?.unavailable, searchMessage("SEARCH_LIBRARY_UNAVAILABLE"));
+  reject = false; const next = { workbookList: async () => [] };
+  function Retry() { seen = useLibrarySheets(next, true); return null; }
+  await act(async () => root?.render(createElement(Retry)));
+  assert.equal(seen?.unavailable, undefined); assert.deepEqual(seen?.sheets, []);
+});
+it("reports a pending library read as loading and keeps loaded rows through a failed re-read", async () => {
+  const reads: { finish: (records: never[]) => void; fail: () => void }[] = [];
+  const client = { workbookList: () => new Promise<never[]>((resolve, reject) => { reads.push({ finish: resolve, fail: () => reject(new Error("storage")) }); }) };
+  let seen: ReturnType<typeof useLibrarySheets> | undefined;
+  function Probe({ open }: { open: boolean }) { seen = useLibrarySheets(client, open); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(createElement(Probe, { open: true })));
+  assert.equal(seen?.sheets.length, 0); assert.equal(seen?.unavailable, searchMessage("SEARCH_LOADING"));
+  const sheet = { libraryId: "x", version: 1, savedAt: "2026-11-01T12:00:00Z", workbook: { name: "Roster" } } as never;
+  await act(async () => reads[0].finish([sheet]));
+  assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, undefined);
+  await act(async () => root?.render(createElement(Probe, { open: false })));
+  await act(async () => root?.render(createElement(Probe, { open: true })));
+  assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, searchMessage("SEARCH_LOADING"));
+  await act(async () => reads[1].fail());
+  assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, searchMessage("SEARCH_LIBRARY_UNAVAILABLE"));
+});
 it("does no reads in mock/closed mode and suppresses a stale query result", async () => {
   const requests: { q: string; finish: (page: unknown) => void }[] = [];
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => new Promise<Response>(resolve => {
     requests.push({ q: new URL(url).searchParams.get("q") ?? "", finish: value => resolve(Response.json(value)) });
   }) });
-  let data: NavbarData | undefined; const epoch = {};
-  function Probe({ query, enabled }: { query: string; enabled: boolean }) { data = useSearchWiring({ client, query, enabled, today: "2026-08-03", epoch }); return null; }
+  let data: NavbarData | undefined; const epoch = {}, workflows: Parameters<typeof workspaceSearchQuery>[1] = [];
+  function Probe({ query, enabled }: { query: string; enabled: boolean }) { data = useSearchWiring({ client, query, enabled, today: "2026-08-03", epoch, workflows }); return null; }
   root = createRoot(document.createElement("div"));
   const render = async (query: string, enabled: boolean) => { await act(async () => root?.render(createElement(Probe, { query, enabled }))); };
   await render("old", false); assert.equal(requests.length, 0);
@@ -55,4 +92,61 @@ it("does no reads in mock/closed mode and suppresses a stale query result", asyn
   assert.equal(data?.totalMatches, 0);
   await act(async () => requests[0].finish({ ...zeroMatchSearchPage(), totalMatches: 1, results: [result(1)] }));
   assert.equal(data?.totalMatches, 0); assert.equal(data?.results.length, 0);
+});
+
+it.each([
+  ["  pErSoN LoOkUp  ", "", "person-lookup", null],
+  ["  FAILED  ", "", null, "failed"],
+  ["pl-120000-0099", "pl-120000-0099", null, null],
+  ["Person", "Person", null, null],
+] as const)("maps exact workflow/status search %s through canonical facets and preserves ordinary text", async (query, q, workflow, state) => {
+  const requests: URL[] = [];
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => {
+    requests.push(new URL(url)); return Response.json(zeroMatchSearchPage());
+  } });
+  const workflows = [{ id: WorkflowIdSchema.parse("person-lookup"), label: "Person Lookup" }];
+  const epoch = {};
+  function Probe() { useSearchWiring({ client, enabled: true, query, today: "2026-08-03", epoch, workflows }); return null; }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(createElement(Probe)));
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].searchParams.get("q"), q);
+  assert.equal(requests[0].searchParams.get("workflow"), workflow);
+  assert.equal(requests[0].searchParams.get("state"), state);
+  assert.equal(requests[0].searchParams.get("scope"), "all");
+});
+
+it("keeps ambiguous labels and ordinary names as text queries", () => {
+  const workflows = [{ id: WorkflowIdSchema.parse("person-lookup"), label: "Same" }, { id: WorkflowIdSchema.parse("separations"), label: "Same" }];
+  assert.deepEqual(workspaceSearchQuery("Same", workflows), { q: "Same", scope: "all", facets: {}, limit: 20 });
+  assert.deepEqual(workspaceSearchQuery("Fable, Rowan", workflows), { q: "Fable, Rowan", scope: "all", facets: {}, limit: 20 });
+});
+
+it("drops a settlement when bootstrap workflow metadata changes under the same search text", async () => {
+  const pending: { url: URL; finish: (page: unknown) => void }[] = [];
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => new Promise<Response>(resolve => {
+    pending.push({ url: new URL(url), finish: value => resolve(Response.json(value)) });
+  }) });
+  const epoch = {};
+  let data: NavbarData | undefined;
+  function Probe({ workflows }: { workflows: Parameters<typeof workspaceSearchQuery>[1] }) {
+    data = useSearchWiring({ client, enabled: true, query: "Lookup", workflows, today: "2026-08-03", epoch }); return null;
+  }
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(createElement(Probe, { workflows: [{ id: WorkflowIdSchema.parse("person-lookup"), label: "Lookup" }] })));
+  await act(async () => root?.render(createElement(Probe, { workflows: [{ id: WorkflowIdSchema.parse("separations"), label: "Lookup" }] })));
+  assert.deepEqual(pending.map(request => request.url.searchParams.get("workflow")), ["person-lookup", "separations"]);
+  await act(async () => pending[1].finish(zeroMatchSearchPage()));
+  assert.equal(data?.totalMatches, 0);
+  await act(async () => pending[0].finish({ ...zeroMatchSearchPage(), totalMatches: 1, results: [result(1)] }));
+  assert.equal(data?.totalMatches, 0);
+  assert.equal(data?.results.length, 0);
+});
+
+it("fills unknown subjects from queue titles and lists library sheets", () => {
+  const row = (id: string, subject: string) => ({ id, subject, workflow: "W", day: "2026-08-03", state: "Done" });
+  const out = withQueueSubjects([row("a", searchMessage("SEARCH_SUBJECT_UNAVAILABLE")), row("b", searchMessage("SEARCH_SUBJECT_UNAVAILABLE")), row("c", "Kept")], new Map([["a", "EID 1"], ["c", "Other"]]));
+  assert.deepEqual(out.map(result => result.subject), ["EID 1", searchMessage("SEARCH_SUBJECT_UNAVAILABLE"), "Kept"]);
+  const sheet = (libraryId: string, name: string, version: number, savedAt: string) => ({ libraryId, version, savedAt, workbook: { name } }) as never;
+  assert.deepEqual(paletteSheets([sheet("x", "Old", 1, "2026-11-01T12:00:00Z"), sheet("y", "New", 3, "2026-11-08T12:00:00Z")]).map(item => [item.name, item.detail]), [["New", "v3 · Updated Nov 8"], ["Old", "v1 · Updated Nov 1"]]);
 });

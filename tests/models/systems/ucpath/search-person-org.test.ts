@@ -61,6 +61,6 @@ describe("workflow definition entry algebra", () => {
       const only = author.task({ id: "only", contract: SearchPersonOrg, replay: "checkpoint" }, [], lookupInput);
       return { steps: [[{ key: "only", label: "Only" }, [only]]], result: author.result(z.string(), [], () => "done") };
     });
-    expect(authored).toEqual(["delegate", "gate", "group", "parallel", "result", "task", "transaction"]);
+    expect(authored).toEqual(["branch", "delegate", "gate", "group", "parallel", "result", "task", "transaction"]);
   });
 });

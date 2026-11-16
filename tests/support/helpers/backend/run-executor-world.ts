@@ -1,3 +1,4 @@
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { ucpathDriver } from "../../../../src/backend/systems/ucpath/driver-declaration.js";
 import { ucpathSession } from "../../../../src/backend/systems/ucpath/session-provider.js";
 import { ucpathStore } from "../../../../src/backend/systems/ucpath/task-registry.js";
@@ -18,7 +19,6 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.
 import { type RunRecord } from "../../../../src/models/run/record.js";
 import { SearchPersonOrg, SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
-import { OPERATION_DISPLAY_FORMAT_VERSION, type WorkflowOperationDisplayDeclaration } from "../../../../src/models/workflow/operation-display.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
@@ -26,19 +26,19 @@ import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/modu
 import { compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { sequentialIdFactory, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
-import { fixtureBuildManifest } from "../../fixtures/workflow-definition-fixtures.js";
 import { happySessionHarness, healthyCrmDriver, healthyUcpathDriver, ManualScheduler, openAuthorityHarness, recordingEmitter, recordingLogger, sessionFactoryHarness, sessionManagerFor, type AuthorityHarness, type SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
+import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { CONFIG_SNAPSHOT, UUID_4, UUID_5, UUID_6 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { buildQueuedRun } from "../../../../src/backend/runs/start/enqueue.js";
 import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
 import { NoteWireSchema } from "../../../../src/models/events/types.js";
 import { type RunParent } from "../../../../src/models/run/envelope.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { recordBrowserAction, runDeclaredAction } from "../../../../src/backend/systems/browser-shared/action-notes.js";
+import { recordBrowserAction } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 
-interface ExecutorHarness {
-  readonly authority: AuthorityHarness;
+interface ExecutorHarness<Profile extends BoundProfileStorageFixture> {
+  readonly authority: AuthorityHarness<Profile>;
   readonly sessions: SessionFactoryHarness;
   readonly manager: WorkerSessionManager;
   readonly scheduler: ManualScheduler;
@@ -46,23 +46,38 @@ interface ExecutorHarness {
   readonly deps: RunExecutorDependencies;
 }
 
-export function createRunExecutorTestWorld() {
-  const authorityHarnesses = new WeakMap<AuthorityDatabase, AuthorityHarness>();
+export function createRunExecutorTestWorld<Profile extends BoundProfileStorageFixture>(profileFixture: () => Promise<Profile>): ReturnType<typeof createExecutorWorld<Profile>>;
+export function createRunExecutorTestWorld(): ReturnType<typeof createExecutorWorld<Awaited<ReturnType<typeof createBoundProfileFixture>>>>;
+export function createRunExecutorTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  return createExecutorWorld(profileFixture);
+}
+function createExecutorWorld<Profile extends BoundProfileStorageFixture>(profileFixture: () => Promise<Profile>) {
+  const authorityHarnesses = new WeakMap<AuthorityDatabase, AuthorityHarness<Profile>>();
 
-  const disposers: (() => void)[] = [];
+  const disposers: (() => void | Promise<void>)[] = [];
+  const sessionClosures = new Set<() => Promise<void>>();
 
-  function executorHarness(options: Readonly<{
+  async function executorHarness(options: Readonly<{
     sessions?: SessionFactoryHarness;
     autoFireAtOrBelowMs?: number;
     taskDeadlineMs?: number;
     stores?: RunExecutorDependencies["stores"];
     descriptor?: AnyWorkflowDescriptor;
-  }> = {}): ExecutorHarness {
-    const authority = openAuthorityHarness();
-    disposers.push(authority.dispose);
+    screenshotCapture?: Parameters<typeof sessionManagerFor>[5];
+    existingProfile?: boolean;
+    ids?: { readonly uuid: () => string };
+  }> = {}): Promise<ExecutorHarness<Profile>> {
+    const authority = await openAuthorityHarness(profileFixture, { existing: options.existingProfile === true });
     authorityHarnesses.set(authority.database, authority);
     const sessions = options.sessions ?? happySessionHarness();
-    const manager = sessionManagerFor(sessions, authority.clock);
+    const manager = await sessionManagerFor(sessions, authority.clock, undefined, undefined, duoCeremonyGatesOver(authority.database, authority.clock), options.screenshotCapture);
+    let sessionsClosed = false;
+    const closeSessions = async () => { await manager.closeAll("worker-stop"); sessionsClosed = true; };
+    sessionClosures.add(closeSessions);
+    disposers.push(async () => {
+      if (!sessionsClosed) throw new Error("executor-fixture-session-closure-unproved");
+      await authority.dispose();
+    });
     const scheduler = new ManualScheduler(authority.clock, options.autoFireAtOrBelowMs ?? 0);
     const emitter = {
       emitter: createTimelineEmitter({ repository: authority.database.authority.timelineEvents, clock: authority.clock }),
@@ -80,7 +95,7 @@ export function createRunExecutorTestWorld() {
       sessions: manager,
       emitter: emitter.emitter,
       clock: authority.clock,
-      ids: sequentialIdFactory("b"),
+      ids: options.ids ?? sequentialIdFactory("b"),
       scheduler,
       taskDeadlineMs: options.taskDeadlineMs ?? 60_000,
       log: recordingLogger().log,
@@ -141,22 +156,6 @@ export function createRunExecutorTestWorld() {
     presentation: { title: (input) => `EID ${input.emplId}` },
     scenarios: ["fixture-operation-action-binding/happy"],
     role: defineWorkflowRole({ kind: "standalone" }),
-    operationDisplay: {
-      capability: "complete",
-      version: OPERATION_DISPLAY_FORMAT_VERSION,
-      invocations: [{
-        id: "search-operation",
-        entryId: "search",
-        contractRole: "task",
-        occurrencePath: ["search"],
-        bindings: [
-          { slot: "search-kind", value: { kind: "constant", value: "by-eid" } },
-          { slot: "empl-id", value: { kind: "run-input", path: "emplId" } },
-          { slot: "name", value: { kind: "constant", value: "unused" } },
-        ],
-      }],
-      presentation: [{ id: "search-operation-node", kind: "operation", invocationId: "search-operation" }],
-    } satisfies WorkflowOperationDisplayDeclaration,
     steps: ({ task, result }) => {
       const search = task({
         id: "search",
@@ -165,19 +164,16 @@ export function createRunExecutorTestWorld() {
         replay: "checkpoint",
       }, [], ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }));
       return {
-        steps: [[{ key: "search", label: "Search" }, [search]]],
-        result: result(SearchPersonOrgOutputSchema, [search], ({ outputs }) => outputs.search, [{ path: "selection.status", source: { kind: "task-output", entryId: "search", path: "selection.status" } },
-          { path: "results", source: { kind: "derived", inputs: [
-            { id: "selection", source: { kind: "task-output", entryId: "search", path: "selection.status" } },
-            { id: "query", source: { kind: "task-output", entryId: "search", path: "selection.candidateEids" } },
-          ] } }]),
+        steps: [[{ key: "search", label: "Search", operatorFields: [
+          { label: "Employee ID", sources: [{ nodeId: "search", kind: "input", fieldPath: "emplId" }] },
+          { label: "Selection", sources: [{ nodeId: "search", kind: "output", fieldPath: "selection.status" }] },
+        ] }, [search]]],
+        result: result(SearchPersonOrgOutputSchema, [search], ({ outputs }) => outputs.search),
       };
     },
   });
 
-  const actionBindingCompiled = compileWorkflow(actionBindingWorkflow, {
-    manifest: fixtureBuildManifest([ACTION_BINDING_WORKFLOW_ID]),
-  });
+  const actionBindingCompiled = compileWorkflow(actionBindingWorkflow);
 
   const actionBindingRegistry = registryWithUcpathSearch(directUcpathSearchFixtureTask);
 
@@ -242,12 +238,9 @@ export function createRunExecutorTestWorld() {
             }
             if (options.openedTarget !== undefined) recordBrowserAction("opened", options.openedTarget);
             if (options.lifecycle === true) {
-              await runDeclaredAction({ id: "fill-eid", kind: "typed", targetId: "ucpath.person-org.eid-input" }, async () => {
-                recordBrowserAction("typed", "ucpath.person-org.eid-input", input.emplId);
-              }, () => input.emplId);
-              await runDeclaredAction({ id: "run-search", kind: "clicked", targetId: "ucpath.person-org.search-button" }, async () => {});
-              return await runDeclaredAction({ id: "read-selection", kind: "read", targetId: "ucpath.person-org.results-grid" },
-                () => driver.searchPersonOrg(...args), (output) => output.selection.status);
+              recordBrowserAction("typed", "ucpath.person-org.eid-input", input.emplId);
+              recordBrowserAction("clicked", "ucpath.person-org.search-button");
+              return await driver.searchPersonOrg(...args);
             }
             recordBrowserAction("typed", options.typedTarget ?? "ucpath.person-org.eid-input", options.typedValue ?? input.emplId);
             for (let count = 0; count < (options.clicks ?? 1); count += 1) {
@@ -261,7 +254,16 @@ export function createRunExecutorTestWorld() {
     });
   }
   const cleanup = async () => {
-    for (const dispose of disposers.splice(0)) dispose();
+    const failures: unknown[] = [];
+    for (const close of sessionClosures) {
+      try { await close(); sessionClosures.delete(close); }
+      catch (error) { failures.push(error); }
+    }
+    for (const dispose of [...disposers]) {
+      try { await dispose(); disposers.splice(disposers.indexOf(dispose), 1); }
+      catch (error) { failures.push(error); }
+    }
+    if (failures.length !== 0) throw new AggregateError(failures, "executor-fixture-closure-unproved");
   };
   return { disposers, executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, actionBindingSessions, cleanup };
 }

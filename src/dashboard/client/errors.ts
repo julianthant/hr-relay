@@ -1,6 +1,8 @@
 /** The client's one error vocabulary. Every failure a component can see is a
  * `DashboardClientError` with a closed kind — network reachability, an HTTP */
 import { z } from "zod";
+import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
+import { bindErrorOrigin } from "../../models/failures/error-origins.js";
 
 export const WIRE_ERROR_BODY = z.strictObject({
   state: z.literal("error"),
@@ -10,6 +12,22 @@ export const WIRE_ERROR_BODY = z.strictObject({
 });
 
 export type DashboardClientErrorKind = "network" | "http" | "schema" | "protocol";
+
+export class DashboardReportDeliveryError extends Error {
+  readonly code = "DASHBOARD_ERROR_REPORT_UNAVAILABLE";
+  constructor() {
+    super(ERROR_CATALOG.DASHBOARD_ERROR_REPORT_UNAVAILABLE.text);
+    this.name = "DashboardReportDeliveryError";
+  }
+}
+
+const reportedErrors = new WeakSet<Error>();
+export function markDashboardErrorReported(error: unknown): void {
+  if (error instanceof Error) reportedErrors.add(error);
+}
+export function dashboardErrorReported(error: unknown): boolean {
+  return error instanceof Error && (reportedErrors.has(error) || error.cause instanceof Error && reportedErrors.has(error.cause));
+}
 
 export class DashboardClientError extends Error {
   readonly kind: DashboardClientErrorKind;
@@ -33,6 +51,8 @@ export class DashboardClientError extends Error {
     this.retryable = input.retryable ?? false;
   }
 }
+bindErrorOrigin(DashboardClientError, error => error.kind === "http" ? { key: "client-http", code: error.code }
+  : error.kind === "network" ? "client-network" : "client-schema");
 
 /** Maps a non-2xx response body to the typed error, keeping the server's words. */
 export function httpError(status: number, body: unknown): DashboardClientError {

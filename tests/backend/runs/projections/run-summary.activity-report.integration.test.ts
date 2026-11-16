@@ -1,3 +1,6 @@
+import { operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
+import { isQueueMember, isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { join } from "node:path";
 import { deriveCanonicalPerson } from "../../../../src/backend/runs/projections/run-summary.js";
@@ -5,11 +8,11 @@ import { DeletedRunRecordSchema,type DeletedRunRecord } from "../../../../src/mo
 import { RunLifecycleSchema,RunRecordSchema,type RunRecord } from "../../../../src/models/run/record.js";
 import type { RunResultRecord } from "../../../../src/models/run/result.js";
 import { FingerprintSchema,RunIdSchema } from "../../../../src/rules/identity/ids.js";
-import { activityPersonPseudonymResultRecord,CURRENT_SEPARATIONS_RESULT } from "../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { separationsRunResultRecord,CURRENT_SEPARATIONS_RESULT } from "../../../support/fixtures/integration/separations-run-fixtures.js";
 import { inMemoryRunReaderFake } from "../../../support/helpers/canonical-run-reader.js";
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterAll,afterEach,describe,it } from "vitest";
 import { ActivityReportWireSchema,type ActivityReportWire } from "../../../../src/models/dashboard/activity.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
@@ -51,13 +54,15 @@ function queuedEventOf(w: DashboardWorld, input: Parameters<typeof runRecordBase
   return event;
 }
 
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
 const worlds: DashboardWorld[] = [];
 const canonicalResults = new WeakMap<DashboardWorld,Map<string,RunResultRecord>>();
 const deletedRuns = new WeakMap<DashboardWorld, Map<string, DeletedRunRecord>>();
 
-function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
+async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
   const state = { records: new Map<string, RunRecord>(), deleted: new Map<string, DeletedRunRecord>(), generation: 0 };
-  const created = makeWorld({ ...args[0], reader: inMemoryRunReaderFake(state) });
+  const created = await makeWorld({ ...args[0], profileFixture: () => profileFixtures.create(), reader: inMemoryRunReaderFake(state) });
   state.records = created.authority.records;
   deletedRuns.set(created, state.deleted);
   const results = new Map<string,RunResultRecord>();
@@ -71,8 +76,8 @@ function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
   return created;
 }
 
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
+afterEach(async () => {
+  for (const w of worlds.splice(0)) await w.dispose();
 });
 
 
@@ -131,7 +136,7 @@ function personResult(w: DashboardWorld, seed: number, identity: string) {
   const prior=w.authority.records.get(uuidOf(seed));
   if(prior===undefined)throw new Error("activity-fixture-run-missing");
   const run=runRecordOf({seed,workflow:"separations",lifecycle:{state:"terminal",outcome:"done",endedAt:instantOffsetOf(0,1000)}});
-  const result=activityPersonPseudonymResultRecord(run,{...CURRENT_SEPARATIONS_RESULT,
+  const result=separationsRunResultRecord(run,{...CURRENT_SEPARATIONS_RESULT,
     approved:{...CURRENT_SEPARATIONS_RESULT.approved,emplId:identity}});
   w.authority.put({...run,envelope:{...run.envelope,shape:prior.envelope.shape,...(prior.envelope.parent===undefined?{}:{parent:prior.envelope.parent})}});
   canonicalResults.get(w)?.set(run.envelope.runId,result);
@@ -244,8 +249,8 @@ function seedActivityWorld(w: DashboardWorld): void {
 }
 
 describe("the Activity report", () => {
-  it("refuses the old receipt-digest path when validated canonical identity is missing", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("refuses the old receipt-digest path when validated canonical identity is missing", async () => {
+    const w = await world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
     queuedEventOf(w, { seed: 40, workflow: "separations" });
     runEndedEventOf(w, 40, "done", { workflow: "separations" });
@@ -272,8 +277,8 @@ describe("the Activity report", () => {
     assert.equal(JSON.stringify(report).includes(digest), false, "the aggregate wire published a person digest");
   });
 
-  it("deduplicates canonical identities and includes operation members", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("deduplicates canonical identities and includes operation members", async () => {
+    const w = await world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
     queuedEventOf(w, { seed: 41, workflow: "separations" });
     queuedEventOf(w, { seed: 42, workflow: "separations", shape: "operation", title: "People batch" });
@@ -286,8 +291,8 @@ describe("the Activity report", () => {
     assert.deepEqual(report.people, { state: "present", distinct: 2, evidenceRows: 3 });
   });
 
-  it("keeps missing canonical identity distinct from a zero-Separations range", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("keeps missing canonical identity distinct from a zero-Separations range", async () => {
+    const w = await world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
     queuedEventOf(w, { seed: 45, workflow: "separations" });
     w.authority.receipts.set(uuidOf(45), receiptWithPersonFactOf(45, {
@@ -296,7 +301,7 @@ describe("the Activity report", () => {
     }));
 
     const unavailable = w.projection.buildActivityReportWire(D0, D0);
-    const zero = world({ descriptors: REGISTRY }).projection.buildActivityReportWire(D0, D0);
+    const zero = (await world({ descriptors: REGISTRY })).projection.buildActivityReportWire(D0, D0);
 
     assert.deepEqual(
       [unavailable.people, zero.people],
@@ -313,9 +318,9 @@ describe("the Activity report", () => {
     assert.equal(JSON.stringify(unavailable).includes("3698"), false, "the absent wire published a suffix");
   });
 
-  it("refuses foreign result bindings, malformed canonical values and old schema hashes without leaking identity", () => {
+  it("refuses foreign result bindings, malformed canonical values and old schema hashes without leaking identity", async () => {
     for(const defect of ["foreign","malformed","schema"] as const) {
-      const w=world({descriptors:REGISTRY});atDayOffset(w,0);
+      const w=await world({descriptors:REGISTRY});atDayOffset(w,0);
       queuedEventOf(w,{seed:46,workflow:"separations"});personResult(w,46,"10800001");
       const result=canonicalResults.get(w)?.get(uuidOf(46));if(result===undefined)throw new Error("fixture result missing");
       canonicalResults.get(w)?.set(uuidOf(46),{...result,
@@ -333,8 +338,8 @@ describe("the Activity report", () => {
     }
   });
 
-  it("rolls the range up by day, workflow, category, status and outcome from the one surface set", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("rolls the range up by day, workflow, category, status and outcome from the one surface set", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
 
     const report = ActivityReportWireSchema.parse(w.projection.buildActivityReportWire(D0, D2));
@@ -345,7 +350,7 @@ describe("the Activity report", () => {
     assert.equal(report.inFlightRuns, 3);
 
     assert.deepEqual(report.people, { state: "present", distinct: 0, evidenceRows: 0 });
-    assert.deepEqual(report.days, [
+    assert.deepEqual(report.days.map(({ day, runs }) => ({ day, runs })), [
       { day: D0, runs: 3 },
       { day: D1, runs: 2 },
       { day: D2, runs: 3 },
@@ -353,12 +358,13 @@ describe("the Activity report", () => {
 
 
     const clean = { readBack: 0, warnings: 0, warningsUnknown: 0 };
-    assert.deepEqual(report.workflows, [
+    assert.deepEqual(report.workflows.map(({ outcomes: _outcomes, days: _days, failedAt: _failedAt, typicalMedian: _typicalMedian, ...row }) => row), [
       {
         workflowId: fixtureDescriptor.id,
         registration: { state: "registered", label: "Fixture Graph", code: "fx", categoryId: "operations" },
         runs: 1,
         completion: clean,
+        needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
         failed: 0, cancelled: 0, partial: 0, open: 1,
       },
       {
@@ -367,6 +373,7 @@ describe("the Activity report", () => {
         runs: 4,
 
         completion: { readBack: 0, warnings: 0, warningsUnknown: 1 },
+        needsAttention: 1, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 1, unmeasuredRuns: 0, meanMs: { state: "present", value: 5000 } },
         failed: 1, cancelled: 0, partial: 0, open: 2,
       },
       {
@@ -374,6 +381,7 @@ describe("the Activity report", () => {
         registration: { state: "registered", label: "Kuali Finalization", code: "sf", categoryId: "separation" },
         runs: 2,
         completion: clean,
+        needsAttention: 2, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
         failed: 2, cancelled: 0, partial: 0, open: 0,
       },
       {
@@ -385,6 +393,7 @@ describe("the Activity report", () => {
         runs: 1,
         completion: clean,
         // Interrupted is terminal lifecycle but still requeueable, so status and open-work columns differ.
+        needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
         failed: 0, cancelled: 0, partial: 0, open: 1,
       },
     ]);
@@ -426,15 +435,19 @@ describe("the Activity report", () => {
     );
   });
 
-  it("breaks failures down by their own code and says how many of them were transient", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("breaks failures down by their own code and says how many of them were transient", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     const report = w.projection.buildActivityReportWire(D0, D2);
 
     // "3 failures" reads very differently once two of them are known retryable.
     assert.deepEqual(report.failures, [
-      { code: "STALE_SESSION", runs: 2, transient: 2, sample: [uuidOf(2), uuidOf(4)] },
-      { code: "SUBJECT_MISMATCH", runs: 1, transient: 0, sample: [uuidOf(5)] },
+      { workflowId: "person-lookup", registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "search" },
+        code: "STALE_SESSION", sentence: operatorFailureSentence("STALE_SESSION"), runs: 1, transient: 1, sample: [uuidOf(2)] },
+      { workflowId: "separations-kuali-finalization", registration: { state: "registered", label: "Kuali Finalization", code: "sf", categoryId: "separation" },
+        code: "STALE_SESSION", sentence: operatorFailureSentence("STALE_SESSION"), runs: 1, transient: 1, sample: [uuidOf(4)] },
+      { workflowId: "separations-kuali-finalization", registration: { state: "registered", label: "Kuali Finalization", code: "sf", categoryId: "separation" },
+        code: "SUBJECT_MISMATCH", sentence: operatorFailureSentence("SUBJECT_MISMATCH"), runs: 1, transient: 0, sample: [uuidOf(5)] },
     ]);
     assert.equal(
       report.failures.reduce((total, { runs }) => total + runs, 0),
@@ -442,8 +455,8 @@ describe("the Activity report", () => {
     );
   });
 
-  it("refuses to report a failure breakdown with a hole in it", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("refuses to report a failure breakdown with a hole in it", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
 
     w.authority.failures.delete(uuidOf(9002));
@@ -453,8 +466,8 @@ describe("the Activity report", () => {
     );
   });
 
-  it("measures the durations it can and REPORTS the ones it cannot", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("measures the durations it can and REPORTS the ones it cannot", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     const report = w.projection.buildActivityReportWire(D0, D2);
 
@@ -469,8 +482,8 @@ describe("the Activity report", () => {
     assert.equal(report.durations.totalMs, 95_000);
   });
 
-  it("names the absence rather than reporting a zero when nothing in range is measurable", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("names the absence rather than reporting a zero when nothing in range is measurable", async () => {
+    const w = await world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
@@ -493,8 +506,8 @@ describe("the Activity report", () => {
     });
   });
 
-  it("splits the done runs three ways and never reports an unread one as clean", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("splits the done runs three ways and never reports an unread one as clean", async () => {
+    const w = await world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
 
     for (const seed of [31, 32, 33]) {
@@ -531,8 +544,8 @@ describe("the Activity report", () => {
     assert.equal(armOf(33), "no evidence receipt has been derived for this run, so its warning set is unknown");
   });
 
-  it("refuses a per-workflow cross-tab that disagrees with the totals it is part of", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("refuses a per-workflow cross-tab that disagrees with the totals it is part of", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     const report = w.projection.buildActivityReportWire(D0, D2);
 
@@ -559,8 +572,8 @@ describe("the Activity report", () => {
     }
   });
 
-  it("refuses category totals that disagree with their workflow rows", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("refuses category totals that disagree with their workflow rows", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     const report = w.projection.buildActivityReportWire(D0, D2);
     const categories = report.categories.map((category, index) => (
@@ -573,8 +586,8 @@ describe("the Activity report", () => {
     );
   });
 
-  it("caps a failure sample at five runs while the tally keeps counting", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("caps a failure sample at five runs while the tally keeps counting", async () => {
+    const w = await world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
     for (let seed = 20; seed < 27; seed += 1) {
       queuedEventOf(w, { seed });
@@ -597,17 +610,17 @@ describe("the Activity report", () => {
 });
 
 describe("the Activity report inherits the day's exclusions rather than re-deciding them", () => {
-  it("agrees with the day payload it summarises, row for row and count for count", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("agrees with the day payload it summarises, row for row and count for count", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
 
     for (const [day, offset] of [[D0, 0], [D1, 1], [D2, 2]] as const) {
       const dayWire = w.projection.buildDashboardDayWire(day);
-      const countable = dayWire.queueSurfaces.filter(({ surfaceKind }) => surfaceKind !== "member");
+      const countable = dayWire.queueSurfaces.filter(isQueueTopLevel);
       const oneDay = w.projection.buildActivityReportWire(day, day);
 
       assert.equal(oneDay.totalRuns, countable.length, `day ${day} (offset ${String(offset)}) row count`);
-      assert.deepEqual(oneDay.days, [{ day, runs: countable.length }]);
+      assert.deepEqual(oneDay.days.map(({ day: countedDay, runs }) => ({ day: countedDay, runs })), [{ day, runs: countable.length }]);
       assert.deepEqual(
         oneDay.statuses.map(({ status, runs }) => [status, runs]),
         [...dayWire.statusCounts].map(({ status, count }) => [status, count]),
@@ -619,8 +632,8 @@ describe("the Activity report inherits the day's exclusions rather than re-decid
     }
   });
 
-  it("drops a deleted run from the range at the same instant it leaves the day", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("drops a deleted run from the range at the same instant it leaves the day", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     const before = w.projection.buildActivityReportWire(D0, D2);
     assert.equal(before.totalRuns, 8);
@@ -631,14 +644,14 @@ describe("the Activity report inherits the day's exclusions rather than re-decid
     const after = w.projection.buildActivityReportWire(D0, D2);
     assert.equal(after.totalRuns, 7);
     assert.equal(after.terminalRuns, 4);
-    assert.deepEqual(after.days[0], { day: D0, runs: 2 });
+    assert.deepEqual({ day: after.days[0]?.day, runs: after.days[0]?.runs }, { day: D0, runs: 2 });
     assert.equal(after.durations.measuredRuns, 3);
     assert.equal(after.durations.totalMs, 90_000);
     assert.equal(w.projection.buildDashboardDayWire(D0).queueSurfaces.length, 2);
   });
 
-  it("counts a delegated member inside its operation, never a second time at top level", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("counts a delegated member inside its operation, never a second time at top level", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     const report = w.projection.buildActivityReportWire(D2, D2);
     const dayWire = w.projection.buildDashboardDayWire(D2);
@@ -646,15 +659,15 @@ describe("the Activity report inherits the day's exclusions rather than re-decid
     // The members ride the day payload flat for layout — the report counts the
     // operation once and the members not at all.
     assert.equal(dayWire.queueSurfaces.length, 5);
-    assert.equal(dayWire.queueSurfaces.filter(({ surfaceKind }) => surfaceKind === "member").length, 2);
+    assert.equal(dayWire.queueSurfaces.filter(isQueueMember).length, 2);
     assert.equal(report.totalRuns, 3);
-    assert.deepEqual(report.days, [{ day: D2, runs: 3 }]);
+    assert.deepEqual(report.days.map(({ day, runs }) => ({ day, runs })), [{ day: D2, runs: 3 }]);
   });
 });
 
 describe("the Activity report refuses rather than inventing a window", () => {
-  it("refuses a range that ends before it starts", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("refuses a range that ends before it starts", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     assert.throws(
       () => w.projection.buildActivityReportWire(D2, D0),
@@ -662,14 +675,14 @@ describe("the Activity report refuses rather than inventing a window", () => {
     );
   });
 
-  it("refuses a bound that is not a date", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("refuses a bound that is not a date", async () => {
+    const w = await world({ descriptors: REGISTRY });
     assert.throws(() => w.projection.buildActivityReportWire("today", D0));
     assert.throws(() => w.projection.buildActivityReportWire(D0, "2026-08"));
   });
 
-  it("refuses to serve aggregates while the projection is degraded", () => {
-    const w = world({ descriptors: REGISTRY, collectRebuilds: true });
+  it("refuses to serve aggregates while the projection is degraded", async () => {
+    const w = await world({ descriptors: REGISTRY, collectRebuilds: true });
     queuedEventOf(w, { seed: 1 });
     // A claim naming a run with no `run.queued` cannot fold. `apply` never
     // throws into the emitting path; it degrades and schedules the rebuild.
@@ -692,8 +705,8 @@ describe("the Activity report refuses rather than inventing a window", () => {
     assert.equal(w.projection.buildActivityReportWire(D0, D2).totalRuns, 1);
   });
 
-  it("keeps an out-of-range row out of the range even when authority never held it", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("keeps an out-of-range row out of the range even when authority never held it", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
 
     w.authority.records.delete(uuidOf(12));
@@ -710,13 +723,13 @@ describe("the Activity report's write-ledger block", () => {
     overrides: Readonly<{ system?: string; instance?: "prod" | "test"; confirmedAt: string }>,
   ): void {
     const f = ledgerCommitFixture(seq, { ...overrides, runId: fixtureUuid(`activity-history-${String(seq)}`), itemId: fixtureUuid(`activity-history-item-${String(seq)}`) });
-    seedAtomicWriteOwner(w.database, f.commit, join(w.stateRoot, "authority.db"));
+    seedAtomicWriteOwner(w.database, f.commit, join(w.stateRoot, "state.db"));
     fenceWriteFixture(w.database, { intent: f.intent, attempt: f.attempt });
     w.database.commitWriteAttempt(f.commit, atomicWriteCheckpoint(f.commit));
   }
 
-  it("serves what was filed beside the totals, without reconciling the two", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("serves what was filed beside the totals, without reconciling the two", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     fileLedgerEntry(w, 0, { confirmedAt: instantOffsetOf(1) });
     fileLedgerEntry(w, 1, { confirmedAt: instantOffsetOf(1), instance: "test" });
@@ -730,8 +743,8 @@ describe("the Activity report's write-ledger block", () => {
     assert.notEqual(report.ledger.systems[0]?.entries, report.totalRuns);
   });
 
-  it("still reports entries over a window whose runs are all gone", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("still reports entries over a window whose runs are all gone", async () => {
+    const w = await world({ descriptors: REGISTRY });
 
     fileLedgerEntry(w, 0, { system: "kuali", confirmedAt: instantOffsetOf(1) });
 
@@ -742,8 +755,8 @@ describe("the Activity report's write-ledger block", () => {
     });
   });
 
-  it("serves an empty block when nothing in the window filed anything", () => {
-    const w = world({ descriptors: REGISTRY });
+  it("serves an empty block when nothing in the window filed anything", async () => {
+    const w = await world({ descriptors: REGISTRY });
     seedActivityWorld(w);
     assert.deepEqual(w.projection.buildActivityReportWire(D0, D2).ledger, { systems: [] });
   });

@@ -1,5 +1,5 @@
+import { readRunCheckpoint } from "../../storage/sqlite/run-continuation.js";
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
-import { readRunCheckpoint } from "../checkpoints/run-checkpoint-reader.js";
 import { repeatOccurrenceKey } from "../../../models/run/rerun.js";
 // Resolve only the same workflow, node, schemas, permanent key and binding proof; whole-closure identity is sufficient, not necessary.
 import { z } from "zod";
@@ -18,6 +18,7 @@ import {
 import type { RunRecord } from "../../../models/run/record.js";
 import type { RuntimeFlowNode, RuntimeScope } from "../../../models/workflow/graph.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import { currentBuildId } from "../build-id.js";
 
 export type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transaction" }>;
 
@@ -27,7 +28,7 @@ export type WriteBindingRepositories = Pick<AuthorityRepositories, "runCheckpoin
 
 export const WriteResolutionArmSchema = z.enum([
   "recovery-probe",
-  "operator-confirmed-present",
+  "recheck",
   "operator-confirmed-absent",
 ]);
 export type WriteResolutionArm = z.infer<typeof WriteResolutionArmSchema>;
@@ -255,7 +256,8 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   const { arm, descriptor, run, intent } = input;
   const stored = run.envelope.contractFingerprint;
   const current = descriptor.contractFingerprint;
-  const closureIdentical = stored === current;
+  // Equal contracts prove equal code only under the same build; otherwise every identity check runs.
+  const sameBuild = stored === current && run.envelope.buildId === currentBuildId();
   const checks: WriteBindingCheckResult[] = [];
 
   checks.push(descriptor.id === run.envelope.workflow
@@ -291,10 +293,9 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   }
   checks.push(held("transaction-node", `node "${node.id}" still commits ${intent.taskId}`));
 
-  if (closureIdentical) {
-    // Exact closure identity is sufficient; extra key derivation could fail on pruned dependencies without adding proof.
+  if (sameBuild) {
     for (const check of ["canonical-input", "permanent-key-identity", "binding-proof-identity"] as const) {
-      checks.push(held(check, `the contract closure is byte-identical (${short(current)}); nothing could have moved`));
+      checks.push(held(check, `same contract and same build (${short(run.envelope.buildId)}); nothing could have moved`));
     }
     return Object.freeze({ state: "identical", arm, contractFingerprint: current, checks: Object.freeze(checks), node });
   }

@@ -1,3 +1,4 @@
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { SectionUnavailableError } from "../../../../src/backend/runs/commands/refusals.js";
 import { buildRunSection } from "../../../../src/backend/runs/queries/run-detail.js";
@@ -6,10 +7,9 @@ import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js
 import { foldTrustGate } from "../../../support/helpers/backend/trust-authority-fixture.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { afterEach, describe, it } from "vitest";
-import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureDescriptorWithMovedKey, WriteFixtureProofSchema } from "../../../support/fixtures/write-sequencer-fixtures.js";
-import { openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
+import { afterAll, afterEach, describe, it } from "vitest";
+import { WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureDescriptorWithMovedKey } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { closePersonLookupReceiptDatabase, openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
 
 import { buildRunEvidenceReceipt, type ReceiptBuildInput } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
@@ -21,6 +21,9 @@ import { kualiReceiptEvidence, seedPersonLookupExitRun } from "../../../support/
 import { personLookupDescriptor, separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+
 {
 const { cleanup, roundTrip, parkedIntent, nextCommandId, resolutionCommand } = createParkedWriteRoundTripTestWorld();
 
@@ -28,8 +31,8 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
 afterEach(cleanup);
 
   it("serves canonical parked-write evidence without a fold and refuses foreign intent membership", async () => {
-    const h = roundTrip(); await h.park();
-    const projection = makeWorld();
+    const h = await roundTrip(); await h.park();
+    const projection = await makeWorld({ profileFixture: profileFixtures.create });
     try {
       const deps = { stateRoot: projection.stateRoot, projection: projection.projection,
         runReader: createTrustRunReader(h.database, h.clock), timeline: h.database.authority.timelineEvents,
@@ -59,7 +62,7 @@ afterEach(cleanup);
       const resolved = h.kernel.execute(resolutionCommand("resolve-write-absent", {
         runId: WRITE_FIXTURE_RUN_ID, expectedVersion: state.run.version,
         writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
-      }, { evidenceNote: "checked target: no transaction exists" }));
+      }, {}));
       assert.equal(resolved.state, "applied");
       const resumed = deps.runReader.read(WRITE_FIXTURE_RUN_ID);
       assert.equal(resumed.state, "present"); if (resumed.state !== "present") throw new Error("resumed run missing");
@@ -68,10 +71,10 @@ afterEach(cleanup);
       assert.throws(() => buildRunSection(deps, WRITE_FIXTURE_RUN_ID, "parked-write"), SectionUnavailableError,
         "stale open evidence cannot regrant resolved write actions");
 
-    } finally { projection.dispose(); }
+    } finally { await projection.dispose(); }
   });
   it("reports parked-write as a first-class outcome over the durable parked state", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     const report = await harness.park();
 
     assert.equal(report.stopped, "idle");
@@ -98,7 +101,7 @@ afterEach(cleanup);
   });
 
   it("confirmed-absent makes the run resumable at the transaction node, intent retryable", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -109,7 +112,7 @@ afterEach(cleanup);
       expectedVersion: parked.version,
       writeIntentId: intent.writeIntentId,
       intentGeneration: intent.generation,
-    }, { evidenceNote: "checked UCPath: no transaction exists for this key" }));
+    }, {}));
     assert.equal(result.state, "applied");
 
     const resumed = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -123,7 +126,7 @@ afterEach(cleanup);
 
 
   it("resolves confirmed-absent after an unrelated edit moved the contract closure", async () => {
-    const harness = roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
+    const harness = await roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -139,7 +142,7 @@ afterEach(cleanup);
       expectedVersion: parked.version,
       writeIntentId: intent.writeIntentId,
       intentGeneration: intent.generation,
-    }, { evidenceNote: "five reads of an empty field; the mutation body carried no entry at the formKey" }));
+    }, {}));
     assert.equal(result.state, "applied", "an incidental closure move may not strand a parked write");
 
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "retryable");
@@ -150,31 +153,28 @@ afterEach(cleanup);
     assert.equal(resumed.envelope.contractFingerprint, parked.envelope.contractFingerprint);
   });
 
-  it("resolves confirmed-present after an unrelated edit moved the contract closure", async () => {
-    const harness = roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
+  it("rechecks after an unrelated edit moved the contract closure", async () => {
+    const harness = await roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(parked);
 
-    const result = harness.kernel.execute(resolutionCommand("resolve-write-present", {
+    const result = harness.kernel.execute(resolutionCommand("recheck-write", {
       runId: WRITE_FIXTURE_RUN_ID,
       expectedVersion: parked.version,
       writeIntentId: intent.writeIntentId,
       intentGeneration: intent.generation,
-    }, {
-      proof: {
-        schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
-        value: { transactionId: "T998877" },
-      },
-      evidenceNote: "receipt T998877 is visible in UCPath",
-    }));
+    }, {}));
     assert.equal(result.state, "applied");
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
+    harness.world.probeResults.push({ state: "present", proof: { transactionId: "T998877" } });
+    assert.equal((await harness.resume()).outcomes[0]?.state, "done");
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "committed");
   });
 
   it("still refuses loudly when the permanent key itself moved, naming the exact check", async () => {
-    const harness = roundTrip(writeFixtureDescriptorWithMovedKey);
+    const harness = await roundTrip(writeFixtureDescriptorWithMovedKey);
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -186,7 +186,7 @@ afterEach(cleanup);
         expectedVersion: parked.version,
         writeIntentId: intent.writeIntentId,
         intentGeneration: intent.generation,
-      }, { evidenceNote: "checked the target system" })),
+      }, {})),
       (error: unknown) => {
         assert.ok(error instanceof Error);
         assert.match(error.message, /permanent-key-identity moved/);
@@ -205,7 +205,7 @@ afterEach(cleanup);
   });
 
   it("gives no arm but the typed resolutions any way out of a park", async () => {
-    const harness = roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
+    const harness = await roundTrip(writeFixtureDescriptorAfterUnrelatedEdit);
     await harness.park();
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(parked);
@@ -225,7 +225,7 @@ afterEach(cleanup);
   });
 
   it("refuses a stale resolution against the parked generation", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -236,61 +236,10 @@ afterEach(cleanup);
       expectedVersion: parked.version,
       writeIntentId: intent.writeIntentId,
       intentGeneration: intent.generation + 1,
-    }, { evidenceNote: "stale browser tab" }));
+    }, {}));
     assert.equal(stale.state, "rejected");
     assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
-  });
-});
-
-
-describe("a confirmed-present proof that does not fit", () => {
-afterEach(cleanup);
-
-  async function refusedPresent(payload: Record<string, unknown>) {
-    const harness = roundTrip();
-    await harness.park();
-    const intent = parkedIntent(harness.database);
-    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
-    assert.ok(parked);
-    const result = harness.kernel.execute(resolutionCommand("resolve-write-present", {
-      runId: WRITE_FIXTURE_RUN_ID,
-      expectedVersion: parked.version,
-      writeIntentId: intent.writeIntentId,
-      intentGeneration: intent.generation,
-    }, payload));
-    const after = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
-    assert.ok(after && after.lifecycle.state === "parked-write", "the park survived the refusal");
-    assert.equal(after.version, parked.version);
-    const settled = harness.database.authority.writeIntents.get(intent.writeIntentId);
-    assert.ok(settled && settled.status === "parked");
-    assert.equal(settled.generation, intent.generation);
-    return result;
-  }
-
-  it("rejects a proof bound to a schema this build does not have", async () => {
-    const result = await refusedPresent({
-      proof: { schemaHash: "1".repeat(64), value: { transactionId: "T998877" } },
-      evidenceNote: "pasted from a stale tab",
-    });
-    assert.ok(result.state === "rejected");
-    assert.equal(result.code, "schema-mismatch");
-    assert.match(result.message, /bound to schema/);
-  });
-
-  it("rejects a proof that does not parse, naming the leaf that failed", async () => {
-    const result = await refusedPresent({
-      proof: {
-        schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
-        // The contract's receipt is `T` + at least six digits.
-        value: { transactionId: "nope" },
-      },
-      evidenceNote: "typed what the page showed",
-    });
-    assert.ok(result.state === "rejected");
-    assert.equal(result.code, "schema-mismatch");
-    assert.match(result.message, /does not parse through/);
-    assert.match(result.message, /transactionId/);
   });
 });
 
@@ -311,7 +260,7 @@ afterEach(cleanup);
   }
 
   it("refuses the cancel by name and cancels nothing while the intent is parked", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -332,7 +281,7 @@ afterEach(cleanup);
   });
 
   it("refuses it for an ATTEMPTING intent too — the state with no section at all", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     let observed = false;
     harness.world.onCommitClick = () => {
       const attempting = parkedIntent(harness.database);
@@ -353,7 +302,7 @@ afterEach(cleanup);
   });
 
   it("lifts the moment the write is answered ABSENT", async () => {
-    const harness = roundTrip();
+    const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -365,7 +314,7 @@ afterEach(cleanup);
         expectedVersion: parked.version,
         writeIntentId: intent.writeIntentId,
         intentGeneration: intent.generation,
-      }, { evidenceNote: "checked UCPath: no transaction exists for this key" })).state,
+      }, {})).state,
       "applied",
     );
     const resumed = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
@@ -380,34 +329,28 @@ afterEach(cleanup);
     assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "retryable");
   });
 
-  it("lifts the moment the write is answered PRESENT", async () => {
-    const harness = roundTrip();
+  it("keeps cancellation refused while a recheck waits for read proof", async () => {
+    const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
     const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(parked);
 
     assert.equal(
-      harness.kernel.execute(resolutionCommand("resolve-write-present", {
+      harness.kernel.execute(resolutionCommand("recheck-write", {
         runId: WRITE_FIXTURE_RUN_ID,
         expectedVersion: parked.version,
         writeIntentId: intent.writeIntentId,
         intentGeneration: intent.generation,
-      }, {
-        proof: {
-          schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"),
-          value: { transactionId: "T998877" },
-        },
-        evidenceNote: "receipt T998877 is visible in UCPath",
-      })).state,
+      }, {})).state,
       "applied",
     );
     const resumed = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(resumed);
 
     const cancelled = harness.kernel.execute(cancelCommand(WRITE_FIXTURE_RUN_ID, resumed.version));
-    assert.equal(cancelled.state, "applied");
-    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "committed");
+    assert.equal(cancelled.state, "rejected");
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
   });
 });
 
@@ -416,24 +359,24 @@ describe("kernel outer resolution rollback", () => {
 afterEach(cleanup);
 
   it("unwinds product/lifecycle journals and all write evidence after inner lifecycle settlement", async () => {
-    const h = roundTrip(writeFixtureDescriptor, { afterSequencedStep: (step) => {
+    const h = await roundTrip(writeFixtureDescriptor, { afterSequencedStep: (step) => {
       if (step === "run-transition") throw new Error("kernel outer resolution rollback");
     } });
     await h.park();
     const intent = parkedIntent(h.database);
     const run = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(run);
-    const command = resolutionCommand("resolve-write-present", { runId: WRITE_FIXTURE_RUN_ID,
+    const command = resolutionCommand("recheck-write", { runId: WRITE_FIXTURE_RUN_ID,
       expectedVersion: run.version, writeIntentId: intent.writeIntentId, intentGeneration: intent.generation },
-      { proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T998877" } },
-        evidenceNote: "synthetic confirmed receipt" });
+      {});
     const generation = h.database.getMeta().authorityGeneration;
     assert.throws(() => h.kernel.execute(command), /kernel outer resolution rollback/);
     assert.deepEqual(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID), run);
     assert.deepEqual(h.database.authority.writeIntents.get(intent.writeIntentId), intent);
     assert.equal(h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, run.envelope.itemId, WRITE_FIXTURE_NODE_ID), undefined);
-    assert.equal(h.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(h.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(h.database.authority.commands.get(command.commandId), command);
+    assert.equal(h.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.equal(h.database.getMeta().authorityGeneration, generation + 1);
   });
 });
 }
@@ -472,8 +415,8 @@ function refusalFor(overrides: Partial<ReceiptBuildInput>): string {
 /* ── (a) the stranded receipt: a moved closure re-derives byte-identically ── */
 
 describe("receipt derivation binding — a moved closure does not strand a receipt", () => {
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
+afterEach(async () => {
+  for (const database of databases.splice(0)) await closePersonLookupReceiptDatabase(database);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -498,8 +441,8 @@ afterEach(() => {
 /* ── (b) a genuinely moved surface refuses, naming it ────────────────────── */
 
 describe("receipt derivation binding — a moved surface refuses by name", () => {
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
+afterEach(async () => {
+  for (const database of databases.splice(0)) await closePersonLookupReceiptDatabase(database);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -565,14 +508,14 @@ function storedVariant(
 }
 
 describe("receipt derivation binding — the stored receipt survives a moved closure", () => {
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
+afterEach(async () => {
+  for (const database of databases.splice(0)) await closePersonLookupReceiptDatabase(database);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 
-  it("keeps divergent receipt sentences out of the service and HTTP divergence error", () => {
-    const database = openPersonLookupReceiptDatabase(roots, databases, "hrauto-receipt-binding-http-", "receipt-binding-http-test");
+  it("keeps divergent receipt sentences out of the service and HTTP divergence error", async () => {
+    const database = await openPersonLookupReceiptDatabase(roots, databases, "hrauto-receipt-binding-http-", "receipt-binding-http-test");
     const seeded = seedPersonLookupExitRun(database);
     const runId = String(seeded.run.envelope.runId);
     const authority = database.authority;

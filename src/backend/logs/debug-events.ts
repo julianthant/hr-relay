@@ -5,12 +5,16 @@ import { randomUUID } from "node:crypto";
 import { DebugEventSchema, type TimelineRepository, type TimelineAppend } from "../../models/events/timeline.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { localDatePart } from "../../rules/time/clock.js";
+import { mirrorDebugEvent } from "../storage/events/local-debug-log.js";
+import { serializeErrorCauses } from "../../models/failures/error-origins.js";
 
-export function createDebugEventWriter(deps: { repository: TimelineRepository; clock: Clock; build: string }) {
+export function createDebugEventWriter(deps: { repository: TimelineRepository; clock: Clock; build: string;
+  development?: boolean; writeStderr?: (line: string) => void }) {
   return Object.freeze({
     emit(input: unknown, scope: TimelineAppend["scope"] = { kind: "transport", connectionId: "local" }, workflow?: TimelineAppend["workflow"]) {
       if (scope.kind === "run" && workflow === undefined) throw new Error("debug-run-workflow-required");
-      const event = DebugEventSchema.parse({ ...Object.fromEntries(Object.entries(input as Record<string, unknown>).filter(([, value]) => value !== undefined)), build: deps.build, pid: process.pid });
+      const fields = Object.fromEntries(Object.entries(input as Record<string, unknown>).filter(([, value]) => value !== undefined));
+      const event = DebugEventSchema.parse({ ...fields, build: deps.build, pid: process.pid });
       for (const identity of [event.correlationId, event.cursor, scope.kind === "client" ? scope.clientId : scope.kind === "transport" ? scope.connectionId : undefined]) {
         if (identity !== undefined && sanitizeDebugText(identity) !== identity) throw new Error("debug-identity-contains-credential-material");
       }
@@ -28,10 +32,23 @@ export function createDebugEventWriter(deps: { repository: TimelineRepository; c
         if (existing.workflow !== workflow || canonicalJsonStringify(existing.scope) !== canonicalJsonStringify(scope) || canonicalJsonStringify(existing.payload) !== canonicalJsonStringify({ kind: "debug", event: safe })) throw new Error("debug-report-identity-conflict");
         return { state: "existing" as const, record: existing };
       }
-      return deps.repository.append({ schemaVersion: 1, eventId, scope,
+      const result = deps.repository.append({ schemaVersion: 1, eventId, scope,
         ...(workflow === undefined ? {} : { workflow }),
         occurredAt: now.toISOString(), recordedAt: now.toISOString(), retentionDate: localDatePart(now),
         payload: { kind: "debug", event: safe }, source: { kind: "native" } });
+      if (result.state === "inserted") mirrorDebugEvent({ ...result.record, event: safe }, deps);
+      return result;
     },
   });
+}
+
+/** Emits one fault event plus one closed cause row per cause (its closed reason), sharing its correlation; stderr gets the same value-free rows. */
+export function emitFaultWithCauses(debugEvents: Readonly<{ emit(input: unknown, scope?: TimelineAppend["scope"]): unknown }>, faultSink: ((line: string) => void) | undefined, error: unknown,
+  fault: Readonly<{ category: "worker" | "http"; area: string; code: string; reason: string; message?: string }>, scope?: TimelineAppend["scope"]): void {
+  const correlationId = randomUUID(), causes = serializeErrorCauses(error);
+  const event = { ...fault, phase: "failed", correlationId };
+  debugEvents.emit(event, scope);
+  for (const cause of causes) debugEvents.emit({ category: fault.category, phase: "failed", correlationId, area: fault.area,
+    reason: cause.reason, code: cause.code, message: cause.name, stack: cause.stack }, scope);
+  faultSink?.(JSON.stringify({ ...event, causes: causes.map(({ name, code, reason }) => ({ name, code, reason })) }));
 }

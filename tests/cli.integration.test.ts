@@ -1,3 +1,4 @@
+import { testProcessImport } from "./support/compiled-process.js";
 
 import assert from "node:assert/strict";
 import { type ChildProcessByStdio,spawn } from "node:child_process";
@@ -5,13 +6,37 @@ import { chmodSync,cpSync,existsSync,mkdirSync,mkdtempSync,readFileSync,realpath
 import { request } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname,join } from "node:path";
+import { join } from "node:path";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { describe,it } from "vitest";
+import { describe,it,vi } from "vitest";
+import { z } from "zod";
 import { writeDashboardBuildIdentity } from "../src/backend/app/composition/dashboard/build-identity.js";
-import { rebuildRuntimeIsolation } from "../src/backend/app/config/runtime-isolation.js";
-import { readRuntimeProcessLock } from "../src/backend/storage/sqlite/runtime-process-locks.js";
+import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../src/backend/app/config/runtime-isolation.js";
+import type { RuntimeAdmission } from "../src/backend/storage/admission/admission.js";
+import { RuntimeLifetimeLock, RuntimeAlreadyRunningError } from "../src/backend/storage/admission/lifetime-lock.js";
+import { runCli } from "../src/cli.js";
+import { createBoundProfileFixture, findProfileFixtureAdmission } from "./support/helpers/admission-fixture.js";
+import { historyWorld } from "./support/helpers/storage/transaction-history-fixture.js";
+
+/** Admissions are frozen, so the stores the transaction export opens record which admission opened them. */
+const transactionStoreOwners = vi.hoisted((): Array<{ owner: RuntimeAdmission; stateRoot: string }> => []);
+vi.mock("../src/backend/storage/sqlite/authority-database.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../src/backend/storage/sqlite/authority-database.js")>();
+  const open: typeof actual.AuthorityDatabase.open = (admission, input, ...rest) => {
+    if (typeof input === "object" && input !== null && "migrationOwner" in input && input.migrationOwner === "transaction-export") {
+      transactionStoreOwners.push({ owner: admission, stateRoot: admission.stateRoot });
+    }
+    return actual.AuthorityDatabase.open(admission, input, ...rest);
+  };
+  return { ...actual, AuthorityDatabase: new Proxy(actual.AuthorityDatabase, {
+    get: (target, key, receiver): unknown => key === "open" ? open : Reflect.get(target, key, receiver) }) };
+});
+/** The history world keeps its installation private; the call-through factory spy hands this test that installation. */
+vi.mock("./support/helpers/admission-fixture.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("./support/helpers/admission-fixture.js")>();
+  return { ...actual, createBoundProfileFixture: vi.fn(actual.createBoundProfileFixture) };
+});
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const BOOTSTRAP = join(REPO_ROOT, "scripts", "dev", "secure-env-bootstrap.ts");
@@ -25,18 +50,11 @@ const SHUTDOWN_TIMEOUT_MS = 60_000;
 
 
 
-async function ownedFixturePort(): Promise<number> {
-  return new Promise<number>((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.once("listening", () => {
-      const address = probe.address();
-      assert.ok(address !== null && typeof address !== "string");
-      probe.close(error => error === undefined ? resolve(address.port) : reject(error));
-    });
-    probe.listen(0, "127.0.0.1");
-  });
-}
+const DashboardReadySchema = z.strictObject({
+  type: z.literal("hrauto-dashboard-ready"),
+  backendPort: z.number().int().positive().max(65535),
+  lockPort: z.number().int().positive().max(65535),
+});
 
 async function waitForIngressToClose(port: number, child: DashboardChild, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -73,7 +91,7 @@ function requirePrivateEnvironmentFile(root: string): void {
 }
 
 
-function createScratchRepoRoot(backendPort: number = rebuildRuntimeIsolation.backendPort): string {
+function createScratchRepoRoot(backendPort: number = rebuildRuntimeIsolation.backendPort, lockPort: number = rebuildRuntimeIsolation.lockPort): string {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "hr-dashboard-lifecycle-"));
   for (const file of ["package.json", "package-lock.json", "vite.dashboard.config.ts", "tsconfig.json"]) {
     cpSync(join(REPO_ROOT, file), join(root, file));
@@ -82,11 +100,34 @@ function createScratchRepoRoot(backendPort: number = rebuildRuntimeIsolation.bac
   const isolationPath = join(root, "src", "backend", "app", "config", "runtime-isolation.ts");
   const isolationSource = readFileSync(isolationPath, "utf8");
   assert.ok(isolationSource.includes(`backendPort: ${String(rebuildRuntimeIsolation.backendPort)}`));
-  writeFileSync(isolationPath, isolationSource.replace(`backendPort: ${String(rebuildRuntimeIsolation.backendPort)}`, `backendPort: ${String(backendPort)}`));
+  assert.ok(isolationSource.includes(`lockPort: ${String(rebuildRuntimeIsolation.lockPort)}`));
+  assert.ok(isolationSource.includes("homeDirectory: userInfo().homedir"));
+  writeFileSync(isolationPath, isolationSource
+    .replace(`backendPort: ${String(rebuildRuntimeIsolation.backendPort)}`, `backendPort: ${String(backendPort)}`)
+    .replace(`lockPort: ${String(rebuildRuntimeIsolation.lockPort)}`, `lockPort: ${String(lockPort)}`)
+    .replace("homeDirectory: userInfo().homedir", `homeDirectory: ${JSON.stringify(join(root, "app-data-home"))}`));
   const isolationSchemaPath = join(root, "src", "models", "config", "define-runtime-isolation.ts");
   const isolationSchemaSource = readFileSync(isolationSchemaPath, "utf8");
   assert.ok(isolationSchemaSource.includes(`backendPort: z.literal(${String(rebuildRuntimeIsolation.backendPort)})`));
-  writeFileSync(isolationSchemaPath, isolationSchemaSource.replace(`backendPort: z.literal(${String(rebuildRuntimeIsolation.backendPort)})`, `backendPort: z.literal(${String(backendPort)})`));
+  assert.ok(isolationSchemaSource.includes(`lockPort: z.literal(${String(rebuildRuntimeIsolation.lockPort)})`));
+  writeFileSync(isolationSchemaPath, isolationSchemaSource
+    .replace(`backendPort: z.literal(${String(rebuildRuntimeIsolation.backendPort)})`, `backendPort: z.literal(${String(backendPort)})`)
+    .replace(`lockPort: z.literal(${String(rebuildRuntimeIsolation.lockPort)})`, `lockPort: z.literal(${String(lockPort)})`));
+  const cliPath = join(root, "src", "cli.ts");
+  const cliSource = readFileSync(cliPath, "utf8");
+  const returnApplication = "    return application;";
+  assert.ok(cliSource.includes(returnApplication));
+  writeFileSync(cliPath, cliSource.replace(returnApplication, `
+    const fixtureReady = { type: "hrauto-dashboard-ready", backendPort: application.port, lockPort: lifetime.lock.port };
+    return { ...application, fixtureReady };`));
+  const runtimePath = join(root, "src", "backend", "app", "composition", "runtime-composition.ts");
+  const runtimeSource = readFileSync(runtimePath, "utf8");
+  const readyMessage = 'send({ type: "hrauto-dashboard-ready" },';
+  assert.ok(runtimeSource.includes(readyMessage));
+  // Only the copied CLI reports fixture ports; production readiness stays unchanged.
+  writeFileSync(runtimePath, runtimeSource
+    .replace("readonly port: number;", "readonly port: number; readonly fixtureReady: { type: string; backendPort: number; lockPort: number };")
+    .replace(readyMessage, 'send(running.fixtureReady,'));
   mkdirSync(join(root, "config"), { recursive: true });
   cpSync(join(REPO_ROOT, "config", "dashboard-workflow-sources.json"), join(root, "config", "dashboard-workflow-sources.json"));
   const bundleRoot = join(root, "dist", "dashboard");
@@ -98,7 +139,7 @@ function createScratchRepoRoot(backendPort: number = rebuildRuntimeIsolation.bac
   symlinkSync(join(REPO_ROOT, "node_modules"), join(root, "node_modules"), "dir");
   mkdirSync(join(root, "scripts", "dev"), { recursive: true });
   cpSync(BOOTSTRAP, join(root, "scripts", "dev", "secure-env-bootstrap.ts"));
-  cpSync(join(REPO_ROOT, ".env.example"), join(root, ".env.providers"));
+  writeFileSync(join(root, ".env.providers"), "# Synthetic provider fixture; no environment loading.\n");
   chmodSync(join(root, ".env.providers"), 0o600);
   writeFileSync(join(root, ".env"), REFERENCE_ENVIRONMENT, { mode: 0o600 });
   return root;
@@ -183,25 +224,18 @@ function checkoutStateFingerprint(): Readonly<{ authority: string; lock: string 
   });
 }
 
-function readScratchLock(lockPath: string): { name?: unknown; pid?: unknown; releasedAt?: unknown } {
-  const record = readRuntimeProcessLock(dirname(lockPath), "server");
-  assert.ok(record !== undefined, `${lockPath} must hold one server claim`);
-  return record;
-}
 
 describe("the `dashboard` CLI command's shutdown lifecycle", () => {
-  it("cancels an active HTTP transfer on Ctrl+C, exits 0, and releases its process lock", async () => {
-    const backendPort = await ownedFixturePort();
-
-    const scratchRoot = createScratchRepoRoot(backendPort);
+  it("cancels an active HTTP transfer on Ctrl+C, exits 0, and releases its lifetime lock", async () => {
+    const scratchRoot = createScratchRepoRoot(0, 0);
+    let lockPort: number;
     requirePrivateEnvironmentFile(scratchRoot);
-    const lockPath = join(scratchRoot, rebuildRuntimeIsolation.processLockRoot, "server-claims");
     const checkoutBefore = checkoutStateFingerprint();
     try {
-
+      vi.stubEnv("LOCALAPPDATA", join(scratchRoot, "local-appdata"));
       const child = spawn(
         process.execPath,
-        ["--import", "tsx", join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
+        ["--import", testProcessImport(), join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
         { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe", "ipc"] },
       ) as DashboardChild;
       const output = captureOutput(child);
@@ -224,23 +258,30 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         const [, readinessMessage] = await Promise.all([
           waitForStdout(child, LISTENING_MARKER, BOOT_TIMEOUT_MS), readiness,
         ]);
-        assert.deepEqual(readinessMessage, { type: "hrauto-dashboard-ready" });
+        const ready = DashboardReadySchema.parse(readinessMessage);
+        const backendPort = ready.backendPort;
+        lockPort = ready.lockPort;
+        assert.notEqual(backendPort, lockPort, "the child holds distinct backend and lifetime listeners");
         const staticResponse = await fetch(`http://127.0.0.1:${String(backendPort)}/`);
         assert.equal(staticResponse.status, 200, "the production child serves the built dashboard bytes");
         assert.match(staticResponse.headers.get("content-type") ?? "", /text\/html/u);
         assert.match(await staticResponse.text(), /<script[^>]+type="module"/u);
 
+        const isolationPath = join(scratchRoot, "src", "backend", "app", "config", "runtime-isolation.ts");
+        const schemaPath = join(scratchRoot, "src", "models", "config", "define-runtime-isolation.ts");
+        writeFileSync(isolationPath, readFileSync(isolationPath, "utf8").replace("lockPort: 0", `lockPort: ${String(lockPort)}`));
+        writeFileSync(schemaPath, readFileSync(schemaPath, "utf8").replace("lockPort: z.literal(0)", `lockPort: z.literal(${String(lockPort)})`));
+        writeDashboardBuildIdentity({ repoRoot: scratchRoot, distDir: join(scratchRoot, "dist", "dashboard") });
         const duplicate = spawn(
           process.execPath,
-          ["--import", "tsx", join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
+          ["--import", testProcessImport(), join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
           { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe"] },
         );
         const duplicateOutput = captureOutput(duplicate);
         const duplicateExit = await waitForExit(duplicate, BOOT_TIMEOUT_MS);
         assert.notEqual(duplicateExit.code, 0, `a second production dashboard must be refused: ${duplicateOutput()}`);
-        const liveOwner = readScratchLock(lockPath);
-        assert.equal(liveOwner.pid, pid, "the duplicate must not adopt or replace the live owner's record");
-        assert.equal(liveOwner.releasedAt, null, "the duplicate must leave the first owner's lock live");
+        assert.match(duplicateOutput(), /already running|runtime-already-running/iu);
+        await assert.rejects(RuntimeLifetimeLock.acquire(lockPort), RuntimeAlreadyRunningError);
         assert.equal(child.exitCode, null, "refusing a duplicate must leave the original dashboard running");
 
         const transfer = request({
@@ -262,38 +303,30 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         transfer.destroy();
         const exit = await waitForExit(child, SHUTDOWN_TIMEOUT_MS);
         if (exit.signal !== null) {
-          const lock = existsSync(lockPath) ? readScratchLock(lockPath) : undefined;
-          assert.fail(`dashboard exited by ${exit.signal} mid-drain (lock releasedAt=${String(lock?.releasedAt)})`);
+          assert.fail(`dashboard exited by ${exit.signal} mid-drain`);
         }
         assert.equal(exit.code, 0, "a drained dashboard exits 0 of its own accord");
       } finally {
         if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
       }
 
-      // The scratch root, not the checkout, is where this dashboard's authority
-      // lives — the positive half of "the gate stops writing developer state".
-      assert.ok(
-        statSync(join(scratchRoot, rebuildRuntimeIsolation.stateRoot, "state.db")).size > 0,
-        "the child must have opened its authority under the scratch root it was given",
-      );
+      const appWorkspace = applicationDataWorkspace(process.platform === "win32"
+        ? { platform: "win32", localAppData: join(scratchRoot, "local-appdata") }
+        : { platform: process.platform, homeDirectory: join(scratchRoot, "app-data-home") });
+      assert.ok(statSync(join(appWorkspace, rebuildRuntimeIsolation.stateRoot, "machine", "profiles.json")).size > 0,
+        "the child initializes its profile registry under its private app-data home");
+      assert.ok(statSync(join(appWorkspace, ".tracker", "control", "installation.json")).size > 0);
+      assert.equal(existsSync(join(scratchRoot, rebuildRuntimeIsolation.stateRoot)), false);
       assert.equal(readFileSync(join(scratchRoot, ".env"), "utf8"), REFERENCE_ENVIRONMENT);
-      const lock = readScratchLock(lockPath);
-      // The pid binds this assertion to THIS run: an earlier run's released record
-      // must never stand in for a shutdown that did not happen.
-      assert.equal(lock.pid, pid, "the surviving lock record must belong to the dashboard just stopped");
-      assert.equal(lock.name, "server");
-      assert.equal(
-        typeof lock.releasedAt,
-        "string",
-        "stop() releases the process lock after the database handle closed; `null` means the process was killed mid-drain",
-      );
+      const released = await RuntimeLifetimeLock.acquire(lockPort);
+      await released.close();
       assert.deepEqual(
         checkoutStateFingerprint(),
         checkoutBefore,
         "the smoke must leave this checkout's authority database and server lock byte-for-byte untouched",
       );
     } finally {
-      removeScratchRepoRoot(scratchRoot);
+      vi.unstubAllEnvs(); removeScratchRepoRoot(scratchRoot);
     }
   }, BOOT_TIMEOUT_MS + SHUTDOWN_TIMEOUT_MS + 30_000);
 
@@ -306,9 +339,10 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
     rmSync(join(scratchRoot, "dist", "dashboard", "dashboard-build-identity.json"));
     const lockPath = join(scratchRoot, rebuildRuntimeIsolation.processLockRoot, "server-claims");
     try {
+      vi.stubEnv("LOCALAPPDATA", join(scratchRoot, "local-appdata"));
       const child = spawn(
         process.execPath,
-        ["--import", "tsx", join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
+        ["--import", testProcessImport(), join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
         { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe"] },
       );
       const output = captureOutput(child);
@@ -319,7 +353,103 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
       assert.equal(existsSync(lockPath), false, "bundle identity is checked before process-lock admission");
       assert.equal(readFileSync(join(stateRoot, "retained-evidence"), "utf8"), "evidence");
     } finally {
-      removeScratchRepoRoot(scratchRoot);
+      vi.unstubAllEnvs(); removeScratchRepoRoot(scratchRoot);
     }
   }, BOOT_TIMEOUT_MS + 30_000);
+});
+
+describe("the `storage transactions` CLI command", () => {
+  const range = { from: "2026-07-01", to: "2026-09-09" };
+  const ExportedFileSchema = z.object({ rows: z.array(z.object({ operationId: z.string() })) });
+
+  async function runTransactions(admission: Parameters<typeof runCli>[0], args: readonly string[]): Promise<string> {
+    const lock = await RuntimeLifetimeLock.acquire(0);
+    const written: string[] = [];
+    const argv = process.argv;
+    process.argv = [argv[0] ?? process.execPath, "cli", "storage", "transactions", ...args];
+    const write = vi.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
+      written.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")); return true;
+    });
+    try { await runCli(admission, undefined, { lock, parentSignal: new AbortController().signal }); }
+    finally { write.mockRestore(); process.argv = argv; await lock.close(); }
+    return written.join("");
+  }
+
+  async function installationOf(personRoot: string): Promise<RuntimeAdmission> {
+    const fixtures = await Promise.all(vi.mocked(createBoundProfileFixture).mock.results
+      .flatMap(result => result.type === "return" ? [result.value] : []));
+    const fixture = fixtures.find(candidate => candidate.stateRoot === personRoot);
+    assert.ok(fixture, "the history world was built on a bound profile fixture");
+    assert.equal(fixture.machine.isInstallation(), true);
+    return fixture.machine;
+  }
+
+  /** The installation opens its one ready person's store under that person's own admission, then releases it. */
+  function assertPersonReleased(personRoot: string): void {
+    const opened = transactionStoreOwners.splice(0);
+    assert.deepEqual(opened.map(({ stateRoot }) => stateRoot), [personRoot], "the installation opens its one ready person's store");
+    for (const { owner } of opened) assert.throws(() => owner.assertLive(), /released admission/u);
+  }
+
+  it("exports a ready person's committed transaction from an installation, labelled with that person", async () => {
+    const w = await historyWorld();
+    try {
+      const committed = w.commit(901);
+      const machine = await installationOf(w.root);
+      const [person] = machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready");
+      assert.ok(person, "the fixture installation has one ready person");
+      const output = join(w.root, "report.json");
+      transactionStoreOwners.splice(0);
+      const stdout = await runTransactions(machine, ["--from", range.from, "--to", range.to, "--output", output]);
+      assertPersonReleased(w.root);
+      const personOutput = join(w.root, `report.${person.profileId}.json`);
+      const reported = z.strictObject({ profiles: z.array(z.strictObject({ profileId: z.string(), output: z.string(),
+        sourceDigest: z.string(), transactions: z.number() })) }).parse(JSON.parse(stdout));
+      assert.deepEqual(reported.profiles.map(({ profileId, output: path, transactions }) => ({ profileId, path, transactions })),
+        [{ profileId: person.profileId, path: personOutput, transactions: 1 }]);
+      assert.deepEqual(ExportedFileSchema.parse(JSON.parse(readFileSync(personOutput, "utf8"))).rows.map(row => row.operationId),
+        [committed.commit.transaction.writeIntentId]);
+      assert.equal(existsSync(output), false, "an installation writes one labelled report per person, never the bare path");
+    } finally { await w.dispose(); }
+  });
+
+  it("releases the admitted person when reading their store throws", async () => {
+    const w = await historyWorld();
+    try {
+      w.commit(902);
+      const machine = await installationOf(w.root);
+      const [person] = machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready");
+      assert.ok(person);
+      const occupied = join(w.root, `report.${person.profileId}.json`);
+      writeFileSync(occupied, "other-owner");
+      transactionStoreOwners.splice(0);
+      await assert.rejects(runTransactions(machine, ["--from", range.from, "--to", range.to, "--output", join(w.root, "report.json")]), /EEXIST/u);
+      assertPersonReleased(w.root);
+      assert.equal(readFileSync(occupied, "utf8"), "other-owner");
+    } finally { await w.dispose(); }
+  });
+
+  it("exports a store that is not an installation as itself, at the bare output path", async () => {
+    const w = await historyWorld();
+    try {
+      const committed = w.commit(903);
+      const person = findProfileFixtureAdmission(w.root);
+      assert.ok(person); assert.equal(person.isInstallation(), false);
+      const output = join(w.root, "report.json");
+      const reported = z.strictObject({ output: z.string(), sourceDigest: z.string(), transactions: z.number() })
+        .parse(JSON.parse(await runTransactions(person, ["--from", range.from, "--to", range.to, "--output", output])));
+      assert.equal(reported.output, output); assert.equal(reported.transactions, 1);
+      assert.deepEqual(ExportedFileSchema.parse(JSON.parse(readFileSync(output, "utf8"))).rows.map(row => row.operationId),
+        [committed.commit.transaction.writeIntentId]);
+    } finally { await w.dispose(); }
+  });
+
+  it("prints usage that names the per-person report path", async () => {
+    const w = await historyWorld();
+    try {
+      assert.equal(await runTransactions(await installationOf(w.root), ["--help"]), "storage transactions --from YYYY-MM-DD --to YYYY-MM-DD [--system SYSTEM] --output PATH\n"
+        + "Writes a deterministic JSON transaction report from one database snapshot; an existing output is refused.\n"
+        + "On an installation, each ready person's report is written beside PATH as NAME.<profile-id>.EXT.\n");
+    } finally { await w.dispose(); }
+  });
 });

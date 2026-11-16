@@ -11,8 +11,8 @@ type DashboardStreamHub
 import { claimEventOf, makeWorld, queuedEventOf, type DashboardWorld } from "./dashboard-harness.js";
 
 export function createStreamBackpressureFixtures(worlds: DashboardWorld[], hubs: DashboardStreamHub[], MAX_PENDING: number) {
-  function harness(): { w: DashboardWorld; hub: DashboardStreamHub } {
-    const w = makeWorld();
+  async function harness(): Promise<{ w: DashboardWorld; hub: DashboardStreamHub }> {
+    const w = await makeWorld();
     worlds.push(w);
     const hub = createDashboardStreamHub({
       projection: w.projection,

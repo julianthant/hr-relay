@@ -1,11 +1,9 @@
+import { runSettlementColumns } from "../../../../src/backend/storage/sqlite/run-settlement-row.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
 import { buildRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
@@ -14,7 +12,6 @@ import { createRunTerminalEvidenceResult,deriveTerminalFailureDigest,RunResultRe
 import { projectReceiptForOperator } from "../../../../src/models/trust/evidence.js";
 import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { kualiReceiptEvidence } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { failureRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -28,13 +25,13 @@ function derive(run = kualiReceiptEvidence().run, result = kualiReceiptEvidence(
 }
 
 describe("durable receipt boundaries", () => {
-  it("reopens complete composition-5 bytes from isolated SQLite and projects those exact facts", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-unmasked-receipt-"));
-    const options = { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unmasked-receipt-test" };
+  it("reopens complete composition-5 bytes from isolated SQLite and projects those exact facts", async () => {
+    const profile = await createBoundProfileFixture();
+    const options = { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unmasked-receipt-test" };
     const clock = manualClock(new Date("2026-09-29T12:00:00.000Z"));
     let database: AuthorityDatabase | undefined;
     try {
-      const admission = RuntimeAdmission.syntheticFixture(options.path);
+      const admission = profile.admission;
       database = AuthorityDatabase.open(admission, options, clock);
       database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
       const base = RunRecordSchema.parse(kualiReceiptEvidence().run);
@@ -51,8 +48,11 @@ describe("durable receipt boundaries", () => {
         search.installTracking();
         const row = runRecordColumns(run);
         raw.prepare(`INSERT INTO runs(${Object.keys(row).join(",")}) VALUES(${Object.keys(row).map(()=>"?").join(",")})`).run(...Object.values(row));
-        raw.prepare("INSERT INTO run_results(run_id,workflow,attempt,result_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
-          .run(result.runId,result.workflowId,result.attempt,result.resultDigest,canonicalJsonStringify(result),result.createdAt);
+        {
+          const settlement = runSettlementColumns(run, result);
+          raw.prepare(`INSERT INTO run_results (${Object.keys(settlement).join(",")}) VALUES (${Object.keys(settlement).map(() => "?").join(",")})`)
+            .run(...Object.values(settlement));
+        }
         search.rebuild({ restart: true, limit: 500 }, generation, run.updatedAt);
       } finally { raw.close(); }
       database = AuthorityDatabase.open(admission, options, clock);
@@ -66,7 +66,7 @@ describe("durable receipt boundaries", () => {
       assert.deepEqual(projected.value, receipt);
     } finally {
       database?.close();
-      rmSync(root, { recursive: true, force: true });
+      await profile.close();
     }
   });
 

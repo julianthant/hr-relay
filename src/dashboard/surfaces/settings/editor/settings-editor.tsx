@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Form } from "@heroui/react";
-import { Banner, Button, FormGroup, PageHeading, Spinner, dsText } from "../../../ds/ui.js";
+import { Banner, Button, FormGroup, PageHeading, Spinner, dsText, Notice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { settingsSectionGroups, formatSetting } from "./settings-draft-model.js";
@@ -13,21 +13,21 @@ import { useSettingsFormFocus } from "./settings-autosave-model.js";
 
 export function EditableSettingsSection({ editor, sectionId, appearance }: { editor: ReturnType<typeof useEditableSettings>; sectionId: string; appearance?: ReactNode }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
-  if (sectionId === "general" || sectionId === "paths") return <CompactSettingsSection editor={editor} sectionId={sectionId} appearance={appearance} />;
+  if (sectionId === "general") return <CompactSettingsSection editor={editor} appearance={appearance} />;
   if (sectionId === "performance") return <PerformanceSettingsSection editor={editor} />;
   if (sectionId === "providers") return <Banner tone="info" title="Provider settings retired">ChatGPT sign-in is available in General.</Banner>;
   if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
-  if (editor.editor.state === "failed") return <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button></Banner>;
+  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings unavailable" description="Reopen Settings to try again." />;
   const document = editor.editor.document;
   const sections = document.sections.filter(section => section.id === sectionId);
-  if (sections.length === 0) return <Banner tone="danger" title="Server-listed section is unavailable">The settings document did not include this section.</Banner>;
+  if (sections.length === 0) return <Notice tone="danger" title="Section unavailable" />;
   const leaves = sections.flatMap(section => section.leaves);
   const pageTitle = sections[0]?.label ?? sectionId;
   return <section className="settings-editor">
     <PageHeading title={pageTitle} />
     <Form validationBehavior="aria" className="flex flex-col gap-[var(--ds-space-section)]" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
-      {document.runtimeStatus.state === "restart-required" && <Banner tone="warning" title="Restart required">Settings revision {String(document.runtimeStatus.persisted.settingsRevision)} is saved; this dashboard still runs revision {String(document.runtimeStatus.active.settingsRevision)}.</Banner>}
-      {editor.readProblem !== undefined && <Banner tone="warning" title="Current settings unavailable"><span>{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh current values</Button></span></Banner>}
+      {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
+      {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
       {settingsSectionGroups(sectionId, leaves).map(group => <section key={group.title} className="settings-editor-group">
         <div className="settings-group-heading"><h2 className={cn(dsText.title, "m-0 font-medium text-[color:var(--ds-fg)]")}>{group.title}</h2></div>

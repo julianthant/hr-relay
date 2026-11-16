@@ -1,3 +1,4 @@
+import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from '../../../../src/models/dashboard/assistant.js';
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { CommandExecutor, type CommandExecutionOptions, type CommandExecutionScope, type CommandOutcome } from "../../../../src/dashboard/app/commands/command-executor.js";
@@ -125,9 +126,10 @@ it.each(["mismatch", "throw", "descendant-outside-admission"])("keeps %s readbac
   assert.equal((await h.executor.execute(command(11), h.options())).kind, "refused");
 });
 
-it.each(["authority-unjournaled", "authority-uncertain"])("treats %s as uncertain and replays only the retained bytes", async code => {
+it.each(["pending", "bulk-child-errored"])("treats a %s reply as uncertain and replays only the retained bytes", async reply => {
   const h = harness();
-  h.setReply(request => ({ state: "rejected", commandId: request.commandId, code, message: "private kernel prose" }));
+  h.setReply(request => reply === "pending" ? { state: "pending", commandId: request.commandId }
+    : { state: "rejected", commandId: request.commandId, code: reply, message: "private kernel prose" });
   assert.equal((await h.executor.execute(command(), h.options())).kind, "uncertain");
   assert.equal(h.sent.length, 1);
   assert.equal((await h.executor.execute(command(11), h.options())).kind, "refused");
@@ -206,7 +208,7 @@ it("preserves mixed child outcomes, keeps only uncertain locks, and replays the 
     h.state.set(RUN, { version: 2, cancelled: true });
     return { ...result, results: [result.results[0], { ...result.results[1], outcome: "conflict", replayed: undefined, currentVersion: 3 },
       { outcome: "refused", runId: id(3), commandId: result.results[2].commandId, code: "policy-refused", detail: "private" },
-      { outcome: "refused", runId: id(4), commandId: result.results[3].commandId, code: "authority-uncertain", detail: "private" }] };
+      { outcome: "errored", runId: id(4), commandId: result.results[3].commandId, detail: "private" }] };
   });
   const result = await h.executor.execute(request, h.options());
   assert.equal(result.kind, "uncertain");
@@ -323,7 +325,7 @@ it("a pending bulk blocks single children and reserves the child command identit
 
 it("retains schema-transformed payload bytes through mutation and explicit replay", async () => {
   const h = harness();
-  h.setReply(request => ({ state: "rejected", commandId: request.commandId, code: "authority-uncertain", message: "private" }));
+  h.setReply(request => ({ state: "pending", commandId: request.commandId }));
   const input = { ...command(), family: "failure-resolution", type: "annotate-failure", target: { runId: RUN, failureId: id(90), expectedVersion: 1 },
     payload: { action: "resolve", note: "  Reviewed evidence  " } };
   assert.equal((await h.executor.execute(input, h.options())).kind, "uncertain");
@@ -378,7 +380,7 @@ for (const code of ["OPERATOR_MUTATION_ORIGIN_REFUSED", "OPERATOR_MUTATION_MEDIA
 it("retains admitted worker pending without readback or a terminal result", async () => {
   const h = harness();
   const request = CommandRequestSchema.parse({ ...command(), family: "worker-browser", type: "stop-worker",
-    target: { workerId: "person-lookup-worker-1", membershipRevision: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 } } });
+    target: { workerId: "person-lookup-worker-1", workflowId: "person-lookup", lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", expectedVersion: 1 } });
   h.setReply(() => ({ state: "pending", commandId: request.commandId }));
   const options = h.options();
   const outcome = await h.executor.execute(request, { ...options, readback: async () => { assert.fail("pending cannot confirm from readback"); } });
@@ -412,6 +414,24 @@ it("checks an uncertain original without POST and releases only exact confirmed 
   assert.equal(h.sent.length, 2);
 });
 
+it("settles an exact recorded rejection as refused without POST and releases its lock; an errored rejection stays checkable", async () => {
+  const h = harness(); const request = command();
+  h.setReply(() => ({ state: "pending", commandId: request.commandId }));
+  assert.equal((await h.executor.execute(request, h.options())).kind, "uncertain");
+  const rejected = (code: string) => ({ ...h.options(), observe: async () => CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code, message: "diagnostic" }) });
+  assert.equal((await h.executor.check(request.commandId, rejected("bulk-child-errored"))).kind, "uncertain");
+  assert.equal((await h.executor.execute(command(11), h.options())).kind, "refused");
+  const outcome = await h.executor.check(request.commandId, rejected("invalid-state"));
+  assert.equal(outcome.kind, "refused");
+  assert.equal(outcome.kind === "refused" ? outcome.reason : "unexpected", undefined);
+  assert.equal(h.executor.retainedAttempts().find(attempt => attempt.request.commandId === request.commandId)?.outcome?.kind, "refused");
+  const again = await h.executor.check(request.commandId, rejected("invalid-state"));
+  assert.equal(again.kind === "refused" ? again.reason : again.kind, "locked", "a settled refusal is not checked again");
+  assert.equal(h.sent.length, 1, "checking reads the recorded outcome and never resends");
+  assert.equal((await h.executor.execute(command(12), h.options())).kind, "uncertain");
+  assert.equal(h.sent.length, 2, "the released lock admits the next command");
+});
+
 it("keeps mismatch checkable and rejects concurrent checks and A to B to A late publication", async () => {
   const h = harness(); const request = command();
   h.setReply(() => ({ state: "pending", commandId: request.commandId }));
@@ -438,3 +458,40 @@ it.each(["actor", "client", "authority"])("cannot check/release original under c
   assert.equal((await h.executor.check(request.commandId, { ...h.options(), observe: async () => { reads++; return CommandResultSchema.parse(landing(request)); } })).kind, "refused");
   assert.equal(reads, 0); assert.equal(h.sent.length, 1);
 });
+
+it('retains the unknown preference lock for the same profile while allowing a different profile', async () => {
+  const h = harness(), profileA = id(700), profileB = id(701);
+  h.setReply(request => {
+    assert.ok(!('targets' in request)); assert.equal(request.family, "assistant-model-preference");
+    if (request.family !== "assistant-model-preference") assert.fail('preference-request-required');
+    return { state: 'applied', commandId: request.commandId,
+      affectedTargets: [{ family: "assistant-model-preference", profileId: request.target.profileId, revision: request.target.expectedRevision + 1 }] };
+  });
+  const options = h.options();
+  const make = (n: number, profileId: string) => CommandRequestSchema.parse({ commandId: id(n), requestedAt: '2026-01-02T03:04:05.000Z',
+    requestedBy: options.scope.actorId, source: 'dashboard-assistant-model-preference', family: "assistant-model-preference", type: "set-assistant-model-preference",
+    target: { profileId, epoch: 2, expectedRevision: 0 }, payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } });
+  const first = await h.executor.execute(make(901, profileA), { ...options, readback: async () => ({ state: "mismatch", evidence: null }) });
+  assert.equal(first.kind, "uncertain"); assert.equal(h.sent.length, 1);
+  const blocked = await h.executor.execute(make(902, profileA), options);
+  assert.equal(blocked.kind, "refused"); assert.equal(h.sent.length, 1);
+  const separate = await h.executor.execute(make(903, profileB), { ...options, readback: async () => ({ state: "mismatch", evidence: null }) });
+  assert.equal(separate.kind, "uncertain"); assert.equal(h.sent.length, 2);
+  assert.equal(h.executor.retainedAttempts().filter(attempt => attempt.outcome?.kind === "uncertain").length, 2);
+});
+
+for (const code of ["RUN_START_READINESS_BLOCKED", "RUN_START_READINESS_UNAVAILABLE", "RUN_START_READINESS_CHANGED", "PREFLIGHT_EVIDENCE_EXPIRED", "PREFLIGHT_TIMEOUT"]) {
+  it(`uses catalog feedback for Start ${code} and retains private prose only as evidence`, async () => {
+    const h = harness();
+    const request = CommandRequestSchema.parse({ ...command(), family: "start", type: "start-run",
+      target: { workflowId: "person-lookup", startPlanId: id(80), expectedVersion: 1 },
+      payload: Object.fromEntries(["descriptorFingerprint", "configFingerprint", "ingressSchemaHash", "canonicalInputSchemaHash", "inputFingerprint"].map(key => [key, "a".repeat(64)])) });
+    const reply = { state: "rejected", commandId: request.commandId, code, message: "PRIVATE_KERNEL_MARKER" };
+    h.setReply(() => reply);
+    const outcome = await h.executor.execute(request, h.options());
+    assert.equal(outcome.kind, "refused");
+    assert.equal(outcome.feedback?.code, code);
+    assert.equal(outcome.feedback?.text.includes("PRIVATE_KERNEL_MARKER"), false);
+    assert.deepEqual(outcome.reply, reply);
+  });
+}

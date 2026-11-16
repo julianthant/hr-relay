@@ -1,4 +1,5 @@
 import type { FrontendBootstrapWire } from "../../models/dashboard/bootstrap.js";
+import type { RunHistoryTarget } from "../../models/dashboard/run-history.js";
 import type { DashboardClient } from "../client/index.js";
 import type { DashboardDayState } from "../state/use-dashboard-day.js";
 import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
@@ -21,6 +22,7 @@ export function currentCommandConfirmation(
 }
 
 export interface DashboardAuthority {
+  readonly profileTarget?: RunHistoryTarget;
   readonly epoch: Readonly<{ client: DashboardClient; bootstrap: FrontendBootstrapWire }>;
   readonly catalog: readonly WorkflowCatalogEntry[];
   readonly nowIso: string;

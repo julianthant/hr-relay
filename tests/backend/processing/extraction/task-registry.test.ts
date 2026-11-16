@@ -1,16 +1,22 @@
+import { ocrModule } from "../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { describe,it } from "vitest";
 import { extractPdfPagesTask,extractSpreadsheetTask } from "../../../../src/backend/processing/extraction/task-registry.js";
+import { redactObservedDataPoints } from "../../../../src/backend/logs/observed-data.js";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
-import { ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
+import { ExtractPdfPagesOutputSchema, PDF_PAGE_LIMIT } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
+import { ERROR_CATALOG, failureCodeFromTaskCode } from "../../../../src/models/failures/error-catalog.js";
 import {
 ExtractSpreadsheetOutputSchema,
 type ExtractSpreadsheetOutput,
 } from "../../../../src/models/processing/extraction/extract-spreadsheet.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import type { ContentAddressedArtifactWriter } from "../../../../src/workflow-kit/artifacts.js";
+import { createTaskProvenanceCollector } from "../../../../src/backend/runs/provenance/task-provenance.js";
+import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 
 const CSV = "text/csv";
 type ArtifactReference = ReturnType<typeof ArtifactRefSchema.parse>;
@@ -64,16 +70,19 @@ async function runSpreadsheet(
   }
 }
 
-function buildOnePagePdf(): Buffer {
+function buildPdf(pageCount = 1): Buffer {
   const objects: string[] = [];
+  const pageObjects = Array.from({ length: pageCount }, (_, index) => index + 5);
   objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
-  objects[2] = "<< /Type /Pages /Kids [4 0 R] /Count 1 >>";
+  objects[2] = "<< /Type /Pages /Kids [" + pageObjects.map(number => `${String(number)} 0 R`).join(" ") + "] /Count " + String(pageCount) + " >>";
   objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
   const stream = "BT /F1 24 Tf 72 700 Td (Fixture Page) Tj ET";
-  objects[4] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]"
-    + " /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>";
-  objects[5] = "<< /Length " + String(stream.length) + " >>\nstream\n"
+  objects[4] = "<< /Length " + String(stream.length) + " >>\nstream\n"
     + stream + "\nendstream";
+  for (const number of pageObjects) {
+    objects[number] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]"
+      + " /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R >>";
+  }
 
   let pdf = "%PDF-1.4\n";
   const offsets: number[] = [];
@@ -101,6 +110,15 @@ async function runPdf(
   document: ArtifactReference;
 }>>> {
   const document = artifactFor(bytes, "application/pdf");
+  const descriptor = ocrModule.descriptor;
+  const node = descriptorRuntimeNodes(descriptor).find(node => node.kind === "task" && node.uses.id === extractPdfPagesTask.contract.id);
+  assert.ok(node?.kind === "task");
+  const provenance = createTaskProvenanceCollector({ descriptor,
+    execution: { runId: "11111111-2222-4333-8444-555555555555", traceId: "oc-000000-1111", attempt: 1,
+      workflowId: descriptor.id, nodeId: node.id, taskId: node.uses.id },
+    upstreamEvidence: { checkpoints: [] }, clock: manualClock(new Date("2026-11-02T00:00:00.000Z")),
+    onRecord: batch => { redactObservedDataPoints(extractPdfPagesTask.contract.id, batch.points); },
+  });
   const writes: { bytes: Buffer; mediaType: string }[] = [];
   const facts: unknown[] = [];
   const outputRef = ArtifactRefSchema.parse({
@@ -124,13 +142,14 @@ async function runPdf(
       },
     },
     fail,
-    recordData: (point: unknown) => { facts.push(point); },
+    recordData: (point: Parameters<typeof provenance.recordData>[0]) => { facts.push(point); provenance.recordData(point); },
   };
   try {
     const output = ExtractPdfPagesOutputSchema.parse(await extractPdfPagesTask.impl.run({
       input: { document, ...(toPage === undefined ? {} : { toPage }) },
       ctx: ctx as never,
     }));
+    provenance.finalizeRead(output);
     return { outcome: "success" as const, output, writes, facts, opened, document };
   } catch (error) {
     const caught = error as Error & { code?: string };
@@ -176,7 +195,7 @@ describe("extraction task wrappers", () => {
   });
 
   it("returns the selected PDF page and its rendered PNG bytes", async () => {
-    const rendered = await runPdf(buildOnePagePdf());
+    const rendered = await runPdf(buildPdf());
     if (rendered.outcome !== "success") throw new Error(`expected rendered output, received ${rendered.failure.code}`);
 
     assert.equal(rendered.output.pageCount, 1);
@@ -190,15 +209,24 @@ describe("extraction task wrappers", () => {
     assert.deepEqual([...pngBytes.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
     assert.deepEqual(rendered.facts, [[
       { direction: "read", field: "pageCount", value: 1 },
-      { direction: "read", field: "renderedPages", value: 1 },
+      { direction: "read", field: "pages", value: rendered.output.pages },
     ]]);
   });
 
   it("refuses a page range past the PDF without writing bytes or recording facts", async () => {
-    const refused = await runPdf(buildOnePagePdf(), 2);
+    const refused = await runPdf(buildPdf(), 2);
     if (refused.outcome !== "failure") throw new Error("expected page-out-of-range refusal");
     assert.equal(refused.failure.code, "page-out-of-range");
     assert.match(refused.failure.message, /pages 1–2 were requested but the document has 1/u);
+    assert.equal(refused.writes.length, 0);
+    assert.deepEqual(refused.facts, []);
+  });
+
+  it("refuses a PDF over the page limit before rendering or recording facts", async () => {
+    const refused = await runPdf(buildPdf(PDF_PAGE_LIMIT + 1));
+    if (refused.outcome !== "failure") throw new Error("expected too-many-pages refusal");
+    assert.equal(refused.failure.code, "too-many-pages");
+    assert.equal(failureCodeFromTaskCode(refused.failure.code) in ERROR_CATALOG, true);
     assert.equal(refused.writes.length, 0);
     assert.deepEqual(refused.facts, []);
   });

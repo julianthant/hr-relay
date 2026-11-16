@@ -28,7 +28,6 @@ const REQUEST = {
 
 const WIRE = {
   wireVersion: 1,
-  workers: "auto",
   startPlanId: UUID,
   workflowId: "person-lookup",
   expectedVersion: 1,

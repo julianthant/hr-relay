@@ -21,12 +21,12 @@ type CompositionHarness,
 } from "../../../support/helpers/separations-composition-fixtures.js";
 
 const open: CompositionHarness[] = [];
-afterEach(() => {
-  for (const harness of open.splice(0)) harness.dispose();
+afterEach(async () => {
+  for (const harness of open.splice(0)) await harness.dispose();
 });
 
-function harness(): CompositionHarness {
-  const created = compositionHarness();
+async function harness(): Promise<CompositionHarness> {
+  const created = await compositionHarness();
   open.push(created);
   return created;
 }
@@ -79,7 +79,7 @@ async function fileTermination(h: CompositionHarness, protectedInput = false): P
 
 describe("write sequencer — no repeat writes across recovery", () => {
   it("a restart attempt reuses the completed write's durable proof: zero new stage, fence or click", async () => {
-    const h = harness();
+    const h = await harness();
     const first = await fileTermination(h);
     const before = h.database.authority.writeIntents.findByPermanentKey("ucpath", TERMINATION_IDEMPOTENCY_KEY);
     const confirmations = h.database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "operation-confirmed");
@@ -102,7 +102,7 @@ describe("write sequencer — no repeat writes across recovery", () => {
   });
 
   it("a restart whose fresh facts no longer match the completed write refuses by node name and key reference — no stage, fence or click", async () => {
-    const h = harness();
+    const h = await harness();
     const first = await fileTermination(h, true);
 
     const { run, claim } = compositionClaimRunning(
@@ -139,7 +139,7 @@ describe("write sequencer — no repeat writes across recovery", () => {
   });
 
   it("a drifted stored settlement refuses as contract drift, not as a fresh-fact mismatch", async () => {
-    const h = harness();
+    const h = await harness();
     const first = await fileTermination(h);
 
     const { run, claim } = compositionClaimRunning(

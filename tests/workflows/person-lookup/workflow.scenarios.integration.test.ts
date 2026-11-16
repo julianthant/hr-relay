@@ -1,6 +1,4 @@
-import { join } from "node:path";
 import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { createDiagnosticCaptureService } from "../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { createRunBrowserScreenshotCapture } from "../../../src/backend/logs/diagnostics/run-diagnostic-capture.js";
 import { WorkerSessionManager } from "../../../src/backend/runtime/workers/worker-sessions.js";
@@ -21,14 +19,17 @@ import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js
 import { ReadOnboardingDatesOutputSchema } from "../../../src/models/systems/crm/read-onboarding-dates.js";
 import { searchPersonOrgWithPagePort, assignmentDetailsToCells, type PersonOrgDetail } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { searchPersonMatchWithPort } from "../../../src/backend/systems/ucpath/driver/person-match-operation.js";
-import { PersonLookupResultSchema } from "../../../src/workflows/person-lookup/workflow.js";
-import { PersonLookupInput, PersonLookupMatchInputError, parsePersonLookupRequest } from "../../../src/models/workflows/person-lookup/input.js";
+import { PersonLookupResultSchema } from "../../../src/models/workflows/person-lookup/result.js";
+import { PersonLookupInput } from "../../../src/models/workflows/person-lookup/input.js";
+import { previewRunInput } from "../../../src/dashboard/surfaces/run-start/run-start-model.js";
+import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { SearchPersonOrgOutputSchema, UcpathCandidateSchema } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { SearchPersonMatchOutputSchema } from "../../../src/models/systems/ucpath/search-person-match.js";
 import { CrmDiscoveredRecordSchema } from "../../../src/models/systems/crm/search-onboarding-records.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
+import { duoCeremonyGatesOver } from "../../support/helpers/duo-ceremony-fixtures.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import type { z } from "zod";
@@ -88,13 +89,13 @@ function personDetail(person: z.output<typeof UcpathCandidateSchema>): PersonOrg
       jobCode: "004921", jobCodeDescription: person.jobTitle, expectedJobEndDate: "", fte: "0.50", emplClass: "Student" })]] };
 }
 
-function makeCase(testCase: Case) {
+async function makeCase(testCase: Case) {
   const input = PersonLookupInput.parse(testCase.input ?? { emplId: candidate.emplId });
   const records = testCase.records ?? [record];
   const sessions = sessionFactoryHarness({
     ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(searchResult(testCase.candidates ?? [candidate])),
       async searchPersonOrg(request: z.output<typeof import("../../../src/models/systems/ucpath/search-person-org.js").SearchPersonOrgInputSchema>) {
-        return searchPersonOrgWithPagePort({
+        return searchPersonOrgWithPagePort(() => undefined, {
           async search(query) {
             recordBrowserAction("opened", "ucpath.person-org.summary");
             recordBrowserAction("typed", "ucpath.person-org.criteria", query.kind === "by-eid" ? query.eid : `${query.lastName}, ${query.givenName}`);
@@ -103,7 +104,7 @@ function makeCase(testCase: Case) {
             const people = query.kind === "by-eid" && testCase.recovered ? [candidate] : testCase.candidates ?? [candidate];
             if (people.length === 0) return { kind: "not-found", marker: "No matching values were found" };
             if (query.kind === "by-eid" && people.length === 1) return { kind: "detail", detail: personDetail(people[0]) };
-            return { kind: "grid", rows: people.map((person, rowIndex) => ({ emplId: person.emplId, emplRecord: "0", hrStatus: person.hrStatus, businessUnit: "SDCMP", jobCode: "004921", jobCodeDescription: person.jobTitle, lastName: "Example", name: "Person", rowIndex })) };
+            return { kind: "grid", rows: people.map((person, rowIndex) => ({ emplId: person.emplId, emplRecord: "0", hrStatus: person.hrStatus, businessUnit: "SDCMP", jobCode: "004921", jobCodeDescription: person.jobTitle, lastName: "Example", name: person.name, rowIndex })) };
           },
           async drill(rowIndex) {
             const person = (testCase.candidates ?? [candidate])[rowIndex];
@@ -111,12 +112,12 @@ function makeCase(testCase: Case) {
             recordBrowserAction("clicked", "ucpath.person-org.open-record", person.emplId);
             return personDetail(person);
           },
-          async returnToResults() { recordBrowserAction("clicked", "ucpath.person-org.return-results"); return (testCase.candidates ?? [candidate]).map((person, rowIndex) => ({ emplId: person.emplId, emplRecord: "0", hrStatus: person.hrStatus, businessUnit: "SDCMP", jobCode: "004921", jobCodeDescription: person.jobTitle, lastName: "Example", name: "Person", rowIndex })); },
+          async returnToResults() { recordBrowserAction("clicked", "ucpath.person-org.return-results"); return (testCase.candidates ?? [candidate]).map((person, rowIndex) => ({ emplId: person.emplId, emplRecord: "0", hrStatus: person.hrStatus, businessUnit: "SDCMP", jobCode: "004921", jobCodeDescription: person.jobTitle, lastName: "Example", name: person.name, rowIndex })); },
         }, request);
       },
       async searchPersonMatch(criteria: z.output<typeof import("../../../src/models/systems/ucpath/search-person-match.js").SearchPersonMatch.input>) {
         const matches = SearchPersonMatchOutputSchema.parse(testCase.matches);
-        return searchPersonMatchWithPort({
+        return searchPersonMatchWithPort(() => undefined, {
           async search() {
             recordBrowserAction("opened", "ucpath.match.search");
             recordBrowserAction("typed", "ucpath.match.criteria", "Example, Person; DOB 01/15/2000; SSN masked");
@@ -153,7 +154,7 @@ function makeCase(testCase: Case) {
       },
     }),
   });
-  const harness = world.executorHarness({ sessions });
+  const harness = await world.executorHarness({ sessions });
   const { database, clock } = harness.authority;
   const plan = planStart({ authority: database, clock, ids: sequentialIdFactory("f"), planTtlMs: 600000 }, {
     descriptor: personLookupDescriptor, submissions: [input], dryRun: false, priority: "bulk", shape: "single", plannedBy: "local-operator",
@@ -166,7 +167,7 @@ function makeCase(testCase: Case) {
     resolvedInstance: plan.resolvedInstance, shape: plan.shape, priority: plan.priority, dryRun: false, attempt: 1, runNumber: 1, appVersion: "0.1.0", now: clock.now().toISOString() });
   return { harness, queued, input, plan };
 }
-function stepStatuses(harness: ReturnType<typeof world.executorHarness>) {
+function stepStatuses(harness: Awaited<ReturnType<typeof world.executorHarness>>) {
   const tasks = harness.emitter.events().filter((event) => event.t === "span.ended" && event.kind === "task");
   return personLookupDescriptor.timeline.map((step) => {
     const outcomes = tasks.filter((event) => event.t === "span.ended" && event.kind === "task" && step.nodes.some((node) => event.spanPath.includes(`/${node.id}#`))).map((event) => event.t === "span.ended" ? event.outcome : "");
@@ -175,7 +176,7 @@ function stepStatuses(harness: ReturnType<typeof world.executorHarness>) {
 }
 describe("approved Person Lookup scenarios", () => {
   for (const testCase of cases) it(testCase.id, async () => {
-    const { harness, queued, input } = makeCase(testCase);
+    const { harness, queued, input } = await makeCase(testCase);
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, queued, clock.now().toISOString());
     const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
@@ -243,7 +244,7 @@ describe("approved Person Lookup scenarios", () => {
       assert.ok(employment?.payload.kind === "note");
       assert.ok(employment.payload.note.spanPath.includes("/active-status#1"));
       assert.ok(employment.payload.note.fields?.some(field => field.key === "HDH department" && field.value === "No"));
-      assert.ok(employment.payload.note.fields?.some(field => field.key === "department" && field.value === "Engineering"));
+      assert.deepEqual(employment.payload.note.fields?.map(field => field.key), ["status", "HDH department"]);
     }
     if (testCase.id === "S14") assert.equal(output.activeStatus.reason, "UCPath HR status is unreadable: Unreadable");
     if (testCase.id === "S15") { assert.equal(harness.sessions.opens("crm"), 0); assert.equal(output.activeStatus.details.startDate, null); }
@@ -282,7 +283,7 @@ describe("approved Person Lookup scenarios", () => {
 
   });
   it("preserves CRM person identity with conflicting forms and requested dates", async () => {
-    const { harness, queued } = makeCase({ id: "multi-form", state: "crm-only", candidates: [], input: { name: candidate.name, includeCrmDates: true },
+    const { harness, queued } = await makeCase({ id: "multi-form", state: "crm-only", candidates: [], input: { name: candidate.name, includeCrmDates: true },
       records: [record, { ...record, recordId: "ONB-2", name: "Different, Person", firstDayOfService: "07/02/2026" }] });
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, queued, clock.now().toISOString());
@@ -295,9 +296,9 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal(terminal.dependencies.find(row => row.nodeId === "crm-selected-record")?.state, "not-run");
   });
   for (const failed of [false, true]) it(`persists actual ${failed ? "failure" : "success"} lease screenshot artifacts`, async () => {
-    const { harness, queued } = makeCase({ id: "capture", state: failed ? "failed" : "active", ucpathFailure: failed });
-    const { database, clock, stateRoot } = harness.authority;
-    const writer = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(stateRoot, "capture"), join(stateRoot, "capture/artifacts")) });
+    const { harness, queued } = await makeCase({ id: "capture", state: failed ? "failed" : "active", ucpathFailure: failed });
+    const { database, clock, profile } = harness.authority;
+    const writer = createContentAddressedArtifactWriter({ admission: profile.admission });
     await writer.ready;
     const service = createDiagnosticCaptureService({ artifacts: writer, authority: database.authority, clock, ids: sequentialIdFactory("d") });
     const factory = { ...harness.sessions.factory, async open(input: Parameters<typeof harness.sessions.factory.open>[0]) {
@@ -309,8 +310,8 @@ describe("approved Person Lookup scenarios", () => {
     } };
     const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: personLookupDescriptor.id, stores: harness.deps.stores,
       factory, clock, scheduler: harness.scheduler, acquireDeadlineMs: 60000,
-      duoCeremony: (await import("../../support/helpers/duo-ceremony-fixtures.js")).fixtureDuoCeremonyGates(clock), browserScreenshotCapture: createRunBrowserScreenshotCapture({ service }) });
-    sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint), "headless", { runId: queued.envelope.runId, descriptorFingerprint: personLookupDescriptor.contractFingerprint, captureBrowserScreenshots: !failed });
+      duoCeremony: duoCeremonyGatesOver(database, clock), browserScreenshotCapture: createRunBrowserScreenshotCapture({ service }) });
+    sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint), "headless", { runId: queued.envelope.runId, descriptorFingerprint: personLookupDescriptor.contractFingerprint });
     const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: !failed } }, clock.now().toISOString());
     assert.equal((await executeClaimedRun({ ...harness.deps, sessions, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 }) }, { ...claimed, signal: world.SIGNAL })).state, failed ? "failed" : "done");
     const actions = database.authority.timelineEvents.page({}).flatMap(event => event.payload.kind === "note" && event.payload.note.action?.kind === "screenshot" ? [event.payload.note.action] : []);
@@ -331,15 +332,19 @@ describe("approved Person Lookup scenarios", () => {
       assert.equal(bundle.runId, queued.envelope.runId);
       assert.ok(bundle.attachments.some(row => row.artifactId === association?.[1] && row.kind === "screenshot"));
     }
-    if (failed) assert.equal(actions.length, 1);
+    if (failed) assert.deepEqual(actions.map(action => action.targetId).sort(), ["ucpath.browser-capture", "ucpath.task-capture"]);
   });
   it("M4", () => {
-    assert.throws(() => parsePersonLookupRequest("Example, Person, x, X", { mode: "match" }), (error: unknown) => error instanceof PersonLookupMatchInputError && error.code === "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS");
+    const surface = personLookupDescriptor.surfaces.inputRun;
+    assert.ok(surface);
+    const refused = previewRunInput(surface, "Example, Person, x, X", { mode: "match" });
+    assert.deepEqual(refused.submissions, []);
+    assert.ok(refused.problem?.includes(ERROR_CATALOG.PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS.text));
     assert.equal(PersonLookupInput.safeParse({ mode: "match", lastName: "Example", firstName: "Person", dob: "x" }).success, false);
   });
   it("F3", async () => {
     for (const system of ["ucpath", "crm", "duo"] as const) {
-    const { harness, queued } = makeCase({ id: "F3", state: "failed" });
+    const { harness, queued } = await makeCase({ id: "F3", state: "failed" });
     const factory = { ...harness.sessions.factory, async open(input: Parameters<typeof harness.sessions.factory.open>[0]) {
       const resource = await harness.sessions.factory.open(input);
       if (input.system !== (system === "crm" ? "crm" : "ucpath")) return resource;
@@ -348,9 +353,10 @@ describe("approved Person Lookup scenarios", () => {
     const events: unknown[] = [];
     const sessions = new (await import("../../../src/backend/runtime/workers/worker-sessions.js")).WorkerSessionManager({
       workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: WorkflowIdSchema.parse("person-lookup"), stores: harness.deps.stores, factory, clock: harness.authority.clock, scheduler: harness.scheduler,
-      acquireDeadlineMs: 60000, duoCeremony: (await import("../../support/helpers/duo-ceremony-fixtures.js")).fixtureDuoCeremonyGates(harness.authority.clock), onEvent: (event) => { events.push(event); },
+      acquireDeadlineMs: 60000, duoCeremony: duoCeremonyGatesOver(harness.authority.database, harness.authority.clock), onEvent: (event) => { events.push(event); },
+      browserScreenshotCapture: { capture: async () => undefined },
     });
-    sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint));
+    sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint), "headless", { runId: queued.envelope.runId, descriptorFingerprint: personLookupDescriptor.contractFingerprint });
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, queued, clock.now().toISOString());
     assert.equal((await executeClaimedRun({ ...harness.deps, sessions, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 }) }, { ...claimed, signal: world.SIGNAL })).state, "failed");
@@ -363,7 +369,7 @@ describe("approved Person Lookup scenarios", () => {
     }
   });
   it("F4", async () => {
-    const { harness, queued } = makeCase({ id: "F4", state: "cancelled" });
+    const { harness, queued } = await makeCase({ id: "F4", state: "cancelled" });
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, queued, clock.now().toISOString());
     assert.equal(testRunService(database, clock).transition({
@@ -375,7 +381,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal(harness.sessions.opens(), 0);
     assert.equal(database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId).length, 0);
     assert.deepEqual(stepStatuses(harness), ["not-started", "not-started", "not-started", "not-started"]);
-    const running = makeCase({ id: "F4-midrun", state: "cancelled", onCrmSearch: () => {
+    const running = await makeCase({ id: "F4-midrun", state: "cancelled", onCrmSearch: () => {
       const run = running.harness.authority.database.authority.runs.get(running.queued.envelope.runId); assert.ok(run);
       assert.equal(testRunService(running.harness.authority.database, running.harness.authority.clock).transition({ commandId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", runId: run.envelope.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() } }).state, "applied");
     } });
@@ -390,7 +396,7 @@ describe("approved Person Lookup scenarios", () => {
 
   });
   it("F5", async () => {
-    const { harness, queued, input, plan } = makeCase({ id: "F5", state: "active" });
+    const { harness, queued, input, plan } = await makeCase({ id: "F5", state: "active" });
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, queued, clock.now().toISOString());
     assert.equal((await executeClaimedRun(harness.deps, { ...claimed, signal: world.SIGNAL })).state, "done");
@@ -401,7 +407,7 @@ describe("approved Person Lookup scenarios", () => {
     const rerun = buildRerunPlan(database.authority, personLookupDescriptor, { runId: source.envelope.runId, expectedVersion: source.version, intent: "rerun", selectedStepKeys: personLookupDescriptor.timeline.map((step) => step.key) }, plan.planned);
     const runtimeConfig = database.authority.runtimeConfig.get(); assert.ok(runtimeConfig);
     const service = new RunRecordService({ database, clock, ids: sequentialIdFactory("c"), publishQueued: () => undefined });
-    const admitted = service.restart({ commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", runId: source.envelope.runId, expectedVersion: source.version,
+    const admitted = service.retry({ commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", runId: source.envelope.runId, expectedVersion: source.version,
       runtimeConfig: { generation: runtimeConfig.generation, settingsRevision: runtimeConfig.settingsRevision, settingsFingerprint: runtimeConfig.settingsFingerprint, configFingerprint: runtimeConfig.configFingerprint } }, personLookupDescriptor);
     assert.ok(admitted.state === "applied", JSON.stringify(admitted));
     const next = database.authority.runs.get(admitted.run.envelope.runId); assert.ok(next);

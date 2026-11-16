@@ -175,31 +175,6 @@ it("requires declared installation locator ownership and preserves raw aliases, 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it("allows only the declared durable archive callback and rejects browser, any, and fake annotated commits", () => {
-  const root = resolve(tmpdir(), `hrauto-ui-commit-${String(process.pid)}-${String(Date.now())}`);
-  const path = resolve(root, "src/core/kernel.ts");
-  try {
-    mkdirSync(dirname(path), { recursive: true });
-    mkdirSync(resolve(root, "src/backend/runs/lifecycle"), { recursive: true });
-    mkdirSync(resolve(root, "src/backend/runs/commands"), { recursive: true });
-    writeFileSync(resolve(root, "src/backend/runs/commands/command-application.ts"), 'export interface CommandApplication { commit?: () => void }');
-    writeFileSync(resolve(root, "src/backend/runs/lifecycle/archive-terminal-runs.ts"), 'export function publishManualArchive(input: unknown): void { void input; }');
-    const imports = 'import type { CommandApplication } from "../backend/runs/commands/command-application.js"; import { publishManualArchive } from "../backend/runs/lifecycle/archive-terminal-runs.js";';
-    writeFileSync(path, imports + 'export function prepare(): CommandApplication { return { commit: () => publishManualArchive("verified") }; }');
-    assert.deepEqual(auditTaskDriverBoundary(root), []);
-    for (const source of [
-      imports + 'export function prepare(page: { click(): unknown }): CommandApplication { return { commit: () => publishManualArchive(page.click()) }; }',
-      imports + 'export function prepare(input: { nested: { click(): unknown } }): CommandApplication { return { commit: () => publishManualArchive(input) }; }',
-      imports + 'export function prepare(page: { locator(selector: string): unknown }): CommandApplication { return { commit: () => publishManualArchive(page) }; }',
-      imports + 'export function prepare(page: { click(): unknown }): CommandApplication { return { commit: () => page.click() }; }',
-      imports + 'export function prepare(): { commit?: () => void } { return { commit: () => publishManualArchive("unbound") }; }',
-      imports + 'export function prepare(input: any): CommandApplication { return { commit: () => publishManualArchive(input) }; }',
-      'interface CommandApplication { commit?: () => void } function publishManualArchive(input: string): void {} export function prepare(): CommandApplication { return { commit: () => publishManualArchive("fake") }; }',
-    ]) { writeFileSync(path, source); assert.match(auditTaskDriverBoundary(root).join("\n"), /a commit implementation must live/u); }
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-
 it("preserves capability-validating driver commits while rejecting raw methods in runtime-control", () => {
   const root = resolve(tmpdir(), `hrauto-ui-owner-${String(process.pid)}-${String(Date.now())}`);
   const driver = resolve(root, "src/backend/systems/ucpath/driver/commit.ts");
@@ -210,34 +185,5 @@ it("preserves capability-validating driver commits while rejecting raw methods i
     assert.deepEqual(auditTaskDriverBoundary(root), []);
     writeFileSync(runtime, 'export const read = (page: { locator(selector: string): unknown }) => page.locator("#raw");');
     assert.match(auditTaskDriverBoundary(root).join("\n"), /runtime\/settings\/reader\.ts: raw browser member \.locator/u);
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-it("admits only a canonical action binder with a closed completed-gesture body", () => {
-  const root = resolve(tmpdir(), `hrauto-note-binder-${String(process.pid)}-${String(Date.now())}`);
-  const action = resolve(root, "src/backend/systems/browser-shared/action-notes.ts");
-  const factory = resolve(root, "src/backend/runtime/writes/operation-action-binding.ts");
-  const consumer = resolve(root, "src/backend/runtime/execution/future.ts");
-  try {
-    for (const path of [action, factory, consumer]) mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(action, 'export interface BrowserAction { kind: "clicked" | "typed"; operation?: { state: "completed" | "failed" } }');
-    writeFileSync(factory, 'import type { BrowserAction } from "../../systems/browser-shared/action-notes.js"; export function createDeclaredActionBinder(): (note: BrowserAction) => BrowserAction { return note => note; }');
-    const source = 'import type { BrowserAction } from "../../systems/browser-shared/action-notes.js"; import { createDeclaredActionBinder as factory } from "../writes/operation-action-binding.js"; const committedGestures: BrowserAction[] = []; const binders = { commit: factory() }; export const tracked = { commit: (note: BrowserAction): BrowserAction => { const bound = binders.commit(note); if (bound.kind === "clicked" && bound.operation?.state === "completed") committedGestures.push(bound); return bound; } };';
-    writeFileSync(consumer, source);
-    assert.deepEqual(auditTaskDriverBoundary(root), []);
-    for (const bad of [
-      source.replace('(note: BrowserAction)', '(note: any)'),
-      source.replace('): BrowserAction =>', '): any =>'),
-      source.replace('commit: factory()', 'commit: (note: BrowserAction) => note'),
-      source.replace('return bound;', 'console.log(bound); return bound;'),
-      source.replace('return bound;', 'return note;'),
-      source.replace('"clicked" &&', '"typed" &&'),
-      source.replace('committedGestures.push(bound)', 'mutate(bound)'),
-      source.replace('import type { BrowserAction } from "../../systems/browser-shared/action-notes.js";', 'interface BrowserAction { kind: "clicked"; operation?: { state: "completed" } }'),
-      source.replace('return bound;', 'page.click(); return bound;'),
-    ]) {
-      writeFileSync(consumer, bad);
-      assert.match(auditTaskDriverBoundary(root).join("\n"), /a commit implementation must live/u);
-    }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

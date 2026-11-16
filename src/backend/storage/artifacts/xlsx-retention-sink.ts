@@ -7,52 +7,16 @@ import { lstat, mkdir, open, readFile, realpath, rename, writeFile } from "node:
 import { basename, dirname, join } from "node:path";
 import readXlsxFile from "read-excel-file/node";
 import writeXlsxFile from "write-excel-file/node";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { FingerprintSchema } from "../../../rules/identity/ids.js";
-import type { Fingerprint } from "../../../rules/identity/ids.js";
-import type {
-  ArtifactOutboxStorageRecord,
-  ArtifactSinkHeadRecord,
-} from "../sqlite/storage-records.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
+import type { JsonValue } from "../../../rules/validation/canonical-json.js";
+import { WorkbookTableSchema } from "../../../models/processing/workbooks/read-result.js";
+import type { z } from "zod";
+import { FingerprintSchema, IsoInstantSchema, type Fingerprint } from "../../../rules/identity/ids.js";
+import type { ArtifactOutboxStorageRecord } from "../sqlite/storage-records.js";
+
+import { ArtifactSinkConflictError, type ArtifactSink, type ArtifactSinkProjectionRequest } from "./artifact-sink.js";
 
 const SHEET_HEADER = ["stableKey", "keyValues", "record", "projectedAt"] as const;
-
-export class ArtifactSinkConflictError extends Error {
-  readonly sinkId: string;
-  readonly recordedSha256: string | undefined;
-  readonly actualSha256: string | undefined;
-  readonly preservedPendingPath: string | undefined;
-
-  constructor(input: Readonly<{
-    sinkId: string;
-    message: string;
-    recordedSha256?: string;
-    actualSha256?: string;
-    preservedPendingPath?: string;
-  }>) {
-    super(input.message);
-    this.name = "ArtifactSinkConflictError";
-    this.sinkId = input.sinkId;
-    this.recordedSha256 = input.recordedSha256;
-    this.actualSha256 = input.actualSha256;
-    this.preservedPendingPath = input.preservedPendingPath;
-  }
-}
-
-export interface ArtifactSinkProjectionRequest {
-  readonly row: ArtifactOutboxStorageRecord;
-  readonly head: ArtifactSinkHeadRecord | undefined;
-  readonly previousArtifact: ArtifactRef | undefined;
-  readonly prepare: (artifact: ArtifactRef) => void;
-  readonly assertPrepared: (artifact: ArtifactRef) => void;
-}
-
-export interface ArtifactSink {
-  readonly sinkId: string;
-  writerLockPath(): Promise<string>;
-  /** Applies the row and returns the workbook's new content hash. */
-  project(request: ArtifactSinkProjectionRequest): Promise<Readonly<{ contentSha256: Fingerprint; artifact: ArtifactRef }>>;
-}
 
 function contentSha256(bytes: Uint8Array): Fingerprint {
   return FingerprintSchema.parse(createHash("sha256").update(bytes).digest("hex"));
@@ -79,19 +43,25 @@ async function readRows(bytes: Buffer): Promise<string[][]> {
 }
 
 export type PublicationFaultPoint = "before-stage" | "after-stage" | "after-stage-sync" | "after-prepare" | "before-replace" | "after-replace" | "after-directory-sync";
-export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string; artifacts: ContentAddressedArtifactWriter;
+export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string | ((row: ArtifactOutboxStorageRecord) => string); artifacts: ContentAddressedArtifactWriter;
+  view?: (records: readonly Readonly<{ payload: JsonValue; projectedAt: string }>[]) => z.output<typeof WorkbookTableSchema>;
   fault?: (point: PublicationFaultPoint) => void | Promise<void>;
 }>): ArtifactSink {
-  const { workbookPath } = options;
+  const pathFor = (row: ArtifactOutboxStorageRecord) => typeof options.workbookPath === "string" ? options.workbookPath : options.workbookPath(row);
+  const compose = (rows: readonly (readonly string[])[]) => composeWorkbook(rows, options.view);
   return Object.freeze({
     sinkId: "xlsx-retention",
-    async writerLockPath() {
+    async writerLockPath(row: ArtifactOutboxStorageRecord) {
+      const workbookPath = pathFor(row);
       await mkdir(dirname(workbookPath), { recursive: true });
       // Canonical parent identity makes aliases share the same exclusive destination fence.
       return join(await realpath(dirname(workbookPath)), `.${basename(workbookPath)}.writer.lock`);
     },
     async project(request: ArtifactSinkProjectionRequest) {
       const { row, head } = request;
+      const workbookPath = pathFor(row);
+      const lockPath = join(await realpath(dirname(workbookPath)), `.${basename(workbookPath)}.writer.lock`);
+      if (request.lockPath !== lockPath) throw new Error("retention-workbook-destination-changed");
       const stored = await readWorkbookBytes(workbookPath);
       if (stored.present && (await lstat(workbookPath)).isSymbolicLink()) throw new ArtifactSinkConflictError({
         sinkId: row.sinkId, message: "generated-artifact-symlink-destination-conflict",
@@ -128,7 +98,7 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
           // Preserve BOTH files: the operator's bytes stay untouched, and the
           // intended update is materialized beside them so nothing is lost.
           const pendingPath = `${workbookPath}.pending-${String(row.outboxId)}.xlsx`;
-          await writeFile(pendingPath, await composeWorkbook([intended]));
+          await writeFile(pendingPath, await compose([intended]));
           throw new ArtifactSinkConflictError({
             sinkId: "xlsx-retention",
             message: `workbook ${workbookPath} does not hash to the recorded head (recorded `
@@ -174,7 +144,7 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
       }
 
       upserted.set(intended[0] ?? "", intended);
-      const nextBytes = await composeWorkbook([...upserted.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([, cells]) => cells));
+      const nextBytes = await compose([...upserted.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([, cells]) => cells));
       const artifact = await verifyRetained(
         await options.artifacts.put(nextBytes, { mediaType: OPERATOR_XLSX_MEDIA_TYPE }), nextBytes,
       );
@@ -214,12 +184,19 @@ export function createXlsxRetentionSink(options: Readonly<{ workbookPath: string
   });
 }
 
-async function composeWorkbook(rows: readonly (readonly string[])[]): Promise<Buffer> {
+async function composeWorkbook(rows: readonly (readonly string[])[], view?: (records: readonly Readonly<{ payload: JsonValue; projectedAt: string }>[]) => z.output<typeof WorkbookTableSchema>): Promise<Buffer> {
   const sheet = [
     [...SHEET_HEADER].map((header) => ({ value: header })),
     ...rows.map((cells) => cells.map((cell) => ({ value: cell }))),
   ];
-  const written = writeXlsxFile(sheet);
+  const table = view === undefined ? undefined : WorkbookTableSchema.parse(view(rows.map(row => ({
+    payload: JsonValueSchema.parse(JSON.parse(row[2])), projectedAt: IsoInstantSchema.parse(row[3]),
+  }))));
+  const written = table === undefined ? writeXlsxFile(sheet) : writeXlsxFile([
+    { sheet: "Relay journal", data: sheet },
+    { sheet: table.name, data: [table.columns.map(value => ({ value })),
+      ...table.rows.map(row => row.values.map(value => value === null ? null : { value, ...(typeof value === "string" ? { format: "@" } : {}) }))] },
+  ]);
   const buffer: unknown = await written.toBuffer();
   if (!Buffer.isBuffer(buffer)) throw new Error("write-excel-file returned a non-Buffer workbook");
   return buffer;

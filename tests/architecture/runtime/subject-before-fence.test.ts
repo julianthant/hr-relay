@@ -1,10 +1,9 @@
+import { releaseSeededWriteOwners } from "../../support/helpers/timeline-write-fixture.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { testRunLifecycle, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
@@ -21,13 +20,13 @@ import { EidSchema, taskId, TaskIdSchema } from "../../../src/rules/identity/ids
 import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { fixtureDescriptor } from "../../support/fixtures/descriptor-fixtures.js";
+import { duoCeremonyGatesOver } from "../../support/helpers/duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../../support/helpers/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import {
   absentProbeEvidence,
   buildWriteFixtureRegistry,
   createWriteFixtureWorld,
-  WRITE_FIXTURE_IMPL_FINGERPRINT,
   WRITE_FIXTURE_KEY,
   WRITE_FIXTURE_NODE_ID,
   WRITE_FIXTURE_NOW,
@@ -147,21 +146,21 @@ interface OrderingHarness {
   readonly sequencer: ReturnType<typeof createWriteSequencer>;
 
   readonly execute: (context: WriteSequencerContext) => Promise<unknown>;
-  readonly dispose: () => void;
+  readonly dispose: () => void | Promise<void>;
 }
 
-function orderingHarness(): OrderingHarness {
+async function orderingHarness(): Promise<OrderingHarness> {
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-  const root = mkdtempSync(join(tmpdir(), "hrauto-subject-fence-guard-"));
+  const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "subject-fence-guard" },
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "subject-fence-guard" },
     clock,
   );
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const world = createWriteFixtureWorld();
   const registry = buildWriteFixtureRegistry(world);
   const sessions = writeFixtureSessions(world);
-  const manager = writeFixtureSessionManager(sessions, registry, clock);
+  const manager = await writeFixtureSessionManager(sessions, registry, clock, duoCeremonyGatesOver(database, clock));
   const sequencer = createWriteSequencer({
     lifecycle: testRunLifecycle(database, clock),
     stores: registry,
@@ -173,20 +172,21 @@ function orderingHarness(): OrderingHarness {
     scheduler: new ManualScheduler(clock),
     taskDeadlineMs: 60_000,
     operator: "local-operator",
-    log: recordingLogger().log,
-    resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+    log: recordingLogger().log
   });
   const execute = (context: WriteSequencerContext): Promise<unknown> =>
     withBoundRunConfigFingerprint(
       manager,
       context.run.envelope.configFingerprint,
       () => sequencer.executeTransaction(context),
+      "headless", { runId: context.run.envelope.runId, descriptorFingerprint: context.run.envelope.contractFingerprint },
     );
   return {
-    world, database, path: join(root, "authority.sqlite"), clock, sessions, sequencer, execute,
-    dispose: () => {
+    world, database, path: profile.path, clock, sessions, sequencer, execute,
+    dispose: async () => {
+      releaseSeededWriteOwners(database, clock.now().toISOString());
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      await profile.close();
     },
   };
 }
@@ -202,17 +202,13 @@ function runningContext(
   const poolIndex = workerId === WRITE_FIXTURE_WORKER_ID ? 1 : 2;
   testWorkerPorts(h.database, h.clock, { path: h.path, descriptor: writeFixtureDescriptor, poolIndex });
   const member = h.database.authority.workerSlots.get(workerId);
-  const lease = h.database.authority.workerLeases.get(workerId);
   assert.ok(member);
-  assert.ok(lease);
   const claimed = h.database.authority.runs.claimNext({
     workflow: WRITE_FIXTURE_WORKFLOW_ID, workerId, now,
-    workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
   });
   if (claimed.state !== "claimed") throw new Error("guard claim failed");
   const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
-  assert.ok("workerLifetime" in claimed.run.lifecycle && claimed.run.lifecycle.workerLifetime !== undefined);
-  const base = { workerId, workerLifetime: claimed.run.lifecycle.workerLifetime, claimedAt: now, heartbeatAt: now };
+  const base = { workerId, claimedAt: now, heartbeatAt: now };
   const runId = claimed.run.envelope.runId;
   assert.equal(h.database.authority.runs.transition({
     runId, expectedVersion: claimed.run.version, claim,
@@ -237,7 +233,7 @@ function runningContext(
 
 describe("prepare-end < subject-observed < fence-commit < mutation-call", () => {
   it("orders the four events on one lease and binds the capability to the fenced proof digest", async () => {
-    const h = orderingHarness();
+    const h = await orderingHarness();
     try {
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
       h.world.onSubjectRead = () => {
@@ -264,7 +260,7 @@ describe("prepare-end < subject-observed < fence-commit < mutation-call", () => 
         "commit-click:ucpath.write-fixture.save-submit",
       ]);
     } finally {
-      h.dispose();
+      await h.dispose();
     }
   });
 
@@ -274,7 +270,7 @@ describe("prepare-end < subject-observed < fence-commit < mutation-call", () => 
     ["missing observation surface", (world: WriteFixtureWorld) => { world.omitDriverRead = true; }],
   ] as const) {
     it(`${name} produces zero fence, zero click, and a poisoned page`, async () => {
-      const h = orderingHarness();
+      const h = await orderingHarness();
       try {
         h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
         mutate(h.world);
@@ -283,13 +279,13 @@ describe("prepare-end < subject-observed < fence-commit < mutation-call", () => 
         assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")));
         assert.deepEqual(h.sessions.closeReasons(), ["poisoned"]);
       } finally {
-        h.dispose();
+        await h.dispose();
       }
     });
   }
 
   it("binds each of two alternating EIDs through one pooled page to its own digest", async () => {
-    const h = orderingHarness();
+    const h = await orderingHarness();
     try {
       const otherEid = "10867890";
       h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -324,7 +320,7 @@ describe("prepare-end < subject-observed < fence-commit < mutation-call", () => 
         "each EID fenced under its OWN subject digest",
       );
     } finally {
-      h.dispose();
+      await h.dispose();
     }
   });
 

@@ -13,7 +13,7 @@ parseCatalogView,
 rowSurfaceSpecs,
 } from "../../../../../src/dashboard/surfaces/settings/catalog/row-catalog-model.js";
 import { PanelKindSchema,RunDetailSectionSchema } from "../../../../../src/models/dashboard/primitives.js";
-import { ContainmentSchema } from "../../../../../src/models/dashboard/projection.js";
+import { ChildVisibilitySchema } from "../../../../../src/models/workflow/delegation-policy.js";
 import { RunDetailWireSchema,sectionsForPanelKind } from "../../../../../src/models/dashboard/run-detail.js";
 
 const RUN = "e1b8ae3e-0000-4000-8000-000000000001";
@@ -58,11 +58,11 @@ describe("row/panel catalog — the vocabulary is read off the schemas", () => {
     assert.deepEqual(specs.map((spec) => spec.key), [...ROW_SURFACE_ORDER]);
     assert.equal(new Set(ROW_SURFACE_ORDER).size, ROW_SURFACE_ORDER.length);
 
-    assert.deepEqual([...ROW_SURFACE_ORDER].toSorted(), ["member", "operation", "preview", "single"]);
+    assert.deepEqual([...ROW_SURFACE_ORDER].toSorted(), ["operation", "preview", "single"]);
   });
 
   it("names every containment arm, in the schema's own order", () => {
-    assert.deepEqual(containmentSpecs().map((spec) => spec.key), [...ContainmentSchema.options]);
+    assert.deepEqual(containmentSpecs().map((spec) => spec.key), ["root", ...ChildVisibilitySchema.options]);
   });
 
   it("names every panel kind, in the schema's own order", () => {
@@ -140,9 +140,7 @@ describe("row/panel catalog — the absences are stated, not implied", () => {
       assert.ok(entry.demo.length > 0 && entry.why.length > 0);
     }
     const all = UNSERVED_VOCABULARY.map((entry) => `${entry.demo} ${entry.why}`).join(" ");
-    // The four the roll-up's decision 4 names. If one of them ever becomes
-    // servable, this test is where the page and the plan meet.
-    assert.ok(all.includes("rejected"), "the fourth containment kind must be named");
+    assert.ok(all.includes("refused submission") && all.includes("atomically"), "refused submissions have no partial run rows");
     assert.ok(all.toLowerCase().includes("precedence"), "the rollup precedence chain must be named");
     assert.ok(all.includes("VARIANT"), "the eight row variants must be named");
     assert.ok(all.toLowerCase().includes("per-workflow map"), "the per-workflow map must be named");

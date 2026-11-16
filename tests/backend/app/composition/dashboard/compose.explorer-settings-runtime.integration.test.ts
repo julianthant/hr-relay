@@ -1,32 +1,30 @@
+import { createDashboardChildTestWorld } from "../../../../support/helpers/backend/dashboard-child-world.js";
+import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
 import { hostConfigFacts } from "../../../../../src/models/config/host-display.js";
 import { randomUUID } from "node:crypto";
-import { bindWorkerProcessAdmission } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { admitDirectWorker } from "../../../../../src/backend/storage/sqlite/worker-slots.js";
-import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
-import { fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { fsyncSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { afterEach, describe, it, vi } from "vitest";
 import { productionWorkerLaunch } from "../../../../../src/backend/app/composition/dashboard/compose.js";
-import * as explorerComposition from "../../../../../src/backend/app/composition/dashboard/explorer.js";
+
 import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
+
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/protected-settings.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
-import { explorerEditCommandFingerprint } from "../../../../../src/models/dashboard/explorer-override.js";
-import { ExplorerEditApplyRequestSchema, ExplorerWorkflowOverrideSchema } from "../../../../../src/models/dashboard/explorer.js";
-import { CommandAuditRecordSchema, CommandResultSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
-import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, WorkerBrowserCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
+import { manualClock, systemClock } from "../../../../../src/rules/time/clock.js";
 import { settingsSetOperations } from "../../../../support/fixtures/settings-operation-fixtures.js";
-import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
+import { scaledMs } from "../../../../support/time-scale.js";
+import { currentBuildId, PARENT_BUILD_ID_ENV } from "../../../../../src/backend/runtime/build-id.js";
 
-const { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, copyRuntimePackageFixture, cleanup } = createDashboardPortTestWorld(() => {
+const { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, createProfileFixture, cleanup } = createDashboardPortTestWorld(() => {
       vi.mocked(fsyncSync).mockReset();
       vi.mocked(readFileSync).mockReset();
       vi.mocked(openSync).mockReset();
@@ -76,8 +74,8 @@ function protectedUcpathSettingsCommand(
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
       writeId,
       entries: {
-        ucpathUserId: { set: "synthetic-ucpath-user" },
-        ucpathPassword: { set: "synthetic-ucpath-password" },
+        ucpathUserId: { set: "fixture@ucsd.edu" },
+        ucpathPassword: { set: "disposable-fixture-password" },
       },
     },
   });
@@ -95,76 +93,6 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 afterEach(cleanup);
-
-function committedExplorer() {
-  const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-explorer-"));
-  copyRuntimePackageFixture(repoRoot);
-  cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-  const descriptor = DESCRIPTORS.find(({ id }) => String(id) === "person-lookup");
-  assert.ok(descriptor !== undefined);
-  const path = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "explorer-overrides.json");
-  const request = ExplorerEditApplyRequestSchema.parse({
-    commandId: "13131313-1313-4313-8313-131313131313",
-    requestedAt: "2026-08-28T12:00:00.000Z",
-    requestedBy: "local-operator",
-    source: "dashboard",
-    reason: "Apply the reviewed presentation label",
-    family: "explorer",
-    type: "apply-explorer-edit",
-    target: {
-      workflowId: descriptor.id,
-      expectedVersion: descriptor.version,
-      contractFingerprint: descriptor.contractFingerprint,
-      expectedOverrideRevision: 0,
-    },
-    payload: { changes: [{ kind: "workflow-label", value: "Recovered people search" }] },
-  });
-  const override = ExplorerWorkflowOverrideSchema.parse({
-    overrideVersion: 1,
-    workflowId: descriptor.id,
-    descriptorVersion: descriptor.version,
-    contractFingerprint: descriptor.contractFingerprint,
-    revision: 1,
-    appliedCommandId: request.commandId,
-    commandFingerprint: explorerEditCommandFingerprint(request),
-    presentation: { label: "Recovered people search" },
-  });
-  mkdirSync(dirname(path), { recursive: true });
-  return { repoRoot, path, request, override };
-}
-
-function explorerAudit(request: ReturnType<typeof committedExplorer>["request"]) {
-  const target = { family: "explorer", workflowId: request.target.workflowId, revision: 1 } as const;
-  return CommandAuditRecordSchema.parse({
-    auditId: "99999999-9999-4999-8999-999999999999",
-    request,
-    result: { state: "applied", commandId: request.commandId, affectedTargets: [target] },
-    completedAt: "2026-08-28T12:00:01.000Z",
-    versionChanges: [{ target, before: 0, after: 1 }],
-    affectedDependencyIds: [],
-  });
-}
-
-function journalExplorer(
-  fixture: ReturnType<typeof committedExplorer>,
-  request = fixture.request,
-  audit: ReturnType<typeof explorerAudit> | null = explorerAudit(fixture.request),
-): void {
-  // All authority in this suite is under the fixture's mkdtemp root.
-  const database = AuthorityDatabase.open({
-    path: join(fixture.repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
-    busyTimeoutMs: 5000, migrationOwner: "explorer-startup-test",
-  });
-  try {
-    database.withAuthorityTransaction((repositories) => {
-      repositories.commands.insert(request);
-      repositories.explorerOverrides.replace(request, fixture.override);
-      if (audit !== null) repositories.commandAudits.insert(audit);
-    });
-  } finally {
-    database.close();
-  }
-}
 
 describe("composed dashboard runtime over an owned loopback socket", () => {
 
@@ -188,43 +116,45 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       return Reflect.get(target, key, receiver) as string | undefined;
     } });
     assert.deepEqual(productionWorkerLaunch("/repo", hostile).environment, {
-      PATH: "/synthetic/bin", HOME: "/synthetic/home", HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080",
+      PATH: "/synthetic/bin", HOME: "/synthetic/home", HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080", [PARENT_BUILD_ID_ENV]: currentBuildId(),
     });
     assert.throws(() => productionWorkerLaunch("/repo", { UCPATH_PASSWORD: "synthetic-private" }),
       /migrated environment key UCPATH_PASSWORD is refused/u);
   });
 
   it("publishes a lease-only worker card from the real tail tick, before any span exists", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-lease-tick-"));
-    copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
-    const runtime = await composeDashboardRuntime({
+    const clock = systemClock;
+    const profile = await createProfileFixture(clock);
+    const repoRoot = profile.workspace;
+    const lifetimeLock = profile.lifetime;
+    const children = createDashboardChildTestWorld(() => {}, () => {});
+    const records: Parameters<typeof children.realStubSpawner>[0] = [];
+    const runtime = await composeDashboardRuntime({ lifetimeLock,
+      frontendPortOverride: 0, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      workerProcess: { launch: children.stubLaunch(lifetimeLock), spawn: children.realStubSpawner(records, lifetimeLock) },
+      ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
-      clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
+      clock,
       repoRoot,
     });
-    let releaseWorker: (() => void) | undefined;
-    cleanups.push(async () => { await runtime.stop(); releaseWorker?.(); });
+    cleanups.push(async () => { try { await runtime.stop(); } finally { await children.cleanup(); } });
 
     const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-    const day = "2026-08-28";
+    const day = clock.todayLocal();
     const initial = await client.dashboardDay(day);
     assert.deepEqual(initial.workerCards, []);
 
     // Subscribe first, so the card can only arrive through a published snapshot.
     const days: (typeof initial)[] = [];
-    let resolveCard: (() => void) | undefined;
-    const cardArrived = new Promise<void>((resolve) => {
-      resolveCard = resolve;
-    });
+    const cardArrived = Promise.withResolvers<void>();
     const live = new Promise<void>((resolve) => {
       const subscription = client.subscribeDay({
         day,
         onDay: (received) => {
           days.push(received);
-          if (received.workerCards.length === 1) resolveCard?.();
+          if (received.workerCards.length === 1) cardArrived.resolve();
         },
         onState: (state) => {
           if (state.state === "live") resolve();
@@ -235,177 +165,42 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     await live;
     assert.equal(days.at(-1)?.workerCards.length, 0);
 
-    // A worker PROCESS writes its lease in authority and has emitted no span:
-    // nothing on disk moves, so only the tick's lease reconcile can publish it.
-    const database = AuthorityDatabase.open({
-      path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
-      busyTimeoutMs: 250,
-      migrationOwner: "unit-test",
-    });
+    const envelope = () => ({ commandId: randomUUID(), requestedAt: clock.now().toISOString(),
+      requestedBy: "local-operator", source: "dashboard", family: "worker-browser" });
+    const planned = await client.executeCommand(WorkerBrowserCommandRequestSchema.parse({ ...envelope(), type: "plan-worker-count",
+      target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } }));
+    // The plan is the pool-fence publish: it applies the count and starts its one member.
+    assert.equal(planned.state, "applied");
+    assert.equal(records.length, 1);
+    assert.ok(records[0]?.pid !== undefined);
+    const database = profile.openDatabase({ path: join(profile.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
     try {
-      const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-      const authorityPath = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db");
-      const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
-      const bound = bindWorkerProcessAdmission({ authorityPath, processLockRoot, clock, pid: process.pid,
-        open: () => database, close: () => undefined,
-        admit: (authority, acquisitionId) => authority.withAuthorityTransaction(repositories => admitDirectWorker(repositories,
-          { commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1, expectedPoolVersion: 0,
-            processId: process.pid, processAcquisitionId: acquisitionId, authorityPath, processLockRoot,
-            now: clock.now().toISOString() }, randomUUID()).workerId) });
-      releaseWorker = () => { bound.processLock.release(); };
-      assert.equal(database.startOwnedWorker({ workerId: bound.workerId, workflow: personLookupDescriptor.id,
-        browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now: clock.now().toISOString() },
-      bound.processLock).state, "started");
-      const started = database.authority.workerLeases.get("person-lookup-worker-1");
-      assert.ok(started);
-      assert.equal(started.processId, process.pid);
-    } finally {
-      database.close();
-    }
-
+      assert.equal(database.authority.workerSlots.get("person-lookup-worker-1")?.retiredAt, null);
+      assert.deepEqual(database.authority.timelineEvents.page({}).filter(record => record.payload.kind === "span"), []);
+    } finally { database.close(); }
     const deadline = setTimeout(() => {
-      assert.fail(`no worker-card snapshot within 5s; snapshots seen: ${String(days.length)}`);
+      cardArrived.reject(new Error(`no worker-card snapshot within 5s; snapshots seen: ${String(days.length)}`));
     }, 5_000);
     try {
-      await cardArrived;
+      await cardArrived.promise;
     } finally {
       clearTimeout(deadline);
     }
     const card = days.at(-1)?.workerCards[0];
     assert.equal(card?.workerId, "person-lookup-worker-1");
-    assert.equal(card?.state, "starting");
-    assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"] });
-    assert.deepEqual(card?.browsers, []);
-  }, 20_000);
-
-  function observeExplorerSnapshot(authorityPath: string, onCommit?: () => void) {
-    const statements: string[] = [];
-    const expectedPath = realpathSync(authorityPath);
-    let readingExplorer = false;
-    const reader: { connection?: DatabaseSync } = {};
-    const compose = explorerComposition.composeExplorer;
-    vi.spyOn(explorerComposition, "composeExplorer").mockImplementation((input) => {
-      const composed = compose(input);
-      const snapshot = <Result,>(read: () => Result): Result => {
-        assert.equal(readingExplorer, false);
-        readingExplorer = true;
-        try { return read(); }
-        finally { readingExplorer = false; }
-      };
-      assert.ok(composed.routes.explorer.overrides);
-      assert.ok(composed.routes.explorerEdits);
-      const readAll = composed.routes.explorer.overrides.readAll;
-      const validate = composed.routes.explorerEdits.validate;
-      return { ...composed, routes: {
-        explorer: { ...composed.routes.explorer, overrides: {
-          readAll: () => snapshot(() => readAll()),
-        } },
-        explorerEdits: { validate: (draft) => snapshot(() => validate(draft)) },
-      } };
-    });
-    const execute = Reflect.get(DatabaseSync.prototype, "exec");
-    vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql) {
-      if (readingExplorer && reader.connection === undefined && sql === "BEGIN"
-        && this.location() === expectedPath) reader.connection = this;
-      const tagged = readingExplorer && this === reader.connection;
-      if (tagged) statements.push(sql);
-      Reflect.apply(execute, this, [sql]);
-      if (tagged && sql === "COMMIT") onCommit?.();
-    });
-    return statements;
-  }
-
-  it.each(["GET", "validate"] as const)("serves one SQLite snapshot without unrelated file reads per Explorer %s request", async operation => {
-    const fixture = committedExplorer(); journalExplorer(fixture);
-    for (const suffix of ["", ".claim", ".pending", ".claim.pending"]) writeFileSync(`${fixture.path}${suffix}`, "unrelated bytes");
-    const sql = observeExplorerSnapshot(join(fixture.repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"));
-    const runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
-      clock: manualClock(new Date(fixture.request.requestedAt)) });
-    try {
-      vi.mocked(readFileSync).mockClear();
-      const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-      for (const requestCount of [1, 2]) {
-        if (operation === "GET") {
-          const workflow = (await client.workflowExplorer()).workflows.find(row => row.id === fixture.request.target.workflowId);
-          assert.equal(workflow?.label, "Recovered people search"); assert.equal(workflow?.edit.overrideRevision, 1);
-        } else {
-          const validation = await client.validateExplorerEdit({ draftVersion: 1, workflowId: fixture.request.target.workflowId,
-            baseDescriptorVersion: fixture.request.target.expectedVersion, baseContractFingerprint: fixture.request.target.contractFingerprint,
-            baseOverrideRevision: 1, changes: [{ kind: "workflow-label", value: "Reviewed directory search" }] });
-          assert.equal(validation.state, "ready-to-apply");
-          if (validation.state === "ready-to-apply") assert.equal(validation.override.revision, 2);
-        }
-        assert.equal(sql.filter(statement => statement === "BEGIN IMMEDIATE").length, 0);
-        assert.equal(sql.filter(statement => statement === "BEGIN").length, requestCount);
-        assert.equal(vi.mocked(readFileSync).mock.calls.filter(([path]) => String(path).startsWith(fixture.path)).length, 0);
-      }
-    } finally { await runtime.stop(); }
-  }, 20_000);
-
-  it.each(["GET", "validate"] as const)("keeps the captured Explorer %s view across a concurrent commit and sees it on the next request", async operation => {
-    const fixture = committedExplorer(); journalExplorer(fixture);
-    let committed: (() => void) | undefined;
-    observeExplorerSnapshot(join(fixture.repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"), () => committed?.());
-    const runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
-      clock: manualClock(new Date(fixture.request.requestedAt)) });
-    try {
-      const request = ExplorerEditApplyRequestSchema.parse({ ...fixture.request, commandId: "24242424-2424-4242-8242-242424242424",
-        target: { ...fixture.request.target, expectedOverrideRevision: 1 }, payload: { changes: [{ kind: "workflow-label", value: "New directory search" }] } });
-      const override = ExplorerWorkflowOverrideSchema.parse({ ...fixture.override, revision: 2, appliedCommandId: request.commandId,
-        commandFingerprint: explorerEditCommandFingerprint(request), presentation: { label: "New directory search" } });
-      const audit = CommandAuditRecordSchema.parse({ ...explorerAudit(request), auditId: "88888888-8888-4888-8888-888888888888",
-        result: { state: "applied", commandId: request.commandId, affectedTargets: [{ family: "explorer", workflowId: request.target.workflowId, revision: 2 }] },
-        versionChanges: [{ target: { family: "explorer", workflowId: request.target.workflowId, revision: 2 }, before: 1, after: 2 }] });
-      const writer = AuthorityDatabase.open({ path: join(fixture.repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "concurrent-explorer" });
-      try {
-        let crossed = false;
-        committed = () => {
-          if (crossed) return;
-          crossed = true;
-          writer.withAuthorityTransaction(repositories => { repositories.commands.insert(request); repositories.explorerOverrides.replace(request, override); repositories.commandAudits.insert(audit); });
-        };
-        const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-        const draft = { draftVersion: 1, workflowId: request.target.workflowId, baseDescriptorVersion: request.target.expectedVersion,
-          baseContractFingerprint: request.target.contractFingerprint, baseOverrideRevision: 1, changes: [{ kind: "workflow-label", value: "Reviewed search" }] };
-        if (operation === "GET") {
-          assert.equal((await client.workflowExplorer()).workflows.find(row => row.id === request.target.workflowId)?.label, "Recovered people search");
-          assert.equal((await client.workflowExplorer()).workflows.find(row => row.id === request.target.workflowId)?.label, "New directory search");
-        } else {
-          assert.equal((await client.validateExplorerEdit(draft)).state, "ready-to-apply");
-          assert.equal((await client.validateExplorerEdit(draft)).state, "conflict");
-        }
-        assert.equal(crossed, true);
-      } finally { writer.close(); }
-    } finally { await runtime.stop(); }
-  }, 20_000);
-
-  it("applies and replays the complete Explorer command after a real runtime restart", async () => {
-    const fixture = committedExplorer();
-    let runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
-      clock: manualClock(new Date(fixture.request.requestedAt)) });
-    const send = (request: unknown) => {
-      const baseUrl = `http://127.0.0.1:${String(runtime.port)}`;
-      return fetch(`${baseUrl}/api/v1/commands`, { method: "POST", headers: { "content-type": "application/json", origin: baseUrl }, body: JSON.stringify(request) });
-    };
-    try {
-      const first = await send(fixture.request); assert.equal(first.status, 200); assert.equal(CommandResultSchema.parse(await first.json()).state, "applied");
-      await runtime.stop();
-      for (const suffix of ["", ".claim"]) writeFileSync(`${fixture.path}${suffix}`, "retired malformed file");
-      runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
-        clock: manualClock(new Date(fixture.request.requestedAt)) });
-      const replay = await send(fixture.request); assert.equal(replay.status, 200); assert.equal(CommandResultSchema.parse(await replay.json()).state, "already-applied");
-      const divergent = await send({ ...fixture.request, reason: "Changed envelope" }); assert.equal(divergent.status, 500);
-      const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-      assert.equal((await client.workflowExplorer()).workflows.find(row => row.id === fixture.request.target.workflowId)?.label, "Recovered people search");
-    } finally { await runtime.stop(); }
-  }, 20_000);
+    assert.ok(card?.state === "starting" || card?.state === "idle");
+    assert.equal(card.controls?.basis.state, "present");
+    assert.deepEqual(card.browsers, []);
+    assert.equal(records[0]?.child.exitCode, null);
+  }, scaledMs(20_000));
 
   it("plans new runs with saved settings without a dashboard restart", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-stale-runtime-"));
-    copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    const runtime = await composeDashboardRuntime({
+    const profile = await createProfileFixture(clock);
+    const repoRoot = profile.workspace;
+    const lifetimeLock = profile.lifetime;
+    const runtime = await composeDashboardRuntime({ lifetimeLock,
+      ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
@@ -422,29 +217,34 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     );
     const applied = await client.executeCommand(command);
     assert.equal(applied.state, "applied");
+    const protectedSettings = (await client.editableSettings()).protectedSettings;
+    assert.equal(protectedSettings.state, "available");
+    if (protectedSettings.state !== "available") throw new Error("fixture-protected-settings-unavailable");
+    const protectedRevision = protectedSettings.readback.revision;
     const protectedApplied = await client.executeCommand(protectedUcpathSettingsCommand(
       "44444444-4444-4444-8444-444444444444",
       clock.now().toISOString(),
-      1,
+      protectedRevision,
       "44444444-4444-4444-8444-444444444445",
     ));
     assert.equal(protectedApplied.state, "applied");
+    if (protectedApplied.state === "applied") assert.equal(protectedApplied.revision, protectedRevision + 1);
 
     const plan = await client.submitStartPlan({
       workflowId: "person-lookup", submissions: [{ emplId: "10800000" }], dryRun: true,
       browserMode: "headless", captureBrowserScreenshots: false,
     });
     assert.equal(plan.fingerprints.configFingerprint,
-      resolveConfigWithProvenance(readPersistedSettings(repoRoot, clock).settings, hostConfigFacts({}), clock, { stateRoot: join(repoRoot, rebuildRuntimeIsolation.stateRoot), artifactRoot: join(repoRoot, rebuildRuntimeIsolation.artifactRoot) }).fingerprint);
-    assert.equal(readRuntimeSettingsRevision(repoRoot), 2);
+      resolveConfigWithProvenance(readPersistedSettings(profile, clock).settings, hostConfigFacts({}), clock, { stateRoot: profile.stateRoot, artifactRoot: profile.artifactRoot }).fingerprint);
+    assert.equal(readRuntimeSettingsRevision(profile), 2);
   });
 
   it("activates the exact persisted settings generation after a dashboard restart", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-restart-"));
-    copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-    let runtime = await composeDashboardRuntime({
+    const profile = await createProfileFixture(clock);
+    const repoRoot = profile.workspace;
+    let runtime = await composeDashboardRuntime({ lifetimeLock: profile.lifetime,
+      ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
@@ -460,7 +260,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       { browser: { headless: false }, features: { duoWebAuthn: false } },
     );
     const applied = await firstClient.executeCommand(command);
-    const persisted = readPersistedSettings(repoRoot, clock);
+    const persisted = readPersistedSettings(profile, clock);
     assert.deepEqual(applied, {
       state: "applied",
       commandId: command.commandId,
@@ -469,16 +269,24 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       settingsRevision: 2,
       settingsFingerprint: persisted.settingsFingerprint,
     });
+    const protectedSettings = (await firstClient.editableSettings()).protectedSettings;
+    assert.equal(protectedSettings.state, "available");
+    if (protectedSettings.state !== "available") throw new Error("fixture-protected-settings-unavailable");
+    const protectedRevision = protectedSettings.readback.revision;
     const protectedApplied = await firstClient.executeCommand(protectedUcpathSettingsCommand(
       "44444444-4444-4444-8444-444444444444",
       clock.now().toISOString(),
-      1,
+      protectedRevision,
       "44444444-4444-4444-8444-444444444445",
     ));
     assert.equal(protectedApplied.state, "applied");
+    if (protectedApplied.state === "applied") assert.equal(protectedApplied.revision, protectedRevision + 1);
 
     await runtime.stop();
-    runtime = await composeDashboardRuntime({
+    profile.dashboardInput.admission.assertLive();
+    await profile.restart();
+    runtime = await composeDashboardRuntime({ lifetimeLock: profile.lifetime,
+      ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
@@ -499,7 +307,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.equal(plan.workflowId, "person-lookup");
     assert.equal(
       plan.fingerprints.configFingerprint,
-      resolveConfigWithProvenance(persisted.settings, hostConfigFacts({}), clock, { stateRoot: join(repoRoot, rebuildRuntimeIsolation.stateRoot), artifactRoot: join(repoRoot, rebuildRuntimeIsolation.artifactRoot) }).fingerprint,
+      resolveConfigWithProvenance(persisted.settings, hostConfigFacts({}), clock, { stateRoot: profile.stateRoot, artifactRoot: profile.artifactRoot }).fingerprint,
       "the restarted plan must bind the config resolved from the exact persisted settings generation",
     );
     assert.equal(plan.planned.length, 1);

@@ -1,6 +1,5 @@
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { foundationFixture } from "../database-foundation/fixtures.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
@@ -9,12 +8,13 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { testRunService, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { separationsDescriptor } from "../registered-workflows.js";
 import { HASH_A } from "../../fixtures/phase1c-contract-fixtures.js";
-import { atomicWriteCheckpoint } from "../timeline-write-fixture.js";
+import { atomicWriteCheckpoint, releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { ledgerCommitFixture, fixtureUuid } from "../../fixtures/ledger-projection-fixtures.js";
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 export const HISTORY_NOW = "2026-09-09T12:00:00.000Z";
 export const historyClock = capturedInstantClock(HISTORY_NOW);
-export function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) {
-  const admitted = foundationFixture();
+export async function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) {
+  const admitted = await foundationFixture();
   const { root, path } = admitted;
   const open = () => AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "transaction-history-test" }, historyClock);
   let database = admitted.db;
@@ -25,12 +25,14 @@ export function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) 
       database.authority.runs.enqueue(RunRecordSchema.parse({ envelope: { workflow:ledger.workflowId,runId:ledger.runId,itemId:ledger.itemId,
         traceId:ledger.traceId,descriptorVersion:separationsDescriptor.version,contractFingerprint:separationsDescriptor.contractFingerprint,resolvedInstance:{[ledger.system]:ledger.instance},
         configFingerprint:ledger.configFingerprint,configSnapshotId:admitted.snapshot.configSnapshotId,shape:"single",priority:"interactive",
-        dryRun:false,attempt:ledger.attempt,enqueuedAt:ledger.fencedAt },
+        dryRun:false,attempt:ledger.attempt,enqueuedAt:ledger.fencedAt,buildId:currentBuildId() },
         input:{raw:{},parsed:{schemaHash:HASH_A,value:{},protectedBindings:[]},ingressSchemaHash:HASH_A},
         lifecycle:{state:"queued"},claimGeneration:0,version:1,createdAt:ledger.fencedAt,updatedAt:ledger.fencedAt }));
       const slots = database.authority.workerSlots.list(separationsDescriptor.id).filter(entry => entry.retiredAt === null);
-      const free = slots.find(slot => !database.authority.runs.listByWorker(slot.workerId).some(run =>
-        ["claimed", "validating", "running"].includes(run.lifecycle.state)));
+      const free = slots.find(slot => {
+        return !database.authority.runs.listByWorker(slot.workerId).some(run =>
+          ["claimed", "validating", "running"].includes(run.lifecycle.state));
+      });
       const poolIndex = free?.poolIndex ?? [1, 2, 3].find(index => !slots.some(slot => slot.poolIndex === index));
       assert.ok(poolIndex !== undefined, "history fixture has no unheld slot");
       if (free === undefined) testWorkerPorts(database, historyClock, { path, descriptor: separationsDescriptor, poolIndex });
@@ -53,8 +55,8 @@ export function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) 
       separationsDescriptor).state, "applied");
       return fixture;
     },
-    reopen() { database.close(); database = open(); },
-    dispose() { database.close(); rmSync(root, { recursive: true, force: true }); },
+    reopen() { releaseSeededWriteOwners(database, historyClock.now().toISOString()); database.close(); database = open(); },
+    async dispose() { releaseSeededWriteOwners(database, historyClock.now().toISOString()); database.close(); await admitted.profile.close(); },
   };
 }
 

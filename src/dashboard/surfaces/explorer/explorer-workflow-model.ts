@@ -4,7 +4,7 @@ import { initialMockDraft, type MockRun } from "../workflows/mocks/workflow-mock
 import { mockFieldValue, mockStepNode } from "../workflows/mocks/workflow-result-model.js";
 import { mockOperations, mockOperationValue } from "../workflows/mocks/workflow-operation-model.js";
 import { workflowPreviewGraph, type PreviewNode } from "../workflows/mocks/workflow-preview-contracts.js";
-import type { FieldSource, FlowField, FlowPart, FlowStep } from "./explorer-flow-model.js";
+import type { FieldSource, FlowField, FlowPart, FlowStep } from "../../../models/workflow/explorer-preview.js";
 import type { MockFlow } from "./explorer-mock-fixtures.js";
 
 type Choice = Readonly<{ key: string; label: string; options: readonly (readonly [string, string])[] }>;
@@ -21,7 +21,7 @@ export function workflowChoices(id: MockWorkflowId): readonly Choice[] {
     "fixture-onbase": [review, choice("keyset", "Employee Lookup keyset", [["found", "Employee found"], ["missing", "No match; required keywords missing"]]), rehearsal],
     "fixture-kronos-pay-rule": [choice("action", "Election decision", [["change", "Rule must change"], ["unchanged", "Current rule is correct"], ["missing", "Employee absent from tracker"]])],
     "fixture-ocr": [review, choice("form", "Form type", MOCK_FORM_TYPES.map(type => [type.value, type.label] as const))],
-    "fixture-i9-check": [choice("pair", "Packet identity", [["complete", "Section 1 and Section 2 paired"], ["missing", "Missing person identity"]])],
+    "fixture-i9-check-start": [choice("pair", "Packet identity", [["complete", "Section 1 and Section 2 paired"], ["missing", "Missing person identity"]])],
     "fixture-crm-doc-download": [choice("record", "CRM search result", [["found", "Record with attached PDFs"], ["empty", "Record without attachments"], ["missing", "No matching record"]])],
     "fixture-old-kronos-reports": [choice("pdf", "Report validation", [["valid", "PDF identity matches"], ["empty", "No data returned"], ["mismatch", "PDF identity mismatch"]])],
   };
@@ -47,6 +47,9 @@ export function workflowNodes(id: MockWorkflowId, values: WorkflowChoices): read
   if (key === "fixture-oath-signature" && values.input !== "pdf") nodes = nodes.filter(node => node.lane === "Per signer");
   if (key === "fixture-oath-upload" && values.mode === "upload-only") nodes = nodes.filter(node => node.id === "File ticket");
   if (key === "fixture-ocr") nodes = nodes.filter(node => node.id !== "Done");
+  // A host shows its hidden OCR child's read and match steps in place of the delegation node.
+  const hostedRead = workflowPreviewGraph("ocr").nodes.filter(node => node.id === "Read forms" || node.id === "Person lookup");
+  nodes = nodes.flatMap(node => node.delegatesTo === "fixture-ocr" ? hostedRead.map(item => ({ ...item, id: item.id === "Person lookup" ? "Match extracted people" : item.id, lane: node.lane })) : [node]);
   // A packet's terminal rollup follows its per-person lane, never precedes it.
   return [...nodes.filter(node => node.id !== "Rollup" && node.id !== "Report back"), ...nodes.filter(node => node.id === "Rollup" || node.id === "Report back")];
 }
@@ -68,7 +71,7 @@ export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): 
   let stopAfter: number | undefined;
   for (const [index, node] of nodes.entries()) {
     const number = index + 2;
-    const blocked = node.kind === "gate" && values.review !== "approved" || key === "fixture-oath-upload" && node.id === "Wait signatures" && values.signers !== "complete" || key === "fixture-onbase" && node.id === "Fill keywords" && values.keyset === "missing" || key === "fixture-kronos-pay-rule" && node.id === "CSV lookup" && values.action === "missing" || key === "fixture-crm-doc-download" && node.id === "Search record" && values.record === "missing" || key === "fixture-i9-check" && node.id === "OCR extraction" && values.pair === "missing" || key === "fixture-i9-lookup" && values.profile === "unavailable";
+    const blocked = node.kind === "gate" && values.review !== "approved" || key === "fixture-oath-upload" && node.id === "Wait signatures" && values.signers !== "complete" || key === "fixture-onbase" && node.id === "Fill keywords" && values.keyset === "missing" || key === "fixture-kronos-pay-rule" && node.id === "CSV lookup" && values.action === "missing" || key === "fixture-crm-doc-download" && node.id === "Search record" && values.record === "missing" || key === "fixture-i9-check-start" && node.id === "Read forms" && values.pair === "missing" || key === "fixture-i9-lookup" && values.profile === "unavailable";
     const skip = values.posture === "dry" && node.skippedInDryRun || key === "fixture-oath-signature" && node.id === "Sign oath" && values.existing === "present" || key === "fixture-kronos-pay-rule" && node.id === "Update pay rule" && values.action === "unchanged" || key === "fixture-crm-doc-download" && ["Download", "Archive"].includes(node.id) && values.record === "empty";
     const operation = operationStep(run, node);
     const blockedEvidence = key === "fixture-i9-lookup" && values.profile === "absent" || key === "fixture-old-kronos-reports" && values.pdf !== "valid";
@@ -96,7 +99,7 @@ export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): 
     });
     if (key === "fixture-ocr" && node.id === "Read forms") parts.push({ kind: "note", text: values.form === "i9" ? "Pair Section 1 and Section 2 identities for OCR review before downstream retention processing." : `Extract ${values.form === "oath" ? "printed name, Employee ID, signed date and signature flags" : "employee identity, contact name, relationship, phones and contact address"}. OCR owns corrections and approval; downstream workflows consume the approved record.` });
     if (key === "fixture-old-kronos-reports" && node.id === "Downloading") parts.push(action(values.pdf === "valid" ? "Retain the matching Time Detail PDF and append Done to the tracker." : "Delete the empty or mismatched PDF and append the explicit tracker outcome.", "read"));
-    steps.push({ number, title: node.id, system: node.delegatesTo === "fixture-ocr" || key === "fixture-ocr" && node.system === "i9" || key === "fixture-i9-check" && node.system === "i9" ? "OCR" : node.system ? systems[node.system] ?? "Local" : "Local", parts });
+    steps.push({ number, title: node.id, system: node.delegatesTo === "fixture-ocr" || key === "fixture-ocr" && node.system === "i9" || key === "fixture-i9-check-start" && node.system === "i9" ? "OCR" : node.system ? systems[node.system] ?? "Local" : "Local", parts });
     if (blocked && stopAfter === undefined) stopAfter = number;
   }
   return { steps, summary: graph.summary, path: { step: 1, control: controls.length ? `preview-workflow:${workflowChoices(id)[0].key}` : "explorer-step-1" }, stopAfter };
@@ -107,7 +110,7 @@ export function workflowContractSource(id: MockWorkflowId, values: WorkflowChoic
     const node = workflowNodes(id, values)[Number(operation[1])], run = previewRun(id, values), definition = node && operationStep(run, node);
     const group = definition && mockOperations(run, definition)[Number(operation[2])], row = group?.fields?.[Number(operation[3])];
     if (!row) throw new Error(`EXPLORER_OPERATION_SOURCE_MISSING: ${id}:${field.source}`);
-    return { origin: id === "work-study" && row[0] === "Effective date" ? "Operator effective date" : `${node.system ? systems[node.system] ?? node.system : "Local"} · ${group.label}`, detail: node.purpose,
+    return { origin: `${node.system ? systems[node.system] ?? node.system : "Local"} · ${group.label}`, detail: node.purpose,
       ...(group.verify ? { chain: [{ step, title: "Verify the result", detail: group.verify }] } : {}) };
   }
   const match = /^contract:(\d+):(\d+)$/u.exec(field.source ?? "");
@@ -115,7 +118,7 @@ export function workflowContractSource(id: MockWorkflowId, values: WorkflowChoic
   const nodes = workflowNodes(id, values), nodeIndex = Number(match[1]), node = nodes[nodeIndex], row = node?.contract[Number(match[2])];
   if (!row) throw new Error(`EXPLORER_SOURCE_MISSING: ${id}:${field.source}`);
   const readIndex = nodes.findIndex((item, index) => index < nodeIndex && item.contract.some(candidate => candidate.dir === "read" && candidate.field === row.field));
-  return { origin: readIndex < 0 ? id === "work-study" && row.field === "Effective date" ? "Operator effective date" : `${systems[row.system] ?? row.system} · ${node.id}` : undefined,
+  return { origin: readIndex < 0 ? `${systems[row.system] ?? row.system} · ${node.id}` : undefined,
     detail: `${node.purpose}${row.when ? ` Condition: ${row.when}.` : ""}`,
     ...(readIndex >= 0 ? { reads: [{ system: systems[nodes[readIndex].system ?? row.system] ?? "Local", page: nodes[readIndex].id, field: row.field, step: readIndex + 2, fieldId: `contract-${readIndex}-${nodes[readIndex].contract.findIndex(candidate => candidate.dir === "read" && candidate.field === row.field)}` }] } : {}),
     ...(row.proof ? { chain: [{ step, title: "Verify the result", detail: row.proof }] } : {}) };

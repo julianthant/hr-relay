@@ -23,7 +23,7 @@ export function ProtectedSettingField({ editor, name, description, controlWidth 
   const value = operation?.kind === "set" ? operation.raw : operation?.kind === "clear" ? "" : stored === undefined ? "" : formatSetting(stored.value);
   const disabled = credentials.locked || authority.state !== "available" || editor.readProblem !== undefined;
   const canRemove = stored !== undefined || operation?.kind === "set";
-  const visible = name === "ucpathUserId" || name === "timekeeperName";
+  const visible = name === "ucpathUserId";
   const label = name === "ucpathUserId" ? "UCPath username" : row.label;
   return <Field data-settings-path={`protected.${name}`} label={label} description={description} error={credentials.errors[name]}
     orientation="horizontal" controlWidth={controlWidth} className={className}

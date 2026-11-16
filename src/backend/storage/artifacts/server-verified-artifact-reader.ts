@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, unlink, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { ArtifactRefSchema, type ArtifactRef } from "../../../models/artifacts/artifacts.js";
 
 const IO_CHUNK_BYTES = 64 * 1024;

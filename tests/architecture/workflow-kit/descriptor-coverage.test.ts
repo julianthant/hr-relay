@@ -1,4 +1,3 @@
-
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,6 +7,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import {
   DESCRIPTORS,
+  CHILD_ONLY_WORKFLOW_MODULES,
   INTAKE_PROJECTIONS,
   SERVER_REGISTRY,
   WORKFLOW_MODULES,
@@ -36,7 +36,6 @@ import {
   TraceIdSchema,
 } from "../../../src/rules/identity/ids.js";
 import { defineIntakeProjection } from "../../../src/models/intake/projection.js";
-import { BUILD_MANIFEST, BUILD_MANIFEST_PATH } from "../../../src/workflow-kit/validation/build-manifest.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import {
   ICON_NAMES,
@@ -47,13 +46,7 @@ import {
   WorkflowModuleRoleSchema,
   defineWorkflowRole,
 } from "../../../src/workflow-kit/validation/module-role.js";
-import {
-  auditBuildManifestBytes,
-  collectSourceClosure,
-  computeBuildManifest,
-  fingerprintSourceSet,
-  renderBuildManifestModule,
-} from "../../../scripts/build/workflow-build-manifest.js";
+import { collectSourceClosure } from "../../../scripts/build/workflow-source.js";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { FixtureReadReceipt, fixtureDescriptor } from "../../support/fixtures/descriptor-fixtures.js";
 import {
@@ -64,18 +57,11 @@ import {
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 import { workflowSourcePath } from "../../../src/workflow-kit/validation/source-layout.js";
 
-const ALL: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, fixtureDescriptor];
+const ALL: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), fixtureDescriptor];
 
 /** Roots a descriptor module may VALUE-import. Type-only imports are exempt (§1.4 #6). */
 
 const BUNDLE_SAFE_ROOTS = ["src/models/", "src/rules/", "src/workflow-kit/", "src/workflows/"];
-
-let currentBuildManifest: ReturnType<typeof computeBuildManifest> | undefined;
-
-function computeCurrentBuildManifest(): ReturnType<typeof computeBuildManifest> {
-  currentBuildManifest ??= computeBuildManifest(REPO_ROOT);
-  return currentBuildManifest;
-}
 
 function valueImportSpecifiers(path: string, content: string): readonly string[] {
   const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -117,7 +103,7 @@ function bundleViolations(entry: string, root = REPO_ROOT): readonly string[] {
 
 describe("descriptor coverage", () => {
   it("keeps ids, codes, and icons unique and closed across every registered descriptor", () => {
-    const ids = ALL.map(({ id }) => String(id));
+    const ids = [...ALL, ...STEP_PROOF_MODULES.map(module => module.descriptor)].map(({ id }) => String(id));
     const codes = ALL.map(({ code }) => code);
     assert.equal(new Set(ids).size, ids.length, "workflow ids must be unique");
     assert.equal(new Set(codes).size, codes.length, "trace codes must be unique");
@@ -140,7 +126,7 @@ describe("descriptor coverage", () => {
 
 
   it("declares one role per module, every chunk harness naming a registered composition", () => {
-    const roleSpecimens = [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
+    const roleSpecimens = [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
     assert.deepEqual(auditWorkflowModuleRoles(roleSpecimens), []);
     for (const module of roleSpecimens) {
       assert.ok(
@@ -155,7 +141,7 @@ describe("descriptor coverage", () => {
     );
 
     const harness = STEP_PROOF_MODULES[0];
-    const composition = WORKFLOW_MODULES.find((module) => module.role.kind === "composition");
+    const composition = WORKFLOW_MODULES.find((module) => harness?.role.kind === "chunk-harness" && module.descriptor.id === harness.role.of);
     if (harness === undefined || composition === undefined) {
       throw new Error("the role fixtures require one retained step proof and one composition");
     }
@@ -186,9 +172,9 @@ describe("descriptor coverage", () => {
 
   // A harness role names both its composition and the step that owns its address.
   it("refuses a chunk harness whose step its composition does not declare", () => {
-    const roleSpecimens = [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
+    const roleSpecimens = [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
     const harness = STEP_PROOF_MODULES[0];
-    const composition = WORKFLOW_MODULES.find((module) => module.role.kind === "composition");
+    const composition = WORKFLOW_MODULES.find((module) => harness?.role.kind === "chunk-harness" && module.descriptor.id === harness.role.of);
     if (harness === undefined || composition === undefined) {
       throw new Error("the role fixtures require one retained step proof and one composition");
     }
@@ -200,9 +186,13 @@ describe("descriptor coverage", () => {
     assert.deepEqual(auditWorkflowModuleRoles(roleSpecimens), []);
     for (const module of roleSpecimens) {
       if (module.role.kind !== "chunk-harness") continue;
+      const role = module.role;
+      const owner = [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES].find(candidate => candidate.descriptor.id === role.of);
+      assert.ok(owner !== undefined, `${String(module.descriptor.id)} requires its registered composition`);
+      assert.equal(owner.role.kind, "composition");
       assert.ok(
-        declaredKeys.includes(module.role.step),
-        `${String(module.descriptor.id)} must name a step ${compositionId} declares`,
+        owner.descriptor.timeline.map(({ key }) => key).includes(role.step),
+        `${String(module.descriptor.id)} must name a step ${String(role.of)} declares`,
       );
     }
 
@@ -220,9 +210,9 @@ describe("descriptor coverage", () => {
     assert.match(unknownStep.join("\n"), new RegExp(declaredKeys[0] ?? "unreachable"));
 
 
-    const originalStandalone = WORKFLOW_MODULES.find((module) => module.role.kind === "standalone");
-    const standalone = originalStandalone === undefined ? undefined : { ...originalStandalone, descriptor: { ...originalStandalone.descriptor, timelineDeclared: false } };
-    if (standalone === undefined) throw new Error("the role fixtures require one standalone workflow");
+    const original = WORKFLOW_MODULES[0];
+    if (original === undefined) throw new Error("the no-timeline fixture requires one registered workflow");
+    const standalone = { ...original, role: defineWorkflowRole({ kind: "standalone" }), descriptor: { ...original.descriptor, timelineDeclared: false } };
     const derivedKey = standalone.descriptor.timeline[0]?.key;
     const standaloneNodeIds = standalone.descriptor.nodes.map((node) => String(node.id));
     assert.ok(
@@ -344,7 +334,7 @@ describe("descriptor coverage", () => {
   });
 
   it("keeps every descriptor module's value-import closure bundle-safe", () => {
-    for (const module of WORKFLOW_MODULES) {
+    for (const module of [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES]) {
 
       const entry = workflowSourcePath(String(module.descriptor.id), module.role);
       assert.deepEqual(bundleViolations(entry), [], entry);
@@ -384,65 +374,6 @@ describe("descriptor coverage", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
-
-  it("keeps the checked-in build manifest current", () => {
-    const regenerated = computeCurrentBuildManifest();
-    assert.deepEqual(regenerated, BUILD_MANIFEST, "run `npm run build:manifest` and commit the result");
-    for (const descriptor of DESCRIPTORS) {
-      const entry = regenerated.workflows.find(({ id }) => id === descriptor.id);
-      assert.ok(entry, `${String(descriptor.id)} has no manifest entry`);
-      assert.equal(entry.fingerprint, descriptor.contractFingerprint);
-      assert.ok(entry.sources.length > 1, "a fingerprint over one file is not a closure");
-    }
-    assert.deepEqual(
-      regenerated.tasks.map(({ id }) => String(id)).sort(),
-      taskStoreRegistry.stores
-        .flatMap((store) => Object.values(store.tasks).map((task) => String(task.contract.id)))
-        .sort(),
-      "every bound task must have exactly one implementation fingerprint",
-    );
-  });
-
-  it("fails on manifest BYTE drift the parsed comparison structurally cannot see", () => {
-    const manifest = computeCurrentBuildManifest();
-    const onDisk = readFileSync(join(REPO_ROOT, BUILD_MANIFEST_PATH), "utf8");
-    assert.deepEqual(auditBuildManifestBytes(onDisk, manifest), [], BUILD_MANIFEST_PATH);
-
-
-    const reformatted = renderBuildManifestModule(manifest)
-      .replace("export const GENERATED_BUILD_MANIFEST = {", "export const GENERATED_BUILD_MANIFEST =  {")
-      .replace("/** Generated by npm run build:manifest; do not edit by hand. */", "/** Generated. */");
-    assert.notEqual(reformatted, renderBuildManifestModule(manifest));
-    assert.deepEqual(manifest, BUILD_MANIFEST, "the parsed arm cannot observe the reformatting");
-    assert.match(auditBuildManifestBytes(reformatted, manifest).join("\n"), /is stale on disk/);
-
-    // A truncated file is byte drift too — the failure must name the artifact
-    // and the command, not just report inequality.
-    assert.match(
-      auditBuildManifestBytes("", manifest).join("\n"),
-      /generated-build-manifest\.ts is stale on disk.*npm run build:manifest/su,
-    );
-
-
-    const pkg = z.object({ scripts: z.record(z.string(), z.string()) })
-      .parse(JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")));
-    assert.match(pkg.scripts["build:manifest:check"] ?? "", /generate-workflow-manifest\.ts --check/);
-  });
-
-  it("changes a browser-task fingerprint when its driver interpreter closure changes", () => {
-    const regenerated = computeCurrentBuildManifest();
-    const task = regenerated.tasks.find(({ id }) => id === "crm/read-onboarding-record");
-    assert.ok(task, "CRM onboarding task has no implementation fingerprint");
-    const driverPath = "src/backend/systems/crm/driver/interpreter.ts";
-    assert.ok(task.sources.some(({ path }) => path === driverPath));
-    const mutatedSources = task.sources.map((source) => source.path === driverPath
-      ? { ...source, sha256: FingerprintSchema.parse("0".repeat(64)) }
-      : source);
-    assert.notEqual(
-      fingerprintSourceSet(regenerated.toolchain, task.id, mutatedSources),
-      task.fingerprint,
-    );
   });
 
   it("tracks every unbound contract explicitly, in both directions", () => {

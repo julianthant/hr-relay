@@ -24,11 +24,13 @@ const PLAN_TTL_MS = 10 * 60 * 1000;
 const PERSON_EID_MATCH_KEY = "eid:10873698";
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
+const profiles: { close(): Promise<void> }[] = [];
 
-const { openDatabase, plannerDeps, baseRequest } = createPersonLookupStartFixtures(roots, databases, CLOCK, PLAN_TTL_MS);
+const { openDatabase, plannerDeps, baseRequest } = createPersonLookupStartFixtures(roots, databases, profiles, CLOCK, PLAN_TTL_MS);
 
-afterEach(() => {
+afterEach(async () => {
   while (databases.length > 0) databases.pop()?.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   while (roots.length > 0) {
     const root = roots.pop();
     if (root !== undefined) rmSync(root, { recursive: true, force: true });
@@ -37,8 +39,8 @@ afterEach(() => {
 
 describe("start planning", () => {
 
-  it("buildQueuedRun carries stepOmissions onto the run envelope byte for byte", () => {
-    const database = openDatabase();
+  it("buildQueuedRun carries stepOmissions onto the run envelope byte for byte", async () => {
+    const database = await openDatabase();
     const itemId = deriveItemId("person-lookup", PERSON_EID_MATCH_KEY);
     const stepOmissions = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/19/2026" } }];
     const withOmissions = buildQueuedRun({
@@ -93,8 +95,8 @@ describe("start planning", () => {
     assert.equal(Object.hasOwn(withoutOmissions.envelope, "stepOmissions"), false);
   });
 
-  it("refuses a submission whose logical item already has an active run", () => {
-    const database = openDatabase();
+  it("refuses a submission whose logical item already has an active run", async () => {
+    const database = await openDatabase();
     const itemId = deriveItemId("person-lookup", PERSON_EID_MATCH_KEY);
     database.authority.runs.enqueue(buildQueuedRun({
       descriptor: personLookupDescriptor,
@@ -165,8 +167,8 @@ describe("start plan consumption", () => {
     };
   }
 
-  it("consumes a matching plan exactly once and treats the same command as idempotent", () => {
-    const database = openDatabase();
+  it("consumes a matching plan exactly once and treats the same command as idempotent", async () => {
+    const database = await openDatabase();
     const plan = storedPlan(database);
     const first = database.authority.startPlans.consume(consumeRequest(plan));
     assert.equal(first.state, "consumed");
@@ -194,14 +196,14 @@ describe("start plan consumption", () => {
     assert.equal(other.code, "spent");
   });
 
-  it("round-trips the exact raw and canonical ingress authority through SQLite", () => {
-    const database = openDatabase();
+  it("round-trips the exact raw and canonical ingress authority through SQLite", async () => {
+    const database = await openDatabase();
     const plan = storedPlan(database);
     assert.deepEqual(database.authority.startPlans.get(plan.startPlanId), plan);
   });
 
-  it("refuses a plan whose descriptor, config, schema, or confirmation has since changed", () => {
-    const database = openDatabase();
+  it("refuses a plan whose descriptor, config, schema, or confirmation has since changed", async () => {
+    const database = await openDatabase();
     const plan = storedPlan(database);
     for (const field of [
       "descriptorFingerprint",
@@ -217,8 +219,8 @@ describe("start plan consumption", () => {
     }
   });
 
-  it("binds consumption to the pre-consume plan revision while preserving exact replay idempotency", () => {
-    const database = openDatabase();
+  it("binds consumption to the pre-consume plan revision while preserving exact replay idempotency", async () => {
+    const database = await openDatabase();
     const plan = storedPlan(database);
     const stale = database.authority.startPlans.consume(consumeRequest(plan, {
       expectedVersion: plan.version + 1,
@@ -235,8 +237,8 @@ describe("start plan consumption", () => {
     assert.equal(replay.state, "already-consumed");
   });
 
-  it("refuses an expired confirmation rather than starting it late", () => {
-    const database = openDatabase();
+  it("refuses an expired confirmation rather than starting it late", async () => {
+    const database = await openDatabase();
     const plan = storedPlan(database);
     const outcome = database.authority.startPlans.consume(consumeRequest(plan, {
       now: new Date(Date.parse(NOW) + PLAN_TTL_MS + 1000).toISOString(),
@@ -246,8 +248,8 @@ describe("start plan consumption", () => {
     assert.equal(outcome.code, "expired");
   });
 
-  it("leaves a plan unspent when an outer authority transaction rolls back after consume", () => {
-    const database = openDatabase();
+  it("leaves a plan unspent when an outer authority transaction rolls back after consume", async () => {
+    const database = await openDatabase();
     const plan = storedPlan(database);
     assert.throws(() => database.withAuthorityTransaction(() => {
       const consumed = database.authority.startPlans.consume(consumeRequest(plan));

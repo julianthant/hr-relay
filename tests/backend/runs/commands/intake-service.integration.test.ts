@@ -1,3 +1,7 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
+import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
+import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { readXlsx } from "@shbernal/ts-xlsx";
 import { composeIntake } from "../../../../src/backend/app/composition/dashboard/intake.js";
 import { readArtifactBytes } from "../../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
@@ -7,17 +11,17 @@ import { CommandResultSchema } from "../../../../src/rules/commands/commands.js"
 import JSZip from "jszip";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/rules/identity/ids.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,readFileSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync,rmSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
-import { descriptorSetHash } from "../../../../src/backend/app/composition/dashboard/compose.js";
-import { createIntakeParser } from "../../../../src/backend/processing/spreadsheet/intake-parser.js";
+import { afterAll,afterEach,describe,it } from "vitest";
+import { z } from "zod";
+import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { createIntakeParser, type PreparedIntakeParser } from "../../../../src/backend/processing/spreadsheet/intake-parser.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createDashboardCommandService } from "../../../../src/backend/runs/commands/command-service.js";
 import {
@@ -51,11 +55,13 @@ const ROSTER_CSV = [
   "",
 ].join("\n");
 
-const roots: string[] = [];
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+const profiles: BoundProfileStorageFixture[] = [];
 const openDatabases: AuthorityDatabase[] = [];
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) await profile.close();
 });
 
 let commandSequence = 0;
@@ -68,6 +74,7 @@ interface Surface {
   readonly root: string;
   readonly freshIntake: (missingManifest?: boolean) => IntakeService;
   readonly intake: IntakeService;
+  readonly commands: ReturnType<typeof createDashboardCommandService>;
   readonly database: AuthorityDatabase;
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
   readonly projection: ReturnType<typeof createRunQueueProjection>;
@@ -80,9 +87,9 @@ interface Surface {
   ) => Promise<{ readonly state: string }>;
 }
 
-function surface(): Surface {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-intake-surface-"));
-  roots.push(root);
+async function surface(parserFor?: (artifacts: Surface["artifacts"]) => PreparedIntakeParser): Promise<Surface> {
+  const profile = await profileFixtures.create(); profiles.push(profile);
+  const root = profile.stateRoot;
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
     { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "intake-surface-test" },
@@ -93,9 +100,9 @@ function surface(): Surface {
 
 
   const artifacts = createContentAddressedArtifactWriter({
-    admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts")),
+    admission: profile.admission,
   });
-  const parser = createIntakeParser({ artifacts });
+  const parser = parserFor?.(artifacts) ?? createIntakeParser({ artifacts });
   const projections = {
     resolve: (workflowId: string) =>
       (workflowId === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined),
@@ -135,24 +142,16 @@ function surface(): Surface {
     configIdentity: { configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: UUID_1 },
     descriptors,
     writeResolution: {
-      resolvePresent: () => { throw new Error("unused"); },
+      recheck: () => { throw new Error("unused"); },
       resolveAbsent: () => { throw new Error("unused"); },
     },
-    workerRuntime: { pool: {
-      planPoolWorkerCount: async () => { throw new Error("unused worker plan"); },
-      spawnPoolWorker: async () => { throw new Error("unused worker spawn"); },
-      refreshPoolBrowser: async () => { throw new Error("unused browser refresh"); },
-      reopenPoolBrowser: async () => { throw new Error("unused browser reopen"); },
-      stopPoolWorker: async () => { throw new Error("unused worker stop"); },
-      pausePoolWorker: async () => { throw new Error("unused worker pause"); },
-      resumePoolWorker: async () => { throw new Error("unused worker resume"); },
-    } },
+    workerRuntime: { pool: unusedWorkerPool() },
     intakeParser: parser,
     intakeProjections: projections,
   });
 
 
-  const stateRoot = join(root, ".tracker");
+  const stateRoot = root;
   const projection = createRunQueueProjection({
     timeline: database.authority.timelineEvents,
     reader: sqliteRunReader(database, clock),
@@ -162,10 +161,11 @@ function surface(): Surface {
     descriptorSetHash: descriptorSetHash([intakeFixtureDescriptor.contractFingerprint]),
     ledger: createTransactionHistory(database.authority),
     authority: {
+      queueParents: envelopes => database.authority.dependencies.parents(envelopes),
       listNotifications: () => [],
       listNotificationCheckpoints: () => [],
-      listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-      getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
+      listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
+      listGateResults: runId => database.authority.gateResults.listByRun(runId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
@@ -192,6 +192,7 @@ function surface(): Surface {
         getIntakeManifest: (id) => missingManifest ? undefined : intakeDependencies.authorityRead.getIntakeManifest(id),
       } }),
     intake,
+    commands,
     artifacts,
     database,
     projection,
@@ -225,9 +226,28 @@ async function uploadRoster(intake: IntakeService) {
   return outcome;
 }
 
+
+const CommandRowSchema = z.strictObject({
+  state: z.enum(["admitted", "executing", "succeeded", "refused", "uncertain"]),
+});
+const AuditCountSchema = z.strictObject({
+  count: z.union([z.number().int().nonnegative(), z.bigint()]),
+});
+
+function commandRow(path: string, id: string): { state: z.infer<typeof CommandRowSchema>["state"]; audits: number } {
+  const raw = new DatabaseSync(path, { readOnly: true });
+  try {
+    const row = CommandRowSchema.parse(raw.prepare("SELECT state FROM commands WHERE id = ?").get(id));
+    const count = AuditCountSchema.parse(raw.prepare("SELECT count(*) AS count FROM command_audits WHERE command_id = ?").get(id));
+    return { state: row.state, audits: Number(count.count) };
+  } finally {
+    raw.close();
+  }
+}
+
 describe("intake upload route", () => {
   it("creates a mapping session with discovery already run over the real file", async () => {
-    const { intake, database } = surface();
+    const { intake, database } = await surface();
     const created = await uploadRoster(intake);
     assert.equal(created.state, "created");
 
@@ -251,7 +271,7 @@ describe("intake upload route", () => {
   });
 
   it("proposes bindings as hints and applies none of them", async () => {
-    const { intake } = surface();
+    const { intake } = await surface();
     const wire = (await uploadRoster(intake)).session;
     assert.deepEqual(wire.bindings, []);
     const eidSuggestions = wire.suggestions.filter((entry) => String(entry.targetFieldId) === "emplId");
@@ -267,7 +287,7 @@ describe("intake upload route", () => {
   });
 
   it("joins the open session when the same bytes are uploaded again", async () => {
-    const { intake } = surface();
+    const { intake } = await surface();
     const first = await uploadRoster(intake);
     const second = await uploadRoster(intake);
     assert.equal(second.state, "joined");
@@ -275,7 +295,7 @@ describe("intake upload route", () => {
   });
 
   it("refuses a file the grid edge cannot read, and mints no session", async () => {
-    const { intake, database } = surface();
+    const { intake, database } = await surface();
     const blank = "\n\n\n";
     const outcome = await intake.upload({
       workflow: INTAKE_FIXTURE_WORKFLOW_ID,
@@ -291,7 +311,7 @@ describe("intake upload route", () => {
   });
 
   it("refuses a media type the grid edge does not read, an empty body, and an oversize one", async () => {
-    const { intake } = surface();
+    const { intake } = await surface();
     await assert.rejects(() => intake.upload({
       workflow: INTAKE_FIXTURE_WORKFLOW_ID,
       mediaType: "application/pdf",
@@ -313,7 +333,7 @@ describe("intake upload route", () => {
   });
 
   it("refuses a workflow that declares no intake projection", async () => {
-    const { intake } = surface();
+    const { intake } = await surface();
     await assert.rejects(
       () => intake.upload({
         workflow: "person-lookup",
@@ -328,7 +348,7 @@ describe("intake upload route", () => {
 
 describe("intake session wire", () => {
   it("serves the re-derived validation dispositions against the retained readAt", async () => {
-    const { intake, send } = surface();
+    const { intake, send } = await surface();
     const created = await uploadRoster(intake);
     const sessionId = created.session.intakeSessionId;
     const headerFingerprint = created.session.headerFingerprint;
@@ -362,7 +382,7 @@ describe("intake session wire", () => {
   });
 
   it("re-derives an excluded row out of the valid set without storing a single row", async () => {
-    const { intake, send, database } = surface();
+    const { intake, send, database } = await surface();
     const created = await uploadRoster(intake);
     const sessionId = created.session.intakeSessionId;
     const headerFingerprint = created.session.headerFingerprint;
@@ -402,7 +422,7 @@ describe("intake session wire", () => {
   });
 
   it("fails loud on a session that does not exist", async () => {
-    const { intake } = surface();
+    const { intake } = await surface();
     await assert.rejects(
       () => intake.read("11111111-1111-4111-8111-111111111111"),
       /does not exist/,
@@ -450,7 +470,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   }
 
   it("reserves one manifest identity at upload and consumes it unchanged at enqueue", async () => {
-    const harness = surface();
+    const harness = await surface();
     const created = await uploadRoster(harness.intake);
     const reservedManifestId = created.session.reservedManifestId;
     assert.notEqual(reservedManifestId, undefined, "the durable upload session reserves its manifest identity");
@@ -486,7 +506,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("serves no rerun view for a file that has never been enqueued", async () => {
-    const { intake } = surface();
+    const { intake } = await surface();
     const created = await uploadRoster(intake);
     assert.equal(created.session.rerun, undefined);
     assert.equal(Object.hasOwn(created.session, "comparisonManifestId"), false);
@@ -495,7 +515,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("puts every enqueued row on the queue surface under the workflow's own title", async () => {
-    const harness = surface();
+    const harness = await surface();
     const sessionId = await runTheRoster(harness);
     const manifestId = (await harness.intake.read(sessionId)).intakeManifestId;
     if (manifestId === undefined) throw new Error("the enqueued session names no manifest");
@@ -521,7 +541,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("serves the manifest and a same-plan diff on the session that enqueued it", async () => {
-    const harness = surface();
+    const harness = await surface();
     const sessionId = await runTheRoster(harness);
     const wire = await harness.intake.read(sessionId);
     assert.equal(wire.state, "enqueued");
@@ -533,7 +553,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("binds each terminal reread to that session's exact manifest after a newer same-source run", async () => {
-    const harness = surface();
+    const harness = await surface();
     const sessionA = await runTheRoster(harness);
     const manifestA = (await harness.intake.read(sessionA)).intakeManifestId;
     if (manifestA === undefined) throw new Error("session A did not name its manifest");
@@ -553,7 +573,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("serves the explicit comparison decision even when the implicit rerun was already the same manifest", async () => {
-    const harness = surface();
+    const harness = await surface();
     const completed = await runTheRoster(harness);
     const manifestId = (await harness.intake.read(completed)).intakeManifestId;
     assert.ok(manifestId);
@@ -572,7 +592,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("selects its sole eligible manifest while excluding its reservation and a future manifest", async () => {
-    const harness = surface();
+    const harness = await surface();
     const sessionA = await runTheRoster(harness);
     const manifestAId = (await harness.intake.read(sessionA)).intakeManifestId;
     if (manifestAId === undefined) throw new Error("session A did not name its manifest");
@@ -601,7 +621,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("selects the uniquely latest eligible manifest for an open session", async () => {
-    const harness = surface();
+    const harness = await surface();
     const sessionA = await runTheRoster(harness);
     const manifestAId = (await harness.intake.read(sessionA)).intakeManifestId;
     if (manifestAId === undefined) throw new Error("session A did not name its manifest");
@@ -622,7 +642,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("refuses an open session whose latest eligible manifests have the same creation time", async () => {
-    const harness = surface();
+    const harness = await surface();
     const sessionA = await runTheRoster(harness);
     const manifestAId = (await harness.intake.read(sessionA)).intakeManifestId;
     if (manifestAId === undefined) throw new Error("session A did not name its manifest");
@@ -655,7 +675,7 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
   });
 
   it("shows the mapping axis moving when the same bytes are mapped differently", async () => {
-    const harness = surface();
+    const harness = await surface();
     const first = await runTheRoster(harness);
     assert.equal((await harness.intake.read(first)).state, "enqueued");
 
@@ -685,9 +705,9 @@ describe("rerun diff recognizes these exact previously submitted bytes", () => {
 
 describe("2.6.1-2 retained intake evidence", () => {
   it("cold rereads preserve exact source bytes, manifest and database generation", async () => {
-    const h = surface(); const sessionId = await runTheRoster(h);
+    const h = await surface(); const sessionId = await runTheRoster(h);
     const before = await h.intake.read(sessionId);
-    const file = join(h.root, ".tracker/data/artifacts", `${before.artifact.sha256}.artifact`);
+    const file = join(h.root, "artifacts", `${before.artifact.sha256}.artifact`);
     const bytes = readFileSync(file); const generation = h.database.getMeta().authorityGeneration;
     const session = h.database.authority.intakeSessions.get(sessionId);
     const fresh = await h.freshIntake().read(sessionId);
@@ -697,7 +717,7 @@ describe("2.6.1-2 retained intake evidence", () => {
     assert.equal(h.database.getMeta().authorityGeneration, generation);
   });
   it("refuses missing exact manifest linkage instead of finding a newer manifest", async () => {
-    const h = surface(); const sessionId = await runTheRoster(h);
+    const h = await surface(); const sessionId = await runTheRoster(h);
     const before = await h.intake.read(sessionId); const generation = h.database.getMeta().authorityGeneration;
     assert.ok(before.intakeManifestId);
     await assert.rejects(() => h.freshIntake(true).read(sessionId), /names missing manifest/u);
@@ -705,9 +725,9 @@ describe("2.6.1-2 retained intake evidence", () => {
     assert.deepEqual(await h.intake.read(sessionId), before);
   });
   it("a cold read refuses removed artifact bytes without an empty or cached replacement", async () => {
-    const h = surface(); const sessionId = await runTheRoster(h);
+    const h = await surface(); const sessionId = await runTheRoster(h);
     const before = await h.intake.read(sessionId); const generation = h.database.getMeta().authorityGeneration;
-    rmSync(join(h.root, ".tracker/data/artifacts", `${before.artifact.sha256}.artifact`));
+    rmSync(join(h.root, "artifacts", `${before.artifact.sha256}.artifact`));
     await assert.rejects(() => h.freshIntake().read(sessionId), /ENOENT/u);
     assert.equal(h.database.getMeta().authorityGeneration, generation);
     assert.equal(h.database.authority.intakeSessions.get(sessionId)?.artifact.sha256, before.artifact.sha256);
@@ -718,13 +738,13 @@ describe("2.6.1-2 retained intake evidence", () => {
 
 describe("saved workbook intake bridge", () => {
   it("retains immutable workbook provenance, all sheets and data, joins only exact sources, and refuses stale versions", async () => {
-    const h = surface();
-    const library = createWorkbookLibraryService({ repository: h.database.authority.workbooks, clock: h.clock });
+    const h = await surface();
+    const library = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: h.database.authority.workbooks, clock: h.clock });
     const first = library.create({ name: "Roster.xlsx", themes: [], hasFormulas: false, sheets: [
       { id: "roster", name: "Roster", width: 2, hidden: [], headerRow: 1, sourceHeaderRow: 7,
         columnBindings: [{ id: "eid", sourceColumn: 4, sourceHeader: "Original EID", fieldId: "eid", basis: "manual" }, { id: "date", sourceColumn: null, sourceHeader: "Added date", fieldId: "roster.notes", basis: "manual" }],
-        rows: [{ id: "head", cells: [{ value: "Employee ID#" }, { value: "Effective Date" }] }, { id: "data", cells: [{ value: "10456712" }, { value: new Date("2026-07-01T00:00:00.000Z") }] }] },
-      { id: "other", name: "Other", width: 1, hidden: [], rows: [{ id: "other-head", cells: [{ value: "Name" }] }, { id: "other-data", cells: [{ value: "Example Person" }] }] },
+        rows: [{ id: "head", cells: [{ value: "Employee ID#" }, { value: "Effective Date" }] }, { id: "data", cells: [{ value: "10456712", hyperlink: "https://example.com/employee", tooltip: "Employee" }, { value: new Date("2026-07-01T00:00:00.000Z"), numFmt: "mm/dd/yyyy" }] }] },
+      { id: "other", name: "Other", width: 1, hidden: [], rows: [{ id: "other-head", cells: [{ value: "Name" }] }, { id: "other-data", cells: [{ value: "Example Person", richText: [{ text: "Example ", font: { bold: true } }, { text: "Person" }] }] }] },
     ] });
     const bridge = createWorkbookIntakeBridge(library, h.intake);
     const request = { expectedVersion: 1, workflowId: INTAKE_FIXTURE_WORKFLOW_ID };
@@ -736,7 +756,14 @@ describe("saved workbook intake bridge", () => {
     assert.equal(result.session.headerRowIndex, 0); assert.deepEqual(result.session.bindings, []);
     assert.deepEqual(result.session.columns.map(column => column.samples), [["10456712"], ["2026-07-01"]]);
     const bytes = await readArtifactBytes(() => h.artifacts.open(result.session.artifact));
+    const preserved = readXlsx(Uint8Array.from(bytes));
+    assert.equal(preserved.worksheets[0].getCell('A2').value, '10456712');
+    assert.equal(preserved.worksheets[0].hyperlinkAt('A2')?.target, 'https://example.com/employee');
+    assert.equal(preserved.worksheets[0].getCell('B2').numFmt, 'mm/dd/yyyy');
+    assert.deepEqual(preserved.worksheets[1].getCell('A2').value, { richText: [{ text: 'Example ', font: { bold: true } }, { text: 'Person' }] });
     const zip = await JSZip.loadAsync(bytes);
+    const sheetXml = await zip.file('xl/worksheets/sheet1.xml')?.async('string');
+    assert.match(sheetXml ?? '', /<hyperlink[^>]+tooltip="Employee"/u);
     for (const entry of Object.values(zip.files)) assert.equal(entry.date.toISOString(), first.savedAt);
     const generation = h.database.getMeta().authorityGeneration;
     const joined = await bridge(first.libraryId, request); assert.equal(joined.state, "joined");
@@ -745,10 +772,10 @@ describe("saved workbook intake bridge", () => {
     await h.send(result.session.intakeSessionId, result.session.expectedVersion, "inspect-intake", { sheet: "Roster", headerRowIndex: 0 });
     assert.deepEqual((await h.intake.read(result.session.intakeSessionId)).workbookSource, result.session.workbookSource);
     await assert.rejects(h.intake.upload({ workflow: INTAKE_FIXTURE_WORKFLOW_ID, fileName: "Raw.xlsx", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes }), { code: "WORKBOOK_INTAKE_SOURCE_CONFLICT" });
-    const ordinary = surface();
+    const ordinary = await surface();
     const raw = await ordinary.intake.upload({ workflow: INTAKE_FIXTURE_WORKFLOW_ID, fileName: "Raw.xlsx", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes });
     if (raw.state === "refused") throw new Error(raw.message);
-    const ordinaryLibrary = createWorkbookLibraryService({ repository: ordinary.database.authority.workbooks, clock: ordinary.clock });
+    const ordinaryLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: ordinary.database.authority.workbooks, clock: ordinary.clock });
     const other = ordinaryLibrary.create({ ...first.workbook, libraryId: undefined });
     const ordinaryGeneration = ordinary.database.getMeta().authorityGeneration;
     await assert.rejects(createWorkbookIntakeBridge(ordinaryLibrary, ordinary.intake)(other.libraryId, request), { code: "WORKBOOK_INTAKE_SOURCE_CONFLICT" });
@@ -757,7 +784,7 @@ describe("saved workbook intake bridge", () => {
     h.database.close();
     const reopened = AuthorityDatabase.open({ path: join(h.root, "state.db"), busyTimeoutMs: 250, migrationOwner: "bridge-restart" }, h.clock);
     try {
-      const restartedLibrary = createWorkbookLibraryService({ repository: reopened.authority.workbooks, clock: h.clock });
+      const restartedLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: reopened.authority.workbooks, clock: h.clock });
       const restartedIntake = composeIntake({ database: reopened, artifacts: h.artifacts, parser: createIntakeParser({ artifacts: h.artifacts }),
         projections: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined },
         descriptors: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureDescriptor : undefined }, clock: h.clock, ids: sequentialIdFactory("f") });
@@ -776,12 +803,15 @@ describe("saved workbook intake bridge", () => {
       await assert.rejects(restartedBridge(first.libraryId, { ...request, expectedVersion: second.version }), { code: "WORKBOOK_INTAKE_SOURCE_CONFLICT" });
       assert.equal(reopened.getMeta().authorityGeneration, beforeConflict);
       assert.equal(reopened.authority.intakeSessions.findActiveBySource(result.session.artifact.sha256).length, 1);
-      assert.deepEqual(restartedLibrary.history(first.libraryId)[0].workbook, first.workbook);
+      assert.deepEqual(restartedLibrary.revision(first.libraryId, 1), first);
+      assert.deepEqual(reopened.authority.workbooks.creation(first.libraryId), first);
+      assert.deepEqual(restartedLibrary.read(first.libraryId), second);
+      assert.deepEqual(restartedLibrary.history(first.libraryId), []);
     }
     finally { reopened.close(); }
   });
   it("reads only the actual recorded intake request and result for its exact session without effects", async () => {
-    const h = surface(), id = (await uploadRoster(h.intake)).session.intakeSessionId;
+    const h = await surface(), id = (await uploadRoster(h.intake)).session.intakeSessionId;
     const outcome = CommandResultSchema.parse(await h.send(id, 1, "inspect-intake", { sheet: "default", headerRowIndex: 1 }));
     const query = createIntakeCommandResultQuery(h.database);
     const generation = h.database.getMeta().authorityGeneration;
@@ -793,5 +823,64 @@ describe("saved workbook intake bridge", () => {
     assert.deepEqual(query(id, commandId()), { state: "unavailable" });
     assert.deepEqual(query(id, UUID_1), { state: "unavailable" });
     assert.equal(h.database.getMeta().authorityGeneration, generation);
+  });
+});
+
+describe("admitted intake preparation", () => {
+  it("prepares an admitted inspect again on a fresh parser, and skips settled or divergent commands", async () => {
+    const seen = { prepares: 0, failParse: false };
+    let backing: PreparedIntakeParser | undefined;
+    const harness = await surface((artifacts) => {
+      backing = createIntakeParser({ artifacts });
+      return {
+        async prepare(key) {
+          seen.prepares += 1;
+          const parser = backing;
+          assert.ok(parser);
+          return parser.prepare(key);
+        },
+        parse(key) {
+          if (seen.failParse) throw new Error("injected intake parse failure");
+          const parser = backing;
+          assert.ok(parser);
+          return parser.parse(key);
+        },
+      };
+    });
+    const created = await uploadRoster(harness.intake);
+    assert.equal(created.state, "created");
+    if (created.state !== "created") return;
+    const command = {
+      commandId: commandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "intake",
+      type: "inspect-intake",
+      target: { intakeSessionId: created.session.intakeSessionId, expectedVersion: created.session.expectedVersion },
+      payload: { sheet: "default", headerRowIndex: 1 },
+    };
+    seen.failParse = true;
+    const prepared = seen.prepares;
+    await harness.intake.prepare(command);
+    assert.equal(seen.prepares, prepared + 1);
+    assert.throws(() => harness.commands.execute(command), /injected intake parse failure/);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.deepEqual(commandRow(join(harness.root, "state.db"), command.commandId), { state: "admitted", audits: 0 });
+    backing = createIntakeParser({ artifacts: harness.artifacts });
+    seen.failParse = false;
+    const resumed = seen.prepares;
+    await harness.intake.prepare(command);
+    assert.equal(seen.prepares, resumed + 1, "an admitted command prepares its grid again");
+    assert.equal(harness.commands.execute(command).state, "applied");
+    assert.equal(harness.commands.execute(command).state, "already-applied");
+    const settled = seen.prepares;
+    await harness.intake.prepare(command);
+    assert.equal(seen.prepares, settled, "a settled replay is not prepared");
+    const divergent = { ...command, payload: { sheet: "default", headerRowIndex: 0 } };
+    const skipped = seen.prepares;
+    await harness.intake.prepare(divergent);
+    assert.equal(seen.prepares, skipped, "a divergent command is not prepared");
+    assert.throws(() => harness.commands.execute(divergent), /reused with different content/);
   });
 });

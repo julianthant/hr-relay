@@ -1,7 +1,5 @@
+import { PREFERENCES_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
 import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
@@ -10,30 +8,31 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { NOW,UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { AuthorityBootStore,AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 
-const roots: string[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const SNAPSHOT_ID = UUID_4;
 const CLOCK = manualClock(new Date(NOW), 1_000);
 
-afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+afterEach(async () => {
+  for (const profile of profiles.splice(0)) await profile.close();
 });
 
-function databasePath(): string {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-config-generation-"));
-  roots.push(root);
-  return join(root, "authority.sqlite");
+async function databasePath(): Promise<string> {
+  const profile = await createBoundProfileFixture();
+  profiles.push(profile);
+  return profile.path;
 }
 
 function currentConfig() {
   return ConfigSchema.parse({ paths: defaultRuntimePaths() });
 }
 
-function databaseWithSnapshotMissing(removed: string): string {
-  const path = databasePath();
+async function databaseWithSnapshotMissing(removed: string): Promise<string> {
+  const path = await databasePath();
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK);
-  database.authority.configSnapshots.insert({
+  database.authority.configSnapshots.insert({ ...PREFERENCES_SNAPSHOT,
     configSnapshotId: SNAPSHOT_ID,
     revision: 1,
     fingerprint: sha256Hex(canonicalJsonStringify(currentConfig())),
@@ -63,16 +62,16 @@ function databaseWithSnapshotMissing(removed: string): string {
 
 describe("strict current config snapshots", () => {
   for (const leaf of ["timeouts.taskMs", "timeouts.sessionAcquireMs", "timeouts.duoCeremonyLeaseGraceMs", "browser", "providers", "providers.geocodeNominatim.timeoutMs"]) {
-    it(`refuses missing ${leaf} on boot and read without applying live defaults`, () => {
-      const path = databaseWithSnapshotMissing(leaf);
+    it(`refuses missing ${leaf} on boot and read without applying live defaults`, async () => {
+      const path = await databaseWithSnapshotMissing(leaf);
       assert.throws(() => AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "snapshot-test" }, CLOCK), /authority table settings_snapshots failed native record validation/u);
       const boot = AuthorityBootStore.open({ path, busyTimeoutMs: 250, migrationOwner: "snapshot-test" }, CLOCK);
       try { const report = boot.report(); assert.equal(report.state, "degraded-read-only"); assert.equal(report.state === "degraded-read-only" && report.cause.code, "authority-record-invalid"); } finally { boot.close(); }
     });
   }
-  it("preserves exact current snapshot bytes and refuses overwriting immutable evidence", () => {
-    const path = databasePath(); const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "snapshot-test" }, CLOCK);
-    const snapshot = { configSnapshotId: SNAPSHOT_ID, revision: 1, fingerprint: sha256Hex(canonicalJsonStringify(currentConfig())), capturedAt: NOW, capturedBy: "local-operator", config: currentConfig(), provenance: {} };
+  it("preserves exact current snapshot bytes and refuses overwriting immutable evidence", async () => {
+    const path = await databasePath(); const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "snapshot-test" }, CLOCK);
+    const snapshot = { ...PREFERENCES_SNAPSHOT, configSnapshotId: SNAPSHOT_ID, revision: 1, fingerprint: sha256Hex(canonicalJsonStringify(currentConfig())), capturedAt: NOW, capturedBy: "local-operator", config: currentConfig(), provenance: {} };
     try {
       database.authority.configSnapshots.insert(snapshot);
       assert.deepEqual(database.authority.configSnapshots.get(SNAPSHOT_ID), snapshot);

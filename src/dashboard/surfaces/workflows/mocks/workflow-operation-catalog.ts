@@ -42,14 +42,13 @@ export const MOCK_OPERATION_CATALOG: Readonly<Record<MockWorkflowId, Readonly<Re
     ],
   },
   "i9-lookup": { lookup: [fill("Portal person search", [["Last name", "$lastName"], ["First name", "$firstName"], ["SSN", "•••-••-0001"]]), click("Search and open the matching profile"), read("Section 2", [["I-9 status", "Section 2 complete"], ["Authorized official signer", "Alex Morgan"], ["Profile ID", "DEMO-I9-001"]])] },
-  "work-study": { transaction: [click("HR Tasks → PayPath/Additional Pay → PayPath Actions"), fill("Employee search", [["Employee ID", "$employeeId"]]), click("Search"), read("Employee header", [["Employee", "$name"]]), fill("Position Data", [["Effective date", "$effectiveDate"], ["Position change reason", "JRL"], ["Position pool", "F"]]), click("Job Data"), fill("Job Data comments", [["Comments", "$workStudyComments"]]), click("Additional Pay Data"), fill("Initiator comments", [["Comments", "$workStudyComments"]]), click("Save and Submit", true), read("Transaction outcome", [["Outcome", "Submitted"]])] },
   "kronos-pay-rule": {
     "csv-lookup": [read("OT Elections Tracker", [["Employee", "$name"], ["Employee ID", "$employeeId"], ["Union code", "SX"], ["Current pay rule", "DEMO-CT-BASE"], ["Current election", "Compensatory time"], ["New election", "Cash"]])],
     "determine-action": [read("Election decision", [["Old code", "CT"], ["New code", "OT"], ["Current pay rule", "DEMO-CT-BASE"], ["New pay rule", "DEMO-OT-BASE"], ["Effective date", "07/01/2026"]])],
     "update-pay-rule": [click("Open People → timekeeper workspace"), fill("Employee search", [["Employee ID", "$employeeId"]]), click("Search and open the employee"), read("Displayed identity", [["Employee ID", "$employeeId"], ["Employee", "$name"]]), click("Job Assignment"), fill("Pay rule assignment", [["Pay rule", "DEMO-OT-BASE"], ["Effective date", "07/01/2026"]]), click("Save pay rule", true), read("Saved assignment", [["Pay rule", "DEMO-OT-BASE"], ["Effective date", "07/01/2026"]], "Employee ID, rule and effective date re-read.")],
   },
   ocr: {
-    "prep:loading-roster": [read("Roster source", [["Spreadsheet", "$roster"], ["Source", "$rosterMode"], ["Rows matched", "$recordCount"]])],
+    "prep:loading-roster": [read("Roster source", [["Spreadsheet", "$roster"], ["Rows matched", "$recordCount"]])],
     "prep:ocr": [read("PDF pages", [["Source PDF", "$pdf"], ["Form type", "$formType"], ["Pages", "2"]]), click("Split pages and recognize the form blocks"), read("Extraction summary", [["Records extracted", "$recordCount"], ["Source pages", "1–2"]])],
     "prep:person-lookup": [read("Identity matching", [["Employee", "$sourceName"], ["Employee ID", "$sourceEmployeeId"], ["Roster match", "Matched"], ["UCPath match", "Confirmed"], ["HR status", "Active"]])],
     "prep:awaiting-approval": [read("Review selection", [["Records", "$recordCount"], ["Approved people", "$approvedCount"]])],
@@ -75,7 +74,7 @@ export const MOCK_OPERATION_CATALOG: Readonly<Record<MockWorkflowId, Readonly<Re
     "fill-keywords": [click("Open Employee Lookup"), fill("Lookup criteria", [["UCPath ID", "$employeeId"]]), click("Find → Select Employee"), read("Autofilled keywords", [["UCPath ID", "$employeeId"], ["Last name", "$lastName"], ["First name", "$firstName"], ["Department name", "Housing Dining Hospitality"], ["Department code", "DEMO-DEPT-001"], ["Vice Chancellor", "Student Affairs"], ["Vice Chancellor code", "DEMO-VC-001"]]), fill("Document name", [["Document name", "$documentName"]]), read("Required keyword check", [["Keyset autofill", "Yes"], ["Employee ID match", "Confirmed"], ["Missing required keywords", "0"]])],
     import: [click("Import document", true), read("Import confirmation", [["Document ID", "DEMO-ONBASE-001"], ["Document type", "$documentType"], ["UCPath ID", "$employeeId"], ["Source page", "$sourcePage"]], "Imported document re-read under the employee record.")],
   },
-  "i9-check": {
+  "i9-check-start": {
     "person-match": [read("Paired I-9 identity", [["Employee", "$name"], ["Section 1 page", "$section1"], ["Section 2 page", "$section2"], ["Hire date from I-9", "08/03/2026"]]), fill("UCPath person search", [["Name", "$name"], ["Employee ID", "$employeeId"]]), read("Search result", [["Matched Employee ID", "$employeeId"], ["Candidates", "1"], ["Found in UCPath", "Yes"]])],
     "employment-dates": [read("Employment evidence", [["Employee ID", "$employeeId"], ["UCPath hire date", "08/03/2026"], ["I-9 hire date", "08/03/2026"], ["Hire date match", "Confirmed"]])],
     "roster-match": [read("Action History match", [["Employee ID", "$employeeId"], ["PPS ID", "DEMO-PPS-001"], ["Separation date", "Not separated"]]), read("Retention tracker row", [["Employee", "$name"], ["Employee ID", "$employeeId"], ["PPS ID", "DEMO-PPS-001"], ["Section 1 present", "Yes"], ["Section 2 present", "Yes"], ["Found in UCPath", "Yes"]]), click("Append retention tracker row", true)],
@@ -84,10 +83,6 @@ export const MOCK_OPERATION_CATALOG: Readonly<Record<MockWorkflowId, Readonly<Re
     "search-record": [read("Roster identity", [["Employee ID", "$employeeId"], ["Roster email", "$email"]]), fill("CRM search", [["Email", "$email"]]), click("Open the matching onboarding record")],
     download: [click("Open iDocs and enumerate attachments"), read("Attachments", [["Documents", "2"], ["Selected files", "entry-sheet.pdf, onboarding-packet.pdf"]]), click("Download the selected PDFs"), read("Download readback", [["Files", "entry-sheet.pdf, onboarding-packet.pdf"], ["Folder", "$name"]])],
     archive: [read("Archive identity", [["Legal name", "$name"], ["Lived name", "$name"]]), click("Create the employee's document archive"), read("Archive output", [["PDFs", "2"], ["Folder", "$name"], ["Archive ZIP", "Jordan-Lee-documents.zip"]])],
-  },
-  "sharepoint-download": {
-    navigate: [read("Configured destination", [["Spreadsheet", "Onboarding Roster"], ["Provider", "SharePoint"]]), click("Open Excel Online"), read("Viewer", [["Workbook", "Onboarding Roster"], ["Authentication", "Authenticated"]])],
-    download: [click("File → Create a Copy → Download a Copy"), read("Downloaded workbook", [["Spreadsheet", "Onboarding Roster"], ["Filename", "onboarding-roster.xlsx"], ["Saved to", "Roster folder"], ["File validation", "Workbook readable"]])],
   },
   "old-kronos-reports": {
     searching: [fill("Workforce Central search", [["Employee ID", "$employeeId"]]), click("Search employees"), read("Search result", [["Found", "Yes"], ["Matching rows", "1"]])],

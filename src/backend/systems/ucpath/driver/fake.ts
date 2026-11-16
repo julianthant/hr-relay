@@ -1,3 +1,5 @@
+import { refuseHireOperations } from "./hire-fake.js";
+import { refusePayPathOperations } from "./paypath-fake.js";
 import { EidSchema } from "../../../../rules/identity/ids.js";
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { SearchPersonOrgOutputSchema } from "../../../../models/systems/ucpath/search-person-org.js";
@@ -17,14 +19,22 @@ import {
 import type { UcpathPersonOrgScreens } from "../../../../models/ui/ucpath-person-org.js";
 import type { UcpathStoreDriver } from "../../../../models/ui/ucpath-driver.js";
 import { refuseUnimplementedSmartHrHalf } from "./smart-hr-fake.js";
+import { deterministicContactOperations } from "./contact-fake.js";
+import type { UcpathContactPagePort, UcpathContactSavePort } from "./contact-operation.js";
+import { UCPATH_CONTACT_DISPLAYED_NAME } from "../../../../models/ui/ucpath-emergency-contact.js";
 
 export function createDeterministicUcpathPersonOrgDriver(
   result?: SearchPersonOrgOutput,
   jobSummary?: UcpathJobSummaryRead,
+  contactPage?: UcpathContactPagePort,
+  contactSave?: UcpathContactSavePort,
 ): UcpathStoreDriver {
   let screen: UcpathPersonOrgScreens = UCPATH_PERSON_ORG_SEARCH_SCREEN;
   let eid: ReturnType<typeof EidSchema.parse> | undefined;
   return {
+    ...refuseHireOperations(),
+    ...refusePayPathOperations(),
+    ...deterministicContactOperations(contactPage, contactSave),
     ...refuseUnimplementedSmartHrHalf("the Person Org fixture"),
     system: "ucpath",
     async searchPersonMatch() { throw new Error("Person Org fixture requires explicit Match results"); },
@@ -85,6 +95,10 @@ export function createDeterministicUcpathPersonOrgDriver(
       return UiActionProofSchema.parse({ elementId: id, effect: "prepare", performed: true });
     },
     async read(id) {
+      if (id === UCPATH_CONTACT_DISPLAYED_NAME) {
+        if (contactPage === undefined) throw new Error("UCPath fixture requires explicit contact page observations");
+        return (await contactPage.snapshot()).displayedName;
+      }
       if (id !== UCPATH_PERSON_ORG_DISPLAYED_EID) throw new Error(`fixture cannot read ${id}`);
       if (screen !== UCPATH_PERSON_ORG_DETAIL_SCREEN) throw new Error("fixture displayed EID requires the detail screen");
       if (!eid) throw new Error("fixture displayed EID requires a prior canonical EID fill");

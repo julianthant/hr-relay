@@ -2,11 +2,12 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { PreflightRerunCommandResultSchema, requiredPreflightChecks } from "../../../../../src/models/preflight/preflight.js";
+import { PreflightObservationChangedError } from "../../../../../src/rules/preflight/preflight-admission.js";
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("reruns the one strict preflight authority through its command route", async () => {
-    const h = harness();
+    const h = await harness();
     const command = {
       commandId: "00000000-0000-4000-8000-000000000010",
       requestedAt: h.clock.now().toISOString(),
@@ -31,7 +32,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       "filesystem.health",
       "authority.health",
       "ports.available",
-      "process.orphans",
     ]);
     assert.equal(JSON.stringify(h.preflight.authority.readLatest()), JSON.stringify(result.report));
 
@@ -44,7 +44,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses preflight reruns outside the loopback Host and Origin boundary", async () => {
-    const h = harness();
+    const h = await harness();
     const command = {
       commandId: "00000000-0000-4000-8000-000000000012",
       requestedAt: h.clock.now().toISOString(),
@@ -78,7 +78,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("keeps preflight body transport and decoding refusals distinguishable", async () => {
-    const h = harness();
+    const h = await harness();
     const wrongType = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
       headers: { "content-type": "text/plain", host: "127.0.0.1:3938" },
@@ -105,7 +105,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("distinguishes malformed lengths, missing bodies, and failed body streams", async () => {
-    const h = harness();
+    const h = await harness();
     for (const contentLength of ["01", "9007199254740992"]) {
       const response = await h.app.request("/api/v1/preflight/rerun", {
         method: "POST",
@@ -147,7 +147,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses a preflight rerun body beyond its strict byte limit", async () => {
-    const h = harness();
+    const h = await harness();
     const response = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
       headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
@@ -159,7 +159,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("rate-bounds preflight rerun starts within one monotonic window", async () => {
-    const h = harness();
+    const h = await harness();
     const request = (index: number) => h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
       headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
@@ -184,7 +184,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     let markStarted = (): void => undefined;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const started = new Promise<void>((resolve) => { markStarted = resolve; });
-    const h = harness({ preflightBeforeRun: async () => {
+    const h = await harness({ preflightBeforeRun: async () => {
       markStarted();
       await gate;
     } });
@@ -216,7 +216,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const deadlines = new Set<() => void>();
     const began = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    const h = harness({
+    const h = await harness({
       preflightScheduler: {
         schedule(_at, onDeadline) {
           deadlines.add(onDeadline);
@@ -246,13 +246,15 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(refused)).code, "PREFLIGHT_RERUN_ACTIVE");
     assert.equal(settled, false);
     release.resolve();
-    assert.equal((await first).status, 500, "late healthy returns cannot publish a report");
+    const timedOut = await first;
+    assert.equal(timedOut.status, 409, "late healthy returns cannot publish a report");
+    assert.equal((await json(timedOut)).code, "PREFLIGHT_TIMEOUT");
     assert.equal(deadlines.size, 0);
     assert.equal((await request("42")).status, 200, "actual settlement releases admission");
   });
 
   it("reruns preflight through the closed read-only command and returns the exact report", async () => {
-    const h = harness();
+    const h = await harness();
     const response = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
       headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
@@ -278,6 +280,76 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     );
   });
 
+  it("refuses a transient observation change, including a sibling runner failure, and accepts a later rerun", async () => {
+    const checks = requiredPreflightChecks(["dashboard.serve"]);
+    const authoritySlot = checks.findIndex((check) => String(check) === "authority.health");
+    const secondSlot = checks.findIndex((check) => String(check) === "config.valid");
+    assert.notEqual(authoritySlot, -1);
+    assert.notEqual(secondSlot, -1);
+    let mode: "authority" | "mixed" | "healthy" = "authority";
+    let calls = 0;
+    const h = await harness({
+      preflightBeforeRun: async () => {
+        if (mode === "healthy") return;
+        const slot = calls % checks.length;
+        calls += 1;
+        if (slot === authoritySlot) throw new PreflightObservationChangedError();
+        if (mode === "mixed" && slot === secondSlot) throw new Error("config.valid failed during an observation change");
+      },
+    });
+    const request = (commandId: string) => h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+
+    const authorityOnly = await request("00000000-0000-4000-8000-000000000092");
+    assert.equal(authorityOnly.status, 409);
+    assert.equal((await json(authorityOnly)).code, "PREFLIGHT_OBSERVATION_CHANGED");
+
+    mode = "mixed";
+    const mixed = await request("00000000-0000-4000-8000-000000000093");
+    assert.equal(mixed.status, 409);
+    assert.equal((await json(mixed)).code, "PREFLIGHT_OBSERVATION_CHANGED");
+
+    mode = "healthy";
+    const healthy = await request("00000000-0000-4000-8000-000000000094");
+    assert.equal(healthy.status, 200);
+    const result = PreflightRerunCommandResultSchema.parse(await healthy.json());
+    assert.equal(result.state, "completed");
+    assert.equal(result.commandId, "00000000-0000-4000-8000-000000000094");
+  });
+
+  it("answers 409 when a detector exceeds its registered timeout", async () => {
+    const h = await harness({
+      preflightScheduler: { schedule(_deadline, onDeadline) { onDeadline(); return { cancel() {} }; } },
+    });
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000095",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+    assert.equal(response.status, 409);
+    const body = await json(response);
+    assert.equal(body.code, "PREFLIGHT_TIMEOUT");
+    assert.equal(body.retryable, false);
+    const named = /^A readiness check took too long\. Check again\. \((.+)\)$/u.exec(String(body.message));
+    assert.ok(named !== null && requiredPreflightChecks(["dashboard.serve"]).some(check => check === named[1]), String(body.message));
+  });
 
 });
 

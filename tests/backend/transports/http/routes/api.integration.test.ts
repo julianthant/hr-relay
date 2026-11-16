@@ -3,15 +3,72 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
+import { readTimelineRecords } from "../../../../../src/backend/storage/events/timeline-reader.js";
 import { RequestIdentityRefusedError } from "../../../../../src/backend/runs/commands/refusals.js";
+import { DashboardClientDisconnectedError } from "../../../../../src/backend/transports/http/http-server.js";
+import { PreflightRunnerTimeoutError } from "../../../../../src/models/preflight/preflight.js";
+import { PreflightCheckIdSchema } from "../../../../../src/models/preflight/preflight-contract.js";
 import { UUID_4 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+  it("logs a run-detail 500 cause without retaining the thrown message or request values", async () => {
+    const cause = new TypeError("Quillan, Petra; fictional private record");
+    cause.stack = "TypeError: private record\n    at query (/private/project/src/backend/runs/queries/run-detail.ts:42:7)";
+    const h = await harness();
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_4 }));
+    vi.spyOn(h.projection, "runFold").mockImplementation(() => { throw cause; });
+    const response = await h.app.request(`/api/v1/runs/${UUID_4}`);
+    assert.equal(response.status, 500);
+    assert.equal((await json(response)).code, "INTERNAL_FAILURE");
+    const records = readTimelineRecords(h.database.authority.timelineEvents).records;
+    const diagnostics = records.flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "request-cause" ? [record.payload.event] : []);
+    assert.equal(diagnostics.length, 1);
+    assert.equal(diagnostics[0]?.message, "TypeError");
+    assert.equal(diagnostics[0]?.stack, "TypeError\n    at src/backend/runs/queries/run-detail.ts:42:7");
+    assert.equal(diagnostics[0]?.status, 500);
+    assert.equal(/Quillan|Petra|private record/u.test(JSON.stringify(diagnostics)), false);
+  });
+
+  it("logs one preflight-timeout row naming the check that missed its budget", async () => {
+    const h = await harness();
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_4 }));
+    vi.spyOn(h.projection, "runFold").mockImplementation(() => {
+      throw new Error("prepare refused", { cause: new PreflightRunnerTimeoutError(PreflightCheckIdSchema.parse("authority.health"), 10_000) });
+    });
+    const response = await h.app.request(`/api/v1/runs/${UUID_4}`);
+    assert.equal(response.status, 409);
+    assert.equal((await json(response)).code, "PREFLIGHT_TIMEOUT");
+    const rows = readTimelineRecords(h.database.authority.timelineEvents).records
+      .flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "preflight-timeout" ? [record.payload.event] : []);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.code, "PREFLIGHT_TIMEOUT");
+    assert.equal(rows[0]?.status, 409);
+    assert.match(rows[0]?.message ?? "", /authority\.health/u);
+  });
+
+  it("records a client disconnect as cancellation without claiming a delivered 500", async () => {
+    const h = await harness();
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_4 }));
+    const abort = new AbortController();
+    vi.spyOn(h.projection, "runFold").mockImplementation(() => {
+      const disconnected = new DashboardClientDisconnectedError("during response transfer");
+      abort.abort(disconnected);
+      throw new Error("aborted", { cause: disconnected });
+    });
+    await h.app.request(`/api/v1/runs/${UUID_4}`, { signal: abort.signal });
+    const events = readTimelineRecords(h.database.authority.timelineEvents).records
+      .flatMap(record => record.payload.kind === "debug" && record.payload.event.category === "http" ? [record.payload.event] : []);
+    assert.deepEqual(events.filter(event => event.reason === "request-cause").map(event => [event.message, event.status]),
+      [["Error", undefined], ["DashboardClientDisconnectedError", undefined]]);
+    assert.deepEqual(events.filter(event => event.reason === "request-disconnected").map(event => [event.code, event.status]), [["INTERNAL_FAILURE", undefined]]);
+    assert.equal(events.some(event => event.status !== undefined && event.status >= 500), false);
+  });
 
   it("crosses one request-identity checkpoint on every registered route and refuses before effects", async () => {
     let checkpointCalls = 0;
-    const h = harness({
+    const h = await harness({
       requestIdentity: {
         identify: () => {
           checkpointCalls += 1;

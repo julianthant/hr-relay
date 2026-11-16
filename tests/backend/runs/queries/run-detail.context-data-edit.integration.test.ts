@@ -27,8 +27,8 @@ function contextData(
 }
 
 describe("read-only Context Data projection", () => {
-  it("reads exact selected-run checkpoint values, coordinates and provenance without changing authority", () => {
-    const current = world();
+  it("reads exact selected-run checkpoint values, coordinates and provenance without changing authority", async () => {
+    const current = await world();
     const source = sourceRun(current, { seed: 1, claimGeneration: 1, version: 2 });
     const checkpoint = checkpointFor(source, { provenance: [
       { path: "invitedOn.value", source: "live", observedAt: "2026-08-03T16:58:00.000Z", originalObservedAt: NOW },
@@ -69,8 +69,8 @@ describe("read-only Context Data projection", () => {
     ), checkpoint);
   });
 
-  it("does not borrow a sibling attempt's latest checkpoint, value, provenance or origin", () => {
-    const current = world();
+  it("does not borrow a sibling attempt's latest checkpoint, value, provenance or origin", async () => {
+    const current = await world();
     const first = sourceRun(current, { seed: 11, attempt: 1, claimGeneration: 1 });
     const secondBase = runRecordOf({ seed: 12, attempt: 2, claimGeneration: 1 });
     const second = RunRecordSchema.parse({
@@ -95,8 +95,8 @@ describe("read-only Context Data projection", () => {
     assert.equal(JSON.stringify(payload).includes(NOW), false);
   });
 
-  it("marks a same-attempt checkpoint with the wrong run identity malformed", () => {
-    const current = world();
+  it("marks a same-attempt checkpoint with the wrong run identity malformed", async () => {
+    const current = await world();
     const source = sourceRun(current, { seed: 13, attempt: 1, claimGeneration: 1 });
     const malformed = RunCheckpointRecordSchema.parse({
       ...checkpointFor(source),
@@ -116,8 +116,8 @@ describe("read-only Context Data projection", () => {
     assert.equal(invited.valueRedacted, "Checkpoint could not be verified");
   });
 
-  it("selects the exact run checkpoint before considering foreign same-attempt rows", () => {
-    const current = world();
+  it("selects the exact run checkpoint before considering foreign same-attempt rows", async () => {
+    const current = await world();
     const source = sourceRun(current, { seed: 131, attempt: 1, claimGeneration: 2 });
     const exact = checkpointFor(source, {
       claimGeneration: 1,
@@ -147,8 +147,8 @@ describe("read-only Context Data projection", () => {
     assert.equal(JSON.stringify(payload).includes("FOREIGN_RUN_VALUE"), false);
   });
 
-  it("refuses a checkpoint claim generation newer than the selected run", () => {
-    const current = world();
+  it("refuses a checkpoint claim generation newer than the selected run", async () => {
+    const current = await world();
     const source = sourceRun(current, { seed: 14, attempt: 1, claimGeneration: 1 });
     storeCheckpoint(current, checkpointFor(source, { claimGeneration: 2 }));
 
@@ -159,8 +159,8 @@ describe("read-only Context Data projection", () => {
     assert.equal(invited.valueState, "malformed");
   });
 
-  it("returns a deleted state with no openable checkpoint values", () => {
-    const current = world();
+  it("returns a deleted state with no openable checkpoint values", async () => {
+    const current = await world();
     const deleted = sourceRun(current, { seed: 41 });
     const baseReader = sqliteRunReader(current.database, current.clock);
     const tombstone = DeletedRunRecordSchema.parse({
@@ -188,8 +188,8 @@ describe("read-only Context Data projection", () => {
     assert.deepEqual(payload.entries, []);
   });
 
-  it("serves retained protected checkpoint values in the BFF response", () => {
-    const current = world();
+  it("serves retained protected checkpoint values in the BFF response", async () => {
+    const current = await world();
     const secret = "protected-test-value-774411";
     const base = runRecordOf({ seed: 51, claimGeneration: 1, version: 2 });
     const protectedRun = RunRecordSchema.parse({
@@ -222,8 +222,8 @@ describe("read-only Context Data projection", () => {
     assert.equal(JSON.stringify(payload).includes(secret), true);
   });
 
-  it("keeps stale descriptor and malformed output hashes out of the value projection", () => {
-    const current = world();
+  it("keeps stale descriptor and malformed output hashes out of the value projection", async () => {
+    const current = await world();
     const source = sourceRun(current, { seed: 61, claimGeneration: 1, version: 2 });
     storeCheckpoint(current, checkpointFor(source, { descriptorVersion: 2 }));
     let payload = contextData(current, source.envelope.runId);
@@ -242,8 +242,8 @@ describe("read-only Context Data projection", () => {
     assert.equal(invited?.valueRedacted, "Checkpoint could not be verified");
   });
 
-  it("refuses a descriptor that no longer matches the exact source run", () => {
-    const current = world();
+  it("refuses a descriptor that no longer matches the exact source run", async () => {
+    const current = await world();
     const source = sourceRun(current, { seed: 63, claimGeneration: 1, version: 2 });
     const descriptor = { ...EXACT_DESCRIPTOR, version: EXACT_DESCRIPTOR.version + 1 } as AnyWorkflowDescriptor;
     const payload = contextData(current, source.envelope.runId, { exactDescriptor: descriptor });
@@ -256,8 +256,8 @@ describe("read-only Context Data projection", () => {
     });
   });
 
-  it("refuses stale editable prefill fields and leaves checkpoint/source authority untouched", () => {
-    const current = world();
+  it("refuses stale editable prefill fields and leaves checkpoint/source authority untouched", async () => {
+    const current = await world();
     const source = sourceRun(current, { seed: 71, claimGeneration: 1, version: 2 });
     const checkpoint = checkpointFor(source);
     storeCheckpoint(current, checkpoint);

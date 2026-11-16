@@ -1,10 +1,11 @@
+import type { PersonPreferences } from "../../../models/config/person-preferences.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 /** One ordinary snapshot plus explicitly independent auxiliary authority reads. */
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import { hostConfigFacts } from "../../../models/config/host-display.js";
 import { resolveConfigWithProvenance, type ResolvedConfig } from "../../app/config/resolve.js";
-import { derivePersistedSettingsFingerprint, SettingsRuntimeStatusSchema } from "../../../models/config/settings.js";
+import { derivePersistedSettingsFingerprint, isRetiredSettingsPath, SettingsRuntimeStatusSchema } from "../../../models/config/settings.js";
 import type { StoredConfig } from "../../../models/config/snapshot.js";
 import type { SettingsOverride } from "../../../models/config/schema.js";
 import { ProtectedSettingsNameSchema } from "../../../models/config/protected-settings.js";
@@ -18,8 +19,8 @@ const LABELS: Readonly<Record<string, string>> = {
   "actor.label": "Operator label", "display.screenWidth": "Screen width", "display.screenHeight": "Screen height",
   "ocr.pageConcurrency": "OCR page concurrency", "ocr.maxValidationRetries": "OCR validation retries",
   "timeouts.duoApprovalSeconds": "Duo approval timeout", "concurrency.defaultWorkers": "Default workers", "paths.reportsDir": "Reports directory",
-  ucpathUserId: "UCPath user ID", ucpathPassword: "UCPath password", timekeeperName: "Timekeeper name",
-  sharepointOnboardingRosterUrl: "SharePoint onboarding roster URL", activityPersonPseudonym: "Historical Activity pseudonym",
+  ucpathUserId: "UCPath user ID", ucpathPassword: "UCPath password",
+  sharepointOnboardingRosterUrl: "SharePoint onboarding roster URL",
 };
 function settingsLabel(key: string): string {
   return LABELS[key] ?? key.split(".").map(part => part.replace(/([a-z])([A-Z])/gu, "$1 $2")).join(" · ");
@@ -34,7 +35,7 @@ function atPath(value: unknown, path: string): unknown {
   return current;
 }
 export interface SettingsEditorQueryDeps {
-  readonly settings: { read(): SettingsRuntimeSnapshot & { readonly activeConfig?: StoredConfig } };
+  readonly settings: { read(): SettingsRuntimeSnapshot & { readonly activeConfig?: StoredConfig; readonly activePreferences?: PersonPreferences } };
   readonly protectedSettings: { read(): ProtectedSettingsRuntimeSnapshot };
   readonly environment: NodeJS.ProcessEnv;
   readonly clock: Clock;
@@ -48,26 +49,31 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
   const runtimeStatus = SettingsRuntimeStatusSchema.parse(snapshot.runtimeStatus);
   const resolve = deps.resolve ?? ((settings: SettingsOverride) => resolveConfigWithProvenance(settings, hostConfigFacts(deps.environment), deps.clock));
   const resolved = resolve(record.settings);
-  const defaults = resolve({}).config;
+  const defaultResolution = resolve({});
+  const defaults = { ...defaultResolution.config, preferences: defaultResolution.preferences };
   const persisted = runtimeStatus.state === "current" ? runtimeStatus.identity : runtimeStatus.persisted;
   const active = runtimeStatus.state === "current" ? runtimeStatus.identity : runtimeStatus.active;
   if (record.settingsFingerprint !== derivePersistedSettingsFingerprint(record.settings) || resolved.fingerprint !== persisted.configFingerprint) throw new Error("settings-editor-snapshot-mismatch");
   // A current snapshot already binds these exact values. A differing active identity requires its actual snapshot.
   const activeConfig = snapshot.activeConfig ?? (runtimeStatus.state === "current" ? resolved.config : undefined);
   if (activeConfig === undefined) throw new Error("settings-editor-active-snapshot-missing");
+  const activePreferences = snapshot.activePreferences ?? (runtimeStatus.state === "current" ? resolved.preferences : undefined);
+  if (activePreferences === undefined) throw new Error("settings-editor-active-preferences-missing");
+  const effectiveValues = { ...resolved.config, preferences: resolved.preferences };
+  const activeValues = { ...activeConfig, preferences: activePreferences };
   if (sha256Hex(canonicalJsonStringify(activeConfig)) !== active.configFingerprint || sha256Hex(canonicalJsonStringify(resolved.config)) !== resolved.fingerprint) throw new Error("settings-editor-config-mismatch");
-  const ordinary = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings");
+  const ordinary = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && !isRetiredSettingsPath(row.key));
   const currentFiscalYear = deps.clock.fiscalYear();
   const currentFiscalYearKey = `FY${String(currentFiscalYear)}`;
   const leaf = (key: string, path = key) => {
     const control = settingsControlFor(key);
     const settingsValue = atPath(record.settings, path);
-    const effectiveValue = atPath(resolved.config, path);
+    const effectiveValue = atPath(effectiveValues, path);
     return {
       path, catalogKey: key, input: control.input, control, label: settingsLabel(path),
       description: key.startsWith("annualDates.") ? "M/D/YYYY or MM/DD/YYYY" : settingsLabel(key),
       ...(effectiveValue === undefined ? {} : { effectiveValue }),
-      ...(atPath(activeConfig, path) === undefined ? {} : { activeValue: atPath(activeConfig, path) }),
+      ...(atPath(activeValues, path) === undefined ? {} : { activeValue: atPath(activeValues, path) }),
       ...(atPath(defaults, path) === undefined ? {} : { defaultValue: atPath(defaults, path) }),
       ...(settingsValue === undefined ? {} : { settingsValue }),
       source: settingsValue === undefined ? "default" : "settings", sourceClass: "ordinary-settings", sensitivity: "ordinary",
@@ -78,10 +84,10 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
     };
   };
   const leaves = ordinary.flatMap(row => row.key.startsWith("annualDates.")
-    ? row.key.endsWith(".jobEndDate") ? [leaf(row.key, row.key.replace("*", currentFiscalYearKey))] : []
+    ? row.key.endsWith(".jobEndDate") ? [leaf(row.key, row.key.replaceAll("*", currentFiscalYearKey))] : []
     : [leaf(row.key)]);
   const protectedRows = ProtectedSettingsNameSchema.options.map(name => ({ name, label: settingsLabel(name), activationScope: "next-use",
-    purpose: name === "activityPersonPseudonym" ? "Historical records only; Activity pseudonym consumers remain retired." : `Used at the next ${name.startsWith("ucpath") ? "login" : "use"}.` }));
+    purpose: `Used at the next ${name.startsWith("ucpath") ? "login" : "use"}.` }));
   let protectedSettings: unknown;
   try {
     const read = deps.protectedSettings.read();
@@ -92,7 +98,7 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
     protectedSettings = { state: "unknown", rows: protectedRows, reason: "credential-store-unavailable" };
   }
   const deployment = Object.fromEntries(SETTINGS_CATALOG.filter(row => row.sourceClass === "runtime-isolation").map(row => {
-    const value = atPath(activeConfig, row.key === "duoWebauthnCredential" ? "paths.duoCredential" : row.key);
+    const value = atPath(activeConfig, row.key);
     if (value === undefined) throw new Error("settings-editor-deployment-fact-missing");
     return [row.key, value];
   }));

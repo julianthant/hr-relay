@@ -1,3 +1,4 @@
+import { readWithDeadline } from "../../../client/read-deadline.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../models/dashboard/bootstrap.js";
 import { useViewState } from "../../../app/navigation/view-route-model.js";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
@@ -17,7 +18,7 @@ function createScopes(client: PreflightQueries) {
     async read(this: void) {
       if (state.state === "loading" || state.state === "ready") return;
       publish({ ...state, state: "loading" });
-      try { publish({ ...state, workflows: await client.preflightScopes(), state: "ready" }); }
+      try { publish({ ...state, workflows: await readWithDeadline(() => client.preflightScopes(), "PREFLIGHT_SCOPE_UNAVAILABLE"), state: "ready" }); }
       catch { publish({ ...state, state: "unavailable" }); }
     },
     select(this: void, selected: string) {

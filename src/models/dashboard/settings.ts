@@ -7,8 +7,6 @@ import {
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
 
-/** The system-host section wire identity. */
-export const SETTINGS_SYSTEM_HOSTS_SECTION_ID = "system-hosts";
 export const SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID = "workflow-capabilities";
 
 /** Explicit test-host availability states. */
@@ -27,15 +25,18 @@ export const SystemHostWireSchema = z.strictObject({
 });
 export type SystemHostWire = z.infer<typeof SystemHostWireSchema>;
 
-/** Where a dry run stops, per workflow — the wire face of `WorkflowDryRunSupport`. */
+/** Whole-workflow preview support and its first preparation boundary. */
 export const DryRunPostureWireSchema = z.union([
-  z.strictObject({ state: z.literal("supported"), stopsAt: NodeIdSchema }),
+  z.strictObject({ state: z.literal("supported"), firstTransactionNodeId: NodeIdSchema }),
+  z.strictObject({ state: z.literal("supported"), firstDelegationNodeId: NodeIdSchema }),
+  z.strictObject({ state: z.literal("supported"), firstPublicationNodeId: NodeIdSchema }),
   z.strictObject({ state: z.literal("unsupported"), reason: z.literal("no-transaction-node") }),
   z.strictObject({
     state: z.literal("unsupported"),
     reason: z.literal("node-declares-unsupported"),
     nodeId: NodeIdSchema,
   }),
+  z.strictObject({ state: z.literal("unsupported"), reason: z.literal("descendant-declares-unsupported"), workflowId: WorkflowIdSchema, nodeId: NodeIdSchema }),
 ]);
 export type DryRunPostureWire = z.infer<typeof DryRunPostureWireSchema>;
 

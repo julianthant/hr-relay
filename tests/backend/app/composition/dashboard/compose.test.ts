@@ -55,7 +55,7 @@ describe("dataOriginViewsOf", () => {
     // for a node with no origin could never reach a row.
     const covered = new Set(origins.map((origin) => origin.nodeId));
     for (const detail of moduleFor("person-lookup").descriptor.details) {
-      assert.ok(covered.has(String(detail.source.nodeId)), String(detail.source.nodeId));
+      if ("nodeId" in detail.source) assert.ok(covered.has(String(detail.source.nodeId)), String(detail.source.nodeId));
     }
   });
 

@@ -8,7 +8,7 @@ export type NotificationRowExtras = Pick<Extract<NotificationRowWire, { kind: "n
 
 export type PinnedNotificationRowWire = Extract<NotificationRowWire, { kind: "backfill-gap" }>;
 
-export type OrdinaryNotificationRowWire = Extract<NotificationRowWire, { kind: "notification" }>;
+export type OrdinaryNotificationRowWire = Exclude<NotificationRowWire, { kind: "backfill-gap" }>;
 
 
 export const NOTIFICATION_FILTERS = [

@@ -1,5 +1,6 @@
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
+import { boundFixtureWorker, stopSyntheticDatabaseWorkers, syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
+import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { CANONICAL_WORKER_ID as WORKER_ID, createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
@@ -7,7 +8,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
-import { CreateRunRequestSchema, RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { CreateRunRequestSchema, RunRecordService, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { type RunRecord } from "../../../../src/models/run/record.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../../src/models/write-safety/protected-input.js";
 import { RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandOperationSchema, RunLifecycleCommandRecordSchema } from "../../../../src/rules/commands/commands.js";
@@ -17,9 +18,10 @@ import { COMMAND_FIXTURES, GATE_RESULT, HASH_A, NOW, UUID_5, UUID_6 } from "../.
 import { RUN_SESSION, RUN_SESSION_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { doctorAuthorityStorage } from "../../../support/helpers/synthetic-storage-admission.js";
+import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { boundProfileAdmission } from "../../../support/helpers/admission-fixture.js";
 
-const {fixture, created, runningRun, parkedWriteIntent, raceConnection, cleanup } = createRunRecordServiceTestWorld();
+const {fixture, created, runningRun, failureTerminalRequest, parkedWriteIntent, raceConnection, closeRaceConnections, cleanup } = createRunRecordServiceTestWorld();
 
 afterEach(cleanup);
 
@@ -48,8 +50,24 @@ function lifecycleCommand(
 
 describe("canonical run-record service", () => {
 
-  it("refuses cross-kind ids and fails loud for every partial or mismatched journal pair", () => {
-    const crossKind = fixture();
+  it("preserves a worker cleanup failure and custody until a successful stop", async () => {
+    const f = await fixture(), path = syntheticDatabasePath(f.database);
+    const run = runningRun(f.service, f.request, f.runtimeConfig);
+    assert.equal(boundFixtureWorker(f.database, path, WORKER_ID), true);
+    assert.throws(() => f.database.close(), error => {
+      assert.ok(error instanceof AggregateError);
+      assert.equal(error.message, "fixture-worker-closure-unproved");
+      assert.deepEqual(error.errors.map((failure: unknown) => failure instanceof Error ? failure.message : failure), ["fixture-worker-claim-retained"]);
+      return true;
+    });
+    assert.equal(boundFixtureWorker(f.database, path, WORKER_ID), true);
+    assert.equal(f.service.requeue({ commandId: "99000000-0000-4000-8000-000000000098", runId: run.envelope.runId, expectedVersion: run.version,
+      claim: { workerId: WORKER_ID, claimGeneration: run.claimGeneration }, cause: "recovery" }).state, "applied");
+    stopSyntheticDatabaseWorkers({ database: f.database, path });
+  });
+
+  it("refuses cross-kind ids and fails loud for every partial or mismatched journal pair", async () => {
+    const crossKind = await fixture();
     crossKind.database.withAuthorityTransaction(({ commands }) => {
       commands.insert(COMMAND_FIXTURES[0]);
     });
@@ -60,7 +78,7 @@ describe("canonical run-record service", () => {
     });
     assert.equal(crossKind.database.getMeta().authorityGeneration, crossKindGeneration);
 
-    const commandOnly = fixture();
+    const commandOnly = await fixture();
     const commandOnlyRecord = lifecycleCommand(commandOnly.request, "create");
     commandOnly.database.withAuthorityTransaction(({ lifecycleJournal }) => {
       lifecycleJournal.insertCommand(commandOnlyRecord);
@@ -69,7 +87,7 @@ describe("canonical run-record service", () => {
     assert.throws(() => commandOnly.service.create(commandOnly.request), /has no audit/u);
     assert.equal(commandOnly.database.getMeta().authorityGeneration, commandOnlyGeneration);
 
-    const auditOnly = fixture();
+    const auditOnly = await fixture();
     const auditOnlyRecord = lifecycleCommand(auditOnly.request, "create");
     const audit = RunLifecycleCommandAuditRecordSchema.parse({
       kind: "run-lifecycle",
@@ -89,10 +107,22 @@ describe("canonical run-record service", () => {
       auditOnlySqlite.close();
     }
     const auditOnlyGeneration = auditOnly.database.getMeta().authorityGeneration;
-    assert.throws(() => auditOnly.service.create(auditOnly.request), /command-audit-settlement-mismatch/u);
+    assert.throws(() => auditOnly.service.create(auditOnly.request), /has an audit without its command/u);
     assert.equal(auditOnly.database.getMeta().authorityGeneration, auditOnlyGeneration);
+    assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(join(auditOnly.root, "state.db")), /^Error: authority database foreign-key validation failed for 1 row\(s\)$/u);
+    const repair = new DatabaseSync(join(auditOnly.root, "state.db"));
+    try {
+      const trigger = repair.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='command_audits_retained'").get();
+      assert.ok(trigger);
+      repair.exec("BEGIN EXCLUSIVE; DROP TRIGGER command_audits_retained");
+      assert.equal(repair.prepare("DELETE FROM command_audits WHERE id=? AND command_id=? AND payload_json=?")
+        .run(audit.auditId, audit.request.commandId, canonicalJsonStringify(audit)).changes, 1);
+      repair.exec(String(trigger.sql));
+      repair.exec("COMMIT");
+    } finally { repair.close(); }
+    stopSyntheticDatabaseWorkers({ database: auditOnly.database, path: syntheticDatabasePath(auditOnly.database) });
 
-    const mismatched = fixture();
+    const mismatched = await fixture();
     const matchedCommand = lifecycleCommand(mismatched.request, "create");
     const mismatchedRequest = RunLifecycleCommandRecordSchema.parse({
       ...matchedCommand,
@@ -115,9 +145,11 @@ describe("canonical run-record service", () => {
     assert.equal(mismatched.database.getMeta().authorityGeneration, mismatchedGeneration);
   });
 
-  it("#8 stale CAS reports the current version and writes nothing", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("#8 stale CAS reports the current version and writes nothing", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     const run = created(service, request);
+    const claimMember1 = database.authority.workerSlots.get(WORKER_ID);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
     service.claimNext({ commandId: UUID_5, workflow: WORKFLOW_ID, workerId: WORKER_ID, runtimeConfig });
     const before = database.getMeta().authorityGeneration;
     const bytes = service.read(run.envelope.runId);
@@ -129,8 +161,8 @@ describe("canonical run-record service", () => {
     assert.equal(database.getMeta().authorityGeneration, before);
   });
 
-  it("list uses priority, enqueue time and run id, and refuses a stale cursor", () => {
-    const { service, request } = fixture();
+  it("list uses priority, enqueue time and run id, and refuses a stale cursor", async () => {
+    const { service, request } = await fixture();
     const bulk = created(service, request);
     const interactive = created(service, { ...request, commandId: UUID_5, priority: "interactive" });
     const page = service.list({ disposition: "live", limit: 1 });
@@ -146,8 +178,8 @@ describe("canonical run-record service", () => {
   });
 
   for (const operation of ["enqueue", "claim", "terminal"] as const) {
-    it(`rolls back ${operation} state and journal when required timeline persistence fails`, () => {
-      const f = fixture();
+    it(`rolls back ${operation} state and journal when required timeline persistence fails`, async () => {
+      const f = await fixture();
       const run = operation === "enqueue" ? undefined : created(f.service, f.request);
       const raw = new DatabaseSync(join(f.root, "state.db"));
       try {
@@ -174,8 +206,8 @@ describe("canonical run-record service", () => {
     });
   }
 
-  it("keeps one gate opening when a parked run is renamed and the rename is replayed", () => {
-    const f = fixture();
+  it("keeps one gate opening when a parked run is renamed and the rename is replayed", async () => {
+    const f = await fixture();
     const running = runningRun(f.service, f.request, f.runtimeConfig);
     const parked = f.service.workerTransition({ commandId: "83000000-0000-4000-8000-000000000077",
       runId: running.envelope.runId, claim: { workerId: WORKER_ID, claimGeneration: 1 },
@@ -189,18 +221,18 @@ describe("canonical run-record service", () => {
     assert.equal(renamed.run.displayName, request.displayName);
     assert.equal(f.service.transition(request).state, "applied-already");
     assert.deepEqual(f.database.authority.timelineEvents.page({}), before);
-    const world = makeWorld();
+    const world = await makeWorld();
     try {
       world.authority.records.set(running.envelope.runId, renamed.run);
       for (const record of f.database.authority.timelineEvents.page({})) {
         if (record.payload.kind === "span") world.writer.emit(record.payload.event);
       }
       assert.equal(world.projection.runFold(running.envelope.runId)?.openGates.length, 1);
-    } finally { world.dispose(); }
+    } finally { await world.dispose(); }
   });
 
-  it("rolls back gate parking when its required opened event fails", () => {
-    const f = fixture();
+  it("rolls back gate parking when its required opened event fails", async () => {
+    const f = await fixture();
     const running = runningRun(f.service, f.request, f.runtimeConfig);
     const raw = new DatabaseSync(join(f.root, "state.db"));
     try {
@@ -219,8 +251,8 @@ describe("canonical run-record service", () => {
     } finally { raw.close(); }
   });
 
-  it("queue-root publication waits for the outer transaction and disappears on rollback", () => {
-    const { service, request, database, published } = fixture();
+  it("queue-root publication waits for the outer transaction and disappears on rollback", async () => {
+    const { service, request, database, published } = await fixture();
     let rolledBack: RunRecord | undefined;
     assert.throws(() => database.withAuthorityTransaction(() => {
       rolledBack = created(service, request);
@@ -239,16 +271,15 @@ describe("canonical run-record service", () => {
     assert.equal(published.length, 1);
   });
 
-  it("#11 retry and restart create new attempts and preserve source identity", () => {
-    const { service, request, runtimeConfig, database } = fixture();
+  it("#11 retry creates a new attempt from a failed source and preserve its identity", async () => {
+    const { service, request, runtimeConfig, database } = await fixture();
     database.authority.runSessions.insert(RUN_SESSION);
-    const run = created(service, { ...request, sessionId: RUN_SESSION_ID, descriptorVersion: personLookupDescriptor.version,
-      contractFingerprint: personLookupDescriptor.contractFingerprint });
-    service.transition({ commandId: UUID_5, runId: run.envelope.runId, expectedVersion: 1,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+    const run = runningRun(service, { ...request, sessionId: RUN_SESSION_ID, descriptorVersion: personLookupDescriptor.version,
+      contractFingerprint: personLookupDescriptor.contractFingerprint }, runtimeConfig);
+    const failed = requireLifecycleApplied(service.terminalize(failureTerminalRequest(run, UUID_5), personLookupDescriptor));
     const source = service.read(run.envelope.runId);
     const retry = service.retry({ commandId: "80000000-0000-4000-8000-000000000001",
-      runId: run.envelope.runId, expectedVersion: 2, runtimeConfig }, personLookupDescriptor);
+      runId: run.envelope.runId, expectedVersion: failed.version, runtimeConfig }, personLookupDescriptor);
     assert.equal(retry.state, "applied");
     if (retry.state !== "applied") throw new Error("retry refused");
     assert.equal(retry.run.envelope.itemId, run.envelope.itemId);
@@ -260,19 +291,13 @@ describe("canonical run-record service", () => {
     service.transition({ commandId: "80000000-0000-4000-8000-000000000002",
       runId: retry.run.envelope.runId, expectedVersion: 1,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
-    const restart = service.restart({ commandId: "80000000-0000-4000-8000-000000000003",
-      runId: run.envelope.runId, expectedVersion: 2, runtimeConfig }, personLookupDescriptor);
-    assert.equal(restart.state, "applied");
-    if (restart.state !== "applied") throw new Error("restart refused");
-    assert.equal(restart.run.envelope.attempt, 3);
-    assert.equal(restart.run.sessionId, RUN_SESSION_ID);
-    assert.equal(restart.run.envelope.recovery, "restart-from-start");
-    assert.equal(restart.run.envelope.retryOf, run.envelope.runId);
+    assert.equal(retry.run.envelope.continuation, undefined);
+    assert.equal(database.authority.runs.listByItem({ workflow: run.envelope.workflow, itemId: run.envelope.itemId }).length, 2);
     assert.deepEqual(service.read(run.envelope.runId), source);
   });
 
-  it("#12 refuses retry from deleted and unresolved-write sources without minting a run", () => {
-    const deletedWorld = fixture();
+  it("#12 refuses retry from deleted and unresolved-write sources without minting a run", async () => {
+    const deletedWorld = await fixture();
     const deleted = created(deletedWorld.service, {
       ...deletedWorld.request,
       descriptorVersion: personLookupDescriptor.version,
@@ -298,7 +323,7 @@ describe("canonical run-record service", () => {
     }, personLookupDescriptor), { state: "refused", refusal: { reason: "source-deleted" } });
     assert.equal(deletedWorld.database.getMeta().authorityGeneration, deletedGeneration);
 
-    const parkedWorld = fixture();
+    const parkedWorld = await fixture();
     const running = runningRun(parkedWorld.service, parkedWorld.request, parkedWorld.runtimeConfig);
     const intent = parkedWriteIntent(parkedWorld.database, running, {
       writeIntentId: "86000000-0000-4000-8000-000000000099", code: "unknown", message: "external outcome is unknown",
@@ -332,8 +357,8 @@ describe("canonical run-record service", () => {
     }).length, 1);
   });
 
-  it("#20 returns every closed existence arm", () => {
-    const { service, request } = fixture();
+  it("#20 returns every closed existence arm", async () => {
+    const { service, request } = await fixture();
     const live = created(service, request);
     const deletedSource = created(service, {
       ...request,
@@ -364,8 +389,8 @@ describe("canonical run-record service", () => {
     assert.deepEqual(service.read(deletedSource.envelope.runId), { state: "deleted", tombstone });
   });
 
-  it("#17 refuses a non-terminal root without writing a tombstone", () => {
-    const { service, request, database } = fixture();
+  it("#17 refuses a non-terminal root without writing a tombstone", async () => {
+    const { service, request, database } = await fixture();
     const run = created(service, request);
     const before = database.getMeta().authorityGeneration;
     assert.deepEqual(service.delete({
@@ -378,9 +403,9 @@ describe("canonical run-record service", () => {
     assert.equal(database.getMeta().authorityGeneration, before);
   });
 
-  it("#15/#17/#26 delete writes each tombstone first, removes leaves first, and settles each tally once", () => {
+  it("#15/#17/#26 delete writes each tombstone first, removes leaves first, and settles each tally once", async () => {
     const deleteSteps: { runId: string; step: string }[] = [];
-    const { service, request, database } = fixture(undefined, {
+    const { service, request, database } = await fixture(undefined, {
       afterDeleteStep: (event) => deleteSteps.push(event),
     });
     const anchor = created(service, { ...request, shape: "operation" });
@@ -428,28 +453,9 @@ describe("canonical run-record service", () => {
     for (const run of [...members, anchor]) assert.equal(service.read(run.envelope.runId).state, "deleted");
   });
 
-  it("requests cancellation on both a claimed anchor and claimed member without settling either", () => {
-    const { service, request, runtimeConfig, database, clock } = fixture();
-    const anchor = runningRun(service, { ...request, shape: "operation" }, runtimeConfig);
-    const member = created(service, { ...request, commandId: "99000000-0000-4000-8000-000000000001", matchKey: "claimed-member",
-      shape: "operation-member", parent: { runId: anchor.envelope.runId, tracePrefix: anchor.envelope.traceId, edgeId: "member" } });
-    testWorkerPorts(database, clock, { path: syntheticDatabasePath(database), descriptor: personLookupDescriptor, poolIndex: 2 });
-    const claimed = service.claimNext({ commandId: "99000000-0000-4000-8000-000000000002", workflow: WORKFLOW_ID,
-      workerId: "person-lookup-worker-2", runtimeConfig });
-    assert.equal(claimed.state, "applied");
-    const cancelled = service.transition({ commandId: "99000000-0000-4000-8000-000000000003", runId: anchor.envelope.runId,
-      expectedVersion: anchor.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
-    assert.equal(cancelled.state, "applied");
-    for (const run of [anchor, member]) {
-      const current = database.authority.runs.get(run.envelope.runId); assert.ok(current);
-      assert.equal(current.cancelRequested, true);
-      assert.notEqual(current.lifecycle.state, "terminal");
-    }
-  });
-
-  it("#23 runs a multi-member group through cancel-tree and leaves-first deletion", () => {
+  it("#23 runs a multi-member group through cancel-tree and leaves-first deletion", async () => {
     const writes: RunRecord[] = [];
-    const { service, request } = fixture(undefined, {
+    const { service, request } = await fixture(undefined, {
       afterRunWrite: (run) => writes.push(run),
     });
     const anchor = created(service, { ...request, shape: "operation" });
@@ -504,41 +510,42 @@ describe("canonical run-record service", () => {
 
   for (const kind of ["create", "claim"] as const) {
     it(`${kind === "create" ? "#1" : "#4"} ${kind} serializes independent connections across a held reservation`, async () => {
-      const { root, request, service, runtimeConfig, database, clock } = fixture();
+      const { root, lifetime, request, service, runtimeConfig, database, clock } = await fixture();
       if (kind === "claim") {
         testWorkerPorts(database, clock, { path: syntheticDatabasePath(database), descriptor: personLookupDescriptor, poolIndex: 2 });
         created(service, request);
       }
-      const releases = [new SharedArrayBuffer(4), new SharedArrayBuffer(4)];
-      const connections = releases.map((release, index) => raceConnection({
-        path: join(root, "state.db"), now: NOW, release,
-        runId: `c0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-        operation: kind === "create" ? { kind, request: { ...request,
-          commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-        } } : { kind, request: { runtimeConfig, workflow: WORKFLOW_ID,
-          workerId: `person-lookup-worker-${String(index + 1)}`,
-          commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-        } },
-      }));
+      const connections: Awaited<ReturnType<typeof raceConnection>>[] = [];
       try {
+        for (const index of [0, 1]) {
+          connections.push(await raceConnection({
+            path: join(root, "state.db"), now: NOW,
+            runId: `c0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+            operation: kind === "create" ? { kind, request: { ...request,
+              commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+            } } : { kind, request: { runtimeConfig, workflow: WORKFLOW_ID,
+              workerId: `person-lookup-worker-${String(index + 1)}`,
+              commandId: `d0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+            } },
+          }, lifetime));
+        }
         const [first, second] = connections;
-        assert.deepEqual(await first.next(), { type: "ready" });
-        assert.deepEqual(await second.next(), { type: "ready" });
-        first.worker.postMessage("run");
+        assert.deepEqual(first.ready, { type: "ready" });
+        assert.deepEqual(second.ready, { type: "ready" });
+        first.run();
         assert.deepEqual(await first.next(), { type: "reserved" });
-        second.worker.postMessage("run");
+        second.run();
         const blocked = await second.next();
         assert.equal(blocked.type, "error", "second connection crossed the reservation before first commit");
         if (blocked.type !== "error") throw new Error("second connection did not block");
         assert.match(blocked.message, /database is locked/);
-        Atomics.store(new Int32Array(releases[0]), 0, 1);
-        Atomics.notify(new Int32Array(releases[0]), 0);
+        await first.release();
         const firstResult = await first.next();
         assert.equal(firstResult.type, "result");
         if (firstResult.type !== "result") throw new Error("first connection did not finish");
         assert.equal(firstResult.outcome.state, "applied");
-        Atomics.store(new Int32Array(releases[1]), 0, 1);
-        second.worker.postMessage("run");
+        await second.release();
+        second.run();
         if (kind === "create") assert.deepEqual(await second.next(), { type: "reserved" });
         const secondResult = await second.next();
         assert.equal(secondResult.type, "result");
@@ -551,13 +558,13 @@ describe("canonical run-record service", () => {
           assert.deepEqual([firstResult.outcome.run.runNumber, secondResult.outcome.run.runNumber], [1, 2]);
         }
       } finally {
-        await Promise.all(connections.map(({ worker }) => worker.terminate()));
+        await closeRaceConnections(connections);
       }
     });
   }
 
-  it("#22 removes only the deleted run's gate records and tallies them", () => {
-    const { service, request, database } = fixture();
+  it("#22 removes only the deleted run's gate records and tallies them", async () => {
+    const { service, request, database } = await fixture();
     const source = created(service, request);
     const peer = created(service, { ...request, commandId: UUID_5, matchKey: "synthetic-peer" });
     const sourceGate = { ...GATE_RESULT, runId: source.envelope.runId };
@@ -583,8 +590,8 @@ describe("canonical run-record service", () => {
     assert.deepEqual(database.authority.gateResults.listByRun(source.envelope.runId), []);
   });
 
-  it("#2 refuses a minted id already held by a tombstone without touching authority", () => {
-    const { service, request, database, clock } = fixture();
+  it("#2 refuses a minted id already held by a tombstone without touching authority", async () => {
+    const { service, request, database, clock } = await fixture();
     const run = created(service, request);
     service.transition({ commandId: UUID_5, runId: run.envelope.runId, expectedVersion: 1,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
@@ -599,8 +606,8 @@ describe("canonical run-record service", () => {
     assert.equal(service.read(run.envelope.runId).state, "deleted");
   });
 
-  it("#17 session membership alone permits deletion and preserves the session", () => {
-    const { service, request, database } = fixture();
+  it("#17 session membership alone permits deletion and preserves the session", async () => {
+    const { service, request, database } = await fixture();
     database.authority.runSessions.insert(RUN_SESSION);
     const run = created(service, { ...request, sessionId: RUN_SESSION_ID });
     service.transition({ commandId: UUID_5, runId: run.envelope.runId, expectedVersion: 1,
@@ -614,7 +621,7 @@ describe("canonical run-record service", () => {
   });
 
   it("ignores a file root in canonical reads and current storage health", async () => {
-    const { service, request, root, clock } = fixture();
+    const { service, request, root, clock } = await fixture();
     const runId = UUID_5;
     const traceId = "pl-120021-0000";
     const authorityPath = join(root, "state.db");
@@ -639,7 +646,7 @@ describe("canonical run-record service", () => {
       configFingerprint: request.configFingerprint,
       configSnapshotId: request.configSnapshotId,
     })+"\n");
-    const doctor = await doctorAuthorityStorage({
+    const doctor = await doctorAuthorityStorage(boundProfileAdmission(authorityPath), {
       stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,

@@ -28,5 +28,5 @@ domain driver contract.
 ## Further reading
 
 Before changing login, selectors, or history interpretation, read `session.ts` and `driver/` for
-current recipes and `docs/rebuild/reference/stores.md` for the current task catalog.
+current recipes and `docs/reference/stores.md` for the current task catalog.
 Root rules apply.

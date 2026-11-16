@@ -21,7 +21,7 @@ const AUTHORED_ROOTS = ["src", "tests", "scripts"] as const;
 const EXPECTED_ROOT_TYPESCRIPT_CONFIG_FILES = [
   "vitest.config.ts",
   "vite.dashboard.config.ts",
-  "vite.parity.config.ts",
+  "vite.mocks.config.ts",
 ] as const;
 
 /** Root TS inputs are explicit tsconfig entries, never a broad lint glob. */
@@ -31,10 +31,10 @@ const rootTypeScriptConfigFiles = tsconfig.include
 
 const EXACT_GATE_COMMANDS = {
   typecheck: "tsc --noEmit",
-  lint: "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts vite.parity.config.ts --max-warnings 0",
-  test: "tsx scripts/test/runner.ts run",
-  "test:coverage": "tsx scripts/test/runner.ts run --coverage --project unit --project integration --project architecture && tsx scripts/test/suite-size.ts",
-  "test:perf": "tsx scripts/test/runner.ts run --project perf --passWithNoTests=false",
+  lint: "node --max-old-space-size=6144 node_modules/eslint/bin/eslint.js --cache --cache-strategy content --cache-location node_modules/.cache/eslint/ src tests scripts vitest.config.ts vite.dashboard.config.ts vite.mocks.config.ts --max-warnings 0",
+  test: "vitest run --project unit --project integration --project architecture --project perf",
+  "test:coverage": "vitest run --coverage --project unit --project integration --project architecture",
+  "test:perf": "vitest run --project perf --passWithNoTests=false",
 } as const;
 
 export function gateCommandViolations(scripts: Readonly<Record<string, string>>): string[] {
@@ -52,8 +52,8 @@ describe("gate coverage", () => {
       ["typecheck", "echo tsc --noEmit"],
       ["lint", `echo ${EXACT_GATE_COMMANDS.lint}`],
       ["test", "true && vitest run"],
-      ["test:coverage", "vitest run --coverage && echo tsx scripts/test/suite-size.ts"],
-      ["test:perf", "tsx scripts/test/runner.ts run --project perf --passWithNoTests=false && echo bypass"],
+      ["test:coverage", `${EXACT_GATE_COMMANDS["test:coverage"]} && echo bypass`],
+      ["test:perf", "vitest run --project perf --passWithNoTests=false && echo bypass"],
     ] as const) {
       const mutated = { ...pkg.scripts, [name]: command };
       assert.match(gateCommandViolations(mutated).join("\n"), new RegExp(`^${name.replace(":", "\\:")}`));
@@ -98,12 +98,12 @@ describe("gate coverage", () => {
     for (const configFile of rootTypeScriptConfigFiles) {
       assert.match(
         lint,
-        new RegExp(`(^|\\s)${configFile.replace(/\./g, "\\.")}(\\s|$)`),
+        new RegExp(`(^|\\s)${configFile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`),
         `lint must target ${configFile}; otherwise a root config is typechecked but escapes lint`,
       );
       assert.match(
         eslintConfig,
-        new RegExp(`files:\\s*\\[[^\\]]*"${configFile.replace(/\./g, "\\.")}"`),
+        new RegExp(`files:\\s*\\[[^\\]]*"${configFile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`),
         `the typed ESLint config must explicitly cover ${configFile}; a command target without a strict block passes vacuously`,
       );
     }

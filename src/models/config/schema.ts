@@ -2,10 +2,21 @@ import { z } from "zod";
 import { LocalOperatorActorSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../rules/identity/ids.js";
 import type { ProviderCapabilityId } from "../../rules/identity/ids.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
+import { PersonPreferencesOverrideSchema } from "./person-preferences.js";
 import { ordinarySettingsObject } from "./catalog.js";
 
+export const ONBOARDING_DOCUMENTS_DIRECTORY_NAME = "onboarding";
+
 const UrlSchema = z.url();
-export const AbsolutePathSchema = z.string().min(1).refine((value) => value.startsWith("/"), "path must be absolute");
+
+/** Fully qualified path. Browser-safe: the dashboard imports this model. Drive-relative (`C:foo`) and a current-drive root (`\foo`) stay rejected. */
+function isAbsolutePath(value: string): boolean {
+  if (value.startsWith("/")) return true;
+  if (/^[A-Za-z]:[\\/]/u.test(value)) return true;
+  return value.startsWith("\\\\") && value.length > 2 && value[2] !== "\\" && value[2] !== "/";
+}
+
+export const AbsolutePathSchema = z.string().min(1).refine(isAbsolutePath, "path must be absolute");
 export const FiscalYearKeySchema = z.string().regex(/^FY\d{4}$/, "fiscal-year key must be FY<year>");
 export const UsDateSchema = z.string().regex(
   /^(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/\d{4}$/,
@@ -78,7 +89,7 @@ export const ProviderInvocationSettingsSchema = z.strictObject({
 export const PROVIDER_CAPABILITY_CONFIG_KEYS = deepFreeze({
   "geocode.census": "geocodeCensus",
   "geocode.nominatim": "geocodeNominatim",
-} as const satisfies Record<Exclude<ProviderCapabilityId, "ocr.extract">, keyof z.output<typeof ProviderInvocationSettingsSchema>>);
+} as const satisfies Record<Exclude<ProviderCapabilityId, "ocr.extract" | "workbooks.library" | "ocr.approved-snapshot" | "ocr.review">, keyof z.output<typeof ProviderInvocationSettingsSchema>>);
 
 /** The absolute filesystem locations the runtime reads and writes — pure contract with no default, because a browser has no working directory to resolve against. */
 export const ConfigPathsSchema = z.strictObject({
@@ -91,7 +102,7 @@ export const ConfigPathsSchema = z.strictObject({
   /** Every worker browser profile is namespaced BENEATH this root. */
   browserProfileRoot: AbsolutePathSchema,
   duoCredential: AbsolutePathSchema,
-  /** The unpacked Duo Autopilot MV3 extension loaded into every browser session. */
+  /** Fast Duo source folder staged for workflow browser sessions. */
   duoExtensionDir: AbsolutePathSchema,
 });
 
@@ -213,7 +224,7 @@ export const ConfigSchema = z.strictObject({
 /** Resolve the current timeout for one connected capability. */
 export function providerInvocationConfig(
   config: { readonly providers: z.output<typeof ProviderInvocationSettingsSchema> },
-  capability: Exclude<ProviderCapabilityId, "ocr.extract">,
+  capability: Exclude<ProviderCapabilityId, "ocr.extract" | "workbooks.library" | "ocr.approved-snapshot" | "ocr.review">,
 ): z.output<typeof ProviderInvocationConfigSchema> {
   const key = PROVIDER_CAPABILITY_CONFIG_KEYS[capability];
   return ProviderInvocationConfigSchema.parse(config.providers[key]);
@@ -225,6 +236,7 @@ function partialEndpoints<Shape extends z.ZodRawShape>(routes: z.ZodObject<Shape
 
 /** The catalog selects the ordinary members; templates supply their existing value schemas. */
 export const SettingsOverrideSchema = ordinarySettingsObject("", z.strictObject({
+  preferences: PersonPreferencesOverrideSchema.optional(),
   actor: ordinarySettingsObject("actor", ConfigSchema.shape.actor.unwrap()).partial().optional(),
   urls: ordinarySettingsObject("urls", z.strictObject({
     kuali: partialEndpoints(KualiRoutesSchema).optional(),

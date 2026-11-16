@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { act,createElement,type ReactElement } from "react";
 import { createRoot,type Root } from "react-dom/client";
-import { afterEach,describe,it } from "vitest";
+import { afterEach,describe,it,onTestFinished,vi } from "vitest";
 import { DateInput,DateRangeInput } from "../../../../src/dashboard/ds/primitives/primitives-date.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -270,6 +270,9 @@ describe("ds date drafts — an unreadable draft stays editable instead of refus
   });
 
   it("DateRangeInput still publishes a chosen range", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 15));
+    onTestFinished(() => { vi.useRealTimers(); });
     const published: Array<{ from: string; to: string }> = [];
     mount(createElement(DateRangeInput, {
       label: "Report dates",

@@ -1,12 +1,12 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../parity/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,describe as describe_m1,expect as expect_m1,it as it_m0,it as it_m1 } from "vitest";
 import { launchWorkflows as launchWorkflows_m1 } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { previewSessionAdd as previewSessionAdd_m0,previewSessionAdd as previewSessionAdd_m1,previewSessionControl as previewSessionControl_m0,sessionsSample as sessionsSample_m0 } from "../../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
-import { sessionTallies as sessionTallies_m0,sessionTimelineSummary as sessionTimelineSummary_m0 } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
+import { sessionTallies as sessionTallies_m0 } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { parseWorkflows as parseWorkflows_m1 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog as buildWorkflowCatalog_m0,buildWorkflowCatalog as buildWorkflowCatalog_m1 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } from "../../../parity/helpers/fixture-start.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } from "../../../mocks/helpers/fixture-start.js";
 
 
 {
@@ -21,13 +21,13 @@ describe_m0("frontend timeline and sessions", () => {
     const paused = previewSessionControl_m0(data, first.id, "pause");
     if (paused.state !== "ready") throw new Error("ready result required");
     assert_m0.equal(paused.workers[0].state, "paused");
-    assert_m0.equal(paused.workers[0].timeline?.find(node => node.id === "separation-12")?.state, "paused");
+    assert_m0.equal(paused.workers[0].timeline?.find(node => node.id === "kronos-timecard")?.state, "paused");
     assert_m0.equal(data.workers[0].state, "running");
     assert_m0.equal(paused.workers[1], data.workers[1]);
     const resumed = previewSessionControl_m0(paused, first.id, "resume");
     if (resumed.state !== "ready") throw new Error("ready result required");
     assert_m0.equal(resumed.workers[0].state, "running");
-    assert_m0.equal(resumed.workers[0].timeline?.find(node => node.id === "separation-12")?.state, "active");
+    assert_m0.equal(resumed.workers[0].timeline?.find(node => node.id === "kronos-timecard")?.state, "active");
     const stopped = previewSessionControl_m0(resumed, first.id, "stop");
     if (stopped.state !== "ready") throw new Error("ready result required");
     assert_m0.equal(stopped.workers[0].state, "idle");
@@ -53,7 +53,6 @@ describe_m0("frontend timeline and sessions", () => {
     const current = retried.workers.find(worker => worker.id === failed.id)!;
     assert_m0.equal(current.state, "starting");
     assert_m0.equal(current.problem, undefined);
-    assert_m0.deepEqual(sessionTimelineSummary_m0(current.timeline!), { completed: 0, total: 4 });
     assert_m0.equal(current.timeline?.[0].state, "active");
     assert_m0.ok(current.browsers.every(browser => browser.state === "starting"));
     assert_m0.equal(data.workers.find(worker => worker.id === failed.id)?.state, "failed");
@@ -79,12 +78,6 @@ describe_m0("frontend timeline and sessions", () => {
     assert_m0.deepEqual(sessionTallies_m0(active.workers), [{ state: "running", count: 2 }, { state: "starting", count: 1 }, { state: "idle", count: 1 }]);
     assert_m0.equal(sessionsSample_m0("loading").state, "loading");
     assert_m0.equal(sessionsSample_m0("unavailable").state, "unavailable");
-    assert_m0.deepEqual(sessionTimelineSummary_m0(active.workers[0].timeline!), { completed: 11, total: 22 });
-    assert_m0.deepEqual(sessionTimelineSummary_m0(active.workers[1].timeline!), { completed: 3, total: 4 });
-    assert_m0.throws(() => sessionTimelineSummary_m0([]), /session-timeline-invalid/);
-    const node = active.workers[0].timeline![0];
-    assert_m0.throws(() => sessionTimelineSummary_m0([node, node]), /session-timeline-invalid/);
-    assert_m0.deepEqual(sessionTimelineSummary_m0([{ ...node, state: "pending" }]), { completed: 0, total: 1 });
   });
 });
 }
@@ -92,7 +85,7 @@ describe_m0("frontend timeline and sessions", () => {
 {
 
 
-const served = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows));
+const served = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows), FIXTURE_START_PICKER_BOOTSTRAP_m1.workbookCompatibility);
 const catalog = buildWorkflowCatalog_m1(served);
 
 describe_m1("frontend workflow catalog", () => {

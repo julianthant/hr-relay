@@ -1,0 +1,93 @@
+(() => {
+  if (globalThis.__relayDuoInstalled) return;
+  globalThis.__relayDuoInstalled = true;
+  const credentials = navigator.credentials;
+  if (!credentials) return;
+  const originalGet = credentials.get.bind(credentials);
+  const originalCreate = credentials.create.bind(credentials);
+  const encode = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+  const decode = text => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), character => character.charCodeAt(0)).buffer;
+  const urlId = text => text.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const waiting = new Map();
+  window.addEventListener('message', event => {
+    if (event.source !== window || event.origin !== location.origin || event.data?.type !== 'RELAY_DUO_RESPONSE') return;
+    const pending = waiting.get(event.data.id);
+    if (!pending) return;
+    window.postMessage({ type: 'RELAY_DUO_SETTLED', id: event.data.id }, location.origin);
+    if (event.data.success) pending.resolve(event.data.result);
+    else pending.reject(new DOMException('Duo setup could not complete.', 'NotAllowedError'));
+  });
+  function request(type, data, signal, nativeOptions) {
+    if (signal?.aborted) return Promise.reject(new DOMException('Request aborted', 'AbortError'));
+    return new Promise((resolve, reject) => {
+      const id = crypto.randomUUID();
+      let timer;
+      const cleanup = () => { waiting.delete(id); clearTimeout(timer); signal?.removeEventListener('abort', abort); };
+      const cancel = reason => {
+        cleanup();
+        window.postMessage({ type: 'RELAY_DUO_ABORT', id, reason }, location.origin);
+        reject(new DOMException('Duo enrollment ended.', reason === 'aborted' ? 'AbortError' : 'NotAllowedError'));
+      };
+      const abort = () => cancel('aborted');
+      waiting.set(id, {
+        resolve: value => { cleanup(); resolve(value); },
+        reject: error => { cleanup(); reject(error); },
+      });
+      signal?.addEventListener('abort', abort, { once: true });
+      if (Number.isFinite(nativeOptions?.timeout) && nativeOptions.timeout > 0) timer = setTimeout(() => cancel('timed-out'), nativeOptions.timeout);
+      window.postMessage({ type: 'RELAY_DUO_REQUEST', id, operation: type, request: { ...data, origin: location.origin }, nativeOptions }, location.origin);
+    });
+  }
+  if (globalThis.PublicKeyCredential) {
+    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => {
+      const result = await request('RELAY_CAPABILITIES', { rpId: 'duosecurity.com' });
+      return result.platformAvailable;
+    };
+    const originalSupport = PublicKeyCredential.isExternalCTAP2SecurityKeySupported?.bind(PublicKeyCredential);
+    PublicKeyCredential.isExternalCTAP2SecurityKeySupported = async () => {
+      const result = await request('RELAY_CAPABILITIES', { rpId: 'duosecurity.com' });
+      return result.softwareKey || (originalSupport ? originalSupport() : false);
+    };
+  }
+  credentials.get = async options => {
+    const key = options?.publicKey;
+    if (!key || (key.rpId || location.hostname) !== 'duosecurity.com') return originalGet(options);
+    const result = await request('DUO_AUTOPILOT_SIGN', {
+      rpId: key.rpId || location.hostname, requestId: crypto.randomUUID(), challenge: encode(key.challenge),
+      allowCredentials: (key.allowCredentials || []).map(entry => encode(entry.id)),
+    }, options.signal);
+    if (result.passThrough) return originalGet(options);
+    if (!result.ok) throw new DOMException('Duo setup refused this key request.', 'NotAllowedError');
+    const response = Object.create(AuthenticatorAssertionResponse.prototype, Object.getOwnPropertyDescriptors({
+      clientDataJSON: decode(result.clientDataJSON), authenticatorData: decode(result.authenticatorData),
+      signature: decode(result.signature), userHandle: result.userHandle ? decode(result.userHandle) : null,
+    }));
+    return Object.create(PublicKeyCredential.prototype, Object.getOwnPropertyDescriptors({
+      id: urlId(result.credentialId), rawId: decode(result.credentialId), type: 'public-key',
+      authenticatorAttachment: result.transport === 'usb' ? 'cross-platform' : 'platform', response,
+      getClientExtensionResults: () => ({}),
+    }));
+  };
+  credentials.create = async options => {
+    const key = options?.publicKey;
+    if (!key || (key.rp?.id || location.hostname) !== 'duosecurity.com') return originalCreate(options);
+    const requestId = crypto.randomUUID();
+    const result = await request('DUO_AUTOPILOT_ENROLL', {
+      requestId, rpId: key.rp?.id || location.hostname, challenge: encode(key.challenge),
+      userHandle: key.user?.id ? encode(key.user.id) : null, username: key.user?.name,
+      pubKeyCredParams: key.pubKeyCredParams,
+      authenticatorAttachment: key.authenticatorSelection?.authenticatorAttachment || null,
+      residentKey: key.authenticatorSelection?.residentKey === 'required' || key.authenticatorSelection?.requireResidentKey === true,
+    }, options.signal, key);
+    if (!result.ok) throw new DOMException('Duo setup refused enrollment.', 'NotAllowedError');
+    const response = Object.create(AuthenticatorAttestationResponse.prototype, Object.getOwnPropertyDescriptors({
+      clientDataJSON: decode(result.clientDataJSON), attestationObject: decode(result.attestationObject),
+      getTransports: () => result.native ? result.transports : [result.transport], getAuthenticatorData: () => decode(result.authData),
+      getPublicKey: () => result.publicKeySpki === null ? null : decode(result.publicKeySpki), getPublicKeyAlgorithm: () => result.native ? result.publicKeyAlgorithm : -7,
+    }));
+    return Object.create(PublicKeyCredential.prototype, Object.getOwnPropertyDescriptors({
+      id: urlId(result.credentialId), rawId: decode(result.credentialId), type: 'public-key',
+      authenticatorAttachment: result.native ? 'platform' : 'cross-platform', response, getClientExtensionResults: () => ({}),
+    }));
+  };
+})();

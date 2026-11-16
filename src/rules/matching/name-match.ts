@@ -2,6 +2,14 @@
 import { z } from "zod";
 import { levenshteinDistance } from "./levenshtein.js";
 
+export function matchesExactPersonName(displayed: string, requested: string): boolean {
+  const key = (name: string): string => {
+    const parts = name.toLowerCase().trim().replace(/\.(?=\s|,|$)/gu, "").split(",").map(part => part.trim());
+    return (parts.length === 2 ? `${parts[1]} ${parts[0]}` : parts.join(" ")).replace(/\s+/gu, " ");
+  };
+  return key(displayed) === key(requested);
+}
+
 /** 0..1 confidence plus which tier produced it. */
 export const NameMatchResultSchema = z.strictObject({
   score: z.number().min(0).max(1),
@@ -9,7 +17,7 @@ export const NameMatchResultSchema = z.strictObject({
 });
 export type NameMatchResult = z.infer<typeof NameMatchResultSchema>;
 
-export function tokenizeName(value: string): string[] {
+function tokenizeName(value: string): string[] {
   return value
     .toLowerCase()
     .replace(/[^a-z\s]/gu, " ")
@@ -41,7 +49,7 @@ export function scoreNameMatch(a: string, b: string): NameMatchResult {
 }
 
 /** Max per-token Levenshtein distance still counted as a spelling variant. */
-export const TOKEN_VARIANT_MAX = 2;
+const TOKEN_VARIANT_MAX = 2;
 
 /** Three-way name comparison aligned token-by-token, so name-order differences never masquerade as a mismatch. */
 export const NameSimilarityTierSchema = z.enum(["same", "similar", "different"]);

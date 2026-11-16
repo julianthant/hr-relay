@@ -1,9 +1,75 @@
-import { WORKBOOK_LIBRARY_MIGRATION } from "./workbook-library-repository.js";
+import { PERSON_PREFERENCES_CONVERSION_ID } from "./person-preferences-migration.js";
+import { createHash } from "node:crypto";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { EXCLUSIVE_SESSION_LEASE_MIGRATION } from "./exclusive-session-leases.js";
+import { ASSISTANT_HISTORY_MIGRATION } from "./assistant-history.js";
+import { ASSISTANT_EFFORT_SCALE_MIGRATION } from "./assistant-effort-migration.js";
+import { ASSISTANT_ATTACHMENTS_MIGRATION } from "./assistant-attachments.js";
+import { ASSISTANT_GRANT_RETIREMENT_MIGRATION, RETIRED_ASSISTANT_GRANT_TABLE } from "./assistant-grant-retirement.js";
+import { OCR_REVIEW_MIGRATION } from "./ocr-review.js";
+import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION } from "./workbook-library-repository.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
+import { CapturedWorkbookWriteSourceSchema, RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../models/dashboard/workbooks.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 5;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 30;
+/** Runs stored before this version may omit buildId. Later versions keep the strict envelope. */
+export const BUILD_ID_ENVELOPE_SCHEMA_VERSION = 22;
+/** Migration 22 deletes every run approved before envelopes carried a build id, through the native run deletion. */
+export const PRE_BUILD_RUN_DELETION_ID = "pre-build-run-deletion:v1";
+/** Migration 24 drops durable worker custody; the pool holds it in memory. */
+export const WORKER_CUSTODY_SCHEMA_VERSION = 24;
+/** Tables migration 24 drops; only stopped inspection of an older source still names them. */
+export const WORKER_CUSTODY_DROPPED_TABLES = ["worker_leases", "worker_controls", "browser_sessions"] as const;
+export const isWorkerCustodyDroppedTable = (table: string): table is typeof WORKER_CUSTODY_DROPPED_TABLES[number] => (WORKER_CUSTODY_DROPPED_TABLES as readonly string[]).includes(table);
+export const WORKER_CUSTODY_CONVERSION_ID = "worker-custody-forward-conversion:v1";
+export const WORKER_CUSTODY_SCAN_ID = "worker-custody-grammar-scan:v1";
+
+/** Durable worker custody becomes in-memory pool state: leases, controls and browser rows go, slots keep ordinal, pool index and pause. */
+export const WORKER_CUSTODY_MIGRATION_STATEMENTS: readonly string[] = [
+  `CREATE TEMP TABLE worker_pause_capture AS SELECT worker_id, directive='pause' AS paused FROM worker_leases lease
+    WHERE lease_generation=(SELECT MAX(lease_generation) FROM worker_leases WHERE worker_id=lease.worker_id)`,
+  "DROP TABLE worker_controls",
+  "DROP TABLE browser_sessions",
+  "DROP TABLE worker_leases",
+  // Slot children keep their rows and keys; the commit-time foreign key check proves every slot came back.
+  "PRAGMA defer_foreign_keys=ON",
+  `CREATE TEMP TABLE worker_slot_capture AS SELECT slot.id, slot.workflow, slot.ordinal, json_extract(slot.payload_json,'$.poolIndex') AS pool_index,
+    COALESCE(pause.paused,0) AS paused, slot.retired_at, slot.created_at, slot.updated_at
+    FROM worker_slots slot LEFT JOIN worker_pause_capture pause ON pause.worker_id=slot.id`,
+  "DROP TABLE worker_slots",
+  `CREATE TABLE worker_slots (
+ id TEXT PRIMARY KEY, workflow TEXT NOT NULL REFERENCES worker_pools(workflow), ordinal INTEGER NOT NULL UNIQUE CHECK(ordinal>0),
+ pool_index INTEGER NOT NULL CHECK(pool_index>0), paused INTEGER NOT NULL CHECK(paused IN (0,1)),
+ retired_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+) STRICT`,
+  "INSERT INTO worker_slots SELECT * FROM worker_slot_capture",
+  `CREATE TRIGGER worker_slots_retained BEFORE DELETE ON worker_slots
+BEGIN SELECT RAISE(ABORT,'worker-slot-retirement-retained'); END`,
+  `CREATE TRIGGER worker_slots_identity BEFORE UPDATE ON worker_slots
+WHEN NEW.id IS NOT OLD.id OR NEW.workflow IS NOT OLD.workflow OR NEW.ordinal IS NOT OLD.ordinal OR NEW.pool_index IS NOT OLD.pool_index
+ OR NEW.created_at IS NOT OLD.created_at OR (OLD.retired_at IS NOT NULL AND NEW.retired_at IS NOT OLD.retired_at)
+BEGIN SELECT RAISE(ABORT,'worker-slot-identity-immutable'); END`,
+  `CREATE TRIGGER worker_slots_no_replace BEFORE INSERT ON worker_slots
+WHEN EXISTS(SELECT 1 FROM worker_slots WHERE id=NEW.id OR ordinal=NEW.ordinal)
+BEGIN SELECT RAISE(ABORT,'worker-slot-identity-conflict'); END`,
+  "DROP TABLE worker_slot_capture",
+  "DROP TABLE worker_pause_capture",
+  `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`,
+  `SELECT '${WORKER_CUSTODY_SCAN_ID}'`,
+];
+
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] as const;
+export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
+  return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
+}
+
+/** Stopped versions a database may be upgraded from; every version list derives from these, so they cannot drift. */
+export const UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.filter(version => version >= 8);
+/** Versions startup, restore and admission open: every upgradeable version plus the current one. */
+export const OPENABLE_AUTHORITY_SCHEMA_VERSIONS: readonly number[] = [...UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS, CURRENT_AUTHORITY_SCHEMA_VERSION];
 
 export function isCurrentAuthoritySchemaVersion(version: number): boolean {
   return version === CURRENT_AUTHORITY_SCHEMA_VERSION;
@@ -685,20 +751,314 @@ WHEN OLD.kind='imported' AND json_type(OLD.payload_json,'$.preparationJson')='te
  AND json_extract(json_extract(NEW.payload_json,'$.preparationJson'),'$.workbookSource') IS NOT json_extract(json_extract(OLD.payload_json,'$.preparationJson'),'$.workbookSource')
 BEGIN SELECT RAISE(ABORT,'imported-artifact-workbook-source-immutable'); END;`] },
   { version: 5, statements: ["UPDATE run_requests SET payload_json=json_set(payload_json, '$.workers', 'auto')"] },
+  { version: 6, statements: ["UPDATE run_requests SET payload_json=json_remove(payload_json, '$.workers')"] },
+  { version: 7, statements: [`CREATE TABLE database_states_bound (
+ id INTEGER PRIMARY KEY CHECK(id=1), schema_version INTEGER NOT NULL CHECK(schema_version>0),
+ authority_generation INTEGER NOT NULL CHECK(authority_generation>=0), updated_at TEXT NOT NULL,
+ search_generation INTEGER, search_state TEXT NOT NULL CHECK(search_state IN ('unbuilt','ready','invalid')),
+ installation_id TEXT NOT NULL CHECK(length(installation_id)=36), profile_id TEXT NOT NULL CHECK(length(profile_id)=36),
+ CHECK(search_state<>'ready' OR search_generation=authority_generation)
+) STRICT;`, "DROP TABLE database_states", "ALTER TABLE database_states_bound RENAME TO database_states",
+    `CREATE TRIGGER database_states_binding_immutable BEFORE UPDATE OF installation_id,profile_id ON database_states
+BEGIN SELECT RAISE(ABORT,'profile-database-binding-immutable'); END;`] },
+  { version: 8, statements: [`CREATE TABLE assistant_grants (
+ id TEXT PRIMARY KEY CHECK(id='current'), profile_id TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision>0),
+ command_id TEXT NOT NULL REFERENCES commands(id), payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), updated_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE assistant_chats (
+ id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, epoch INTEGER NOT NULL CHECK(epoch>0),
+ payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE assistant_actions (
+ id TEXT PRIMARY KEY, chat_id TEXT NOT NULL REFERENCES assistant_chats(id), command_id TEXT NOT NULL UNIQUE,
+ revision INTEGER NOT NULL CHECK(revision>0), state TEXT NOT NULL CHECK(state IN ('prepared','approved','claimed','settled','unknown','cancelled')),
+ payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+) STRICT;
+CREATE TRIGGER assistant_chats_immutable BEFORE UPDATE ON assistant_chats
+BEGIN SELECT RAISE(ABORT,'assistant-chat-immutable'); END;
+CREATE TRIGGER assistant_grants_revision BEFORE UPDATE ON assistant_grants
+WHEN NEW.profile_id IS NOT OLD.profile_id OR NEW.revision <> OLD.revision+1 OR NEW.command_id IS OLD.command_id
+BEGIN SELECT RAISE(ABORT,'assistant-grant-revision-conflict'); END;
+CREATE TRIGGER assistant_actions_transition BEFORE UPDATE ON assistant_actions
+WHEN NEW.id IS NOT OLD.id OR NEW.chat_id IS NOT OLD.chat_id OR NEW.command_id IS NOT OLD.command_id
+ OR NEW.created_at IS NOT OLD.created_at OR NEW.expires_at IS NOT OLD.expires_at OR NEW.revision <> OLD.revision+1
+ OR json_remove(NEW.payload_json,'$.revision','$.state','$.result') IS NOT json_remove(OLD.payload_json,'$.revision','$.state','$.result')
+ OR NOT ((OLD.state='prepared' AND NEW.state IN ('approved','cancelled'))
+ OR (OLD.state='approved' AND NEW.state IN ('claimed','cancelled'))
+ OR (OLD.state='claimed' AND NEW.state IN ('settled','unknown')) OR (OLD.state='unknown' AND NEW.state='settled'))
+BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
+  { version: 9, statements: [
+    `CREATE TABLE assistant_model_preference (
+      id TEXT PRIMARY KEY CHECK(id='current'), profile_id TEXT NOT NULL,
+      revision INTEGER NOT NULL CHECK(revision>0), command_id TEXT NOT NULL UNIQUE REFERENCES commands(id),
+      audit_id TEXT NOT NULL UNIQUE REFERENCES command_audits(id), payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),
+      updated_at TEXT NOT NULL
+    ) STRICT`,
+    `CREATE TRIGGER assistant_model_preference_monotonic BEFORE UPDATE ON assistant_model_preference
+      WHEN NEW.id IS NOT OLD.id OR NEW.profile_id IS NOT OLD.profile_id OR NEW.revision != OLD.revision+1
+        OR NEW.command_id=OLD.command_id OR NEW.audit_id=OLD.audit_id
+      BEGIN SELECT RAISE(ABORT,'assistant-preference-revision-conflict'); END`,
+    `CREATE TRIGGER assistant_model_preference_no_delete BEFORE DELETE ON assistant_model_preference
+      BEGIN SELECT RAISE(ABORT,'assistant-preference-delete-refused'); END`,
+  ] },
+  { version: 10, statements: [
+    "DROP TABLE explorer_overrides",
+    "DROP TRIGGER command_audits_retained",
+    `DELETE FROM command_audits
+      WHERE json_extract(payload_json,'$.request.family')='explorer'
+        AND json_extract(payload_json,'$.request.type')='apply-explorer-edit'
+        AND json_extract(payload_json,'$.request.commandId')=command_id
+        AND command_id IN (SELECT id FROM commands WHERE family='explorer'
+          AND json_extract(request_json,'$.family')='explorer'
+          AND json_extract(request_json,'$.type')='apply-explorer-edit'
+          AND json_extract(request_json,'$.commandId')=id)`,
+    `DELETE FROM commands WHERE family='explorer'
+      AND json_extract(request_json,'$.family')='explorer'
+      AND json_extract(request_json,'$.type')='apply-explorer-edit'
+      AND json_extract(request_json,'$.commandId')=id`,
+    `CREATE TRIGGER command_audits_retained BEFORE DELETE ON command_audits
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-required'); END`,
+  ] },
+  { version: 11, statements: [
+    `UPDATE assistant_actions SET revision=revision+1,state='cancelled',
+      payload_json=json_set(payload_json,'$.revision',revision+1,'$.state','cancelled')
+      WHERE state IN ('prepared','approved')
+      AND json_extract(payload_json,'$.binding.mode') IN ('before-submits','without-asking')`,
+    `DELETE FROM assistant_grants
+      WHERE json_extract(payload_json,'$.policy.mode') IN ('before-submits','without-asking')`,
+  ] },
+  { version: 12, statements: [
+    "DROP TRIGGER artifacts_extracted_immutable",
+    `UPDATE artifacts SET payload_json=json_object('binding','unbound-source','extractionId',id,'extraction',json(payload_json))
+      WHERE kind='extracted'`,
+    `CREATE TRIGGER artifacts_extracted_immutable BEFORE UPDATE ON artifacts
+      WHEN OLD.kind='extracted'
+      BEGIN SELECT RAISE(ABORT,'artifacts-extracted-immutable'); END`,
+    "DROP TRIGGER artifacts_retained",
+    `CREATE TRIGGER artifacts_retained BEFORE DELETE ON artifacts
+      WHEN OLD.kind IN ('generated','extracted') OR (OLD.kind='imported' AND json_type(OLD.payload_json,'$.submittedJson')='text')
+      BEGIN SELECT RAISE(ABORT,'artifact-evidence-retained'); END`,
+  ] },
+  { version: 13, statements: WORKBOOK_MASTER_MIGRATION.statements },
+  EXCLUSIVE_SESSION_LEASE_MIGRATION,
+  { version: 15, statements: [
+    "ALTER TABLE runs ADD COLUMN pause_state TEXT CHECK(pause_state IS NULL OR pause_state IN ('requested','paused'))",
+    `CREATE TRIGGER run_pause_insert BEFORE INSERT ON runs
+      WHEN NEW.pause_state IS NOT json_extract(NEW.lifecycle_json,'$.pause.state')
+      BEGIN SELECT RAISE(ABORT,'run-pause-authority-mismatch'); END`,
+    `CREATE TRIGGER run_pause_update BEFORE UPDATE ON runs
+      WHEN NEW.pause_state IS NOT json_extract(NEW.lifecycle_json,'$.pause.state')
+      BEGIN SELECT RAISE(ABORT,'run-pause-authority-mismatch'); END`,
+  ] },
+  { version: 16, statements: [
+    "DROP TRIGGER settings_snapshots_immutable",
+    "DROP TRIGGER command_audits_immutable",
+    `SELECT 'person-preferences-forward-conversion:${PERSON_PREFERENCES_CONVERSION_ID}'`,
+    `CREATE TRIGGER settings_snapshots_immutable BEFORE UPDATE ON settings_snapshots
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+    `CREATE TRIGGER command_audits_immutable BEFORE UPDATE ON command_audits
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+  ] },
+  OCR_REVIEW_MIGRATION,
+  { version: 18, statements: [
+    `CREATE TABLE workbook_reference_upgrade_guard (refused INTEGER CONSTRAINT workbook_reference_schema_upgrade_unproved CHECK(refused=0)) STRICT`,
+    `INSERT INTO workbook_reference_upgrade_guard SELECT 1 FROM runs,json_each(runs.lifecycle_json,'$.input.workbookReferences') reference
+      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output")}' LIMIT 1`,
+    `INSERT INTO workbook_reference_upgrade_guard SELECT 1 FROM run_requests,json_each(run_requests.payload_json,'$.planned') planned,
+      json_each(planned.value,'$.workbookReferences') reference
+      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output")}' LIMIT 1`,
+    `DROP TABLE workbook_reference_upgrade_guard`,
+    ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements,
+  ] },
+  { version: 19, statements: [
+    `CREATE TABLE workbook_reference_upgrade_guard (refused INTEGER CONSTRAINT workbook_reference_schema_upgrade_unproved CHECK(refused=0)) STRICT`,
+    `INSERT INTO workbook_reference_upgrade_guard SELECT 1 FROM runs,json_each(runs.lifecycle_json,'$.input.workbookReferences') reference
+      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookNamedAllRowsReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookSelectedRowReferenceSchema, "output")}' LIMIT 1`,
+    `INSERT INTO workbook_reference_upgrade_guard SELECT 1 FROM run_requests,json_each(run_requests.payload_json,'$.planned') planned,
+      json_each(planned.value,'$.workbookReferences') reference
+      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookNamedAllRowsReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookSelectedRowReferenceSchema, "output")}' LIMIT 1`,
+    `DROP TABLE workbook_reference_upgrade_guard`,
+  ] },
+  { version: 20, statements: [
+    "DROP TRIGGER runs_completion_immutable",
+
+
+    "DROP TRIGGER run_receipts_no_replace", "DROP TRIGGER run_receipts_immutable", "DROP TRIGGER run_receipts_owner_delete",
+    "DROP TRIGGER run_results_no_replace", "DROP TRIGGER run_results_immutable", "DROP TRIGGER run_results_owner_delete",
+    "ALTER TABLE run_receipts RENAME TO previous_run_receipts",
+    "ALTER TABLE run_results RENAME TO previous_run_results",
+    `CREATE TABLE run_results (
+      id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), settlement_version INTEGER NOT NULL CHECK(settlement_version>0),
+      terminal_run_json TEXT NOT NULL CHECK(json_valid(terminal_run_json)),
+      workflow TEXT NOT NULL, attempt INTEGER NOT NULL CHECK(attempt>0), result_digest TEXT NOT NULL,
+      payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), created_at TEXT NOT NULL, UNIQUE(run_id,settlement_version)
+    ) STRICT`,
+    `INSERT INTO run_results SELECT result.run_id || ':' || COALESCE(json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1,json_extract(result.payload_json,'$.result.value.appliedVersion')),
+      result.run_id, COALESCE(json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1,json_extract(result.payload_json,'$.result.value.appliedVersion')),
+      json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json),'$.version',COALESCE(json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1,json_extract(result.payload_json,'$.result.value.appliedVersion')),'$.updatedAt',json_extract(run.lifecycle_json,'$.lifecycle.endedAt')),
+      result.workflow,result.attempt,result.result_digest,result.payload_json,result.created_at
+      FROM previous_run_results result JOIN runs run ON run.id=result.run_id`,
+    `CREATE TABLE run_receipts (
+      id TEXT PRIMARY KEY, run_id TEXT NOT NULL, settlement_version INTEGER NOT NULL CHECK(settlement_version>0), workflow TEXT NOT NULL,
+      attempt INTEGER NOT NULL CHECK(attempt>0), result TEXT NOT NULL, confidence TEXT NOT NULL,
+      failure_id TEXT REFERENCES run_failures(id), payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), created_at TEXT NOT NULL,
+      UNIQUE(run_id,settlement_version), FOREIGN KEY(run_id,settlement_version) REFERENCES run_results(run_id,settlement_version)
+    ) STRICT`,
+    `INSERT INTO run_receipts SELECT receipt.id,receipt.run_id,result.settlement_version,receipt.workflow,receipt.attempt,
+      receipt.result,receipt.confidence,receipt.failure_id,receipt.payload_json,receipt.created_at
+      FROM previous_run_receipts receipt JOIN run_results result ON result.run_id=receipt.run_id`,
+    "DROP TABLE previous_run_receipts", "DROP TABLE previous_run_results",
+    `CREATE TRIGGER run_results_no_replace BEFORE INSERT ON run_results
+      WHEN EXISTS(SELECT 1 FROM run_results WHERE id=NEW.id OR (run_id=NEW.run_id AND settlement_version=NEW.settlement_version))
+      BEGIN SELECT RAISE(ABORT,'retained-identity-conflict'); END`,
+    `CREATE TRIGGER run_results_immutable BEFORE UPDATE ON run_results BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+    `CREATE TRIGGER run_results_owner_delete BEFORE DELETE ON run_results
+      WHEN NOT EXISTS(SELECT 1 FROM deleted_runs WHERE run_id=OLD.run_id) BEGIN SELECT RAISE(ABORT,'owner-deletion-required'); END`,
+    `CREATE TRIGGER run_receipts_no_replace BEFORE INSERT ON run_receipts
+      WHEN EXISTS(SELECT 1 FROM run_receipts WHERE id=NEW.id OR (run_id=NEW.run_id AND settlement_version=NEW.settlement_version))
+      BEGIN SELECT RAISE(ABORT,'retained-identity-conflict'); END`,
+    `CREATE TRIGGER run_receipts_immutable BEFORE UPDATE ON run_receipts BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+    `CREATE TRIGGER run_receipts_owner_delete BEFORE DELETE ON run_receipts
+      WHEN NOT EXISTS(SELECT 1 FROM deleted_runs WHERE run_id=OLD.run_id) BEGIN SELECT RAISE(ABORT,'owner-deletion-required'); END`,
+    `CREATE TRIGGER runs_completion_immutable BEFORE UPDATE ON runs
+        WHEN NOT (OLD.state='terminal' AND OLD.outcome='done' AND NEW.state='queued'
+          AND NEW.version=OLD.version+1 AND NEW.claim_generation=OLD.claim_generation
+          AND json_type(NEW.lifecycle_json,'$.completion') IS NULL
+          AND json_extract(NEW.lifecycle_json,'$.delegationRefresh.phase')='waiting'
+          AND EXISTS(SELECT 1 FROM commands command JOIN run_results result ON result.run_id=OLD.id
+            WHERE command.id=json_extract(NEW.lifecycle_json,'$.delegationRefresh.commandId')
+              AND command.family='run-lifecycle'
+              AND json_extract(command.request_json,'$.operation')='delegation-refresh'
+              AND json_extract(command.request_json,'$.request.phase')='admit'
+              AND json_extract(command.request_json,'$.request.runId')=OLD.id
+              AND json_extract(command.request_json,'$.request.expectedVersion')=OLD.version
+              AND json_extract(command.request_json,'$.request.previous.kind')='terminal'
+              AND json_extract(command.request_json,'$.request.previous.appliedVersion')=result.settlement_version
+              AND result.settlement_version=json_extract(OLD.lifecycle_json,'$.completion.expectedVersion')+1))
+        AND ((json_type(OLD.lifecycle_json, '$.completion') IS 'object' AND (
+            json_extract(NEW.lifecycle_json, '$.completion') IS NOT json_extract(OLD.lifecycle_json, '$.completion')
+            OR json_extract(NEW.lifecycle_json, '$.lifecycle') IS NOT json_extract(OLD.lifecycle_json, '$.lifecycle')
+            OR NEW.claim_generation IS NOT OLD.claim_generation))
+          OR (json_type(OLD.lifecycle_json, '$.completion') IS NULL AND json_type(NEW.lifecycle_json, '$.completion') IS 'object' AND (
+            OLD.state NOT IN ('claimed','validating','running')
+            OR json_extract(NEW.lifecycle_json, '$.completion.claim.workerId') IS NOT OLD.owner_worker_id
+            OR json_extract(NEW.lifecycle_json, '$.completion.claim.claimGeneration') IS NOT OLD.claim_generation
+            OR json_extract(NEW.lifecycle_json, '$.completion.expectedVersion') IS NOT OLD.version
+            OR NEW.version IS NOT OLD.version + 1
+            OR json_extract(NEW.lifecycle_json, '$.updatedAt') IS NOT json_extract(NEW.lifecycle_json, '$.completion.authorizedAt')))
+         ) BEGIN SELECT RAISE(ABORT,'runs-completion-immutable'); END;`,
+  ] },
+  { version: 21, statements: [
+    "DROP TRIGGER runs_completion_immutable",
+    `CREATE TRIGGER runs_completion_immutable BEFORE UPDATE ON runs
+        WHEN NOT (OLD.state='terminal' AND OLD.outcome IN ('done','failed') AND NEW.state='queued'
+          AND NEW.version=OLD.version+1 AND NEW.claim_generation=OLD.claim_generation
+          AND json_type(NEW.lifecycle_json,'$.completion') IS NULL
+          AND json_extract(NEW.lifecycle_json,'$.delegationRefresh.phase')='waiting'
+          AND EXISTS(SELECT 1 FROM commands command JOIN run_results result ON result.run_id=OLD.id
+            WHERE command.id=json_extract(NEW.lifecycle_json,'$.delegationRefresh.commandId')
+              AND command.family='run-lifecycle'
+              AND json_extract(command.request_json,'$.operation')='delegation-refresh'
+              AND json_extract(command.request_json,'$.request.phase')='admit'
+              AND json_extract(command.request_json,'$.request.runId')=OLD.id
+              AND json_extract(command.request_json,'$.request.expectedVersion')=OLD.version
+              AND json_extract(command.request_json,'$.request.previous.kind')='terminal'
+              AND json_extract(command.request_json,'$.request.previous.appliedVersion')=result.settlement_version
+              AND result.settlement_version=json_extract(OLD.lifecycle_json,'$.completion.expectedVersion')+1
+              AND (OLD.outcome='done' OR (
+                json_extract(result.payload_json,'$.result.value.kind')='failed-evidence'
+                AND json_extract(result.payload_json,'$.result.value.authorization.failureId')=json_extract(OLD.lifecycle_json,'$.completion.failureId')
+                AND json_extract(OLD.lifecycle_json,'$.completion.failureId')=json_extract(OLD.lifecycle_json,'$.lifecycle.failureId')))))
+        AND ((json_type(OLD.lifecycle_json, '$.completion') IS 'object' AND (
+            json_extract(NEW.lifecycle_json, '$.completion') IS NOT json_extract(OLD.lifecycle_json, '$.completion')
+            OR json_extract(NEW.lifecycle_json, '$.lifecycle') IS NOT json_extract(OLD.lifecycle_json, '$.lifecycle')
+            OR NEW.claim_generation IS NOT OLD.claim_generation))
+          OR (json_type(OLD.lifecycle_json, '$.completion') IS NULL AND json_type(NEW.lifecycle_json, '$.completion') IS 'object' AND (
+            OLD.state NOT IN ('claimed','validating','running')
+            OR json_extract(NEW.lifecycle_json, '$.completion.claim.workerId') IS NOT OLD.owner_worker_id
+            OR json_extract(NEW.lifecycle_json, '$.completion.claim.claimGeneration') IS NOT OLD.claim_generation
+            OR json_extract(NEW.lifecycle_json, '$.completion.expectedVersion') IS NOT OLD.version
+            OR NEW.version IS NOT OLD.version + 1
+            OR json_extract(NEW.lifecycle_json, '$.updatedAt') IS NOT json_extract(NEW.lifecycle_json, '$.completion.authorizedAt')))
+         ) BEGIN SELECT RAISE(ABORT,'runs-completion-immutable'); END;`,
+  ] },
+  { version: 22, statements: [
+    `SELECT '${PRE_BUILD_RUN_DELETION_ID}'`,
+  ] },
+  { version: 23, statements: [
+    "CREATE INDEX timeline_worker_claim_idx ON timeline_events(json_extract(payload_json,'$.payload.event.workerId'),cursor) WHERE kind='run.claimed'",
+  ] },
+  { version: WORKER_CUSTODY_SCHEMA_VERSION, statements: WORKER_CUSTODY_MIGRATION_STATEMENTS },
+  { version: 25, statements: [
+    `SELECT '${deriveSchemaHash(CapturedWorkbookWriteSourceSchema, "output")}'`,
+    `CREATE TABLE workflow_workbook_selection_upgrade_guard (refused INTEGER CONSTRAINT workflow_workbook_selection_pending_library_operation CHECK(refused=0)) STRICT`,
+    `INSERT INTO workflow_workbook_selection_upgrade_guard SELECT 1 FROM workbook_operations
+      WHERE receipt_json IS NULL AND json_extract(request_json,'$.source.kind')='operator' AND substr(operation_id,1,8)='library:' LIMIT 1`,
+    `DROP TABLE workflow_workbook_selection_upgrade_guard`,
+    `CREATE TABLE workflow_workbook_selections (
+      workflow_id TEXT PRIMARY KEY, revision INTEGER NOT NULL CHECK(revision>0),
+      accepted_command_id TEXT NOT NULL, used_at TEXT NOT NULL,
+      payload_json TEXT NOT NULL CHECK(json_valid(payload_json))
+    ) STRICT`,
+  ] },
+  ASSISTANT_HISTORY_MIGRATION,
+  ASSISTANT_EFFORT_SCALE_MIGRATION,
+  ASSISTANT_ATTACHMENTS_MIGRATION,
+  ASSISTANT_GRANT_RETIREMENT_MIGRATION,
+  WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION,
 ]);
 
-export function migrationTableNames(version: number): readonly AuthorityTableName[] {
-  return AuthorityTableNameSchema.options.filter(name => version >= 4
-    || (name !== "workbook_library" && name !== "workbook_library_history"));
+export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
+  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19 && toSchemaVersion !== 20 && toSchemaVersion !== 21 && toSchemaVersion !== 22 && toSchemaVersion !== 23 && toSchemaVersion !== 24 && toSchemaVersion !== 25 && toSchemaVersion !== 26 && toSchemaVersion !== 27 && toSchemaVersion !== 28 && toSchemaVersion !== 29)
+    || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
+  const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
+  return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,
+    toSchemaVersion, sourceContentFingerprint, statements })).digest("hex");
+}
+
+export function migrationTableNames(version: number): readonly (AuthorityTableName | "explorer_overrides" | typeof WORKER_CUSTODY_DROPPED_TABLES[number] | typeof RETIRED_ASSISTANT_GRANT_TABLE)[] {
+  // Content fingerprints hash tables in this order, so pre-custody stores keep the dropped tables where their backups hashed them.
+  const names = AuthorityTableNameSchema.options.flatMap(name => name === "worker_slots" && version < WORKER_CUSTODY_SCHEMA_VERSION ? [name, ...WORKER_CUSTODY_DROPPED_TABLES] : [name]);
+  const tables = [...(version < 10 ? ["explorer_overrides" as const] : []), ...names.filter(name => (version >= 4
+    || (name !== "workbook_library" && name !== "workbook_library_history"))
+    && (version >= 8 || !name.startsWith("assistant_"))
+    && (version >= 9 || name !== "assistant_model_preference")
+    && (version >= 26 || (name !== "assistant_conversations" && name !== "assistant_messages"))
+    && (version >= 28 || name !== "assistant_attachments")
+    && (version >= 14 || name !== "exclusive_session_leases")
+    && (version >= 17 || !name.startsWith("ocr_"))
+    && (version >= 25 || name !== "workflow_workbook_selections")
+    && (version >= 18 || !["workbook_library_state", "workbook_library_actions", "workbook_library_snapshots"].includes(name))
+    && (version >= 13 || !["workbook_creations", "workbook_types", "workbook_operations"].includes(name)))];
+  // The retired grant table keeps its registry position (after settings) so predecessor content fingerprints are unchanged.
+  if (version < 8 || version >= 29) return tables;
+  const at = tables.indexOf("settings") + 1;
+  return [...tables.slice(0, at), RETIRED_ASSISTANT_GRANT_TABLE, ...tables.slice(at)];
 }
 
 export function auditMigrationTableCoverage(): readonly string[] {
-  const statements = [...SQLITE_MIGRATIONS[0].statements, ...WORKBOOK_LIBRARY_MIGRATION.statements];
-  const names = statements.flatMap(statement => [...statement.matchAll(/CREATE TABLE ([a-z_]+)/gu)].map(match => match[1]));
+  const statements = [...SQLITE_MIGRATIONS[0].statements, ...WORKBOOK_LIBRARY_MIGRATION.statements, ...SQLITE_MIGRATIONS.filter(migration => migration.version >= 8).flatMap(migration => migration.statements)];
+  const names = new Set<string>();
+  for (const statement of statements) for (const match of statement.matchAll(/(CREATE|DROP) TABLE ([a-z_]+)|ALTER TABLE ([a-z_]+) RENAME TO ([a-z_]+)/gu)) {
+    if (match[3]) { names.delete(match[3]); names.add(match[4]); }
+    else if (match[1] === "CREATE") names.add(match[2]);
+    else names.delete(match[2]);
+  }
   const registered = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
   return [
-    ...registered.filter(name => !names.includes(name)).map(name => `registered table ${name} has no DDL`),
-    ...names.filter(name => !registered.some(registeredName => registeredName === name)).map(name => `DDL table ${name} is not registered`),
+    ...registered.filter(name => !names.has(name)).map(name => `registered table ${name} has no DDL`),
+    ...[...names].filter(name => !registered.some(registeredName => registeredName === name)).map(name => `DDL table ${name} is not registered`),
   ];
 }
 

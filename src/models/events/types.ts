@@ -1,8 +1,7 @@
-import { OperationChildResultReferenceSchema } from "../workflow/operation-action-identity.js";
-import { SnapshotWorkflowValueReferenceSchema } from "../workflow/operation-display-snapshot.js";
-import { OperationInputLineageSchema, OperationChildResultIdentitySchema } from "../workflow/operation-action-identity.js";
+import { OperationChildResultIdentitySchema, OperationChildResultReferenceSchema, OperationInputLineageSchema, SnapshotWorkflowValueReferenceSchema } from "../workflow/operation-action-identity.js";
 /** The span/notes wire and at-rest contract: a zod-only leaf module whose id patterns are restated locally and pinned byte-for-byte by the parity test. */
 import { z } from "zod";
+import { DataObservationOriginsSchema } from "./data-observation-origin.js";
 import { ConfirmedActionEventSchema } from "./confirmed-action.js";
 import { DiagnosticSafetyVersionSchema } from "../trust/failure.js";
 import { DataClassificationSchema, refineLocalEvidenceTransformPair } from "../../rules/redaction/redaction-policy.js";
@@ -14,7 +13,7 @@ const HEX64_PATTERN = /^[0-9a-f]{64}$/;
 const TRACE_PATTERN = /^[a-z0-9]{2,4}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/;
 /** `TaskIdSchema`'s grammar, restated (this leaf imports nothing but zod). */
 const TASK_ID_PATTERN =
-  /^(?:(?:ucpath|crm|onbase|kuali|servicenow|i9|new-kronos|old-kronos|sharepoint|extraction|normalization|ocr|roster)|workflow:[a-z0-9]+(?:-[a-z0-9]+)*)\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
+  /^(?:(?:ucpath|crm|onbase|kuali|servicenow|i9|new-kronos|old-kronos|sharepoint|extraction|normalization|ocr|roster|workbooks)|workflow:[a-z0-9]+(?:-[a-z0-9]+)*)\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** `ContractFieldPathSchema`'s grammar, restated. */
 const FIELD_PATH_PATTERN = /^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)*$/;
 
@@ -241,6 +240,7 @@ export const ObservedDataPointWireSchema = z.strictObject({
   direction: z.enum(["read", "write"]),
   field: SpanFieldPathSchema,
   values: z.array(RedactedSpanValueSchema).min(1),
+  origins: DataObservationOriginsSchema.optional(),
 });
 export type ObservedDataPointWire = z.infer<typeof ObservedDataPointWireSchema>;
 
@@ -379,6 +379,7 @@ const ActionValueProducerWireSchema = z.discriminatedUnion("kind", [
 ]);
 
 const ProtectedActionBindingWireSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("profile"), inputPath: z.literal("timekeeperName"), name: z.literal("timekeeperName"), profileId: UuidSchema, sessionEpoch: z.number().int().safe().positive() }),
   z.strictObject({ kind: z.literal("protected-store"), inputPath: z.literal("timekeeperName"), name: z.literal("timekeeperName"), valueId: UuidSchema }),
   z.strictObject({ kind: z.literal("test-data-local"), inputPath: z.enum(["documentNumber", "emplId"]),
     name: z.enum(["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]), sourceId: UuidSchema }),
@@ -417,7 +418,7 @@ const NoteBodyFields = {
 
 /** Same `SpanRef` addressing as spans — a note attributes to its exact task attempt or worker lifetime. */
 export const NoteWireSchema = z.union([
-  z.strictObject({ ...NoteBodyFields, ...RunSpanIdentityFields }),
+  z.strictObject({ ...NoteBodyFields, ...RunSpanIdentityFields, recoveryActivityId: UuidSchema.optional() }),
   z.strictObject({ ...NoteBodyFields, ...WorkerSpanIdentityFields }),
 ]).superRefine((note, context) => {
   const confirmed = note.confirmedAction;

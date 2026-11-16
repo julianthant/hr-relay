@@ -1,3 +1,4 @@
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -40,9 +41,9 @@ sessionFactoryHarness,
 sessionManagerFor,
 } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 const SIGNAL = new AbortController().signal;
@@ -63,7 +64,7 @@ const retryFlow = flow(RetryInput)
     replay: "checkpoint",
     bind: ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }),
   })
-  // Browser-state nodes always rerun; their outputs cannot be replay checkpoints.
+  // Native Retry re-executes browser-state nodes under its new item attempt.
   .step("live-probe", SearchPersonOrg, {
     dependsOn: ["searching"],
     replay: "always-rerun",
@@ -119,15 +120,15 @@ function unreachable(arm: string): () => never {
 }
 
 
-function harness(): Readonly<{
+async function harness(): Promise<Readonly<{
   database: AuthorityDatabase;
   now: () => string;
   emitter: ReturnType<typeof recordingEmitter>;
   deps: RunExecutorDependencies;
   ucpathOpens: () => number;
   kernel: ReturnType<typeof createCommandKernel>;
-}> {
-  const authority = openAuthorityHarness();
+}>> {
+  const authority = await openAuthorityHarness();
   testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: retryDescriptor, poolIndex: 1 });
   disposers.push(authority.dispose);
   const sessions = sessionFactoryHarness({
@@ -146,7 +147,7 @@ function harness(): Readonly<{
     descriptor: retryDescriptor,
     stores: taskStoreRegistry,
     authority: authority.database,
-    sessions: sessionManagerFor(sessions, authority.clock),
+    sessions: await sessionManagerFor(sessions, authority.clock),
     emitter: emitter.emitter,
     clock: authority.clock,
     ids: sequentialIdFactory("e"),
@@ -171,10 +172,10 @@ function harness(): Readonly<{
     // Neither seam is reachable from a retry; both refuse loudly rather than
     // standing in as a no-op that a mis-routed command could pass through.
     writeResolution: {
-      resolvePresent: unreachable("resolve-write-present"),
+      recheck: unreachable("recheck-write"),
       resolveAbsent: unreachable("resolve-write-absent"),
     },
-    workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
+    workerRuntime: { pool: unusedWorkerPool() },
   });
   return {
     database: authority.database,
@@ -209,8 +210,8 @@ function queuedRun() {
 }
 
 function claim(database: AuthorityDatabase, now: string) {
-  const { workerId, workerLifetime } = testWorkerLifetime(database, WORKFLOW_ID, 1);
-  const claimed = database.authority.runs.claimNext({ workerLifetime, workflow: WORKFLOW_ID, workerId, now });
+  const { workerId } = testWorkerLifetime(database, WORKFLOW_ID, 1);
+  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
   return {
     run: claimed.run,
@@ -233,37 +234,40 @@ function retryCommand(runId: string, expectedVersion: number) {
   };
 }
 
-/** Run the whole failing first run, then take the REAL retry command. */
-function failThenRetry(h: ReturnType<typeof harness>): Promise<Readonly<{
+async function failFirst(h: Awaited<ReturnType<typeof harness>>): Promise<RunRecord> {
+  h.database.authority.runs.enqueue(queuedRun());
+  const claimed = claim(h.database, h.now());
+  const failed = await executeClaimedRun(h.deps, { ...claimed, signal: SIGNAL });
+  assert.equal(failed.state, "failed", "the first run must fail at cross-verify");
+  const first = h.database.authority.runs.get(RUN_ID);
+  assert.ok(first !== undefined && first.lifecycle.state === "terminal");
+  return first;
+}
+
+/** Run the whole failing first run, then take the real Retry command. */
+async function failThenRetry(h: Awaited<ReturnType<typeof harness>>): Promise<Readonly<{
   first: RunRecord;
   retried: RunRecord;
 }>> {
-  return (async () => {
-    h.database.authority.runs.enqueue(queuedRun());
-    const claimed = claim(h.database, h.now());
-    const failed = await executeClaimedRun(h.deps, { ...claimed, signal: SIGNAL });
-    assert.equal(failed.state, "failed", "the first run must fail at cross-verify");
-    const first = h.database.authority.runs.get(RUN_ID);
-    assert.ok(first !== undefined && first.lifecycle.state === "terminal");
-
-    const applied = h.kernel.execute(retryCommand(RUN_ID, first.version));
-    assert.equal(applied.state, "applied", applied.state === "rejected" ? applied.message : "refused");
-    if (applied.state !== "applied") throw new Error("unreachable");
-    const target = applied.affectedTargets.find(
-      (candidate) => candidate.family === "run" && candidate.runId !== RUN_ID,
-    );
-    if (target?.family !== "run") throw new Error("the retry reported no new run");
-    const retried = h.database.authority.runs.get(target.runId);
-    assert.ok(retried !== undefined);
-    return { first, retried };
-  })();
+  const first = await failFirst(h);
+  const applied = h.kernel.execute(retryCommand(RUN_ID, first.version));
+  assert.equal(applied.state, "applied", applied.state === "rejected" ? applied.message : "refused");
+  if (applied.state !== "applied") throw new Error("unreachable");
+  const target = applied.affectedTargets.find(
+    (candidate) => candidate.family === "run" && candidate.runId !== RUN_ID,
+  );
+  if (target?.family !== "run") throw new Error("the retry reported no new run");
+  const retried = h.database.authority.runs.get(target.runId);
+  assert.ok(retried !== undefined);
+  return { first, retried };
 }
 
 describe("a retry re-executes an always-rerun node without colliding", () => {
   it("walks fail → retry → terminal done, storing BOTH executions of the item", async () => {
-    const h = harness();
+    const h = await harness();
     const { first, retried } = await failThenRetry(h);
 
+    assert.equal(retried.envelope.continuation, undefined);
     assert.equal(retried.envelope.retryOf, RUN_ID);
     assert.equal(first.envelope.attempt, 1);
     assert.equal(retried.envelope.attempt, 2, "a retry takes the ITEM's next attempt");
@@ -323,7 +327,7 @@ describe("a retry re-executes an always-rerun node without colliding", () => {
   });
 
   it("makes the two runs' executions distinguishable in the span stream", async () => {
-    const h = harness();
+    const h = await harness();
     const { first, retried } = await failThenRetry(h);
     const second = claim(h.database, h.now());
     assert.equal((await executeClaimedRun(h.deps, { ...second, signal: SIGNAL })).state, "done");
@@ -340,8 +344,48 @@ describe("a retry re-executes an always-rerun node without colliding", () => {
     assert.notEqual(first.envelope.traceId, retried.envelope.traceId);
   });
 
-  it("refuses the PRE-FIX shape at the door, with the immutable insert still underneath", async () => {
-    const h = harness();
+  it("executes completed always-rerun work in a fresh attempt without continuation or checkpoint collisions", async () => {
+    const h = await harness();
+    const first = await failFirst(h);
+    const itemId = first.envelope.itemId;
+    const original = h.database.authority.runCheckpoints.get(WORKFLOW_ID, itemId, "live-probe", 1, 1);
+    assert.ok(original);
+    const beforeBytes = canonicalJsonStringify(original);
+    const fresh = { ...queuedRun(), envelope: { ...queuedRun().envelope,
+      runId: "bbbbbbbb-0008-4000-8000-000800000000", traceId: TraceIdSchema.parse("ra-090001-bbbb"),
+      attempt: 2, retryOf: first.envelope.runId } };
+    assert.equal(Object.hasOwn(fresh.envelope, "continuation"), false);
+    h.database.authority.runs.enqueue(fresh);
+    const second = claim(h.database, h.now());
+    assert.equal(second.run.envelope.runId, fresh.envelope.runId);
+    assert.equal(second.run.envelope.continuation, undefined);
+    assert.deepEqual(await executeClaimedRun(h.deps, { ...second, signal: SIGNAL }),
+      { state: "done", runId: fresh.envelope.runId });
+    const executions = h.database.authority.runCheckpoints.listByItem(WORKFLOW_ID, itemId)
+      .filter(record => record.nodeId === "live-probe");
+    assert.deepEqual(executions.map(record => [record.attempt, record.claimGeneration, record.runId]),
+      [[1, 1, first.envelope.runId], [2, 1, fresh.envelope.runId]]);
+    assert.equal(canonicalJsonStringify(h.database.authority.runCheckpoints.get(WORKFLOW_ID, itemId, "live-probe", 1, 1)), beforeBytes);
+    const paths = [...new Set(h.emitter.events().filter(event => event.spanPath.includes("/live-probe#"))
+      .map(event => event.spanPath))];
+    assert.deepEqual(paths, [
+      taskSpanPath(first.envelope.traceId, NodeIdSchema.parse("live-probe"), 1, 1),
+      taskSpanPath(fresh.envelope.traceId, NodeIdSchema.parse("live-probe"), 1, 1),
+    ]);
+    const result = h.database.authority.runResults.get(fresh.envelope.runId); assert.ok(result);
+    const dependency = result.dependencies.find(row => row.nodeId === "live-probe");
+    assert.ok(dependency?.state === "resolved");
+    assert.deepEqual(dependency.checkpoint, { workflowId: WORKFLOW_ID, itemId,
+      attempt: 2, claimGeneration: 1, runId: fresh.envelope.runId });
+    const latest = h.database.authority.runCheckpoints.latest(WORKFLOW_ID, itemId, "live-probe");
+    assert.equal(latest?.runId, fresh.envelope.runId);
+    assert.equal(latest?.attempt, 2);
+    assert.equal(h.database.authority.timelineEvents.page({ runId: fresh.envelope.runId })
+      .some(event => event.payload.kind === "checkpoint-replayed" && event.payload.checkpoint.nodeId === "live-probe"), false);
+  });
+
+  it("refuses a spent attempt at admission and preserves immutable checkpoint inserts", async () => {
+    const h = await harness();
     const { first, retried } = await failThenRetry(h);
     const itemId = first.envelope.itemId;
 

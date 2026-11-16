@@ -1,11 +1,11 @@
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
 import { admitProtectedInput } from "../../../src/backend/runs/start/protected-input.js";
 import { protectedSecretSource } from "./protected-secret-source.js";
 import { testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { openBoundDatabaseFixture } from "./admission-fixture.js";
+import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { manualClock, type TestClock } from "../../../src/rules/time/clock.js";
 import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-executor.js";
@@ -27,7 +27,6 @@ import type { RunRecord } from "../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import {
   buildFinalizationComments,
-  separationInitials,
 } from "../../../src/rules/separations/separation-dates.js";
 import {
   kualiFinalizationFields,
@@ -71,12 +70,13 @@ export const COMPOSITION_UCPATH_NAME = "Deterministic Person";
 export const COMPOSITION_OTHER_NAME = "Somebody Else";
 export const COMPOSITION_DOCUMENT_NAME = "Person, Deterministic";
 export const COMPOSITION_TIMEKEEPER = "Deterministic Timekeeper";
+/** The timekeeper's stored initials; deliberately not the letters of the name. */
+export const COMPOSITION_TIMEKEEPER_INITIALS = "TQ";
 export const COMPOSITION_RECEIPT = "T009000001";
 export const COMPOSITION_WORKER_ID = "separations-worker-1";
 export const COMPOSITION_RUN_ID = UUID_2;
 export const COMPOSITION_ITEM_ID = UUID_3;
 export const COMPOSITION_NOW = "2026-08-14T10:00:00.000Z";
-export const COMPOSITION_IMPL_FINGERPRINT = FingerprintSchema.parse("c".repeat(64));
 export const COMPOSITION_CONFIG_FINGERPRINT = FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint);
 
 export const SWEEP_NODE = "clear-pending";
@@ -94,7 +94,7 @@ export const COMPOSITION_EXISTING_COMMENTS = "";
 
 export const COMPOSITION_DATE_CHANGE_COMMENTS =
   `Updated Separation Date from ${COMPOSITION_KUALI_LDW} to ${COMPOSITION_SEPARATION_DATE} `
-  + `per Kronos timesheet. -${separationInitials(COMPOSITION_TIMEKEEPER)}`;
+  + `per Kronos timesheet. -${COMPOSITION_TIMEKEEPER_INITIALS}`;
 
 export const COMPOSITION_TERMINATION_COMMENTS =
   `Termination eff ${COMPOSITION_EFFECTIVE_DATE}. Last Day Worked ${COMPOSITION_LAST_DAY_WORKED}. `
@@ -106,7 +106,7 @@ export const COMPOSITION_FINALIZATION_COMMENTS = buildFinalizationComments({
   dateChangeComments: COMPOSITION_DATE_CHANGE_COMMENTS,
   documentNumber: COMPOSITION_DOCUMENT,
   transactionNumber: COMPOSITION_RECEIPT,
-  initials: separationInitials(COMPOSITION_TIMEKEEPER),
+  initials: COMPOSITION_TIMEKEEPER_INITIALS,
   asOfDate: COMPOSITION_AS_OF_DATE,
 });
 
@@ -131,6 +131,7 @@ export const COMPOSITION_FINALIZATION_FIELDS: KualiFinalizationFields =
 export const COMPOSITION_RUN_INPUT = Object.freeze({
   documentNumber: COMPOSITION_DOCUMENT,
   timekeeperName: COMPOSITION_TIMEKEEPER,
+  timekeeperInitials: COMPOSITION_TIMEKEEPER_INITIALS,
   searchTimeoutMs: 15_000,
 });
 
@@ -276,7 +277,7 @@ export function compositionQueuedRun(
 ): Record<string, unknown> {
   const admitted = admitProtectedInput(separationsDescriptor,
     [{ documentNumber: COMPOSITION_DOCUMENT, searchTimeoutMs: 15_000 }],
-    protectedSecretSource({ timekeeperName: COMPOSITION_TIMEKEEPER }))[0];
+    protectedSecretSource({ profileName: COMPOSITION_TIMEKEEPER, profileInitials: COMPOSITION_TIMEKEEPER_INITIALS }))[0];
   if (admitted === undefined) throw new Error("fixture protected input admission missing");
   return {
     envelope: {
@@ -285,7 +286,7 @@ export function compositionQueuedRun(
       itemId: COMPOSITION_ITEM_ID,
       traceId: "sp-100000-2222",
       descriptorVersion: 1,
-      contractFingerprint: separationsDescriptor.contractFingerprint,
+      contractFingerprint: separationsDescriptor.contractFingerprint, buildId: currentBuildId(),
       resolvedInstance: { kuali: "prod", ucpath: "prod", "new-kronos": "prod" },
       configFingerprint: COMPOSITION_CONFIG_FINGERPRINT,
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
@@ -313,6 +314,9 @@ export function compositionQueuedRun(
 }
 
 export interface CompositionHarness {
+  readonly profile: Awaited<ReturnType<typeof openBoundDatabaseFixture>>["profile"];
+  readonly path: string;
+  readonly closeController: () => Promise<void>;
   readonly ucpath: UcpathSmartHrFakeWorld;
   readonly kuali: KualiFakeWorld;
   readonly database: AuthorityDatabase;
@@ -321,10 +325,10 @@ export interface CompositionHarness {
   readonly ids: ReturnType<typeof sequentialIdFactory>;
   readonly sequencer: ProductionWriteSequencer;
   readonly bound: <Result>(work: () => Promise<Result>) => Promise<Result>;
-  readonly dispose: () => void;
+  readonly dispose: () => void | Promise<void>;
 }
 
-export function compositionHarness(options: Readonly<{
+export async function compositionHarness(options: Readonly<{
   /** UCPath transaction rows the probe will scan. */
   rows?: readonly UcpathTransactionRow[];
   /** Who UCPath Page B shows AFTER staging — the beat-③ mismatch arm. */
@@ -335,18 +339,11 @@ export function compositionHarness(options: Readonly<{
   persistedFinalization?: KualiObservedFinalizationFields;
 
   kualiCommitDoesNotPersist?: boolean;
-}> = {}): CompositionHarness {
+}> = {}): Promise<CompositionHarness> {
   const clock = manualClock(new Date(COMPOSITION_NOW));
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-separations-composition-"));
-  const database = AuthorityDatabase.open(
-    {
-      path: join(root, "authority.sqlite"),
-      busyTimeoutMs: 250,
-      migrationOwner: "separations-composition-test",
-    },
-    clock,
-  );
-  testWorkerPorts(database, clock, { path: join(root, "authority.sqlite"), descriptor: separationsDescriptor, poolIndex: 1 });
+  const opened = await openBoundDatabaseFixture("separations-composition-test", clock);
+  const database = opened.database;
+  testWorkerPorts(database, clock, { path: opened.path, descriptor: separationsDescriptor, poolIndex: 1 });
   const ucpath = createUcpathSmartHrFakeWorld({
     emplId: COMPOSITION_EID,
     displayedName: COMPOSITION_UCPATH_NAME,
@@ -377,10 +374,11 @@ export function compositionHarness(options: Readonly<{
     workflowId: WorkflowIdSchema.parse(COMPOSITION_WORKFLOW_ID),
     stores: taskStoreRegistry,
     factory: sessions.factory,
+    browserScreenshotCapture: { capture: async () => undefined },
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-    duoCeremony: fixtureDuoCeremonyGates(clock),
+    duoCeremony: await fixtureDuoCeremonyGates(clock),
   });
   const emitter = recordingEmitter();
   const ids = sequentialIdFactory("d");
@@ -395,16 +393,22 @@ export function compositionHarness(options: Readonly<{
     scheduler: new ManualScheduler(clock),
     taskDeadlineMs: 60_000,
     operator: "local-operator",
-    log: recordingLogger().log,
-    resolveImplFingerprint: () => COMPOSITION_IMPL_FINGERPRINT,
+    log: recordingLogger().log
   });
+  let closed = false;
+  const closeController = async () => {
+    if (closed) return;
+    await manager.closeAll("worker-stop");
+    releaseSeededWriteOwners(database, clock.now().toISOString());
+    database.close(); await opened.profile.closeController(); closed = true;
+  };
   return {
+    profile: opened.profile, path: opened.path, closeController,
     ucpath, kuali, database, clock, emitter, ids, sequencer,
     bound: <Result>(work: () => Promise<Result>): Promise<Result> =>
-      withBoundRunConfigFingerprint(manager, COMPOSITION_CONFIG_FINGERPRINT, work),
-    dispose: (): void => {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
+      withBoundRunConfigFingerprint(manager, COMPOSITION_CONFIG_FINGERPRINT, work, "headless", { runId: COMPOSITION_RUN_ID, descriptorFingerprint: separationsDescriptor.contractFingerprint }),
+    dispose: async (): Promise<void> => {
+      await closeController(); await opened.close();
     },
   };
 }
@@ -419,8 +423,7 @@ export function compositionClaimRunning(
   const now = clock.now().toISOString();
   const enqueued = database.authority.runs.enqueue(runInput);
   if (enqueued.state !== "inserted") throw new Error(`enqueue outcome was ${enqueued.state}`);
-  const claimed = database.authority.runs.claimNext({
-    workflow: COMPOSITION_WORKFLOW_ID,
+  const claimed = database.authority.runs.claimNext({ workflow: COMPOSITION_WORKFLOW_ID,
     workerId,
     now,
   });

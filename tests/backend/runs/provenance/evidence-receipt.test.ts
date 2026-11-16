@@ -8,6 +8,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { deriveIdempotencyKeyDigest, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
 import { KUALI_CONFIRMED_AT, KUALI_DOCUMENT_NUMBER, KUALI_EID, KUALI_IDEMPOTENCY_KEY, KUALI_RUN_ID, KUALI_VALUE, kualiReceiptEvidence } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 
 {
 
@@ -81,6 +82,31 @@ describe("current receipt — the commit action carries what proved the write", 
 
   it("stamps the composition it derived under", () => {
     assert.equal(receipt.composition, 5);
+  });
+
+  it("resolves transaction output provenance inside its schema-bound value", () => {
+    const fact = receipt.observations.find(row => row.field === "transactionNumber"
+      && "taskId" in row.source && row.source.taskId === KualiSaveSeparationFinalization.id);
+    assert.ok(fact?.state === "satisfied");
+    assert.ok(fact.source.kind === "system");
+    assert.equal(fact.source.observedAt, KUALI_CONFIRMED_AT);
+    assert.equal(fact.value.key, "savedState.fields.transactionNumber");
+  });
+
+  for (const allOutput of [false, true]) it(`keeps missing transaction output provenance unresolved (all output: ${String(allOutput)})`, () => {
+    const checkpoint = RunCheckpointRecordSchema.parse(evidence.checkpoints[2]);
+    const path = "output.value.savedState.fields.transactionNumber";
+    assert.ok(checkpoint.provenance.some(fact => fact.path === path));
+    const retained = checkpoint.provenance.filter(fact => allOutput ? !fact.path.startsWith("output.value.") : fact.path !== path);
+    assert.ok(retained.some(fact => fact.path === "proof.value.fields.transactionNumber"));
+    assert.ok(retained.some(fact => fact.path === "output.schemaHash"));
+    const missing = kualiReceiptEvidence({ transactionProvenance: retained });
+    const partial = buildRunEvidenceReceipt({ descriptor: separationsKualiFinalizationDescriptor, ...missing });
+    const fact = partial.observations.find(row => row.field === "transactionNumber"
+      && "taskId" in row.source && row.source.taskId === KualiSaveSeparationFinalization.id);
+    assert.ok(fact?.state === "unresolved");
+    assert.equal(fact.mandatory, true);
+    assert.equal(partial.result, "partial");
   });
 
   it("carries the declared completion arm and the durable outcome's proof source and instant", () => {

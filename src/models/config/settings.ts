@@ -1,20 +1,18 @@
 import { z } from "zod";
+import { CommandIdSchema,FingerprintSchema,PositiveIntSchema } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import { CommandIdSchema, FingerprintSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { deriveSchemaHash } from "../validation/schema-bound-value.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
+import { deriveSchemaHash } from "../validation/schema-bound-value.js";
 import { SETTINGS_CATALOG } from "./catalog.js";
 import {
-  CONFIG_ROUTE_SCHEMAS,
-  EditableSettingsOverrideSchema,
-  type EditableSettingsOverride,
+CONFIG_ROUTE_SCHEMAS,
+EditableSettingsOverrideSchema,
+type EditableSettingsOverride,
 } from "./schema.js";
 
 /** The exact settings-patch schema this build accepts at the command boundary. */
 export const SETTINGS_SCHEMA_HASH = deriveSchemaHash(EditableSettingsOverrideSchema, "input");
-/** Existing editor consumers share the same closed command schema identity. */
-export const CURRENT_SETTINGS_SCHEMA_HASH = SETTINGS_SCHEMA_HASH;
 
 export const SettingsLeafOperationSchema = z.union([
   z.strictObject({ set: z.unknown() }),
@@ -38,15 +36,15 @@ function isOrdinarySettingsPath(path: string): boolean {
   return SETTINGS_CATALOG.some((row) => row.key === key && row.sourceClass === "ordinary-settings");
 }
 
-function isRetiredTestRoutePath(path: string): boolean {
+export function isRetiredSettingsPath(path: string): boolean {
   const parts = path.split(".");
-  return parts.length === 3 && parts[0] === "urls" && parts[2] === "test"
+  return path === "paths.duoCredential" || path === "paths.browserProfileRoot" || parts.length === 3 && parts[0] === "urls" && parts[2] === "test"
     && Object.hasOwn(CONFIG_ROUTE_SCHEMAS, parts[1] ?? "");
 }
 
 /** Old journal commands must remain parseable; the application boundary refuses these paths. */
-export function containsRetiredTestRoutePatch(patch: SettingsPatch): boolean {
-  return Object.keys(patch).some(isRetiredTestRoutePath);
+export function containsRetiredSettingsPatch(patch: SettingsPatch): boolean {
+  return Object.keys(patch).some(isRetiredSettingsPath);
 }
 
 function unwrappedSchema(schema: z.core.$ZodType): z.core.$ZodType {
@@ -131,7 +129,7 @@ export const SettingsPatchSchema = z.record(z.string().min(1), SettingsLeafOpera
   .refine((patch) => Object.keys(patch).length > 0, "settings patch must contain at least one leaf operation")
   .superRefine((patch, context) => {
     for (const [path, operation] of Object.entries(patch)) {
-      if (!isOrdinarySettingsPath(path) && !isRetiredTestRoutePath(path)) {
+      if (!isOrdinarySettingsPath(path) && !isRetiredSettingsPath(path)) {
         context.addIssue({ code: "custom", path: [path], message: `settings path ${path} is not an editable ordinary setting` });
         continue;
       }
@@ -249,8 +247,6 @@ export const SettingsApplyRejectionCodeSchema = z.enum([
   "invalid-value",
   "cross-field-invalid",
   "document-too-large",
-  "authority-unjournaled",
-  "authority-uncertain",
   "directory-integrity",
   "lock-unavailable",
   "command-divergent",
@@ -337,7 +333,7 @@ export function mergeSettingsPatch(
   patchInput: SettingsPatch,
 ): EditableSettingsOverride {
   const patch = SettingsPatchSchema.parse(patchInput);
-  if (containsRetiredTestRoutePatch(patch)) throw new Error("retired test routes cannot be edited");
+  if (containsRetiredSettingsPatch(patch)) throw new Error("retired settings cannot be edited");
   const candidate = MutableSettingsObjectSchema.parse(structuredClone(current));
   const existingUrls = MutableSettingsObjectSchema.safeParse(candidate.urls);
   if (existingUrls.success) {

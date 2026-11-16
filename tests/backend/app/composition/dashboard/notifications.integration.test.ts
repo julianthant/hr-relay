@@ -15,6 +15,6 @@ describe("canonical notification producers", () => {
       await composition().observer.observe();
       const row = f.inbox.list("local-operator")[0]; f.inbox.markRead(row.notificationId, 1);
       await composition().observer.observe(); expect(f.inbox.get(row.notificationId)?.status).toBe("read"); expect(f.inbox.get(row.notificationId)?.count).toBe(1);
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 });

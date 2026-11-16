@@ -472,7 +472,27 @@ export function auditSoleRunnerInvocation(
       return ts.isComputedPropertyName(name) ? staticSpecifier(name.expression) : undefined;
     };
     const activeProperties = new Map<ts.Expression, Set<string>>();
+    const completePropertyQueries = new Map<ts.Expression, Map<string, readonly ts.Expression[]>>();
     const packedPropertyValues = (
+      raw: ts.Expression,
+      property: string,
+      resolving: ReadonlySet<ts.Node>,
+    ): readonly ts.Expression[] => {
+      const expression = unwrapped(raw);
+      const complete = resolving.size === 0 && activeProperties.size === 0;
+      if (complete) {
+        const cached = completePropertyQueries.get(expression)?.get(property);
+        if (cached !== undefined) return cached;
+      }
+      const values = computePackedPropertyValues(expression, property, resolving);
+      if (complete) {
+        const queries = completePropertyQueries.get(expression) ?? new Map<string, readonly ts.Expression[]>();
+        queries.set(property, values);
+        completePropertyQueries.set(expression, queries);
+      }
+      return values;
+    };
+    const computePackedPropertyValues = (
       raw: ts.Expression,
       property: string,
       resolving: ReadonlySet<ts.Node>,
@@ -766,8 +786,8 @@ export function auditSoleRunnerInvocation(
 
     if (path === BOOTSTRAP_WRAPPER) {
       const compact = ts.createPrinter({ removeComments: true }).printFile(source).replace(/\s+/gu, "");
-      const expected = 'import{pathToFileURL}from"node:url";import{runSecureEnvironmentBootstrap}from"../../src/backend/app/bootstrap/secure-env-bootstrap.js";export{runSecureEnvironmentBootstrap,secureEnvironmentEntrypoint,}from"../../src/backend/app/bootstrap/secure-env-bootstrap.js";exporttype{SecureEnvironmentBootstrapDependencies,SecureEnvironmentEntrypoint,}from"../../src/backend/app/bootstrap/secure-env-bootstrap.js";constentryPath=process.argv[1];if(entryPath!==undefined&&pathToFileURL(entryPath).href===import.meta.url){awaitrunSecureEnvironmentBootstrap();}';
-      if (compact !== expected) violations.push(`${path}: bootstrap wrapper must retain only canonical exports and the direct-entry invocation`);
+      const expected = 'import{pathToFileURL}from"node:url";exportasyncfunctionrunSecureEnvironmentEntrypoint(args:readonlystring[]=process.argv.slice(2)):Promise<void>{const{captureBuildId}=awaitimport("../../src/backend/runtime/build-id.js");captureBuildId();const{runSecureEnvironmentBootstrap}=awaitimport("../../src/backend/app/bootstrap/secure-env-bootstrap.js");awaitrunSecureEnvironmentBootstrap(args);}constentryPath=process.argv[1];if(entryPath!==undefined&&pathToFileURL(entryPath).href===import.meta.url){awaitrunSecureEnvironmentEntrypoint();}';
+      if (compact !== expected) violations.push(`${path}: bootstrap dispatcher must retain the guarded ordinary bootstrap invocation`);
     }
 
     if (path !== BOOTSTRAP) {
@@ -814,7 +834,7 @@ export function auditSoleRunnerInvocation(
       if (ts.isIfStatement(node) && ts.isBlock(node.parent) && ts.isTryStatement(node.parent.parent) && compact(node.expression) === '!bootDiagnostics&&!(entrypoint==="cli"&&(entrypointArgs[0]==="storage"||entrypointArgs[0]==="test-data"))'
         && compact(node.thenStatement) === '{(dependencies.assertEnvironment??(()=>assertNoMigratedEnvironmentKeys()))();}' && node.elseStatement === undefined) keyRefusal += 1;
       if (ts.isVariableDeclaration(node) && node.name.getText(source) === "admission" && node.initializer !== undefined
-        && compact(node.initializer) === '(dependencies.acquireAdmission??((requested)=>bootDiagnostics?acquireExclusiveRuntimeAdmission(workspace):acquireEntrypointAdmission(workspace,requested,beforeInitialAuthorityOpen)))(mode)') mainAdmission += 1;
+        && compact(node.initializer) === 'await(dependencies.acquireAdmission??((requested)=>entrypoint==="cli"&&entrypointArgs[0]==="worker"?RuntimeAdmission.acquireWorker(workspace,workerLifetime()):bootDiagnostics?acquireExclusiveRuntimeAdmission(workspace,rootLifetime()):entrypoint==="cli"&&entrypointArgs[0]==="dashboard"?acquireDashboardEntrypointAdmission(profileBrowserClosure,workspace,requested,rootLifetime()):acquireEntrypointAdmission(workspace,requested,rootLifetime())))(mode,lifetime.lock)') mainAdmission += 1;
       ts.forEachChild(node, topology);
     };
     topology(source);
@@ -822,16 +842,15 @@ export function auditSoleRunnerInvocation(
     const selectorValid = selector !== undefined && ts.isFunctionDeclaration(selector) && selector.body?.statements.length === 2
       && ts.isIfStatement(selector.body.statements[0]) && compact(selector.body.statements[0].expression) === 'selector==="cli"||selector==="test-target-document-number"'
       && compact(selector.body.statements[0].thenStatement) === 'returnselector;' && selector.body.statements[0].elseStatement === undefined && ts.isThrowStatement(selector.body.statements[1]);
-    const relocationAdmission = runtimeAdmissionCalls.filter(call => compact(call) === "acquireEntrypointAdmission(workspace,requested)");
-    const exclusiveAdmission = runtimeAdmissionCalls.filter(call => compact(call) === "acquireExclusiveRuntimeAdmission(workspace)");
-    const mainRuntimeAdmission = runtimeAdmissionCalls.filter(call => compact(call) === "acquireEntrypointAdmission(workspace,requested,beforeInitialAuthorityOpen)");
-    const custodyCall = invocations.filter(call => call.runner === "runCli").find(call => compact(call.node) === "runCli(admission,()=>{constcustody=initialWorkerCustody;initialWorkerCustody=undefined;returncustody;})");
+    const machineAdmissions = runtimeAdmissionCalls.filter(call => compact(call) === "acquireEntrypointAdmission(workspace,requested,rootLifetime())");
+    const exclusiveAdmission = runtimeAdmissionCalls.filter(call => compact(call) === "acquireExclusiveRuntimeAdmission(workspace,rootLifetime())");
+    const admittedCall = invocations.filter(call => call.runner === "runCli").find(call => compact(call.node) === 'runCli(admission,()=>{if(entrypointArgs[0]!=="dashboard"||dashboardOwnsAdmission)thrownewError("dashboardadmissionownershipunavailable");dashboardOwnsAdmission=true;},lifetime)');
     const exclusiveImport = source.statements.some(statement => ts.isImportDeclaration(statement)
       && ts.isStringLiteral(statement.moduleSpecifier) && resolvedModule(path, statement.moduleSpecifier.text) === "src/backend/storage/admission/admission.ts"
       && statement.importClause?.namedBindings !== undefined && ts.isNamedImports(statement.importClause.namedBindings)
       && statement.importClause.namedBindings.elements.some(element => !element.isTypeOnly && element.name.text === "acquireExclusiveRuntimeAdmission" && element.propertyName === undefined));
-    if (admissionCalls.length !== 1 || runtimeAdmissionCalls.length !== 3 || relocationAdmission.length !== 1 || mainRuntimeAdmission.length !== 1 || exclusiveAdmission.length !== 1
-      || keyRefusal !== 1 || mainAdmission !== 1 || !selectorValid || custodyCall === undefined || !exclusiveImport) {
+    if (admissionCalls.length !== 1 || runtimeAdmissionCalls.length !== 2 || machineAdmissions.length !== 1 || exclusiveAdmission.length !== 1
+      || keyRefusal !== 1 || mainAdmission !== 1 || !selectorValid || admittedCall === undefined || !exclusiveImport) {
       violations.push(`${path}: secure environment bootstrap requires canonical key refusal, exact storage/test-data exemptions, strict selector and canonical runtime admission`);
     }
     const admissionPosition = admissionCalls[0]?.getStart(source);

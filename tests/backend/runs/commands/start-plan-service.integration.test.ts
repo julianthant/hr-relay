@@ -1,9 +1,7 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createProfileFixtureSet, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { StartStepOmissionRefusedError } from "../../../../src/backend/runs/start/step-selection.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -16,28 +14,38 @@ import {
 omissionAssertingDescriptor,
 omissionCascadingDescriptor,
 } from "../../../support/fixtures/start-step-omission-fixtures.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
+import { RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
+import { createWorkbookLibraryService, type WorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { OCR_INPUT_EXAMPLE } from "../../../../src/models/workflows/ocr/input.js";
+import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
+import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
+import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
+
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
 
 const CLOCK = manualClock(new Date(NOW));
 // Use a different fact EID; repeating the submitted title would make the wire-leak assertion vacuous.
 const READING_FACTS = { eid: "20111222", effectiveDate: "01/02/2026" };
-const roots: string[] = [];
+const profiles: Awaited<ReturnType<typeof profileFixtures.create>>[] = [];
 const databases: AuthorityDatabase[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const profile of profiles.splice(0)) await profile.close();
 });
 
-function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start") {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-rebuild-omission-plan-"));
-  roots.push(root);
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    CLOCK,
-  );
+async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start", initialize = true,
+  workbooksFor?: (database: AuthorityDatabase) => Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion" | "types" | "createReferenceCapture">) {
+  const profile = await profileFixtures.create(); profiles.push(profile);
+  const database = AuthorityDatabase.open(profile.admission,
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, CLOCK,
+    undefined, undefined, undefined, boundProfileCredentials(profile.admission));
   databases.push(database);
-  database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, configSnapshotId: UUID_4 });
+  if (initialize) database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, configSnapshotId: UUID_4 });
   const ids = sequentialIdFactory("b");
   let transactions = 0;
   const service = createStartPlanService({
@@ -51,6 +59,7 @@ function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-
       },
     },
     authorityRead: database,
+    ...(workbooksFor === undefined ? {} : { workbooks: workbooksFor(database) }),
     descriptors: {
       resolve: (workflowId) => (workflowId === String(descriptor.id) ? descriptor : undefined),
     },
@@ -60,6 +69,7 @@ function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-
     configFingerprint: CONFIG_SNAPSHOT.fingerprint,
     configSnapshotId: UUID_4,
     plannedBy: "local-operator",
+    protectedSecrets: protectedSecretSource({ profileName: "Synthetic Timekeeper" }),
   });
   return { database, service, ids, transactions: () => transactions, descriptor };
 }
@@ -83,9 +93,21 @@ function refusal(run: () => unknown): StartStepOmissionRefusedError {
   return assert.fail("the plan was accepted");
 }
 
+it("keeps document-number starts available while restricting an entered EID to its failure action", async () => {
+  const h = await harnessFor(separationsDescriptor);
+  const input = { workflowId: "separations", submissions: [{ documentNumber: "4502" }], dryRun: true,
+    selectedStepKeys: separationsDescriptor.timeline.map(step => step.key) };
+  const wire = h.service.plan(input);
+  assert.equal(wire.refused.length, 0);
+  assert.equal(wire.planned.length, 1);
+  assert.equal(wire.planned[0]?.matchKey, "separations:4502");
+  assert.throws(() => h.service.plan({ ...input, submissions: [{ documentNumber: "4502", operatorEmployeeId: "10800001" }] }),
+    (error: unknown) => error instanceof RerunRefusedError && error.code === "invalid-value");
+});
+
 describe("start plan recovery", () => {
-  it.each([undefined, "restart-from-start"] as const)("retains trusted recovery=%s without exposing public ingress", recovery => {
-    const harness = harnessFor(omissionAssertingDescriptor, recovery);
+  it.each([undefined, "restart-from-start"] as const)("retains trusted recovery=%s without exposing public ingress", async recovery => {
+    const harness = await harnessFor(omissionAssertingDescriptor, recovery);
     const input = request(omissionAssertingDescriptor, {});
     const wire = harness.service.plan(input);
     assert.equal(harness.database.authority.startPlans.get(wire.startPlanId)?.recovery, recovery);
@@ -95,8 +117,8 @@ describe("start plan recovery", () => {
 });
 
 describe("start plan step omissions", () => {
-  it("carries the reconciled omissions onto the served wire and the durable plan record", () => {
-    const harness = harnessFor(omissionAssertingDescriptor);
+  it("carries the reconciled omissions onto the served wire and the durable plan record", async () => {
+    const harness = await harnessFor(omissionAssertingDescriptor);
     const wire = harness.service.plan(request(omissionAssertingDescriptor, {
       selectedStepKeys: ["folding", "auditing"],
       stepOmissions: [{ step: "reading", facts: READING_FACTS }],
@@ -114,8 +136,8 @@ describe("start plan step omissions", () => {
     assert.equal(stored?.planned.length, 1);
   });
 
-  it("omits the field entirely when every omittable step is selected to run", () => {
-    const harness = harnessFor(omissionAssertingDescriptor);
+  it("omits the field entirely when every omittable step is selected to run", async () => {
+    const harness = await harnessFor(omissionAssertingDescriptor);
     const wire = harness.service.plan(request(omissionAssertingDescriptor, {
       selectedStepKeys: ["reading", "folding", "auditing"],
     }));
@@ -123,8 +145,8 @@ describe("start plan step omissions", () => {
     assert.equal(harness.database.authority.startPlans.get(wire.startPlanId)?.stepOmissions, undefined);
   });
 
-  it("refuses invalid facts before a plan row, a run identity or a transaction exists", () => {
-    const harness = harnessFor(omissionAssertingDescriptor);
+  it("refuses invalid facts before a plan row, a run identity or a transaction exists", async () => {
+    const harness = await harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
       selectedStepKeys: ["folding", "auditing"],
       stepOmissions: [{ step: "reading", facts: { eid: "20111222", effectiveDate: "2026-01-02" } }],
@@ -144,8 +166,8 @@ describe("start plan step omissions", () => {
     assert.ok(harness.database.authority.startPlans.get(wire.startPlanId) !== undefined);
   });
 
-  it("refuses omissions submitted with no explicit step selection", () => {
-    const harness = harnessFor(omissionAssertingDescriptor);
+  it("refuses omissions submitted with no explicit step selection", async () => {
+    const harness = await harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
       stepOmissions: [{ step: "reading", facts: READING_FACTS }],
     })));
@@ -153,8 +175,8 @@ describe("start plan step omissions", () => {
     assert.equal(harness.transactions(), 0);
   });
 
-  it("refuses typed facts for a plan that carries more than one subject", () => {
-    const harness = harnessFor(omissionAssertingDescriptor);
+  it("refuses typed facts for a plan that carries more than one subject", async () => {
+    const harness = await harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
       submissions: [{ eid: "10873698" }, { eid: "10101010" }],
       selectedStepKeys: ["folding", "auditing"],
@@ -164,8 +186,8 @@ describe("start plan step omissions", () => {
     assert.equal(harness.transactions(), 0);
   });
 
-  it("refuses an omitted step whose facts never arrived", () => {
-    const harness = harnessFor(omissionAssertingDescriptor);
+  it("refuses an omitted step whose facts never arrived", async () => {
+    const harness = await harnessFor(omissionAssertingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionAssertingDescriptor, {
       selectedStepKeys: ["folding", "auditing"],
     })));
@@ -173,8 +195,8 @@ describe("start plan step omissions", () => {
     assert.equal(harness.transactions(), 0);
   });
 
-  it("refuses a selection that keeps a step the omission leaves unable to read", () => {
-    const harness = harnessFor(omissionCascadingDescriptor);
+  it("refuses a selection that keeps a step the omission leaves unable to read", async () => {
+    const harness = await harnessFor(omissionCascadingDescriptor);
     const error = refusal(() => harness.service.plan(request(omissionCascadingDescriptor, {
       selectedStepKeys: ["folding", "auditing"],
       stepOmissions: [{ step: "reading", facts: READING_FACTS }],
@@ -199,8 +221,8 @@ describe("start plan step omissions", () => {
 });
 
 
-it("plan service selects the active snapshot inside its write boundary after boot", () => {
- const h = harnessFor(omissionAssertingDescriptor);
+it("plan service selects the active snapshot inside its write boundary after boot", async () => {
+ const h = await harnessFor(omissionAssertingDescriptor);
  const nextId = "83000000-0000-4000-8000-000000000097";
  const config = { ...CONFIG_SNAPSHOT.config, timeouts: { ...CONFIG_SNAPSHOT.config.timeouts, taskMs: 90_000 } };
  const fingerprint = sha256Hex(canonicalJsonStringify(config));
@@ -217,18 +239,66 @@ it("plan service selects the active snapshot inside its write boundary after boo
 });
 
 
-describe("start plan workers", () => {
-  it.each([undefined, "auto", 1, 8] as const)("persists and returns %s with omitted starts selecting Auto", workers => {
-    const h = harnessFor(omissionAssertingDescriptor);
-    const wire = h.service.plan(request(h.descriptor, workers === undefined ? {} : { workers }));
-    assert.equal(wire.workers, workers ?? "auto");
-    assert.equal(h.database.authority.startPlans.get(wire.startPlanId)?.workers, workers ?? "auto");
+describe("start plans have no worker choice", () => {
+  it("omits workers from the stored plan and response", async () => {
+    const h = await harnessFor(omissionAssertingDescriptor);
+    const wire = h.service.plan(request(h.descriptor, {}));
+    assert.equal(Object.hasOwn(wire, "workers"), false);
+    assert.equal(Object.hasOwn(h.database.authority.startPlans.get(wire.startPlanId) ?? {}, "workers"), false);
     assert.equal(h.database.authority.workerSlots.list().length, 0);
   });
-  it.each([0, 9, 1.5, "1", null])("rejects invalid workers %s before writing a plan", workers => {
-    const h = harnessFor(omissionAssertingDescriptor);
+  it.each(["auto", 1, 8, 0, 9, 1.5, "1", null])("rejects removed workers %s before writing a plan", async workers => {
+    const h = await harnessFor(omissionAssertingDescriptor);
     assert.throws(() => h.service.plan(request(h.descriptor, { workers })));
     assert.equal(h.transactions(), 0);
     assert.deepEqual(h.ids.minted(), []);
   });
+});
+
+
+it("refuses a genuinely never-initialized Settings snapshot before any plan or lifecycle identity is persisted", async () => {
+  const h = await harnessFor(omissionAssertingDescriptor, undefined, false);
+  const generation = h.database.getMeta().authorityGeneration;
+  assert.throws(() => h.service.plan(request(h.descriptor, {})), /run-settings-snapshot-mismatch/u);
+  assert.equal(h.transactions(), 1);
+  assert.equal(h.database.getMeta().authorityGeneration, generation);
+  assert.deepEqual(h.database.authority.runs.listByWorkflow(String(h.descriptor.id)), []);
+});
+
+it("rolls a canonical plan back with its enclosing transaction and retains the exact prior Settings identity", async () => {
+  const h = await harnessFor(omissionAssertingDescriptor);
+  const generation = h.database.getMeta().authorityGeneration;
+  const active = h.database.authority.runtimeConfig.get();
+  let proposed: ReturnType<typeof h.service.plan> | undefined;
+  const failure = new Error("controlled outer transaction failure");
+  assert.throws(() => h.database.withAuthorityTransaction(() => {
+    proposed = h.service.plan(request(h.descriptor, {}));
+    assert.ok(h.database.authority.startPlans.get(proposed.startPlanId));
+    throw failure;
+  }), error => error === failure);
+  assert.ok(proposed);
+  assert.equal(h.database.authority.startPlans.get(proposed.startPlanId), undefined);
+  assert.equal(h.database.getMeta().authorityGeneration, generation);
+  assert.deepEqual(h.database.authority.runtimeConfig.get(), active);
+  assert.deepEqual(h.database.authority.runs.listByWorkflow(String(h.descriptor.id)), []);
+  const accepted = h.service.plan(request(h.descriptor, {}));
+  assert.ok(h.database.authority.startPlans.get(accepted.startPlanId));
+});
+
+it("plans one dry-run Emergency Contact PDF start against a header-only ocr-roster", async () => {
+  const descriptor = compileWorkflow(emergencyContactWorkflow).descriptor;
+  let library: WorkbookLibraryService | undefined;
+  const h = await harnessFor(descriptor, undefined, true, database => library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK, sync: unexpectedWorkbookSync }));
+  assert.ok(library);
+  library.putType({ id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null });
+  const roster = library.create({ name: "OCR roster", themes: [], hasFormulas: false, sheets: [{ id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
+    columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+    rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }] }] });
+  library.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
+  const wire = h.service.plan({ workflowId: descriptor.id, dryRun: true, selectedStepKeys: descriptor.timeline.map(step => step.key),
+    submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" } }],
+    workbookReferences: [{ entry: 1, libraryId: roster.libraryId, versionId: library.libraryVersion(roster.libraryId).version.id, sheetId: "people",
+      expectedVersion: library.read(roster.libraryId).version }] });
+  assert.equal(wire.refused.length, 0, JSON.stringify(wire.refused));
+  assert.equal(wire.planned.length, 1);
 });

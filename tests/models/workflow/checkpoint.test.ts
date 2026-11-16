@@ -232,3 +232,14 @@ describe("run checkpoints", () => {
 
 
 });
+
+it("rejects duplicate, out-of-output and mistyped observation addresses while preserving original-run replay origins", () => {
+  const origin={runId:"aaaaaaaa-0001-4000-8000-000100000000",attempt:1,spanPath:"original/probe#2.3",nodeId:"probe",taskId:"workflow:fixture/read",field:"results",path:[0,"name"]};
+  const output={schemaHash:HASH_C,value:{results:[{name:"Retained"}]}};
+  const valid=checkpoint({output,observationOrigins:[{path:["results",0,"name"],origin}]});
+  assert.deepEqual(valid.observationOrigins?.[0].origin,origin);
+  for(const origins of [[{path:["results",0,"name"],origin},{path:["results",0,"name"],origin}], [{path:["missing"],origin}], [{path:["results","0","name"],origin}], []]) {
+    assert.throws(()=>checkpoint({output,observationOrigins:origins}));
+  }
+  assert.equal(checkpoint({output}).observationOrigins,undefined);
+});

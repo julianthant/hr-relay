@@ -4,9 +4,6 @@ import { seedSyntheticRuntimeConfig } from "../../../support/fixtures/operator-c
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
 import { createGateParkNotifier } from "../../../../src/backend/runs/notifications/gate-park.js";
 import { createNotificationInbox,type NotificationPublishReport } from "../../../../src/backend/runs/notifications/inbox.js";
@@ -15,11 +12,11 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { NOW,UUID_1,UUID_2 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 const PARK_A = { runId: UUID_1, workflowId: "separations", gateId: "identity-approval" } as const;
@@ -50,15 +47,11 @@ function recordingInbox(): {
   };
 }
 
-function realWorld() {
+async function realWorld() {
   const clock = manualClock(new Date(NOW));
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-gate-park-"));
-  disposers.push(() => rmSync(root, { recursive: true, force: true }));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "gate-park-test" },
-    clock,
-  );
-  disposers.push(() => database.close());
+  const opened = await openBoundDatabaseFixture("gate-park-test", clock);
+  disposers.push(async () => await opened.close());
+  const database = opened.database;
   seedSyntheticRuntimeConfig(database);
   const active = database.authority.runtimeConfig.get(); assert.ok(active);
   for (const park of [PARK_A, PARK_B]) {
@@ -166,7 +159,7 @@ describe("gate-park notifier: a park publishes on the transition, exactly once",
 
 describe("gate-park notifier: the durable row it actually writes", () => {
   it("lands ONE unread gate-waiting ping carrying a run link, and no second row", async () => {
-    const { database, inbox } = realWorld();
+    const { database, inbox } = await realWorld();
     const notifier = createGateParkNotifier({ inbox });
 
     const first = await notifier.observed([PARK_A]);
@@ -196,7 +189,7 @@ describe("gate-park notifier: the durable row it actually writes", () => {
 
 
   it("serves exact run and Storage destinations without diagnostic prose", async () => {
-    const { clock, inbox } = realWorld();
+    const { clock, inbox } = await realWorld();
     const notifier = createGateParkNotifier({ inbox });
     const first = await notifier.observed([PARK_A]);
     const parked = first.published[0]?.report.notification;

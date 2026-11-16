@@ -12,7 +12,7 @@ import type { StatusBucket, StatusCountWire, WorkflowCountWire } from "../../she
 import type { QueueSortKey } from "../../queue/queue-model.js";
 import { reviewCanApprove, reviewName, reviewRecords, reviewValue, seedReviewRecords, mockInputRecord, type ReviewRecord } from "./workflow-review-model.js";
 import { mockDetailEntries } from "./workflow-result-model.js";
-import { mockOperationEntries, mockOperationSubsteps, mockOperationDuration } from "./workflow-operation-model.js";
+import { mockOperationEntries, mockOperationSubsteps, mockOperationDuration, mockOperationValue } from "./workflow-operation-model.js";
 import { OCR_DOCUMENT_FIXTURES, mockDocumentFixture } from "./workflow-document-model.js";
 
 export type MockFile = Readonly<{ name: string; size: number; digest: string }>;
@@ -20,11 +20,12 @@ export type MockDraft = Readonly<{
   method: MockMethod; text: string; files: readonly MockFile[]; lookupMode: "search" | "match";
   typedValues?: TypedInputDraft;
   crmCheck: boolean; hireType: "new-hire" | "rehire"; uploadMode: "full" | "upload-only";
-  roster: "existing" | "download" | "none"; formType: string; documentType: string;
-  effectiveDate: string; startDate: string; endDate: string; workers: number | "auto";
+  formType: string; documentType: string;
+  effectiveDate: string; startDate: string; endDate: string;
   dryRun: boolean; priority: "interactive" | "background"; browser: "headed" | "headless";
-  captures: boolean; selectedSteps: readonly string[];
-  ocrMode?: "extract" | "manual"; manualSteps?: readonly string[]; manualValues?: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  selectedSteps: readonly string[];
+  /** Scenario fixtures: a host whose OCR page read failed, or whose first approved person failed. */
+  fault?: "page" | "member"; ocrMode?: "extract" | "manual"; manualSteps?: readonly string[]; manualValues?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }>;
 export type MockRun = Readonly<{
   businessOutcome?: QueueBusinessOutcome;
@@ -43,10 +44,10 @@ const prep: readonly MockStep[] = [
 export function initialMockDraft(id: string): MockDraft {
   const flow = mockWorkflow(id);
   return { method: flow.methods[0], text: "", files: [], lookupMode: "search", crmCheck: true,
-    hireType: "new-hire", uploadMode: "full", roster: "existing", formType: id === "i9-check" ? "i9" : id === "onbase" ? "onbase-emergency-contact" : id === "emergency-contact" ? "emergency-contact" : "oath",
-    documentType: "Emergency Contact", effectiveDate: "2026-08-03", startDate: "2017-01-01", endDate: "2026-01-31", workers: id === "old-kronos-reports" ? 4 : "auto",
+    hireType: "new-hire", uploadMode: "full", formType: id === "i9-check-start" ? "i9" : id === "onbase" ? "onbase-emergency-contact" : id === "emergency-contact" ? "emergency-contact" : "oath",
+    documentType: "Emergency Contact", effectiveDate: "2026-08-03", startDate: "2017-01-01", endDate: "2026-01-31",
     // Dry run is an explicit operator choice; every launch starts with it off.
-    dryRun: false, priority: "interactive", browser: "headed", captures: true,
+    dryRun: false, priority: "interactive", browser: "headed",
     ocrMode: "extract", manualSteps: [], manualValues: {}, selectedSteps: flow.steps.map(step => step.key) };
 }
 
@@ -94,12 +95,8 @@ export function mockDraftInputError(id: string, draft: MockDraft): string | unde
       else if (!["onboarding", "separations", "crm-doc-download"].includes(id) && !/^\d{5,}$/u.test(entry)) return "Employee IDs must contain at least five digits.";
     }
   }
-  if (id === "work-study" && !validDate(draft.effectiveDate)) return "Choose a valid effective date.";
   if (id === "old-kronos-reports" && (!validDate(draft.startDate) || !validDate(draft.endDate) || draft.startDate > draft.endDate)) return "Choose a valid report date range; start must precede end.";
-  if (draft.workers !== "auto" && (!Number.isInteger(draft.workers) || draft.workers < 1 || (id !== "old-kronos-reports" && draft.workers > 8))) return "Workers must be a positive whole number.";
-  if (id === "ocr" && !["oath", "emergency-contact", "onbase-emergency-contact", "i9"].includes(draft.formType)) return "Choose a supported form type.";
   if (id === "onbase" && !MOCK_ONBASE_TYPES.some(type => type.value === draft.documentType)) return "Choose a supported document type.";
-  if (draft.method === "pdf" && flow.roster && !(id === "oath-upload" && draft.uploadMode === "upload-only") && draft.roster === "none") return "Choose an existing roster or download the configured roster.";
   return undefined;
 }
 
@@ -109,13 +106,18 @@ export function mockDraftError(id: string, draft: MockDraft): string | undefined
 
 export function mockOcrReadSteps(id: string, draft: MockDraft): readonly MockStep[] {
   if (draft.method !== "pdf" && !mockDocumentFixture(draft) || id === "oath-upload" && draft.uploadMode === "upload-only") return [];
-  const type = id === "emergency-contact" ? "emergency-contact" : id === "i9-check" ? "i9" : id === "onbase" ? mockOnbaseDocumentType(draft.documentType).formType : draft.formType;
+  const type = id === "emergency-contact" ? "emergency-contact" : id === "i9-check-start" ? "i9" : id === "onbase" ? mockOnbaseDocumentType(draft.documentType).formType : draft.formType;
   const label = type === "emergency-contact" || type === "onbase-emergency-contact" ? "Read emergency contact" : type === "i9" ? draft.documentType.startsWith("I-9 Section ") ? `Read ${draft.documentType}` : "Read I-9 forms" : type === "verify" ? "Read onboarding forms" : type === "separation" ? "Read separation form" : "Read oath";
-  return [{ key: "read-document", label, system: "OCR", message: draft.ocrMode === "manual" ? "Enter the predefined document fields manually in OCR Records." : "Read the predefined document fields into OCR Records; downstream work waits for approval." }];
+  const gate = { key: "read-document", label, system: "OCR", message: draft.ocrMode === "manual" ? "Enter the predefined document fields manually in OCR Records." : "Read the predefined document fields into OCR Records; downstream work waits for approval." };
+  if (id !== "ocr") return [
+    { key: "prep:ocr", label, system: "OCR", message: "Read the predefined document fields into OCR Records." },
+    { key: "prep:person-lookup", label: "Match extracted people", system: "UCPath", message: "Resolve extracted identities against UCPath and the roster." },
+    { ...gate, label: "Review extracted records", system: undefined, message: "Release the reviewed records; downstream work waits for the release." }];
+  return [gate];
 }
 export function mockPipeline(id: string, draft: MockDraft): readonly MockStep[] {
   const flow = mockWorkflow(id);
-  if (id === "ocr") return [...(draft.roster === "download" ? mockWorkflow("sharepoint-download").steps.map(step => ({ ...step, key: `roster:${step.key}` })) : []), ...prep.map(step => ({ ...step,
+  if (id === "ocr") return [...prep.map(step => ({ ...step,
     ...(step.key === "prep:awaiting-approval" && draft.ocrMode === "manual" ? { label: "Review records", message: "Enter the records manually and approve them before starting downstream work." } : {}),
     ...(step.key === "prep:loading-roster" && draft.formType === "i9" ? { message: "Load configured Action History for I-9 identity matching." } : {}),
     ...(step.key === "prep:ocr" ? { label: mockOcrReadSteps(id, draft)[0].label, system: "OCR" } : {}),
@@ -125,33 +127,50 @@ export function mockPipeline(id: string, draft: MockDraft): readonly MockStep[] 
   const steps = flow.steps.filter(step => !(id === "oath-upload" && (step.key === "wait-approval" || draft.uploadMode === "upload-only" && step.key === "wait-signatures")));
   return [...mockOcrReadSteps(id, draft), ...steps];
 }
+/** The run whose records the operator reviews in `run`'s Logs: a host's hidden OCR child, else the run itself. */
+export function mockReviewRun(run: MockRun, runs: readonly MockRun[]): MockRun {
+  return run.ocrRunId === undefined ? run : runs.find(item => item.id === run.ocrRunId) ?? run;
+}
 export function mockNeedsReview(run: MockRun): boolean {
-  return run.workflowId === "ocr" && !!run.targetWorkflowId && !!run.parentId && !run.approved && !run.discarded;
+  return run.workflowId === "ocr" && !!run.targetWorkflowId && !!run.parentId && !run.approved && !run.discarded && run.draft.fault !== "page";
 }
 export function mockWaitsForOcr(run: MockRun): boolean {
-  return run.workflowId !== "ocr" && !!run.ocrRunId && !run.approved && !run.discarded;
+  return run.workflowId !== "ocr" && !!run.ocrRunId && !run.approved && !run.discarded && run.draft.fault !== "page";
 }
-export function mockQueueStatus(run: MockRun): "cancelled" | "awaiting-approval" | "running" | "done" {
-  return run.discarded ? "cancelled" : mockNeedsReview(run) ? "awaiting-approval" : mockWaitsForOcr(run) ? "running" : "done";
+export function mockQueueStatus(run: MockRun): "cancelled" | "awaiting-approval" | "running" | "done" | "failed" {
+  return run.discarded ? "cancelled" : mockFailedStepKey(run) !== undefined ? "failed" : mockNeedsReview(run) ? "awaiting-approval" : mockWaitsForOcr(run) ? "running" : "done";
 }
 export function mockRunStatus(run: MockRun): string {
   if (run.discarded) return "Discarded";
+  if (mockFailedStepKey(run) !== undefined) return "Failed";
   if (mockNeedsReview(run)) return "Needs review";
   if (mockWaitsForOcr(run)) return "Waiting for OCR";
   return run.draft.dryRun && mockWorkflow(run.workflowId).dryRun ? "Dry run complete" : "Completed";
 }
+/** The step a scenario fixture fails: the host's OCR page read, or a person run's last step. */
+export function mockFailedStepKey(run: MockRun): string | undefined {
+  if (run.discarded || run.draft.fault === undefined) return undefined;
+  if (run.draft.fault === "page") return run.ocrRunId !== undefined && run.role !== "person" ? "prep:ocr" : undefined;
+  return run.role === "person" ? mockRunPipeline(run).at(-1)?.key : undefined;
+}
 export function mockStepState(run: MockRun, step: MockStep): LogTimelineState {
   const draft = run.draft;
   if (run.discarded) return "cancelled";
+  const failedKey = mockFailedStepKey(run);
+  if (failedKey !== undefined) {
+    const keys = mockRunPipeline(run).map(item => item.key), at = keys.indexOf(step.key), failed = keys.indexOf(failedKey);
+    return at < failed ? "completed" : at === failed ? "failed" : "pending";
+  }
+  if (draft.ocrMode === "manual" && ["prep:ocr", "prep:person-lookup"].includes(step.key) && run.workflowId !== "ocr") return "skipped";
   if (step.key === "read-document") {
-    if (draft.ocrMode === "manual") return "skipped";
+    if (draft.ocrMode === "manual" && run.workflowId === "ocr") return "skipped";
     if (run.workflowId === "ocr") return mockStepState(run, { ...step, key: "prep:ocr" });
     return mockWaitsForOcr(run) ? "waiting" : "completed";
   }
   if (run.workflowId === "ocr" && draft.ocrMode === "manual" && step.key !== "prep:awaiting-approval") return "skipped";
   if (run.workflowId === "person-lookup" && ((step.key === "cross-verification" && (!draft.crmCheck || /^\d{5,}$/u.test(run.subject))) || (step.key === "active-status" && draft.lookupMode === "match") || step.key === "crm-dates")) return "skipped";
   if (run.workflowId === "onboarding" && step.key === "i9-creation" && draft.hireType === "rehire") return "skipped";
-  if (!mockNeedsReview(run) && !mockWaitsForOcr(run) && !step.key.startsWith("roster:") && !prep.some(item => item.key === step.key) && !draft.selectedSteps.includes(step.key) && !["members", "rollup"].includes(step.key)) return "skipped";
+  if (!mockNeedsReview(run) && !mockWaitsForOcr(run) && !prep.some(item => item.key === step.key) && !draft.selectedSteps.includes(step.key) && !["members", "rollup"].includes(step.key)) return "skipped";
   if (mockNeedsReview(run) || mockWaitsForOcr(run)) {
     const pipeline = mockRunPipeline(run);
     const gate = run.workflowId === "ocr" ? "prep:awaiting-approval" : "read-document";
@@ -182,14 +201,18 @@ function delegateMockOcr(run: MockRun): readonly MockRun[] {
     records: seedReviewRecords({ workflowId: "ocr", draft: run.draft }), approved: false, seeded: run.seeded };
   return [{ ...run, role: "preparation", ocrRunId: id }, ocr];
 }
+/** Clears a scenario fault, as the operator's Retry does. */
+export function retryMockFault(runs: readonly MockRun[], ids: readonly string[]): readonly MockRun[] {
+  return runs.map(run => ids.includes(run.id) ? { ...run, draft: { ...run.draft, fault: undefined } } : run);
+}
 export function mockRunsForDraft(id: MockWorkflowId, draft: MockDraft, sequence: number, sourceId?: string): readonly MockRun[] {
   const error = mockDraftError(id, draft);
   if (error) throw new Error(error);
-  if (id === "onbase" || id === "emergency-contact" || id === "i9-check") draft = { ...draft, formType: id === "onbase" ? mockOnbaseDocumentType(draft.documentType).formType : id === "i9-check" ? "i9" : "emergency-contact" };
+  if (id === "onbase" || id === "emergency-contact" || id === "i9-check-start") draft = { ...draft, formType: id === "onbase" ? mockOnbaseDocumentType(draft.documentType).formType : id === "i9-check-start" ? "i9" : "emergency-contact" };
   const subjects = draft.method === "typed" ? mockInputEntries(id, draft) : draft.method === "roster" ? ["Onboarding Roster"] : id === "onbase" ? [draft.files.map(file => file.name).join(" + ")] : draft.files.map(file => file.name);
   const created: readonly MockRun[] = subjects.map((subject, index) => ({ id: `mock:${id}:${sequence}:${index}`, workflowId: id, subject,
     title: subject, draft: structuredClone({ ...draft, ...(draft.method === "typed" ? { text: subject } : id === "onbase" ? {} : { files: [draft.files[index]] }) }),
-    ...(sourceId ? { sourceId } : {}), ...(id === "ocr" ? { records: seedReviewRecords({ workflowId: id, draft }) } : {}), approved: false, seeded: false }));
+    ...(sourceId ? { sourceId } : {}), approved: false, seeded: false }));
   return created.flatMap(delegateMockOcr);
 }
 export function seedMockRuns(): readonly MockRun[] {
@@ -197,7 +220,6 @@ export function seedMockRuns(): readonly MockRun[] {
     const pdf = flow.methods[0] === "pdf" || flow.id === "oath-signature";
     const document = OCR_DOCUMENT_FIXTURES.find(item => item.parent === flow.id);
     const draft: MockDraft = { ...initialMockDraft(flow.id), method: pdf ? "pdf" : flow.methods[0], text: document?.formType === "separation" ? reviewValue(document.records[0], "kualiId") : flow.example,
-      ...(flow.id === "onbase" ? { roster: "download" } : {}),
       ...(document ? { formType: document.formType } : {}),
       files: document ? [{ name: document.name, size: 4096, digest: `fixture:document:${document.name}` }] : pdf ? [{ name: flow.example.endsWith(".pdf") ? flow.example : "oaths.pdf", size: 4096, digest: `fixture:${flow.id}` }] : [] };
     const subject = pdf ? draft.files.map(file => file.name).join(" + ") : draft.text;
@@ -209,7 +231,27 @@ export function seedMockRuns(): readonly MockRun[] {
     });
     return delegateMockOcr(parent);
   });
-  return runs.map(run => ["i9-lookup", "sharepoint-download"].includes(run.workflowId) ? { ...run, parentId: "mock:onbase:sample:ocr", parentWorkflowId: "ocr" } : run);
+  return runs.map(run => run.workflowId === "i9-lookup" ? { ...run, parentId: "mock:onbase:sample", parentWorkflowId: "onbase" } : run);
+}
+
+export function mockRunSubset(runs: readonly MockRun[], include: (run: MockRun) => boolean): readonly MockRun[] {
+  const all = new Map(runs.map(run => [run.id, run]));
+  const selected = runs.filter(include), ids = new Set(selected.map(run => run.id));
+  return selected.map(run => {
+    let parentId = run.parentId;
+    const visited = new Set([run.id]);
+    while (parentId !== undefined && !ids.has(parentId)) {
+      if (visited.has(parentId)) throw new Error("MOCK_QUEUE_PARENT_CYCLE");
+      visited.add(parentId);
+      const parent = all.get(parentId);
+      if (parent === undefined) throw new Error("MOCK_QUEUE_PARENT_UNAVAILABLE");
+      parentId = parent.parentId;
+    }
+    const parent = parentId === undefined ? undefined : all.get(parentId);
+    if (parentId === run.parentId && (run.ocrRunId === undefined || ids.has(run.ocrRunId))) return run;
+    return { ...run, parentId, parentWorkflowId: parent?.workflowId,
+      ocrRunId: run.ocrRunId !== undefined && ids.has(run.ocrRunId) ? run.ocrRunId : undefined };
+  });
 }
 export function mockRetrySource(runs: readonly MockRun[], id: string): MockRun {
   let source = runs.find(run => run.id === id);
@@ -258,7 +300,7 @@ export function approveMockRun(runs: readonly MockRun[], id: string): readonly M
   const children: MockRun[] = records.map((record, index) => {
     const target = record.targetWorkflowId ?? (parent.workflowId === "oath-upload" ? "oath-signature" : parent.workflowId);
     const sameTarget = target === parent.workflowId;
-    const draft = { ...initialMockDraft(target), ...source.draft, text: reviewValue(record, record.kind === "separation" ? "kualiId" : "employeeId"),
+    const draft = { ...initialMockDraft(target), ...source.draft, fault: source.draft.fault === "member" && index === 0 ? "member" as const : undefined, text: reviewValue(record, record.kind === "separation" ? "kualiId" : "employeeId"),
       selectedSteps: sameTarget ? source.draft.selectedSteps : mockWorkflow(target).steps.map(step => step.key),
       manualSteps: sameTarget ? source.draft.manualSteps : [], manualValues: sameTarget ? source.draft.manualValues : {} };
     return { id: `${parent.id}:person:${index}`, workflowId: target, parentId: parent.id, parentWorkflowId: parent.workflowId,
@@ -275,13 +317,13 @@ function resultFields(run: MockRun): readonly (readonly [string, string])[] {
   if (run.role === "preparation" && run.workflowId !== "oath-upload") return [["Source PDF", run.draft.files.map(file => file.name).join(", ")], ["Completed people", String(run.approvedCount ?? 0)]];
   const record = mockInputRecord(run);
   const edited: Readonly<Record<string, string>> = run.role === "person" ? { "Employee": reviewName(record), "Employee ID": reviewValue(record, "employeeId"), "UCPath ID": reviewValue(record, "employeeId"), "Contact": reviewValue(record, "contactName"), "Relationship": reviewValue(record, "relationship"), "Contact phone": reviewValue(record, "cellPhone"), "Source page": String(record.page) } : {};
-  const fields = mockWorkflow(run.workflowId).result.map(([label, value]) => [label, manualFact(run.workflowId, run.draft, label) ?? (edited[label] || (label === "Document type" && run.workflowId === "onbase" ? run.draft.documentType : label === "Kuali ID" || label === "Email" || (label === "Employee ID" && /^\d{5,}$/u.test(run.subject)) ? run.subject : label === "PDF" ? run.draft.files.map(file => file.name).join(", ") : label === "Signers" ? String(run.approvedCount ?? 0) : label === "Effective date" && run.workflowId === "work-study" ? displayExtractedDate(run.draft.effectiveDate) : value))] as const);
-  if (run.workflowId === "i9-check" && run.role === "person") fields.push(["Hire date", "08/03/2026"], ["Separation date", "Not separated"], ["Retention tracker", "Appended"]);
+  const fields = mockWorkflow(run.workflowId).result.map(([label, value]) => [label, manualFact(run.workflowId, run.draft, label) ?? (edited[label] || (label === "Document type" && run.workflowId === "onbase" ? run.draft.documentType : label === "Employee ID" ? mockOperationValue(run, "$employeeId") : label === "Kuali ID" || label === "Email" ? run.subject : label === "PDF" ? run.draft.files.map(file => file.name).join(", ") : label === "Signers" ? String(run.approvedCount ?? 0) : value))] as const);
+  if (run.workflowId === "i9-check-start" && run.role === "person") fields.push(["Hire date", "08/03/2026"], ["Separation date", "Not separated"], ["Retention tracker", "Appended"]);
   if (run.workflowId === "old-kronos-reports") fields.push(["Report start", displayExtractedDate(run.draft.startDate)], ["Report end", displayExtractedDate(run.draft.endDate)]);
   if (run.workflowId === "onbase") fields.push(["Combined PDFs", String(run.draft.files.length)]);
   return fields.filter(([label]) => !(run.draft.dryRun && ["HR ticket", "Signature date"].includes(label)) && !(label === "HR ticket" && !run.draft.selectedSteps.includes("submit")) && !(label === "Signature date" && !run.draft.selectedSteps.includes("transaction")) && !(run.workflowId === "oath-upload" && run.draft.uploadMode === "upload-only" && label === "Signers"));
 }
-export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; endTime: string } {
+export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; endTime: string; durationSeconds: number } {
   const pipeline = mockRunPipeline(run);
   let elapsed = 0;
   const clock = (seconds: number) => new Date(Date.UTC(2026, 7, 3, 9, 10, seconds)).toISOString().slice(11, 19);
@@ -302,7 +344,7 @@ export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline:
     const last = steps[steps.length - 1];
     steps[steps.length - 1] = { ...last, entries: [...last.entries, { kind: "fields", id: `${run.id}:fields`, fields: resultFields(run).map(([label, value], index) => ({ id: `${run.id}:field:${index}`, time: clock(elapsed), kind: "read", label, value })) }] };
   }
-  return { steps, timeline, endTime: clock(elapsed) };
+  return { steps, timeline, endTime: clock(elapsed), durationSeconds: elapsed };
 }
 
 export function mockOathDuplicate(runs: readonly MockRun[], draft: MockDraft): string | undefined {
@@ -327,7 +369,7 @@ export function mockQueueCounts(runs: readonly MockRun[]): readonly StatusCountW
 }
 
 export function mockWorkflowCounts(runs: readonly MockRun[]): readonly WorkflowCountWire[] {
-  return MOCK_WORKFLOWS.map(flow => {
+  return MOCK_WORKFLOWS.filter(flow => flow.id !== "ocr").map(flow => {
     const rows = runs.filter(run => run.workflowId === flow.id);
     return WorkflowCountWireSchema.parse({ workflowId: flow.id, count: rows.length, statusCounts: mockQueueCounts(rows) });
   });
@@ -347,7 +389,7 @@ export function mockConfirmationFacts(id: MockWorkflowId, draft: MockDraft): rea
   const uploadOnly = id === "oath-upload" && draft.uploadMode === "upload-only";
   const steps = mockSelectableSteps(id, draft), omitted = steps.filter(step => !draft.selectedSteps.includes(step.key));
   const reading = mockOcrReadSteps(id, draft).length;
-  const includedReading = draft.ocrMode === "manual" ? 0 : reading;
+  const includedReading = draft.ocrMode === "manual" ? Math.min(reading, 1) : reading;
   return [
     { key: "Workflow", value: flow.label },
     { key: "Input", value: draft.method === "typed" ? draft.text : draft.method === "roster" ? "Onboarding Roster" : draft.files.map(file => file.name).join(", ") },
@@ -355,16 +397,12 @@ export function mockConfirmationFacts(id: MockWorkflowId, draft: MockDraft): rea
     ...(draft.manualSteps?.length ? [{ key: "Manual reading", value: steps.filter(step => usesManualRead(draft, step.key)).map(step => step.label).join(", ") }] : []),
     ...(pdf && !uploadOnly ? [{ key: "OCR extraction", value: draft.ocrMode === "manual" ? "Off · enter records in review" : "On" }] : []),
     { key: "Queue", value: draft.priority === "interactive" ? "Interactive" : "Bulk" },
-    { key: "Browser", value: `${draft.browser === "headed" ? "Headed" : "Headless"} · screenshots ${draft.captures ? "on" : "off"}` },
+    { key: "Browser", value: `${draft.browser === "headed" ? "Headed" : "Headless"} · screenshots required` },
     ...(flow.dryRun ? [{ key: "Dry run", value: draft.dryRun ? "On" : "Off" }] : []),
     ...(id === "onboarding" ? [{ key: "Hire type", value: draft.hireType === "rehire" ? "Rehire · UC_CONC_HIRE" : "New hire · UC_FULL_HIRE" }] : []),
     ...(id === "person-lookup" ? [{ key: "Lookup mode", value: draft.lookupMode }, { key: "CRM check", value: draft.crmCheck ? "On" : "Off" }] : []),
     ...(id === "oath-upload" ? [{ key: "Processing mode", value: uploadOnly ? "Upload-only" : "Full process" }] : []),
-    ...(id === "ocr" ? [{ key: "Form type", value: draft.formType }] : []),
-    ...(pdf && flow.roster && !uploadOnly ? [{ key: "Roster", value: draft.roster === "download" ? "Download Onboarding Roster" : "Existing Onboarding Roster" }] : []),
     ...(id === "onbase" ? [{ key: "Document type", value: draft.documentType }] : []),
-    ...((pdf && !uploadOnly) || draft.method === "typed" ? [{ key: "Workers", value: draft.workers === "auto" ? "Auto" : String(draft.workers) }] : []),
-    ...(id === "work-study" ? [{ key: "Effective date", value: displayExtractedDate(draft.effectiveDate) }] : []),
     ...(id === "old-kronos-reports" ? [{ key: "Report dates", value: `${displayExtractedDate(draft.startDate)} – ${displayExtractedDate(draft.endDate)}` }] : []),
   ];
 }

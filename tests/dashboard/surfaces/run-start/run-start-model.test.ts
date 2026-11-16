@@ -3,8 +3,6 @@ import assert from "node:assert/strict";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 import { describe,it } from "vitest";
 import {
-ENQUEUE_POLICY_MEANING,
-ENQUEUE_POLICY_REASON,
 START_DOOR_ABSENCE,
 foldStepOmissionFacts,
 forcedStepOmissions,
@@ -16,18 +14,19 @@ runControlGroups,
 startRequestFingerprint,
 toggleStepSelection,
 previewRunInput,
+typedInputDefaults,
+typedInputMode,
+typedControlAvailable,
 restoreTypedInput,
 changeTypedInput,
 type StartRequestShape,
 type StepOmissionStepView,
 } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
-import { EnqueuePolicySchema } from "../../../../src/models/workflow/presentation.js";
 import { StepOmissionFormSchema,type StepOmissionForm } from "../../../../src/models/workflow/step-omission.js";
-import { parsePersonLookupRequest } from "../../../../src/models/workflows/person-lookup/input.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 
 describe("canonical Person Lookup launch input", () => {
-  const surface = WORKFLOW_DESCRIPTORS.find(workflow => workflow.id === "person-lookup")?.surfaces.inputRun;
+  const surface = DESCRIPTORS.find(workflow => workflow.id === "person-lookup")?.surfaces.inputRun;
   assert.ok(surface);
   it("merges duplicate Search people and retains selected CRM options", () => {
     const preview = previewRunInput(surface, "10000001; 10000001\nExample, Person", { mode: "search", crmCheck: true, includeCrmDates: true });
@@ -39,26 +38,26 @@ describe("canonical Person Lookup launch input", () => {
     ]);
   });
   it("parses Match tuples, keeps SSN out of display identity and refuses missing identifiers", () => {
-    const preview = previewRunInput(surface, "Example, Person, x, 920741459; Example, Person, x, 920741459", { mode: "match", crmCheck: false, includeCrmDates: false });
+    const preview = previewRunInput(surface, "Example, Person, x, 902481357; Example, Person, x, 902481357", { mode: "match", crmCheck: false, includeCrmDates: false });
     assert.equal(preview.problem, null);
-    assert.deepEqual(preview.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "920741459", crmCheck: false, includeCrmDates: false }]);
+    assert.deepEqual(preview.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "902481357", crmCheck: false, includeCrmDates: false }]);
     assert.deepEqual(preview.entries, [{ index: 0, sourceText: "Example, Person, x, [masked]" }]);
     const rejected = previewRunInput(surface, "Example, Person, x, x", { mode: "match", crmCheck: false, includeCrmDates: false });
     assert.match(rejected.problem ?? "", /Match requires/u);
     assert.deepEqual(rejected.submissions, []);
   });
-  it("matches canonical parsing for the declared grammar and duplicate identities", () => {
-    for (const [mode, text] of [
-      ["search", " 10000001 ; 10000001\nExample,  Person;example, person"],
-      ["match", "Example, Person, Middle, 01/15/2000, x; Example, Person, Middle, 01/15/2000, x"],
-      ["match", "Person Example, x, 920741459"],
-      ["match", "Example, Person, 01/15/2000, 920741459"],
+  it("parses the declared grammar and merges duplicate identities", () => {
+    const search = { mode: "search", crmCheck: true, keepNonHdh: false, includeCrmDates: false } as const;
+    const match = { mode: "match", lastName: "Example", crmCheck: false, includeCrmDates: false } as const;
+    for (const [mode, text, expected] of [
+      ["search", " 10000001 ; 10000001\nExample,  Person;example, person", [{ ...search, emplId: "10000001" }, { ...search, name: "Example, Person" }]],
+      ["match", "Example, Person, Middle, 01/15/2000, x; Example, Person, Middle, 01/15/2000, x", [{ ...match, firstName: "Person, Middle", dob: "01/15/2000" }]],
+      ["match", "Person Example, x, 902481357", [{ ...match, firstName: "Person", ssn: "902481357" }]],
+      ["match", "Example, Person, 01/15/2000, 902481357", [{ ...match, firstName: "Person", dob: "01/15/2000", ssn: "902481357" }]],
     ] as const) {
-      const options = { mode, crmCheck: mode === "search", includeCrmDates: false };
-      assert.deepEqual(previewRunInput(surface, text, options).submissions, parsePersonLookupRequest(text, options));
+      assert.deepEqual(previewRunInput(surface, text, { mode, crmCheck: mode === "search", includeCrmDates: false }).submissions, expected);
     }
-    for (const text of ["Example, Person, x, 920-74-1459", "Example, Person, x, 902 48 1357", "Example, , x, 920741459", "Example, Person, x, x"]) {
-      assert.throws(() => parsePersonLookupRequest(text, { mode: "match" }));
+    for (const text of ["Example, Person, x, 902-48-1357", "Example, Person, x, 902 48 1357", "Example, , x, 902481357", "Example, Person, x, x"]) {
       assert.ok(previewRunInput(surface, text, { mode: "match" }).problem);
     }
   });
@@ -78,7 +77,7 @@ describe("canonical Person Lookup launch input", () => {
     assert.ok(surface.typedInput);
     for (const input of [
       { mode: "unknown" },
-      { mode: "match", crmCheck: false, includeCrmDates: false, ssn: "920741459" },
+      { mode: "match", crmCheck: false, includeCrmDates: false, ssn: "902481357" },
       { mode: "match", crmCheck: false, includeCrmDates: false, lastName: "Example", firstName: "Person" },
       { mode: "match", crmCheck: false, includeCrmDates: false, lastName: "Example", firstName: "Person", ssn: "bad" },
     ]) assert.throws(() => restoreTypedInput(surface.typedInput!, JsonValueSchema.parse(input)));
@@ -108,29 +107,6 @@ describe("compact input guidance follows the declared parser", () => {
   });
 });
 
-describe("the declared active-run policy, as the modal states it", () => {
-  it("covers the enum exactly — a new policy arm cannot land wordless, and no word outlives its arm", () => {
-    assert.deepEqual(
-      Object.keys(ENQUEUE_POLICY_MEANING).sort(),
-      [...EnqueuePolicySchema.options].sort(),
-    );
-  });
-
-  it("has a sentence for every policy any registered workflow actually declares", () => {
-    for (const descriptor of WORKFLOW_DESCRIPTORS) {
-      assert.ok(
-        ENQUEUE_POLICY_MEANING[descriptor.enqueue] !== undefined,
-        `${descriptor.id} declares ${descriptor.enqueue}, which the modal has no words for`,
-      );
-    }
-  });
-
-  it("states WHY the policy is not a control, so a locked value never reads as a broken one", () => {
-
-    assert.match(ENQUEUE_POLICY_REASON, /Fixed by this workflow/u);
-  });
-});
-
 describe("why this dialog cannot start a workflow", () => {
   it("names the modal's own precondition and does not speak for the server", () => {
     const reason = START_DOOR_ABSENCE["no-typed-input"];
@@ -152,7 +128,6 @@ describe("a plan outlives no change to the request that shaped it", () => {
     workflowId: "person-lookup",
     text: "E1234567",
         dryRun: false,
-        workers: "auto",
         browserMode: "headless",
         captureBrowserScreenshots: true,
         priority: "interactive",
@@ -166,7 +141,6 @@ describe("a plan outlives no change to the request that shaped it", () => {
       ["workflowId", { ...base, workflowId: "kuali-separation" }],
       ["text", { ...base, text: "E7654321" }],
       ["dryRun", { ...base, dryRun: true }],
-      ["workers", { ...base, workers: 2 }],
       ["browserMode", { ...base, browserMode: "headed" }],
       ["captureBrowserScreenshots", { ...base, captureBrowserScreenshots: false }],
       ["priority", { ...base, priority: "bulk" }],
@@ -390,5 +364,29 @@ describe("the cascade locks exactly what the planner would refuse", () => {
       omittedStepViews(CASCADING_STEPS, ["finalize"]).map((step) => step.key),
       ["read", "stage"],
     );
+  });
+});
+
+
+describe("explicit unchosen typed mode", () => {
+  const surface = DESCRIPTORS.find(workflow => workflow.id === "onboarding")?.surfaces.inputRun;
+  assert.ok(surface?.typedInput);
+  const declaration = surface.typedInput;
+  it("keeps null unchosen while preserving existing string defaults", () => {
+    assert.equal(declaration.initialMode, null);
+    assert.deepEqual(typedInputDefaults(declaration), {});
+    assert.equal(typedInputMode(declaration, {}), undefined);
+    assert.equal(typedControlAvailable(declaration, {}, "unavailable"), false);
+    assert.match(previewRunInput(surface, "hire@example.test").problem ?? "", /Choose Hire mode/u);
+    const ordinary = DESCRIPTORS.find(workflow => workflow.id === "person-lookup")?.surfaces.inputRun?.typedInput;
+    assert.ok(ordinary);
+    assert.equal(typedInputDefaults(ordinary).mode, "search");
+    assert.equal(typedInputMode(ordinary, {})?.value, "search");
+  });
+  it("uses declared explicit modes and refuses missing/invalid source modes", () => {
+    assert.deepEqual(previewRunInput(surface, "hire@example.test", { mode: "rehire" }).submissions, [{ email: "hire@example.test", mode: "rehire" }]);
+    assert.deepEqual(changeTypedInput(declaration, {}, "mode", "new-hire"), { mode: "new-hire" });
+    assert.throws(() => restoreTypedInput(declaration, { email: "hire@example.test" }), /no mode/u);
+    assert.throws(() => restoreTypedInput(declaration, { email: "hire@example.test", mode: "unknown" }), /Undeclared/u);
   });
 });

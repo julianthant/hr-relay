@@ -182,6 +182,7 @@ const IDENTITY_JOBS = {
 function identityComparisonCheckpoint(): RunCheckpointRecord {
   const value = JsonValueSchema.parse(MatchIdentityOutputSchema.parse({
     packet: IDENTITY_PACKET,
+    approvalRequired: IDENTITY_PACKET.emplIdSource === "name-resolved" || IDENTITY_PACKET.emplIdSource === "operator-entered",
     evidenceDigest: deriveIdentityEvidenceDigest(IDENTITY_PACKET),
   }));
   const leaves = (node: unknown, prefix: string): string[] => {
@@ -337,7 +338,7 @@ describe("task provenance collector", () => {
     assert.ok(identityGate?.kind === "gate");
     const gateResult = {
       runId: RUN_ID,
-      gateId: "identity-approval", nodeId: "approval",
+      gateId: "identity-approval", nodeId: "identity-approval",
       commandId: "cccccccc-0001-4000-8000-000100000000",
       expectedVersion: 3,
       resolvedBy: "local-operator",
@@ -402,7 +403,7 @@ describe("task provenance collector", () => {
       },
       clock: manualClock(new Date(NOW)),
       onRecord: recordBatch,
-    }), /received undeclared upstream gate result not-declared/);
+    }), /invalid condition gate not-declared/);
   });
 
 
@@ -474,7 +475,7 @@ describe("task provenance collector", () => {
 
     const gateResult = {
       runId: RUN_ID,
-      gateId: "identity-approval", nodeId: "approval",
+      gateId: "identity-approval", nodeId: "identity-approval",
       commandId: "cccccccc-0001-4000-8000-000100000000",
       expectedVersion: 3,
       resolvedBy: "local-operator",
@@ -494,6 +495,7 @@ describe("task provenance collector", () => {
     const namePacket = { ...IDENTITY_PACKET, emplIdSource: "name-resolved" as const };
     const nameValue = JsonValueSchema.parse(MatchIdentityOutputSchema.parse({
       packet: namePacket,
+      approvalRequired: namePacket.emplIdSource === "name-resolved" || namePacket.emplIdSource === "operator-entered",
       evidenceDigest: deriveIdentityEvidenceDigest(namePacket),
     }));
     const nameComparison = RunCheckpointRecordSchema.parse({

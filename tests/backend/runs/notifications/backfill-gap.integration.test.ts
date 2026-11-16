@@ -1,11 +1,15 @@
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createNotificationBackfillTestWorld } from "../../../support/helpers/backend/notification-backfill-world.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { createBackfillGapNotifier } from "../../../../src/backend/runs/notifications/backfill-gap.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const {world, cleanup } = createNotificationBackfillTestWorld();
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+
+const {world, cleanup } = createNotificationBackfillTestWorld(profileFixtures.create);
 
 
 const GAP = {
@@ -22,7 +26,7 @@ afterEach(cleanup);
 describe("backfill-gap notification", () => {
 
   it("publishes one durable record for repeated detection of the same gap", async () => {
-    const { inbox } = world();
+    const { inbox } = await world();
     const notifier = createBackfillGapNotifier({ inbox });
 
     await notifier.detected(GAP);
@@ -36,7 +40,7 @@ describe("backfill-gap notification", () => {
   });
 
   it("keeps one identity when the same stale cursor is retried after the head advances", async () => {
-    const { inbox } = world();
+    const { inbox } = await world();
     const notifier = createBackfillGapNotifier({ inbox });
 
     await notifier.detected(GAP);
@@ -49,7 +53,7 @@ describe("backfill-gap notification", () => {
   });
 
   it("retries the same gap after a publisher failure instead of forgetting it", async () => {
-    const { inbox } = world();
+    const { inbox } = await world();
     let failures = 1;
     const notifier = createBackfillGapNotifier({
       inbox: {
@@ -72,7 +76,7 @@ describe("backfill-gap notification", () => {
   });
 
   it("preserves the permanent row without count or version churn after notifier restart", async () => {
-    const { inbox } = world();
+    const { inbox } = await world();
 
     await createBackfillGapNotifier({ inbox }).detected(GAP);
     await createBackfillGapNotifier({ inbox }).detected(GAP);
@@ -86,7 +90,7 @@ describe("backfill-gap notification", () => {
   });
 
   it("single-flights simultaneous clients observing one missing interval", async () => {
-    const { inbox } = world();
+    const { inbox } = await world();
     let publishCalls = 0;
     let releasePublish: (() => void) | undefined;
     const held = new Promise<void>((resolve) => {
@@ -113,7 +117,7 @@ describe("backfill-gap notification", () => {
   });
 
   it("refuses direct backend read-state mutation of the pinned record", async () => {
-    const { inbox } = world();
+    const { inbox } = await world();
     const published = await createBackfillGapNotifier({ inbox }).detected(GAP);
     assert.equal(published.published, true);
     if (!published.published) assert.fail("expected a published gap");
@@ -128,7 +132,7 @@ describe("backfill-gap notification", () => {
   });
 
   it("refuses a same-state mark-unread that would only bump the pinned record version", async () => {
-    const { inbox } = world();
+    const { inbox } = await world();
     const published = await createBackfillGapNotifier({ inbox }).detected(GAP);
     assert.equal(published.published, true);
     if (!published.published) assert.fail("expected a published gap");
@@ -141,7 +145,7 @@ describe("backfill-gap notification", () => {
   });
 
   it("refuses direct backend snooze mutation of the pinned record", async () => {
-    const { inbox } = world();
+    const { inbox } = await world();
     const published = await createBackfillGapNotifier({ inbox }).detected(GAP);
     assert.equal(published.published, true);
     if (!published.published) assert.fail("expected a published gap");
@@ -160,7 +164,7 @@ describe("backfill-gap notification", () => {
   });
 
   it("refuses clear-snooze even when the pinned record is already not snoozed", async () => {
-    const { inbox } = world();
+    const { inbox } = await world();
     const published = await createBackfillGapNotifier({ inbox }).detected(GAP);
     assert.equal(published.published, true);
     if (!published.published) assert.fail("expected a published gap");
@@ -173,7 +177,7 @@ describe("backfill-gap notification", () => {
   });
 
   it("refuses direct authority state writes and folds for a pinned record", async () => {
-    const { database, inbox } = world();
+    const { database, inbox } = await world();
     const published = await createBackfillGapNotifier({ inbox }).detected(GAP);
     assert.equal(published.published, true);
     if (!published.published) assert.fail("expected a published gap");

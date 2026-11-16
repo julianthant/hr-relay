@@ -1,6 +1,8 @@
-import { testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
+import { unusedWorkerPool } from "./unused-worker-pool.js";
+import { testRunService, testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { executeClaimedRun, type RunExecutionAuthority, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { UcpathReadJobSummary } from "../../../../src/models/systems/ucpath/read-job-summary.js";
@@ -12,7 +14,7 @@ import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/check
 import { SeparationsMatchDepartmentOption } from "../../../../src/models/workflows/separations/match-department-option.js";
 import { MatchIdentityOutputSchema } from "../../../../src/models/workflows/separations/match-identity.js";
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
 import { COMPARISON_NODE, DEPARTMENT_NODE, GATE_NODE, JOB_SUMMARY_NODE, NAME_SEARCH_NODE } from "../../../../src/workflows/separations/workflow.js";
 import { UUID_7 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { FINALIZATION_JOB_SUMMARY_READ, FINALIZATION_NAME_SEARCH_OUTPUT, FINALIZATION_NOW, FINALIZATION_RUN_ID, FINALIZATION_RUN_INPUT, FINALIZATION_SCOPE_OUTPUTS, FINALIZATION_WORKER_ID, finalizationHarness, finalizationQueuedRun, type FinalizationHarness } from "../kuali-finalization-fixtures.js";
@@ -23,13 +25,13 @@ import { separationsKualiFinalizationDescriptor } from "../registered-workflows.
 
 
 
-export function createFinalizationTerminalTestWorld() {
+export function createFinalizationTerminalTestWorld(retainedBinding?: import("../../../../src/models/write-safety/protected-input.js").ProtectedInputBinding) {
   const open: FinalizationHarness[] = [];
 
   const signal = new AbortController().signal;
 
-  function harness(): FinalizationHarness {
-    const created = finalizationHarness();
+  async function harness(): Promise<FinalizationHarness> {
+    const created = await finalizationHarness();
     open.push(created);
     return created;
   }
@@ -55,6 +57,8 @@ export function createFinalizationTerminalTestWorld() {
   }
 
   function claimQueued(value: FinalizationHarness) {
+    const member = value.database.authority.workerSlots.get(FINALIZATION_WORKER_ID);
+    if (member === undefined) throw new Error("fixture-claim-member-required");
     const claimed = value.database.authority.runs.claimNext({
       workflow: separationsKualiFinalizationDescriptor.id,
       workerId: FINALIZATION_WORKER_ID,
@@ -95,7 +99,7 @@ export function createFinalizationTerminalTestWorld() {
         descriptorVersion: separationsKualiFinalizationDescriptor.version,
         contractFingerprint:
           separationsKualiFinalizationDescriptor.contractFingerprint,
-        implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, contract.id),
+        implFingerprint: taskImplFingerprint(contract),
         provenance: evidenceLeaves(parsedOutput).map(({ path }) => ({
           path,
           source,
@@ -132,7 +136,7 @@ export function createFinalizationTerminalTestWorld() {
       input: {
         ...raw.input,
         raw: canonical,
-        parsed: { ...raw.input.parsed, value: canonical },
+        parsed: { ...raw.input.parsed, value: canonical, ...(retainedBinding === undefined ? {} : { protectedBindings: [retainedBinding] }) },
       },
     });
     const inserted = value.database.authority.runs.enqueue(run);
@@ -211,31 +215,25 @@ export function createFinalizationTerminalTestWorld() {
       schemaHash: deriveSchemaHash(IdentityApprovalResultSchema, "output"),
       value: approval,
     };
-    const gateInsert = value.database.authority.gateResults.insert({ nodeId: GATE_NODE,
-      runId: FINALIZATION_RUN_ID,
-      gateId: GATE_NODE,
-      commandId: UUID_7,
-      expectedVersion: parkedRun.version,
-      resolvedBy: "local-operator",
-      resolvedAt: value.clock.now().toISOString(),
-      checkpointFingerprint: deriveGateResultCheckpointFingerprint(result),
-      result,
-    });
-    if (gateInsert.state !== "inserted")
-      throw new Error(`gate insert outcome was ${gateInsert.state}`);
-    const resumed = value.database.authority.runs.resume({
-      runId: FINALIZATION_RUN_ID,
-      expectedVersion: parkedRun.version,
-      startAt: parkedRun.lifecycle.resumeAt,
-      now: value.clock.now().toISOString(),
-    });
-    if (resumed.state !== "applied")
-      throw new Error(`resume outcome was ${resumed.state}`);
+    const active = value.database.authority.runtimeConfig.get();
+    if (active === undefined) throw new Error("finalization fixture runtime identity missing");
+    const unrelated = (): never => { throw new Error("gate command reached an unrelated effect"); };
+    const kernel = createCommandKernel({ lifecycle: testRunService(value.database, value.clock), authority: value.database,
+      clock: value.clock, ids: value.ids, appVersion: "0.1.0",
+      descriptors: { resolve: id => id === separationsKualiFinalizationDescriptor.id ? separationsKualiFinalizationDescriptor : undefined },
+      configIdentity: { configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint },
+      intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+      writeResolution: { recheck: unrelated, resolveAbsent: unrelated },
+      workerRuntime: { pool: unusedWorkerPool(unrelated) } });
+    const resolved = kernel.execute({ commandId: UUID_7, requestedAt: value.clock.now().toISOString(),
+      requestedBy: "local-operator", source: "dashboard", family: "gate", type: "resolve-gate",
+      target: { runId: FINALIZATION_RUN_ID, gateId: GATE_NODE, expectedVersion: parkedRun.version }, payload: { result } });
+    if (resolved.state !== "applied") throw new Error(`gate command outcome was ${resolved.state}`);
 
     return claimQueued(value);
   }
-  const cleanup = () => {
-    for (const harness of open.splice(0)) harness.dispose();
+  const cleanup = async () => {
+    for (const harness of open.splice(0)) await harness.dispose();
   };
   return { open, signal, harness, executorDependencies, enqueueFromComparison, parkApproveAndReclaim, cleanup };
 }

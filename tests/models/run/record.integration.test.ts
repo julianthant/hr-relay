@@ -1,49 +1,35 @@
-import { createRunClaimFixtures } from "../../support/helpers/backend/run-claim-fixtures.js";
+import { afterAll, describe, it, afterEach } from "vitest";
+import { createProfileFixtureSet } from "../../support/helpers/admission-fixture.js";
+import { createRunClaimFixtures, heldClaim } from "../../support/helpers/backend/run-claim-fixtures.js";
 import { createRunIntegrationTestWorld } from "../../support/helpers/run-integration-world.js";
 import { default as assert } from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { realpathSync } from "node:fs";
-import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe } from "vitest";
-import { it } from "vitest";
 import { z } from "zod";
-import { RunRecordSchema } from "../../../src/models/run/record.js";
+import { RunRecordSchema, RunLifecycleSchema, runClaim, runTransitionViolation } from "../../../src/models/run/record.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { insertMeasuredSearchRun } from "../../support/helpers/backend/cross-date-search-harness.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import { afterEach } from "vitest";
 
 import { runRecordFromRow } from "../../../src/backend/storage/sqlite/run-record-row.js";
-import { RunLifecycleSchema } from "../../../src/models/run/record.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
 
 
 
 
-import { HASH_C } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { LATER as LATERImport2 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { HASH_C, LATER as LATERImport2, NOW, UUID_7, HASH_A, UUID_1 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
-import { UUID_7 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { RUN_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID, WORKFLOW_ID, WORKER_START_REQUEST as BASE_WORKER_START_REQUEST } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { summaryFixture } from "../../support/helpers/backend/served-database-surfaces-fixtures.js";
-import { id } from "../../support/helpers/database-foundation/fixtures.js";
-import { NOW as NOWImport2 } from "../../support/helpers/database-foundation/fixtures.js";
+import { id, NOW as NOWImport2 } from "../../support/helpers/database-foundation/fixtures.js";
 
 
-import { runClaim } from "../../../src/models/run/record.js";
-import { runTransitionViolation } from "../../../src/models/run/record.js";
 
-import { HASH_A } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { UUID_1 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { WORKER_START_REQUEST as BASE_WORKER_START_REQUEST } from "../../support/fixtures/phase1f-run-fixtures.js";
+
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
 
 {
 function corruptRunSource(raw: DatabaseSync, sql: string, ...values: (string | number | null)[]) {
@@ -55,16 +41,16 @@ function corruptRunSource(raw: DatabaseSync, sql: string, ...values: (string | n
 
 describe("cross-date search authority read", () => {
 
-  it("refuses a strict run record whose authority order instant is foreign", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-cross-date-malformed-"));
-    const databasePath = join(root, "authority.db");
+  it("refuses a strict run record whose authority order instant is foreign", async () => {
+    const profile = await profileFixtures.create();
+    const databasePath = profile.path;
     const database = AuthorityDatabase.open(
       { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-malformed-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
     const raw = new DatabaseSync(databasePath);
     try {
-      const run = insertMeasuredSearchRun(database, { authorityPath: join(root, "authority.db"), seed: 90, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const run = insertMeasuredSearchRun(database, { authorityPath: databasePath, seed: 90, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const malformed = RunRecordSchema.parse({
         ...run,
         createdAt: "2026-08-28T15:01:00.000Z",
@@ -74,7 +60,7 @@ describe("cross-date search authority read", () => {
       corruptRunSource(raw, "UPDATE runs SET envelope_json = ?, lifecycle_json = ? WHERE id = ?",
         canonicalJsonStringify(envelope), canonicalJsonStringify(lifecycle), run.envelope.runId);
 
-      assert.throws(
+      try { assert.throws(
         () => database.authority.runs.search({
           q: "separations",
           scope: "workflow",
@@ -82,11 +68,15 @@ describe("cross-date search authority read", () => {
           limit: 1,
         }),
         /run-search-index-rebuild-required/,
-      );
+      ); } finally {
+        const { envelope: originalEnvelope, ...originalLifecycle } = run;
+        corruptRunSource(raw, "UPDATE runs SET envelope_json = ?, lifecycle_json = ? WHERE id = ?",
+          canonicalJsonStringify(originalEnvelope), canonicalJsonStringify(originalLifecycle), run.envelope.runId);
+      }
     } finally {
       raw.close();
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      await profile.close();
     }
   });
 });
@@ -95,14 +85,14 @@ describe("cross-date search authority read", () => {
 {
 const CLOCK = manualClock(new Date(LATERImport2));
 
-const { roots, openDatabase, startRunning, cleanup, failure, failureAuthorization, resultRequest } = createRunIntegrationTestWorld(CLOCK);
+const { roots, openDatabase, startRunning, cleanup, failure, failureAuthorization, resultRequest } = createRunIntegrationTestWorld(CLOCK, profileFixtures.create);
 
 const AFTER_LATER = "2026-07-31T17:02:00.000Z";
 
 function corruptRunConsequence(
   mutate: (run: RunRecord) => unknown,
-): void {
-  const path = join(roots.at(-1) ?? "", "authority.sqlite");
+): () => void {
+  const path = join(roots.at(-1) ?? "", "state.db");
   const raw = new DatabaseSync(path);
   try {
     const guards = ["runs_completion_update", "runs_completion_immutable"].map(name => {
@@ -115,8 +105,9 @@ function corruptRunConsequence(
       for (const guard of guards) raw.exec("DROP TRIGGER " + guard.name);
       const row = raw.prepare("SELECT * FROM runs WHERE id=?").get(RUN_ID);
       if (row === undefined) throw new Error("run is absent from corruption fixture");
+      const original = runRecordFromRow(row);
       const corrupted = z.looseObject({ lifecycle: RunLifecycleSchema, claimGeneration: z.number().int(),
-        version: z.number().int(), updatedAt: z.string() }).parse(mutate(runRecordFromRow(row)));
+        version: z.number().int(), updatedAt: z.string() }).parse(mutate(original));
       const { envelope, ...lifecycle } = corrupted;
       void envelope;
       const owner = "workerId" in corrupted.lifecycle ? corrupted.lifecycle.workerId : null;
@@ -127,6 +118,18 @@ function corruptRunConsequence(
           corrupted.version, corrupted.claimGeneration, corrupted.updatedAt, RUN_ID);
       for (const guard of guards) raw.exec(guard.sql);
       raw.exec("COMMIT");
+      return () => {
+        const restore = new DatabaseSync(path);
+        try {
+          restore.exec("BEGIN");
+          for (const guard of guards) restore.exec("DROP TRIGGER " + guard.name);
+          restore.prepare("UPDATE runs SET lifecycle_json=?,state=?,outcome=?,owner_worker_id=?,heartbeat_at=?,version=?,claim_generation=?,updated_at=? WHERE id=?")
+            .run(row.lifecycle_json ?? null, row.state ?? null, row.outcome ?? null, row.owner_worker_id ?? null,
+              row.heartbeat_at ?? null, row.version ?? null, row.claim_generation ?? null, row.updated_at ?? null, RUN_ID);
+          for (const guard of guards) restore.exec(guard.sql);
+          restore.exec("COMMIT");
+        } finally { restore.close(); }
+      };
     } catch (error) { raw.exec("ROLLBACK"); throw error; }
   } finally {
     raw.close();
@@ -142,7 +145,7 @@ function corruptRunConsequence(
 describe("atomic failure terminal authority", () => {
 afterEach(cleanup);
 
-  it("refuses replay for every schema-valid mismatch from failure authorization to consequence", () => {
+  it("refuses replay for every schema-valid mismatch from failure authorization to consequence", async () => {
     const cases: ReadonlyArray<readonly [string, (run: RunRecord) => unknown]> = [
       ["version", (run: RunRecord) => ({ ...run, version: run.version + 1 })],
       ["claim generation", (run: RunRecord) => ({ ...run, claimGeneration: run.claimGeneration + 1 })],
@@ -166,17 +169,17 @@ afterEach(cleanup);
       ["updatedAt", (run: RunRecord) => ({ ...run, updatedAt: AFTER_LATER })],
     ];
     for (const [name, mutate] of cases) {
-      const database = openDatabase();
+      const database = await openDatabase();
       const running = startRunning(database);
       const record = failure(running);
       const request = { failure: record, authorization: failureAuthorization(running) } as const;
       database.terminalizeFailure(personLookupDescriptor, request);
-      corruptRunConsequence(mutate);
-      assert.throws(
+      const restore = corruptRunConsequence(mutate);
+      try { assert.throws(
         () => database.terminalizeFailure(personLookupDescriptor, request),
         /completion|terminal consequence|run-search-index-corrupt/,
         name,
-      );
+      ); } finally { restore(); }
     }
   });
 });
@@ -184,7 +187,7 @@ afterEach(cleanup);
 describe("atomic success terminal authority", () => {
 afterEach(cleanup);
 
-  it("refuses replay for every schema-valid mismatch from success authorization to consequence", () => {
+  it("refuses replay for every schema-valid mismatch from success authorization to consequence", async () => {
     const cases: ReadonlyArray<readonly [string, (run: RunRecord) => unknown]> = [
       ["version", (run: RunRecord) => ({ ...run, version: run.version + 1 })],
       ["claim generation", (run: RunRecord) => ({ ...run, claimGeneration: run.claimGeneration + 1 })],
@@ -202,7 +205,7 @@ afterEach(cleanup);
       ["updatedAt", (run: RunRecord) => ({ ...run, updatedAt: AFTER_LATER })],
     ];
     for (const [name, mutate] of cases) {
-      const database = openDatabase();
+      const database = await openDatabase();
       const running = startRunning(database);
       const terminal = resultRequest(database, running);
       const request = {
@@ -210,20 +213,20 @@ afterEach(cleanup);
         authorization: terminal.authorization,
       };
       database.terminalizeSuccess(request, terminal.factoryAuthorization);
-      corruptRunConsequence(mutate);
-      assert.throws(
+      const restore = corruptRunConsequence(mutate);
+      try { assert.throws(
         () => database.terminalizeSuccess(request),
         /completion|terminal consequence|run-search-index-corrupt/,
         name,
-      );
+      ); } finally { restore(); }
     }
   });
 });
 }
 
 {
-it("contains operation members once and preserves protected titles and missing warning evidence", () => {
-  const f = summaryFixture();
+it("contains operation members once and preserves protected titles and missing warning evidence", async () => {
+  const f = await summaryFixture(profileFixtures.create);
   try {
     const rootId = id(8870), memberId = id(8871);
     f.db.withAuthorityTransaction(() => {
@@ -252,7 +255,7 @@ it("contains operation members once and preserves protected titles and missing w
     assert.equal(JSON.stringify(wire).includes("10812345"), false);
     const report = f.projection.buildActivityReportWire("2026-09-09", "2026-09-09");
     assert.equal(report.totalRuns, 1);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 });
 }
 
@@ -266,19 +269,13 @@ const databases: AuthorityDatabase[] = [];
 const LATER = "2026-07-31T17:05:00.000Z";
 const MUCH_LATER = "2026-07-31T18:00:00.000Z";
 
-const { openDatabase, claimOne } =
-  createRunClaimFixtures(CLOCK, roots, databases, WORKER_START_REQUEST, WORKER_ID);
+const { openDatabase, claimOne, cleanup: cleanupClaims } =
+  createRunClaimFixtures(CLOCK, roots, databases, WORKER_START_REQUEST, WORKER_ID, profileFixtures.create);
 
 
 
 describe("RunRecord", () => {
-afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupClaims);
 
   it("refuses a claimed run that was never claimed", () => {
     assert.throws(
@@ -322,13 +319,7 @@ afterEach(() => {
 });
 
 describe("run transition legality", () => {
-afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupClaims);
 
   const lifecycle = (input: unknown) => RunLifecycleSchema.parse(input);
   const queued = lifecycle({ state: "queued" });
@@ -363,23 +354,17 @@ afterEach(() => {
 });
 
 describe("run claim store", () => {
-afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupClaims);
 
-  it("resumes only a parked run, and only to a named node", () => {
-    const database = openDatabase();
+  it("resumes only a parked run, and only to a named node", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     const claimed = claimOne(database);
     const validating = database.authority.runs.transition({
       runId: RUN_ID,
       expectedVersion: claimed.version,
       claim: { workerId: WORKER_ID, claimGeneration: 1 },
-      lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
+      lifecycle: heldClaim(claimed, { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW }),
       now: LATER,
     });
     if (validating.state !== "applied") throw new Error("validating transition should apply");
@@ -397,7 +382,7 @@ afterEach(() => {
       runId: RUN_ID,
       expectedVersion: validating.run.version,
       claim: { workerId: WORKER_ID, claimGeneration: 1 },
-      lifecycle: { state: "running", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: LATER },
+      lifecycle: heldClaim(validating.run, { state: "running", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: LATER }),
       now: LATER,
     });
     if (running.state !== "applied") throw new Error("running transition should apply");
@@ -426,16 +411,10 @@ afterEach(() => {
 });
 
 describe("run row column invariants", () => {
-afterEach(() => {
-  while (databases.length > 0) databases.pop()?.close();
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root !== undefined) rmSync(root, { recursive: true, force: true });
-  }
-});
+afterEach(cleanupClaims);
 
-  it("keeps the typed columns in lockstep with the record, and rejects a claim outside a claimed state", () => {
-    const database = openDatabase();
+  it("keeps the typed columns in lockstep with the record, and rejects a claim outside a claimed state", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue(QUEUED_RUN);
     const claimed = claimOne(database);
     assert.equal(runClaim(claimed)?.workerId, WORKER_ID);

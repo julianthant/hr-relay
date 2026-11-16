@@ -14,6 +14,7 @@ import {
   ItemIdSchema,
   LeaseIdSchema,
   ObservationIdSchema,
+  NodeIdSchema,
   PageStateIdSchema,
   PositiveIntSchema,
   RunIdSchema,
@@ -46,6 +47,7 @@ import {
   NegativeSettlementPolicySchema,
   probeVerdictSchema,
   SubjectEvidenceSchema,
+  WriteParkCodeSchema,
 } from "./write-safety-primitives.js";
 export {
   AbsentEvidenceSchema,
@@ -164,7 +166,6 @@ export const OperatorAbsenceResolutionSchema = z.strictObject({
   generation: PositiveIntSchema,
   operator: ActorIdSchema,
   confirmedAt: IsoInstantSchema,
-  evidenceNote: z.string().min(1),
 });
 
 /** Either stabilized negative evidence or a typed operator resolution. */
@@ -312,6 +313,15 @@ export const ParkedWriteResolutionBindingSchema = z.strictObject({
 });
 export type ParkedWriteResolutionBinding = z.infer<typeof ParkedWriteResolutionBindingSchema>;
 
+export const ParkedWriteRecheckSchema = z.strictObject({
+  nodeId: NodeIdSchema,
+  commandId: CommandIdSchema,
+  auditId: CommandAuditIdSchema,
+  expectedRunVersion: PositiveIntSchema,
+  requestedAt: IsoInstantSchema,
+  transactionId: z.string().regex(/^T\d+$/u).optional(),
+});
+
 const WriteIntentAttemptFields = {
   occurrence: RepeatOccurrenceSchema.optional(),
   ...WriteIntentIdentityFields,
@@ -357,7 +367,8 @@ const RetryableWriteIntentRecordSchema = z.strictObject({
 const ParkedWriteIntentRecordSchema = z.strictObject({
   ...WriteIntentAttemptFields,
   status: z.literal("parked"),
-  parkedCode: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
+  recheck: ParkedWriteRecheckSchema.optional(),
+  parkedCode: WriteParkCodeSchema,
   message: z.string().min(1),
   authorityReason: WriteAuthorityReasonSchema,
 });

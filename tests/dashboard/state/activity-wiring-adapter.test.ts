@@ -25,16 +25,21 @@ function selection(rowsInput: readonly Partial<ActivityPopulationRun>[] = [{ sta
   const count = (status: string) => population.filter(row => row.status === status).length;
   const terminal = population.filter(row => row.terminal);
   const measured = terminal.flatMap(row => row.durationMs === null ? [] : [row.durationMs]).sort((a, b) => a - b);
+  const medianMs = measured.length ? { state: "present" as const, value: measured[Math.floor(measured.length / 2)] } : { state: "absent" as const, reason: "No measurement" };
+  const typicalMedian = { measuredRuns: measured.length, medianMs };
+  const outcomes = { done: count("done"), failed: count("failed"), attention: count("partial") + count("awaiting-approval") + count("blocked") };
+  const failedAt = count("failed") === 0 ? [] : [{ state: "unavailable" as const, reason: "the failed run has no task span that records the step where it failed", runs: count("failed") }];
+  const dayTotal = population.length === 0 ? [] : [{ day: "2026-08-03", runs: population.length, outcomes, typicalTime: typicalMedian }];
   const timing = population.filter(row => row.status === "done" && row.parentRunId === null);
   const timed = timing.flatMap(row => row.durationMs === null ? [] : [row.durationMs]);
   const skeleton = buildActivityVolumeBoundarySkeleton(empty, "UTC");
   const report = { ...empty, totalRuns: population.length, terminalRuns: terminal.length, inFlightRuns: population.length - terminal.length,
-    completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, days: population.length ? [{ day: "2026-08-03", runs: population.length }] : [],
-    workflows: population.length ? [{ workflowId: "fixture", registration: { state: "unregistered", reason: "Synthetic registration unavailable" }, runs: population.length, completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, failed: count("failed"), cancelled: count("cancelled"), partial: count("partial"), open: population.length - terminal.length }] : [],
+    completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, outcomeSplit: outcomes, typicalMedian, days: dayTotal,
+    workflows: population.length ? [{ workflowId: "fixture", registration: { state: "unregistered", reason: "Synthetic registration unavailable" }, runs: population.length, completion: { readBack: 0, warnings: 0, warningsUnknown: count("done") }, failed: count("failed"), needsAttention: count("failed"), typicalTime: { measure: "successful-root-run-mean", measuredRuns: timed.length, unmeasuredRuns: timing.length - timed.length, meanMs: timed.length ? { state: "present", value: timed.reduce((sum, n) => sum + n, 0) / timed.length } : { state: "absent", reason: "No successful root measurement" } }, typicalMedian, outcomes, days: dayTotal, failedAt, cancelled: count("cancelled"), partial: count("partial"), open: population.length - terminal.length }] : [],
     categories: population.length ? [{ category: { state: "unregistered", reason: "Synthetic registration unavailable" }, runs: population.length }] : [],
     statuses: [...new Set(population.map(row => row.status))].map(status => ({ status, runs: count(status), sample: ["done", "failed", "cancelled", "partial"].includes(status) ? [] : population.filter(row => row.status === status).slice(0, 5).map(row => row.runId) })),
     outcomes: [...new Set(terminal.map(row => row.status))].map(outcome => ({ outcome, runs: count(outcome) })),
-    durations: { measuredRuns: measured.length, unmeasuredRuns: terminal.length - measured.length, medianMs: measured.length ? { state: "present", value: measured[Math.floor(measured.length / 2)] } : { state: "absent", reason: "No measurement" }, longestMs: measured.length ? { state: "present", value: measured.at(-1), runId: terminal.find(row => row.durationMs === measured.at(-1))!.runId } : { state: "absent", reason: "No measurement" }, totalMs: measured.reduce((sum, n) => sum + n, 0) },
+    durations: { measuredRuns: measured.length, unmeasuredRuns: terminal.length - measured.length, medianMs, longestMs: measured.length ? { state: "present", value: measured.at(-1), runId: terminal.find(row => row.durationMs === measured.at(-1))!.runId } : { state: "absent", reason: "No measurement" }, totalMs: measured.reduce((sum, n) => sum + n, 0) },
     ledger: { systems: [{ system: "ucpath", entries: 3, prod: 2, test: 1 }] },
     volume: { state: "complete", ...skeleton, coveredRuns: population.length, buckets: skeleton.buckets.map(bucket => ({ ...bucket, runs: bucket.start.slice(0, 10) === "2026-08-03" ? population.length : 0 })) } };
   const identity = { from: report.from, to: report.to, generatedAt: report.generatedAt, expiresAt: "2026-08-07T12:15:00.000Z", sourceIdentity: "a".repeat(64), authorityGeneration: 1, reportDigest: sha256Hex(canonicalJsonStringify(report)) };
@@ -69,6 +74,35 @@ it("preserves full populations, successful root timing, all-terminal duration, n
   assert.equal(missing.duration.unmeasured, 1);
   assert.equal(projected.runs?.[0]?.readback, null);
 });
+it("combines failure codes across workflows for the global most common failure", async () => {
+  const buckets = [{ workflowId: "one", code: "A", runs: 3 }, { workflowId: "two", code: "A", runs: 2 }, { workflowId: "three", code: "B", runs: 4 }];
+  const base = selection(buckets.flatMap(bucket => Array.from({ length: bucket.runs }, () => ({ workflowId: bucket.workflowId, status: "failed" as const }))));
+  const workflow = base.report.workflows[0]; assert.ok(workflow);
+  const { snapshot: reportSnapshot, ...baseReport } = base.report;
+  const report = { ...baseReport,
+    workflows: buckets.map(bucket => ({ ...workflow, workflowId: bucket.workflowId, runs: bucket.runs, failed: bucket.runs, needsAttention: bucket.runs,
+      outcomes: { done: 0, failed: bucket.runs, attention: 0 },
+      days: [{ day: "2026-08-03", runs: bucket.runs, outcomes: { done: 0, failed: bucket.runs, attention: 0 }, typicalTime: workflow.typicalMedian }],
+      failedAt: [{ state: "unavailable" as const, reason: "the failed run has no task span that records the step where it failed", runs: bucket.runs }],
+    })),
+    failures: buckets.map(bucket => ({ ...bucket, sentence: `Synthetic failure ${bucket.code}`, registration: workflow.registration, transient: 0, sample: base.population.filter(row => row.workflowId === bucket.workflowId).map(row => row.runId) })) };
+  const successfulTiming = buckets.map(bucket => ({ workflowId: bucket.workflowId, totalMs: null, measured: 0, unmeasured: 0 }));
+  const reportDigest = sha256Hex(canonicalJsonStringify(report));
+  const selected = ActivityPopulationSelectionSchema.parse({ ...base, report: { ...report, snapshot: { ...reportSnapshot, reportDigest } }, successfulTiming,
+    snapshot: { ...base.snapshot, reportDigest, populationDigest: sha256Hex(canonicalJsonStringify({ population: base.population, successfulTiming })) } });
+
+  const projected = projectActivityPopulation(selected);
+
+  assert.deepEqual(projected.failures, [{ label: "A", runs: 5 }, { label: "B", runs: 4 }]);
+  assert.deepEqual(selected.report.failures.map(row => [row.workflowId, row.code, row.runs]), [["one", "A", 3], ["two", "A", 2], ["three", "B", 4]]);
+  const host = document.createElement("div"); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(ActivityView, { data: { state: "loaded", report: projected }, range: projected.range, today: selected.report.to, onRange: () => {} })));
+    assert.deepEqual(projected.analytics.reasons.map(row => [row.label, row.runs]), [["Synthetic failure A", 3], ["Synthetic failure A", 2], ["Synthetic failure B", 4]]);
+    assert.equal(projected.analytics.typicalSeconds, selected.report.typicalMedian.medianMs.state === "present" ? selected.report.typicalMedian.medianMs.value / 1000 : null);
+    assert.match(host.textContent ?? "", /Why runs failed/); assert.match(host.textContent ?? "", /Synthetic failure B/);
+  } finally { await act(async () => root.unmount()); }
+});
 it("uses authoritative page rows once and refuses fixture logs for served identities", async () => {
   const selected = selection(Array.from({ length: 21 }, () => ({ status: "done" as const, durationMs: 1000 })));
   const client = clientOf(selected);
@@ -92,7 +126,7 @@ it("retains search focus and stale rows while superseding browse requests, guard
   function Scene() {
     const [browse, setBrowse] = useState<import("../../../src/dashboard/surfaces/activity/activity-drilldown-model.js").ActivityBrowse | null>({ metric: "completed", page: 0 });
     state = useActivityWiring(client, selected.report, browse, sources, true);
-    return createElement(ActivityView, { data: state.data, browse: state.browse, pending: state.pending, notice: state.notice, selection: browse, onSelection: setBrowse, range: selected.report, today: selected.report.to, period: "custom", onPreset: () => {}, onRange: () => {} });
+    return createElement(ActivityView, { data: state.data, browse: state.browse, pending: state.pending, notice: state.notice, selection: browse, onSelection: setBrowse, range: selected.report, today: selected.report.to, onRange: () => {} });
   }
   try {
     await act(async () => root.render(createElement(Scene)));
@@ -150,9 +184,11 @@ it("uses the served calendar for the product producer and never substitutes work
   try {
     await act(async () => root.render(createElement(ActivityReport, { client, today: "2026-08-07", range: "", onRange: () => {}, workflowSources: sources })));
     assert.deepEqual(vi.mocked(client.activityPopulation).mock.calls[0]?.slice(0, 2), ["2026-08-01", "2026-08-07"]);
-    assert.match(host.textContent ?? "", /1 runs in this period/);
-    const completed = host.querySelector<HTMLButtonElement>('button[aria-label="View completed runs (1)"]'); assert.ok(completed);
-    await act(async () => completed.click());
+    assert.match(host.textContent ?? "", /1 finished runs/);
+    const details = host.querySelector<HTMLButtonElement>('button[aria-label^="Show "]'); assert.ok(details);
+    await act(async () => details.click());
+    const openRuns = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Open runs"); assert.ok(openRuns);
+    await act(async () => openRuns.click());
     const run = host.querySelector<HTMLButtonElement>('button[aria-label^="Open logs for"]'); assert.ok(run);
     await act(async () => run.click());
     assert.match(host.textContent ?? "", /Logs unavailable/);
@@ -198,7 +234,7 @@ it("never paints unknown or warning completion evidence as verified", async () =
     const run = report.runs?.[0]; assert.ok(run);
     const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
     try {
-      await act(async () => root.render(createElement(ActivityView, { data: { state: "loaded", report }, range: report.range, today: selected.report.to, period: "custom", onPreset: () => {}, onRange: () => {}, selection: { metric: "outstanding", page: 0 }, onSelection: () => {}, browse: { state: "loaded", total: 1, totalMatches: 1, start: 0, rows: [run] } })));
+      await act(async () => root.render(createElement(ActivityView, { data: { state: "loaded", report }, range: report.range, today: selected.report.to, onRange: () => {}, selection: { metric: "outstanding", page: 0 }, onSelection: () => {}, browse: { state: "loaded", total: 1, totalMatches: 1, start: 0, rows: [run] } })));
       const statusTitles = [...host.querySelectorAll<HTMLElement>("[title]")].map(element => element.title);
       assert.equal(statusTitles.includes(DS_STATUS.verifiedDone.meaning), false);
       assert.equal(statusTitles.includes(DS_STATUS.doneWarnings.meaning), true);
@@ -206,4 +242,144 @@ it("never paints unknown or warning completion evidence as verified", async () =
       assert.equal(run.readback, readback);
     } finally { await act(async () => root.unmount()); host.remove(); }
   }
+});
+
+it("retains the exact served Analytics values on revisit and reports a failed refresh with export gated", async () => {
+  const selected = selection(), client = clientOf(selected);
+  const held = Promise.withResolvers<ActivityPopulationSelection>();
+  let state: ReturnType<typeof useActivityWiring> | undefined;
+  function Probe() { state = useActivityWiring(client, { from: selected.report.from, to: selected.report.to }, null, sources, true); return null; }
+  const current = () => state;
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    const first = current()?.data; assert.ok(first?.state === "loaded");
+    await act(async () => root.render(null));
+    vi.mocked(client.activityPopulation).mockImplementationOnce(() => held.promise);
+    await act(async () => root.render(createElement(Probe)));
+    const revisit = current()?.data; assert.ok(revisit?.state === "loaded"); assert.deepEqual(revisit.report, first.report);
+    assert.equal(vi.mocked(client.activityPopulation).mock.calls.length, 2);
+    await assert.rejects(current()!.exportCsv());
+    await act(async () => held.reject(new Error("synthetic offline")));
+    const failed = current()?.data; assert.ok(failed?.state === "loaded"); assert.deepEqual(failed.report, first.report);
+    assert.equal(current()?.notice, ERROR_CATALOG.DASHBOARD_READ_FAILED.text); await assert.rejects(current()!.exportCsv());
+  } finally { act(() => root.unmount()); }
+});
+
+it("keeps the exact report rendered while the first browse is held and gates export", async () => {
+  const selected = selection([{ status: "done", durationMs: 2300 }]);
+  const client = clientOf(selected);
+  const held = Promise.withResolvers<Awaited<ReturnType<ActivityClient["readActivityPopulation"]>>>();
+  client.readActivityPopulation = vi.fn(() => held.promise);
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  let state: ReturnType<typeof useActivityWiring>;
+  function Scene() {
+    state = useActivityWiring(client, selected.report, { metric: "completed", page: 0 }, sources, true);
+    return createElement(ActivityView, { data: state.data, browse: state.browse, pending: state.pending, notice: state.notice, selection: { metric: "completed", page: 0 }, onSelection: () => {}, range: selected.report, today: selected.report.to, onRange: () => {} });
+  }
+  try {
+    await act(async () => root.render(createElement(Scene)));
+    assert.equal(vi.mocked(client.readActivityPopulation).mock.calls.length, 1);
+    assert.deepEqual(state!.data, { state: "loaded", report: projectActivityPopulation(selected) });
+    assert.ok(host.querySelector('section[aria-label="Analytics runs"]'));
+    assert.equal(host.querySelector('button[aria-label^="Open logs for"]'), null);
+    assert.equal(state!.pending, true); assert.equal(state!.browse, undefined); assert.equal(state!.exportReady, false);
+    await assert.rejects(state!.exportCsv());
+    await act(async () => held.resolve({ selection: selected, browse: browseResult(selected, { metric: "completed", page: 0 }) }));
+    assert.equal(state!.pending, false); assert.equal(state!.exportReady, true);
+    await state!.exportCsv();
+  } finally { act(() => root.unmount()); host.remove(); }
+});
+
+it("refuses an in-flight export after same-client authority replacement loads another snapshot", async () => {
+  const a = selection([{ status: "done", durationMs: 1000 }]);
+  const b = selection([{ status: "done", durationMs: 4300 }, { status: "failed" }]);
+  const client = clientOf(a);
+  const held = Promise.withResolvers<Awaited<ReturnType<ActivityClient["exportActivityPopulationCsv"]>>>();
+  client.exportActivityPopulationCsv = vi.fn(() => held.promise);
+  const root = createRoot(document.createElement("div"));
+  let state: ReturnType<typeof useActivityWiring>;
+  function Probe() { state = useActivityWiring(client, a.report, null, sources, true); return null; }
+  const render = (nowIso: string) => createElement(DashboardClientProvider, { client: client as DashboardClient, children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso, children: createElement(Probe) }) });
+  try {
+    await act(async () => root.render(render("2026-08-07T12:00:00.000Z")));
+    assert.deepEqual(state!.data, { state: "loaded", report: projectActivityPopulation(a) });
+    const exportingA = state!.exportCsv();
+    const outcome = exportingA.then(() => undefined, (error: unknown) => error);
+    vi.mocked(client.activityPopulation).mockResolvedValueOnce(b);
+    await act(async () => root.render(render("2026-08-07T12:01:00.000Z")));
+    assert.deepEqual(state!.data, { state: "loaded", report: projectActivityPopulation(b) });
+    assert.equal(vi.mocked(client.activityPopulation).mock.calls.length, 2);
+    await act(async () => held.resolve({ bytes: new ArrayBuffer(0), filename: "old-a.csv", mediaType: "text/csv" }));
+    const error = await outcome;
+    assert.ok(error instanceof DashboardClientError);
+    assert.equal(error.code, "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH");
+    assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls.length, 1);
+    assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls[0]?.[0], a);
+  } finally { act(() => root.unmount()); }
+});
+
+import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import type { DashboardClient } from "../../../src/dashboard/client/index.js";
+import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
+
+it("retains a coherent completed report and browse across population refresh, failure and revisit, then promotes together", async () => {
+  const a = selection([{ status: "done", durationMs: 1000 }]);
+  const b = selection([{ status: "done", durationMs: 4300, title: "Refreshed person" }, { status: "failed" }]);
+  b.snapshot.token = "ap1.fixture.refreshed";
+  const client = clientOf(a);
+  const browse = { metric: "completed" as const, page: 0 };
+  const held = Promise.withResolvers<Awaited<ReturnType<ActivityClient["readActivityPopulation"]>>>();
+  client.activityPopulation = vi.fn().mockResolvedValueOnce(a).mockResolvedValue(b);
+  let bCalls = 0;
+  client.readActivityPopulation = vi.fn<ActivityClient["readActivityPopulation"]>(async input => input === a
+    ? { selection: a, browse: browseResult(a, browse) }
+    : ++bCalls === 1 ? held.promise : { selection: b, browse: browseResult(b, browse) });
+  const host = document.createElement("div"); const root = createRoot(host);
+  let state: ReturnType<typeof useActivityWiring>;
+  function Probe() {
+    state = useActivityWiring(client, a.report, browse, sources, true);
+    return createElement(ActivityView, { data: state.data, browse: state.browse, pending: state.pending, blocked: !state.exportReady, notice: state.notice, selection: browse, onSelection: () => {}, range: a.report, today: a.report.to, onRange: () => {} });
+  }
+  const render = (show: boolean, nowIso = "2026-08-07T12:00:00.000Z") => createElement(DashboardClientProvider, { client: client as DashboardClient, children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso, children: show ? createElement(Probe) : null }) });
+  try {
+    await act(async () => root.render(render(true)));
+    const firstReport = state!.data, firstBrowse = state!.browse;
+    assert.equal(firstReport.state, "loaded"); assert.ok(firstBrowse?.state === "loaded");
+    const text = host.querySelector("table")?.textContent;
+    await act(async () => root.render(render(false)));
+    await act(async () => root.render(render(true)));
+    assert.equal(bCalls, 1);
+    assert.deepEqual(state!.data, firstReport); assert.deepEqual(state!.browse, firstBrowse);
+    assert.equal(host.querySelector("table")?.textContent, text);
+    assert.equal(host.querySelector('[data-slot="skeleton"]'), null);
+    assert.equal(state!.pending, true); assert.equal(state!.exportReady, false);
+    await assert.rejects(state!.exportCsv());
+    await act(async () => root.render(render(false)));
+    await act(async () => root.render(render(true)));
+    assert.equal(bCalls, 1);
+    assert.deepEqual(state!.data, firstReport); assert.deepEqual(state!.browse, firstBrowse);
+    assert.equal(host.querySelector("table")?.textContent, text);
+    assert.equal(host.querySelector('[data-slot="skeleton"]'), null);
+    await assert.rejects(state!.exportCsv());
+    await act(async () => held.reject(new Error("synthetic new snapshot browse failed")));
+    assert.deepEqual(state!.data, firstReport); assert.deepEqual(state!.browse, firstBrowse);
+    assert.equal(state!.notice, ERROR_CATALOG.DASHBOARD_READ_FAILED.text);
+    assert.equal(state!.pending, false); assert.equal(state!.exportReady, false);
+    assert.ok(host.querySelector('button[aria-label^="Open logs for"]:disabled'));
+    await act(async () => root.render(render(false)));
+    await act(async () => root.render(render(true)));
+    assert.deepEqual(state!.data, { state: "loaded", report: projectActivityPopulation(b) });
+    assert.equal(state!.browse?.state, "loaded"); assert.match(host.textContent ?? "", /Refreshed person/);
+    assert.equal(state!.exportReady, true);
+    browse.page = -1;
+    await act(async () => root.render(render(true)));
+    assert.deepEqual(state!.browse, { state: "unavailable", reason: ERROR_CATALOG.ACTIVITY_POPULATION_BROWSE_INVALID.text });
+    assert.equal(state!.exportReady, false);
+    browse.page = 0;
+    client.activityPopulation = vi.fn(() => new Promise<ActivityPopulationSelection>(() => {}));
+    await act(async () => root.render(render(true, "2026-08-07T12:01:00.000Z")));
+    assert.equal(state!.data.state, "loading"); assert.equal(state!.browse, undefined);
+    assert.doesNotMatch(host.textContent ?? "", /Person 1|Refreshed person/);
+  } finally { act(() => root.unmount()); }
 });

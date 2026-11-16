@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { MockRun } from "../../workflows/mocks/workflow-mock-model.js";
-import { mockRunStatus } from "../../workflows/mocks/workflow-mock-model.js";
+import { mockReviewRun, mockRunStatus } from "../../workflows/mocks/workflow-mock-model.js";
 import { mockRunDisplayId } from "../../workflows/mocks/workflow-queue-model.js";
 import { mockWorkflow } from "../../workflows/mocks/workflow-mock-catalog.js";
 import { dsStatusOf, statusAccessibleName } from "../../shared/status/status-model.js";
@@ -24,8 +24,8 @@ export function buildWorkspaceSearchData(input: {
     results: unavailable ? [] : [
       ...rows.map(row => ({ id: String(row.runId), publicId: runDisplayId(row.runId, row.traceId), subject: row.title, workflow: workflowLabel(row.workflowId), day, state: statusAccessibleName(dsStatusOf(row.status)),
         destination: { kind: "run" as const, runId: row.runId, day } })),
-      ...mockRuns.map(run => ({ id: run.id, publicId: mockRunDisplayId(run), subject: run.title, workflow: mockWorkflow(run.workflowId).label, day, state: mockRunStatus(run),
-        destination: { kind: "preview-run" as const, runId: run.id, day, records: run.workflowId === "ocr" && !run.approved } })),
+      ...mockRuns.filter(run => run.workflowId !== "ocr").map(run => ({ id: run.id, publicId: mockRunDisplayId(run), subject: run.title, workflow: mockWorkflow(run.workflowId).label, day, state: mockRunStatus(run),
+        destination: { kind: "preview-run" as const, runId: run.id, day, records: mockReviewRun(run, mockRuns).workflowId === "ocr" && !mockReviewRun(run, mockRuns).approved } })),
     ],
   };
 }

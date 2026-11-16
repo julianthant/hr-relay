@@ -1,4 +1,4 @@
-import type { EditableSheet, EditableWorkbook } from './spreadsheet-editor-model.js';
+import type { EditableSheet, EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 
 /** Disposable workers keep parsing and export compression off the input thread. */
 function spreadsheetWorker<T>(request: unknown, transfer: Transferable[] = []): Promise<T> {

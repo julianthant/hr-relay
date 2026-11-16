@@ -1,22 +1,28 @@
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 import { appliedRunIds, singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { HASH_A, NOW, UUID_4, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, rejectActiveDescriptor, supersedeDescriptor, parallelDescriptor, createHarness, createPlan, startCommand, applyCurrentSettings } = createCommandKernelTestWorld();
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+
+const { roots, openDatabases, profiles, rejectActiveDescriptor, supersedeDescriptor, parallelDescriptor, createHarness, createPlan, startCommand, applyCurrentSettings } = createCommandKernelTestWorld(profileFixtures.create);
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 describe("start arm consumes plans atomically", () => {
-  it("requires renewed review for a start plan made before settings activation", () => {
-    const harness = createHarness();
+  it("requires renewed review for a start plan made before settings activation", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
     applyCurrentSettings(harness);
 
@@ -27,8 +33,8 @@ describe("start arm consumes plans atomically", () => {
     assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), []);
   });
 
-  it("consumes the plan and enqueues every accepted run in one applied command", () => {
-    const harness = createHarness();
+  it("consumes the plan and enqueues every accepted run in one applied command", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
     assert.equal(plan.planned.length, 2);
     assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), [], "saving a request creates no runs");
@@ -63,8 +69,8 @@ describe("start arm consumes plans atomically", () => {
     assert.equal(audit.versionChanges[0].after, plan.version + 1);
   });
 
-  it("the fan-out is ONE durable session, written before its first member, and membership is the run rows", () => {
-    const harness = createHarness();
+  it("the fan-out is ONE durable session, written before its first member, and membership is the run rows", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
     const result = harness.kernel.execute(startCommand(plan));
     assert.equal(result.state, "applied");
@@ -87,9 +93,9 @@ describe("start arm consumes plans atomically", () => {
     assert.deepEqual(harness.database.authority.runSessions.listByWorkflow(plan.workflowId).map((row) => row.sessionId), [sessionId]);
   });
 
-  it("rolls back consumption and the journal when a run insert crashes", () => {
+  it("leaves the command admitted when a run insert crashes, then applies that request", async () => {
     let shouldFail = false;
-    const harness = createHarness((repositories) => ({
+    const harness = await createHarness((repositories) => ({
       ...repositories,
       runs: {
         ...repositories.runs,
@@ -111,17 +117,18 @@ describe("start arm consumes plans atomically", () => {
     assert.equal(stored?.version, plan.version);
     assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), []);
     assert.equal(harness.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 0);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore + 1);
 
 
     const retried = harness.kernel.execute(command);
     assert.equal(retried.state, "applied");
   });
 
-  it("creates zero runs when the active-run authority lookup fails", () => {
+  it("creates zero runs when the active-run authority lookup fails", async () => {
     let shouldFail = false;
-    const harness = createHarness((repositories) => ({
+    const harness = await createHarness((repositories) => ({
       ...repositories,
       runs: {
         ...repositories.runs,
@@ -134,14 +141,17 @@ describe("start arm consumes plans atomically", () => {
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
     shouldFail = true;
     const generationBefore = harness.database.getMeta().authorityGeneration;
-    assert.throws(() => harness.kernel.execute(startCommand(plan)), /injected active-run lookup failure/);
+    const command = startCommand(plan);
+    assert.throws(() => harness.kernel.execute(command), /injected active-run lookup failure/);
     assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), []);
     assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
-    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.equal(harness.database.getMeta().authorityGeneration, generationBefore + 1);
   });
 
-  it("conflicts on a stale confirmation revision without consuming the plan", () => {
-    const harness = createHarness();
+  it("conflicts on a stale confirmation revision without consuming the plan", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
     const command = { ...startCommand(plan), target: { ...startCommand(plan).target, expectedVersion: plan.version + 5 } };
     const result = harness.kernel.execute(command);
@@ -149,11 +159,12 @@ describe("start arm consumes plans atomically", () => {
     if (result.state !== "conflict") return;
     assert.equal(result.currentVersion, plan.version);
     assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "conflict");
   });
 
-  it("rejects binding drift as schema-mismatch and an expired plan as invalid-state", () => {
-    const harness = createHarness();
+  it("rejects binding drift as schema-mismatch and an expired plan with its typed code", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
     const base = startCommand(plan);
     const drifted = { ...base, payload: { ...base.payload, inputFingerprint: HASH_A } };
@@ -166,13 +177,13 @@ describe("start arm consumes plans atomically", () => {
     const expired = harness.kernel.execute(startCommand(plan));
     assert.equal(expired.state, "rejected");
     if (expired.state === "rejected") {
-      assert.equal(expired.code, "invalid-state");
+      assert.equal(expired.code, "RUN_START_PLAN_EXPIRED");
       assert.match(expired.message, /expired/);
     }
   });
 
-  it("refuses the whole command under reject-active when an active run appeared after planning", () => {
-    const harness = createHarness();
+  it("refuses the whole command under reject-active when an active run appeared after planning", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
     const itemId = deriveItemId("kernel-reject", "eid:10800001");
     const conflicting = {
@@ -182,7 +193,7 @@ describe("start arm consumes plans atomically", () => {
         itemId,
         traceId: "kr-170000-7777",
         descriptorVersion: 1,
-        contractFingerprint: plan.descriptorFingerprint,
+        contractFingerprint: plan.descriptorFingerprint, buildId: currentBuildId(),
         resolvedInstance: { ucpath: "prod" },
         configFingerprint: plan.configFingerprint,
         configSnapshotId: UUID_4,
@@ -220,11 +231,12 @@ describe("start arm consumes plans atomically", () => {
       [UUID_7],
     );
     assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
-    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "rejected");
   });
 
-  it("supersede-active terminalizes the exact active run and creates the replacement atomically", () => {
-    const harness = createHarness();
+  it("supersede-active terminalizes the exact active run and creates the replacement atomically", async () => {
+    const harness = await createHarness();
     const first = createPlan(harness, supersedeDescriptor, ["10800000"]);
     const firstResult = harness.kernel.execute(startCommand(first));
     assert.equal(firstResult.state, "applied");
@@ -245,8 +257,8 @@ describe("start arm consumes plans atomically", () => {
     assert.equal(replacement?.lifecycle.state, "queued");
   });
 
-  it("allow-parallel enqueues beside an active run for the same item", () => {
-    const harness = createHarness();
+  it("allow-parallel enqueues beside an active run for the same item", async () => {
+    const harness = await createHarness();
     const first = createPlan(harness, parallelDescriptor, ["10800000"]);
     const firstResult = harness.kernel.execute(startCommand(first));
     assert.equal(firstResult.state, "applied");

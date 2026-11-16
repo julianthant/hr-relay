@@ -14,7 +14,7 @@ afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 describe("run capture authority", () => {
 
   it("keeps synchronous details field-absent while live reads name capture absence", async () => {
-    const world = makeWorld();
+    const world = await makeWorld();
     const runId = uuidOf(301);
     queuedEventOf(world, { seed: 301 });
     const deps = { runReader: world.runReader,
@@ -37,7 +37,7 @@ describe("run capture authority", () => {
       });
       assert.equal(live.availableSections.includes("captures"), false);
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 });

@@ -2,6 +2,7 @@ import { successfulWorkflowTimings } from "./activity-timing-model.js";
 import { ActivityVolumeSchema, buildActivityVolumeBoundarySkeleton } from "../../../models/dashboard/activity-volume.js";
 import type { ActivityDateRange } from "./activity-model.js";
 import type { ActivityViewState } from "./activity-view-model.js";
+import { shiftDate, type AnalyticsData } from "./analytics-model.js";
 import type { ActivityRunRecord } from './activity-drilldown-model.js';
 import { runDisplayId, workflowDisplayCode } from '../shared/status/run-display-model.js';
 
@@ -61,6 +62,22 @@ function median(values: readonly number[]): number | null {
   return sorted.length % 2 === 1 ? sorted[middle] ?? null : Math.round(((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2);
 }
 
+function sampleAnalytics(rows: typeof records, range: ActivityDateRange, incomplete: boolean): AnalyticsData {
+  const days = Array.from({ length: Date.parse(`${range.to}T00:00:00Z`) / 86_400_000 - Date.parse(`${range.from}T00:00:00Z`) / 86_400_000 + 1 }, (_, index) => shiftDate(range.from, index));
+  const workflows = [{ id: "sample-separations", label: "Separations", failedAt: "Reading the scan" }, { id: "sample-person-lookup", label: "Person lookup", failedAt: "Looking up the person" }].flatMap(workflow => {
+    const group = rows.filter(row => row.workflow === workflow.id);
+    if (group.length === 0) return [];
+    const failed = group.filter(row => row.status === "failed").length;
+    const timed = group.filter(row => row.status === "completed" && row.duration !== null).map(row => row.duration ?? 0);
+    return [{ id: workflow.id, label: workflow.label, done: group.filter(row => row.status === "completed").length, failed, attention: group.filter(row => row.status === "waiting").length,
+      typicalSeconds: incomplete ? null : median(timed), failedAt: failed ? [{ label: workflow.failedAt, runs: failed }] : [],
+      days: days.map(day => { const dayRows = group.filter(row => row.day === day); const dayTimed = dayRows.filter(row => row.status === "completed" && row.duration !== null).map(row => row.duration ?? 0);
+        return { date: day, done: dayRows.filter(row => row.status === "completed").length, failed: dayRows.filter(row => row.status === "failed").length, attention: dayRows.filter(row => row.status === "waiting").length, seconds: incomplete ? null : median(dayTimed) }; }) }];
+  });
+  return { running: rows.filter(row => row.status === "running").length, typicalSeconds: incomplete ? null : median(rows.filter(row => row.status === "completed" && row.duration !== null).map(row => row.duration ?? 0)), workflows,
+    reasons: workflows.flatMap(workflow => workflow.failed ? [{ label: "The document could not be read in time", workflow: workflow.label, runs: workflow.failed }] : []) };
+}
+
 export function activitySample(range: ActivityDateRange, scenario: ActivitySampleState): ActivityViewState {
   if (scenario === "loading") return { state: "loading" };
   if (scenario === "unavailable") return { state: "unavailable", reason: "The report is unavailable. Try another period or return later." };
@@ -98,6 +115,7 @@ export function activitySample(range: ActivityDateRange, scenario: ActivitySampl
         successfulTiming: successfulTimings.get(workflow.id) ?? { totalSeconds: 0, measured: 0, unmeasured: 0 },
         failed: group.filter(row => row.status === "failed").length, outstanding: group.filter(row => row.status === "running" || row.status === "waiting").length }] : [];
     }),
+    analytics: sampleAnalytics(rows, range, scenario === "incomplete"),
     transactions: [
       { id: "sample-ucpath", label: "UCPath terminations", count: rows.filter(row => row.ucpath).length, environment: "test" },
       { id: "sample-kuali", label: "Kuali finalizations", count: rows.filter(row => row.kuali).length, environment: "test" },

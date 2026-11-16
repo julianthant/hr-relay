@@ -1,3 +1,6 @@
+import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
+import type { CredentialStore } from "../../../models/config/credential-store.js";
+import { assertCredentialStoreOwner } from "../../storage/configuration/credential-store.js";
 import { executePreflightRunner, requiredPreflightChecks } from "../../../models/preflight/preflight.js";
 import { dirname, join } from "node:path";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -13,13 +16,16 @@ import { createPreflightAdmission, PreflightAdmissionRefusal, PreflightAdmission
 import { protectedSecretRevision, type ProtectedSecretSource } from "../../../models/config/secrets.js";
 import type { InstanceSelection, RunEnvelope } from "../../../models/run/envelope.js";
 import { AuthorityHealthPreflightRunner, type AuthorityDatabase } from "../../storage/sqlite/index.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import { workflowPreflightScope } from "../../runs/start/preflight-scope.js";
 import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { createRuntimePreflightRunners, type RuntimePreflightRunnerFactory } from "./runtime-runners.js";
 
 export function composeRuntimePreflight(input: Readonly<{
   admission?: RuntimeAdmission;
+  duo?: DuoSigningSource;
+  credentials: CredentialStore;
   database: AuthorityDatabase; clock: Clock; repoRoot: string; isolation: RuntimeIsolation;
   descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   descriptorSetHash: string; protectedSecrets: ProtectedSecretSource;
@@ -28,6 +34,7 @@ export function composeRuntimePreflight(input: Readonly<{
 }>) {
   const { database, clock } = input;
   const runtimeAdmission = requireRuntimeAdmission(input.admission);
+  assertCredentialStoreOwner(input.credentials, runtimeAdmission);
   const stateRoot = runtimeAdmission.stateRoot;
   const readConfig = (scope: PreflightAdmissionScope) => {
     const snapshot = selectRunSettings(database.authority, scope);
@@ -45,15 +52,14 @@ export function composeRuntimePreflight(input: Readonly<{
   const runners = (scope: PreflightAdmissionScope) => {
     const config = readConfig(scope);
     return (input.runnerFactory ?? createRuntimePreflightRunners)({
-      scope, config, protectedSecrets: input.protectedSecrets,
+      scope, config, protectedSecrets: input.protectedSecrets, ...(input.duo === undefined ? {} : { duo: input.duo }),
       providerAvailability: { "census/geocode.census": true, "nominatim/geocode.nominatim": true },
       dashboard: {
         repoRoot: input.repoRoot, stateRoot, artifactRoot: runtimeAdmission.artifactRoot,
         backendPort: input.isolation.backendPort, frontendPort: input.isolation.frontendPort,
-        processLockRoot: join(input.repoRoot, input.isolation.processLockRoot), clock,
+        clock,
         authorityHealth: new AuthorityHealthPreflightRunner(runtimeAdmission, { stateRootTrustAnchor: dirname(stateRoot), stateRoot,
-          authorityPath: join(stateRoot, "state.db"), backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 5000 }, clock),
-        listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map(lease => ({ workerId: lease.workerId, processId: lease.processId })),
+          authorityPath: join(stateRoot, "state.db"), backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 5000 }, clock, input.credentials, database),
       },
     });
   };

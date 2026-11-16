@@ -1,0 +1,781 @@
+import { tsImport } from 'tsx/esm/api';
+const { createDuoAssertion } = await tsImport('../../src/backend/storage/configuration/duo-signing.ts', import.meta.url);
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const { ProfileOnboardingDuoEventSchema } = await tsImport('../../src/models/profiles/profile.ts', import.meta.url);
+import { test } from 'node:test';
+import { createPrivateKey, createPublicKey } from 'node:crypto';
+import { createRelayWorker, relayFailureEvent } from '../src/relay-background.js';
+
+const ORIGIN = 'https://test.duosecurity.com';
+const ACCOUNT = '00000000-0000-4000-8000-000000000001';
+const CHALLENGE = Buffer.from('synthetic-enrollment-challenge').toString('base64');
+const DOCUMENT = 'A0000000000040008000000000000007';
+const SENDER = { id: 'owned-extension', frameId: 0, origin: ORIGIN, documentId: DOCUMENT, documentLifecycle: 'active', url: `${ORIGIN}/setup`, tab: { id: 7 } };
+function world() {
+  let saved = {};
+  let localReads = 0;
+  let cleared = false;
+  const scope = { documentId: DOCUMENT, url: `${ORIGIN}/setup`, accountNames: ['alex@example.edu'], accountRevision: 0 };
+  const tabs = new Map(), windows = new Map(), removed = [];
+  const api = {
+    windows: {
+      onRemoved: { addListener: listener => removed.push(listener) },
+      async create(options) { const tab = { id: 9, windowId: 1, url: options.url, active: true }; tabs.set(9, tab); const window = { ...options, id: 1, tabs: [tab] }; windows.set(1, window); return window; },
+      async get(id) { assert.ok(windows.has(id)); return windows.get(id); },
+      async update(id, options) { const window = { ...await this.get(id), ...options }; windows.set(id, window); return window; },
+      async remove(id) { windows.delete(id); for (const listener of removed) listener(id); },
+    },
+    runtime: { id: 'owned-extension' },
+    tabs: { get: async id => tabs.get(id) ?? ({ id, url: scope.url }), update: async (id, values) => { assert.ok(tabs.has(id)); const tab = { ...tabs.get(id), ...values }; tabs.set(id, tab); return tab; }, create: async values => { const tab = { ...values, id: 10 }; tabs.set(10, tab); return tab; }, sendMessage: async (_id, request, target) => {
+      if (target.documentId !== scope.documentId) throw new Error('document replaced');
+      assert.equal(request.type, 'RELAY_OBSERVE');
+      return { url: scope.url, origin: new URL(scope.url).origin, documentActive: true, accountNames: [...scope.accountNames], accountRevision: scope.accountRevision };
+    } },
+    storage: {
+      local: { get: async () => { localReads++; throw new Error('persistent read'); }, set: () => { throw new Error('persistent write'); } },
+      sync: { get: async () => { throw new Error('persistent read'); }, set: () => { throw new Error('persistent write'); } },
+      session: {
+        setAccessLevel: async value => assert.equal(value.accessLevel, 'TRUSTED_CONTEXTS'),
+        get: async keys => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter(key => key in saved).map(key => [key, structuredClone(saved[key])])),
+        set: async values => { saved = { ...saved, ...structuredClone(values) }; },
+        remove: async keys => { for (const key of keys) delete saved[key]; },
+        clear: async () => { saved = {}; cleared = true; },
+      },
+    },
+  };
+  const events = [];
+  return { api, scope, events, worker: createRelayWorker(api, async event => { events.push(event); }), state: () => saved, localReads: () => localReads, cleared: () => cleared };
+}
+const enrollment = (attachment = 'cross-platform') => ({ type: 'DUO_AUTOPILOT_ENROLL', request: {
+  origin: ORIGIN, rpId: 'duosecurity.com', requestId: crypto.randomUUID(), challenge: CHALLENGE,
+  username: 'alex@example.edu', userHandle: Buffer.from('synthetic-user').toString('base64'),
+  pubKeyCredParams: [{ type: 'public-key', alg: -7 }], authenticatorAttachment: attachment, residentKey: false,
+} });
+
+test('Chromium requires successful trusted-context protection and never falls back', async () => {
+  for (const protect of [undefined, async () => { throw new Error('protection refused'); }]) {
+    const w = world();
+    w.api.storage.session.setAccessLevel = protect;
+    await assert.rejects(w.worker.install({ method: 'key', nowMs: 1000 }), /ONBOARDING_DUO_SESSION_UNAVAILABLE|protection refused/);
+    assert.deepEqual(w.state(), {});
+    assert.equal(w.localReads(), 0);
+  }
+  const w = world();
+  await w.worker.install({ method: 'key', nowMs: 1000 });
+  assert.equal(w.state().autopilotV1.version, 1);
+  assert.equal(w.localReads(), 0);
+  await w.worker.stop();
+});
+
+test('browser UI broker accepts the exact native extension tab and refuses content, foreign and stale documents', async t => {
+  const w = world();
+  let receive;
+  const root = 'chrome-extension://owned-extension/';
+  w.api.runtime.getURL = path => root + path;
+  w.api.runtime.onMessage = { addListener: listener => { receive = listener; } };
+  globalThis.chrome = w.api;
+  t.after(() => { delete globalThis.chrome; delete globalThis.relayOnboarding; });
+  await import('../src/relay-background.js?browser-ui-test');
+  const owner = globalThis.relayOnboarding;
+  await owner.browserInstall(crypto.randomUUID());
+  assert.equal((await w.api.windows.get(1)).type, 'normal');
+  await w.api.tabs.update(9, { url: root + 'src/options.html' });
+  const sender = { id: w.api.runtime.id, url: root + 'src/options.html', origin: root.slice(0, -1),
+    tab: { id: 9, url: root + 'src/options.html' }, frameId: 0, documentId: DOCUMENT, documentLifecycle: 'active' };
+  const send = (message, source) => new Promise(resolve => { receive(message, source, resolve); });
+  const denied = async (message, source) => {
+    const response = send(message, source);
+    if (source.id === w.api.runtime.id && new URL(source.url).origin === ORIGIN && message.request?.rpId === 'duosecurity.com') {
+      const event = await owner.browserNext(); assert.equal(event.kind, 'event'); assert.equal(event.event.stage, 'refused');
+      owner.browserReply(event.id, { ok: true, value: { observed: true } });
+    }
+    assert.equal((await response).success, false);
+  };
+  for (const [type, kind] of [['STATE', 'state'], ['RELAY_RETURN', 'return']]) {
+    const response = send({ type }, sender);
+    const request = await owner.browserNext(); assert.equal(request.kind, kind);
+    owner.browserReply(request.id, { ok: true, value: { state: 'onboarding' } });
+    assert.deepEqual(await response, { success: true, result: { relaySetup: true, profile: { state: 'onboarding' } } });
+  }
+  for (const portalFailure of ['untrusted', 'sign-in', 'synthetic-private-message']) {
+    const response = send({ type: 'RELAY_OPEN_PORTAL' }, sender);
+    const request = await owner.browserNext(); assert.equal(request.kind, 'portal');
+    owner.browserReply(request.id, { ok: false, portalFailure });
+    assert.deepEqual(await response, { success: false, error: 'ONBOARDING_DUO_REFUSED',
+      ...(['untrusted', 'sign-in'].includes(portalFailure) ? { portalFailure } : {}) });
+  }
+  for (const source of [
+    { ...sender, id: 'another-extension' }, { ...sender, frameId: 1 },
+    { ...sender, url: ORIGIN + '/setup', origin: ORIGIN },
+    { ...sender, url: root + 'src/options.html?extra' },
+    { ...sender, url: root + 'src/popup.html' },
+    { ...sender, origin: 'null' }, { ...sender, documentLifecycle: 'cached' },
+    { ...sender, documentId: 'forged' }, { ...sender, tab: { ...sender.tab, url: ORIGIN } },
+  ]) for (const type of ['STATE', 'RELAY_RETURN']) assert.equal((await send({ type }, source)).success, false);
+  for (const message of [{ type: 'SAVE_ACCOUNT' }, { type: 'RELAY_START', method: 'key', attemptId: crypto.randomUUID() },
+    { type: 'STATE', password: 'must-not-be-accepted' }, { type: 'RELAY_RETURN', method: 'key' },
+    { type: 'RELAY_RETURN', processId: 72 }, { type: 'RELAY_RETURN', attemptId: crypto.randomUUID() }, { type: 'RELAY_CANCEL', method: 'touch', attemptId: 'forged' }]) {
+    assert.equal((await send(message, sender)).success, false);
+  }
+  for (const [type, result] of [['RELAY_CAPABILITIES', { softwareKey: false, platformAvailable: true }], ['DUO_AUTOPILOT_SIGN', { passThrough: true }]]) {
+    const message = { type, request: { origin: ORIGIN, rpId: 'duosecurity.com' } };
+    const response = send(message, SENDER);
+    if (type === 'RELAY_CAPABILITIES') {
+      const request = await owner.browserNext();
+      assert.equal(request.kind, 'platform'); assert.equal(request.url, SENDER.url); assert.equal(Object.hasOwn(request, 'available'), false);
+      owner.browserReply(request.id, { ok: true, value: true });
+    }
+    assert.deepEqual(await response, { success: true, result });
+    await denied(message, { ...SENDER, id: 'foreign' });
+    await denied(message, { ...SENDER, frameId: 1 });
+    await denied(message, { ...SENDER, documentId: 'replaced' });
+    await denied({ ...message, request: { ...message.request, rpId: 'foreign' } }, SENDER);
+  }
+  await denied(enrollment(), SENDER);
+  assert.deepEqual(w.state(), {}); assert.equal(w.localReads(), 0);
+  await owner.browserFocus(); assert.equal((await w.api.windows.get(1)).focused, true);
+  const getWindow = w.api.windows.get.bind(w.api.windows);
+  w.api.windows.get = async id => ({ ...await getWindow(id), id: 2 });
+  await assert.rejects(owner.browserFocus(), /ONBOARDING_DUO_SCOPE/);
+  w.api.windows.get = getWindow;
+  await owner.browserSelect(9, 1);
+  await assert.rejects(owner.browserSelect(7, 1), /ONBOARDING_DUO_SCOPE/);
+  await assert.rejects(owner.browserSelect(9, 2), /ONBOARDING_DUO_SCOPE/);
+  await owner.browserBounds({ left: 20, top: 30, width: 600, height: 700 }, { width: 0, height: 32 });
+  assert.deepEqual(await w.api.windows.get(1), { ...(await w.api.windows.get(1)), left: 20, top: 30, width: 600, height: 700 });
+  await w.api.windows.remove(999);
+  const pending = owner.browserNext();
+  await w.api.windows.remove(1);
+  assert.equal((await pending).kind, 'window-closed');
+  await owner.browserStop(); assert.equal((await send({ type: 'STATE' }, sender)).success, false);
+});
+
+for (const scenario of [
+  { name: 'expanded native size', actual: { width: 660, height: 804 } },
+  { name: 'expanded size temporarily overflows', area: { left: 0, top: 0, width: 800, height: 900 }, frame: { width: 0, height: 80 }, actual: { width: 760 } },
+  { name: 'reduced native size', actual: { width: 630, height: 780 } },
+  { name: 'adjusted native position', actual: { left: -620, top: 126 } },
+  { name: 'safe actual readback', readback: { left: -625, top: 123 } },
+  { name: 'foreign update', actual: { id: 2 }, refused: true },
+  { name: 'foreign readback', readback: { id: 2 }, refused: true },
+  { name: 'missing geometry', actual: { width: undefined }, refused: true },
+  { name: 'nonfinite geometry', actual: { width: NaN }, refused: true },
+  { name: 'fractional geometry', actual: { left: -625.5 }, refused: true },
+  { name: 'empty content', actual: { height: 80 }, refused: true },
+  { name: 'negative size', actual: { width: -1 }, refused: true },
+  { name: 'oversized geometry', actual: { width: 1401 }, refused: true },
+  { name: 'recentered off-screen origin', actual: { left: -1001 } },
+  { name: 'off-screen correction', actual: { width: 660 }, correction: { left: -1001 }, refused: true },
+  { name: 'off-screen readback', readback: { top: 19 }, refused: true },
+  { name: 'refused update', failUpdate: 1, refused: true },
+  { name: 'refused correction', actual: { width: 660 }, failUpdate: 2, refused: true },
+  { name: 'refused readback', failReadback: true, refused: true },
+]) test(`browser bounds validates actual owned geometry: ${scenario.name}`, async t => {
+  const w = world();
+  w.api.runtime.getURL = path => 'chrome-extension://owned-extension/' + path;
+  w.api.runtime.onMessage = { addListener() {} };
+  globalThis.chrome = w.api;
+  t.after(() => { delete globalThis.chrome; delete globalThis.relayOnboarding; });
+  await import('../src/relay-background.js?geometry-' + encodeURIComponent(scenario.name));
+  const owner = globalThis.relayOnboarding;
+  await owner.browserInstall(crypto.randomUUID());
+  let actual = await w.api.windows.get(1), reads = 0;
+  const updates = [], failure = new Error('controlled geometry API refusal');
+  w.api.windows.update = async (id, requested) => {
+    assert.equal(id, 1); updates.push(requested);
+    if (updates.length === scenario.failUpdate) throw failure;
+    actual = { ...actual, ...requested, ...(updates.length === 1 ? scenario.actual : scenario.correction) };
+    return { ...actual };
+  };
+  w.api.windows.get = async id => {
+    assert.equal(id, 1); reads++;
+    if (scenario.failReadback) throw failure;
+    return { ...actual, ...scenario.readback };
+  };
+  const area = scenario.area ?? { left: -1000, top: 20, width: 1400, height: 1000 }, frame = scenario.frame ?? { width: 12, height: 80 };
+  if (scenario.refused) await assert.rejects(owner.browserBounds(area, frame), error =>
+    scenario.failUpdate || scenario.failReadback ? error === failure : error.message === 'ONBOARDING_DUO_SCOPE');
+  else {
+    const result = await owner.browserBounds(area, frame), expected = { ...actual, ...scenario.readback };
+    assert.deepEqual(result, { left: expected.left, top: expected.top, width: expected.width, height: expected.height });
+    assert.equal(reads, 1);
+    if (scenario.actual) assert.deepEqual(updates[1], {
+      left: area.left + Math.floor((area.width - actual.width) / 2), top: area.top + Math.floor((area.height - actual.height) / 2),
+    });
+    if (scenario.name === 'expanded size temporarily overflows') {
+      assert.equal(updates[0].left, 80); assert.ok(updates[0].left + scenario.actual.width > area.left + area.width); assert.equal(updates[1].left, 20);
+    }
+  }
+  if (scenario.refused && scenario.actual && !scenario.correction && !scenario.failUpdate) { assert.equal(updates.length, 1); assert.equal(reads, 0); }
+  if (scenario.readback || scenario.failReadback || scenario.correction) assert.equal(reads, 1);
+  assert.ok(updates.length <= 2); assert.ok(reads <= 1);
+});
+
+async function acknowledge(worker, kind, value) {
+  const request = await worker.next();
+  assert.equal(request.kind, kind);
+  worker.reply(request.id, { ok: true, value });
+  return request;
+}
+
+test('real software engine waits for native pending ACK and ceremony ACK; session retains public descriptors', async () => {
+  const w = world();
+  await w.worker.install({ method: 'key', nowMs: 1000 });
+  let settled = false;
+  const message = enrollment();
+  const result = w.worker.receive(message, SENDER).then(value => { settled = true; return value; });
+  await acknowledge(w.worker, 'bind', { accountId: ACCOUNT });
+  const persist = await w.worker.next();
+  assert.equal(persist.kind, 'persist');
+  assert.ok(persist.data.privateKeyPkcs8);
+  assert.ok(persist.data.publicKeySpki);
+  for (const field of ['privateKeyPkcs8', 'publicKeySpki']) assert.equal(Buffer.from(persist.data[field], 'base64').toString('base64'), persist.data[field]);
+  assert.match(persist.data.credentialId, /^[A-Za-z0-9_-]+$/);
+  const privateKey = createPrivateKey({ key: Buffer.from(persist.data.privateKeyPkcs8, 'base64'), format: 'der', type: 'pkcs8' });
+  assert.deepEqual(createPublicKey(privateKey).export({ format: 'der', type: 'spki' }), Buffer.from(persist.data.publicKeySpki, 'base64'));
+  assert.equal(settled, false);
+  w.worker.reply(persist.id, { ok: true, value: { revision: 1 } });
+  const ceremony = await acknowledge(w.worker, 'software-created', { observed: true });
+  const credential = await result;
+  assert.equal(credential.ok, true);
+  assert.equal(ceremony.data.credentialId, persist.data.credentialId);
+  assert.equal(ceremony.data.credentialId, Buffer.from(credential.credentialId, 'base64').toString('base64url'));
+  assert.deepEqual(Buffer.from(persist.data.credentialId, 'base64url'), Buffer.from(credential.credentialId, 'base64'));
+  assert.ok(!('privateKeyPkcs8' in credential) && !('privateKey' in credential));
+  assert.equal(w.state().autopilotV1.credentials[0].status, 'pending');
+  assert.equal(w.state().autopilotV1.accounts[0].id, ACCOUNT);
+  assert.equal(w.localReads(), 0);
+  const sign = w.worker.receive({ type: 'DUO_AUTOPILOT_SIGN', request: {
+    origin: ORIGIN, rpId: 'duosecurity.com', requestId: crypto.randomUUID(), challenge: CHALLENGE,
+    allowCredentials: [credential.credentialId], usernames: ['alex@example.edu'],
+  } }, SENDER);
+  const exact = await acknowledge(w.worker, 'exact-request', { observed: true });
+  assert.equal(exact.data.credentialId, persist.data.credentialId);
+  const reserved = await w.worker.next();
+  assert.equal(reserved.kind, 'sign');
+  assert.equal(w.state().autopilotV1.credentials[0].status, 'ready');
+  w.worker.reply(reserved.id, { ok: true, value: createDuoAssertion({ ...persist.data, transport: 'usb' }, reserved.data, 100) });
+  assert.equal(reserved.data.credentialId, persist.data.credentialId);
+  const assertion = await sign;
+  assert.ok(assertion.signature);
+  const portal = w.worker.receive({ type: 'RELAY_PORTAL_ACCEPTED', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId: message.request.requestId } }, SENDER);
+  const accepted = await acknowledge(w.worker, 'portal-accepted', { observed: true });
+  assert.equal(accepted.data.credentialId, persist.data.credentialId);
+  await portal;
+  assert.equal(Buffer.from(assertion.authenticatorData, 'base64').readUInt32BE(33), 100);
+  assert.equal(Object.hasOwn(w.state().autopilotV1.credentials[0], 'signCount'), false);
+  assert.equal(Object.hasOwn(w.state().autopilotV1.credentials[0], 'privateKey'), false);
+  assert.equal(w.state().autopilotV1.credentials[0].status, 'ready');
+  await w.worker.stop();
+  assert.equal(w.cleared(), true);
+});
+
+test('failed native persistence produces no registration output or session key', async () => {
+  const w = world(); await w.worker.install({ method: 'key', nowMs: 1000 });
+  const result = w.worker.receive(enrollment(), SENDER);
+  const rejected = assert.rejects(result, /ONBOARDING_DUO_REFUSED/);
+  await acknowledge(w.worker, 'bind', { accountId: ACCOUNT });
+  const request = await w.worker.next();
+  assert.equal(request.kind, 'persist');
+  w.worker.reply(request.id, { ok: false });
+  const invalidated = await w.worker.next();
+  assert.equal(invalidated.kind, 'scope-lost');
+  w.worker.reply(invalidated.id, { ok: false });
+  await rejected;
+  assert.equal(w.state().autopilotV1.credentials.length, 0);
+  await w.worker.stop();
+});
+
+test('Touch ID never calls software enrollment/signing; native observation and portal acceptance are separate', async () => {
+  const w = world(); await w.worker.install({ method: 'touch', nowMs: 1000 });
+  const message = enrollment('platform');
+  const operation = w.worker.receive(message, SENDER);
+  await acknowledge(w.worker, 'bind', { accountId: ACCOUNT });
+  assert.deepEqual(await operation, { native: true, requestId: message.request.requestId });
+  assert.equal(w.state().autopilotV1.credentials.length, 0);
+  assert.deepEqual(await w.worker.receive({ type: 'DUO_AUTOPILOT_SIGN', request: { origin: ORIGIN, rpId: 'duosecurity.com' } }, SENDER), { passThrough: true });
+  const receipt = { origin: ORIGIN, rpId: 'duosecurity.com', requestId: message.request.requestId, credentialId: '+/8=', attachment: 'platform' };
+  const native = w.worker.receive({ type: 'RELAY_NATIVE_CREATED', request: receipt }, SENDER);
+  const request = await acknowledge(w.worker, 'native-created', { observed: true });
+  assert.deepEqual(Object.keys(request.data).sort(), ['credentialId', 'requestId']);
+  assert.equal(request.data.credentialId, '-_8');
+  assert.deepEqual(Buffer.from(request.data.credentialId, 'base64url'), Buffer.from(receipt.credentialId, 'base64'));
+  await native;
+  const portal = w.worker.receive({ type: 'RELAY_PORTAL_ACCEPTED', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId: receipt.requestId } }, SENDER);
+  const accepted = await acknowledge(w.worker, 'portal-accepted', { observed: true });
+  assert.equal(accepted.data.credentialId, request.data.credentialId);
+  await portal;
+  await w.worker.stop();
+});
+
+for (const [label, sender, request] of [
+  ['foreign extension', { ...SENDER, id: 'other-extension' }, enrollment()],
+  ['foreign origin', { ...SENDER, url: 'https://example.org/setup' }, enrollment()],
+  ['subframe', { ...SENDER, frameId: 1 }, enrollment()],
+  ['missing document', { ...SENDER, documentId: undefined }, enrollment()],
+  ['malformed document', { ...SENDER, documentId: 'x'.repeat(32) }, enrollment()],
+  ['document trailing LF', { ...SENDER, documentId: `${DOCUMENT}\n` }, enrollment()],
+  ['document trailing CR', { ...SENDER, documentId: `${DOCUMENT}\r` }, enrollment()],
+  ['hyphenated document', { ...SENDER, documentId: '00000000-0000-4000-8000-000000000007' }, enrollment()],
+  ['inactive document', { ...SENDER, documentLifecycle: 'cached' }, enrollment()],
+  ['forged tab', { ...SENDER, tab: { id: '7' } }, enrollment()],
+  ['wrong RP', SENDER, { ...enrollment(), request: { ...enrollment().request, rpId: 'example.org' } }],
+]) test(`refuses ${label} before any broker operation`, async () => {
+  const w = world(); await w.worker.install({ method: 'key', nowMs: 1000 });
+  await assert.rejects(w.worker.receive(request, sender), /ONBOARDING_DUO_SCOPE/);
+  assert.equal(w.state().autopilotV1.credentials.length, 0);
+  await w.worker.stop();
+});
+
+test('stop rejects in-flight bind and clears only session copies; late replies cannot revive it', async () => {
+  const w = world(); await w.worker.install({ method: 'key', nowMs: 1000 });
+  const operation = w.worker.receive(enrollment(), SENDER);
+  const rejected = assert.rejects(operation, /ONBOARDING_DUO_REVOKED/);
+  const request = await w.worker.next();
+  await w.worker.stop(); await rejected;
+  assert.throws(() => w.worker.reply(request.id, { ok: true, value: { accountId: ACCOUNT } }), /ONBOARDING_DUO_REVOKED/);
+  assert.deepEqual(w.state(), {});
+});
+
+test('counter reservation refusal releases no assertion and does not reuse a session counter', async () => {
+  const w = world(); await w.worker.install({ method: 'key', nowMs: 1000 });
+  const enrollmentResult = w.worker.receive(enrollment(), SENDER);
+  await acknowledge(w.worker, 'bind', { accountId: ACCOUNT });
+  await acknowledge(w.worker, 'persist', { revision: 1 });
+  await acknowledge(w.worker, 'software-created', { observed: true });
+  const credential = await enrollmentResult;
+  const signature = w.worker.receive({ type: 'DUO_AUTOPILOT_SIGN', request: { origin: ORIGIN, rpId: 'duosecurity.com',
+    requestId: crypto.randomUUID(), challenge: CHALLENGE, allowCredentials: [credential.credentialId] } }, SENDER);
+  const rejected = assert.rejects(signature, /ONBOARDING_DUO_REFUSED/);
+  await acknowledge(w.worker, 'exact-request', { observed: true });
+  const reservation = await w.worker.next();
+  assert.equal(reservation.kind, 'sign');
+  w.worker.reply(reservation.id, { ok: false });
+  const invalidated = await w.worker.next();
+  assert.equal(invalidated.kind, 'scope-lost');
+  w.worker.reply(invalidated.id, { ok: false });
+  await rejected;
+  assert.equal(Object.hasOwn(w.state().autopilotV1.credentials[0], 'signCount'), false);
+  assert.equal(Object.hasOwn(w.state().autopilotV1.credentials[0], 'privateKey'), false);
+  await w.worker.stop();
+});
+
+test('Relay startup and unknown failure never enter standalone bootstrap or persistent stores', async () => {
+  const w = world();
+  Object.defineProperty(w.api.storage, 'local', { get() { throw new Error('persistent local read'); } });
+  Object.defineProperty(w.api.storage, 'sync', { get() { throw new Error('persistent sync read'); } });
+  Object.defineProperty(w.api, 'indexedDB', { get() { throw new Error('persistent IndexedDB read'); } });
+  await w.worker.install({ method: 'touch', nowMs: 1000 });
+  const operation = w.worker.receive(enrollment('platform'), SENDER);
+  const rejected = assert.rejects(operation, /ONBOARDING_DUO_REFUSED/);
+  const binding = await w.worker.next();
+  w.worker.reply(binding.id, { ok: false });
+  const invalidated = await w.worker.next();
+  assert.equal(invalidated.kind, 'scope-lost');
+  w.worker.reply(invalidated.id, { ok: false });
+  await rejected;
+  await w.worker.stop();
+});
+
+test('Relay manifest import closure cannot load standalone bootstrap or persistent-storage modules', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const manifest = JSON.parse(await readFile(new URL('../relay-manifest.json', import.meta.url), 'utf8'));
+  const allowed = new Set(['src/relay-background.js', 'src/relay-content.js', 'src/relay-inpage.js',
+    'src/relay-native.js', 'src/service.js', 'src/crypto.js', 'src/accounts.js', 'src/duo-origin.js', 'src/username.js']);
+  const discovered = new Set([manifest.background.service_worker, ...manifest.content_scripts.flatMap(script => script.js)]);
+  for (const file of discovered) {
+    assert.ok(allowed.has(file), `unexpected entrypoint ${file}`);
+    const source = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
+    assert.ok(!/\b(?:indexedDB|preparePrivateStorage|fetch)\s*(?:\(|\.)/.test(source), `persistent/bootstrap access in ${file}`);
+    for (const match of source.matchAll(/\bfrom\s+['"]\.\/([^'"]+)['"]/g)) {
+      const dependency = `src/${match[1]}`;
+      assert.ok(allowed.has(dependency), `unexpected dependency ${dependency}`);
+      discovered.add(dependency);
+    }
+    assert.ok(!/\bimport\s*\(/.test(source), `unbounded dynamic import in ${file}`);
+  }
+  assert.deepEqual([...discovered].sort(), [...allowed].sort());
+});
+
+test('native cancellation is reported without software enrollment or a fabricated success receipt', async () => {
+  const w = world(); await w.worker.install({ method: 'touch', nowMs: 1000 });
+  const message = enrollment('platform');
+  const operation = w.worker.receive(message, SENDER);
+  await acknowledge(w.worker, 'bind', { accountId: ACCOUNT });
+  await operation;
+  const failure = w.worker.receive({ type: 'RELAY_NATIVE_FAILED', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId: message.request.requestId } }, SENDER);
+  const rejected = assert.rejects(failure, /ONBOARDING_DUO_REFUSED/);
+  const report = await w.worker.next();
+  assert.equal(report.kind, 'native-failed');
+  w.worker.reply(report.id, { ok: false });
+  const invalidated = await w.worker.next();
+  assert.equal(invalidated.kind, 'scope-lost');
+  w.worker.reply(invalidated.id, { ok: false });
+  await rejected;
+  assert.equal(w.state().autopilotV1.credentials.length, 0);
+  await w.worker.stop();
+});
+
+async function enrolled(w) {
+  await w.worker.install({ method: 'key', nowMs: 1000 });
+  const message = enrollment();
+  const result = w.worker.receive(message, SENDER);
+  await acknowledge(w.worker, 'bind', { accountId: ACCOUNT });
+  const pending = await acknowledge(w.worker, 'persist', { revision: 1 });
+  await acknowledge(w.worker, 'software-created', { observed: true });
+  return { credential: await result, pending: pending.data, requestId: message.request.requestId };
+}
+
+test('two genuine engine SIGN requests return backend signatures; a request nonce replay cannot sign another challenge', async () => {
+  const w = world();
+  const { credential, pending } = await enrolled(w);
+  const used = new Set();
+  const publicKey = await crypto.subtle.importKey('spki', Buffer.from(pending.publicKeySpki, 'base64'), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+  for (const count of [100, 101]) {
+    const requestId = crypto.randomUUID();
+    const challenge = Buffer.from(`distinct challenge ${count}`).toString('base64');
+    const operation = w.worker.receive({ type: 'DUO_AUTOPILOT_SIGN', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId, challenge, allowCredentials: [credential.credentialId] } }, SENDER);
+    await acknowledge(w.worker, 'exact-request', { observed: true });
+    const request = await w.worker.next();
+    assert.equal(request.kind, 'sign');
+    assert.equal(request.data.requestId, requestId);
+    assert.equal(used.has(requestId), false); used.add(requestId);
+    w.worker.reply(request.id, { ok: true, value: createDuoAssertion(pending, request.data, count) });
+    const result = await operation;
+    const authData = Buffer.from(result.authenticatorData, 'base64');
+    assert.equal(authData.readUInt32BE(33), count);
+    const clientData = Buffer.from(result.clientDataJSON, 'base64');
+    assert.equal(JSON.parse(clientData).challenge, challenge.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''));
+    const payload = Buffer.concat([authData, Buffer.from(await crypto.subtle.digest('SHA-256', clientData))]);
+    // WebAuthn uses DER ECDSA; convert the two integers to the WebCrypto raw form.
+    const der = Buffer.from(result.signature, 'base64');
+    let offset = 2;
+    const raw = Buffer.alloc(64);
+    for (const index of [0, 1]) {
+      assert.equal(der[offset++], 2);
+      const length = der[offset++];
+      const value = der.subarray(offset, offset + length); offset += length;
+      value.subarray(Math.max(0, value.length - 32)).copy(raw, index * 32 + Math.max(0, 32 - value.length));
+    }
+    assert.equal(await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, publicKey, raw, payload), true);
+  }
+  const replayId = [...used][0];
+  const replay = w.worker.receive({ type: 'DUO_AUTOPILOT_SIGN', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId: replayId,
+    challenge: Buffer.from('different replay challenge').toString('base64'), allowCredentials: [credential.credentialId] } }, SENDER);
+  const rejected = assert.rejects(replay, /ONBOARDING_DUO_REFUSED/);
+  await acknowledge(w.worker, 'exact-request', { observed: true });
+  const reservation = await w.worker.next();
+  assert.equal(reservation.kind, 'sign'); assert.equal(used.has(reservation.data.requestId), true);
+  w.worker.reply(reservation.id, { ok: false });
+  const unknown = await w.worker.next(); assert.equal(unknown.kind, 'scope-lost'); w.worker.reply(unknown.id, { ok: false });
+  await rejected;
+  assert.equal(Object.hasOwn(w.state().autopilotV1.credentials[0], 'signCount'), false);
+  await w.worker.stop();
+});
+
+for (const kind of ['bind', 'persist', 'software-created', 'sign', 'exact-request', 'native-created', 'portal-accepted']) {
+  for (const drift of ['document', 'navigation', 'account', 'account-returned']) test(`rejects ${drift} drift during ${kind} ACK without output`, async () => {
+    const w = world();
+    const touch = kind === 'native-created';
+    let operation;
+    if (['sign', 'exact-request', 'portal-accepted'].includes(kind)) {
+      const { credential, requestId } = await enrolled(w);
+      operation = kind === 'portal-accepted'
+        ? w.worker.receive({ type: 'RELAY_PORTAL_ACCEPTED', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId } }, SENDER)
+        : w.worker.receive({ type: 'DUO_AUTOPILOT_SIGN', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId: crypto.randomUUID(), challenge: CHALLENGE, allowCredentials: [credential.credentialId] } }, SENDER);
+    } else {
+      await w.worker.install({ method: touch ? 'touch' : 'key', nowMs: 1000 });
+      const message = enrollment(touch ? 'platform' : 'cross-platform');
+      operation = w.worker.receive(message, SENDER);
+      if (touch) {
+        await acknowledge(w.worker, 'bind', { accountId: ACCOUNT }); await operation;
+        operation = w.worker.receive({ type: 'RELAY_NATIVE_CREATED', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId: message.request.requestId, credentialId: 'native-public-id', attachment: 'platform' } }, SENDER);
+      }
+    }
+    const rejected = assert.rejects(operation, /ONBOARDING_DUO_SCOPE/);
+    let request;
+    do {
+      request = await w.worker.next();
+      if (request.kind !== kind) w.worker.reply(request.id, { ok: true, value: request.kind === 'bind' ? { accountId: ACCOUNT } : request.kind === 'sign' ? { credentialId: request.data.credentialId, signature: 'AQID' } : { revision: 1 } });
+    } while (request.kind !== kind);
+    if (drift === 'document') w.scope.documentId = crypto.randomUUID().replaceAll('-', '');
+    if (drift === 'navigation') w.scope.url = `${ORIGIN}/other`;
+    if (drift === 'account') { w.scope.accountNames = ['other@example.edu']; w.scope.accountRevision++; }
+    if (drift === 'account-returned') w.scope.accountRevision += 2;
+    w.worker.reply(request.id, { ok: true, value: kind === 'bind' ? { accountId: ACCOUNT } : kind === 'sign' ? { credentialId: request.data.credentialId, signature: 'AQID' } : { revision: 1 } });
+    const unknown = await w.worker.next(); assert.equal(unknown.kind, 'scope-lost'); w.worker.reply(unknown.id, { ok: false });
+    await rejected;
+    await w.worker.stop();
+  });
+}
+
+for (const names of [[], ['alex@example.edu'], ['other@example.edu', 'alex@example.edu']]) test(`page-visible accounts do not gate enrollment in Relay's own Duo session: ${JSON.stringify(names)}`, async () => {
+  const w = world(); w.scope.accountNames = names;
+  await w.worker.install({ method: 'touch', nowMs: 1000 });
+  const operation = w.worker.receive(enrollment('platform'), SENDER);
+  const bind = await acknowledge(w.worker, 'bind', { accountId: ACCOUNT });
+  assert.equal('username' in bind.data, false);
+  assert.equal((await operation).native, true);
+  await w.worker.stop();
+});
+
+test('an enrollment without a usable Duo account name cannot bind', async () => {
+  const w = world();
+  await w.worker.install({ method: 'key', nowMs: 1000 });
+  const message = enrollment(); message.request.username = 'Display Name';
+  await assert.rejects(w.worker.receive(message, SENDER), /ONBOARDING_DUO_SCOPE/);
+  await w.worker.stop();
+});
+
+async function isolatedWorld(nativeBehavior) {
+  const { readFile } = await import('node:fs/promises');
+  const { runInNewContext } = await import('node:vm');
+  const listeners = new Map();
+  const sent = []; const output = [];
+  let nativeCalls = 0, headings = [], mutation;
+  class Attestation {}
+  class Credential {}
+  const window = { addEventListener: (type, listener) => listeners.set(type, listener), postMessage: value => output.push(value) };
+  const context = { window, location: { origin: ORIGIN, href: `${ORIGIN}/setup` },
+    document: { documentElement: {}, querySelectorAll: () => headings }, DuoUsername: { findUsernames: () => ['alex@example.edu'] },
+    MutationObserver: class { constructor(callback) { mutation = callback; } observe() {} }, AbortController, PublicKeyCredential: Credential, AuthenticatorAttestationResponse: Attestation,
+    TextEncoder, TextDecoder, Uint8Array, JSON, crypto, btoa, atob,
+    navigator: { credentials: { create: async options => { nativeCalls++; return nativeBehavior(options, Credential, Attestation); } } },
+    chrome: { runtime: { id: 'owned-extension', onMessage: { addListener() {} }, sendMessage: async message => {
+      sent.push(message);
+      return message.type === 'DUO_AUTOPILOT_ENROLL' ? { success: true, result: { native: true } } : { success: true };
+    } } },
+  };
+  for (const file of ['relay-native.js', 'relay-content.js']) runInNewContext(await readFile(new URL(`../src/${file}`, import.meta.url), 'utf8'), context);
+  return { sent, output, runtime: context.chrome.runtime, nativeCalls: () => nativeCalls,
+    setHeadings(values) { headings = values; mutation?.(); },
+    message: data => listeners.get('message')({ source: window, origin: ORIGIN, data }) };
+}
+
+async function platformCredential(_options, Credential, Attestation) {
+  const authData = new Uint8Array(37); authData.set(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('duosecurity.com'))));
+  return Object.assign(new Credential(), { rawId: new Uint8Array([251, 255, 0, 1]).buffer, authenticatorAttachment: 'platform', response: Object.assign(new Attestation(), {
+    clientDataJSON: new TextEncoder().encode(JSON.stringify({ type: 'webauthn.create', origin: ORIGIN, challenge: CHALLENGE.replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_') })).buffer,
+    attestationObject: new Uint8Array([1]).buffer, getAuthenticatorData: () => authData.buffer,
+    getPublicKey: () => null, getPublicKeyAlgorithm: () => -7, getTransports: () => ['internal'],
+  }) });
+}
+
+test('abort waits for the interception receipt before ending the backend attempt', async () => {
+  const w = await isolatedWorld(() => assert.fail('aborted enrollment must not call native create'));
+  let release, entered;
+  const gate = new Promise(resolve => { release = resolve; });
+  const intercepting = new Promise(resolve => { entered = resolve; });
+  const send = w.runtime.sendMessage;
+  w.runtime.sendMessage = async message => {
+    if (message.type === 'RELAY_DUO_EVENT' && message.event.stage === 'intercepted') { entered(); await gate; }
+    return send(message);
+  };
+  const request = enrollment().request;
+  const operation = w.message({ type: 'RELAY_DUO_REQUEST', id: 'abort-before-ack', operation: 'DUO_AUTOPILOT_ENROLL', request });
+  await intercepting;
+  const aborted = w.message({ type: 'RELAY_DUO_ABORT', id: 'abort-before-ack', reason: 'aborted' });
+  try {
+    await Promise.resolve();
+    assert.equal(w.sent.filter(message => message.type === 'RELAY_ENROLLMENT_FAILED').length, 0);
+  } finally { release(); await Promise.all([operation, aborted]); }
+  assert.equal(w.nativeCalls(), 0);
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_ENROLLMENT_FAILED').length, 1);
+  assert.equal(w.sent.find(message => message.type === 'RELAY_ENROLLMENT_FAILED').request.reason, 'aborted');
+});
+
+test('native isolated completion calls captured browser create; page-created and page-failed messages cannot attest', async () => {
+  let complete;
+  const gate = new Promise(resolve => { complete = resolve; });
+  const w = await isolatedWorld(async (_options, Credential, Attestation) => {
+    await gate;
+    return platformCredential(_options, Credential, Attestation);
+  });
+  const request = enrollment('platform').request;
+  const operation = w.message({ type: 'RELAY_DUO_REQUEST', id: 'actual-request', operation: 'DUO_AUTOPILOT_ENROLL', request,
+    nativeOptions: { rp: { id: request.rpId }, challenge: Buffer.from(request.challenge, 'base64'), user: { name: request.username, id: Buffer.from(request.userHandle, 'base64') }, authenticatorSelection: { authenticatorAttachment: 'platform' } } });
+  await w.message({ type: 'RELAY_DUO_REQUEST', id: 'forged', operation: 'RELAY_NATIVE_CREATED', request: { ...request, credentialId: 'forged', attachment: 'platform' } });
+  await w.message({ type: 'RELAY_NATIVE_CREATED', request });
+  await w.message({ type: 'RELAY_DUO_REQUEST', id: 'failed', operation: 'RELAY_NATIVE_FAILED', request });
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED' || message.type === 'RELAY_NATIVE_FAILED').length, 0);
+  complete(); await operation;
+  assert.equal(w.nativeCalls(), 1);
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED').length, 1);
+  assert.equal(w.sent.find(message => message.type === 'RELAY_NATIVE_CREATED').request.credentialId, '-_8AAQ');
+  assert.equal(w.output.at(-1).success, true);
+  assert.ok(!JSON.stringify(w.sent).includes('privateKey'));
+});
+
+
+for (const title of ['Added Touch ID', 'Added Windows Hello']) test(`accepts one new ${title} heading after the native ceremony, excluding stale and ambiguous headings`, async () => {
+  const w = await isolatedWorld(platformCredential);
+  const heading = () => ({ textContent: title, getClientRects: () => [{}] });
+  const stale = heading(); w.setHeadings([stale]);
+  const request = enrollment('platform').request;
+  await w.message({ type: 'RELAY_DUO_REQUEST', id: 'portal-proof', operation: 'DUO_AUTOPILOT_ENROLL', request,
+    nativeOptions: { rp: { id: request.rpId }, challenge: Buffer.from(request.challenge, 'base64'), user: { name: request.username, id: Buffer.from(request.userHandle, 'base64') }, authenticatorSelection: { authenticatorAttachment: 'platform' } } });
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED').length, 1);
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_PORTAL_ACCEPTED').length, 0);
+  const fresh = heading(); w.setHeadings([fresh, heading()]); await Promise.resolve();
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_PORTAL_ACCEPTED').length, 0);
+  w.setHeadings([stale, fresh]); await Promise.resolve();
+  const accepted = w.sent.filter(message => message.type === 'RELAY_PORTAL_ACCEPTED');
+  assert.equal(accepted.length, 1); assert.equal(accepted[0].request.requestId, request.requestId);
+  w.setHeadings([fresh]); await Promise.resolve();
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_PORTAL_ACCEPTED').length, 1);
+});
+
+test('native browser refusal has no software fallback or successful ceremony', async () => {
+  const w = await isolatedWorld(async () => { throw new Error('native refused'); });
+  const request = enrollment('platform').request;
+  await w.message({ type: 'RELAY_DUO_REQUEST', id: 'refused', operation: 'DUO_AUTOPILOT_ENROLL', request,
+    nativeOptions: { rp: { id: request.rpId }, challenge: Buffer.from(request.challenge, 'base64'), user: { name: request.username, id: Buffer.from(request.userHandle, 'base64') }, authenticatorSelection: { authenticatorAttachment: 'platform' } } });
+  assert.equal(w.nativeCalls(), 1);
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED').length, 0);
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_FAILED').length, 1);
+  assert.equal(w.sent.find(message => message.event?.stage === 'refused').event.detail, 'native-other');
+  assert.equal(w.output.at(-1).success, false);
+});
+
+test('native security refusal emits only its closed diagnostic tag', async () => {
+  const w = await isolatedWorld(async () => { throw new DOMException('private native error detail', 'SecurityError'); });
+  const request = enrollment('platform').request;
+  await w.message({ type: 'RELAY_DUO_REQUEST', id: 'security-refused', operation: 'DUO_AUTOPILOT_ENROLL', request,
+    nativeOptions: { rp: { id: request.rpId }, challenge: Buffer.from(request.challenge, 'base64'), user: { name: request.username, id: Buffer.from(request.userHandle, 'base64') }, authenticatorSelection: { authenticatorAttachment: 'platform' } } });
+  assert.equal(w.sent.find(message => message.event?.stage === 'refused').event.detail, 'native-security');
+  assert.ok(!JSON.stringify([...w.sent, ...w.output]).includes('private native error detail'));
+  assert.equal(w.output.at(-1).success, false);
+});
+
+for (const credentialId of ['+/8=', '-_8']) test(`page realm creates and reads credentials with browser readonly prototype getters: ${credentialId}`, async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { runInNewContext } = await import('node:vm');
+  class Response {}
+  class Attestation extends Response {}
+  class Assertion extends Response {}
+  class Credential {}
+  for (const [prototype, fields] of [
+    [Response.prototype, ['clientDataJSON']], [Attestation.prototype, ['attestationObject']],
+    [Assertion.prototype, ['authenticatorData', 'signature', 'userHandle']],
+    [Credential.prototype, ['id', 'rawId', 'type', 'authenticatorAttachment', 'response']],
+  ]) for (const field of fields) Object.defineProperty(prototype, field, { get() { throw new TypeError('Illegal invocation'); } });
+  let listener;
+  const requests = [];
+  const settled = [];
+  const result = { ok: true, credentialId, clientDataJSON: 'AQ==', attestationObject: 'Ag==', authData: 'Aw==',
+    publicKeySpki: 'BA==', authenticatorData: 'BQ==', signature: 'Bg==', userHandle: 'Bw==', transport: 'usb' };
+  const window = { addEventListener: (_type, callback) => { listener = callback; }, postMessage: message => {
+    if (message.type === 'RELAY_DUO_SETTLED') settled.push(message.id);
+    if (message.type !== 'RELAY_DUO_REQUEST') return;
+    requests.push(message);
+    queueMicrotask(() => listener({ source: window, origin: ORIGIN, data: { type: 'RELAY_DUO_RESPONSE', id: message.id, success: true, result } }));
+  } };
+  const credentials = { create: () => assert.fail('unexpected native create'), get: () => assert.fail('unexpected native get') };
+  runInNewContext(await readFile(new URL('../src/relay-inpage.js', import.meta.url), 'utf8'), {
+    window, location: { origin: ORIGIN, hostname: 'test.duosecurity.com' }, navigator: { credentials },
+    crypto, Uint8Array, btoa, atob, DOMException, setTimeout, clearTimeout, PublicKeyCredential: Credential,
+    AuthenticatorAttestationResponse: Attestation, AuthenticatorAssertionResponse: Assertion,
+  });
+  const created = await credentials.create({ publicKey: { rp: { id: 'duosecurity.com' }, challenge: new Uint8Array([8]),
+    user: { name: 'alex@example.edu', id: new Uint8Array([9]) }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }] } });
+  const signed = await credentials.get({ publicKey: { rpId: 'duosecurity.com', challenge: new Uint8Array([10]),
+    allowCredentials: [{ type: 'public-key', id: created.rawId }] } });
+  for (const credential of [created, signed]) {
+    assert.ok(credential instanceof Credential); assert.equal(credential.id, '-_8');
+    assert.deepEqual(Buffer.from(credential.rawId), Buffer.from('+/8=', 'base64'));
+    assert.equal(credential.type, 'public-key'); assert.equal(credential.authenticatorAttachment, 'cross-platform');
+    assert.deepEqual(Buffer.from(credential.response.clientDataJSON), Buffer.from([1]));
+    assert.equal(Object.keys(credential.getClientExtensionResults()).length, 0);
+  }
+  assert.ok(created.response instanceof Attestation); assert.ok(signed.response instanceof Assertion);
+  assert.deepEqual(Buffer.from(created.response.attestationObject), Buffer.from([2]));
+  assert.deepEqual(Buffer.from(created.response.getAuthenticatorData()), Buffer.from([3]));
+  assert.deepEqual(Buffer.from(created.response.getPublicKey()), Buffer.from([4]));
+  assert.deepEqual(Array.from(created.response.getTransports()), ['usb']); assert.equal(created.response.getPublicKeyAlgorithm(), -7);
+  assert.deepEqual(Buffer.from(signed.response.authenticatorData), Buffer.from([5]));
+  assert.deepEqual(Buffer.from(signed.response.signature), Buffer.from([6]));
+  assert.deepEqual(Buffer.from(signed.response.userHandle), Buffer.from([7]));
+  assert.equal(requests[1].request.allowCredentials[0], '+/8=');
+  assert.deepEqual(settled, requests.map(request => request.id));
+});
+
+for (const invalid of ['origin', 'challenge', 'type', 'attachment', 'rpHash']) test(`native ${invalid} mismatch cannot produce a ceremony`, async () => {
+  const w = await isolatedWorld(async (_options, Credential, Attestation) => {
+    const authData = new Uint8Array(37);
+    if (invalid !== 'rpHash') authData.set(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('duosecurity.com'))));
+    return Object.assign(new Credential(), { rawId: new Uint8Array([1]).buffer, authenticatorAttachment: invalid === 'attachment' ? 'cross-platform' : 'platform', response: Object.assign(new Attestation(), {
+      clientDataJSON: new TextEncoder().encode(JSON.stringify({ type: invalid === 'type' ? 'webauthn.get' : 'webauthn.create',
+        origin: invalid === 'origin' ? 'chrome-extension://owned-extension' : ORIGIN,
+        challenge: invalid === 'challenge' ? 'wrong' : CHALLENGE.replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_') })).buffer,
+      attestationObject: new Uint8Array([1]).buffer, getAuthenticatorData: () => authData.buffer,
+      getPublicKey: () => null, getPublicKeyAlgorithm: () => -7, getTransports: () => ['internal'],
+    }) });
+  });
+  const request = enrollment('platform').request;
+  await w.message({ type: 'RELAY_DUO_REQUEST', id: 'invalid-native', operation: 'DUO_AUTOPILOT_ENROLL', request,
+    nativeOptions: { rp: { id: request.rpId }, challenge: Buffer.from(request.challenge, 'base64'), user: { name: request.username, id: Buffer.from(request.userHandle, 'base64') }, authenticatorSelection: { authenticatorAttachment: 'platform' } } });
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED').length, 0);
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_FAILED').length, 1);
+  assert.equal(w.output.at(-1).success, false);
+});
+
+test('failed exact acceptance never reaches backend signing or confirms the local descriptor', async () => {
+  const w = world();
+  const { credential } = await enrolled(w);
+  const operation = w.worker.receive({ type: 'DUO_AUTOPILOT_SIGN', request: { origin: ORIGIN, rpId: 'duosecurity.com',
+    requestId: crypto.randomUUID(), challenge: CHALLENGE, allowCredentials: [credential.credentialId] } }, SENDER);
+  const rejected = assert.rejects(operation, /ONBOARDING_DUO_REFUSED/);
+  const proof = await w.worker.next(); assert.equal(proof.kind, 'exact-request');
+  assert.equal(w.state().autopilotV1.credentials[0].status, 'pending');
+  w.worker.reply(proof.id, { ok: false });
+  const failure = await w.worker.next(); assert.equal(failure.kind, 'scope-lost');
+  w.worker.reply(failure.id, { ok: false }); await rejected;
+  assert.equal(w.state().autopilotV1.credentials[0].status, 'pending');
+  await w.worker.stop();
+});
+
+ test('diagnostics preserve all worker symbols and bound unknown exception names without free text', () => {
+  assert.deepEqual(relayFailureEvent(new Error('ONBOARDING_DUO_SCOPE'), 42), { stage: 'refused', detail: 'scope', code: 'ONBOARDING_DUO_SCOPE', durationMs: 42 });
+  for (const code of ['ONBOARDING_DUO_REVOKED', 'ONBOARDING_DUO_BROKER_BUSY', 'ONBOARDING_DUO_NATIVE_REQUIRED', 'ONBOARDING_DUO_ENROLL_REFUSED']) {
+    assert.equal(relayFailureEvent(new Error(code), 1).code, code);
+  }
+  const failure = new TypeError('secret-password', { cause: new Error('private-key-material') });
+  assert.deepEqual(relayFailureEvent(failure, 5), { stage: 'refused', detail: 'backend', code: 'ONBOARDING_DUO_UNKNOWN', durationMs: 5, exceptionType: 'TypeError' });
+  for (const name of ['person@example.edu', 'X'.repeat(65), 'line\nbreak']) {
+    failure.name = name;
+    assert.equal(relayFailureEvent(failure, 0).exceptionType, undefined);
+  }
+});
+
+test('the browser listener records exact scope failures and safe unknown errors', async t => {
+  const w = world(); let receive;
+  w.api.runtime.getURL = path => 'chrome-extension://owned-extension/' + path;
+  w.api.runtime.onMessage = { addListener: listener => { receive = listener; } };
+  globalThis.chrome = w.api;
+  t.after(() => { delete globalThis.chrome; delete globalThis.relayOnboarding; });
+  await import('../src/relay-background.js?diagnostic-listener-test');
+  const owner = globalThis.relayOnboarding;
+  await owner.browserInstall(crypto.randomUUID());
+  for (const error of [new Error('ONBOARDING_DUO_SCOPE'), new TypeError('secret-password', { cause: new Error('private-key') })]) {
+    w.api.tabs.get = async () => { throw error; };
+    const response = new Promise(resolve => receive({ type: 'RELAY_CAPABILITIES', request: { origin: ORIGIN, rpId: 'duosecurity.com' } }, SENDER, resolve));
+    const request = await owner.browserNext();
+    assert.equal(request.event.code, error.message === 'ONBOARDING_DUO_SCOPE' ? 'ONBOARDING_DUO_SCOPE' : 'ONBOARDING_DUO_UNKNOWN');
+    assert.ok(request.event.durationMs >= 0);
+    assert.doesNotMatch(JSON.stringify(request.event), /secret-password|private-key/);
+    owner.browserReply(request.id, { ok: true, value: { observed: true } });
+    assert.deepEqual(await response, { success: false, error: 'ONBOARDING_DUO_REFUSED' });
+  }
+  await owner.browserStop();
+});
+
+test('every known worker failure has a distinct canonical diagnostic label', () => {
+  const source = readFileSync(new URL('../src/relay-background.js', import.meta.url), 'utf8');
+  for (const [, code] of source.matchAll(/new Error\('(ONBOARDING_DUO_[A-Z_]+)'/g)) {
+    const event = relayFailureEvent(new Error(code), 0);
+    assert.equal(event.code, code);
+    assert.notEqual(event.detail, 'backend');
+    assert.equal(ProfileOnboardingDuoEventSchema.safeParse(event).success, true);
+  }
+});

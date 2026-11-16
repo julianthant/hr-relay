@@ -58,7 +58,7 @@ export const JobSummaryClassificationSchema = z.strictObject({
 export type JobSummaryClassification = z.infer<typeof JobSummaryClassificationSchema>;
 
 /** Check inactive first because it contains active. */
-export function classifyJobStatus(hrStatus: string): JobStatusTier {
+function classifyJobStatus(hrStatus: string): JobStatusTier {
   if (/inactive|terminated|separated/iu.test(hrStatus)) return "inactive";
   if (/active/iu.test(hrStatus)) return "active";
   return "unknown";

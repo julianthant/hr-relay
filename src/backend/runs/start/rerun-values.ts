@@ -1,4 +1,6 @@
-import { rerunWorkers, RerunRefusedError } from "./rerun.js";
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
+import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
+import { validateRerunSourcePlan, RerunRefusedError, rerunEvidenceReader, validateRerunWriteProof, validateRerunTransactionEvidence } from "./rerun.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RunExistenceSchema, type RunExistence } from "../../../models/config/authority.js";
@@ -6,8 +8,7 @@ import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../.
 import { RerunValuesRequestSchema, RerunValuesResponseSchema,
   type RerunValuesRefusalCode, type RerunValuesResponse, type RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
-import { FingerprintSchema, BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
-import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../../rules/write-safety/write-safety.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { projectTransactionOutcome } from "../../../models/workflow/graph.js";
@@ -16,11 +17,12 @@ import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js
 import { RerunValueMappingsSchema } from "../../../models/workflow/rerun-values.js";
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
-import { rerunTargetAccepts } from "../../../models/validation/rerun-values.js";
+import { rerunInputFieldAccepts, rerunTargetAccepts } from "../../../models/validation/rerun-values.js";
+import { workbookInputBinding } from "../workbooks.js";
 
 export interface RerunValuesDependencies {
   readonly reader: { read(runId: string): RunExistence };
-  readonly database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot">;
+  readonly database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot"> & Partial<Pick<AuthorityDatabase, "evidenceSchemaHash">>;
   readonly descriptors: { resolve(workflow: string): AnyWorkflowDescriptor | undefined };
   /** Source-owned task observations only; never the fold's run lifecycle. */
   readonly executions?: (runId: string) => readonly Readonly<{
@@ -45,14 +47,13 @@ function atPath(value: JsonValue, path: string): JsonValue | undefined {
   return current;
 }
 
-function validateCheckpoint(checkpoint: RunCheckpointRecord, node: RuntimeFlowNode, descriptor: AnyWorkflowDescriptor): void {
-  if (checkpoint.descriptorVersion !== descriptor.version || checkpoint.contractFingerprint !== descriptor.contractFingerprint) refuse("source-invalid");
+function validateCheckpoint(checkpoint: RunCheckpointRecord, node: RuntimeFlowNode, schemaReader?: EvidenceSchemaReader): void {
   const schema = node.kind === "task" ? node.uses.output : node.kind === "transaction" ? TransactionOutcomeSchema : undefined;
-  if (schema === undefined || checkpoint.output.schemaHash !== deriveSchemaHash(schema, "output")
+  if (schema === undefined || (schemaReader?.({ kind: "task-output", id: checkpointRecordKey(checkpoint) }, checkpoint, checkpoint.output.schemaHash, deriveSchemaHash(schema, "output")) ?? checkpoint.output.schemaHash) !== deriveSchemaHash(schema, "output")
     || !schema.safeParse(checkpoint.output.value).success) refuse("source-invalid");
   if (node.kind === "transaction") {
     // This authenticates both nested schemas, not merely the JSON wrapper.
-    try { projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Rerun source"); }
+    try { projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Rerun source", { checkpoint, schemaReader }); }
     catch { refuse("source-invalid"); }
   }
 }
@@ -67,6 +68,7 @@ function containsProtected(value: JsonValue, privateValues: readonly string[]): 
 export function readRerunValues(deps: RerunValuesDependencies, input: unknown): RerunValuesResponse {
   const request = RerunValuesRequestSchema.parse(input);
   try {
+    const schemaReader = rerunEvidenceReader(deps.database.evidenceSchemaHash?.bind(deps.database));
     return deps.database.withAuthorityReadSnapshot(() => {
       const existence = RunExistenceSchema.parse(deps.reader.read(request.runId));
       if (existence.state === "deleted") refuse("target-deleted");
@@ -75,16 +77,15 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       if (run.envelope.runId !== request.runId) refuse("source-invalid");
       if (run.version !== request.expectedVersion) refuse("source-stale");
       const descriptor = deps.descriptors.resolve(run.envelope.workflow);
-      if (descriptor === undefined || descriptor.id !== run.envelope.workflow
-        || descriptor.version !== run.envelope.descriptorVersion
-        || descriptor.contractFingerprint !== run.envelope.contractFingerprint) refuse("descriptor-mismatch");
+      if (descriptor === undefined || descriptor.id !== run.envelope.workflow) refuse("descriptor-mismatch");
+      const older = descriptor.version !== run.envelope.descriptorVersion
+        || descriptor.contractFingerprint !== run.envelope.contractFingerprint;
       const { lifecycle } = run;
       if (lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(lifecycle.outcome)) refuse("source-ineligible");
-      if (run.input.parsed.schemaHash !== deriveSchemaHash(descriptor.canonicalInput, "output")
-        || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success) refuse("source-invalid");
+      if (!older && ((schemaReader?.({ kind: "run-input", id: run.envelope.runId }, run.input, run.input.parsed.schemaHash, deriveSchemaHash(descriptor.canonicalInput, "output")) ?? run.input.parsed.schemaHash) !== deriveSchemaHash(descriptor.canonicalInput, "output")
+        || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success)) refuse("source-invalid");
       const repositories = deps.database.authority;
-      let workers;
-      try { workers = rerunWorkers(repositories, run); }
+      try { validateRerunSourcePlan(repositories, run); }
       catch (error) { if (error instanceof RerunRefusedError) refuse("source-invalid"); throw error; }
       const intents = repositories.writeIntents.listByRun(request.runId);
       if (intents.some((intent) => !("runId" in intent) || intent.runId !== request.runId
@@ -99,25 +100,35 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         if (checkpoint.workflowId !== descriptor.id || checkpoint.itemId !== run.envelope.itemId
           || checkpoint.attempt > run.envelope.attempt
           || (checkpoint.claimGeneration !== undefined && checkpoint.claimGeneration > run.claimGeneration)) refuse("source-invalid");
+        if (checkpoint.descriptorVersion !== run.envelope.descriptorVersion
+          || checkpoint.contractFingerprint !== run.envelope.contractFingerprint) refuse("source-invalid");
         const node = nodeById.get(checkpoint.nodeId);
-        if (node === undefined) refuse("source-invalid");
-        validateCheckpoint(checkpoint, node, descriptor);
+        if (node === undefined) {
+          if (older && !TransactionOutcomeSchema.safeParse(checkpoint.output.value).success) continue;
+          refuse("source-invalid");
+        }
+        if (!older || node.kind === "transaction") validateCheckpoint(checkpoint, node, schemaReader);
         const previous = checkpoints.get(checkpoint.nodeId);
         if (previous === undefined || checkpoint.attempt > previous.attempt
           || (checkpoint.attempt === previous.attempt && checkpoint.claimGeneration !== undefined
             && (previous.claimGeneration === undefined || checkpoint.claimGeneration > previous.claimGeneration))) checkpoints.set(checkpoint.nodeId, checkpoint);
       }
-      const gates = repositories.gateResults.listByRun(request.runId);
+      const gates = repositories.gateResults.listByRun(request.runId).filter(gate => {
+        if (gate.runId !== request.runId) refuse("source-invalid");
+        const node = nodeById.get(gate.gateId);
+        return !older || (node?.kind === "gate" && (schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate, gate.result.schemaHash, deriveSchemaHash(node.result, "output")) ?? gate.result.schemaHash) === deriveSchemaHash(node.result, "output")
+          && node.result.safeParse(gate.result.value).success);
+      });
       for (const gate of gates) {
         const node = nodeById.get(gate.gateId);
-        if (gate.runId !== request.runId || node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output")
+        if (gate.runId !== request.runId || node?.kind !== "gate" || (schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate, gate.result.schemaHash, deriveSchemaHash(node.result, "output")) ?? gate.result.schemaHash) !== deriveSchemaHash(node.result, "output")
           || !node.result.safeParse(gate.result.value).success) refuse("source-invalid");
       }
       const failures = repositories.failures.listByRun(request.runId);
       const failure = lifecycle.failureId === undefined ? undefined : failures.find(({ failureId }) => failureId === lifecycle.failureId);
       if (lifecycle.failureId !== undefined && (failure === undefined || failure.runId !== request.runId
         || failure.workflowId !== descriptor.id || failure.attempt !== run.envelope.attempt)) refuse("source-invalid");
-      if (failure?.nodeId !== undefined && !nodeById.has(failure.nodeId)) refuse("source-invalid");
+      if (!older && failure?.nodeId !== undefined && !nodeById.has(failure.nodeId)) refuse("source-invalid");
       const executions = deps.executions?.(request.runId) ?? [];
       if (executions.some(({ attempt }) => !Number.isSafeInteger(attempt) || attempt < 1 || attempt > run.envelope.attempt)) refuse("source-invalid");
       const bindings = retainedRunProtectedBindings(run);
@@ -156,9 +167,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         if (node?.kind !== "transaction" || intent.taskId !== node.commit.uses.id) refuse("source-invalid");
         const step = descriptor.timeline.find((category) => category.nodes.some(({ id }) => id === node.id));
         if (step === undefined) refuse("source-invalid");
-        const proof = intent.completionProof;
-        const proofSchema = node.commit.uses.writeSafety.completion.proofSchema;
-        if (proof === undefined || proof.schemaHash !== deriveSchemaHash(proofSchema, "output") || !proofSchema.safeParse(proof.value).success) refuse("source-invalid");
+        const proof = validateRerunWriteProof(node.commit.uses, intent, schemaReader);
         if (containsProtected(valueFreeProtectedData(proof, bindings), privateValues)) refuse("source-invalid");
         transactions.push({ stepKey: step.key, nodeId: node.id, taskId: intent.taskId, writeIntentId: intent.writeIntentId,
           evidenceDigest: FingerprintSchema.parse(repeatEvidenceDigest(intent, bindings)), disposition: intent.status });
@@ -170,43 +179,12 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       for (const node of nodes) {
         const checkpoint = checkpoints.get(node.id);
         if (node.kind !== "transaction" || checkpoint === undefined || checkpoint.assertion !== undefined) continue;
-        const outcome = TransactionOutcomeSchema.parse(checkpoint.output.value);
-        if (outcome.disposition === "committed") {
-          const matching = intents.some((intent) => intent.status === "committed" && intent.taskId === node.commit.uses.id
-            && intent.bindingProof.afterPrepareSpanPath === `${run.envelope.traceId}/${node.id}/prepare`
-            && canonicalJsonStringify(intent.completionProof) === canonicalJsonStringify(outcome.proof));
-          if (!matching) refuse("source-invalid");
-          continue;
-        }
-        const outputs: Record<string, JsonValue> = {};
-        for (const dependency of node.dependsOn) {
-          const stored = checkpoints.get(dependency);
-          if (stored !== undefined) {
-            const dependencyNode = nodeById.get(dependency);
-            outputs[dependency] = dependencyNode?.kind === "transaction"
-              ? JsonValueSchema.parse(projectTransactionOutcome(dependencyNode.commit.uses, stored.output.value, "Rerun dependency"))
-              : stored.output.value;
-          }
-          else {
-            const gate = gates.find(({ gateId }) => String(gateId) === String(dependency));
-            if (gate === undefined) refuse("source-invalid");
-            outputs[dependency] = gate.result.value;
-          }
-        }
-        const commitInput = node.commit.uses.input.parse(node.commit.bind({ input: run.input.parsed.value, outputs }));
-        const key = IdempotencyKeySchema.parse(Reflect.apply(node.commit.uses.writeSafety.idempotency.key, undefined, [commitInput]));
-        const system = BrowserSystemIdSchema.parse(node.commit.uses.id.split("/")[0]);
-        const linked = repositories.writeIntents.listByBusinessKey(system, deriveIdempotencyKeyDigest(system, key))
-          .filter((intent) => intent.taskId === node.commit.uses.id && intent.workflowId === descriptor.id
-            && intent.itemId === run.envelope.itemId && (intent.status === "committed" || intent.status === "observed-present")
-            && canonicalJsonStringify(intent.status === "committed" ? intent.completionProof : intent.observedProof)
-              === canonicalJsonStringify(outcome.proof));
-        if (linked.length === 0) refuse("source-invalid");
+        const linked = validateRerunTransactionEvidence({ repositories, descriptor, run, node, checkpoint, checkpoints, gates, schemaReader });
         const step = descriptor.timeline.find((category) => category.nodes.some(({ id }) => id === node.id));
         if (step === undefined) refuse("source-invalid");
         for (const intent of linked) {
           if (intent.status !== "committed" && intent.status !== "observed-present") refuse("source-invalid");
-          const proof = intent.status === "committed" ? intent.completionProof : intent.observedProof;
+          const proof = validateRerunWriteProof(node.commit.uses, intent, schemaReader);
           if (containsProtected(valueFreeProtectedData(proof, bindings), privateValues)) refuse("source-invalid");
           if (!transactions.some((entry) => entry.nodeId === node.id && entry.writeIntentId === intent.writeIntentId)) {
             transactions.push({ stepKey: step.key, nodeId: node.id, taskId: intent.taskId, writeIntentId: intent.writeIntentId,
@@ -227,7 +205,8 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         const safe = atPath(valueFreeProtectedData(checkpoint.output.value, bindings), mapping.fieldPath);
         if (safe === undefined || canonicalJsonStringify(safe) !== canonicalJsonStringify(value) || containsProtected(value, privateValues))
           return { ...coordinates, state: "unavailable", reason: "protected" };
-        if (!rerunTargetAccepts(descriptor, mapping, value)) return { ...coordinates, state: "unavailable", reason: "target-invalid" };
+        if (!rerunTargetAccepts(descriptor, mapping, value)
+          || !rerunTargetAccepts({ input: descriptor.canonicalInput, stepOmissions: descriptor.stepOmissions }, mapping, value)) return { ...coordinates, state: "unavailable", reason: "target-invalid" };
         const provenance = [...checkpoint.provenance].filter(({ path }) => path === mapping.fieldPath || mapping.fieldPath.startsWith(`${path}.`))
           .sort((a, b) => b.path.length - a.path.length)[0];
         if (provenance === undefined) return { ...coordinates, state: "unavailable", reason: "provenance-unavailable" };
@@ -239,20 +218,65 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         const members = step.nodes.map(({ id }) => { const fact = facts.get(id); if (fact === undefined) refuse("source-invalid"); return fact; });
         const state = members.some(({ state }) => state === "failed") ? "failed"
           : members.every(({ state }) => state === "completed") ? "completed" : "unfinished";
-        return { key: step.key, state, nodes: members };
+        return older ? { key: step.key, state: "unfinished", nodes: members.map(member => ({
+          nodeId: member.nodeId, state: "unfinished", reason: "not-recorded",
+        })) } : { key: step.key, state, nodes: members };
       });
+      let sourceInput: RerunValuesSnapshot["sourceInput"] = { state: "available", value: run.input.parsed.value };
+      if (canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
+        || containsProtected(run.input.parsed.value, privateValues)) sourceInput = { state: "unavailable", reason: "protected" };
+      else if (older && descriptor.surfaces.inputRun?.typedInput !== undefined) {
+        const input = run.input.parsed.value;
+        const parsed = descriptor.input.safeParse(input);
+        const canonical = descriptor.canonicalInput.safeParse(input);
+        if (!parsed.success || !canonical.success || canonicalJsonStringify(parsed.data) !== canonicalJsonStringify(input)
+          || canonicalJsonStringify(canonical.data) !== canonicalJsonStringify(input)) {
+          const declaration = descriptor.surfaces.inputRun.typedInput;
+          const mode = declaration.modes.find(mode => atPath(input, declaration.modeField) === mode.value);
+          const accepted: Record<string, JsonValue> = {};
+          if (mode !== undefined) for (const field of [declaration.modeField, ...mode.defaults.map(entry => entry.field), ...mode.identityFields]) {
+            const value = atPath(input, field);
+            if (value !== undefined && rerunInputFieldAccepts(descriptor.input, field, value)
+              && rerunInputFieldAccepts(descriptor.canonicalInput, field, value)) accepted[field] = value;
+          }
+          const identityCopied = mode !== undefined && mode.identityFields.every(field => atPath(input, field) === undefined || Object.hasOwn(accepted, field))
+            && (mode.parser.kind === "name-tuple" ? Object.hasOwn(accepted, mode.parser.familyName) && Object.hasOwn(accepted, mode.parser.givenName)
+              && mode.parser.identifiers.some(identifier => Object.hasOwn(accepted, identifier.field))
+              : mode.identityFields.some(field => Object.hasOwn(accepted, field)));
+          if (!identityCopied) for (const field of mode?.identityFields ?? []) delete accepted[field];
+          sourceInput = { state: "partial", value: accepted, identityCopied };
+        }
+      }
+      const surface = descriptor.surfaces.inputRun;
+      if (sourceInput.state === "unavailable" && surface !== undefined && surface.typedInput === undefined) {
+        const accepted: Record<string, JsonValue> = {};
+        const safeInput = valueFreeProtectedData(run.input.parsed.value, bindings);
+        for (const field of new Set(surface.parser.rules.map(rule => rule.emit))) {
+          const value = atPath(run.input.parsed.value, field);
+          const safe = atPath(safeInput, field);
+          if (typeof value !== "string" || value.length === 0 || safe !== value || containsProtected(value, privateValues)) continue;
+          if (rerunInputFieldAccepts(descriptor.input, field, value)
+            && rerunInputFieldAccepts(descriptor.canonicalInput, field, value)) accepted[field] = value;
+        }
+        if (Object.keys(accepted).length > 0) sourceInput = { state: "partial", value: accepted, identityCopied: true };
+      }
+      if (sourceInput.state === "available") {
+        const binding = workbookInputBinding(descriptor.canonicalInput);
+        if (binding?.sourceToIngress !== undefined) {
+          const canonical = descriptor.canonicalInput.safeParse(sourceInput.value);
+          if (canonical.success && canonicalJsonStringify(canonical.data) === canonicalJsonStringify(sourceInput.value))
+            sourceInput = { state: "available", value: JsonValueSchema.parse(binding.sourceToIngress(canonical.data)) };
+        }
+      }
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
-        workers,
-        sourceInput: canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
-          || containsProtected(run.input.parsed.value, privateValues)
-          ? { state: "unavailable", reason: "protected" }
-          : { state: "available", value: run.input.parsed.value },
+        sourceInput,
         source: { runId: request.runId, version: run.version, workflow: descriptor.id,
-          descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, outcome: lifecycle.outcome },
+          descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, outcome: lifecycle.outcome },
         steps, values, transactions,
       } });
     });
   } catch (error) {
+    if (error instanceof RerunRefusedError) return { state: "refused", code: "source-invalid" };
     if (error instanceof SourceRefused) return { state: "refused", code: error.code };
     if (error instanceof z.ZodError || error instanceof SyntaxError) return { state: "refused", code: "source-invalid" };
     throw error;

@@ -16,12 +16,12 @@ export interface GlobalKeyBindings {
   /** the mode Escape reads: only a FLOATING window has anything to minimise */
   panelMode: WorkflowPanelMode;
   onMinimisePanel: () => void;
-  /** `j`/`k` — the queue's drawn order, members included (`visibleRunIds`) */
-  visibleRunIds: readonly string[];
+  /** `j`/`k` — the queue's drawn order, members included (`visibleQueueKeys`) */
+  visibleQueueKeys: readonly string[];
   /** `n` — the same rows the NEEDS YOU band draws, in the same order */
-  attentionRunIds: readonly string[];
-  selectedRunId: string | undefined;
-  onSelectRun: (runId: string) => void;
+  attentionQueueKeys: readonly string[];
+  selectedQueueKey: string | undefined;
+  onSelectQueueKey: (runId: string) => void;
   /** `1`–`4` — the tabs the OPEN run advertises, in the panel's own order */
   panelTabs: readonly PanelTab[];
   onTab: (tab: PanelTab) => void;
@@ -68,10 +68,10 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
     onCyclePanelMode,
     panelMode,
     onMinimisePanel,
-    visibleRunIds,
-    attentionRunIds,
-    selectedRunId,
-    onSelectRun,
+    visibleQueueKeys,
+    attentionQueueKeys,
+    selectedQueueKey,
+    onSelectQueueKey,
     panelTabs,
     onTab,
   } = bindings;
@@ -99,17 +99,17 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
       }
 
       if (action === "next" || action === "previous") {
-        const next = stepSelection(visibleRunIds, selectedRunId, action);
+        const next = stepSelection(visibleQueueKeys, selectedQueueKey, action);
         if (next === undefined) return;
         event.preventDefault();
-        onSelectRun(next);
+        onSelectQueueKey(next);
         return;
       }
       if (action === "attention") {
-        const next = nextAttention(visibleRunIds, attentionRunIds, selectedRunId);
+        const next = nextAttention(visibleQueueKeys, attentionQueueKeys, selectedQueueKey);
         if (next === undefined) return;
         event.preventDefault();
-        onSelectRun(next);
+        onSelectQueueKey(next);
         return;
       }
       if (event.key === "Escape") {
@@ -143,10 +143,10 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
     onCyclePanelMode,
     panelMode,
     onMinimisePanel,
-    visibleRunIds,
-    attentionRunIds,
-    selectedRunId,
-    onSelectRun,
+    visibleQueueKeys,
+    attentionQueueKeys,
+    selectedQueueKey,
+    onSelectQueueKey,
     panelTabs,
     onTab,
   ]);

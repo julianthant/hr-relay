@@ -17,7 +17,6 @@ import {
 } from "../../../src/rules/identity/ids.js";
 import { RunEnvelopeSchema } from "../../../src/models/run/envelope.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
-import { WorkerLeaseRecordSchema } from "../../../src/models/run/worker.js";
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { QUEUED_RUN, RUN_ENVELOPE, WORKER_ID, WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { HASH_A, HASH_B, NOW, UUID_1, UUID_3 } from "../../support/fixtures/phase1c-contract-fixtures.js";
@@ -82,23 +81,6 @@ describe("no positional identity", () => {
     // The refusal is shape-scoped, not a ban on hyphens or hex words.
     assert.equal(WorkerIdSchema.safeParse("worker-1").success, true);
     assert.equal(WorkerIdSchema.safeParse("abcdef01-2345-6789").success, true);
-  });
-
-  it("refuses a worker lease that identifies itself with a run id", () => {
-    assert.throws(
-      () => WorkerLeaseRecordSchema.parse({
-        workerId: UUID_TEXT,
-        workflow: WORKFLOW_ID,
-        processId: 1,
-        leaseGeneration: 1,
-        lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: NOW },
-        control: { directive: "run", requestedAt: NOW, requestedBy: "local-operator" },
-        version: 1,
-        createdAt: NOW,
-        updatedAt: NOW,
-      }),
-      /must not be a UUID/,
-    );
   });
 
   it("refuses a run whose identity or attempt is positional", () => {

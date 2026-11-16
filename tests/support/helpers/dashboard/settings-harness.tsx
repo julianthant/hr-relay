@@ -1,9 +1,7 @@
+import { PREFERENCES_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { FixtureCommandBinding } from "./command-binding.js";
 import type { SettingsSaveNotice, SettingsSaveProblem } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -13,8 +11,7 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatc
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { boundProfileCredentials, createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { activeSettingsRuntimeIdentity } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { composeSettings } from "../../../../src/backend/app/composition/dashboard/settings.js";
 import { buildSettingsEditor } from "../../../../src/backend/runs/queries/settings-editor.js";
@@ -23,19 +20,18 @@ import { DashboardClientProvider } from "../../../../src/dashboard/state/client-
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { EditableSettingsSection } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor.js";
 import { SettingsAuthoritySection } from "../../../../src/dashboard/surfaces/settings/editor/settings-authorities.js";
-import { RoutesSection } from "../../../../src/dashboard/surfaces/settings/routes/settings-routes.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-export function syntheticSettingsAuthority() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "settings-surface-"));
+export async function syntheticSettingsAuthority(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  const profile = await profileFixture();
   const clock = manualClock(new Date("2026-09-13T12:00:00.000Z"));
-  const admission = RuntimeAdmission.syntheticRoots(root, join(root, "artifacts"));
-  const database = AuthorityDatabase.open(admission, { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
-  const credentials = createCredentialStore({ admission, stateRoot: root });
+  const admission = profile.admission;
+  const credentials = boundProfileCredentials(admission);
+  const database = AuthorityDatabase.open(admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock, undefined, undefined, undefined, credentials);
   const hostFacts = hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080" });
   const resolveConfigured = (settings: unknown) => resolveConfigWithProvenance(settings, hostFacts, clock);
   const resolved = resolveConfigured({});
-  database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
+  database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: 1,
     fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
     capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
   const composition = composeSettings({ database, clock, hostFacts, active: activeSettingsRuntimeIdentity,
@@ -44,10 +40,10 @@ export function syntheticSettingsAuthority() {
   const read = () => buildSettingsEditor(composition.routes.settingsEditor);
   const apply = (patch: SettingsPatch, revision = read().revision) => execute({ family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
   const protectedApply = (entries: unknown, revision = credentials.read().revision) => execute({ family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries } });
-  return { root, database, credentials, clock, execute, read, apply, protectedApply,
-    close: () => { database.close(); admission.release(); rmSync(root, { recursive: true, force: true }); } };
+  return { root: profile.workspace, database, credentials, clock, execute, read, apply, protectedApply,
+    close: async () => { database.close(); await profile.close(); } };
 }
-export async function mountSettingsHarness(authority: ReturnType<typeof syntheticSettingsAuthority>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
+export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof syntheticSettingsAuthority>>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
   const commands: unknown[] = [];
   const notices: SettingsSaveNotice[] = [];
   const problems: SettingsSaveProblem[] = [];
@@ -72,9 +68,8 @@ export async function mountSettingsHarness(authority: ReturnType<typeof syntheti
   let editor: ReturnType<typeof useEditableSettings> | undefined;
   function Harness({ sectionId }: { sectionId: string }) {
     editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), onSaved: notice => notices.push(notice), onSaveProblem: notice => problems.push(notice) });
-    if (sectionId === "routes") return createElement(RoutesSection, { editor });
     return ["credentials", "protected-store", "provider-env", "runtime-isolation"].includes(sectionId)
-      ? createElement(SettingsAuthoritySection, { editor, sectionId }) : createElement(EditableSettingsSection, { editor, sectionId });
+      ? createElement(SettingsAuthoritySection, { profileName: "Synthetic Operator", editor, sectionId }) : createElement(EditableSettingsSection, { editor, sectionId });
   }
   const render = async (sectionId: string, show = true, requestKey = 0): Promise<void> => { await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, children: show ? createElement(Harness, { sectionId }) : null }) })); }); };
   await render(section);

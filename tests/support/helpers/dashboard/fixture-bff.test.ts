@@ -1,6 +1,7 @@
-import { fixtureIntakePresentation } from "../../../parity/helpers/fixture-intake-routes.js";
-import { fixturePreflightReport } from "../../../parity/helpers/fixture-preflight-routes.js";
-import { DEFAULT_DASHBOARD_PROFILE } from "../../../parity/helpers/fixture-profile.js";
+import { isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
+import { fixtureIntakePresentation } from "../../../mocks/helpers/fixture-intake-routes.js";
+import { fixturePreflightReport } from "../../../mocks/helpers/fixture-preflight-routes.js";
+import { DEFAULT_DASHBOARD_PROFILE } from "../../../mocks/helpers/fixture-profile.js";
 
 import { mkdtempSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +15,7 @@ FIXTURE_DAY_WIRE,
 FIXTURE_IDS,
 FIXTURE_RUN_DETAILS,
 FIXTURE_SECTIONS,
-} from "../../../parity/helpers/fixture-day.js";
+} from "../../../mocks/helpers/fixture-day.js";
 import {
 FIXTURE_INTAKE_MAPPING,
 FIXTURE_INTAKE_VALIDATED,
@@ -90,9 +91,9 @@ describe("intake fixture corpus", () => {
   });
 });
 
-describe("parity fixture corpus", () => {
+describe("mock fixture corpus", () => {
   it("keeps count semantics: statusCounts recount exactly from non-member surfaces", () => {
-    const countable = FIXTURE_DAY_WIRE.queueSurfaces.filter((surface) => surface.surfaceKind !== "member");
+    const countable = FIXTURE_DAY_WIRE.queueSurfaces.filter((surface) => isQueueTopLevel(surface));
     const recount = new Map<string, number>();
     for (const surface of countable) {
       recount.set(surface.status, (recount.get(surface.status) ?? 0) + 1);
@@ -139,8 +140,9 @@ describe("parity fixture corpus", () => {
       expect(operation.memberRollup.terminal).toBeLessThanOrEqual(operation.memberRollup.total);
       for (const memberId of operation.memberRunIds) {
         const member = byId.get(memberId);
-        expect(member?.surfaceKind).toBe("member");
-        expect(member?.lineage).toEqual({ state: "child", parentRunId: operation.runId });
+        expect(member?.surfaceKind).toBe("single");
+        expect(member?.parent?.runId).toBe(operation.runId);
+        expect(member?.parent?.visibility).toBe("inline");
       }
     }
   });
@@ -152,7 +154,7 @@ describe("parity fixture corpus", () => {
   });
 
   it("serves the corpus over real HTTP from an ephemeral port", async () => {
-    const distDir = mkdtempSync(join(tmpdir(), "hrauto-parity-dist-"));
+    const distDir = mkdtempSync(join(tmpdir(), "hrauto-mock-dist-"));
     writeFileSync(join(distDir, "index.html"), "<!doctype html><title>probe</title>");
 
     const server = await startFixtureServer({

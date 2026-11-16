@@ -1,5 +1,3 @@
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { OperationSourceRequestSchema, OperationSourceResponseSchema, type OperationSourceRequest, type OperationSourceResponse } from "../../../models/dashboard/operation-structure.js";
 import { ItemAttemptHistoryResponseSchema, type ItemAttemptHistoryResponse } from "../../../models/dashboard/item-attempt-history.js";
 import { DiagnosticBundleWireSchema, type DiagnosticBundleWire } from "../../../models/dashboard/diagnostic-bundle.js";
 import { RunDetailSectionResponseSchema, RunDetailWireSchema, type RunDetailSectionResponse, type RunDetailWire } from "../../../models/dashboard/run-detail.js";
@@ -19,8 +17,6 @@ function runIdentityError(context: string, code: string, requestedRunId: string)
 
 
 export interface DetailQueries {
-  operationSource(runId: string, request: OperationSourceRequest, signal?: AbortSignal): Promise<OperationSourceResponse>;
-
   runDetail(runId: string, signal?: AbortSignal): Promise<RunDetailWire>;
 
   runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal): Promise<RunDetailSectionResponse>;
@@ -46,17 +42,6 @@ export interface DetailQueries {
 }
 
 export function createDetailQueries(transport: DashboardTransport): DetailQueries { return Object.freeze({
-
-    async operationSource(runId: string, request: OperationSourceRequest, signal?: AbortSignal): Promise<OperationSourceResponse> {
-      const parsed = OperationSourceRequestSchema.parse(request);
-      const path = `/api/v1/runs/${encodeURIComponent(runId)}/operation-source?request=${encodeURIComponent(JSON.stringify(parsed))}`;
-      const response = parseOrThrow(OperationSourceResponseSchema, `GET ${path}`, await transport.requestJson(path, signal === undefined ? undefined : { signal }));
-      if (response.state === "found" && !response.structure.observations.some((observation) => {
-        const { value: _value, ...identity } = observation.occurrence;
-        return canonicalJsonStringify(identity) === canonicalJsonStringify(parsed.identity);
-      })) throw runIdentityError("operation source", "OPERATION_SOURCE_IDENTITY_MISMATCH", runId);
-      return response;
-    },
 
     async runDetail(runId: string, signal?: AbortSignal): Promise<RunDetailWire> {
       const context = `GET /api/v1/runs/${runId}`;

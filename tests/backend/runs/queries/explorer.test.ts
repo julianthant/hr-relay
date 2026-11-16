@@ -1,40 +1,40 @@
 
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
+import { describe, it } from "vitest";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { READABLE_WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import {
-EXPLORER_SOURCE_ROOT,
-buildWorkflowExplorer,
-readScenarioSources,
-type ExplorerModuleView,
+  EXPLORER_SOURCE_ROOT,
+  buildWorkflowExplorer,
+  readScenarioSources,
+  type ExplorerModuleView,
 } from "../../../../src/backend/runs/queries/explorer.js";
 import {
-ExplorerWorkflowOverrideSchema,
-ExplorerWorkflowWireSchema,
-WorkflowExplorerWireSchema,
-type ExplorerProvenanceWire,
+  ExplorerContractFieldWireSchema,
+  ExplorerWorkflowWireSchema,
+  WorkflowExplorerWireSchema,
+  type ExplorerProvenanceWire,
 } from "../../../../src/models/dashboard/explorer.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import {
-DelegationEdgeIdSchema,
-FingerprintSchema,
-ItemIdSchema,
-WorkflowIdSchema,
+  DelegationEdgeIdSchema,
+  FingerprintSchema,
+  ItemIdSchema,
+  WorkflowIdSchema,
 } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
-import { workflowSourcePath } from "../../../../src/workflow-kit/validation/source-layout.js";
 import {
-compileWorkflow,
-composeWorkflowModule,
+  compileWorkflow,
+  composeWorkflowModule,
 } from "../../../../src/workflow-kit/workflow-definition.js";
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
-import { separationsKualiReadWorkflow } from "../../../../src/workflows/separations/steps/kuali-extraction/step.js";
+import { registration as separationsKualiReadWorkflowRegistration } from "../../../../src/workflows/separations/index.js";
 import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
+const separationsKualiReadWorkflow = separationsKualiReadWorkflowRegistration.proofs[1].definition;
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 const HASH = FingerprintSchema.parse("c".repeat(64));
@@ -58,6 +58,62 @@ function separationsExplorerEntry() {
 }
 
 describe("compiled Explorer declaration binding", () => {
+  it("links newly readable I-9 Check and OnBase contracts to their task-owned source files", () => {
+    const tasks = allTasks();
+    for (const name of ["read-match-outcome", "read-retention-row"]) {
+      const task = tasks.find(task => task.taskId === `workflow:i9-check/${name}`); assert.ok(task, name);
+      assert.deepEqual(task.contractSource, { state: "resolved", path: `src/models/workflows/i9-check/${name}.ts` });
+      assert.deepEqual(task.implSource, { state: "resolved", path: `src/workflows/i9-check/tasks/${name}.ts` });
+    }
+    for (const name of ["read-source-page", "stage-import", "upload-import"]) {
+      const task = tasks.find(task => task.taskId === `onbase/${name}`); assert.ok(task, name);
+      assert.deepEqual(task.contractSource, { state: "resolved", path: `src/models/systems/onbase/${name}.ts` });
+      assert.deepEqual(task.implSource, { state: "resolved", path: `src/backend/systems/onbase/tasks/${name}.ts` });
+    }
+  });
+
+  it("links the registered I-9 lookup and profile-plan contracts to their exact source owners", () => {
+    const tasks = allTasks();
+    for (const operation of ["read-i9-lookup", "read-i9-profile-plan"]) {
+      const task = tasks.find(task => task.taskId === `workflow:onboarding/${operation}`);
+      assert.ok(task);
+      assert.deepEqual(task.contractSource, { state: "resolved", path: `src/models/workflows/onboarding/${operation}.ts` });
+      assert.deepEqual(task.implSource, { state: "resolved", path: `src/workflows/onboarding/tasks/${operation}.ts` });
+    }
+  });
+
+  it("links every served hire contract to its canonical fingerprinted source owner", () => {
+    const tasks = allTasks();
+    for (const name of ["read-hire-findings", "read-hire-receipt", "stage-hire", "create-hire"]) {
+      const task = tasks.find(task => task.taskId === `ucpath/${name}`); assert.ok(task, name);
+      assert.deepEqual(task.contractSource, { state: "resolved", path: `src/models/systems/ucpath/${name}.ts` });
+    }
+  });
+
+  it("retains the authored onboarding branch in the strict definition preview and graph", () => {
+    const workflow = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH)).workflows.find(workflow => workflow.id === "onboarding");
+    assert.ok(workflow?.definitionPreview.state === "compiled");
+    const entry = workflow.definitionPreview.groups.flatMap(group => group.entries).find(entry => entry.id === "i9-route");
+    assert.deepEqual(entry, { id: "i9-route", kind: "branch", nodeIds: ["i9-route"], dependsOn: ["write-plan"], taskIds: [] });
+    const node = workflow.nodes.find(node => node.id === "i9-route");
+    assert.deepEqual(node?.shape, { kind: "branch", cases: [
+      { name: "create", nodes: ["i9-profile-save", "i9-remote-create", "hire-create", "hire-receipt", "master-results"] },
+      { name: "existing", nodes: ["i9-profile-plan", "concurrent-hire-create", "concurrent-hire-receipt", "concurrent-master-results"] },
+    ] });
+    assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...workflow, definitionPreview: { ...workflow.definitionPreview,
+      groups: [{ ...workflow.definitionPreview.groups[0], entries: [{ ...entry, kind: "unsupported" }] }] } }).success, false);
+  });
+
+  it("preserves the empty-string literals in registered I-9 contracts", () => {
+    const task = allTasks().find(task => task.taskId === "workflow:onboarding/read-i9-lookup");
+    assert.ok(task);
+    const signer = task.fields.find(field => field.side === "output" && field.path === "result.signerName");
+    assert.ok(signer);
+    assert.deepEqual(signer.options, [""]);
+    assert.equal(ExplorerContractFieldWireSchema.safeParse({ ...signer, options: [] }).success, false);
+    assert.equal(ExplorerContractFieldWireSchema.safeParse({ ...signer, options: [null] }).success, false);
+  });
+
   it("refuses a different definition beside the descriptor and names a descriptor without one", () => {
     const deps = explorerQueryDeps(CLOCK, HASH);
     const first = deps.modules[0];
@@ -216,15 +272,6 @@ function syntheticDelegationExplorerWire() {
   return buildWorkflowExplorer({
     ...deps,
     modules: [module],
-    buildManifest: {
-      workflows: [
-        {
-          id: String(descriptor.id),
-          sources: [{ path: workflowSourcePath(String(descriptor.id), role) }],
-        },
-      ],
-      tasks: [],
-    },
   });
 }
 
@@ -321,52 +368,20 @@ describe("the contract field census", () => {
   });
 });
 
-describe("Explorer presentation override readback", () => {
-  it("hot-applies only an exact descriptor-bound override and serves its revision", () => {
-    const deps = explorerQueryDeps(CLOCK, HASH);
-    const descriptor = deps.modules.find(
-      ({ descriptor }) => String(descriptor.id) === "person-lookup",
-    )?.descriptor;
-    assert.ok(descriptor !== undefined);
-    const wire = buildWorkflowExplorer({
-      ...deps,
-      overrides: {
-        readAll: () => [
-          ExplorerWorkflowOverrideSchema.parse({
-            overrideVersion: 1,
-            workflowId: descriptor.id,
-            descriptorVersion: descriptor.version,
-            contractFingerprint: descriptor.contractFingerprint,
-            revision: 3,
-            appliedCommandId: "11111111-1111-4111-8111-111111111111",
-            commandFingerprint: "a".repeat(64),
-            presentation: {
-              label: "People search",
-              icon: "Users",
-              category: "operations",
-            },
-          }),
-        ],
-      },
-    });
-    const workflow = wire.workflows.find(
-      ({ id }) => String(id) === "person-lookup",
-    );
-    assert.ok(workflow !== undefined);
-
-    assert.equal(workflow.label, "People search");
-    assert.equal(workflow.icon, "Users");
-    assert.equal(workflow.category, "operations");
-    assert.equal(workflow.edit.overrideRevision, 3);
-    assert.deepEqual(workflow.edit.presentation.timeline, {
-      state: "unavailable",
-      reason:
-        "timeline presentation has no complete hot-apply reader; it remains descriptor-owned",
-    });
-  });
-});
-
 describe("the workflow explorer projection", () => {
+  it("serves descriptor presentation without editor authority", () => {
+    const deps = explorerQueryDeps(CLOCK, HASH);
+    const wire = buildWorkflowExplorer(deps);
+    for (const entry of wire.workflows) {
+      const descriptor = deps.modules.find(module => module.descriptor.id === entry.id)?.descriptor;
+      assert.ok(descriptor);
+      assert.equal(entry.label, descriptor.label);
+      assert.equal(entry.icon, descriptor.icon);
+      assert.equal(entry.category, descriptor.category);
+      assert.equal("edit" in entry, false);
+    }
+  });
+
   it("links workflow mini-store implementations to their backend workflow-task homes", () => {
     const expected = [
       [
@@ -486,7 +501,7 @@ describe("the workflow explorer projection", () => {
     if (resolveAction.purpose.state !== "authored") return;
     assert.match(
       resolveAction.purpose.text,
-      /refuses two actions for one number/u,
+      /Find the Kuali separation action/u,
     );
   });
 
@@ -498,11 +513,15 @@ describe("the workflow explorer projection", () => {
     );
     assert.deepEqual(
       wire.workflows.map((workflow) => String(workflow.id)),
-      WORKFLOW_MODULES.map((module) => String(module.descriptor.id)),
+      READABLE_WORKFLOW_MODULES.map((module) => String(module.descriptor.id)),
     );
     assert.deepEqual(roles.get("separations"), { kind: "composition" });
     assert.equal(roles.has("separations-kuali-read"), false);
-    assert.deepEqual(roles.get("person-lookup"), { kind: "standalone" });
+    assert.deepEqual(roles.get("person-lookup"), { kind: "composition" });
+    assert.deepEqual(roles.get("onboarding"), { kind: "composition" });
+    assert.deepEqual(roles.get("emergency-contact"), { kind: "composition" });
+    assert.deepEqual(roles.get("emergency-contact-member"), { kind: "composition" });
+    assert.equal(roles.has("onboarding-i9-search"), false);
     assert.deepEqual(
       wire.workflows.flatMap((workflow) =>
         workflow.nodes
@@ -512,9 +531,11 @@ describe("the workflow explorer projection", () => {
           )
           .map(({ id }) => `${String(workflow.id)}:${String(id)}`),
       ),
-      [],
+      ["onboarding:i9-lookup-child", "onboarding:i9-route", "i9-check-start:read-documents", "i9-check-start:check-people", "emergency-contact:read-document", "emergency-contact:members",
+        "ocr:read-pages", "ocr:lookup-identities", "ocr:lookup-signers"],
+
     );
-    for (const module of WORKFLOW_MODULES) {
+    for (const module of READABLE_WORKFLOW_MODULES) {
       const projected = wire.workflows.find(
         ({ id }) => id === module.descriptor.id,
       );
@@ -546,7 +567,7 @@ describe("the workflow explorer projection", () => {
     );
     const withHarness = buildWorkflowExplorer({
       ...explorerQueryDeps(CLOCK, HASH),
-      modules: [...WORKFLOW_MODULES, harness],
+      modules: [...READABLE_WORKFLOW_MODULES, harness],
     });
     const harnessRoles = new Map(
       withHarness.workflows.map((workflow) => [
@@ -573,6 +594,21 @@ describe("the workflow explorer projection", () => {
       JSON.stringify(orphaned.error?.issues ?? []),
       /is served as a chunk harness of separations/u,
     );
+  });
+
+  it("projects the registered Onboarding delegation and its readable child without a start surface", () => {
+    const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const onboarding = wire.workflows.find(workflow => workflow.id === "onboarding");
+    assert.ok(onboarding);
+    const lookup = wire.workflows.find(workflow => workflow.id === "i9-lookup"); assert.ok(lookup);
+    assert.equal(lookup.surfaces.inputRun.state, "absent");
+    const child = onboarding.nodes.find(node => node.id === "i9-lookup-child");
+    assert.ok(child);
+    assert.deepEqual(child.shape, {
+      kind: "child-run", edgeId: "onboarding-i9-lookup", targetWorkflowId: "i9-lookup", cardinality: "many",
+      await: "terminal", join: "all-settled", onChildFailed: "allow-partial", cascadeCancel: "cascade",
+      afterChildRetry: "resume-parent", visibility: "inline",
+    });
   });
 
   it("projects typed branch and repeated child-call metadata without fabricating unavailable child detail", () => {

@@ -1,19 +1,23 @@
+import { afterAll } from "vitest";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
-import { PersonLookupResultSchema } from "../../../../src/workflows/person-lookup/workflow.js";
+import { PersonLookupResultSchema } from "../../../../src/models/workflows/person-lookup/result.js";
 import { RUN_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld();
+const profiles = createProfileFixtureSet();
+afterAll(() => profiles.close());
+const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld(profiles.create);
 
 afterEach(cleanup);
 
 describe("person-lookup full walk", () => {
 
   it("includes crm-dates when the operator asked for it", async () => {
-    const harness = executorHarness();
+    const harness = await executorHarness();
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(
       database,

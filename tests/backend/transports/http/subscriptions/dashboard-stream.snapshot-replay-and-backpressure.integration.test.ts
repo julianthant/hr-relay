@@ -1,16 +1,21 @@
-import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { afterAll, afterEach, describe, it, vi } from "vitest";
+import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
+
 import { createRunQueueProjection } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
-import { admitDirectWorker } from "../../../../../src/backend/storage/sqlite/worker-slots.js";
-import { bindWorkerProcessAdmission, type RuntimeProcessLockHandle } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { admitFixtureSlot } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { runningWorkerView } from "../../../../support/helpers/backend/fake-worker-port.js";
+import type { WorkerMemberView } from "../../../../../src/backend/runtime/workers/worker-pool.js";
+
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
 import { BackfillGapObservationSchema } from "../../../../../src/backend/runs/notifications/backfill-gap.js";
 import { createDashboardStreamHub,type DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
-import { applyDashboardDayPatch } from "../../../../../src/dashboard/client/index.js";
+import { applyDashboardDayPatch, createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
+import { RunRecordSchema } from "../../../../../src/models/run/record.js";
+import { WorkerBrowserObservationSchema } from "../../../../../src/models/run/worker-control.js";
 import type { DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import type { DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import { NotificationRecordSchema } from "../../../../../src/models/notifications/notifications.js";
@@ -25,9 +30,12 @@ uuidOf,
 type DashboardWorld,
 } from "../../../../support/helpers/backend/dashboard-harness.js";
 
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+
 const worlds: DashboardWorld[] = [];
 const hubs: DashboardStreamHub[] = [];
-const workerHandles: RuntimeProcessLockHandle[] = [];
+const workers = new Map<DashboardWorld["database"], Map<string, WorkerMemberView>>();
 
 const VALIDATING_BACKFILL_GAPS = {
   detected: (input: unknown) => Promise.resolve({
@@ -36,8 +44,8 @@ const VALIDATING_BACKFILL_GAPS = {
   }),
 };
 
-function harness(nativeWorkers = false): { w: DashboardWorld; hub: DashboardStreamHub } {
-  const original = makeWorld();
+async function harness(nativeWorkers = false): Promise<{ w: DashboardWorld; hub: DashboardStreamHub }> {
+  const original = await makeWorld({ profileFixture: profileFixtures.create });
   const projection = nativeWorkers ? createRunQueueProjection({
     timeline: original.timeline, reader: original.runReader, stateRoot: original.stateRoot, clock: original.clock,
     appVersion: "0.1.0", descriptorSetHash: original.projection.descriptorSetHash(),
@@ -45,11 +53,7 @@ function harness(nativeWorkers = false): { w: DashboardWorld; hub: DashboardStre
     authority: { ...original.authority,
       listWorkerSlots: () => original.database.authority.workerSlots.list(),
       listWorkerRuns: workerId => original.database.authority.runs.listByWorker(workerId),
-      workerOwnerAlive: lease => original.database.workerLifetimeCustody(lease.workerId).state === "alive",
-      workerControls: () => original.database.authority.workerControls.list(),
-      workerBrowsers: workerId => original.database.authority.workerControls.browsers(workerId),
-      getWorkerLease: workerId => original.database.authority.workerLeases.get(workerId),
-      listLiveWorkerLeases: () => original.database.authority.workerLeases.listLive(),
+      workerMembers: () => [...workers.get(original.database)?.values() ?? []],
       listWorkerPools: () => original.database.authority.workerPools.list(),
     }, descriptors: { resolve: workflow => workflow === personLookupDescriptor.id ? personLookupDescriptor : undefined },
   }) : original.projection;
@@ -66,29 +70,17 @@ function harness(nativeWorkers = false): { w: DashboardWorld; hub: DashboardStre
   return { w, hub };
 }
 
-afterEach(() => {
+afterEach(async () => {
   for (const hub of hubs.splice(0)) hub.close();
-  for (const handle of workerHandles.splice(0)) handle.release();
-  for (const w of worlds.splice(0)) w.dispose();
+  workers.clear();
+  for (const w of worlds.splice(0)) await w.dispose();
 });
 
 function admitOwnedWorker(w: DashboardWorld) {
-  const authorityPath = join(w.stateRoot, "authority.db"), processLockRoot = join(w.stateRoot, "locks");
-  const bound = bindWorkerProcessAdmission({ authorityPath, processLockRoot, clock: w.clock, pid: process.pid,
-    open: () => w.database, close: () => {},
-    admit: (database, processAcquisitionId) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-      commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1,
-      expectedPoolVersion: repositories.workerPools.get(personLookupDescriptor.id)?.version ?? 0,
-      processId: process.pid, processAcquisitionId, authorityPath, processLockRoot, now: w.clock.now().toISOString(),
-    }, randomUUID()).workerId),
-  });
-  workerHandles.push(bound.processLock);
-  const started = w.database.startOwnedWorker({ workerId: bound.workerId, workflow: personLookupDescriptor.id,
-    browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now: w.clock.now().toISOString() }, bound.processLock);
-  assert.equal(started.state, "started");
-  if (started.state !== "started") throw new Error("worker fixture did not start");
-  assert.equal(w.database.workerLifetimeCustody(bound.workerId).state, "alive");
-  return started.lease;
+  const slot = w.database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, personLookupDescriptor.id, 1, w.clock.now().toISOString()));
+  const owned = workers.get(w.database) ?? new Map<string, WorkerMemberView>();
+  owned.set(slot.workerId, runningWorkerView(slot)); workers.set(w.database, owned);
+  return { slot, owned };
 }
 
 /** Pull every envelope the hub has queued for this connection, in order. */
@@ -112,8 +104,48 @@ function applyEnvelope(day: DashboardDayWire | undefined, envelope: DashboardStr
 }
 
 describe("dashboard stream hub", () => {
+  it("delivers a buffered multi-run timeline page to the real client without a reconnect or dropped row", async () => {
+    const { w, hub } = await harness();
+    queuedEventOf(w, { seed: 1 }); queuedEventOf(w, { seed: 2 });
+    claimEventOf(w, 1); claimEventOf(w, 2);
+    const connection = await hub.connect({ day: DAY });
+    const days: DashboardDayWire[] = [];
+    let output: ReadableStreamDefaultController<Uint8Array> | undefined;
+    let fetches = 0, reconnects = 0;
+    const send = (envelopes: readonly DashboardStreamEnvelope[]) => {
+      assert.ok(output);
+      for (const envelope of envelopes) output.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(envelope)}\n\n`));
+    };
+    const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => {
+      fetches++;
+      return new Response(new ReadableStream<Uint8Array>({ start(controller) { output = controller; send(connection.initial); } }),
+        { headers: { "content-type": "text/event-stream" } });
+    } });
+    const subscription = client.subscribeDay({ day: DAY, onDay: day => days.push(day), onState: () => {},
+      schedule: () => { reconnects++; return () => {}; } });
+    try {
+      await vi.waitFor(() => assert.equal(days.length, 1));
+      const before = days[0];
+      const buffered = { ...w, writer: createTimelineEmitter({ repository: w.timeline, clock: w.clock, pid: 777 }) };
+      taskEventsOf(buffered, 1, "searching", "done"); taskEventsOf(buffered, 2, "searching", "done");
+      w.projection.ingestFromTimeline();
+      const live = await drain(connection);
+      assert.deepEqual(live.map(envelope => envelope.type), ["snapshot"]);
+      send(live);
+      await vi.waitFor(() => assert.equal(days.length, 2));
+      const current = days.at(-1); assert.ok(current);
+      assert.deepEqual(current, JSON.parse(JSON.stringify(w.projection.buildDashboardDayWire(DAY))));
+      assert.equal(Number(current.snapshotCursor.slice(3)), Number(before.snapshotCursor.slice(3)) + 4);
+      for (const seed of [1, 2]) {
+        assert.equal(w.projection.runFold(uuidOf(seed))?.taskSpans.at(-1)?.outcome, "done");
+        assert.notDeepEqual(current.queueSurfaces.find(row => row.runId === uuidOf(seed))?.pipeline,
+          before.queueSurfaces.find(row => row.runId === uuidOf(seed))?.pipeline);
+      }
+      assert.equal(reconnects, 0); assert.equal(fetches, 1);
+    } finally { subscription.close(); connection.close(); }
+  });
   it("opens with hello -> snapshot -> health and stamps the projection identity", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({ day: DAY });
     const [hello, snapshot, health] = connection.initial;
@@ -126,7 +158,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("EXIT: snapshot + any valid live envelope sequence equals a fresh snapshot", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({ day: DAY });
     let local: DashboardDayWire | undefined;
@@ -160,9 +192,30 @@ describe("dashboard stream hub", () => {
     connection.close();
   });
 
+  it("refreshes a prior-day parent view when its later-day inline child changes", async () => {
+    const { w, hub } = await harness();
+    queuedEventOf(w, { seed: 71, shape: "operation", enqueuedAt: "2026-08-02T17:00:00.000Z" });
+    queuedEventOf(w, { seed: 72, shape: "operation-member", parentSeed: 71 });
+    const connection = await hub.connect({ day: "2026-08-02" });
+    let local: DashboardDayWire | undefined;
+    for (const envelope of connection.initial) local = applyEnvelope(local, envelope);
+    assert.equal(local?.queueSurfaces.find(row => row.runId === uuidOf(72))?.status, "queued");
+    const child = w.authority.getRun(uuidOf(72)); assert.ok(child);
+    w.authority.put(RunRecordSchema.parse({ ...child, version: child.version + 1, claimGeneration: 1,
+      lifecycle: { state: "running", workerId: "person-lookup-worker-1", claimedAt: w.clock.now().toISOString(), heartbeatAt: w.clock.now().toISOString() } }));
+    claimEventOf(w, 72);
+    const updates = await drain(connection);
+    assert.ok(updates.some(envelope => envelope.type === "snapshot"));
+    for (const envelope of updates) local = applyEnvelope(local, envelope);
+    assert.equal(local?.queueSurfaces.find(row => row.runId === uuidOf(72))?.status, "running");
+    const fresh = w.projection.buildDashboardDayWire("2026-08-02");
+    assert.deepEqual({ ...local, snapshotCursor: "pc:1" }, { ...fresh, snapshotCursor: "pc:1" });
+    connection.close();
+  });
+
   it("resnapshots worker cards when a browser session opens", async () => {
-    const { w, hub } = harness(true);
-    const lease = admitOwnedWorker(w);
+    const { w, hub } = await harness(true);
+    const { slot, owned } = admitOwnedWorker(w);
     const connection = await hub.connect({ day: DAY });
     const observed: DashboardStreamEnvelope[] = [];
     const workerPath = "worker/person-lookup/person-lookup-worker-1";
@@ -177,10 +230,10 @@ describe("dashboard stream hub", () => {
       name: "person-lookup",
     });
     const runtime = w.database.authority.runtimeConfig.get(); assert.ok(runtime);
-    w.database.authority.workerControls.observe({ workerId: lease.workerId, leaseGeneration: lease.leaseGeneration,
+    owned.set(slot.workerId, runningWorkerView(slot, { version: 1, browsers: [WorkerBrowserObservationSchema.parse({ workerId: slot.workerId,
       sessionId: uuidOf(50), system: "ucpath", instance: "prod", configFingerprint: runtime.configFingerprint,
       signInFingerprint: runtime.configFingerprint, browserMode: "headless", acceptDownloads: false, exclusive: false,
-      health: "unknown", openedAt: w.clock.now().toISOString(), observedAt: w.clock.now().toISOString(), profileRevision: 1 });
+      health: "unknown", openedAt: w.clock.now().toISOString(), observedAt: w.clock.now().toISOString(), profileRevision: 1 })] }));
     w.writer.emit({
       t: "span.started",
       kind: "browser",
@@ -200,20 +253,20 @@ describe("dashboard stream hub", () => {
     if (latest.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
     assert.deepEqual(latest.payload.workerCards[0]?.browsers, [
       { sessionId: uuidOf(50), system: "ucpath", openedAt: w.clock.now().toISOString(), observation: { state: "present", health: "unknown", instance: "prod", observedAt: w.clock.now().toISOString(),
-        browserMode: "headless", configFingerprint: runtime.configFingerprint } },
+        browserMode: "headless", configFingerprint: runtime.configFingerprint }, signIn: "unknown" },
     ]);
     connection.close();
   });
 
-  it("resnapshots worker cards when a lease moves without any span", async () => {
-    const { w, hub } = harness(true);
+  it("resnapshots worker cards when a pool member changes without any span", async () => {
+    const { w, hub } = await harness(true);
     const connection = await hub.connect({ day: DAY });
     const observed: DashboardStreamEnvelope[] = [];
     const [initial] = connection.initial.filter((envelope) => envelope.type === "snapshot");
     if (initial?.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
     assert.deepEqual(initial.payload.workerCards, []);
 
-    // A worker process wrote its lease and has not emitted its first span yet.
+    // A pool member started and has not emitted its first span yet.
     admitOwnedWorker(w);
     w.projection.reconcileWorkerAuthority();
 
@@ -222,17 +275,13 @@ describe("dashboard stream hub", () => {
     assert.ok(latest);
     if (latest.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
     assert.equal(latest.payload.workerCards.length, 1);
-    assert.equal(latest.payload.workerCards[0]?.state, "starting");
-    assert.deepEqual(latest.payload.workerCards[0]?.browserRequirements, {
-      state: "present",
-      systems: ["crm", "ucpath"],
-    });
+    assert.equal(latest.payload.workerCards[0]?.state, "idle");
     assert.deepEqual(latest.payload.workerCards[0]?.browsers, []);
     connection.close();
   });
 
   it("replays retained patches for a resumable cursor and never re-snapshots", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     const first = await hub.connect({ day: DAY });
@@ -252,7 +301,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("reports the exact historical cursor transition when a retained snapshot forces replacement", async () => {
-    const w = makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const observed: unknown[] = [];
     const hub = createDashboardStreamHub({
@@ -303,7 +352,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("resnapshots a cursor from an earlier projection generation without reporting missed history", async () => {
-    const w = makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const observed: unknown[] = [];
     const hub = createDashboardStreamHub({
@@ -333,7 +382,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("resnapshots a historical cursor without generation evidence without reporting missed history", async () => {
-    const w = makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const observed: unknown[] = [];
     const hub = createDashboardStreamHub({
@@ -358,7 +407,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("never pairs a hello from one generation with a snapshot captured after publish rebuilt projection", async () => {
-    const w = makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const hub: DashboardStreamHub = createDashboardStreamHub({
       projection: w.projection,
@@ -394,7 +443,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("captures the complete replacement snapshot after durable gap publication without projection movement", async () => {
-    const w = makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const counts = { beforePublication: -1, afterPublication: -1 };
     const hub = createDashboardStreamHub({
@@ -465,7 +514,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("refuses to serve a replacement handshake when durable gap publication fails", async () => {
-    const w = makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const hub = createDashboardStreamHub({
       projection: w.projection,
@@ -490,7 +539,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("serves a fresh snapshot for an expired or foreign cursor", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({
       day: DAY,
@@ -502,7 +551,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("broadcasts reset-required when the projection generation changes", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({ day: DAY });
     w.projection.rebuildFromTimeline();
@@ -514,7 +563,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("replaces an overflowing pending queue with one loud reset-required", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     const connection = await hub.connect({ day: DAY });
@@ -530,7 +579,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("greets a degraded projection with health degraded instead of a fabricated snapshot", async () => {
-    const { w } = harness();
+    const { w } = await harness();
     w.projection.apply({
       t: "run.claimed", ts: w.clock.now().toISOString(), workflow: "person-lookup", pid: 1,
       runId: uuidOf(60), attempt: 1, traceId: "pl-100000-6060", spanPath: "pl-100000-6060",
@@ -538,7 +587,7 @@ describe("dashboard stream hub", () => {
     } as never);
     // collectRebuilds is off, so the default schedule ran the rebuild
     // immediately and recovered; force a degraded state via corrupt storage.
-    const degradedWorld = makeWorld({ collectRebuilds: true });
+    const degradedWorld = await makeWorld({ profileFixture: profileFixtures.create, collectRebuilds: true });
     worlds.push(degradedWorld);
     const degradedHub = createDashboardStreamHub({
       projection: degradedWorld.projection,
@@ -559,7 +608,7 @@ describe("dashboard stream hub", () => {
     connection.close();
   });
   it("hands a live envelope straight to an outstanding next() and never queues past it", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     const connection = await hub.connect({ day: DAY });
@@ -572,7 +621,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("keeps a consumer that stops asking bounded: N > maxPending publishes leave one reset-required, then nothing", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
     const connection = await hub.connect({ day: DAY });
@@ -596,7 +645,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("resolves an outstanding next() with undefined when the connection or the hub closes", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const byConnection = await hub.connect({ day: DAY });
     const byHub = await hub.connect({ day: DAY });
@@ -612,7 +661,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("refuses a second concurrent next() instead of racing two consumers over one queue", async () => {
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
     const connection = await hub.connect({ day: DAY });
     const outstanding = connection.next();
@@ -622,7 +671,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("builds one snapshot per distinct day for a count-bearing change, however many subscribers share it", async () => {
-    const w = makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const builds: string[] = [];
     // A bound Proxy rather than a patched method: the projection keeps private
@@ -655,7 +704,7 @@ describe("dashboard stream hub", () => {
   });
   it("PREMISE: one projection batch stamps its patch and its snapshot with the same cursor, in that order", async () => {
 
-    const { w, hub } = harness();
+    const { w, hub } = await harness();
     w.writer.emit({
       t: "span.started",
       kind: "worker",

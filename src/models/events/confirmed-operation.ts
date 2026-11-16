@@ -104,7 +104,7 @@ export function reconstructConfirmedOperation(repositories: Readonly<{
   if (attempt.outcome.state === "committed") confirmation = {proof:attempt.outcome.completionProof,confirmedAt:attempt.outcome.confirmedAt};
   else if (attempt.outcome.state === "parked") {
     const intent = repositories.writeIntents.get(attempt.writeIntentId);
-    if (intent?.status !== "committed" || intent.resolution === undefined || facts.proofSource !== "operator-attestation"
+    if (intent?.status !== "committed" || intent.resolution === undefined || facts.proofSource !== "recovery-probe"
       || intent.idempotencyKey !== facts.idempotencyKey || intent.idempotencyKeyDigest !== facts.idempotencyKeyDigest) throw new Error("confirmed-history-parked-resolution-missing");
     authenticateParkedWriteResolution(intent,attempt,repositories.commands.get(intent.resolution.commandId),repositories.commandAudits.get(intent.resolution.auditId));
     confirmation = {proof:intent.completionProof,confirmedAt:intent.confirmedAt};

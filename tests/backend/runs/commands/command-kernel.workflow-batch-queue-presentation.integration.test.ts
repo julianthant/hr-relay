@@ -7,18 +7,19 @@ import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js
 import { appliedRunIds } from "../../../support/fixtures/operator-command-fixtures.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, rejectActiveDescriptor, createHarness, createPlan, startCommand } = createCommandKernelTestWorld();
+const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, createPlan, startCommand } = createCommandKernelTestWorld();
 
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 
 describe("workflow batch queue presentation", () => {
-  it("defaults multi-run starts to grouped and changes only presentation with a replay-safe audited command", () => {
-    const h = createHarness();
+  it("defaults multi-run starts to grouped and changes only presentation with a replay-safe audited command", async () => {
+    const h = await createHarness();
     const plan = createPlan(h, rejectActiveDescriptor, ["10800000", "10800001"]);
     const start = h.kernel.execute(startCommand(plan));
     const runIds = appliedRunIds(start);
@@ -40,8 +41,8 @@ describe("workflow batch queue presentation", () => {
     assert.equal(h.kernel.execute({ ...command, commandId: randomUUID(), target: { batchId, expectedVersion: 2 }, payload: { groupInQueue: true } }).state, "applied");
   });
 
-  it("defaults a single-run start to separate presentation", () => {
-    const h = createHarness();
+  it("defaults a single-run start to separate presentation", async () => {
+    const h = await createHarness();
     const result = h.kernel.execute(startCommand(createPlan(h, rejectActiveDescriptor, ["10800000"])));
     const batchId = h.database.authority.runs.get(appliedRunIds(result)[0] ?? "")?.sessionId;
     assert.ok(batchId);

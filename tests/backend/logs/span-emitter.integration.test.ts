@@ -23,7 +23,7 @@ afterEach(cleanup);
 describe("person-lookup full walk", () => {
 
   it("walks every declared node to sealed terminal success, skipping crm-results and crm-dates by condition", async () => {
-    const harness = executorHarness();
+    const harness = await executorHarness();
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
 
@@ -153,7 +153,7 @@ describe("failure, retry, and resume", () => {
         return output;
       },
     });
-    const harness = executorHarness({ sessions, stores: registryWithCrmSearch(retryingSearch), autoFireAtOrBelowMs: 2_500 });
+    const harness = await executorHarness({ sessions, stores: registryWithCrmSearch(retryingSearch), autoFireAtOrBelowMs: 2_500 });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
 
@@ -181,7 +181,7 @@ describe("failure, retry, and resume", () => {
   });
 
   it("emits every recorded point on the task's own span with original values", async () => {
-    const harness = executorHarness({ sessions: happySessionHarness() });
+    const harness = await executorHarness({ sessions: happySessionHarness() });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
@@ -250,7 +250,7 @@ describe("failure, retry, and resume", () => {
         .map(({ contract }) => ({ id: contract.id, effect: contract.effect })),
     });
 
-    const harness = executorHarness({ stores: registry });
+    const harness = await executorHarness({ stores: registry });
     const { database, clock } = harness.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });

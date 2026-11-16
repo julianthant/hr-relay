@@ -1,3 +1,4 @@
+import { RunClaimTokenSchema } from "../../../models/run/worker.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import {
@@ -16,8 +17,10 @@ import {
   WriteAttemptRecordSchema,
   WriteIntentRecordSchema,
   ParkedWriteResolutionBindingSchema,
+  ParkedWriteRecheckSchema,
 } from "../../../rules/write-safety/write-safety.js";
-import { RunClaimTokenSchema } from "./run-store-contracts.js";
+import { WriteParkCodeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
+import { WRITE_STATES, transitionWrite, type WriteEvent, type WriteStateKey } from "../../../rules/write-safety/write-transitions.js";
 import { RunRecordRefusalSchema } from "../../../models/config/authority.js";
 
 export const WriteFenceRecordsSchema = z.strictObject({
@@ -125,7 +128,7 @@ export const AtomicWriteCommitReportSchema = z.strictObject({
     && canonicalJsonStringify(outcome.completionProof) === canonicalJsonStringify(intent.completionProof);
   const resolved = outcome.state === "parked" && intent.resolution !== undefined
     && intent.resolution.writeAttemptId === report.attempt.writeAttemptId && intent.resolution.decision === "present"
-    && report.transaction.proofSource === "operator-attestation";
+    && report.transaction.proofSource === "recovery-probe";
   if ((!ordinary && !resolved) || !AtomicWriteCommitInputSchema.safeParse({writeIntentId:intent.writeIntentId,
     generation:intent.generation,completionProof:intent.completionProof,confirmedAt:intent.confirmedAt,
     outcome:report.committedSpan.outcome,transaction:report.transaction,committedSpan:report.committedSpan}).success
@@ -136,22 +139,16 @@ export const AtomicWriteCommitReportSchema = z.strictObject({
 
 export const ResolvedParkedWriteCommitInputSchema = z.strictObject({
   commit:AtomicWriteCommitInputSchema,checkpoint:RunCheckpointRecordSchema,
-  expectedIntentVersion:PositiveIntSchema,resolution:ParkedWriteResolutionBindingSchema,
+  expectedIntentVersion:PositiveIntSchema,resolution:ParkedWriteResolutionBindingSchema.extend({decision:z.literal("present")}),
+  claim: RunClaimTokenSchema,
 });
 
 export const ResolvedParkedWriteAbsenceInputSchema = z.strictObject({
   writeIntentId:WriteIntentIdSchema,generation:PositiveIntSchema,expectedIntentVersion:PositiveIntSchema,
-  settlement:WriteRetrySettlementSchema,resolution:ParkedWriteResolutionBindingSchema,
+  settlement:WriteRetrySettlementSchema,resolution:ParkedWriteResolutionBindingSchema.extend({decision:z.literal("absent")}),
 });
 
-/** Ref write-safety park codes — mirrors the parked intent/run vocabulary exactly. */
-export const WriteIntentParkCodeSchema = z.enum([
-  "unknown",
-  "ambiguous",
-  "present-proof-invalid",
-  "binding-invalid",
-  "operator-required",
-]);
+export const WriteIntentParkCodeSchema = WriteParkCodeSchema;
 
 /** CAS an `attempting` intent (and its current attempt) to `parked`. */
 export const WriteIntentParkRequestSchema = z.strictObject({
@@ -162,6 +159,14 @@ export const WriteIntentParkRequestSchema = z.strictObject({
   message: z.string().min(1),
   authorityReason: WriteAuthorityReasonSchema,
   now: IsoInstantSchema,
+});
+
+export const WriteRecheckRequestSchema = z.strictObject({
+  writeIntentId: WriteIntentIdSchema, generation: PositiveIntSchema, expectedVersion: PositiveIntSchema,
+  recheck: ParkedWriteRecheckSchema,
+});
+export const WriteRecheckParkRequestSchema = WriteIntentParkRequestSchema.safeExtend({
+  commandId: ParkedWriteRecheckSchema.shape.commandId,
 });
 
 // Retryable settlement requires typed stabilized absence or an explicit operator resolution.
@@ -245,3 +250,25 @@ export type WriteIntentRetrySettlementRequest = z.infer<typeof WriteIntentRetryS
 export type WriteRefenceInput = z.infer<typeof WriteRefenceInputSchema>;
 export type SequencedWriteCommitStep = z.infer<typeof SequencedWriteCommitStepSchema>;
 export type SequencedWriteCommitInput = z.infer<typeof SequencedWriteCommitInputSchema>;
+
+type WriteIntent = z.infer<typeof WriteIntentRecordSchema>;
+type WriteAttempt = z.infer<typeof WriteAttemptRecordSchema>;
+
+/** Keys an intent with its current attempt; a pair outside the transition table is corrupt authority. */
+export function writeStateKey(intent: WriteIntent, attempt: WriteAttempt | undefined): WriteStateKey {
+  const key = intent.status === "observed-present" ? intent.status : `${intent.status}/${attempt?.outcome.state ?? "missing"}`;
+  const state = WRITE_STATES.find((candidate) => candidate === key);
+  if (state === undefined) throw new Error(`write intent ${intent.writeIntentId} is ${key}, which is not a write state`);
+  return state;
+}
+
+/** The one place a write intent's status or its attempt's outcome state is decided: the transition table. */
+export function applyWriteTransition(intent: WriteIntent, attempt: WriteAttempt | undefined, event: WriteEvent) {
+  const state = writeStateKey(intent, attempt);
+  const next = transitionWrite(state, event);
+  if ("refused" in next || intent.status === "observed-present" || attempt === undefined) {
+    throw new Error(`write intent ${intent.writeIntentId} is ${state}; ${event.type} is refused (${"refused" in next ? next.refused : "write-settled-present"})`);
+  }
+  const slash = next.state.indexOf("/");
+  return Object.freeze({ intent, attempt, status: next.state.slice(0, slash), outcome: next.state.slice(slash + 1) });
+}

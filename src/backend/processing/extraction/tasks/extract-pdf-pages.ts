@@ -8,6 +8,7 @@ import { defineTask } from "../../../../workflow-kit/task.js";
 import {
   ExtractPdfPages,
   ExtractPdfPagesOutputSchema,
+  PDF_PAGE_LIMIT,
 } from "../../../../models/processing/extraction/extract-pdf-pages.js";
 
 // The pinned 2× render scale preserves small handwriting and deterministic output.
@@ -68,6 +69,10 @@ export const extractPdfPagesTask = defineTask(ExtractPdfPages, {
       );
     }
 
+    if (to - from + 1 > PDF_PAGE_LIMIT) {
+      return ctx.fail("too-many-pages", `pages ${String(from)}–${String(to)} exceed the ${String(PDF_PAGE_LIMIT)}-page limit`);
+    }
+
     const pages: { sourcePage: number; image: unknown }[] = [];
     let sourcePage = 0;
     for await (const rendered of document) {
@@ -83,7 +88,7 @@ export const extractPdfPagesTask = defineTask(ExtractPdfPages, {
 
     ctx.recordData([
       { direction: "read", field: "pageCount", value: pageCount },
-      { direction: "read", field: "renderedPages", value: pages.length },
+      { direction: "read", field: "pages", value: pages },
     ]);
 
     return ExtractPdfPagesOutputSchema.parse({ pageCount, pages });

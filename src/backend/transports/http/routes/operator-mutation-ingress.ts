@@ -22,6 +22,7 @@ export type OperatorIngressBodyPolicy = "json" | "opaque";
 
 export function operatorIngressAdmission(body: OperatorIngressBodyPolicy): MiddlewareHandler {
   return async (context, next) => {
+    if (context.req.method === "GET" || context.req.method === "HEAD") return next();
     const origin = context.req.header("origin");
     const allowedOrigin = allowedLoopbackOrigin(context.req.header("host"));
     if (allowedOrigin === undefined || origin !== allowedOrigin) {

@@ -1,3 +1,4 @@
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { createSeededDashboardWorld } from "../seeded-dashboard-world.js";
 import { claimEventOf, makeWorld, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "./dashboard-harness.js";
 
@@ -9,11 +10,11 @@ import { join } from "node:path";
 
 
 
-export function createRunQueueProjectionTestWorld() {
+export function createRunQueueProjectionTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
   const worlds: DashboardWorld[] = [];
 
-  function world(...args: Parameters<typeof makeWorld>): DashboardWorld {
-    const created = makeWorld(...args);
+  async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
+    const created = await makeWorld({ profileFixture, ...args[0] });
     worlds.push(created);
     return created;
   }
@@ -25,7 +26,7 @@ export function createRunQueueProjectionTestWorld() {
 
 
   function otherConnection(w: DashboardWorld, pid = 777) {
-    const database = AuthorityDatabase.open({ path: join(w.stateRoot, "authority.db"),
+    const database = AuthorityDatabase.open({ path: join(w.stateRoot, "state.db"),
       busyTimeoutMs: 500, migrationOwner: "projection-peer-fixture" }, w.clock);
     return { database, writer: createTimelineEmitter({ repository: database.authority.timelineEvents, clock: w.clock, pid }) };
   }
@@ -55,8 +56,8 @@ export function createRunQueueProjectionTestWorld() {
     }));
   }
 
-  const cleanup = () => {
-    for (const w of worlds.splice(0)) w.dispose();
+  const cleanup = async () => {
+    for (const w of worlds.splice(0)) await w.dispose();
   };
   return { worlds, world, runRecordOf, queuedEventOf, CLAIM, appendOther, seedWorld, otherConnection, seedExitRunShape, cleanup };
 }

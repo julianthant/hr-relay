@@ -12,8 +12,8 @@ afterEach(cleanup);
 describe("write fence claim admission", () => {
   for (const operation of ["fenceAttempt", "refenceRetryable"] as const) {
     for (const violation of ["released", "wrong-worker", "stale-generation", "claimed", "cancelled"] as const) {
-      it(`${operation} refuses ${violation} without changing write authority`, () => {
-        const h = harness();
+      it(`${operation} refuses ${violation} without changing write authority`, async () => {
+        const h = await harness();
         const { run, claim } = claimRunning(h.database, h.clock);
         const original = attemptingIntentFixture(run.envelope.runId);
         let fence = original;
@@ -22,7 +22,7 @@ describe("write fence claim admission", () => {
           h.database.authority.writeIntents.settleRetryable({ writeIntentId: original.intent.writeIntentId,
             generation: 1, expectedVersion: 1, now: WRITE_FIXTURE_NOW,
             settlement: { state: "operator-confirmed-absent", writeIntentId: original.intent.writeIntentId,
-              generation: 1, operator: "local-operator", confirmedAt: WRITE_FIXTURE_NOW, evidenceNote: "Synthetic absence" } });
+              generation: 1, operator: "local-operator", confirmedAt: WRITE_FIXTURE_NOW } });
           const bindingProof = { ...original.intent.bindingProof, proofId: UUID_6 };
           const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
           fence = { intent: { ...original.intent, generation: 2, version: 3, bindingProof, bindingProofDigest },
@@ -38,6 +38,7 @@ describe("write fence claim admission", () => {
         if (violation === "claimed") {
           assert.equal(h.database.authority.runs.requeue({ runId: run.envelope.runId, expectedVersion: run.version,
             claim, cause: "recovery", now: WRITE_FIXTURE_NOW }).state, "applied");
+          const member = h.database.authority.workerSlots.get(claim.workerId); assert.ok(member);
           const reclaimed = h.database.authority.runs.claimNext({ workflow: run.envelope.workflow,
             workerId: claim.workerId, now: WRITE_FIXTURE_NOW });
           assert.equal(reclaimed.state, "claimed");
@@ -64,7 +65,7 @@ describe("write fence claim admission", () => {
     }
   }
   it("refuses a released claim before creating an intent or clicking", async () => {
-    const h = harness();
+    const h = await harness();
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.onPrepare = () => {

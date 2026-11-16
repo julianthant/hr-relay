@@ -5,14 +5,18 @@ import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { DeletedRunRecordSchema, type RunDeleteInput } from "../../../models/run/deleted-run.js";
-import { DiagnosticAttachmentStorageRecordSchema } from "./storage-records.js";
+import { AUTHORITY_TABLE_REGISTRY } from "../../../models/config/authority.js";
+import { artifactReferencesIn, deletionArtifactReferenceMatcher } from "./artifact-references.js";
+import { DiagnosticBundleSchema } from "../../../models/trust/diagnostic.js";
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import type { ArtifactRef } from "../../../models/artifacts/artifacts.js";
-import type { RunRecord } from "../../../models/run/record.js";
+import { type PredecessorRunRecord } from "../../../models/run/record.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, WORKER_CUSTODY_SCHEMA_VERSION } from "./migrations.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
-import { runRecordFromRow } from "./run-record-row.js";
+import { predecessorRunRecordFromRow, runRecordFromRow } from "./run-record-row.js";
 import { timelineEventFromRow } from "./timeline-repository.js";
 import { commandFromRow } from "./command-record-row.js";
+import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessorCommandFromRow, predecessorCustodyRunRow } from "./worker-custody-predecessor.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { DeletionFilesSchema, deletedRunFromRow, type DeletionFileSchema } from "./deleted-run-row.js";
 
@@ -23,6 +27,12 @@ export class RunDeletionRefusedError extends Error {
   }
 }
 type FileEvidence = z.infer<typeof DeletionFileSchema>;
+export function deletionArtifactValues(database: DatabaseSync, table: string, row: Record<string, unknown>): readonly unknown[] {
+  const snapshot = table === "diagnostic_snapshots" ? row : table === "diagnostic_files"
+    ? database.prepare("SELECT * FROM diagnostic_snapshots WHERE id=?").get(z.string().parse(row.snapshot_id)) : undefined;
+  if (snapshot !== undefined && DiagnosticBundleSchema.parse(nativeOrdinaryRecordFromRow("diagnostic_snapshots", snapshot)).availability?.state === "purged") return [];
+  return Object.entries(row).flatMap(([column, value]) => column.endsWith("_json") && typeof value === "string" ? [JSON.parse(value) as unknown] : []);
+}
 function containsReference(value: unknown, checkpoint: z.infer<typeof RunCheckpointRecordSchema>, inheritedNodeId?: unknown): boolean {
   if (value === null || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some(item => containsReference(item,checkpoint,inheritedNodeId));
@@ -32,8 +42,7 @@ function containsReference(value: unknown, checkpoint: z.infer<typeof RunCheckpo
   return Object.values(record).some(item => containsReference(item,checkpoint,record.nodeId ?? inheritedNodeId));
 }
 
-function isSettledCascadeTerminalization(database:DatabaseSync,commandRow:unknown,cascade:Set<string>):boolean {
-  const command=commandFromRow(commandRow);
+function isSettledCascadeTerminalization(database:DatabaseSync,command:ReturnType<typeof commandFromRow>,commandRow:unknown,cascade:Set<string>):boolean {
   const {target_id,state}=z.object({target_id:z.string().nullable(),state:z.string()}).parse(commandRow);
   if(!("kind" in command) || command.kind!=="run-lifecycle" || command.operation!=="terminalize"
     || target_id===null || !cascade.has(target_id) || state!=="succeeded")return false;
@@ -45,16 +54,15 @@ function isSettledCascadeTerminalization(database:DatabaseSync,commandRow:unknow
   return true;
 }
 
-export function containsDeletionArtifactReference(value: unknown, ref: ArtifactRef): boolean {
-  if (value === null || typeof value !== "object") return false;
-  if (Array.isArray(value)) return value.some(item => containsDeletionArtifactReference(item,ref));
-  const record = z.record(z.string(),z.unknown()).parse(value);
-  if (record.artifactId === ref.id || record.sha256 === ref.sha256 || record.digest === ref.sha256) return true;
-  return Object.values(record).some(item => containsDeletionArtifactReference(item,ref));
-}
-
-export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord, request: RunDeleteInput,
-  captureFile: (ref: ArtifactRef) => Omit<FileEvidence,"disposition">, phase: "execution" | "preflight" = "execution") {
+export function prepareNativeRunDeletion(database: DatabaseSync, run: PredecessorRunRecord, request: RunDeleteInput,
+  captureFile: (ref: ArtifactRef) => Omit<FileEvidence,"disposition">, phase: "execution" | "preflight" = "execution",
+  schemaVersion = z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version) {
+  const strictRun = schemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION ? predecessorRunRecordFromRow : runRecordFromRow;
+  // Below the custody schema, worker lifetimes and worker history are read only through the predecessor reader.
+  const predecessorCustody = schemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
+  const readRun = predecessorCustody ? (raw: unknown) => strictRun(predecessorCustodyRunRow(raw)) : strictRun;
+  const readCommand = predecessorCustody ? predecessorCommandFromRow : commandFromRow;
+  const isHistory = (raw: unknown) => predecessorCustody && isPredecessorWorkerHistory(raw);
   const runId = run.envelope.runId;
   const cascade = new Set<string>(request.cascadeRunIds);
   if (!cascade.has(runId)) throw new Error("run-deletion-cascade-owner-missing");
@@ -64,9 +72,9 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
     if (phase === "execution" || !cascade.has(id)) throw new Error("run-deletion-children-remain");
   }
   const retained: unknown[] = [];
-  const currentCascade = new Map<string,RunRecord>();
+  const currentCascade = new Map<string, PredecessorRunRecord>();
   for (const raw of database.prepare("SELECT * FROM runs").all()) {
-    const peer = runRecordFromRow(raw);
+    const peer = readRun(raw);
     if (!cascade.has(peer.envelope.runId)) retained.push(peer);
     else {
       if (peer.lifecycle.state !== "terminal") throw new Error("run-deletion-cascade-nonterminal");
@@ -77,17 +85,23 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
     const raw = database.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(id);
     if (raw === undefined || deletedRunFromRow(raw).receipt.commandId !== request.commandId) throw new Error("run-deletion-cascade-member-missing");
   }
-  const roots = [...currentCascade.values()].filter(member=>member.envelope.parent === undefined || !cascade.has(member.envelope.parent.runId));
-  if (roots.length !== 1) throw new Error("run-deletion-cascade-disconnected");
-  const root = roots[0];
-  if (root === undefined) throw new Error("run-deletion-cascade-root-missing");
   const commandRaw = database.prepare("SELECT * FROM commands WHERE id=?").get(request.commandId);
   if (commandRaw === undefined) throw new Error("run-deletion-command-missing");
-  const command = commandFromRow(commandRaw);
-  const publicDelete = "family" in command && command.family === "run" && command.type === "delete" && command.target.runId === root.envelope.runId;
-  const internalDelete = "kind" in command && command.kind === "run-lifecycle" && command.operation === "delete"
-    && z.object({request:z.object({runId:z.string()})}).safeParse(command).data?.request.runId === root.envelope.runId;
-  if (!publicDelete && !internalDelete) throw new Error("run-deletion-command-target-mismatch");
+  const command = readCommand(commandRaw);
+  const history = "kind" in command && command.kind === "run-lifecycle" && command.operation === "clear-history";
+  if (request.origin !== (history ? "storage" : "queue")) throw new Error("run-deletion-command-origin-mismatch");
+  if (history) {
+    if (retained.length !== 0) throw new Error("run-history-cascade-incomplete");
+  } else {
+    const roots = [...currentCascade.values()].filter(member=>member.envelope.parent === undefined || !cascade.has(member.envelope.parent.runId));
+    if (roots.length !== 1) throw new Error("run-deletion-cascade-disconnected");
+    const root = roots[0];
+    if (root === undefined) throw new Error("run-deletion-cascade-root-missing");
+    const publicDelete = "family" in command && command.family === "run" && command.type === "delete" && command.target.runId === root.envelope.runId;
+    const internalDelete = "kind" in command && command.kind === "run-lifecycle" && command.operation === "delete"
+      && z.object({request:z.object({runId:z.string()})}).safeParse(command).data?.request.runId === root.envelope.runId;
+    if (!publicDelete && !internalDelete) throw new Error("run-deletion-command-target-mismatch");
+  }
   for (const raw of database.prepare("SELECT * FROM timeline_events").all()) {
     const event = timelineEventFromRow(raw);
     if (event.scope.kind !== "run" || !cascade.has(event.scope.runId)) retained.push(event);
@@ -95,27 +109,30 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
   for (const table of ["run_results","run_receipts","run_checkpoints","diagnostic_snapshots","write_intents","write_attempts","commands","command_audits","artifacts"] as const) {
     for (const raw of database.prepare(`SELECT * FROM ${table}`).all()) {
       if (table === "commands") {
-        const command=commandFromRow(raw);
-        if(!isSettledCascadeTerminalization(database,raw,cascade))retained.push(command);
+        if (isHistory(raw)) { assertPredecessorWorkerHistory(raw); retained.push(JSON.parse(z.object({request_json:z.string()}).parse(raw).request_json)); continue; }
+        const command=readCommand(raw);
+        if(!isSettledCascadeTerminalization(database,command,raw,cascade))retained.push(command);
         continue;
       }
       if(table === "command_audits") {
         const {command_id}=z.object({command_id:z.string()}).parse(raw);
         const owner=database.prepare("SELECT * FROM commands WHERE id=?").get(command_id);
         if(owner===undefined)throw new Error("run-deletion-audit-command-missing");
-        const command=commandFromRow(owner);
-        const audit=nativeOrdinaryRecordFromRow(table,raw);
+        if (isHistory(owner)) { assertPredecessorWorkerHistory(owner, raw); retained.push(JSON.parse(z.object({payload_json:z.string()}).parse(raw).payload_json)); continue; }
+        const command=readCommand(owner);
+        const audit=nativeOrdinaryRecordFromRow(table,raw,schemaVersion);
         if(canonicalJsonStringify(z.object({request:z.unknown()}).parse(audit).request)!==canonicalJsonStringify(command))throw new Error("run-deletion-audit-command-mismatch");
-        if(isSettledCascadeTerminalization(database,owner,cascade))continue;
+        if(!isSettledCascadeTerminalization(database,command,owner,cascade))retained.push(audit);
+        continue;
       }
       if (table === "artifacts") {
         const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
         retained.push(kind === "imported" ? importedArtifactFromRow(raw) : kind === "generated" ? generatedArtifactFromRow(raw) : extractedArtifactFromRow(raw));
         continue;
       }
-      const record = nativeOrdinaryRecordFromRow(table,raw);
+      const record = nativeOrdinaryRecordFromRow(table,raw,schemaVersion);
       const identity = z.object({runId:z.string().optional()}).parse(record);
-      if (table === "write_intents" || table === "write_attempts" || table === "command_audits" || identity.runId === undefined || !cascade.has(identity.runId)) retained.push(record);
+      if (table === "write_intents" || table === "write_attempts" || identity.runId === undefined || !cascade.has(identity.runId)) retained.push(record);
       if (table === "write_intents" && identity.runId === runId) {
         const {status} = z.object({status:z.string()}).parse(record);
         if (status === "attempting" || status === "parked") throw new RunDeletionRefusedError("unresolved-write");
@@ -131,7 +148,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
     {table:"diagnostic_files",key:"id",where:"snapshot_id IN (SELECT id FROM diagnostic_snapshots WHERE run_id=?)"},
     {table:"diagnostic_snapshots",key:"id",where:"run_id=?"},
     {table:"run_receipts",key:"id",where:"run_id=?"},
-    {table:"run_results",key:"run_id",where:"run_id=?"},
+    {table:"run_results",key:"id",where:"run_id=?"},
     {table:"run_failures",key:"id",where:"run_id=?"},
     {table:"timeline_events",key:"cursor",where:"run_id=?"},
     {table:"gate_results",key:"id",where:"run_id=?"},
@@ -140,26 +157,39 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
     {table:"run_search",key:"run_id",where:"run_id=?"},
     {table:"runs",key:"id",where:"id=?"},
   ] as const;
+  const candidates = new Map<string, ArtifactRef>();
   const plan = steps.map(step => ({...step,keys:database.prepare(`SELECT * FROM ${step.table} WHERE ${step.where}`).all(runId).map(raw => {
-    if (step.table === "runs") runRecordFromRow(raw);
+    if (step.table === "runs") readRun(raw);
     else if (step.table === "timeline_events") timelineEventFromRow(raw);
-    else if (step.table === "run_search") runSearchIndexFromRow(raw,run,false);
-    else nativeOrdinaryRecordFromRow(step.table,raw);
+    else if (step.table === "run_search") runSearchIndexFromRow(raw, run, false);
+    else nativeOrdinaryRecordFromRow(step.table, raw, schemaVersion);
+    for (const value of deletionArtifactValues(database, step.table, raw)) {
+      for (const ref of artifactReferencesIn(value)) {
+        const prior = candidates.get(ref.sha256);
+        if (prior !== undefined && canonicalJsonStringify(prior) !== canonicalJsonStringify(ref)) throw new Error("run-deletion-file-identity-mismatch");
+        candidates.set(ref.sha256, ref);
+      }
+    }
     return z.union([z.string(),z.number()]).parse(Reflect.get(raw,step.key));
   })}));
-  const files = new Map<string,FileEvidence>();
-  for (const raw of database.prepare("SELECT * FROM diagnostic_files WHERE snapshot_id IN (SELECT id FROM diagnostic_snapshots WHERE run_id=?)").all(runId)) {
-    const {attachment} = DiagnosticAttachmentStorageRecordSchema.parse(nativeOrdinaryRecordFromRow("diagnostic_files",raw));
-    const captured = captureFile({id:attachment.artifactId,sha256:attachment.digest,bytes:attachment.byteLength,mediaType:attachment.mediaType});
-    const file: FileEvidence = {...captured,disposition:retained.some(value => containsDeletionArtifactReference(value,captured.ref)) ? "retain" : "remove"};
-    const existing = files.get(file.ref.sha256);
-    if (existing !== undefined && canonicalJsonStringify(existing) !== canonicalJsonStringify(file)) throw new Error("run-deletion-file-identity-mismatch");
-    files.set(file.ref.sha256,file);
+  const retainedDigests = new Set<string>(), referencesIn = deletionArtifactReferenceMatcher(candidates.values());
+  for (const { name: table } of AUTHORITY_TABLE_REGISTRY) {
+    if (table === "deleted_runs" || candidates.size === 0) continue;
+    const step = steps.find(step => step.table === table);
+    const removedKeys = new Set(step === undefined ? [] : [...cascade].flatMap(id => database.prepare(`SELECT ${step.key} AS deletion_key FROM ${step.table} WHERE ${step.where}`).all(id)
+      .map(row => z.union([z.string(), z.number()]).parse(row.deletion_key))));
+    for (const row of database.prepare(`SELECT * FROM ${table}`).iterate()) {
+      if (step !== undefined && removedKeys.has(z.union([z.string(), z.number()]).parse(row[step.key]))) continue;
+      for (const record of deletionArtifactValues(database, table, row)) {
+        for (const digest of referencesIn(record)) retainedDigests.add(digest);
+      }
+    }
   }
+  const files = [...candidates.values()].map(ref => ({ ...captureFile(ref), disposition: retainedDigests.has(ref.sha256) ? "retain" as const : "remove" as const }));
   const receipt = DeletedRunRecordSchema.parse({runId,workflow:run.envelope.workflow,itemId:run.envelope.itemId,attempt:run.envelope.attempt,
     runNumber:run.runNumber ?? null,traceId:run.envelope.traceId,ordinalSource:"tombstone",origin:request.origin,commandId:request.commandId,
     deletedAt:request.now,tallyVersion:3,removed:plan.filter(step => step.keys.length > 0).map(step => ({table:step.table,rows:step.keys.length}))});
-  return {receipt,files:DeletionFilesSchema.parse([...files.values()]),plan};
+  return {receipt,files:DeletionFilesSchema.parse(files),plan};
 }
 
 export function executeNativeRunDeletion(database: DatabaseSync, prepared: ReturnType<typeof prepareNativeRunDeletion>, afterStep?: (step: "tombstone" | "cascade-complete" | z.infer<typeof DeletedRunRecordSchema>["removed"][number]["table"]) => void) {

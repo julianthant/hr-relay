@@ -5,6 +5,7 @@ import { createPreflightReadinessResource,preflightReadinessResource } from "../
 import type { PreflightReadinessWire } from "../../../src/models/preflight/preflight-contract.js";
 import { buildPreflightReport,requiredPreflightChecks } from "../../../src/models/preflight/preflight.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
+import { projectPreflight } from "../../../src/dashboard/surfaces/settings/preflight/settings-preflight-model.js";
 
 const clock = manualClock(new Date("2026-09-19T12:00:00Z"));
 const identity = { configFingerprint: "a".repeat(64), descriptorFingerprint: "b".repeat(64) };
@@ -83,6 +84,35 @@ it("preserves a changed-fingerprint report only as unavailable history", async (
   assert.deepEqual(observed.lastCompleted, previous);
 });
 
+for (const priorReport of [true, false]) it(`keeps checking visible with ${priorReport ? "a previous report" : "no previous report"} when an automatic read arrives during Run preflight`, async () => {
+  const pending = Promise.withResolvers<Response>(); let reads = 0, completed = false;
+  const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async url => {
+    if (String(url).endsWith("/preflight/rerun")) return pending.promise;
+    reads++;
+    return response(reads === 1 && priorReport || completed ? { state: "present", report } : { state: "unavailable", reason: "Preflight not available." });
+  } });
+  const resource = createPreflightReadinessResource(client, identity);
+  await resource.read();
+  const checking = resource.rerun(command);
+  const automatic = resource.read();
+  try {
+    assert.equal(reads, 1, "an automatic read must await the active check instead of exposing its temporary missing evidence");
+    assert.equal(resource.snapshot().state, "running");
+    const projected = projectPreflight(resource.snapshot(), Date.parse(report.checkedAt));
+    assert.equal(projected.state, priorReport ? "refreshing" : "running");
+    if (priorReport) {
+      assert.equal(projected.state, "refreshing");
+      if (projected.state !== "refreshing") throw new Error("previous report must remain while checking");
+      assert.deepEqual(projected.report, report);
+    }
+  } finally {
+    completed = true;
+    pending.resolve(response({ state: "completed", commandId: command.commandId, report }));
+    await Promise.all([checking, automatic]);
+  }
+  assert.equal(resource.snapshot().state, "present");
+});
+
 it("keeps the last report visible only as history during a rerun and after transport failure", async () => {
   const pending = Promise.withResolvers<Response>();
   const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async url => {
@@ -101,17 +131,19 @@ it("keeps the last report visible only as history during a rerun and after trans
   assert.deepEqual(failed.lastCompleted, report);
 });
 
-it("overlapping refreshes retain the original unavailable reason and discard late observations", async () => {
+it("shares overlapping reads and retains the original reason while a newer rerun discards late observations", async () => {
   const first = Promise.withResolvers<Response>(), second = Promise.withResolvers<Response>();
   const previous = { state: "unavailable" as const, reason: "Settings changed; re-check readiness.", lastCompleted: report };
   let reads = 0;
-  const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: () => {
+  const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: url => {
+    if (url.endsWith("/preflight/rerun")) return Promise.resolve(response({ state: "completed", commandId: command.commandId, report }));
     reads += 1;
     return reads === 1 ? Promise.resolve(response(previous)) : reads === 2 ? first.promise : second.promise;
   } });
   const resource = createPreflightReadinessResource(client, identity);
   await resource.read();
-  const older = resource.read(), newer = resource.read();
+  const older = resource.read(); assert.equal(resource.read(), older);
+  const newer = resource.rerun(command);
   assert.deepEqual(resource.snapshot(), { state: "running", lastCompleted: report, previous });
   second.resolve(response({ state: "unavailable", reason: "New read failed" })); await newer;
   first.resolve(response({ state: "present", report })); await older;

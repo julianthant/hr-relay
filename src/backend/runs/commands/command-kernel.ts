@@ -1,68 +1,91 @@
-import { admitWorkerLifecycle, admitWorkerReset } from "../../storage/sqlite/worker-control.js";
-import { admitProtectedInput, protectedSubjectDisplay } from "../start/protected-input.js";
-import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
-import { requireWorkerPoolRoster, admitWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
-import { WorkerRetirementProofSchema, type WorkerPoolRosterAdmission } from "../../../models/run/worker-slot.js";
-import { PreflightAdmissionRefusal, type PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
-import { workflowPreflightScope } from "../start/preflight-scope.js";
+import { preflightRunnerTimeout } from "../../../models/preflight/preflight.js";
+import { applyWorkerPoolPlan, WorkerPoolPlanVersionConflict } from "../../storage/sqlite/worker-slots.js";
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { notificationMatchesCollection,type NotificationCollectionOperation,type NotificationRecord } from "../../../models/notifications/notifications.js";
+import { OcrApprovedSnapshotSchema,ocrSnapshotDigest } from "../../../models/ocr/review.js";
+import { AssistantActionManifestSchema } from "../../../models/profiles/assistant-permissions.js";
+import { isStartPlanExpired } from "../../../models/run/start-plan.js";
+import { RunDisplayNameSchema } from "../../../models/run/display-name.js";
 import { startSupersedeTargets } from "../../../models/run/start-supersede.js";
-import { WorkerControlRefusal, workerControlScope, WorkerEffectAcknowledgementSchema, type WorkerControlRecord, type WorkerEffectAcknowledgement } from "../../../models/run/worker-control.js";
-import { CommandRefusal } from "./command-refusal.js";
-import type { StorageRelocationPlanReader } from "../../storage/maintenance/storage-relocation-plans.js";
-import type { CommandApplication } from "./command-application.js";
-export type { CommandApplication } from "./command-application.js";
-import { executeFailureResolution, failureResolutionCapability } from "../lifecycle/failure-resolution.js";
-import { selectRunRuntime, selectNewRunIdentity, reviewedRunSettingsCurrent } from "../settings/run-settings.js";
+import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
+import { workerPoolMember,type WorkerPoolMember } from "../../../models/run/worker-slot.js";
+import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
+import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
+import { AssistantModelPreferenceCommandRequestSchema } from "../../../rules/commands/commands.js";
+import { PreflightEvidenceExpiredError, PreflightAdmissionRefusal,type PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
 import { localDatePart } from "../../../rules/time/clock.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
+import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
+import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
+import { authenticateDescendantHome,captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
+import { readRunCheckpoint, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
+import { executeFailureResolution } from "../lifecycle/failure-resolution.js";
+import { assertOcrReviewChildrenCurrent,readOcrReviewAuthority,readOcrSnapshotsAuthority,reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
+import { reviewedRunSettingsCurrent,selectNewRunIdentity,selectRunRuntime } from "../settings/run-settings.js";
+import { workflowPreflightScope } from "../start/preflight-scope.js";
+import { admitProtectedInput,protectedSubjectDisplay } from "../start/protected-input.js";
+import { planRunRecovery } from "../start/recovery-plan.js";
+import type { CommandApplication } from "./command-application.js";
+import { CommandRefusal } from "./command-refusal.js";
+import type { NotificationInbox } from "../notifications/inbox.js";
+export type { CommandApplication } from "./command-application.js";
 
-import { lifecycleCommandId, type RunMutationOutcome, type RunRecordService } from "../lifecycle/run-record-service.js";
-import type { RunExistence, RunRecordRefusal } from "../../../models/config/authority.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { activeRunsForItem, fanOutQueuedRuns, requireApplied, runTarget, type TargetReference, type VersionChange } from "../lifecycle/run-fan-out.js";
-import { buildRerunPlan, RerunRefusedError } from "../start/rerun.js";
-import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
-import type { Clock } from "../../../rules/time/clock.js";
-import { LiveWorkerResetRequestSchema, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandRequestSchema, CommandResultSchema, StorageRelocationCommandRequestSchema, deriveSettingsCommandFingerprint, markSettingsCommand, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
-import { deriveItemId, deriveStableUuid, type IdFactory } from "../../../rules/identity/identifiers.js";
-import { deriveGateResultCheckpointFingerprint as deriveGateFingerprint } from "../../../models/workflow/gates.js";
-import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
+import type { RunExistence,RunRecordRefusal } from "../../../models/config/authority.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsReadbackSchema,type ProtectedSettingsReadback } from "../../../models/config/protected-settings.js";
 import { EditableSettingsOverrideSchema } from "../../../models/config/schema.js";
-import { SettingsApplyRefusalSchema, type SettingsFileRecord } from "../../../models/config/settings.js";
-import { readSettings } from "../../runtime/settings/settings-runtime.js";
-import { IntakeParseSchema, resolveInspectSelection, type IntakeLayout } from "../../../models/intake/parse.js";
-import type { IntakePlanManifest } from "../../../models/intake/manifest.js";
-import { intakeReviewBinding, resolveIntakeComparison } from "../../../models/intake/review.js";
-import { deriveIntakeEnqueuePlan } from "../../../models/intake/enqueue.js";
-import { confirmBinding } from "../../../models/intake/mapping.js";
-import type { IntakeProjection } from "../../../models/intake/projection.js";
-import { validateIntakeRows } from "../../../models/intake/validate.js";
-import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { isTerminalRunState, RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
-import { isLiveWorker } from "../../../models/run/worker.js";
-import { workerPoolVersion } from "../../../models/run/worker-pool.js";
-import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { checkpointLookupKey, resolveFreshnessBound, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
-import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
-import { findGateDecision } from "../../../models/trust/gate-decisions.js";
-import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
+import { SettingsApplyRefusalSchema,type SettingsFileRecord } from "../../../models/config/settings.js";
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
-import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
-import { WriteIntentRecordSchema, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import { deriveIntakeEnqueuePlan } from "../../../models/intake/enqueue.js";
+import type { IntakePlanManifest } from "../../../models/intake/manifest.js";
+import { confirmBinding } from "../../../models/intake/mapping.js";
+import { IntakeParseSchema,resolveInspectSelection,type IntakeLayout } from "../../../models/intake/parse.js";
+import type { IntakeProjection } from "../../../models/intake/projection.js";
+import { intakeReviewBinding,resolveIntakeComparison } from "../../../models/intake/review.js";
+import { validateIntakeRows } from "../../../models/intake/validate.js";
+import { isTerminalRunState,RunRecordSchema,runClaim,type RunRecord } from "../../../models/run/record.js";
+import { workerPoolVersion } from "../../../models/run/worker-pool.js";
+import { findGateDecision } from "../../../models/trust/gate-decisions.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { checkpointLookupKey,resolveFreshnessBound,type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import { deriveGateResultCheckpointFingerprint as deriveGateFingerprint } from "../../../models/workflow/gates.js";
+import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
+import { COMMAND_FAMILY_REGISTRY,commandAssistantAvailability,CommandIdentityConflictError,CommandRequestSchema,CommandResultSchema,StartCommandRequestSchema,deriveSettingsCommandFingerprint,markSettingsCommand,ParkedWriteCheckAcknowledgementSchema,RunCommandRequestSchema,type ParkedWriteCheckAcknowledgement,type ParkedWriteCheckTarget,type CommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
+import { deriveItemId,deriveStableUuid,type IdFactory } from "../../../rules/identity/identifiers.js";
+import { FingerprintSchema,IsoInstantSchema,ItemIdSchema } from "../../../rules/identity/ids.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { canonicalJsonStringify,JsonValueSchema,type JsonValue } from "../../../rules/validation/canonical-json.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
+import { WriteIntentRecordSchema,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
+import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
+import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting, descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { assertDelegationRetryUnwritten } from "../../storage/sqlite/delegation-authority.js";
+import { readSettings } from "../../runtime/settings/settings-runtime.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../start/plan.js";
-import { type ExplorerEditApplyRequest, ExplorerEditApplyResultSchema, type ExplorerEditApplyResult } from "../../../models/dashboard/explorer.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsReadbackSchema, type ProtectedSettingsReadback } from "../../../models/config/protected-settings.js";
+import { activeRunsForItem,fanOutQueuedRuns,requireApplied,runTarget,type TargetReference,type VersionChange } from "../lifecycle/run-fan-out.js";
+import { lifecycleCommandId,type RelatedRunChange,type RunMutationOutcome,type RunRecordService } from "../lifecycle/run-record-service.js";
+import { dryRunRefusalMessage,resolveInstances,supportsDryRun } from "../start/plan.js";
+import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
+import { bindRunWorkbookReference, parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
+import { createWorkbookReferenceCapture } from "../../workbooks/workbook-library-service.js";
+import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
 
 /* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 
 const PHASE1_ACTIVE = {
+  "ocr-review": ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record", "add-ocr-record"],
+  application: ["pause-all", "pause-all-and-quit"],
+  'assistant-model-preference': ['set-assistant-model-preference'],
   "failure-resolution": ["annotate-failure"],
   "workflow-batch": ["set-batch-grouping"],
   start: ["start-run"],
   "worker-browser": [
+    "check-parked-write",
     "plan-worker-count",
     "spawn-worker",
     "stop-worker",
@@ -74,19 +97,22 @@ const PHASE1_ACTIVE = {
     "reopen-browser",
   ],
   run: [
+    "recover-run",
+    "pause",
+    "resume",
     "retry",
-
-    "restart",
     "cancel",
     "bump",
     "rename",
     "delete",
-    "resolve-write-present",
+    "recheck-write",
     "resolve-write-absent",
+    "resolve-workbook-row",
+    "resolve-workbook-reference-row",
   ],
   gate: ["resolve-gate"],
 
-  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"],
+  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
 
   intake: [
     "inspect-intake",
@@ -97,21 +123,10 @@ const PHASE1_ACTIVE = {
     "enqueue-intake-manifest",
   ],
   settings: ["apply-settings", "apply-protected-settings"],
-  "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
 
-  explorer: ["apply-explorer-edit"],
-} as const;
-
-const PHASE1_DEFERRED = {
-  intake: [],
-  settings: [],
-  "storage-relocation": [],
-  run: [],
-  notification: [],
 } as const;
 
 export const PHASE1_ACTIVE_COMMAND_ARMS = deepFreeze(PHASE1_ACTIVE);
-export const PHASE1_DEFERRED_COMMAND_ARMS = deepFreeze(PHASE1_DEFERRED);
 
 function armActions(partition: Readonly<Record<string, readonly string[]>>, family: string): readonly string[] {
   const actions = Object.hasOwn(partition, family) ? partition[family] : undefined;
@@ -122,23 +137,17 @@ function armActions(partition: Readonly<Record<string, readonly string[]>>, fami
 
 for (const { family, actions } of COMMAND_FAMILY_REGISTRY) {
   const active = armActions(PHASE1_ACTIVE, family);
-  const deferred = armActions(PHASE1_DEFERRED, family);
-  const combined = [...active, ...deferred];
-  if (combined.length !== actions.length
-    || new Set(combined).size !== combined.length
-    || actions.some((action) => !combined.includes(action))) {
+  if (active.length !== actions.length
+    || new Set(active).size !== active.length
+    || actions.some((action) => !active.includes(action))) {
     throw new Error(`command arm partition does not cover family ${family} exactly`);
   }
 }
 
-const DEFERRED_ARM_KEYS: ReadonlySet<string> = new Set(
-  Object.entries(PHASE1_DEFERRED as Readonly<Record<string, readonly string[]>>).flatMap(([family, actions]) =>
-    actions.map((action) => `${family}/${action}`)),
-);
-
 /* ── injected seams ──────────────────────────────────────────────────────── */
 
 export interface CommandAuthority {
+  readonly evidenceSchemaHash?: EvidenceSchemaReader;
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
 }
 
@@ -148,7 +157,7 @@ export interface WorkflowDescriptorResolver {
 
 
 type RunCommand = Extract<CommandRequest, { family: "run" }>;
-type RunBasicCommand = Extract<RunCommand, { type: "retry" | "restart" | "cancel" | "bump" }>;
+type RunBasicCommand = Extract<RunCommand, { type: "retry" | "cancel" | "bump" | "pause" | "resume" | "recover-run" }>;
 
 type RunRecoveryCommand = RunBasicCommand;
 type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
@@ -156,11 +165,7 @@ type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
 export type SettingsCommand = Extract<CommandRequest, { family: "settings" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type RunDeleteCommand = Extract<RunCommand, { type: "delete" }>;
-type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
-
-export interface ExplorerEditExecutor {
-  apply(input: ExplorerEditApplyRequest, repositories: AuthorityRepositories): Readonly<{ result: ExplorerEditApplyResult }>;
-}
+type WriteResolutionCommand = Extract<RunCommand, { type: "recheck-write" | "resolve-write-absent" }>;
 
 export interface WriteResolutionContext {
   readonly command: WriteResolutionCommand;
@@ -177,7 +182,7 @@ interface PreparedWriteResolution {
 }
 
 export interface WriteResolutionExecutor {
-  resolvePresent(repositories: AuthorityRepositories, context: WriteResolutionContext): PreparedWriteResolution;
+  recheck(repositories: AuthorityRepositories, context: WriteResolutionContext): PreparedWriteResolution;
   resolveAbsent(repositories: AuthorityRepositories, context: WriteResolutionContext): PreparedWriteResolution;
 }
 
@@ -217,38 +222,26 @@ const OrdinarySettingsReplayVerificationSchema = z.strictObject({
 const ProtectedSettingsReplayVerificationSchema = ProtectedSettingsReadbackSchema;
 
 
-export interface WorkerRuntimeContext {
-  readonly command: Extract<CommandRequest, { family: "worker-browser" }>;
-  readonly now: string;
-  readonly roster?: WorkerPoolRosterAdmission;
-}
+export type WorkerMemberState = "absent" | "starting" | "running" | "stopping" | "exited";
 
-export const WorkerRuntimeAcknowledgementSchema = z.strictObject({ state: z.literal("accepted") });
-
-export const WorkerPlanAcknowledgementSchema = z.strictObject({
-  state: z.literal("accepted"),
-  /** The exact worker ids the plan reconciles toward; never an empty guess. */
-  workerIds: z.array(WorkerIdSchema),
-  retirements: z.array(WorkerRetirementProofSchema),
-});
-
-
-
-
-// Keep the async pool seam structural to avoid importing the worker loop back into its command dependency.
+/** The kernel's view of one profile runtime's worker pool; composition binds it to the in-memory WorkerPool. */
 export interface WorkerPoolRuntimeSeam {
-  beginLifecycle?(context: WorkerRuntimeContext): void;
-  assertLifecycleOwner?(operation: "remove" | "retry", workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
-  assertResetOwner?(workerId: string, membershipRevision: number, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void;
-  planPoolWorkerCount(context: WorkerRuntimeContext): Promise<unknown>;
-  spawnPoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
-  refreshPoolBrowser(context: WorkerRuntimeContext): Promise<unknown>;
-  reopenPoolBrowser(context: WorkerRuntimeContext): Promise<unknown>;
-  stopPoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
-  pausePoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
-  resumePoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
+  /** Runs effect admission (assistant Confirm, and the preflight before any spawn) for this command. */
+  admit(commandId: string, options: Readonly<{ preflight: boolean }>): Promise<void>;
+  /** Throws a `WORKER_TARGET_STALE` error unless the fence names the member's current lifetime and version (null lifetime: never spawned). */
+  assertMember(target: Readonly<{ workerId: string; lifetimeId: string | null; expectedVersion: number }>): WorkerMemberState;
+  start(member: WorkerPoolMember): Promise<void>;
+  /** Starts the member unless a process for it has not exited. */
+  ensure(member: WorkerPoolMember): Promise<void>;
+  /** Stops the member if it has a process; resolves once its exit is observed and settled. */
+  stop(workerId: string, reason: "operator" | "reset" | "remove"): Promise<void>;
+  /** Closes the member's browsers, stops it and deletes its browser profiles. */
+  remove(member: WorkerPoolMember): Promise<void>;
+  /** Tells a running member its directive changed; the slot already holds it. */
+  direct(workerId: string, directive: "run" | "pause"): Promise<void>;
+  browser(target: Readonly<{ workerId: string; lifetimeId: string; expectedVersion: number; browserSessionId: string }>, type: "refresh-browser" | "reopen-browser"): Promise<void>;
+  checkParkedWrite(target: ParkedWriteCheckTarget, command: CommandRequest): Promise<unknown>;
 }
-
 
 export interface WorkerPoolRuntimeAdoption {
   readonly pool: WorkerPoolRuntimeSeam;
@@ -266,7 +259,13 @@ export interface RunConfigIdentity {
 }
 
 export interface CommandKernelDependencies {
+  readonly ensureReceipt?: (runId: string) => unknown;
+  readonly workbookRows?: Readonly<{
+    resolve(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-row" }>): unknown;
+    resolveReference?(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>, capturedAt: string): SchemaBoundCanonicalValue | Readonly<{ state: "pending" }>;
+  }>;
   readonly preflight?: PreflightAdmission;
+  readonly applicationQuitAvailable?: boolean;
   readonly authority: CommandAuthority;
   readonly lifecycle: RunRecordService;
   readonly clock: Clock;
@@ -274,6 +273,7 @@ export interface CommandKernelDependencies {
 
   readonly appVersion: string;
   readonly descriptors: WorkflowDescriptorResolver;
+  readonly readableDescriptors?: WorkflowDescriptorResolver;
   readonly writeResolution: WriteResolutionExecutor;
   readonly workerRuntime: WorkerPoolRuntimeAdoption;
   readonly intakeParser: IntakeParser;
@@ -281,27 +281,34 @@ export interface CommandKernelDependencies {
   readonly configIdentity: RunConfigIdentity;
   /** The strict settings-file CAS executor. An active settings command cannot exist without it. */
   readonly settings?: SettingsApplicationExecutor;
-  readonly storageRelocationPlans?: StorageRelocationPlanReader;
-  readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
+  readonly authorityProfileId?: string;
+  readonly authorityInstallationId?: string;
+  readonly prepareAssistantModelPreference?: (request: z.infer<typeof AssistantModelPreferenceCommandRequestSchema>) => Promise<() => true>;
+  readonly assistantSurface?: () => readonly Readonly<{ method: string; path: string }>[];
+  readonly workflowSources?: Readonly<Record<string, "mock" | "served" | "hidden">>;
+  /** The pinned assistant workflow facts; a change stales every outstanding assistant proposal. */
+  readonly assistantFactsSha256?: () => string;
+  readonly assistantRevalidate?: (command: CommandRequest) => void;
+  readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution}>;
+  readonly commandNotices?: Pick<NotificationInbox, "record">;
 
 
-  readonly explorerEdits?: ExplorerEditExecutor;
 }
 
 export interface CommandKernel {
+  assistantAvailability(): ReturnType<typeof commandAssistantAvailability>;
+  assistantManifest(): z.infer<typeof AssistantActionManifestSchema>;
   execute(input: unknown, parentCommandId?: string): CommandResult;
 
+  executeStart(input: unknown): Promise<CommandResult>;
   executeWorkerPool(input: unknown): Promise<CommandResult>;
+  executeAssistantModelPreference(input: unknown): Promise<CommandResult>;
 }
 
 /* ── internals ───────────────────────────────────────────────────────────── */
 
 // Throwing a typed non-applied result rolls back partial effects while retaining its command outcome.
 
-
-function workerPoolTarget(workflowId: string): TargetReference {
-  return { family: "worker-pool", workflowId };
-}
 
 function workerTarget(workerId: string): TargetReference {
   return { family: "worker-browser", workerId };
@@ -312,7 +319,6 @@ function reject(request: CommandRequest, code: string, message: string): never {
 }
 
 // Invalid served proof is a typed rejection that rolls back the transaction, not a transport failure.
-export { rejectCommandRequest } from "./command-refusal.js";
 
 function conflict(request: CommandRequest, currentVersion: number, message: string): never {
   throw new CommandRefusal({ state: "conflict", commandId: request.commandId, currentVersion, message });
@@ -335,6 +341,8 @@ function applied(
       state: "applied",
       commandId: request.commandId,
       affectedTargets,
+      ...(request.family === "notification" && "members" in request.target && request.target.matchingCount === 0 && affectedTargets.length === 0
+        ? { noChange: "no-matching-notifications" } : {}),
       ...(settingsResult?.kind === "ordinary" ? {
         restartRequired: settingsResult.restartRequired,
         settingsRevision: settingsResult.revision,
@@ -361,7 +369,7 @@ function resolveDescriptorOrReject(
   request: CommandRequest,
   workflowId: string,
 ): AnyWorkflowDescriptor {
-  const descriptor = dependencies.descriptors.resolve(workflowId);
+  const descriptor = (request.family === "gate" ? dependencies.readableDescriptors ?? dependencies.descriptors : dependencies.descriptors).resolve(workflowId);
   if (descriptor === undefined) {
     reject(request, "target-not-found", `workflow ${workflowId} is not registered; the command names an unknown target`);
   }
@@ -409,7 +417,7 @@ function lifecycleRefusal(request: CommandRequest, refusal: RunRecordRefusal): n
     case "runtime-stale": return reject(request, "schema-mismatch", "runtime configuration changed");
     case "workflow-unregistered": return reject(request, "target-not-found", "workflow is not registered");
     case "illegal-transition": return reject(request, "invalid-state", refusal.message);
-    case "owned-by-worker": case "heartbeat-live": case "invalid-state": case "not-terminal":
+    case "owned-by-worker": case "invalid-state": case "not-terminal":
     case "already-archived": case "is-member": case "tree-non-terminal": case "use-archive-door":
       return reject(request, "invalid-state", `run lifecycle refused: ${refusal.reason}`);
     case "parent-missing": case "retry-of-missing": case "identity-conflict": case "cursor-stale":
@@ -418,22 +426,25 @@ function lifecycleRefusal(request: CommandRequest, refusal: RunRecordRefusal): n
   }
 }
 
-function lifecycleRun(request: CommandRequest, outcome: RunMutationOutcome | RunExistence): RunRecord {
+function lifecycleRun(request: CommandRequest, outcome: RunMutationOutcome | RunExistence, relatedRunChanges?: RelatedRunChange[]): RunRecord {
   if (outcome.state === "refused") lifecycleRefusal(request, outcome.refusal);
   if (outcome.state === "deleted") reject(request, "target-deleted", "run was deleted");
   if (outcome.state === "absent") reject(request, "target-not-found", "run does not exist");
-  if ((outcome.state === "applied" || outcome.state === "applied-already") && "run" in outcome) return outcome.run;
+  if ((outcome.state === "applied" || outcome.state === "applied-already") && "run" in outcome) {
+    relatedRunChanges?.push(...outcome.relatedRunChanges ?? []);
+    return outcome.run;
+  }
   throw new Error(`unexpected operator lifecycle result: ${outcome.state}`);
 }
 
 /* ── the arms ────────────────────────────────────────────────────────────── */
 
-function executeStartRun(
+function readStartPlan(
   dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
   request: Extract<CommandRequest, { family: "start" }>,
   now: string,
-): CommandApplication {
+) {
   const descriptor = resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
   const plan = repositories.startPlans.get(request.target.startPlanId);
   if (plan === undefined) {
@@ -465,13 +476,31 @@ function executeStartRun(
     );
   }
 
+  const mismatched = [
+    ["descriptor", plan.descriptorFingerprint, request.payload.descriptorFingerprint],
+    ["config", plan.configFingerprint, request.payload.configFingerprint],
+    ["ingress schema", plan.ingressSchemaHash, request.payload.ingressSchemaHash],
+    ["canonical-input schema", plan.canonicalInputSchemaHash, request.payload.canonicalInputSchemaHash],
+    ["input", plan.inputFingerprint, request.payload.inputFingerprint],
+  ].find(([, planned, presented]) => planned !== presented);
+  if (mismatched !== undefined) reject(request, "schema-mismatch",
+    `start plan ${plan.startPlanId} was planned against a different ${String(mismatched[0])}; re-plan before starting`);
+  const confirmationVersion = plan.consumedBy === undefined ? plan.version : plan.version - 1;
+  if (request.target.expectedVersion !== confirmationVersion) conflict(request, plan.version,
+    `start plan ${plan.startPlanId} confirmation expected revision ${String(confirmationVersion)} but received ${String(request.target.expectedVersion)}; re-plan before starting`);
+  if (plan.consumedBy !== undefined) reject(request, "invalid-state",
+    `start plan ${plan.startPlanId} was already consumed by command ${plan.consumedBy.commandId}`);
+  if (isStartPlanExpired(plan, Date.parse(now))) reject(request, "RUN_START_PLAN_EXPIRED",
+    `start plan ${plan.startPlanId} expired at ${plan.expiresAt}`);
+
   if (!reviewedRunSettingsCurrent(repositories, plan)) {
     reject(request, "replan-required", "Settings changed after this plan was reviewed; review a fresh plan before starting");
   }
   if (plan.rerun !== undefined) {
     let current;
     try {
-      current = buildRerunPlan(repositories, descriptor, plan.rerun.source, plan.planned, plan.rerun.acknowledgment, plan.stepOmissions);
+      current = buildRerunPlan(repositories, descriptor, plan.rerun.source, plan.planned, plan.rerun.acknowledgment, plan.stepOmissions,
+        dependencies.authority.evidenceSchemaHash?.bind(dependencies.authority));
     } catch (error) {
       if (!(error instanceof RerunRefusedError)) throw error;
       reject(request, error.code === "source-stale" ? "replan-required" : error.code, error.message);
@@ -483,7 +512,7 @@ function executeStartRun(
     }
   }
 
-  if (descriptor.enqueue === "supersede-active") {
+  if (descriptor.enqueue === "supersede-active" || plan.rerun?.source.gateCorrection !== undefined) {
     for (const entry of plan.planned) {
       const current = startSupersedeTargets(repositories.runs.listByItem({ workflow: plan.workflowId, itemId: entry.itemId }));
       if (entry.supersedeTargets === undefined || canonicalJsonStringify(entry.supersedeTargets) !== canonicalJsonStringify(current)) {
@@ -491,6 +520,58 @@ function executeStartRun(
       }
     }
   }
+  const captureReference = createWorkbookReferenceCapture(repositories.workbooks);
+  let selectedSources: { libraryId: string; sheetId: string }[] | undefined;
+  for (const planned of plan.planned) {
+    const captured = planned.workbookReferences ?? [];
+    const sources: { libraryId: string; sheetId: string }[] = [];
+    const requirement = descriptor.workbookReference;
+    if (requirement === undefined ? captured.length !== 0 : captured.length < 1 || captured.length > MAX_SELECTED_WORKBOOK_SOURCES) {
+      reject(request, "replan-required", "Workbook source selection changed; review a fresh plan before starting");
+    }
+    for (const bound of captured) {
+      try {
+        const reference = parseRunWorkbookReference(bound);
+        const snapshot = reference.snapshot;
+        const worksheet = snapshot.worksheets[0];
+        if (requirement === undefined || snapshot.worksheets.length !== 1 || worksheet === undefined
+          || !("versionId" in snapshot) || snapshot.versionId === undefined
+          || reference.request.typeId !== requirement.id) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const refreshed = captureReference({
+          kind: "selected-source", typeId: requirement.id, keyFieldId: requirement.keyFieldId,
+          fields: descriptor.requiredWorkbookFields, writableFields: requirement.writableFields,
+          mode: requirement.mode, keys: "mode" in reference.request ? [] : reference.request.keys,
+          libraryId: snapshot.libraryId, versionId: snapshot.versionId, sheetId: worksheet.sheetId,
+          expectedVersion: snapshot.version,
+          ...("selectedRow" in reference.request && reference.request.selectedRow !== undefined
+            ? { selectedRow: reference.request.selectedRow } : {}),
+        });
+        if (canonicalJsonStringify(bindRunWorkbookReference(reference.request, refreshed)) !== canonicalJsonStringify(bound))
+          throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+        sources.push({ libraryId: snapshot.libraryId, sheetId: worksheet.sheetId });
+        if (new Set(sources.map(source => JSON.stringify([source.libraryId, source.sheetId]))).size !== sources.length) {
+          reject(request, "replan-required", "Workbook source selection changed; review a fresh plan before starting");
+        }
+      } catch (error) {
+        if (!(error instanceof WorkbookLibraryError)) throw error;
+        reject(request, "replan-required", "Workbook source changed after planning; review a fresh plan before starting");
+      }
+    }
+    if (selectedSources !== undefined && canonicalJsonStringify(sources) !== canonicalJsonStringify(selectedSources)) {
+      reject(request, "replan-required", "Workbook source selection differs between planned entries; review a fresh plan before starting");
+    }
+    selectedSources = sources;
+  }
+  return { descriptor, plan, selectedSources };
+}
+
+function executeStartRun(
+  dependencies: CommandKernelDependencies,
+  repositories: AuthorityRepositories,
+  request: Extract<CommandRequest, { family: "start" }>,
+  now: string,
+): CommandApplication {
+  const { descriptor, plan, selectedSources } = readStartPlan(dependencies, repositories, request, now);
   dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
   const consumption = repositories.startPlans.consume({
     startPlanId: request.target.startPlanId,
@@ -506,7 +587,7 @@ function executeStartRun(
   if (consumption.state === "refused") {
     if (consumption.code === "version-mismatch") conflict(request, plan.version, consumption.message);
     if (consumption.code === "fingerprint-mismatch") reject(request, "schema-mismatch", consumption.message);
-    reject(request, "invalid-state", consumption.message);
+    reject(request, consumption.code === "expired" ? "RUN_START_PLAN_EXPIRED" : "invalid-state", consumption.message);
   }
   if (consumption.state !== "consumed") {
     throw new Error(
@@ -568,10 +649,17 @@ function executeStartRun(
       matchKey: planned.matchKey,
       rawInput: planned.rawInput,
       parsedInput: planned.input,
+      ...(planned.workbookReferences === undefined ? {} : { workbookReferences: planned.workbookReferences }),
     })),
     now,
     `plan ${plan.startPlanId}`,
   );
+
+  if (fanOut.runs.length > 0 && selectedSources !== undefined && selectedSources.length > 0) {
+    repositories.workbooks.rememberLastUsed({
+      workflowId: plan.workflowId, acceptedCommandId: request.commandId, usedAt: now, sources: selectedSources,
+    });
+  }
 
   return applied(
     request,
@@ -580,6 +668,36 @@ function executeStartRun(
   );
 }
 
+
+function executeRecover(
+  dependencies: CommandKernelDependencies, repositories: AuthorityRepositories,
+  request: RunBasicCommand & { type: "recover-run" },
+): CommandApplication {
+  const current = requireRun(repositories, request, request.target.runId);
+  const descriptor = resolveDescriptorOrReject(dependencies, request, current.envelope.workflow);
+  const planning = workflowPlanning(descriptor);
+  const publication = { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({
+    title: planning.title(current.input.parsed.value), subtitle: planning.subtitle(current.input.parsed.value),
+  })), actorId: request.requestedBy };
+  const relatedRunChanges: RelatedRunChange[] = [];
+  let record: RunRecord;
+  let children: readonly RunRecord[];
+  try {
+    planRunRecovery(repositories, descriptor, current, request.commandId, dependencies.authority.evidenceSchemaHash?.bind(dependencies.authority));
+    record = lifecycleRun(request, dependencies.lifecycle.recover({
+      commandId: lifecycleCommandId("operator-recover-run", request.commandId),
+      runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
+      runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
+      sourceCommandId: request.commandId,
+    }, descriptor, publication), relatedRunChanges);
+    children = dependencies.lifecycle.continueDelegations(record, request.commandId, relatedRunChanges);
+  } catch (error) {
+    if (error instanceof RerunRefusedError || error instanceof RunContinuationRefusedError)
+      reject(request, "RUN_CONTINUATION_REFUSED", ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);
+    throw error;
+  }
+  return recoveryApplication(request, repositories, record, current, children, relatedRunChanges);
+}
 
 function executeRetry(
   dependencies: CommandKernelDependencies,
@@ -593,7 +711,7 @@ function executeRetry(
       request,
       "invalid-state",
       `run ${request.target.runId} is parked on write intent ${current.lifecycle.writeIntentId}; `
-      + "a parked unknown write uses resolve-write-present/resolve-write-absent, never generic retry",
+      + "a parked unknown write uses recheck-write/resolve-write-absent, never generic retry",
     );
   }
   if (!isTerminalRunState(current.lifecycle)) {
@@ -601,14 +719,6 @@ function executeRetry(
       request,
       "invalid-state",
       `run ${request.target.runId} is ${current.lifecycle.state}; only a terminal run can be retried`,
-    );
-  }
-  if (current.envelope.parent !== undefined) {
-    reject(
-      request,
-      "policy-refused",
-      `run ${request.target.runId} is a delegated child of ${current.envelope.parent.runId}; `
-      + "child retries route through their delegation edge policy, not generic retry",
     );
   }
   const descriptor = resolveDescriptorOrReject(dependencies, request, current.envelope.workflow);
@@ -628,15 +738,52 @@ function executeRetry(
   const planning = workflowPlanning(descriptor);
   const value = current.input.parsed?.value;
   if (value === undefined) throw new Error("retry source lacks canonical input");
-  const record = lifecycleRun(request, dependencies.lifecycle[request.type === "restart" ? "restart" : "retry"]({
-    commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
-    runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
-    runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
-  }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({ title: planning.title(value), subtitle: planning.subtitle(value) })), actorId: request.requestedBy }));
-  return applied(request, [runTarget(record.envelope.runId), runTarget(request.target.runId)], [
-    { target: runTarget(record.envelope.runId), before: 0, after: record.version },
-  ]);
+  const relatedRunChanges: RelatedRunChange[] = [];
+  let record: RunRecord;
+  let children: readonly RunRecord[] = [];
+  try {
+    if (current.envelope.parent !== undefined) {
+      const parent = repositories.runs.get(current.envelope.parent.runId);
+      const parentDescriptor = parent === undefined ? undefined : dependencies.descriptors.resolve(parent.envelope.workflow);
+      const authorization = parent === undefined || parentDescriptor === undefined ? undefined : authorizeWorkflowDelegationRefresh(parentDescriptor, parent);
+      if (parent !== undefined && parent.lifecycle.state === "terminal" && authorization !== undefined
+        && workflowDelegationAccounting(authorization, parent) !== undefined) {
+        assertDelegationRetryUnwritten(repositories, current, descriptor);
+        if (dependencies.ensureReceipt === undefined) throw new RunContinuationRefusedError("delegation-accounting-receipt-service-unavailable");
+        dependencies.ensureReceipt(parent.envelope.runId);
+      }
+    }
+    record = lifecycleRun(request, dependencies.lifecycle.retry({
+      commandId: lifecycleCommandId("operator-retry", request.commandId),
+      runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
+      runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
+      sourceCommandId: request.commandId,
+    }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({ title: planning.title(value), subtitle: planning.subtitle(value) })), actorId: request.requestedBy }), relatedRunChanges);
+    if (current.envelope.parent !== undefined) children = dependencies.lifecycle.continueDelegations(record, request.commandId, relatedRunChanges);
+  } catch (error) {
+    if (current.envelope.parent !== undefined && (error instanceof RerunRefusedError || error instanceof RunContinuationRefusedError))
+      reject(request, "RUN_CONTINUATION_REFUSED", ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);
+    throw error;
+  }
+  return recoveryApplication(request, repositories, record, current, children, relatedRunChanges);
 
+}
+
+function recoveryApplication(request: CommandRequest, repositories: AuthorityRepositories, record: RunRecord, original: RunRecord,
+  children: readonly RunRecord[], related: readonly RelatedRunChange[]) {
+  const targets = new Map([record, original, ...children].map(run => [run.envelope.runId,runTarget(run.envelope.runId)]));
+  const changes = new Map<string, VersionChange>();
+  for (const run of [record, ...children]) {
+    const current = repositories.runs.get(run.envelope.runId);
+    if (current === undefined) throw new Error("delegation-recovery-result-unavailable");
+    changes.set(run.envelope.runId,{ target: runTarget(run.envelope.runId), before: 0, after: current.version });
+  }
+  for (const change of related) {
+    targets.set(change.runId,runTarget(change.runId));
+    const previous = changes.get(change.runId);
+    changes.set(change.runId,{ target: runTarget(change.runId), before: previous?.before ?? change.before, after: change.after });
+  }
+  return applied(request,[...targets.values()],[...changes.values()]);
 }
 
 interface CancelTarget {
@@ -649,11 +796,14 @@ function refuseCancelOverUnresolvedWrite(
   repositories: AuthorityRepositories,
   request: RunBasicCommand,
   targets: readonly CancelTarget[],
+  finishFencedWrite: boolean,
 ): void {
   for (const target of targets) {
     const runId = target.run.envelope.runId;
     for (const intent of repositories.writeIntents.listByRun(runId)) {
       if (intent.status !== "attempting" && intent.status !== "parked") continue;
+      // A claimed run is only marked cancel-requested: its fenced write finishes and settles once, then the run ends at its next boundary.
+      if (finishFencedWrite && intent.status === "attempting" && runClaim(target.run) !== undefined) continue;
       const scope = runId === request.target.runId
         ? `run ${runId}`
         : `run ${runId}, a cascade-cancelled member of ${request.target.runId},`;
@@ -675,6 +825,7 @@ function executeCancel(
   repositories: AuthorityRepositories,
   request: RunBasicCommand,
   now: string,
+  finishFencedWrite = false,
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
   if (current.version !== request.target.expectedVersion) {
@@ -694,20 +845,17 @@ function executeCancel(
   const dependencyIds: string[] = [];
   const visited = new Set<string>([current.envelope.runId]);
   const walk = (parent: RunRecord): void => {
-    const edges = repositories.dependencies.listByParentRun(parent.envelope.runId);
+    const groups = retainedDelegationManifests(repositories,parent.envelope.runId).map(manifest => ({ manifest, group: { children: repositories.dependencies.members(manifest.manifestId) } }));
+    const currentIds = new Set(currentDelegationManifests(repositories,parent.envelope.runId).map(manifest => String(manifest.manifestId)));
     for (const child of repositories.runs.listChildren(parent.envelope.runId)) {
       const childRunId = child.envelope.runId;
       if (visited.has(childRunId)) {
         throw new Error(`run ${childRunId} appears twice in the dependency tree under ${request.target.runId}`);
       }
       visited.add(childRunId);
-      const edge = edges.find((candidate) => candidate.childRunId === childRunId);
-      if (edge === undefined) {
-        throw new Error(
-          `run ${childRunId} is a child of ${parent.envelope.runId} but has no dependency edge in authority; `
-          + "the tree is inconsistent, so no target was cancelled",
-        );
-      }
+      const selected = selectDelegationGroupForChild(groups,currentIds,childRunId);
+      const edge = selected?.group.children.find(member => member.history.includes(childRunId))?.dependency;
+      if (edge === undefined) throw new Error(`run ${childRunId} is a child of ${parent.envelope.runId} but has no dependency edge in authority; the tree is inconsistent, so no target was cancelled`);
       if (edge.policy.cascadeCancel !== "cascade") continue;
       dependencyIds.push(edge.dependencyId);
       if (!isTerminalRunState(child.lifecycle)) targets.push({ run: child, dependencyId: edge.dependencyId });
@@ -715,7 +863,7 @@ function executeCancel(
     }
   };
   walk(current);
-  refuseCancelOverUnresolvedWrite(repositories, request, targets);
+  refuseCancelOverUnresolvedWrite(repositories, request, targets, finishFencedWrite);
 
   const affectedTargets: TargetReference[] = [];
   const versionChanges: VersionChange[] = [];
@@ -725,6 +873,7 @@ function executeCancel(
       runId: target.run.envelope.runId,
       expectedVersion: target.run.version,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: now },
+      cancellationSource: { commandId: request.commandId, rootRunId: request.target.runId },
     });
     const cancelled = lifecycleRun(request, outcome);
     affectedTargets.push(runTarget(target.run.envelope.runId));
@@ -791,7 +940,9 @@ function deleteTreeOrder(
         throw new Error(`run ${childRunId} appears twice in the dependency tree under ${root.envelope.runId}`);
       }
       visited.add(childRunId);
-      if (!edges.some((candidate) => candidate.childRunId === childRunId)) {
+      if (edges.length === 0) {
+        repositories.dependencies.lifecycleEdgeForChild(parent.envelope.runId, childRunId);
+      } else if (!edges.some((candidate) => candidate.childRunId === childRunId)) {
         throw new Error(
           `run ${childRunId} is a child of ${parent.envelope.runId} but has no dependency edge in authority; `
           + "the tree is inconsistent, so nothing was deleted",
@@ -869,6 +1020,15 @@ function executeNotification(
   if (request.target.actorId !== request.requestedBy) {
     reject(request, "invalid-state", "notification target actor does not match the admitted command actor");
   }
+  if ("members" in request.target) {
+    const operation: NotificationCollectionOperation = request.type === "notification-read-all" ? "read" : request.type === "notification-unread-all" ? "unread"
+      : request.type === "notification-snooze-all" ? "snooze" : "unsnooze";
+    const observed = repositories.notifications.collection(request.target.actorId, operation);
+    if (canonicalJsonStringify(observed) !== canonicalJsonStringify(request.target)) reject(request, "invalid-state", "notification collection changed; reload the inbox");
+    const rows = repositories.notifications.listByActor(request.target.actorId).filter(row => notificationMatchesCollection(row, operation));
+    const changes = rows.map(row => applyNotificationState(repositories, row, operation, now));
+    return applied(request, changes.map(change => change.target), changes.map(change => change.version));
+  }
   const current = repositories.notifications.get(request.target.notificationId);
   if (current === undefined) {
     reject(request, "target-not-found", `notification ${request.target.notificationId} does not exist`);
@@ -895,31 +1055,21 @@ function executeNotification(
       + `(you loaded ${String(request.target.expectedVersion)}); reload the inbox`,
     );
   }
-  const snoozeUntil = request.type === "notification-snooze"
-    ? new Date(Date.parse(now) + 3_600_000).toISOString()
-    : undefined;
-  repositories.notifications.updateState({
-    notificationId: request.target.notificationId,
-    expectedVersion: current.version,
-    status: request.type === "notification-read"
-      ? "read"
-      : request.type === "notification-unread"
-        ? "unread"
-        : current.status,
-    snooze: snoozeUntil !== undefined
-      ? { state: "snoozed", until: snoozeUntil }
-      : request.type === "notification-unsnooze"
-        ? { state: "not-snoozed" }
-        : current.snooze,
-    updatedAt: now,
-  });
-  const target: TargetReference = { family: "notification", notificationId: request.target.notificationId };
-  return applied(request, [target], [{
-    target,
-    before: current.version,
-    after: current.version + 1,
-  }]);
+  const operation: NotificationCollectionOperation = request.type === "notification-read" ? "read" : request.type === "notification-unread" ? "unread"
+    : request.type === "notification-snooze" ? "snooze" : "unsnooze";
+  const change = applyNotificationState(repositories, current, operation, now);
+  return applied(request, [change.target], [change.version]);
 }
+
+function applyNotificationState(repositories: AuthorityRepositories, current: NotificationRecord, operation: NotificationCollectionOperation, now: string) {
+  repositories.notifications.updateState({ notificationId: current.notificationId, expectedVersion: current.version,
+    status: operation === "read" ? "read" : operation === "unread" ? "unread" : current.status,
+    snooze: operation === "snooze" ? { state: "snoozed", until: new Date(Date.parse(now) + 3_600_000).toISOString() }
+      : operation === "unsnooze" ? { state: "not-snoozed" } : current.snooze, updatedAt: now });
+  const target: TargetReference = { family: "notification", notificationId: current.notificationId };
+  return { target, version: { target, before: current.version, after: current.version + 1 } };
+}
+
 
 
 function executeIntake(
@@ -1383,6 +1533,15 @@ function executeIntake(
 }
 
 
+/** An empty name after trimming clears the rename; anything else must be a valid display name. */
+function trimmedDisplayName(request: RunRenameCommand) {
+  const name = request.payload.displayName.trim();
+  if (name.length === 0) return null;
+  const parsed = RunDisplayNameSchema.safeParse(name);
+  if (!parsed.success) reject(request, "invalid-value", parsed.error.issues.map(issue => issue.message).join("; "));
+  return parsed.data;
+}
+
 function executePresentation(
   dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
@@ -1404,7 +1563,7 @@ function executePresentation(
     commandId: lifecycleCommandId("operator-rename", request.commandId),
     runId: request.target.runId,
     expectedVersion: request.target.expectedVersion,
-    displayName: request.payload.displayName,
+    displayName: trimmedDisplayName(request),
   });
   lifecycleRun(request, outcome);
   return applied(request, [runTarget(request.target.runId)], [{
@@ -1480,8 +1639,8 @@ function executeWriteResolution(
   if (intent.currentAttemptId !== request.target.writeAttemptId || intent.bindingProofDigest !== request.target.bindingProofDigest
     || intent.idempotencyKeyDigest !== request.payload.occurrenceKeyDigest) reject(request,"invalid-state","Resolution must bind the exact original parked attempt and permanent occurrence key");
   const context: WriteResolutionContext = Object.freeze({ command: request, run: current, intent, now, auditId });
-  const raw = request.type === "resolve-write-present"
-    ? dependencies.writeResolution.resolvePresent(repositories, context)
+  const raw = request.type === "recheck-write"
+    ? dependencies.writeResolution.recheck(repositories, context)
     : dependencies.writeResolution.resolveAbsent(repositories, context);
   const outcome = WriteResolutionOutcomeSchema.parse(raw.outcome);
   if (outcome.run.envelope.runId !== request.target.runId) {
@@ -1509,6 +1668,7 @@ function executeResolveGate(
   repositories: AuthorityRepositories,
   request: Extract<CommandRequest, { family: "gate" }>,
   now: string,
+  source: "operator" | "workbook-reference",
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
   if (current.version !== request.target.expectedVersion) {
@@ -1542,6 +1702,11 @@ function executeResolveGate(
       `run ${request.target.runId} is parked on gate ${request.target.gateId}, which ${descriptor.id} does not declare; `
       + "the stored park is inconsistent with the descriptor",
     );
+  }
+  const declaration = findGateDecision(descriptor.id, request.target.gateId);
+  if ((declaration !== undefined && declaration.resolution.source !== source)
+    || (declaration === undefined && source !== "operator")) {
+    reject(request, "policy-refused", "This gate must be resolved through its declared evidence source.");
   }
   if (node.resolvedBy !== "operator") {
     reject(
@@ -1577,7 +1742,25 @@ function executeResolveGate(
       + "no gate result was recorded",
     );
   }
-  verifyGateEvidenceCurrent(request, descriptor, node, evidenceScope, now);
+  verifyGateEvidenceCurrent(request, descriptor, node, evidenceScope, now, current);
+  if (current.envelope.workflow === "ocr" && String(node.id) === "approve-records") {
+    const approval = request.payload.ocrApproval;
+    if (approval === undefined || request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    const review = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
+    if (review === undefined || review.revision.revision !== approval.expectedRevision || review.digest !== approval.reviewDigest) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    const lookupNodes = (["lookup-identities", "lookup-signers"] as const).filter(nodeId =>
+      descriptorRuntimeNodes(descriptor).some(node => node.kind === "child-run" && node.id === nodeId));
+    assertOcrReviewChildrenCurrent(repositories, request.target.runId, review.revision.seed, lookupNodes);
+    const parsed = OcrApprovedSnapshotSchema.safeParse({ snapshotId: request.commandId, sourceRunId: request.target.runId,
+      revision: review.revision.revision, reviewDigest: review.digest, selectedRecordIds: approval.selectedRecordIds,
+      records: approval.selectedRecordIds.map(id => review.revision.records.find(record => record.recordId === id)),
+      approvedBy: request.requestedBy, approvedAt: now });
+    if (!parsed.success) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    const snapshot = parsed.data;
+    if (canonicalJsonStringify(parsedValue.data) !== canonicalJsonStringify({ snapshotId: snapshot.snapshotId,
+      sourceRunId: snapshot.sourceRunId, revision: snapshot.revision, digest: ocrSnapshotDigest(snapshot) })) reject(request, "schema-mismatch", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    repositories.ocrReviews.approve(snapshot);
+  } else if (request.payload.ocrApproval !== undefined) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
   const result = { schemaHash: expectedSchemaHash, value: parsedValue.data };
   const stored = repositories.gateResults.insert({
     nodeId: node.id,
@@ -1658,7 +1841,7 @@ function gateEvidenceScope(
         || checkpoint.nodeId !== nodeId || checkpoint.attempt > run.envelope.attempt
         || checkpoint.descriptorVersion !== descriptor.version
         || checkpoint.contractFingerprint !== descriptor.contractFingerprint
-        || checkpoint.implFingerprint !== resolveTaskImplFingerprint(BUILD_MANIFEST, node.uses.id)
+        || checkpoint.implFingerprint !== taskImplFingerprint(node.uses)
         || checkpoint.output.schemaHash !== expectedSchemaHash) {
         reject(request, "schema-mismatch", `gate ${gate.id} dependency checkpoint ${nodeId} is not compatible with this run's descriptor`);
       }
@@ -1745,16 +1928,32 @@ function verifyGateEvidenceCurrent(
   gate: Extract<ReturnType<typeof descriptorRuntimeNodes>[number], { kind: "gate" }>,
   scope: ReturnType<typeof gateEvidenceScope>,
   now: string,
+  run: RunRecord,
 ): void {
   const declaration = findGateDecision(descriptor.id, request.target.gateId);
   if (declaration?.boundEvidencePath !== undefined) {
     const submitted = valueAtPath(request.payload.result.value, declaration.boundEvidencePath);
-    const currentEvidence = gate.dependsOn.flatMap((nodeId) => {
+    const policy = declaration.resolution;
+    const boundInput = policy.source === "workbook-reference" && "boundInputPath" in policy
+      && valueAtPath(scope.input, policy.inputCondition.path) === policy.inputCondition.equals
+      ? valueAtPath(scope.input, policy.boundInputPath) : undefined;
+    const checkpoint = policy.source === "workbook-reference" && "boundNodeId" in policy
+      ? scope.checkpoints.get(policy.boundNodeId)?.record : undefined;
+    const boundOutput = checkpoint !== undefined && policy.source === "workbook-reference" && "boundOutputPath" in policy
+      ? valueAtPath(checkpoint.output.value, policy.boundOutputPath) : undefined;
+    const bound = policy.source === "workbook-reference" && "boundNodeId" in policy ? boundOutput : boundInput;
+    const currentEvidence = policy.source === "workbook-reference"
+      ? (bound === undefined ? [] : [{ nodeId: gate.id, value: bound }])
+      : gate.dependsOn.flatMap((nodeId) => {
       const checkpoint = scope.checkpoints.get(String(nodeId))?.record;
       const value = checkpoint === undefined ? undefined : valueAtPath(checkpoint.output.value, declaration.boundEvidencePath!);
       return value === undefined ? [] : [{ nodeId: String(nodeId), value }];
     });
-    if (currentEvidence.length !== 1 || currentEvidence[0]?.value !== submitted) {
+    const retained = currentEvidence[0]?.value;
+    const capturedDigests = new Set((run.input.workbookReferences ?? []).map(bound => sha256Hex(canonicalJsonStringify(bound))));
+    const sameRetainedSource = retained === submitted
+      || (typeof submitted === "string" && typeof retained === "string" && capturedDigests.has(submitted) && capturedDigests.has(retained));
+    if (currentEvidence.length !== 1 || !sameRetainedSource) {
       reject(
         request,
         "invalid-state",
@@ -1768,6 +1967,8 @@ function verifyGateEvidenceCurrent(
     const checkpoint = scope.checkpoints.get(String(nodeId));
     if (checkpoint === undefined) continue;
     const { node, record } = checkpoint;
+    // The run re-reads always-rerun dependencies after the decision.
+    if (node.replay === "always-rerun") continue;
     for (const fact of record.provenance) {
       const bound = resolveFreshnessBound(node.uses.freshness, fact.path).maxAgeMs;
       if (!Number.isFinite(bound)) continue;
@@ -1785,7 +1986,7 @@ function verifyGateEvidenceCurrent(
 }
 
 type WorkerBrowserCommand = Extract<CommandRequest, { family: "worker-browser" }>;
-
+type WorkerMemberCommand = Exclude<WorkerBrowserCommand, { type: "plan-worker-count" | "spawn-worker" }>;
 
 function checkWorkerPoolVersion(
   repositories: AuthorityRepositories,
@@ -1806,426 +2007,272 @@ function checkWorkerPoolVersion(
   return current;
 }
 
-function requireWorkerControlBasis(repositories: AuthorityRepositories, request: WorkerBrowserCommand): void {
-  if (!("workerId" in request.target)) return;
-  const lease = repositories.workerLeases.get(request.target.workerId);
-  if (lease === undefined) reject(request, "target-not-found", "worker-control-target-not-found");
-  if (request.target.controlBasis === undefined || lease.controlRevision === undefined) reject(request, "invalid-state", "worker-control-basis-unavailable: historical evidence cannot authorize a new instruction");
-  if (request.target.controlBasis.leaseGeneration !== lease.leaseGeneration || request.target.controlBasis.controlRevision !== lease.controlRevision) conflict(request, lease.controlRevision, "worker-control-basis-conflict: worker lifetime or control revision changed");
+function requireActiveSlot(repositories: AuthorityRepositories, request: CommandRequest, workerId: string, workflowId?: string): WorkerPoolMember {
+  const slot = repositories.workerSlots.get(workerId);
+  if (slot === undefined) reject(request, "target-not-found", `worker ${workerId} has no slot`);
+  if (slot.retiredAt !== null || workflowId !== undefined && slot.workflow !== workflowId) reject(request, "invalid-state", "worker-slot-not-admitted: select a current member");
+  return workerPoolMember(slot);
 }
 
-function requireReservedWorkerControl(repositories: AuthorityRepositories, request: WorkerBrowserCommand): void {
-  if (!("workerId" in request.target)) return;
-  const lease = repositories.workerLeases.get(request.target.workerId);
-  const basis = request.target.controlBasis;
-  if (lease === undefined || basis === undefined || lease.leaseGeneration !== basis.leaseGeneration
-    || lease.controlRevision !== basis.controlRevision + 1 || lease.controlCommandId !== request.commandId) {
-    throw new WorkerControlRefusal("worker-control-basis-changed-before-effect");
+/** The member fence is in memory: a card from another lifetime or an older version of this one is stale. */
+function requireMemberFence(pool: WorkerPoolRuntimeSeam, request: WorkerMemberCommand): WorkerMemberState {
+  const { workerId, lifetimeId, expectedVersion } = request.target;
+  try { return pool.assertMember({ workerId, lifetimeId, expectedVersion }); }
+  catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "WORKER_TARGET_STALE") conflict(request, 0, "WORKER_TARGET_STALE");
+    throw error;
   }
 }
 
-function validateWorkerPoolCommand(
-  dependencies: CommandKernelDependencies,
-  repositories: AuthorityRepositories,
-  request: WorkerBrowserCommand,
-): number {
-  const workflow = "workflowId" in request.target ? request.target.workflowId : repositories.workerSlots.get(request.target.workerId)?.workflow;
-  if (workflow !== undefined && repositories.workerSlots.verifications(workflow).length !== 0) reject(request, "invalid-state", "worker-verification-reserved");
-  requireWorkerControlBasis(repositories, request);
-  switch (request.type) {
-    case "plan-worker-count": {
-      resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
-      return checkWorkerPoolVersion(repositories, request, request.target.workflowId, request.target.expectedVersion);
-    }
-    case "spawn-worker": {
-      resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
-      const version = checkWorkerPoolVersion(
-        repositories, request, request.target.workflowId, request.target.expectedVersion,
-      );
-      const slot = repositories.workerSlots.get(request.payload.workerId);
-      if (slot === undefined || slot.retiredAt !== null || slot.workflow !== request.target.workflowId) reject(request, "invalid-state", "worker-slot-not-admitted: select a current reserved member");
-      requireWorkerPoolRoster(repositories, request.target.workflowId);
-      const existing = repositories.workerLeases.get(request.payload.workerId);
-      if (existing !== undefined && isLiveWorker(existing)) {
-        reject(
-          request,
-          "invalid-state",
-          `worker ${request.payload.workerId} already holds a live lease in state ${existing.lifecycle.state}; `
-          + "a second process may not answer to the same worker id",
-        );
-      }
-      return version;
-    }
-    case "remove-worker":
-    case "retry-worker":
-      return reject(request, "invalid-state", "worker-lifecycle-dedicated-admission-required");
-    case "stop-worker":
-    case "pause-worker":
-    case "resume-worker": {
-      const lease = repositories.workerLeases.get(request.target.workerId);
-      if (lease === undefined) {
-        reject(request, "target-not-found", `worker lease ${request.target.workerId} does not exist`);
-      }
-      if (!isLiveWorker(lease)) {
-        reject(
-          request,
-          "invalid-state",
-          `worker ${request.target.workerId} lease is ${lease.lifecycle.state}; `
-          + "a stopped worker starts a new lease generation instead of taking directives",
-        );
-      }
-      return lease.version;
-    }
-    case "refresh-browser":
-    case "reopen-browser": {
-      const lease = repositories.workerLeases.get(request.target.workerId);
-      if (lease === undefined) {
-        reject(request, "target-not-found", `worker lease ${request.target.workerId} does not exist`);
-      }
-      if (!isLiveWorker(lease)) {
-        reject(
-          request,
-          "invalid-state",
-          `worker ${request.target.workerId} lease is ${lease.lifecycle.state}; `
-          + "it owns no live browser session to act on",
-        );
-      }
-      if (lease.lifecycle.state === "busy" || repositories.runs.listByWorker(lease.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state))) reject(request, "invalid-state", "worker-browser-busy: no deferred control is queued");
-      const selected = repositories.workerControls.browsers(lease.workerId).find(value => value.sessionId === request.target.browserSessionId && value.leaseGeneration === lease.leaseGeneration && value.health !== "closed");
-      if (selected === undefined) reject(request, "invalid-state", "worker-browser-session-unavailable");
-      return lease.version;
-    }
-  }
+function claimedRunsOf(repositories: AuthorityRepositories, workerId: string): readonly RunRecord[] {
+  return repositories.runs.listByWorker(workerId).filter(run => ["claimed", "validating", "running"].includes(run.lifecycle.state));
 }
 
-type WorkerPoolSettledAcknowledgement = WorkerEffectAcknowledgement;
-
-
-async function settleWorkerPoolEffect(
-  pool: WorkerPoolRuntimeSeam,
-  request: WorkerBrowserCommand,
-  context: WorkerRuntimeContext,
-): Promise<WorkerPoolSettledAcknowledgement> {
-  switch (request.type) {
-    case "plan-worker-count": {
-      const acknowledgement = WorkerPlanAcknowledgementSchema.parse(await pool.planPoolWorkerCount(context));
-      return { kind: "plan", workerIds: acknowledgement.workerIds, retirements: acknowledgement.retirements };
-    }
-    case "spawn-worker":
-      WorkerRuntimeAcknowledgementSchema.parse(await pool.spawnPoolWorker(context));
-      return { kind: "control" };
-    case "remove-worker":
-    case "retry-worker":
-    case "stop-worker":
-      throw new WorkerControlRefusal("worker-reset-settlement-unavailable");
-    case "pause-worker":
-      WorkerRuntimeAcknowledgementSchema.parse(await pool.pausePoolWorker(context));
-      return { kind: "control" };
-    case "resume-worker":
-      WorkerRuntimeAcknowledgementSchema.parse(await pool.resumePoolWorker(context));
-      return { kind: "control" };
-    case "refresh-browser":
-      WorkerRuntimeAcknowledgementSchema.parse(await pool.refreshPoolBrowser(context));
-      return { kind: "control" };
-    case "reopen-browser":
-      WorkerRuntimeAcknowledgementSchema.parse(await pool.reopenPoolBrowser(context));
-      return { kind: "control" };
-  }
+/** Worker Pause holds its claimed run under a claim-derived pause id, so resume-worker resumes only those runs. */
+function workerPauseCommandId(workerId: string, run: RunRecord): string {
+  return lifecycleCommandId("worker-pause", { workerId, runId: run.envelope.runId, claimGeneration: run.claimGeneration });
 }
 
-
-function applyWorkerPoolCommand(
-  repositories: AuthorityRepositories,
-  request: WorkerBrowserCommand,
-  now: string,
-  basisVersion: number,
-  acknowledgement: WorkerPoolSettledAcknowledgement,
-): CommandApplication {
-  switch (request.type) {
-    case "plan-worker-count": {
-      if (acknowledgement.kind !== "plan") {
-        throw new Error("plan-worker-count settled without a plan acknowledgement; the pool seam is inconsistent");
-      }
-      const control = repositories.workerControls.get(request.commandId);
-      if (control === undefined) throw new Error("worker-roster-admission-missing");
-      const roster = control.roster;
-      if (roster === undefined || roster.beforeVersion !== basisVersion
-        || canonicalJsonStringify(acknowledgement.workerIds) !== canonicalJsonStringify(roster.selected.map(slot => slot.workerId))
-        || acknowledgement.retirements.length !== roster.excess.length) throw new Error("worker-roster-settlement-mismatch");
-      for (const original of [...roster.selected, ...roster.excess]) {
-        const current = repositories.workerSlots.get(original.workerId);
-        if (canonicalJsonStringify(current) !== canonicalJsonStringify(original)) throw new Error("worker-roster-reservation-changed");
-      }
-      const currentPool = repositories.workerPools.get(request.target.workflowId);
-      if (currentPool === undefined) throw new Error("worker-pool-missing-before-settlement");
-      if (currentPool.version !== roster.admittedVersion) conflict(request, currentPool.version,
-        "The worker effect ALREADY executed before the pool changed; retain this command identity and do not repeat it");
-      for (const slot of roster.excess) {
-        const proof = acknowledgement.retirements.find(value => value.workerId === slot.workerId);
-        if (proof === undefined || proof.membershipRevision !== slot.membershipRevision
-          || Date.parse(proof.checkedAt) < Date.parse(control.admittedAt)
-          || repositories.workerControls.browsers(slot.workerId).some(browser => browser.health !== "closed")) throw new Error("worker-retirement-not-proved");
-        repositories.workerSlots.retire({ workerId: slot.workerId, commandId: request.commandId,
-          expectedRevision: slot.membershipRevision, now: proof.checkedAt });
-      }
-      if (roster.admittedVersion === roster.beforeVersion) {
-        const planned = repositories.workerPools.plan({ workflow: request.target.workflowId,
-          expectedVersion: roster.beforeVersion, desiredWorkers: request.payload.desiredWorkers,
-          requestedBy: request.requestedBy, now });
-        if (planned.state !== "applied" || planned.pool.version !== roster.afterVersion) throw new Error("worker-pool-version-conflict");
-      } else if (currentPool.desiredWorkers !== request.payload.desiredWorkers) throw new Error("worker-pool-declaration-mismatch");
-      requireWorkerPoolRoster(repositories, request.target.workflowId);
-      return applied(
-        request,
-        [
-          workerPoolTarget(request.target.workflowId),
-          ...acknowledgement.workerIds.map((workerId) => workerTarget(workerId)),
-        ],
-        [{ target: workerPoolTarget(request.target.workflowId), before: basisVersion, after: basisVersion + 1 }],
-      );
-    }
-    case "spawn-worker":
-      // The child's own birth lease IS the authority fact, written by the
-      // worker process and proved by the supervisor before it acknowledged.
-      return applied(request, [workerTarget(request.payload.workerId)], []);
-    case "remove-worker":
-    case "retry-worker":
-    case "stop-worker":
-      throw new WorkerControlRefusal("worker-reset-settlement-unavailable");
-    case "pause-worker":
-    case "resume-worker": {
-      requireReservedWorkerControl(repositories, request);
-      const lease = repositories.workerLeases.get(request.target.workerId);
-      if (lease === undefined) {
-        throw new Error(
-          `worker lease ${request.target.workerId} vanished after its ${request.type} was attested; `
-          + "the durable record is inconsistent",
-        );
-      }
-      if (!isLiveWorker(lease)) {
-        reject(
-          request,
-          "invalid-state",
-          `worker ${request.target.workerId} lease is ${lease.lifecycle.state}; `
-          + "a stopped worker starts a new lease generation instead of taking directives",
-        );
-      }
-      const directive = request.type === "pause-worker" ? "pause" : "run";
-      const outcome = repositories.workerLeases.control({
-        workerId: request.target.workerId,
-        expectedVersion: lease.version,
-        commandId: request.commandId,
-        control: {
-          directive,
-          requestedAt: now,
-          requestedBy: request.requestedBy,
-          ...(request.reason === undefined ? {} : { reason: request.reason }),
-        },
-        now,
-      });
-      requireApplied(outcome, `${request.type} directive on worker ${request.target.workerId}`);
-      return applied(request, [workerTarget(request.target.workerId)], [{
-        target: workerTarget(request.target.workerId),
-        before: lease.version,
-        after: lease.version + 1,
-      }]);
-    }
-    case "refresh-browser":
-    case "reopen-browser":
-      return applied(request, [workerTarget(request.target.workerId)], []);
-  }
+/** A worker also runs delegated children of other workflows, so its held runs are found by pause id across its descendant home. */
+function workerPauseHeldRuns(repositories: AuthorityRepositories, workerId: string, state: "requested" | "paused"): readonly RunRecord[] {
+  const workflow = repositories.workerSlots.get(workerId)?.workflow;
+  return workflow === undefined ? [] : repositories.runs.listByPauseState(state)
+    .filter(run => run.pause?.commandId === workerPauseCommandId(workerId, run) && authenticateDescendantHome(repositories, run, workflow));
 }
 
-/** Durable admission precedes every async effect; settlement precedes the final audit. */
+function auditWorkerCommand(dependencies: CommandKernelDependencies, repositories: AuthorityRepositories, request: WorkerBrowserCommand,
+  application: CommandApplication, parkedWriteCheck?: ParkedWriteCheckAcknowledgement): CommandResult {
+  repositories.commands.insert(request);
+  repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request, result: application.result,
+    completedAt: dependencies.clock.now().toISOString(), versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds,
+    ...(parkedWriteCheck === undefined ? {} : { parkedWriteCheck }) });
+  return application.result;
+}
+
+/** A pool refusal after admission is the command's recorded outcome; any other failure stays a structured throw. */
+function workerEffectRefusal(request: WorkerBrowserCommand, error: unknown): CommandApplication | undefined {
+  const code = error instanceof Error && "code" in error && typeof error.code === "string" && error.code.startsWith("WORKER_") ? error.code
+    : error instanceof WorkerControlRefusal ? error.message : undefined;
+  if (code === undefined) return undefined;
+  return { result: CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: code }), versionChanges: [], affectedDependencyIds: [] };
+}
+
+/**
+ * Admission and fences run in one authority transaction, the pool effect runs after it, and the outcome is journaled
+ * with its audit in a final transaction. Pause, resume and Reset commit their durable change first and then tell the child.
+ */
 async function executeWorkerPoolCommand(
   dependencies: CommandKernelDependencies,
   pool: WorkerPoolRuntimeSeam,
   request: WorkerBrowserCommand,
 ): Promise<CommandResult> {
   const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
-  if (request.type === "stop-worker") {
-    if (!LiveWorkerResetRequestSchema.safeParse(request).success) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: "worker-reset-authority-unavailable" });
-    let replacement: WorkerRuntimeContext | undefined;
-    let result: CommandResult;
-    try { result = dependencies.authority.withAuthorityTransaction(repositories => {
-      repositories.commands.assertIdentity(request);
-      const prior = repositories.workerControls.get(request.commandId);
-      if (prior !== undefined) {
-        if (prior.reset === undefined) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: "worker-reset-authority-unavailable" });
-        if (repositories.commandAudits.findByCommand(request.commandId) !== undefined) return replay(dependencies, repositories, request, now);
-        return CommandResultSchema.parse({ state: "pending", commandId: request.commandId });
-      }
-      try {
-        const live = LiveWorkerResetRequestSchema.parse(request);
-        const lease = repositories.workerLeases.get(live.target.workerId), slot = repositories.workerSlots.get(live.target.workerId);
-        if (lease === undefined || slot === undefined) throw new WorkerControlRefusal("worker-reset-owner-unavailable");
-        const lifetime = { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt };
-        let descriptor: AnyWorkflowDescriptor | undefined;
-        if (lease.lifecycle.state === "stopped") {
-          if (pool.assertLifecycleOwner === undefined || pool.beginLifecycle === undefined) throw new WorkerControlRefusal("worker-reset-replacement-owner-unavailable");
-          descriptor = dependencies.descriptors.resolve(slot.workflow);
-          if (descriptor === undefined) throw new WorkerControlRefusal("worker-reset-replacement-descriptor-unavailable");
-          selectNewRunIdentity(repositories, dependencies.configIdentity);
-        } else {
-          if (pool.assertResetOwner === undefined) throw new WorkerControlRefusal("worker-reset-owner-unavailable");
-          pool.assertResetOwner(live.target.workerId, live.target.membershipRevision, lifetime);
-        }
-        const record = admitWorkerReset(repositories, request, dependencies.ids.uuid(), now, descriptor);
-        if (record.lifecycle !== undefined) {
-          repositories.workerControls.transition(record.commandId, "admitted", { state: "executing", startedAt: now });
-          dependencies.lifecycle.settleResetWork(record.reset);
-          if (pool.assertLifecycleOwner === undefined) throw new WorkerControlRefusal("worker-reset-replacement-owner-unavailable");
-          pool.assertLifecycleOwner("retry", live.target.workerId, live.target.membershipRevision, lifetime);
-          replacement = { command: request, now };
-        }
-      } catch (error) {
-        if (error instanceof CommandIdentityConflictError) throw error;
-        throw new WorkerControlRefusal(error instanceof Error ? error.message : "worker-reset-authority-unavailable");
-      }
-      return CommandResultSchema.parse({ state: "pending", commandId: request.commandId });
-    }); } catch (error) {
-      if (error instanceof WorkerControlRefusal) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
-        code: "invalid-state", message: error.message });
-      throw error;
-    }
-    if (replacement !== undefined) {
-      try { pool.beginLifecycle?.(replacement); }
-      catch (error) {
-        const current = dependencies.authority.withAuthorityTransaction(repositories => repositories.workerControls.get(request.commandId));
-        if (current?.phase.state === "executing") {
-          const startedAt = current.phase.startedAt;
-          dependencies.authority.withAuthorityTransaction(repositories => repositories.workerControls.transition(request.commandId, "executing", {
-            state: "uncertain", startedAt, observedAt: now, message: "worker-reset-replacement-dispatch-unproved" }));
-        }
-        throw error;
-      }
-    }
-    return result;
-  }
-  if (request.type === "remove-worker" || request.type === "retry-worker") {
-    let context: WorkerRuntimeContext | undefined;
-    let admitted: CommandResult;
-    try {
-      admitted = dependencies.authority.withAuthorityTransaction(repositories => {
-        repositories.commands.assertIdentity(request);
-        const prior = repositories.workerControls.get(request.commandId);
-        if (prior !== undefined) return repositories.commandAudits.findByCommand(request.commandId) === undefined
-          ? CommandResultSchema.parse({ state: "pending", commandId: request.commandId }) : replay(dependencies, repositories, request, now);
-        const lease = repositories.workerLeases.get(request.target.workerId);
-        if (lease === undefined || pool.assertLifecycleOwner === undefined || pool.beginLifecycle === undefined) throw new WorkerControlRefusal("worker-lifecycle-owner-unavailable");
-        pool.assertLifecycleOwner(request.type === "remove-worker" ? "remove" : "retry", request.target.workerId, request.target.membershipRevision,
-          { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt });
-        const descriptor = dependencies.descriptors.resolve(request.target.workflowId);
-        if (descriptor === undefined) throw new WorkerControlRefusal("worker-lifecycle-descriptor-unavailable");
-        selectNewRunIdentity(repositories, dependencies.configIdentity);
-        const record = admitWorkerLifecycle(repositories, request, dependencies.ids.uuid(), now, { descriptor, mode: "initialize" });
-        context = { command: request, now };
-        repositories.workerControls.transition(record.commandId, "admitted", { state: "executing", startedAt: now });
-        return CommandResultSchema.parse({ state: "pending", commandId: request.commandId });
-      });
-    } catch (error) {
-      if (error instanceof CommandIdentityConflictError) throw error;
-      return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: error instanceof Error ? error.message : "worker-lifecycle-authority-unavailable" });
-    }
-    if (context !== undefined) {
-      try { pool.beginLifecycle?.(context); }
-      catch (error) {
-        dependencies.authority.withAuthorityTransaction(repositories => {
-          const current = repositories.workerControls.get(request.commandId);
-          if (current?.phase.state === "executing") repositories.workerControls.transition(request.commandId, "executing", { state: "uncertain", startedAt: current.phase.startedAt,
-            observedAt: dependencies.clock.now().toISOString(), message: "worker-lifecycle-dispatch-unproved" });
-        });
-        throw error;
-      }
-    }
-    return admitted;
-  }
-  const browser = request.type === "refresh-browser" || request.type === "reopen-browser";
-  const controls = dependencies.authority.withAuthorityTransaction(repositories => repositories.workerControls);
-  const pre = dependencies.authority.withAuthorityTransaction((repositories) => {
+  const transact = <T>(work: (repositories: AuthorityRepositories) => T): T => dependencies.authority.withAuthorityTransaction(work);
+  const prior = transact(repositories => {
     repositories.commands.assertIdentity(request);
-    if (repositories.commandAudits.findByCommand(request.commandId) !== undefined) {
-      return { kind: "replay" as const, result: replay(dependencies, repositories, request, now) };
-    }
-    const prior = repositories.workerControls.get(request.commandId);
-    if (prior !== undefined) return { kind: "retained" as const, record: prior };
-    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") repositories.runtimeConfig.requireSettingsCurrent();
-    const basisVersion = validateWorkerPoolCommand(dependencies, repositories, request);
-    const scope = workerPoolSerializationKey(request);
-    if (repositories.workerControls.pending(scope).length > 0) reject(request, "invalid-state", "worker-control-unresolved-effect: reconcile the exact previous command before another effect");
-    if ("workerId" in request.target) repositories.workerLeases.reserveControl(request.target.workerId, request.target.controlBasis, request.commandId, now);
-    repositories.commands.insert(request);
-    const roster = request.type === "plan-worker-count" ? admitWorkerPoolRoster(repositories, request, now) : undefined;
-    const record = repositories.workerControls.admit({ ...(roster === undefined ? {} : { roster }), commandId: request.commandId, request, scope,
-      executorId: dependencies.ids.uuid(), admittedAt: now,
-      expiresAt: new Date(Date.parse(now) + 180_000).toISOString(), basisVersion, phase: { state: "admitted" } });
-    return { kind: "admitted" as const, record };
+    return repositories.commandAudits.findByCommand(request.commandId) === undefined ? undefined : replay(dependencies, repositories, request, now);
   });
-  if (pre.kind === "replay") return pre.result;
-  let record: WorkerControlRecord = pre.record;
-  if (pre.kind === "admitted") {
-    try {
-      if (!browser) record = controls.transition(request.commandId, "admitted", { state: "executing", startedAt: now });
-      const context: WorkerRuntimeContext = Object.freeze({ command: request, now, ...(pre.record.roster === undefined ? {} : { roster: pre.record.roster }) });
-      const acknowledgement = WorkerEffectAcknowledgementSchema.parse(await settleWorkerPoolEffect(pool, request, context));
-      if (!browser) record = dependencies.authority.withAuthorityTransaction(repositories => {
-        if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") repositories.runtimeConfig.requireSettingsCurrent();
-        const application = applyWorkerPoolCommand(repositories, request, now, pre.record.basisVersion, acknowledgement);
-        return repositories.workerControls.transition(request.commandId, "executing", {
-          state: "succeeded", startedAt: now, completedAt: dependencies.clock.now().toISOString(), acknowledgement, application,
-        });
+  if (prior !== undefined) return prior;
+  // A stale or missing durable target is refused before admission reaches the process seam (preflight, assistant grant).
+  transact(repositories => {
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "retry-worker"
+      || request.type === "stop-worker" || request.type === "resume-worker") repositories.runtimeConfig.requireSettingsCurrent();
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "retry-worker") {
+      resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
+    }
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker") {
+      checkWorkerPoolVersion(repositories, request, request.target.workflowId, request.target.expectedVersion);
+      if (request.type === "spawn-worker") requireActiveSlot(repositories, request, request.payload.workerId, request.target.workflowId);
+    } else requireActiveSlot(repositories, request, request.target.workerId, "workflowId" in request.target ? request.target.workflowId : undefined);
+  });
+  // A plan preflights its member starts after it applies.
+  const preflight = request.type === "spawn-worker" || request.type === "retry-worker" || request.type === "stop-worker";
+  try { await pool.admit(request.commandId, { preflight }); }
+  catch (error) {
+    const refusal = workerEffectRefusal(request, error);
+    if (refusal === undefined) throw error;
+    return transact(repositories => auditWorkerCommand(dependencies, repositories, request, refusal));
+  }
+  const settle = async (effect: () => Promise<void>, application: (repositories: AuthorityRepositories) => CommandApplication): Promise<CommandResult> => {
+    try { await effect(); }
+    catch (error) {
+      const refusal = workerEffectRefusal(request, error);
+      if (refusal === undefined) throw error;
+      return transact(repositories => auditWorkerCommand(dependencies, repositories, request, refusal));
+    }
+    return transact(repositories => auditWorkerCommand(dependencies, repositories, request, application(repositories)));
+  };
+
+  switch (request.type) {
+    case "plan-worker-count": {
+      const desired = request.payload.desiredWorkers;
+      const excess = transact(repositories => {
+        repositories.runtimeConfig.requireSettingsCurrent();
+        resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
+        checkWorkerPoolVersion(repositories, request, request.target.workflowId, request.target.expectedVersion);
+        return repositories.workerSlots.active(request.target.workflowId).filter(slot => slot.poolIndex > desired).map(workerPoolMember);
       });
-      else {
-        const observed = controls.get(request.commandId);
-        if (observed === undefined || observed.phase.state !== "succeeded") throw new Error("worker-browser-outcome-not-observed");
-        record = observed;
+      let members: readonly WorkerPoolMember[] = [];
+      const result = await settle(async () => { for (const member of excess) await pool.remove(member); }, repositories => {
+        repositories.runtimeConfig.requireSettingsCurrent();
+        try {
+          const plan = applyWorkerPoolPlan(repositories, request, now, request.target.expectedVersion);
+          members = plan.members.map(workerPoolMember);
+          return plan.application;
+        } catch (error) {
+          if (error instanceof WorkerPoolPlanVersionConflict) conflict(request, error.currentVersion,
+            "The excess workers ALREADY stopped before the pool changed; re-read the pool before planning again");
+          throw error;
+        }
+      });
+      // The plan applies even when preflight refuses its starts; a member that does not start keeps Retry on its card.
+      const startable = await pool.admit(request.commandId, { preflight: true }).then(() => true, (error: unknown) => {
+        if (workerEffectRefusal(request, error) === undefined) throw error;
+        return false;
+      });
+      if (startable) await Promise.allSettled(members.map(member => pool.ensure(member)));
+      return result;
+    }
+    case "spawn-worker": {
+      const member = transact(repositories => {
+        repositories.runtimeConfig.requireSettingsCurrent();
+        resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
+        checkWorkerPoolVersion(repositories, request, request.target.workflowId, request.target.expectedVersion);
+        return requireActiveSlot(repositories, request, request.payload.workerId, request.target.workflowId);
+      });
+      return await settle(() => pool.start(member), () => applied(request, [workerTarget(member.workerId)], []));
+    }
+    case "retry-worker": {
+      const member = transact(repositories => {
+        repositories.runtimeConfig.requireSettingsCurrent();
+        resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
+        return requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
+      });
+      const state = requireMemberFence(pool, request);
+      if (state !== "absent" && state !== "exited") reject(request, "invalid-state", "WORKER_ALREADY_RUNNING");
+      return await settle(() => pool.start(member), () => applied(request, [workerTarget(member.workerId)], []));
+    }
+    case "remove-worker": {
+      const member = transact(repositories => requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId));
+      requireMemberFence(pool, request);
+      return await settle(() => pool.remove(member), repositories => {
+        const current = repositories.workerPools.get(member.workflowId);
+        if (current === undefined) throw new Error("worker-pool-missing-for-active-slot");
+        const planned = repositories.workerPools.plan({ workflow: member.workflowId, expectedVersion: current.version,
+          desiredWorkers: Math.max(0, current.desiredWorkers - 1), requestedBy: request.requestedBy, now });
+        if (planned.state !== "applied") throw new Error("worker-pool-plan-conflict-in-transaction");
+        repositories.workerSlots.retire({ workerId: member.workerId, now });
+        const target = { family: "worker-pool" as const, workflowId: member.workflowId };
+        return applied(request, [target, workerTarget(member.workerId)], [{ target, before: current.version, after: planned.pool.version }]);
+      });
+    }
+    case "stop-worker": {
+      // Reset: the ordinary run Cancel (version fenced, refused over a parked write, delegation cascade), then a fresh process.
+      // The claimed run's fenced write finishes and settles once before the run ends.
+      // The Cancel is its own journaled run command, derived from the Reset's id, so cancellation authenticates it.
+      const journaledResetCancel = (repositories: AuthorityRepositories, run: RunRecord, held: boolean): CommandApplication => {
+        const cancel = RunCommandRequestSchema.parse({ commandId: held
+          ? lifecycleCommandId("worker-stop-held-cancel", { commandId: request.commandId, runId: run.envelope.runId })
+          : lifecycleCommandId("worker-reset-cancel", request.commandId),
+          requestedAt: request.requestedAt, requestedBy: request.requestedBy, source: request.source,
+          ...(request.reason === undefined ? {} : { reason: request.reason }),
+          family: "run", type: "cancel", target: { runId: run.envelope.runId, expectedVersion: run.version } }) as RunBasicCommand;
+        repositories.commands.insert(cancel);
+        try {
+          const application = withCanonicalRunCommandScope(repositories, cancel, () => executeCancel(dependencies, repositories, cancel, now, !held));
+          repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request: cancel, result: application.result, completedAt: now,
+            versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds });
+          return application;
+        } catch (error) {
+          if (error instanceof CommandRefusal) throw new CommandRefusal({ ...error.result, commandId: request.commandId });
+          throw error;
+        }
+      };
+      const { member, result } = transact(repositories => {
+        repositories.runtimeConfig.requireSettingsCurrent();
+        const member = requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
+        requireMemberFence(pool, request);
+        const runs = claimedRunsOf(repositories, member.workerId);
+        if (runs.length > 1) throw new Error("worker-holds-more-than-one-claimed-run");
+        const run = runs[0];
+        // Stop also ends the runs this worker's pause holds; their Cancel cascades to cascade-cancel children.
+        const cancels = [...(run === undefined ? [] : [journaledResetCancel(repositories, run, false)]),
+          ...workerPauseHeldRuns(repositories, member.workerId, "paused").map(held => journaledResetCancel(repositories, held, true))];
+        const reset = applied(request, [workerTarget(member.workerId), ...cancels.flatMap(cancel => cancel.result.state === "applied" ? cancel.result.affectedTargets : [])],
+          cancels.flatMap(cancel => cancel.versionChanges), cancels.flatMap(cancel => cancel.affectedDependencyIds));
+        return { member, result: auditWorkerCommand(dependencies, repositories, request, reset) };
+      });
+      try { await pool.stop(member.workerId, "reset"); await pool.start(member); }
+      catch (error) { if (workerEffectRefusal(request, error) === undefined) throw error; }
+      return result;
+    }
+    case "pause-worker":
+    case "resume-worker": {
+      const paused = request.type === "pause-worker";
+      const result = transact(repositories => {
+        if (!paused) repositories.runtimeConfig.requireSettingsCurrent();
+        const member = requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
+        requireMemberFence(pool, request);
+        if (!paused && workerPauseHeldRuns(repositories, member.workerId, "requested").length !== 0) reject(request, "WORKER_PAUSE_SETTLING", ERROR_CATALOG.WORKER_PAUSE_SETTLING.text);
+        const slot = repositories.workerSlots.setPaused({ workerId: member.workerId, paused, now });
+        // Worker Pause holds its claimed run (the step restarts on Resume); Resume releases only the runs that pause held. A pending cancel wins.
+        const held = paused
+          ? claimedRunsOf(repositories, member.workerId).filter(run => run.pause === undefined && run.cancelRequested !== true)
+          : workerPauseHeldRuns(repositories, member.workerId, "paused");
+        const versionChanges: VersionChange[] = held.map(run => {
+          const runId = run.envelope.runId;
+          const outcome = paused
+            ? dependencies.lifecycle.pause({ commandId: workerPauseCommandId(member.workerId, run), runId, expectedVersion: run.version })
+            : dependencies.lifecycle.resumePaused({ commandId: lifecycleCommandId("worker-resume", { commandId: request.commandId, runId }), runId, expectedVersion: run.version });
+          return { target: runTarget(runId), before: run.version, after: lifecycleRun(request, outcome).version };
+        });
+        return auditWorkerCommand(dependencies, repositories, request,
+          applied(request, [workerTarget(slot.workerId), ...versionChanges.map(change => change.target)], versionChanges));
+      });
+      // The slot is the authority; the message only ends the child's idle wait now.
+      await pool.direct(request.target.workerId, paused ? "pause" : "run");
+      return result;
+    }
+    case "refresh-browser":
+    case "reopen-browser": {
+      transact(repositories => {
+        requireActiveSlot(repositories, request, request.target.workerId);
+        if (claimedRunsOf(repositories, request.target.workerId).length !== 0) reject(request, "invalid-state", "WORKER_BUSY");
+      });
+      requireMemberFence(pool, request);
+      return await settle(() => pool.browser(request.target, request.type), () => applied(request, [workerTarget(request.target.workerId)], []));
+    }
+    case "check-parked-write": {
+      const target = request.target;
+      transact(repositories => {
+        if (request.requestedBy !== "local-operator" || request.source !== "run-detail"
+          || dependencies.authorityProfileId !== target.profileId || dependencies.authorityInstallationId !== target.installationId
+          || dependencies.workflowSources?.[target.workflowId] !== "served") reject(request, "capability-unavailable", "PARKED_CHECK_UNAVAILABLE");
+        requireActiveSlot(repositories, request, target.workerId, target.workflowId);
+        if (claimedRunsOf(repositories, target.workerId).length !== 0) reject(request, "invalid-state", "parked-check-worker-unavailable");
+        try { requireParkedWriteCheckTarget(repositories, target, dependencies.descriptors.resolve(target.workflowId)); }
+        catch (error) { if (error instanceof WorkerControlRefusal) reject(request, "invalid-state", error.message); throw error; }
+      });
+      if (requireMemberFence(pool, request) !== "running") reject(request, "invalid-state", "parked-check-worker-unavailable");
+      let acknowledgement: ParkedWriteCheckAcknowledgement | undefined;
+      try { acknowledgement = ParkedWriteCheckAcknowledgementSchema.parse(await pool.checkParkedWrite(target, request)); }
+      catch (error) {
+        const refusal = workerEffectRefusal(request, error);
+        if (refusal === undefined) throw error;
+        return transact(repositories => auditWorkerCommand(dependencies, repositories, request, refusal));
       }
-    } catch (error) {
-      const current = controls.get(request.commandId);
-      if (current === undefined) throw new Error("worker-control-evidence-missing", { cause: error });
-      const observedAt = dependencies.clock.now().toISOString();
-      if (current.phase.state === "admitted" || current.phase.state === "ready" || current.phase.state === "executing") {
-        const phase = error instanceof WorkerControlRefusal
-          ? { state: "refused", completedAt: observedAt, message: error.message }
-          : current.phase.state === "executing"
-            ? { state: "uncertain", startedAt: current.phase.startedAt, observedAt, message: "worker-control-effect-uncertain" }
-            : { state: "refused", completedAt: observedAt, message: "worker-control-delivery-refused" };
-        record = controls.transition(request.commandId, current.phase.state, phase);
-      } else record = current;
-      if (record.phase.state !== "succeeded" && !(error instanceof WorkerControlRefusal)) throw error;
+      const checked = acknowledgement;
+      if (checked.result.commandId !== request.commandId || checked.result.requestedBy !== request.requestedBy
+        || canonicalJsonStringify(checked.result.target) !== canonicalJsonStringify(target)) throw new Error("parked-check-result-identity-mismatch");
+      return transact(repositories => auditWorkerCommand(dependencies, repositories, request,
+        applied(request, [workerTarget(target.workerId), runTarget(target.runId)], []), checked));
     }
   }
-  return dependencies.authority.withAuthorityTransaction((repositories) => {
-    const retained = repositories.workerControls.get(request.commandId);
-    if (retained === undefined) throw new Error("worker-control-evidence-missing");
-    record = retained;
-    if ((record.phase.state === "admitted" || record.phase.state === "ready") && Date.parse(record.expiresAt) <= dependencies.clock.nowMs()) {
-      record = repositories.workerControls.transition(request.commandId, record.phase.state,
-        { state: "refused", completedAt: dependencies.clock.now().toISOString(), message: "worker-control-expired-before-effect" });
-    }
-    if (record.phase.state === "executing" && Date.parse(record.expiresAt) <= dependencies.clock.nowMs()) {
-      record = repositories.workerControls.transition(request.commandId, "executing", { state: "uncertain", startedAt: record.phase.startedAt,
-        observedAt: dependencies.clock.now().toISOString(), message: "worker-control-effect-uncertain: owner did not retain an outcome before expiry" });
-    }
-    if (record.phase.state !== "succeeded" && record.phase.state !== "refused") {
-      return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state",
-        message: `worker-control-${record.phase.state}: no repeated effect is authorized; retain this command identity` });
-    }
-    repositories.commands.assertIdentity(request);
-    repositories.commands.insert(request);
-    if (repositories.commandAudits.findByCommand(request.commandId) !== undefined) return replay(dependencies, repositories, request, now);
-    const application = record.phase.state === "succeeded"
-      ? record.phase.application ?? applyWorkerPoolCommand(repositories, request, record.admittedAt, record.basisVersion, record.phase.acknowledgement)
-      : { result: CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "invalid-state", message: record.phase.message }), versionChanges: [], affectedDependencyIds: [] };
-    repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request, result: application.result,
-      completedAt: dependencies.clock.now().toISOString(), versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds });
-    repositories.workerControls.audit(request.commandId, dependencies.clock.now().toISOString());
-    return application.result;
-  });
 }
 
-
-const workerPoolSerializationKey = workerControlScope;
+function workerPoolSerializationKey(request: WorkerBrowserCommand): string {
+  return "workflowId" in request.target ? `worker-pool:${request.target.workflowId}` : `worker:${request.target.workerId}`;
+}
 
 
 function executeSettings(
@@ -2291,52 +2338,6 @@ function executeSettings(
   return application;
 }
 
-function executeExplorerEdit(
-  dependencies: CommandKernelDependencies,
-  repositories: AuthorityRepositories,
-  request: Extract<CommandRequest, { family: "explorer" }>,
-): CommandApplication {
-  const executor = dependencies.explorerEdits;
-  if (executor === undefined) {
-    throw new Error("explorer/apply-explorer-edit is active but no Explorer edit executor is composed");
-  }
-  const execution = executor.apply(request, repositories);
-  const outcome = ExplorerEditApplyResultSchema.parse(execution.result);
-  if (outcome.state === "conflict") {
-    conflict(request, outcome.currentOverrideRevision, outcome.message);
-  }
-  if (outcome.state === "refused") {
-    reject(request, "policy-refused", outcome.message);
-  }
-  if (outcome.state === "code-change-required") {
-    reject(request, "policy-refused", outcome.brief.reason);
-  }
-  const override = outcome.override;
-  const persisted = repositories.explorerOverrides.read(request.target.workflowId);
-  if (persisted === undefined
-    || String(override.workflowId) !== String(request.target.workflowId)
-    || override.descriptorVersion !== request.target.expectedVersion
-    || override.contractFingerprint !== request.target.contractFingerprint
-    || override.revision !== request.target.expectedOverrideRevision + 1
-    || canonicalJsonStringify(override) !== canonicalJsonStringify(outcome.readback)
-    || canonicalJsonStringify(override) !== canonicalJsonStringify(persisted)) {
-    throw new Error(
-      `Explorer edit executor returned a readback that does not exactly advance command ${request.commandId}'s target`,
-    );
-  }
-  const target: TargetReference = {
-    family: "explorer",
-    workflowId: override.workflowId,
-    revision: override.revision,
-  };
-  const application = applied(request, [target], [{
-    target,
-    before: request.target.expectedOverrideRevision,
-    after: override.revision,
-  }]);
-  return application;
-}
-
 /* ── dispatch, journal, and replay ───────────────────────────────────────── */
 
 function dispatchActive(
@@ -2347,6 +2348,20 @@ function dispatchActive(
   auditId: string,
 ): CommandApplication {
   switch (request.family) {
+    case "assistant-model-preference": {
+      if (request.requestedBy !== "local-operator" || request.source.startsWith("assistant")
+        || repositories.assistantAuthorization.actionByCommand(request.commandId) !== undefined
+        || dependencies.authorityProfileId !== request.target.profileId) reject(request, "invalid-state", "assistant-preference-operator-only");
+      const prior = repositories.assistantModelPreference.get();
+      const revision = prior?.revision ?? 0;
+      if (revision !== request.target.expectedRevision) conflict(request, revision, "assistant-preference-cas-conflict");
+      const nextRevision = revision + 1;
+      const target = { family: "assistant-model-preference" as const, profileId: request.target.profileId, revision: nextRevision };
+      return { ...applied(request, [target], [{ target, before: revision, after: nextRevision }]), afterAudit: () => {
+        repositories.assistantModelPreference.setByCommand({ format: 1, id: "current", profileId: request.target.profileId,
+          revision: nextRevision, preference: request.payload, commandId: request.commandId, auditId, updatedAt: now });
+      } };
+    }
     case "failure-resolution": return (dependencies.failureResolution?.execute ?? executeFailureResolution)(repositories, request, now);
     case "workflow-batch": {
       const batch = repositories.runSessions.get(request.target.batchId);
@@ -2356,7 +2371,35 @@ function dispatchActive(
       const target = { family: "workflow-batch", batchId: batch.sessionId };
       return applied(request, [target], [{ target, before: batch.version, after: updated.version }]);
     }
+    case "application": {
+      if (request.type === "pause-all-and-quit" && dependencies.applicationQuitAvailable !== true) reject(request, "capability-unavailable", "Application quit host is unavailable.");
+      if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", "Application commands require the dashboard operator.");
+      if (repositories.runtimeConfig.get()?.generation !== request.target.runtimeGeneration) reject(request, "runtime-stale", "Application runtime changed.");
+      const active: RunRecord[] = [];
+      const pageSize = 1000;
+      for (let offset = 0; ; offset += pageSize) {
+        const page = repositories.runs.listPage({ offset, limit: pageSize });
+        active.push(...page.filter(run => run.lifecycle.state !== "terminal"));
+        if (page.length < pageSize) break;
+      }
+      if (new Set(request.payload.targets.map(target => target.runId)).size !== request.payload.targets.length
+        || active.length !== request.payload.targets.length
+        || active.some(run => !request.payload.targets.some(target => target.runId === run.envelope.runId && target.expectedVersion === run.version))) {
+        reject(request, "policy-refused", "Active run membership changed; reload before pausing all.");
+      }
+      const changes: VersionChange[] = [];
+      for (const run of active) {
+        if (run.lifecycle.state === "parked-write") continue;
+        const next = lifecycleRun(request, dependencies.lifecycle.pause({
+          commandId: lifecycleCommandId("application-pause", { commandId: request.commandId, runId: run.envelope.runId }),
+          runId: run.envelope.runId, expectedVersion: run.version,
+        }));
+        changes.push({ target: runTarget(run.envelope.runId), before: run.version, after: next.version });
+      }
+      return applied(request, [{ family: "application", runtimeGeneration: request.target.runtimeGeneration }], changes);
+    }
     case "start":
+      if (repositories.runs.admission().state !== "open") reject(request, "policy-refused", "Relay is pausing work to quit.");
       repositories.runtimeConfig.requireSettingsCurrent();
       return executeStartRun(dependencies, repositories, request, now);
     case "worker-browser":
@@ -2364,19 +2407,64 @@ function dispatchActive(
         repositories.runtimeConfig.requireSettingsCurrent();
       }
       return reject(request, "capability-unavailable", "Worker commands require the current asynchronous process owner.");
+    case "ocr-review": {
+      if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+      const current = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
+      if (current === undefined) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+      if (readOcrSnapshotsAuthority(repositories, current).length > 0) throw new OcrReviewRefusedError();
+      if (current.revision.revision !== request.target.expectedRevision) conflict(request, current.revision.revision, ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+      const revision = repositories.ocrReviews.append(reviseOcrReview(current.revision, request, now), current.revision.revision);
+      const updated = lifecycleRun(request, dependencies.lifecycle.transition({
+        commandId: lifecycleCommandId("operator-ocr-review", request.commandId), runId: request.target.runId,
+        expectedVersion: current.run.version, ocrReviewRevision: revision.revision, sourceCommandId: request.commandId,
+      }));
+      const target: TargetReference = { family: "ocr-review", runId: request.target.runId };
+      return applied(request, [target, runTarget(request.target.runId)], [{ target, before: current.revision.revision, after: revision.revision },
+        { target: runTarget(request.target.runId), before: current.run.version, after: updated.version }]);
+    }
     case "gate":
-      return executeResolveGate(dependencies, repositories, request, now);
+      return executeResolveGate(dependencies, repositories, request, now, "operator");
     case "run": {
       switch (request.type) {
+        case "pause":
+        case "resume": {
+          const current = requireRun(repositories, request, request.target.runId);
+          const resumeEvidence = request.type === "resume" ? captureDelegationResume(repositories, current.envelope.runId) : [];
+          if (resumeEvidence === undefined) reject(request, "policy-refused", "Child retries must settle before resuming their parent.");
+          const next = lifecycleRun(request, dependencies.lifecycle[request.type === "pause" ? "pause" : "resumePaused"]({
+            commandId: request.type === "resume" ? delegationResumeCommandId(request.commandId, resumeEvidence)
+              : lifecycleCommandId("operator-pause", request.commandId),
+            ...request.target,
+          }));
+          return applied(request, [runTarget(next.envelope.runId)], [{ target: runTarget(next.envelope.runId), before: current.version, after: next.version }]);
+        }
+        case "recover-run":
+          repositories.runtimeConfig.requireSettingsCurrent();
+          return executeRecover(dependencies, repositories, request);
         case "retry":
-        case "restart":
           repositories.runtimeConfig.requireSettingsCurrent();
           return executeRetry(dependencies, repositories, request, now);
         case "cancel": return executeCancel(dependencies, repositories, request, now);
         case "delete": return executeDelete(dependencies, repositories, request, now);
         case "bump": return executeBump(dependencies, repositories, request, now);
         case "rename": return executePresentation(dependencies, repositories, request, now);
-        case "resolve-write-present":
+        case "resolve-workbook-reference-row": {
+          if (dependencies.workbookRows?.resolveReference === undefined) return reject(request, "capability-unavailable", "Workbook reference row choices are unavailable.");
+          const result = dependencies.workbookRows.resolveReference(repositories, request, now);
+          if ("state" in result) return applied(request, [{ family: "gate", runId: request.target.runId, gateId: request.target.gateId }, runTarget(request.target.runId)], []);
+          return executeResolveGate(dependencies, repositories, {
+            ...request, family: "gate", type: "resolve-gate",
+            target: { runId: request.target.runId, expectedVersion: request.target.expectedVersion, gateId: request.target.gateId },
+            payload: { result },
+          }, now, "workbook-reference");
+        }
+        case "resolve-workbook-row": {
+          requireRun(repositories, request, request.target.runId);
+          if (dependencies.workbookRows === undefined) return reject(request, "capability-unavailable", "Workbook row choices are unavailable.");
+          dependencies.workbookRows.resolve(repositories, request);
+          return applied(request, [runTarget(request.target.runId)], []);
+        }
+        case "recheck-write":
         case "resolve-write-absent":
           return executeWriteResolution(dependencies, repositories, request, now, auditId);
       }
@@ -2386,11 +2474,10 @@ function dispatchActive(
       return executeNotification(repositories, request, now);
     case "intake":
       if (request.type === "enqueue-intake-manifest") {
+        if (repositories.runs.admission().state !== "open") reject(request, "policy-refused", "Relay is pausing work to quit.");
         repositories.runtimeConfig.requireSettingsCurrent();
       }
       return executeIntake(dependencies, repositories, request, now);
-    case "explorer":
-      return executeExplorerEdit(dependencies, repositories, request);
     case "settings":
       return executeSettings(dependencies, repositories, request);
   }
@@ -2409,10 +2496,19 @@ function replay(
       `command ${request.commandId} is journaled but has no recorded outcome; refusing to guess what it did`,
     );
   }
-  if (request.family === "worker-browser" && audit.result.state === "rejected") return audit.result;
+  if (audit.result.state === "rejected" || audit.result.state === "conflict" || audit.result.state === "confirmation-required") return audit.result;
+  if (request.family === "ocr-review" || request.family === "gate" && request.payload.ocrApproval !== undefined) {
+    if (dependencies.lifecycle === undefined) throw new OcrReviewRefusedError();
+    const review = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
+    if (review === undefined) throw new OcrReviewRefusedError();
+    if (request.family === "ocr-review") {
+      const revision = repositories.ocrReviews.revision(request.target.runId, request.target.expectedRevision + 1);
+      if (revision?.origin.kind !== "command" || revision.origin.commandId !== request.commandId) throw new OcrReviewRefusedError();
+    } else if (!readOcrSnapshotsAuthority(repositories, review).some(snapshot => snapshot.snapshotId === request.commandId)) throw new OcrReviewRefusedError();
+  }
   if (audit.result.state !== "applied") {
     throw new Error(
-      `command ${request.commandId} recorded outcome ${audit.result.state}; only applied commands are journaled`,
+      `command ${request.commandId} recorded outcome ${audit.result.state}; only applied or refused commands are journaled`,
     );
   }
   if (request.family === "start") {
@@ -2472,6 +2568,7 @@ function replay(
     state: "already-applied",
     commandId: request.commandId,
     affectedTargets: audit.result.affectedTargets,
+    ...(audit.result.noChange === undefined ? {} : { noChange: audit.result.noChange }),
     ...(settingsVerification?.kind === "ordinary" ? {
       restartRequired: audit.result.restartRequired,
       settingsRevision: settingsVerification.value.revision,
@@ -2481,48 +2578,6 @@ function replay(
       revision: settingsVerification.value.revision,
       entries: settingsVerification.value.entries,
     } : {}),
-  });
-}
-
-/** Plan intent is journaled here; runtime activation is a separate offline operation. */
-export function executeStorageRelocationCommand(
-  dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "storageRelocationPlans">,
-  input: unknown,
-): CommandResult {
-  const plans = dependencies.storageRelocationPlans;
-  if (plans === undefined) throw new Error("storage-relocation-plan: producer unavailable");
-  const request = StorageRelocationCommandRequestSchema.parse(input);
-  plans.validate(request);
-  return dependencies.authority.withAuthorityTransaction((repositories) => {
-    const current = plans.project(repositories);
-    repositories.commands.assertIdentity(request);
-    const existing = repositories.commands.get(request.commandId);
-    if (existing !== undefined) {
-      if (canonicalJsonStringify(existing) !== canonicalJsonStringify(request)) throw new CommandIdentityConflictError();
-      const audit = repositories.commandAudits.findByCommand(request.commandId);
-      if (audit === undefined || audit.result.state !== "applied") throw new Error("storage-relocation-plan: replay has no settled audit");
-      return audit.result;
-    }
-    if (repositories.commands.listStorageRelocationCommands().some((previous) => previous.payload.writeId === request.payload.writeId)) {
-      throw new Error("storage-relocation-plan: write id reused");
-    }
-    if (request.target.expectedRevision !== current.revision) return CommandResultSchema.parse({
-      state: "conflict", commandId: request.commandId, currentVersion: current.revision,
-      message: "storage relocation plan revision changed; reread before saving",
-    });
-    if (request.type === "cancel-storage-relocation"
-      && (current.pending === null || current.pending.commandId !== request.payload.cancelledPlanCommandId
-        || current.pending.desiredDigest !== request.payload.cancelledPlanDigest)) {
-      throw new Error("storage-relocation-plan: cancel does not match current plan");
-    }
-    const nextRevision = current.revision + 1;
-    const target = { family: "storage-relocation", revision: nextRevision };
-    const result = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [target] });
-    const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
-    repositories.commands.insert(request);
-    repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request, result, completedAt: now,
-      versionChanges: [{ target, before: current.revision, after: nextRevision }], affectedDependencyIds: [] });
-    return result;
   });
 }
 
@@ -2589,117 +2644,255 @@ export function executeSettingsCommand(
   }
 }
 
+/** An exact journaled command with no audit: admitted, and its effect resumes on an exact retry. */
+export function isAdmittedUnsettled(repositories: AuthorityRepositories, request: CommandRequest): boolean {
+  const journaled = repositories.commands.get(request.commandId);
+  return journaled !== undefined && canonicalJsonStringify(journaled) === canonicalJsonStringify(request)
+    && repositories.commandAudits.findByCommand(request.commandId) === undefined;
+}
+
 export function createCommandKernel(dependencies: CommandKernelDependencies): CommandKernel {
+  const availability = () => commandAssistantAvailability((family, action) => {
+    if (family === "assistant-model-preference" || family === "application" || family === "run" && action === "recover-run") return false;
+    if (family === "settings") return dependencies.settings !== undefined;
+    if (family === "failure-resolution") return dependencies.failureResolution !== undefined;
+    if (family === "start" || family === "intake") return dependencies.workflowSources !== undefined
+      && Object.entries(dependencies.workflowSources).some(([id, source]) => source === "served" && dependencies.descriptors.resolve(id) !== undefined
+        && (family !== "intake" || dependencies.intakeProjections.resolve(id) !== undefined));
+    return true;
+  });
+
   // Validated ONCE at composition: a dependency satisfying both seams is a
   // wiring ambiguity, refused before any command can reach it.
   const pool = dependencies.workerRuntime.pool;
-  // Serialize the entire per-workflow pool request across admission, process effects and settlement.
-  const poolCommandTails = new Map<string, Promise<void>>();
-  const withPoolCommandSerialization = async (
+  // Serialize admission, asynchronous effects and settlement for each command target.
+  const commandTails = new Map<string, Promise<void>>();
+  const withCommandSerialization = async (
     key: string,
     work: () => Promise<CommandResult>,
   ): Promise<CommandResult> => {
-    const previous = poolCommandTails.get(key);
+    const previous = commandTails.get(key);
     let release: () => void = () => undefined;
     const current = new Promise<void>((resolve) => {
       release = resolve;
     });
-    poolCommandTails.set(key, current);
+    commandTails.set(key, current);
     if (previous !== undefined) await previous;
     try {
       return await work();
     } finally {
-      if (poolCommandTails.get(key) === current) poolCommandTails.delete(key);
+      if (commandTails.get(key) === current) commandTails.delete(key);
       release();
     }
   };
-  const executeSync = (request: CommandRequest, parentCommandId?: string): CommandResult => {
-      if (parentCommandId !== undefined && request.family !== "run") throw new Error("command-group children must be run commands");
-      if (request.family === "settings") return executeSettingsCommand(dependencies, request);
-      if (request.family === "storage-relocation") {
-        if (dependencies.storageRelocationPlans === undefined) return CommandResultSchema.parse({
-          state: "rejected", commandId: request.commandId, code: "capability-unavailable",
-          message: "storage relocation plan reader is unavailable",
-        });
-        return executeStorageRelocationCommand(dependencies, request);
+  const admitCommand = (request: CommandRequest, parentCommandId?: string, preferenceCurrent?: () => true): CommandResult | undefined => {
+    return dependencies.authority.withAuthorityTransaction((repositories) => {
+      preferenceCurrent?.();
+      if (request.family === "assistant-model-preference" && (request.requestedBy !== "local-operator"
+        || request.source.startsWith("assistant") || dependencies.authorityProfileId !== request.target.profileId
+        || repositories.assistantAuthorization.actionByCommand(request.commandId) !== undefined)) {
+        reject(request, "invalid-state", "assistant-preference-operator-only");
       }
-      if (DEFERRED_ARM_KEYS.has(`${request.family}/${request.type}`)) {
-        // Computed purely: no journal row, no audit row, no generation advance.
-        return CommandResultSchema.parse({
-          state: "rejected",
-          commandId: request.commandId,
-          code: "capability-unavailable",
-          message: `${request.family}/${request.type} is schema-recognized but its owning later milestone `
-            + "has not activated it; no authority state was changed",
+      repositories.commands.assertIdentity(request, parentCommandId);
+      repositories.commands.insert(request, parentCommandId);
+      if (repositories.commandAudits.findByCommand(request.commandId) === undefined) return undefined;
+      if (request.family === "assistant-model-preference") repositories.assistantModelPreference.get();
+      return replay(dependencies, repositories, request, IsoInstantSchema.parse(dependencies.clock.now().toISOString()));
+    });
+  };
+  const failCommand = (error: unknown, request: CommandRequest, admitted: boolean, parentCommandId?: string): CommandResult => {
+    if (error instanceof CommandIdentityConflictError) return CommandResultSchema.parse({
+      state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message,
+    });
+    const refusal = error instanceof PreflightAdmissionRefusal ? CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: request.family !== "start" ? "capability-unavailable"
+      : preflightRunnerTimeout(error) !== undefined ? "PREFLIGHT_TIMEOUT"
+      : error instanceof PreflightEvidenceExpiredError ? "PREFLIGHT_EVIDENCE_EXPIRED"
+      : error.reason === "observation-changed" || error.reason === "stale" ? "RUN_START_READINESS_CHANGED"
+      : error.reason === "blocked" ? "RUN_START_READINESS_BLOCKED" : "RUN_START_READINESS_UNAVAILABLE", message: error.message })
+      : error instanceof CommandRefusal ? error.result
+      : error instanceof OcrReviewRefusedError ? CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
+        code: error.code, message: ERROR_CATALOG.OCR_REVIEW_REFUSED.text })
+      : undefined;
+    // A failure during admission or replay leaves no row of this call to settle.
+    if (!admitted) {
+      if (refusal !== undefined) return refusal;
+      throw error;
+    }
+    try {
+      settleUnsettled(request, refusal ?? (parentCommandId === undefined ? undefined
+        : CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "bulk-child-errored", message: ERROR_CATALOG.BULK_CHILD_ERRORED.text })),
+      parentCommandId);
+    } catch (settlementError) {
+      throw new AggregateError([error, settlementError], `command ${request.commandId} failed and its outcome could not be recorded`, { cause: settlementError });
+    }
+    if (refusal !== undefined) return refusal;
+    throw error;
+  };
+  const applyCommand = (request: CommandRequest, parentCommandId?: string, preferenceCurrent?: () => true): CommandResult => {
+    let rollback: (() => void) | undefined;
+    let commit: (() => void) | undefined;
+    try {
+      const result = dependencies.authority.withAuthorityTransaction((repositories) => {
+        preferenceCurrent?.();
+        const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
+        const journalRequest = request;
+        const auditId = dependencies.ids.uuid();
+        const application = request.family === "ocr-review" || request.family === "start" || request.family === "run" && (request.type === "retry" || request.type === "recover-run" || request.type === "cancel" || request.type === "resume")
+          ? withCanonicalRunCommandScope(repositories, request,
+            () => dispatchActive(dependencies, repositories, request, now, auditId), parentCommandId)
+          : dispatchActive(dependencies, repositories, request, now, auditId);
+        rollback = application.rollback;
+        commit = application.commit;
+        repositories.commandAudits.insert({
+          auditId,
+          request: journalRequest,
+          result: application.result,
+          completedAt: now,
+          versionChanges: application.versionChanges,
+          affectedDependencyIds: application.affectedDependencyIds,
+          ...(application.writeResolution === undefined ? {} : {writeResolution:application.writeResolution}),
         });
-      }
-      let rollback: (() => void) | undefined;
-      let commit: (() => void) | undefined;
-      try {
-        const result = dependencies.authority.withAuthorityTransaction((repositories) => {
-          repositories.commands.assertIdentity(request, parentCommandId);
-          const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
-          const journalRequest = request;
-          const journal = repositories.commands.insert(journalRequest, parentCommandId);
-          if (journal.state === "existing") return replay(dependencies, repositories, request, now);
-          const auditId = dependencies.ids.uuid();
-          const application = dispatchActive(dependencies, repositories, request, now, auditId);
-          rollback = application.rollback;
-          commit = application.commit;
-          repositories.commandAudits.insert({
+        preferenceCurrent?.();
+        application.afterAudit?.();
+        if (application.settingsCurrent !== undefined) {
+          repositories.settingsCurrent.advance({
+            ...application.settingsCurrent,
+            commandId: request.commandId,
             auditId,
-            request: journalRequest,
-            result: application.result,
-            completedAt: now,
-            versionChanges: application.versionChanges,
-            affectedDependencyIds: application.affectedDependencyIds,
-            ...(application.writeResolution === undefined ? {} : {writeResolution:application.writeResolution}),
+            committedAt: now,
           });
-          application.afterAudit?.();
-          if (application.settingsCurrent !== undefined) {
-            repositories.settingsCurrent.advance({
-              ...application.settingsCurrent,
-              commandId: request.commandId,
-              auditId,
-              committedAt: now,
-            });
-          }
-          return application.result;
-        });
-        const committedSettings = commit;
-        rollback = undefined;
-        commit = undefined;
-        committedSettings?.();
-        return result;
-      } catch (error) {
-
-        if (rollback !== undefined) {
-          try {
-            rollback();
-          } catch (rollbackError) {
-            throw new AggregateError(
-              [error, rollbackError],
-              `command ${request.commandId} failed and its settings-file rollback also failed`,
-              { cause: rollbackError },
-            );
-          }
         }
-        if (error instanceof CommandIdentityConflictError) return CommandResultSchema.parse({
-          state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message,
-        });
-        if (error instanceof PreflightAdmissionRefusal) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: error.message });
-        if (error instanceof CommandRefusal) return error.result;
-        throw error;
+        return application.result;
+      });
+      const committedSettings = commit;
+      rollback = undefined;
+      commit = undefined;
+      committedSettings?.();
+      return result;
+    } catch (error) {
+      if (rollback !== undefined) {
+        try {
+          rollback();
+        } catch (rollbackError) {
+          throw new AggregateError(
+            [error, rollbackError],
+            `command ${request.commandId} failed and its settings-file rollback also failed`,
+            { cause: rollbackError },
+          );
+        }
       }
+      return failCommand(error, request, true, parentCommandId);
+    }
+  };
+  const executeSync = (request: CommandRequest, parentCommandId?: string, preferenceCurrent?: () => true): CommandResult => {
+    if (request.family === "assistant-model-preference" && preferenceCurrent === undefined) return CommandResultSchema.parse({
+      state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: "assistant-preference-unavailable",
+    });
+    if (parentCommandId !== undefined && request.family !== "run") throw new Error("command-group children must be run commands");
+    if (request.family === "settings") return executeSettingsCommand(dependencies, request);
+    try {
+      const replayed = admitCommand(request, parentCommandId, preferenceCurrent);
+      if (replayed !== undefined) return replayed;
+    } catch (error) {
+      return failCommand(error, request, false, parentCommandId);
+    }
+    return applyCommand(request, parentCommandId, preferenceCurrent);
+  };
+  /** An admitted command settles with its typed refusal, or stays admitted with a recovery notice when its outcome is unknown. */
+  const settleUnsettled = (request: CommandRequest, result: CommandResult | undefined, parentCommandId: string | undefined): void => {
+    dependencies.authority.withAuthorityTransaction((repositories) => {
+      if (!isAdmittedUnsettled(repositories, request)) return;
+      if (result !== undefined) repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request, result,
+        completedAt: IsoInstantSchema.parse(dependencies.clock.now().toISOString()), versionChanges: [], affectedDependencyIds: [] });
+      // A bulk child is reported in its batch notice; notification commands correct themselves on the next read.
+      if (parentCommandId !== undefined || request.family === "notification" || dependencies.commandNotices === undefined) return;
+      if (result === undefined) dependencies.commandNotices.record({ kind: "command-unknown", commandId: request.commandId });
+      else if (result.state === "rejected" || result.state === "conflict") {
+        dependencies.commandNotices.record({ kind: "command-refused", commandId: request.commandId, outcome: result.state });
+      }
+    });
   };
   return Object.freeze({
+    assistantAvailability: availability,
+    assistantManifest() {
+      const entries = availability().filter(entry => entry.availability !== "unavailable" && (
+        entry.family === "notification" || entry.family === "workflow-batch"
+        || entry.family === "start" && dependencies.assistantRevalidate !== undefined
+        || entry.family === "settings" && entry.action !== "apply-protected-settings"
+        || entry.family === "worker-browser" && entry.action === "spawn-worker" && dependencies.assistantRevalidate !== undefined
+        || entry.family === "run" && (entry.action === "pause" || entry.action === "resume" || entry.action === "cancel") && dependencies.assistantRevalidate !== undefined
+      )).map(entry => ({ family: entry.family, action: entry.action, classification: entry.classification, subject: entry.family === "start" ? "classified" as const : "none" as const }));
+      const identity = { commands: availability(), schema: deriveSchemaHash(CommandRequestSchema, "input"),
+        surface: dependencies.assistantSurface?.() ?? null,
+        knowledge: dependencies.assistantFactsSha256?.() ?? null,
+        workflows: dependencies.workflowSources === undefined ? null : Object.entries(dependencies.workflowSources).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0) };
+      const revision = Number.parseInt(sha256Hex(canonicalJsonStringify(identity)).slice(0, 12), 16) + 1;
+      return AssistantActionManifestSchema.parse({ revision, entries });
+    },
     execute(input: unknown, parentCommandId?: string): CommandResult {
       const request = CommandRequestSchema.parse(input);
-  if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
-      if (request.family === "failure-resolution" && (dependencies.failureResolution?.capability ?? failureResolutionCapability)().state === "unavailable") {
-        return {state:"rejected",commandId:request.commandId,code:"capability-unavailable",message:"Failure resolution is not available in this build."};
+      if (request.family === "assistant-model-preference") {
+        if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("Command request exceeds 256 KiB");
+        return executeSync(request, parentCommandId);
       }
+      dependencies.assistantRevalidate?.(request);
+  if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
       return executeSync(request, parentCommandId);
+    },
+    async executeStart(input: unknown): Promise<CommandResult> {
+      const request = StartCommandRequestSchema.parse(input);
+      if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
+      return withCommandSerialization(`start:${request.target.startPlanId}`, async () => {
+        let admitted = false;
+        const assertEffectCurrent = (): true => { dependencies.assistantRevalidate?.(request); return true; };
+        try {
+          assertEffectCurrent();
+          const replayed = admitCommand(request, undefined, assertEffectCurrent);
+          if (replayed !== undefined) return replayed;
+          admitted = true;
+          const scope = dependencies.authority.withAuthorityTransaction(repositories => {
+            const { descriptor, plan } = readStartPlan(dependencies, repositories, request, dependencies.clock.now().toISOString());
+            return workflowPreflightScope(descriptor, plan);
+          });
+          if (dependencies.preflight !== undefined) {
+            try {
+              await dependencies.preflight.prepare(scope, new AbortController().signal);
+            } catch (error) {
+              if (error instanceof PreflightAdmissionRefusal) throw error;
+              throw new PreflightAdmissionRefusal("unavailable", "Preflight detectors could not verify readiness.", { cause: error });
+            }
+            dependencies.preflight.assertReady(scope);
+          }
+        } catch (error) {
+          return failCommand(error, request, admitted);
+        }
+        return applyCommand(request, undefined, assertEffectCurrent);
+      });
+    },
+    async executeAssistantModelPreference(input: unknown): Promise<CommandResult> {
+      const request = AssistantModelPreferenceCommandRequestSchema.parse(input);
+      if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("Command request exceeds 256 KiB");
+      if (request.requestedBy !== "local-operator" || request.source.startsWith("assistant")
+        || dependencies.authorityProfileId !== request.target.profileId || dependencies.prepareAssistantModelPreference === undefined) return CommandResultSchema.parse({
+          state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: "assistant-preference-unavailable",
+        });
+      const current = await dependencies.prepareAssistantModelPreference(request);
+      const assertCurrent = (): true => {
+        const value: unknown = current();
+        if (value instanceof Promise) void value.catch(() => {});
+        if (value !== true) throw new Error("assistant-model-preference-authority-not-current");
+        return true;
+      };
+      assertCurrent();
+      const result = executeSync(request, undefined, assertCurrent);
+      try { assertCurrent(); }
+      catch (error) {
+        if (result.state === "applied" || result.state === "already-applied") {
+          throw new Error("assistant-model-preference-committed-currentness-unproved", { cause: error });
+        }
+        throw error;
+      }
+      return result;
     },
     async executeWorkerPool(input: unknown): Promise<CommandResult> {
       const request = CommandRequestSchema.parse(input);
@@ -2710,9 +2903,13 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         );
       }
       try {
-        return await withPoolCommandSerialization(
-          workerPoolSerializationKey(request),
-          () => executeWorkerPoolCommand(dependencies, pool, request),
+        dependencies.assistantRevalidate?.(request);
+        return await withCommandSerialization(
+          `pool:${workerPoolSerializationKey(request)}`,
+          () => {
+            dependencies.assistantRevalidate?.(request);
+            return executeWorkerPoolCommand(dependencies, pool, request);
+          },
         );
       } catch (error) {
         // Typed admission and settlement refusals return results; process-effect failures remain structured throws.

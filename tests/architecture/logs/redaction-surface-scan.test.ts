@@ -1,3 +1,4 @@
+import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { MAXIMAL_FAILURE } from "../../support/fixtures/advisory-prompt-fixtures.js";
 
@@ -9,21 +10,25 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
-import { ExplorerPresentationLabelSchema } from "../../../src/models/dashboard/explorer.js";
-import { AtomicOutboxRecordSchema } from "../../../src/models/notifications/outbox.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../../src/models/dashboard/storage.js";
+import { ClearRunHistoryRequestSchema, RunHistoryStatusSchema, ClearRunHistoryResultSchema } from "../../../src/models/dashboard/run-history.js";
 import { redactDiagnosticFields, redactValue } from "../../../src/rules/redaction/redaction.js";
 import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { LedgerEntrySchema } from "../../../src/rules/runs/ledger.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { LEDGER_OUTBOX_PAYLOAD, NOW, UUID_1, UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { EXIT_RUN_ID, seedPersonLookupExitRun } from "../../support/fixtures/receipt-run-fixtures.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
-import { ALL_CANARY_NAMES, auditD331ServedLeafDispositions, auditRedactedProducers, auditSurfaceOrigins, canariesIn, decidableLeaves, D331_SERVED_LEAF_DISPOSITIONS, REDACTED_NAME_WAIVERS, REDACTION_CANARIES, REDACTION_SURFACES, redactedProducerSites, SURFACE_LEAF_ORIGINS, SURFACE_MODULE_DISPOSITIONS, scannedSurfaceModules, surfaceLeaves, UNIVERSAL_CANARY_NAMES, type RedactionSurface, type SurfaceLeafOrigin } from "./helpers/redaction-surface-audit.js";
+import { assistantToolEgress } from "./helpers/assistant-tool-egress.js";
+import { ALL_CANARY_NAMES, EGRESS_DECISION_LEAVES, auditD331ServedLeafDispositions, auditRedactedProducers, auditSurfaceOrigins, canariesIn, decidableLeaves, D331_SERVED_LEAF_DISPOSITIONS, REDACTED_NAME_WAIVERS, REDACTION_CANARIES, REDACTION_SURFACES, redactedProducerSites, SURFACE_LEAF_ORIGINS, SURFACE_MODULE_DISPOSITIONS, scannedSurfaceModules, surfaceLeaves, UNIVERSAL_CANARY_NAMES, type RedactionSurface, type SurfaceLeafOrigin } from "./helpers/redaction-surface-audit.js";
 import { EditableWorkbookSchema, WorkbookCreateRequestSchema, decodeEditableWorkbook, encodeEditableWorkbook, decodeSavedWorkbook, encodeSavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
+import { createTaskProvenanceCollector } from "../../../src/backend/runs/provenance/task-provenance.js";
+import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-person-org.js";
+import type { RecordedDataPoint } from "../../../src/rules/workflow/task-provenance.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 /* ── the modules whose exported wire schemas must be covered ─────────────── */
@@ -38,6 +43,7 @@ const WIRE_SCHEMA_MODULES = [
   "../../../src/models/dashboard/primitives.js",
   "../../../src/models/dashboard/projection.js",
   "../../../src/models/dashboard/run-detail.js",
+  "../../../src/models/dashboard/run-history.js",
   "../../../src/models/dashboard/start-plan.js",
   "../../../src/models/dashboard/storage.js",
   "../../../src/models/dashboard/subscription.js",
@@ -54,19 +60,256 @@ function pathCoveredBy(candidate: string, owned: readonly string[]): boolean {
 /* ── (a) the declaration audit ───────────────────────────────────────────── */
 
 describe("redaction surface scan — the declaration audit", () => {
-  it("refuses every universal credential/regulated-value canary as an operator-authored Explorer label", () => {
-    for (const name of UNIVERSAL_CANARY_NAMES) {
-      assert.equal(
-        ExplorerPresentationLabelSchema.safeParse(REDACTION_CANARIES[name]).success,
-        false,
-        name,
-      );
-    }
+
+  it("keeps nullable booleans closed while retaining nullable text and open JSON origins", () => {
+    assert.deepEqual(surfaceLeaves(z.strictObject({
+      readback: z.boolean().nullable(),
+      note: z.string().nullable(),
+      payload: z.unknown(),
+    })), [
+      { path: "note", kind: "free-text" },
+      { path: "payload", kind: "open-json" },
+      { path: "readback", kind: "closed" },
+    ]);
   });
 
   it("dispositions every free-text and open-JSON leaf of every registered surface", () => {
     const violations = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS);
     assert.deepEqual(violations, [], `redaction surface audit:\n  ${violations.join("\n  ")}`);
+  });
+
+  it("audits the real history request/status/result as closed loopback surfaces", () => {
+    const surfaces = [
+      ["request/clear-run-history", ClearRunHistoryRequestSchema, ["commandId", "target.epoch", "target.profileId"]],
+      ["wire/run-history-status", RunHistoryStatusSchema, ["activeRuns", "finishedRuns", "state"]],
+      ["wire/clear-run-history-result", ClearRunHistoryResultSchema, ["commandId", "deletedRuns", "reason", "state"]],
+    ] as const;
+    assert.equal(SURFACE_MODULE_DISPOSITIONS.find(entry => entry.module === "src/models/dashboard/run-history.ts")?.state, "audited");
+    for (const [id, schema, paths] of surfaces) {
+      const surface = REDACTION_SURFACES.find(candidate => candidate.id === id); assert.ok(surface);
+      assert.equal(surface.schema, schema); assert.equal(surface.module, "src/models/dashboard/run-history.ts");
+      assert.equal(surface.egress, "operator-loopback");
+      assert.deepEqual(surfaceLeaves(schema), paths.map(path => ({path, kind: "closed"})));
+      assert.deepEqual(decidableLeaves(schema), []);
+      assert.deepEqual(SURFACE_LEAF_ORIGINS.filter(entry => entry.surface === id), []);
+    }
+    const confirmed = {commandId: UUID_1, target: {profileId: UUID_1, epoch: 1}};
+    assert.deepEqual(ClearRunHistoryRequestSchema.parse(confirmed), confirmed);
+    assert.equal(ClearRunHistoryRequestSchema.safeParse({commandId: UUID_1}).success, false);
+    for (const epoch of [0, -1, 0.5, Infinity]) assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, target: {...confirmed.target, epoch}}).success, false);
+    for (const value of [{state: "unavailable"}, {state: "available", finishedRuns: 0, activeRuns: 3}]) assert.deepEqual(RunHistoryStatusSchema.parse(value), value);
+    for (const value of [{state: "not-recorded", commandId: UUID_1}, {state: "cleared", commandId: UUID_1, deletedRuns: 3},
+      ...["active-runs", "shared-checkpoint", "unresolved-write", "replay-divergent", "unavailable"].map(reason => ({state: "refused", commandId: UUID_1, reason}))]) {
+      assert.deepEqual(ClearRunHistoryResultSchema.parse(value), value);
+    }
+    for (const count of [-1, 0.5, Infinity]) {
+      assert.equal(RunHistoryStatusSchema.safeParse({state: "available", finishedRuns: count, activeRuns: 0}).success, false);
+      assert.equal(RunHistoryStatusSchema.safeParse({state: "available", finishedRuns: 0, activeRuns: count}).success, false);
+      assert.equal(ClearRunHistoryResultSchema.safeParse({state: "cleared", commandId: UUID_1, deletedRuns: count}).success, false);
+    }
+    for (const canary of Object.values(REDACTION_CANARIES)) {
+      assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, commandId: canary}).success, false);
+      assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, note: canary}).success, false);
+      assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, target: {profileId: canary, epoch: 1}}).success, false);
+      assert.equal(RunHistoryStatusSchema.safeParse({state: canary}).success, false);
+      assert.equal(ClearRunHistoryResultSchema.safeParse({state: "refused", commandId: UUID_1, reason: canary}).success, false);
+      assert.equal(ClearRunHistoryResultSchema.safeParse({state: "not-recorded", commandId: canary}).success, false);
+      assert.equal(ClearRunHistoryResultSchema.safeParse({state: "cleared", commandId: UUID_1, deletedRuns: 0, note: canary}).success, false);
+    }
+  });
+
+  for (const id of ["wire/run-detail-section", "wire/ocr-command-result"]) {
+    it(`reviews every OCR leaf and refuses missing origins or foreign egress (${id})`, () => {
+      const origins = SURFACE_LEAF_ORIGINS.filter(entry => entry.surface === id && (entry.path.includes(".ocr.") || id === "wire/ocr-command-result"));
+      assert.equal(origins.length, id === "wire/ocr-command-result" ? 10 : 49);
+      const surface = REDACTION_SURFACES.find(surface => surface.id === id); assert.ok(surface);
+      assert.equal(surface.egress, "operator-loopback");
+      const sameSurfaceOrigins = SURFACE_LEAF_ORIGINS.filter(candidate => candidate.surface === id);
+      assert.deepEqual(auditSurfaceOrigins([surface], sameSurfaceOrigins), []);
+      for (const entry of origins) {
+        const missing = auditSurfaceOrigins([surface], sameSurfaceOrigins.filter(candidate => candidate !== entry));
+        assert.equal(missing.length, 1);
+        assert.ok(missing[0]?.includes(entry.path));
+      }
+      for (const egress of ["process-egress", "os-notification"] as const) {
+        const foreign = auditSurfaceOrigins([{ ...surface, egress }], sameSurfaceOrigins);
+        for (const entry of origins.filter(entry => entry.origin !== "repository-authored")) {
+          assert.ok(foreign.some(problem => problem.includes(entry.path) && problem.includes("may not carry at all")));
+        }
+      }
+    });
+  }
+
+  it("pins each current provenance and display origin and refuses captured addresses outside local custody", () => {
+    const reviewed: { surface: string; path: string; origin: string }[] = [];
+    for (const [surface, prefix] of [
+      ["wire/run-detail-section", "payload.rows[]"],
+      ["wire/run-detail-section", "payload.observations[]"],
+    ] as const) {
+      for (const [suffix, origin] of [
+        ["displayFields[].causal.declaration", "repository-authored"],
+        ["displayFields[].causal.origin.path[]", "captured-hr-value"],
+        ["displayFields[].causal.origin.spanPath", "repository-authored"],
+        ["points[].origins[].origin.path[]", "captured-hr-value"],
+        ["points[].origins[].origin.spanPath", "repository-authored"],
+        ["points[].origins[].path[]", "captured-hr-value"],
+      ] as const) reviewed.push({ surface, path: `${prefix}.${suffix}`, origin });
+    }
+    for (const prefix of ["workflows[].definitionPreview.groups[]", "workflows[].timeline[]"]) {
+      for (const leaf of ["text", "value"]) reviewed.push({ surface: "wire/workflow-explorer", path: `${prefix}.operatorFields[].display.cases[].${leaf}`, origin: "repository-authored" });
+    }
+    assert.equal(reviewed.length, 16);
+    for (const expected of reviewed) {
+      const entry = SURFACE_LEAF_ORIGINS.find(entry => entry.surface === expected.surface && entry.path === expected.path);
+      assert.ok(entry, `${expected.surface}|${expected.path}`);
+      assert.equal(entry.origin, expected.origin);
+      assert.equal(auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS.filter(candidate => candidate !== entry)).length, 1);
+      if (entry.origin === "captured-hr-value") {
+        for (const egress of ["process-egress", "os-notification"] as const) {
+          const surfaces: readonly RedactionSurface[] = REDACTION_SURFACES.filter(surface => surface.id === entry.surface).map(surface => ({ ...surface, egress }));
+          assert.ok(auditSurfaceOrigins(surfaces, SURFACE_LEAF_ORIGINS).some(problem => problem.includes(entry.path) && problem.includes("may not carry at all")));
+        }
+      }
+    }
+    for (const group of personLookupDescriptor.timeline) for (const field of group.operatorFields ?? []) {
+      if (field.display !== undefined) assert.deepEqual(canariesIn(JSON.stringify(field.display)), []);
+    }
+  });
+
+  it("limits operator-authored manual version names to their written local retention exception", () => {
+    const surface = REDACTION_SURFACES.find(surface => surface.id === 'durable/workbook-operation');
+    const entry = SURFACE_LEAF_ORIGINS.find(entry => entry.surface === 'durable/workbook-operation' && entry.path === 'change.name');
+    assert.ok(surface); assert.ok(entry);
+    assert.equal(entry.origin, 'operator-authored');
+    assert.match(entry.exception ?? '', /data-intake-and-edit-data\.md/u);
+    const { exception: _exception, ...withoutException } = entry;
+    const missing = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS.map(candidate => candidate === entry ? withoutException : candidate));
+    assert.equal(missing.length, 1);
+    assert.match(missing[0] ?? '', /change\.name.*written exception/u);
+    for (const egress of ['process-egress', 'os-notification'] as const) {
+      const violations = auditSurfaceOrigins(REDACTION_SURFACES.map(candidate => candidate === surface ? { ...candidate, egress } : candidate), SURFACE_LEAF_ORIGINS);
+      assert.ok(violations.some(problem => problem.includes('change.name') && problem.includes('may not carry at all')));
+    }
+  });
+
+  it("retains observed object keys in real collector addresses without treating them as authored text", () => {
+    const points: RecordedDataPoint[] = [];
+    const execution = { runId: UUID_1, traceId: "pl-180000-aaaa", attempt: 1, workflowId: "person-lookup", nodeId: "searching", taskId: SearchPersonOrg.id };
+    const collector = createTaskProvenanceCollector({ descriptor: personLookupDescriptor, execution,
+      observationSpanPath: "pl-180000-aaaa/searching#2.3", upstreamEvidence: { checkpoints: [] },
+      clock: manualClock(new Date(NOW)), onRecord: batch => points.push(...batch.points) });
+    const key = REDACTION_CANARIES.personName;
+    collector.recordData({ direction: "read", field: "results", value: [{ [key]: "captured" }] });
+    collector.recordData({ direction: "read", field: "selection", value: [{ [key]: "captured" }],
+      aliases: [{ path: [], source: { kind: "local", field: "results", path: [] } }] });
+    assert.equal(points.length, 2);
+    assert.equal(points[0]?.origins, undefined);
+    assert.ok(points[1]?.origins?.some(entry => entry.path.includes(key) && entry.origin.path.includes(key)));
+  });
+
+  it("covers the actual assistant and OCR loopback boundaries and rejects each missing origin", () => {
+    const ids = ["request/assistant", "wire/assistant", "request/assistant-history", "wire/assistant-history", "wire/assistant-conversation", "wire/chatgpt-ocr-test"];
+    const surfaces = REDACTION_SURFACES.filter(surface => ids.includes(surface.id));
+    assert.deepEqual(surfaces.map(surface => surface.id).sort(), ids.sort());
+    const origins = SURFACE_LEAF_ORIGINS.filter(entry => ids.includes(entry.surface));
+    const expectedOrigins = [
+      "request/assistant|message|operator-authored",
+      "wire/assistant|result.text|external-text",
+      "wire/assistant|result.message|repository-authored",
+      "wire/assistant|result.proposal.workflowId|repository-authored",
+      "wire/assistant|result.proposal.label|repository-authored",
+      "wire/assistant|result.proposal.targetLabel|captured-hr-value",
+      "wire/assistant|result.action.workflowId|repository-authored",
+      "wire/assistant|result.action.label|repository-authored",
+      "wire/assistant|result.action.targetLabel|captured-hr-value",
+      ...["action", "proposal"].flatMap(root => ["row.display.documentNumber", "row.display.name", "row.subtitle", "row.title",
+        "startPlan.planned[].display.documentNumber", "startPlan.planned[].display.name"].map(path => `wire/assistant|result.${root}.${path}|captured-hr-value`)),
+      "wire/assistant|result.proposal.startPlan.planned[].title|captured-hr-value",
+      "wire/assistant|result.proposal.startPlan.planned[].subtitle|captured-hr-value",
+      "wire/assistant|result.action.startPlan.planned[].title|captured-hr-value",
+      "wire/assistant|result.action.startPlan.planned[].subtitle|captured-hr-value",
+      ...["title", "draft", "composer"].flatMap(path => [`request/assistant-history|${path}|operator-authored`, `wire/assistant-conversation|${path}|operator-authored`]),
+      "request/assistant-history|text|repository-authored",
+      "request/assistant-history|messages[].text|external-text",
+      "wire/assistant-history|chats[].title|operator-authored",
+      "wire/assistant-conversation|messages[].text|external-text",
+      "wire/assistant-conversation|messages[].attachments[].name|local-filesystem-name",
+      ...["action", "proposal"].flatMap(root => ["row.display.fileName", "startPlan.planned[].display.fileName"].map(path => `wire/assistant|result.${root}.${path}|local-filesystem-name`)),
+      ...["action", "proposal"].flatMap(root => [`wire/assistant|result.${root}.facts[].label|repository-authored`, `wire/assistant|result.${root}.facts[].value|captured-hr-value`]),
+      "wire/chatgpt-ocr-test|model|external-text",
+      "wire/chatgpt-ocr-test|message|repository-authored",
+    ];
+    assert.deepEqual(origins.map(entry => `${entry.surface}|${entry.path}|${entry.origin}`).sort(), expectedOrigins.sort());
+    assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === "wire/bootstrap" && entry.path === "actor.label")?.origin, "operator-authored");
+    for (const entry of origins) {
+      assert.equal(auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS.filter(candidate => candidate !== entry)).length, 1);
+      if (entry.origin !== "repository-authored") {
+        for (const egress of ["process-egress", "os-notification"] as const) {
+          assert.ok(auditSurfaceOrigins(surfaces.map(surface => ({ ...surface, egress })), origins)
+            .some(problem => problem.startsWith(`${entry.surface} (${egress}) leaf "${entry.path}"`) && problem.includes("may not carry at all")));
+        }
+      }
+    }
+  });
+
+  it("sends only the masked operator message and declared tool output leaves to ChatGPT", () => {
+    const egress = REDACTION_SURFACES.filter(surface => surface.egress === "process-egress");
+    assert.deepEqual(egress.map(surface => surface.id).sort(), ["egress/assistant-user-message", "egress/assistant-replay", ...assistantToolEgress().surfaces.map(surface => surface.id)].sort());
+    assert.ok(egress.length > 8);
+    const origins = SURFACE_LEAF_ORIGINS.filter(entry => egress.some(surface => surface.id === entry.surface));
+    assert.deepEqual(origins.filter(entry => entry.origin !== "repository-authored" && entry.origin !== "declared-redacted").map(entry => `${entry.surface}|${entry.path}|${entry.origin}`),
+      ["egress/assistant-user-message|content|operator-authored", "egress/assistant-replay|answer|external-text"]);
+    for (const origin of ["captured-hr-value", "external-text", "local-filesystem-name", "protected-value"] as const) {
+      const leaked = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-tool/read_run" && entry.path === "gate.label" ? { ...entry, origin } : entry);
+      assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, leaked).some(problem => problem.includes('egress/assistant-tool/read_run (process-egress) leaf "gate.label"') && problem.includes("may not carry at all")), origin);
+    }
+    const unexcepted = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-user-message" ? { surface: entry.surface, path: entry.path, origin: entry.origin } : entry);
+    assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, unexcepted).some(problem => problem.includes("needs a written exception")));
+    assert.deepEqual([...EGRESS_DECISION_LEAVES], [["egress/assistant-user-message|content", { egress: "process-egress", origin: "operator-authored" }],
+      ["egress/assistant-replay|answer", { egress: "process-egress", origin: "external-text" }]]);
+    for (const origin of ["captured-hr-value", "external-text", "local-filesystem-name", "protected-value"] as const) {
+      const reclassified = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-user-message" ? { ...entry, origin } : entry);
+      assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, reclassified).some(problem => problem.includes('egress/assistant-user-message (process-egress) leaf "content"') && problem.includes("may not carry at all")), origin);
+    }
+    const looped = REDACTION_SURFACES.map(surface => surface.id === "egress/assistant-user-message" ? { ...surface, egress: "os-notification" as const } : surface);
+    assert.ok(auditSurfaceOrigins(looped, SURFACE_LEAF_ORIGINS).some(problem => problem.includes('egress/assistant-user-message (os-notification) leaf "content"') && problem.includes("may not carry at all")));
+    for (const origin of ["operator-authored", "captured-hr-value", "local-filesystem-name", "protected-value"] as const) {
+      const reclassified = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-replay" && entry.path === "answer" ? { ...entry, origin } : entry);
+      assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, reclassified).some(problem => problem.includes('egress/assistant-replay (process-egress) leaf "answer"') && problem.includes("may not carry at all")), origin);
+    }
+    const replayUnexcepted = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-replay" && entry.path === "answer" ? { surface: entry.surface, path: entry.path, origin: entry.origin } : entry);
+    assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, replayUnexcepted).some(problem => problem.includes("needs a written exception")));
+    const captionExternal = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-replay" && entry.path === "caption" ? { ...entry, origin: "external-text" as const } : entry);
+    assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, captionExternal).some(problem => problem.includes('egress/assistant-replay (process-egress) leaf "caption"') && problem.includes("may not carry at all")));
+    const replayLooped = REDACTION_SURFACES.map(surface => surface.id === "egress/assistant-replay" ? { ...surface, egress: "os-notification" as const } : surface);
+    assert.ok(auditSurfaceOrigins(replayLooped, SURFACE_LEAF_ORIGINS).some(problem => problem.includes('egress/assistant-replay (os-notification) leaf "answer"') && problem.includes("may not carry at all")));
+    const moved = REDACTION_SURFACES.map(surface => surface.id === "request/assistant" ? { ...surface, egress: "process-egress" as const } : surface);
+    assert.ok(auditSurfaceOrigins(moved, SURFACE_LEAF_ORIGINS).some(problem => problem.includes('request/assistant (process-egress) leaf "message"') && problem.includes("may not carry at all")));
+  });
+
+  it("pins history, operator observations and definition text origins and rejects their omission", () => {
+    const reviewed = [
+      ["wire/bootstrap", "workflows[].start.inputRun.typedInput.controls[].refusal", "repository-authored"],
+      ["wire/dashboard-day", "attemptHistory[].endedAt.reason", "repository-authored"],
+      ["wire/stream-envelope", "payload.attemptHistory[].endedAt.reason", "repository-authored"],
+      ["wire/run-detail-section", "payload.notes[].operatorAction.value", "captured-hr-value"],
+      ["wire/run-detail-section", "payload.rows[].displayFields[].label", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].timeline[].operatorFields[].example", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].definitionPreview.groups[].description", "repository-authored"],
+    ] as const;
+    for (const [surface, path, origin] of reviewed) {
+      const entry = SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path);
+      assert.ok(entry, `${surface}|${path}`);
+      assert.equal(entry.origin, origin);
+      const remaining = SURFACE_LEAF_ORIGINS.filter(candidate => candidate !== entry);
+      const violations = auditSurfaceOrigins(REDACTION_SURFACES, remaining);
+      assert.equal(violations.length, 1, `${surface}|${path}`);
+      assert.match(violations[0] ?? "", /carries no declared origin/u);
+      if (origin === "captured-hr-value") {
+        const moved = REDACTION_SURFACES.filter(candidate => candidate.id === surface).map(candidate => ({ ...candidate, egress: "os-notification" as const }));
+        assert.ok(auditSurfaceOrigins(moved, SURFACE_LEAF_ORIGINS).some(violation => violation.includes(path) && violation.includes("may not carry at all")));
+      }
+    }
   });
 
   it("dispositions every served settings leaf as closed-literal or identifier-free", () => {
@@ -119,7 +362,7 @@ describe("redaction surface scan — the declaration audit", () => {
     const audited = REDACTION_SURFACES.flatMap((surface) => decidableLeaves(surface.schema));
     assert.ok(audited.length >= 200, "the audit walked almost no leaves");
     const egressClasses = new Set(REDACTION_SURFACES.map(({ egress }) => egress));
-    assert.deepEqual([...egressClasses].sort(), ["durable-authority", "durable-file", "operator-loopback", "os-notification"], "every remaining egress class must have at least one registered surface");
+    assert.deepEqual([...egressClasses].sort(), ["durable-authority", "durable-file", "operator-loopback", "os-notification", "process-egress"], "every remaining egress class must have at least one registered surface");
   });
 
   it("retains full supplied person identifiers in span/authority diagnostic messages", () => {
@@ -164,35 +407,15 @@ describe("redaction surface scan — the declaration audit", () => {
       "wire/activity-population-export|csv",
       "durable/failure-record|debug.stack",
       "durable/failure-record|debug.causes[]",
-      "wire/operation-source|structure.definition.invocations[].label",
-      "wire/run-detail-section|payload.confirmedActions[].action.value.consumed.value",
-      "wire/run-detail-section|payload.confirmedActions[].durableProof.checkpointNodeId",
-      "wire/run-detail-section|payload.confirmedActions[].durableProof.writeIntentId",
-      "wire/run-detail-section|payload.confirmedActions[].eventId",
-      "wire/run-detail-section|payload.confirmedActions[].proof.verifier.value.consumed.value",
-      "wire/run-detail-section|payload.confirmedActions[].reason",
-      "wire/run-detail-section|payload.confirmedActions[].stepOccurrence",
-      "wire/run-detail-section|payload.confirmedActions[].workerStreamId",
-      "wire/run-detail-section|payload.operationStructure.definition.invocations[].label",
       "wire/run-detail-section|payload.value.display.observation",
       "wire/run-detail-section|payload.value.display.title",
       "wire/dashboard-day|notifications[].context.subject",
       "wire/dashboard-day|notifications[].context.workflow",
-      "wire/stream-envelope|payload.confirmedActions[].action.value.consumed.value",
-      "wire/stream-envelope|payload.confirmedActions[].durableProof.checkpointNodeId",
-      "wire/stream-envelope|payload.confirmedActions[].durableProof.writeIntentId",
-      "wire/stream-envelope|payload.confirmedActions[].eventId",
-      "wire/stream-envelope|payload.confirmedActions[].proof.verifier.value.consumed.value",
-      "wire/stream-envelope|payload.confirmedActions[].reason",
-      "wire/stream-envelope|payload.confirmedActions[].stepOccurrence",
-      "wire/stream-envelope|payload.confirmedActions[].workerStreamId",
       "wire/stream-envelope|payload.notifications[].context.subject",
       "wire/stream-envelope|payload.notifications[].context.workflow",
-      "wire/stream-envelope|payload.operationStructure.definition.invocations[].label",
       "wire/workflow-explorer|workflows[].definitionPreview.groups[].key",
       "wire/workflow-explorer|workflows[].definitionPreview.groups[].label",
       "wire/workflow-explorer|workflows[].definitionPreview.reason",
-      "wire/workflow-explorer|workflows[].operationStructure.definition.invocations[].label",
     ];
     assert.equal(new Set(currentLeaves).size, currentLeaves.length);
     for (const identity of currentLeaves) {
@@ -208,13 +431,23 @@ describe("redaction surface scan — the declaration audit", () => {
     const module = "src/models/dashboard/workbooks.ts";
     const surfaces = REDACTION_SURFACES.filter(surface => surface.module === module);
     assert.deepEqual(surfaces.map(surface => surface.id).sort(), [
-      "durable/editable-workbook", "durable/saved-workbook", "request/workbook-create", "request/workbook-intake",
-      "request/workbook-save", "wire/editable-workbook", "wire/intake-command-result", "wire/saved-workbook",
-      "wire/workbook-history", "wire/workbook-intake", "wire/workbook-list",
+      "durable/editable-workbook", "durable/saved-workbook", "durable/workbook-operation", "request/workbook-create", "request/workbook-intake",
+      "request/workbook-operation", "request/workbook-reference", "request/workbook-save", "wire/editable-workbook", "wire/intake-command-result", "wire/saved-workbook",
+      "wire/workbook-history", "wire/workbook-intake", "wire/workbook-list", "wire/workbook-metadata", "wire/workbook-named-version",
+      "wire/workbook-operation-receipt", "wire/workbook-reference", "wire/workbook-type",
     ]);
     assert.equal(SURFACE_MODULE_DISPOSITIONS.find(entry => entry.module === module)?.state, "audited");
     const origins = SURFACE_LEAF_ORIGINS.filter(entry => surfaces.some(surface => surface.id === entry.surface));
     assert.ok(origins.length > 100);
+    for (const [surface, path] of [
+      ['durable/workbook-operation', 'change.workbook.sheets[].rows[].cells[].value'],
+      ['request/workbook-operation', 'values'],
+      ['wire/workbook-operation-receipt', 'changes[].oldValue'],
+      ['wire/workbook-operation-receipt', 'changes[].newValue'],
+      ['wire/workbook-reference', 'rows[].matches[].values'],
+      ['request/workbook-reference', 'keys[]'],
+      ['wire/workbook-type', 'fields[]'],
+    ] as const) assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, 'captured-hr-value');
     for (const omitted of origins) {
       const remaining = SURFACE_LEAF_ORIGINS.filter(entry => entry !== omitted);
       assert.equal(remaining.length, SURFACE_LEAF_ORIGINS.length - 1);
@@ -251,7 +484,7 @@ describe("redaction surface scan — the declaration audit", () => {
       const path = `${surface.startsWith("request/") ? "workbook." : ""}libraryId`;
       assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "captured-hr-value");
     }
-    for (const [surface, path] of [["wire/intake-session", "exclusions[].reason"], ["wire/workbook-intake", "session.exclusions[].reason"], ["wire/intake-command-result", "request.payload.reason"], ["wire/intake-command-result", "request.reason"]]) {
+    for (const [surface, path] of [["wire/intake-session", "exclusions[].reason"], ["wire/workbook-intake", "session.exclusions[].reason"], ["wire/intake-command-result", "request.payload.reason"], ["wire/intake-command-result", "request.reason"], ["wire/worker-command-result", "request.reason"]]) {
       assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "operator-authored", `${surface}|${path}`);
     }
     for (const surface of ["durable/saved-workbook", "wire/saved-workbook", "wire/workbook-list", "wire/workbook-history"]) {
@@ -270,7 +503,7 @@ describe("redaction surface scan — the declaration audit", () => {
     }
   });
 
-  it("preserves HR-bearing workbook identities through the canonical codec and real library service", () => {
+  it("preserves HR-bearing workbook identities through the canonical codec and real library service", async () => {
     const canary = REDACTION_CANARIES.emplId;
     const workbook = EditableWorkbookSchema.parse({
       name: "Roster.xlsx", themes: [], hasFormulas: false,
@@ -281,7 +514,7 @@ describe("redaction surface scan — the declaration audit", () => {
     assert.deepEqual(decodeEditableWorkbook(encodeEditableWorkbook(workbook)), workbook);
     const incoming = { ...workbook, libraryId: canary };
     assert.equal(WorkbookCreateRequestSchema.parse({ workbook: encodeEditableWorkbook(incoming) }).workbook.libraryId, canary);
-    const service = createWorkbookLibraryService({ repository: openDatabase().authority.workbooks, clock: manualClock(new Date(NOW)) });
+    const service = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: (await openDatabase()).authority.workbooks, clock: manualClock(new Date(NOW)) });
     assert.throws(() => service.create(incoming), { code: "WORKBOOK_INVALID" });
     const created = service.create(workbook);
     assert.notEqual(created.libraryId, canary);
@@ -556,20 +789,22 @@ const TRIGGER_EVENTS: readonly Record<string, unknown>[] = [
 
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
+const profileFixtures: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of databases.splice(0)) database.close();
+  for (const fixture of profileFixtures.splice(0)) await fixture.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-redaction-scan-"));
-  roots.push(root);
+async function openDatabase(): Promise<AuthorityDatabase> {
+  const fixture = await createBoundProfileFixture();
+  profileFixtures.push(fixture);
   const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    { path: fixture.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     manualClock(new Date(NOW)),
   );
-  testWorkerPorts(database, manualClock(new Date(NOW)), { path: join(root, "authority.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
+  testWorkerPorts(database, manualClock(new Date(NOW)), { path: fixture.path, descriptor: personLookupDescriptor, poolIndex: 1 });
   databases.push(database);
   return database;
 }
@@ -609,15 +844,7 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
   });
 
   it("keeps an undeclared value out of the durable ledger line", () => {
-    const outbox = AtomicOutboxRecordSchema.parse({
-      outboxId: UUID_6,
-      aggregate: { kind: "write-intent", writeIntentId: UUID_1, generation: 1 },
-      payload: LEDGER_OUTBOX_PAYLOAD,
-      projection: { state: "pending" },
-      createdAt: NOW,
-    });
-    assert.equal(outbox.payload.kind, "ledger-entry");
-    const line = canonicalJsonStringify(LedgerEntrySchema.parse({ outboxId: outbox.outboxId, seq: 1, payload: LEDGER_OUTBOX_PAYLOAD.entry }));
+    const line = canonicalJsonStringify(LedgerEntrySchema.parse({ outboxId: UUID_6, seq: 1, payload: LEDGER_OUTBOX_PAYLOAD.entry }));
     assert.deepEqual(
       canariesIn(line, UNIVERSAL_CANARY_NAMES),
       [],
@@ -625,22 +852,16 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
     );
 
 
-    const smuggled = {
-      ...outbox,
-      payload: {
-        ...outbox.payload,
-        entry: { ...LEDGER_OUTBOX_PAYLOAD.entry, operatorNote: REDACTION_CANARIES.ssn },
-      },
-    };
+    const smuggled = { ...LEDGER_OUTBOX_PAYLOAD.entry, operatorNote: REDACTION_CANARIES.ssn };
     assert.throws(
-      () => LedgerEntrySchema.parse({ outboxId: smuggled.outboxId, seq: 2, payload: smuggled.payload.entry }),
+      () => LedgerEntrySchema.parse({ outboxId: UUID_6, seq: 2, payload: smuggled }),
       "an undeclared ledger field must be refused, not serialized",
     );
   });
 
-  it("retains the exit run's supplied person identifiers in its evidence receipt", () => {
+  it("retains the exit run's supplied person identifiers in its evidence receipt", async () => {
 
-    const database = openDatabase();
+    const database = await openDatabase();
     const seeded = seedPersonLookupExitRun(database);
     const subjectName = "Battistessa, Johnnie";
     assert.ok(

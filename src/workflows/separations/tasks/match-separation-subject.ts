@@ -10,6 +10,7 @@ export const matchSeparationSubjectTask = defineTask(SeparationsMatchSeparationS
   sessions: [],
   async run({ input, ctx }) {
     const resolution = resolveSeparationSubject({
+      ...(input.operatorEmployeeId === undefined ? {} : { operatorEmployeeId: input.operatorEmployeeId }),
       documentNumber: input.documentNumber,
       employeeName: input.employeeName,
       documentEid: input.documentEid,

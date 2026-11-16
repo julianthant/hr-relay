@@ -19,9 +19,9 @@ import { INTAKE_FIXTURE_WORKFLOW_ID } from "../../support/fixtures/intake-workfl
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 let root: Root | undefined;
-const authorities: ReturnType<typeof createIntakeAuthority>[] = [];
+const authorities: Awaited<ReturnType<typeof createIntakeAuthority>>[] = [];
 async function flush(work: () => void) { await act(async () => { work(); await Promise.resolve(); }); }
-afterEach(async () => { await flush(() => root?.unmount()); root = undefined; document.body.replaceChildren(); for (const authority of authorities.splice(0)) authority.close(); });
+afterEach(async () => { await flush(() => root?.unmount()); root = undefined; document.body.replaceChildren(); for (const authority of authorities.splice(0)) await authority.close(); });
 async function mount(wire = FIXTURE_INTAKE_VALIDATED, options: {
   post?: (request: unknown, count: number) => Promise<Response>;
   read?: (count: number, url: string) => Promise<Response>;
@@ -62,7 +62,7 @@ function readyWire() {
   return { ...FIXTURE_INTAKE_VALIDATED, reviewBinding: FingerprintSchema.parse("a".repeat(64)), validation: { ...FIXTURE_INTAKE_VALIDATED.validation, unresolvedRows: [], rejected: [], validRows: 2 } };
 }
 async function readyAuthority() {
-  const authority = createIntakeAuthority(); authorities.push(authority);
+  const authority = await createIntakeAuthority(); authorities.push(authority);
   const uploaded = await authority.intake.upload({ workflow: INTAKE_FIXTURE_WORKFLOW_ID, fileName: "synthetic.csv", mediaType: "text/csv",
     bytes: Uint8Array.from(new TextEncoder().encode("Employee ID#,Effective Date,Dept\n10456712,07/01/2026,Housing\n10998801,07/01/2026,Student Affairs\n")) });
   if (uploaded.state === "refused") throw new Error(uploaded.message);

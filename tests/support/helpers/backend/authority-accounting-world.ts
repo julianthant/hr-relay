@@ -1,35 +1,48 @@
+import { unusedWorkerPool } from "./unused-worker-pool.js";
+import { donePage, READING_ID, sourceFixture } from "../../fixtures/ocr/source-pages.js";
+import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, ocrReviewDigest } from "../../../../src/models/ocr/review.js";
+import { buildOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
+import { accountOcrPages } from "../../../../src/models/workflows/ocr/page-accounting.js";
+import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
+import type { DuoCeremonyLeaseToken } from "../../../../src/workflow-kit/duo-ceremony-lease.js";
+import type { ExclusiveSessionLease } from "../../../../src/models/sessions/exclusive-session-lease.js";
+import { createAssistantAuthorization } from "../../../../src/backend/assistant/authorization.js";
+import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
+import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
+import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from "../../../../src/models/dashboard/assistant.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
+import { boundProfileAdmission, boundProfileCredentials } from "../admission-fixture.js";
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../run-integration-world.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { type AuthorityTableName } from "../../../../src/models/config/authority.js";
-import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { projectNotificationTrigger } from "../../../../src/rules/notifications/notification-triggers.js";
-import { explorerAuthorityFixture } from "../../fixtures/explorer-authority.js";
 import { GATE_RESULT, NOTIFICATION, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RUN_SESSION, START_PLAN } from "../../fixtures/phase1f-run-fixtures.js";
-import { testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
-import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../timeline-write-fixture.js";
+import { admitFixtureSlot, testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
+import { atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { rmSync } from "node:fs";
+
 import { buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
-import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { OPERATOR_XLSX_MEDIA_TYPE } from "../../../../src/models/dashboard/xlsx-export.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { ReadActiveStatus } from "../../../../src/models/workflows/person-lookup/read-active-status.js";
 import { deriveBulkRunCommandFingerprint } from "../../../../src/rules/commands/commands.js";
-import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { LOCAL_OPERATOR_ACTOR_ID, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { deriveIdempotencyKeyDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
 import { COMMAND_FIXTURES, CONFIG_SNAPSHOT, DELEGATION_MANIFEST, DEPENDENCY_RECORD, HASH_A, HASH_B, HASH_C, ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, LATER, NOW, UUID_1, UUID_2, UUID_3, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, RUN_ID, WORKER_START_REQUEST, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
+import { createBoundProfileFixture } from "../admission-fixture.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { currentAtomicWriteFixture } from "../timeline-write-fixture.js";
 
@@ -197,14 +210,15 @@ export function createAuthorityAccountingTestWorld() {
     updatedAt: NOW,
   };
 
-  function databasePath(name = "authority.sqlite"): string {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-rebuild-sqlite-"));
-    roots.push(root);
-    return join(root, name);
+  async function databasePath(_name = "authority.sqlite"): Promise<string> {
+    const profile = await createBoundProfileFixture();
+    roots.push(profile.workspace);
+    return profile.path;
   }
 
-  function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
-    const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
+  async function openDatabase(path: string | undefined = undefined, busyTimeoutMs = 250): Promise<AuthorityDatabase> {
+    path ??= await databasePath();
+  const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
     openDatabases.push(database);
     databasePaths.set(database, path);
     return database;
@@ -221,18 +235,12 @@ export function createAuthorityAccountingTestWorld() {
     if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     const path = databasePaths.get(database);
     if (path === undefined) throw new Error("fixture-authority-path-missing");
-    const slot = database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-      commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex: 1,
-      expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0,
-      processId: process.pid, processAcquisitionId: randomUUID(), authorityPath: path,
-      processLockRoot: join(dirname(path), "locks"), now: NOW,
-    }, randomUUID()));
+    const slot = database.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, WORKFLOW_ID, 1, NOW));
     return slot;
   }
 
   function prepareRunning(database: AuthorityDatabase) {
     const slot = prepareWorkerSlot(database);
-    assert.equal(database.authority.workerLeases.start({ ...WORKER_START_REQUEST, workerId: slot.workerId }).state, "started");
     database.authority.runs.enqueue({
       ...QUEUED_RUN,
       envelope: {
@@ -390,16 +398,7 @@ export function createAuthorityAccountingTestWorld() {
     exclusions: [],
   };
 
-  const OCR_EXTRACTION = {
-    formType: "oath",
-    source: { kind: "local-agent", agentId: "claude-code", invocation: "read page1.png" },
-    readAt: "2026-08-07T09:00:00.000Z",
-    sourceSha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
-    sourcePage: 1,
-    pageKind: "emergency-contact",
-    record: null,
-    pageFingerprint: "1".repeat(64),
-  };
+  const OCR_EXTRACTION = donePage(sourceFixture(1).inputs[0]).output;
 
   const DRY_RUN_SCENARIO_RESULT = {
     resultId: UUID_8,
@@ -418,20 +417,98 @@ export function createAuthorityAccountingTestWorld() {
     execution: { state: "not-started", reason: "subject-unavailable" },
   };
   function cleanup(): void {
-    for (const database of openDatabases.splice(0)) database.close();
+    for (const database of openDatabases.splice(0)) {
+      try {
+        releaseSeededWriteOwners(database, CLOCK.now().toISOString());
+        database.close();
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes("database is not open")) throw error;
+      }
+    }
     for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
   }
   return { ATOMIC_WRITE_COMMIT, roots, openDatabases, cleanup, databasePaths, CLOCK, BULK_COMMAND_ACCEPTANCE, OPERATOR_XLSX_EXPORT, FAILURE_RECORD, DIAGNOSTIC_BUNDLE, RUN_CHECKPOINT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase, claimedWorkerId, prepareWorkerSlot, prepareRunning, prepareDelegationOwners, terminalizeForTrust, terminalFailureRequest, terminalSuccessRequest, INTAKE_MANIFEST, OCR_EXTRACTION, DRY_RUN_SCENARIO_RESULT };
 }
 
+const ASSISTANT_CHAT_ID = "6f9c3b1e-2a4d-4c8e-9b7a-1d2e3f4a5b6c";
+
 export type MutationCase = Readonly<{
     table: Exclude<AuthorityTableName, "database_states" | "database_upgrades">;
     prepare?: (database: AuthorityDatabase) => void;
-    mutate: (database: AuthorityDatabase) => void;
+    mutate: (database: AuthorityDatabase) => void | Promise<void>;
+    cleanup?: (database: AuthorityDatabase) => void;
   }>;
 
-export function authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT }: Pick<ReturnType<typeof createAuthorityAccountingTestWorld>, "prepareRunning" | "terminalFailureRequest" | "terminalSuccessRequest" | "terminalizeForTrust" | "DIAGNOSTIC_BUNDLE" | "FAILURE_RECORD" | "DRY_RUN_SCENARIO_RESULT" | "OPERATOR_XLSX_EXPORT" | "CLOCK" | "ATOMIC_WRITE_COMMIT" | "databasePaths" | "INTAKE_MANIFEST" | "OCR_EXTRACTION" | "prepareWorkerSlot" | "claimedWorkerId" | "prepareDelegationOwners" | "COMMAND_AUDIT" | "RUN_CHECKPOINT" | "OBSERVED_PRESENT_WRITE_INTENT">): readonly MutationCase[] {
+export function authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT }: Pick<ReturnType<typeof createAuthorityAccountingTestWorld>, "prepareRunning" | "terminalFailureRequest" | "terminalSuccessRequest" | "terminalizeForTrust" | "DIAGNOSTIC_BUNDLE" | "FAILURE_RECORD" | "DRY_RUN_SCENARIO_RESULT" | "OPERATOR_XLSX_EXPORT" | "CLOCK" | "ATOMIC_WRITE_COMMIT" | "databasePaths" | "INTAKE_MANIFEST" | "OCR_EXTRACTION" | "prepareWorkerSlot" | "claimedWorkerId" | "prepareDelegationOwners" | "COMMAND_AUDIT" | "RUN_CHECKPOINT" | "OBSERVED_PRESENT_WRITE_INTENT">): readonly MutationCase[] {
+  function assistant(db: AuthorityDatabase) {
+    const path = databasePaths.get(db); assert.ok(path);
+    const admission = boundProfileAdmission(path), profileId = admission.profileBinding.profileId;
+    const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, { primaryDisplay: null }, CLOCK,
+      { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }), boundProfileCredentials(admission));
+    const unavailable = (): never => { throw new Error("unrequested accounting fixture effect"); };
+    const runtime = db.authority.runtimeConfig.get(); assert.ok(runtime);
+    const dependencies = { authority: db, clock: CLOCK, ids: { uuid: randomUUID }, settings, authorityProfileId: profileId };
+    const kernel = createCommandKernel({ ...dependencies, lifecycle: testRunService(db, CLOCK), appVersion: "0.1.0",
+      configIdentity: { configSnapshotId: runtime.configSnapshotId, configFingerprint: runtime.configFingerprint },
+      descriptors: { resolve: () => undefined }, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+      writeResolution: { recheck: unavailable, resolveAbsent: unavailable },
+      workerRuntime: { pool: unusedWorkerPool(unavailable) },
+      prepareAssistantModelPreference: async () => () => true });
+    const fixture = { profileId, kernel, authorization: createAssistantAuthorization({ database: db, kernel, clock: CLOCK,
+      current: () => ({ profileId, epoch: 1 }) }) };
+    return fixture;
+  }
+  const duoTokens = new WeakMap<AuthorityDatabase, DuoCeremonyLeaseToken>();
+  const exclusiveTokens = new WeakMap<AuthorityDatabase, ExclusiveSessionLease>();
+  const assistantActions = new WeakMap<AuthorityDatabase, { fixture: ReturnType<typeof assistant>; chat: ReturnType<ReturnType<typeof assistant>["authorization"]["createChat"]> }>();
+  const source = sourceFixture(1), page = source.inputs[0]; assert.ok(page);
+  const seed = { review: buildOcrReviewSeed({ sourceRunId: RunIdSchema.parse(RUN_ID),
+    accounting: accountOcrPages(source.manifest, READING_ID, [donePage(page)]), roster: null }), identities: [] };
+  const review = OcrReviewRevisionSchema.parse({ id: `${RUN_ID}#1`, sourceRunId: RUN_ID, revision: 1, seed,
+    records: seed.review.records.map(record => ({ recordId: record.recordId, fields: record.fields, assertedEid: "10800000", discarded: false })),
+    origin: { kind: "checkpoint", key: "native-accounting-checkpoint", digest: HASH_A,
+      checkpoint: timelineCheckpointReference(RunCheckpointRecordSchema.parse({ ...RUN_CHECKPOINT, runId: RUN_ID })) },
+    actorId: "local-operator", createdAt: NOW });
+  const approval = OcrApprovedSnapshotSchema.parse({ snapshotId: UUID_1, sourceRunId: RUN_ID, revision: 1,
+    reviewDigest: ocrReviewDigest(review), selectedRecordIds: review.records.map(record => record.recordId),
+    records: review.records, approvedBy: "local-operator", approvedAt: NOW });
   return [
+    { table: "ocr_source_uploads", mutate: db => { db.authority.ocrReviews.upload({ artifact: source.manifest.document,
+      fileName: "source.pdf", uploadedAt: NOW, uploadedBy: "local-operator" }); } },
+    { table: "ocr_review_revisions", prepare: db => { db.authority.runs.enqueue(QUEUED_RUN); },
+      mutate: db => { db.authority.ocrReviews.append(review, 0); } },
+    { table: "ocr_approved_snapshots", prepare: db => {
+      db.authority.runs.enqueue(QUEUED_RUN);
+      db.authority.commands.insert(COMMAND_FIXTURES[0]);
+      db.authority.ocrReviews.append(review, 0);
+    }, mutate: db => { db.authority.ocrReviews.approve(approval); } },
+    { table: "assistant_chats", mutate: db => { assistant(db).authorization.createChat(); } },
+    { table: "assistant_actions", prepare: db => { const fixture = assistant(db); assistantActions.set(db, { fixture, chat: fixture.authorization.createChat() }); }, mutate: db => {
+      const prepared = assistantActions.get(db); assert.ok(prepared);
+      const { fixture: { authorization }, chat } = prepared;
+      const patch = { "browser.headless": { set: false } };
+      db.withAuthorityTransaction(() => { authorization.prepare(chat, { family: "settings", type: "apply-settings", commandId: randomUUID(),
+        requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: readSettings(db.authority).revision },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint(patch), patch } }); });
+    } },
+    { table: "assistant_model_preference", mutate: async db => {
+      const { kernel, profileId } = assistant(db);
+      assert.equal((await kernel.executeAssistantModelPreference({ family: "assistant-model-preference", type: "set-assistant-model-preference",
+        commandId: randomUUID(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard", target: { profileId, epoch: 0, expectedRevision: 0 },
+        payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } })).state, "applied");
+    } },
+    { table: "assistant_conversations", mutate: db => {
+      assert.equal(db.authority.assistantHistory.apply({ operation: "create", conversationId: ASSISTANT_CHAT_ID, title: "Chat" }, NOW).state, "saved");
+    } },
+    { table: "assistant_messages", prepare: db => { db.authority.assistantHistory.apply({ operation: "create", conversationId: ASSISTANT_CHAT_ID, title: "Chat" }, NOW); }, mutate: db => {
+      assert.equal(db.authority.assistantHistory.apply({ operation: "local", conversationId: ASSISTANT_CHAT_ID, expectedRevision: 1, messageId: randomUUID(), text: "Assistant verification completed." }, NOW).state, "saved");
+    } },
+    { table: "assistant_attachments", prepare: db => {
+      assert.equal(db.authority.assistantHistory.apply({ operation: "create", conversationId: ASSISTANT_CHAT_ID, title: "Attachment accounting" }, NOW).state, "saved");
+    }, mutate: db => {
+      db.authority.assistantHistory.stage({ id: randomUUID(), conversationId: ASSISTANT_CHAT_ID, mediaType: "text/plain", name: "accounting.txt",
+        bytes: new TextEncoder().encode("Synthetic attachment accounting"), now: NOW });
+    } },
     { table: "runs", mutate: (db) => { db.authority.runs.enqueue(QUEUED_RUN); } },
     {
       table: "run_failures",
@@ -452,7 +529,10 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
         const run = db.authority.runs.get(RUN_ID);
         if (run === undefined) throw new Error("result generation fixture lost its run");
         const terminal = terminalSuccessRequest(db, run);
-        db.terminalizeSuccess(terminal.request, terminal.factoryAuthorization);
+        const report = db.terminalizeSuccess(terminal.request, terminal.factoryAuthorization);
+        assert.equal(db.authority.runResults.get(run.envelope.runId)?.createdAt,terminal.request.result.createdAt);
+        assert.equal(db.authority.runResults.getSettlement(run.envelope.runId,report.authorization.expectedVersion + 1)?.run.updatedAt,
+          terminal.request.authorization.authorizedAt);
       },
     },
     {
@@ -500,19 +580,37 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     },mutate:db=>{db.commitWriteAttempt(ATOMIC_WRITE_COMMIT,atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));} },
     { table: "artifacts", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
     { table: "artifacts", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },
-    { table: "worker_leases", prepare: db => { prepareWorkerSlot(db); }, mutate: db => {
+    { table: "exclusive_session_leases", prepare: db => { prepareRunning(db); }, mutate: db => {
       const slot = db.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
-      db.authority.workerLeases.start({ ...WORKER_START_REQUEST, workerId: slot.workerId });
+      const acquired = db.authority.exclusiveSessionLeases.acquire({ identityKey: HASH_A, workerId: slot.workerId, sessionId: UUID_8, now: NOW });
+      assert.equal(acquired.state, "acquired"); exclusiveTokens.set(db, acquired.lease);
+    }, cleanup: db => {
+      const lease = exclusiveTokens.get(db); assert.ok(lease);
+      assert.notEqual(db.authority.exclusiveSessionLeases.release(lease, NOW).releasedAt, null);
+    } },
+    { table: "exclusive_session_leases", prepare: db => {
+      prepareRunning(db);
+      const slot = db.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
+      const acquired = db.authority.exclusiveSessionLeases.acquire({ identityKey: HASH_A, workerId: slot.workerId, sessionId: UUID_8, now: NOW });
+      assert.equal(acquired.state, "acquired"); exclusiveTokens.set(db, acquired.lease);
+    }, mutate: db => {
+      const lease = exclusiveTokens.get(db); assert.ok(lease);
+      assert.notEqual(db.authority.exclusiveSessionLeases.release(lease, NOW).releasedAt, null);
     } },
     {
       table: "auth_leases",
       prepare: db => { prepareRunning(db); },
       mutate: (db) => {
-        db.authority.duoCeremonyLeases.acquire({
+        const acquired = db.authority.duoCeremonyLeases.acquire({
           credentialKey: "ab".repeat(32), workerId: db.authority.workerSlots.list(WORKFLOW_ID)[0]?.workerId, system: "ucpath",
           now: "2026-08-21T10:00:00.000Z", ttlMs: 80_000,
         });
+        assert.equal(acquired.state, "acquired");
+        if (acquired.state !== "acquired") throw new Error("fixture-duo-lease-not-acquired");
+        duoTokens.set(db, acquired.token);
       },
+      cleanup: db => { const token = duoTokens.get(db); assert.ok(token);
+        assert.equal(db.authority.duoCeremonyLeases.release({ token, now: "2026-08-21T10:00:01.000Z" }).state, "released"); },
     },
     {
       table: "worker_pools",
@@ -546,22 +644,6 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     { table: "delegation_dependencies", prepare: (db) => { prepareDelegationOwners(db); db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
-    { table: "explorer_overrides", mutate: db => {
-      const f = explorerAuthorityFixture();
-      try {
-        const command = f.command(UUID_7);
-        const result = f.kernel.execute(command);
-        assert.equal(result.state, "applied");
-        const override = f.database.authority.explorerOverrides.read(command.target.workflowId);
-        const audit = f.database.authority.commandAudits.findByCommand(command.commandId);
-        assert.ok(override); assert.ok(audit);
-        db.withAuthorityTransaction(repos => {
-          repos.commands.insert(command);
-          repos.explorerOverrides.replace(command, override);
-          repos.commandAudits.insert(audit);
-        });
-      } finally { f.dispose(); }
-    } },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "notifications", prepare: db => { db.authority.notifications.create({ ...NOTIFICATION,
       ...projectNotificationTrigger({ kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: HASH_A }) }); }, mutate: db => {
@@ -577,31 +659,7 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     { table: "worker_slots", mutate: db => {
       const path = databasePaths.get(db);
       if (path === undefined) throw new Error("fixture-authority-path-missing");
-      db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-        commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex: 1, expectedPoolVersion: 0,
-        processId: process.pid, processAcquisitionId: randomUUID(), authorityPath: path,
-        processLockRoot: join(dirname(path), "locks"), now: NOW,
-      }, randomUUID()));
-    } },
-    { table: "worker_controls", mutate: db => {
-      const request = CommandRequestSchema.parse({ commandId: UUID_1, family: "worker-browser", type: "plan-worker-count",
-        target: { workflowId: WORKFLOW_ID, expectedVersion: 0 }, payload: { desiredWorkers: 1 },
-        requestedAt: NOW, requestedBy: "local-operator", source: "dashboard" });
-      if (request.family !== "worker-browser" || request.type !== "plan-worker-count") throw new Error("fixture-worker-plan-kind");
-      db.withAuthorityTransaction(repositories => {
-        repositories.commands.insert(request);
-        const roster = admitWorkerPoolRoster(repositories, request, NOW);
-        repositories.workerControls.admit({ commandId: request.commandId, request, roster,
-          scope: "worker-pool:person-lookup", executorId: UUID_2, admittedAt: NOW, expiresAt: LATER,
-          basisVersion: 0, phase: { state: "admitted" } });
-      });
-    } },
-    { table: "browser_sessions", prepare: db => { prepareRunning(db); }, mutate: db => {
-      const slot = db.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
-      db.authority.workerControls.observe({ workerId: slot.workerId, leaseGeneration: 1,
-        sessionId: UUID_1, system: "crm", configFingerprint: HASH_A, signInFingerprint: HASH_B,
-        browserMode: "headless", acceptDownloads: false, exclusive: false, health: "authenticated",
-        openedAt: NOW, observedAt: NOW, profileRevision: 1 });
+      db.withAuthorityTransaction(repositories => admitFixtureSlot(repositories, WORKFLOW_ID, 1, NOW));
     } },
     { table: "gate_results", prepare: db => {
       db.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId: GATE_RESULT.runId } });

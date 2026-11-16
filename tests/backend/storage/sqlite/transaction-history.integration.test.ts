@@ -1,3 +1,5 @@
+import { runInheritedRuntimeChild } from "../../../support/helpers/backend/runtime-lifetime.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
@@ -68,11 +70,7 @@ import { historyWorld } from "../../../support/helpers/storage/transaction-histo
 /** Activity shape stays stable; confirmed database history replaces file folding. */
 /** Activity shape stays stable; confirmed database history replaces file folding. */
 /** Activity shape stays stable; confirmed database history replaces file folding. */
-import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect } from "vitest";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -92,14 +90,14 @@ import { atomicWriteCheckpoint, currentAtomicWriteFixture, seedAtomicWriteOwner 
 
 {
 
-const cleanup: (() => void)[] = [];
-const _afterEachFixture0 = () => { for (const dispose of cleanup.splice(0)) dispose(); };
+const cleanup: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { for (const dispose of cleanup.splice(0)) await dispose(); };
 const range = { from: "2026-07-01", to: "2026-09-09" };
 describe("confirmed database transaction history", () => {
 afterEach(_afterEachFixture0);
 
-  it("counts distinct operations at the same timestamp once after restart and ignores stale files", () => {
-    const w = historyWorld(); cleanup.push(() => w.dispose());
+  it("counts distinct operations at the same timestamp once after restart and ignores stale files", async () => {
+    const w = await historyWorld(); cleanup.push(async () => await w.dispose());
     w.commit(1); w.commit(2); const before = w.history.query(range);
     assert.equal(before.rows.length, 2); assert.equal(new Set(before.rows.map((row) => row.eventId)).size, 2);
     w.reopen(); assert.deepEqual(w.history.query(range), before);
@@ -113,41 +111,41 @@ afterEach(_afterEachFixture0);
 
 {
 
-const cleanup: (() => void)[] = [];
-const _afterEachFixture0 = () => { for (const dispose of cleanup.splice(0)) dispose(); };
+const cleanup: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { for (const dispose of cleanup.splice(0)) await dispose(); };
 const instant = "2026-08-03T18:30:00.000Z"; const day = localDatePart(new Date(instant));
-function world() { const w = historyWorld({ terminalize: true }); cleanup.push(() => w.dispose()); return w; }
+async function world() { const w = await historyWorld({ terminalize: true }); cleanup.push(async () => await w.dispose()); return w; }
 describe("Activity confirmed transaction fold", () => {
 afterEach(_afterEachFixture0);
 
-  it("answers an empty block when nothing was confirmed", () => { assert.deepEqual(world().history.foldActivityRange(day, day), { systems: [] }); });
-  it("folds system/instance and orders by count then system id", () => {
-    const w = world();
+  it("answers an empty block when nothing was confirmed", async () => { assert.deepEqual((await world()).history.foldActivityRange(day, day), { systems: [] }); });
+  it("folds system/instance and orders by count then system id", async () => {
+    const w = await world();
     for (const [index, system, instance] of [[1, "ucpath", "prod"], [2, "ucpath", "prod"], [3, "ucpath", "test"], [4, "kuali", "prod"], [5, "crm", "test"]] as const) w.commit(index, { system, instance, confirmedAt: instant });
     assert.deepEqual(w.history.foldActivityRange(day, day), { systems: [{ system: "ucpath", entries: 3, prod: 2, test: 1 }, { system: "crm", entries: 1, prod: 0, test: 1 }, { system: "kuali", entries: 1, prod: 1, test: 0 }] });
   });
-  it("uses the confirmation's local day across a UTC midnight", () => {
-    const w = world(); const boundary = "2026-08-04T01:30:00.000Z"; w.commit(11, { confirmedAt: boundary });
+  it("uses the confirmation's local day across a UTC midnight", async () => {
+    const w = await world(); const boundary = "2026-08-04T01:30:00.000Z"; w.commit(11, { confirmedAt: boundary });
     assert.equal(w.history.foldActivityRange(localDatePart(new Date(boundary)), localDatePart(new Date(boundary))).systems[0].entries, 1);
   });
-  it("excludes outside confirmations and includes them in an expanded window", () => {
-    const w = world(); w.commit(12, { confirmedAt: instant }); w.commit(13, { confirmedAt: "2026-08-06T18:30:00.000Z" });
+  it("excludes outside confirmations and includes them in an expanded window", async () => {
+    const w = await world(); w.commit(12, { confirmedAt: instant }); w.commit(13, { confirmedAt: "2026-08-06T18:30:00.000Z" });
     assert.equal(w.history.foldActivityRange(day, day).systems[0].entries, 1); assert.equal(w.history.foldActivityRange(day, "2026-08-07").systems[0].entries, 2);
   });
-  it("refuses a backwards range", () => { assert.throws(() => world().history.foldActivityRange("2026-08-05", "2026-08-01"), /ends before it starts/u); });
+  it("refuses a backwards range", async () => { await assert.rejects(async () => (await world()).history.foldActivityRange("2026-08-05", "2026-08-01"), /ends before it starts/u); });
 });
 }
 
 {
 
-const cleanup: (() => void)[] = [];
-const _afterEachFixture0 = () => { for (const dispose of cleanup.splice(0)) dispose(); };
+const cleanup: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { for (const dispose of cleanup.splice(0)) await dispose(); };
 const range = { from: "2026-07-01", to: "2026-09-09" };
 describe("native committed history readers", () => {
 afterEach(_afterEachFixture0);
 
-  it("two independent database readers and a restarted reader see the same committed identities", () => {
-    const w = historyWorld(); cleanup.push(() => w.dispose()); w.commit(401);
+  it("two independent database readers and a restarted reader see the same committed identities", async () => {
+    const w = await historyWorld(); cleanup.push(async () => await w.dispose()); w.commit(401);
     const reader = AuthorityDatabase.open({ path: w.path, busyTimeoutMs: 250, migrationOwner: "second-history-reader" }, historyClock);
     try {
       assert.deepEqual(createTransactionHistory(reader.authority).query(range), w.history.query(range));
@@ -162,8 +160,8 @@ afterEach(_afterEachFixture0);
 
 const range = { from: "2026-07-01", to: "2026-09-09" };
 
-it("refuses missing retained confirmation publication instead of returning smaller totals", () => {
-  const w = historyWorld({ terminalize: true });
+it("refuses missing retained confirmation publication instead of returning smaller totals", async () => {
+  const w = await historyWorld({ terminalize: true });
   try {
     const fixture = w.commit(804), runId = fixture.commit.transaction.runId;
     const run = w.database.authority.runs.get(runId); assert.ok(run);
@@ -171,17 +169,25 @@ it("refuses missing retained confirmation publication instead of returning small
       runId, expectedVersion: run.version }).state, "deleted");
     assert.equal(w.history.query(range).rows.length, 1);
     using raw = new DatabaseSync(w.path);
+    const publication = raw.prepare("SELECT publication_json FROM write_intents WHERE id=?").get(fixture.commit.transaction.writeIntentId)?.publication_json;
+    assert.ok(typeof publication === "string");
     const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='write_intents'").all();
-    try {
-      for (const trigger of triggers) raw.exec(`DROP TRIGGER "${String(trigger.name)}"`);
-      assert.equal(raw.prepare("UPDATE write_intents SET publication_json=NULL WHERE id=?").run(fixture.commit.transaction.writeIntentId).changes, 1);
-    } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
-    assert.throws(() => w.history.query(range), /run-search-index-rebuild-required/u);
-  } finally { w.dispose(); }
+    using _restoreTriggers = { [Symbol.dispose]() { for (const trigger of triggers) raw.exec(String(trigger.sql)); } };
+    for (const trigger of triggers) raw.exec(`DROP TRIGGER "${String(trigger.name)}"`);
+    using _restorePublication = { [Symbol.dispose]() { raw.prepare("UPDATE write_intents SET publication_json=? WHERE id=?").run(publication, fixture.commit.transaction.writeIntentId); } };
+    assert.equal(raw.prepare("UPDATE write_intents SET publication_json=NULL WHERE id=?").run(fixture.commit.transaction.writeIntentId).changes, 1);
+    assert.throws(() => w.history.query(range), error => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /run-search-index-rebuild-required/u);
+      assert.ok(error.cause instanceof Error);
+      assert.match(error.cause.message, /authority table write_intents failed native record validation:[\s\S]*expected string, received null/u);
+      return true;
+    });
+  } finally { await w.dispose(); }
 });
 
-it("bounds cold range/run selected evidence independently of unrelated current and deleted history", () => {
-  const w = historyWorld({ terminalize: true });
+it("bounds cold range/run selected evidence independently of unrelated current and deleted history", async () => {
+  const w = await historyWorld({ terminalize: true });
   try {
     const deletedIds: string[] = [];
     w.database.withAuthorityTransaction(() => {
@@ -228,7 +234,7 @@ it("bounds cold range/run selected evidence independently of unrelated current a
       const runPlan = raw.prepare("EXPLAIN QUERY PLAN SELECT id FROM timeline_events WHERE retention_class='confirmed-operation' AND run_id=? ORDER BY confirmed_at,id LIMIT 10001").all(deletedIds[0] ?? "");
       assert.match(JSON.stringify(runPlan), /SEARCH.*timeline_run_transactions_idx/u);
     } finally { spy.mockRestore(); }
-  } finally { w.dispose(); }
+  } finally { await w.dispose(); }
 });
 }
 
@@ -236,12 +242,12 @@ it("bounds cold range/run selected evidence independently of unrelated current a
 
 const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT_m4);
 
-const roots: string[] = [];
-const _afterEachFixture0 = () => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); };
-function root(): string {
-  const path = mkdtempSync(join(realpathSync(tmpdir()), "timeline-"));
-  roots.push(path);
-  return path;
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+const _afterEachFixture0 = async () => { for (const profile of profiles.splice(0)) await profile.close(); };
+async function profileFixture() {
+  const profile = await createBoundProfileFixture({ sharedMachine: true });
+  profiles.push(profile);
+  return profile;
 }
 const ts = "2026-09-08T12:00:00.000Z";
 function span() {
@@ -271,26 +277,35 @@ function initialize(path: string): DatabaseSync {
 describe("SQLite timeline delivery", () => {
 afterEach(_afterEachFixture0);
 
-  it("reads durable events from a separate producer process after lost notification and restart", () => {
-    const path = join(root(), "cross-process.db");
+  it("reads durable events from a separate producer process after lost notification and restart", async () => {
+    const profile = await profileFixture(), path = profile.path;
     const first = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "timeline-process-test" }, manualClock(new Date(ts)));
     const script = `
-      import { AuthorityDatabase } from './tests/support/helpers/synthetic-database-admission.ts';
+      import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
+      import { acquireSharedRuntimeAdmission } from './src/backend/storage/admission/admission.ts';
+      import { WorkerRuntimeLifetimeLock } from './src/backend/storage/admission/lifetime-lock.ts';
+      import { createProfileRegistry } from './src/backend/profiles/registry.ts';
+      import { basename, dirname, resolve } from 'node:path';
       import { createTimelineEmitter } from './src/backend/storage/events/timeline-emitter.ts';
       import { manualClock } from './src/rules/time/clock.ts';
-      const clock = manualClock(new Date(process.argv[2]));
-      const db = AuthorityDatabase.open({ path: process.argv[1], busyTimeoutMs: 500, migrationOwner: 'timeline-child' }, clock);
+      const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
+      const clock = manualClock(new Date(process.argv[3]));
+      const path = process.argv[2];
+      const machine = acquireSharedRuntimeAdmission(resolve(dirname(path), '../../../..'), lifetime);
+      const admission = machine.admitProfile(basename(dirname(path)));
+      const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 500, migrationOwner: 'timeline-child' }, clock);
       try {
         const writer = createTimelineEmitter({ repository: db.authority.timelineEvents, clock });
-        writer.emit({ t: 'span.started', kind: 'worker', workflow: 'person-lookup', ts: process.argv[2],
+        writer.emit({ t: 'span.started', kind: 'worker', workflow: 'person-lookup', ts: process.argv[3],
           workerId: 'child-worker', spanPath: 'worker/child-worker', name: 'Child worker' });
-        writer.emit({ t: 'span.ended', kind: 'worker', workflow: 'person-lookup', ts: process.argv[2],
+        writer.emit({ t: 'span.ended', kind: 'worker', workflow: 'person-lookup', ts: process.argv[3],
           workerId: 'child-worker', spanPath: 'worker/child-worker', outcome: 'done' });
-      } finally { db.close(); }
+      } finally { db.close(); admission.release(); machine.release(); }
+      process.exit(0);
     `;
     try {
-      const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, path, "2026-09-08T00:30:00.000Z"],
-        { cwd: process.cwd(), env: { ...process.env, TZ: "America/Los_Angeles" }, encoding: "utf8", timeout: 20_000 });
+      const child = await runInheritedRuntimeChild(profile.lifetime, script, [path, "2026-09-08T00:30:00.000Z"],
+        { cwd: process.cwd(), env: { ...process.env, TZ: "America/Los_Angeles" }, timeout: 20_000 });
       expect(child.status, child.stderr).toBe(0);
       const rows = first.authority.timelineEvents.page({});
       expect(rows.length).toBe(2);
@@ -307,8 +322,8 @@ afterEach(_afterEachFixture0);
     } finally { first.close(); }
   });
 
-  it("pages across real connections and restart without collapsing equal timestamps or text", () => {
-    const path = join(root(), "state.db");
+  it("pages across real connections and restart without collapsing equal timestamps or text", async () => {
+    const path = (await profileFixture()).path;
     using first = initialize(path);
     using second = new DatabaseSync(path);
     const writer = repository(first);
@@ -323,8 +338,8 @@ afterEach(_afterEachFixture0);
     expect(repository(restarted).page({})).toEqual([a, b]);
   });
 
-  it("replays exact event identity and rejects divergent content without consuming a cursor", () => {
-    using database = initialize(join(root(), "state.db"));
+  it("replays exact event identity and rejects divergent content without consuming a cursor", async () => {
+    using database = initialize((await profileFixture()).path);
     const history = repository(database);
     const input = event();
     const first = history.append(input);
@@ -334,8 +349,8 @@ afterEach(_afterEachFixture0);
     expect(history.page({})).toEqual([first.record]);
   });
 
-  it("replays retained checkpoint and confirmation identities after the owner advances attempts", () => {
-    const path = join(root(), "replay.db");
+  it("replays retained checkpoint and confirmation identities after the owner advances attempts", async () => {
+    const path = (await profileFixture()).path;
     const database = AuthorityDatabase.open({ path, busyTimeoutMs: 500,
       migrationOwner: "timeline-replay-test" }, manualClock(new Date(ts)));
     try {
@@ -363,8 +378,8 @@ afterEach(_afterEachFixture0);
     } finally { database.close(); }
   });
 
-  it("never reuses a cursor after every ordinary event was pruned", () => {
-    using database = initialize(join(root(), "state.db"));
+  it("never reuses a cursor after every ordinary event was pruned", async () => {
+    using database = initialize((await profileFixture()).path);
     const history = repository(database);
     const first = history.append({ ...event(), payload: { kind: "span", event: { t: "span.ended", kind: "worker", ts, workflow: "person-lookup", pid: 123, workerId: "test-worker", spanPath: "worker/person-lookup/test-worker", outcome: "done" } } }).record;
     expect(history.pruneBefore("2026-09-09")).toBe(1);
@@ -372,8 +387,8 @@ afterEach(_afterEachFixture0);
     expect(history.append({ ...event(), payload: { kind: "span", event: { t: "span.ended", kind: "worker", ts, workflow: "person-lookup", pid: 123, workerId: "test-worker", spanPath: "worker/person-lookup/test-worker", outcome: "done" } } }).record.cursor).toBe(first.cursor + 1);
   });
 
-  it("pins a page horizon while a second connection appends", () => {
-    const path = join(root(), "state.db");
+  it("pins a page horizon while a second connection appends", async () => {
+    const path = (await profileFixture()).path;
     using database = initialize(path);
     using other = new DatabaseSync(path);
     const history = repository(database);
@@ -384,16 +399,16 @@ afterEach(_afterEachFixture0);
     expect(history.page({ after: through })).toEqual([b]);
   });
 
-  it("rejects scope drift and mutation of immutable stored events", () => {
-    using database = initialize(join(root(), "state.db"));
+  it("rejects scope drift and mutation of immutable stored events", async () => {
+    using database = initialize((await profileFixture()).path);
     const history = repository(database);
     expect(() => history.append({ ...event(), scope: { kind: "worker", workerId: "different-worker" } })).toThrow();
     history.append(event());
     expect(() => database.exec("UPDATE timeline_events SET recorded_at='changed'")).toThrow("immutable");
   });
 
-  it("enforces retained run ownership in SQLite", () => {
-    using database = initialize(join(root(), "state.db"));
+  it("enforces retained run ownership in SQLite", async () => {
+    using database = initialize((await profileFixture()).path);
     const input = event();
     const runId = randomUUID();
     const runEvent = { ...input, scope: { kind: "run", runId }, payload: { kind: "span", event: {
@@ -415,12 +430,18 @@ function deleteRun(database: AuthorityDatabase, runId: string, commandId: string
 describe("retained confirmed history and shared retry deletion", () => {
 afterEach(_afterEachFixture0);
 
-  function committed() {
-    return openConfirmedRetentionDatabase(root, ts, ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT);
+  async function committed() {
+    return openConfirmedRetentionDatabase((await profileFixture()).path, ts, ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT);
   }
-  it("reconstructs every current confirmation field and retains authenticated proof beyond pruning and deletion", () => {
-    const { database, run } = committed();
+  it("reconstructs every current confirmation field and retains authenticated proof beyond pruning and deletion", async () => {
+    const { database, run } = await committed();
     try {
+      const before = database.authority.timelineEvents.page({});
+      expect(before.map(row => row.payload.kind)).toEqual(["checkpoint-recorded", "operation-confirmed", "span"]);
+      expect(before[2]?.payload).toMatchObject({ kind: "span", event: {
+        t: "span.ended", kind: "run", runId: run.envelope.runId, outcome: "cancelled",
+      } });
+      expect(database.authority.timelineEvents.pruneBefore("2027-01-01")).toBe(1);
       expect(database.authority.timelineEvents.pruneBefore("2027-01-01")).toBe(0);
       const rows = database.authority.timelineEvents.page({});
       expect(rows.map(row => row.payload.kind)).toEqual(["checkpoint-recorded", "operation-confirmed"]);
@@ -436,43 +457,53 @@ afterEach(_afterEachFixture0);
       expect(tombstone?.removed.find((entry) => entry.table === "timeline_events")?.rows).toBe(2);
     } finally { database.close(); }
   });
-  it.each(["workflowId", "itemId"] as const)("refuses a run-owned operation with a contradictory %s", (field) => {
-    const { database, run, path } = committed();
+  it.each(["workflowId", "itemId"] as const)("refuses a run-owned operation with a contradictory %s", async (field) => {
+    const { database, run, path } = await committed();
     try {
-      const raw = new DatabaseSync(path);
-      try { raw.prepare("UPDATE write_intents SET payload_json = json_set(payload_json, ?, ?) WHERE id = ?")
-        .run(`$.${field}`, field === "workflowId" ? "other-workflow" : randomUUID(), WRITE_INTENT_ATTEMPTING.writeIntentId); }
-      finally { raw.close(); }
       const before = database.getMeta();
-      expect(() => deleteRun(database, run.envelope.runId, UUID_5))
-        .toThrow(/confirmed|write-intent/u);
+      {
+        using raw = new DatabaseSync(path);
+        const payload = raw.prepare("SELECT payload_json FROM write_intents WHERE id=?").get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.payload_json;
+        assert.ok(typeof payload === "string");
+        using _restore = { [Symbol.dispose]() { raw.prepare("UPDATE write_intents SET payload_json=? WHERE id=?").run(payload, WRITE_INTENT_ATTEMPTING.writeIntentId); } };
+        raw.prepare("UPDATE write_intents SET payload_json = json_set(payload_json, ?, ?) WHERE id = ?")
+          .run(`$.${field}`, field === "workflowId" ? "other-workflow" : randomUUID(), WRITE_INTENT_ATTEMPTING.writeIntentId);
+        expect(() => deleteRun(database, run.envelope.runId, UUID_5))
+          .toThrow(/confirmed|write-intent/u);
+      }
       expect(database.getMeta()).toEqual(before);
       expect(database.authority.runs.get(run.envelope.runId)).toBeDefined();
       expect(database.authority.deletedRuns.get(run.envelope.runId)).toBeUndefined();
     } finally { database.close(); }
   });
 
-  it("rolls back deletion when an operation has lost its current attempt", () => {
-    const { database, run, path } = committed();
+  it("rolls back deletion when an operation has lost its current attempt", async () => {
+    const { database, run, path } = await committed();
     try {
       // Model damaged retained ownership without removing the confirmed event.
-      const raw = new DatabaseSync(path);
-      const trigger = String(raw.prepare("SELECT sql FROM sqlite_schema WHERE name='write_attempts_retained'").get()?.sql);
-      try {
-        raw.exec("DROP TRIGGER write_attempts_retained");
-        expect(raw.prepare("DELETE FROM write_attempts WHERE id = ?").run(WRITE_ATTEMPT.writeAttemptId).changes).toBe(1);
-      } finally { raw.exec(trigger); raw.close(); }
       const before = database.getMeta();
-      expect(() => deleteRun(database, run.envelope.runId, UUID_5))
-        .toThrow(/confirmed-history-attempt-mismatch/u);
+      {
+        using raw = new DatabaseSync(path);
+        const attempt = raw.prepare("SELECT * FROM write_attempts WHERE id=?").get(WRITE_ATTEMPT.writeAttemptId);
+        assert.ok(attempt);
+        const trigger = raw.prepare("SELECT sql FROM sqlite_schema WHERE name='write_attempts_retained'").get()?.sql;
+        assert.ok(typeof trigger === "string");
+        using _restoreTrigger = { [Symbol.dispose]() { raw.exec(trigger); } };
+        raw.exec("DROP TRIGGER write_attempts_retained");
+        using _restoreAttempt = { [Symbol.dispose]() { raw.prepare("INSERT INTO write_attempts (id,intent_id,generation,run_id,payload_json,created_at) VALUES (?,?,?,?,?,?)")
+          .run(attempt.id, attempt.intent_id, attempt.generation, attempt.run_id, attempt.payload_json, attempt.created_at); } };
+        expect(raw.prepare("DELETE FROM write_attempts WHERE id = ?").run(WRITE_ATTEMPT.writeAttemptId).changes).toBe(1);
+        expect(() => deleteRun(database, run.envelope.runId, UUID_5))
+          .toThrow(/confirmed-history-attempt-mismatch/u);
+      }
       expect(database.getMeta()).toEqual(before);
       expect(database.authority.runs.get(run.envelope.runId)).toBeDefined();
       expect(database.authority.deletedRuns.get(run.envelope.runId)).toBeUndefined();
     } finally { database.close(); }
   });
 
-  it("preserves permanent write proof through source and last retry deletion", () => {
-    const { database, run } = committed();
+  it("preserves permanent write proof through source and last retry deletion", async () => {
+    const { database, run } = await committed();
     const permanent = {
       intent: database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
       attempt: database.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId),

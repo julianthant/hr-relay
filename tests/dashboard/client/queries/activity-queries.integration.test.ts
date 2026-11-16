@@ -22,12 +22,14 @@ it("propagates a locally cancelled Activity request without accepting a replacem
   controller.abort();
   await assert.rejects(request, (error: unknown) => error instanceof DashboardClientError
     && error.kind === "network" && error.retryable);
-  assert.equal(observedSignal, controller.signal);
+  assert.ok(observedSignal);
+  assert.equal(observedSignal.aborted, true);
+  assert.equal(observedSignal.reason, controller.signal.reason);
   assert.equal(controller.signal.aborted, true);
 });
 
 it("reads the complete population, browses the selected snapshot and downloads bound CSV through the same client", async () => {
-  const h = harness();
+  const h = await harness();
   let observedSignal: AbortSignal | undefined;
   const paths: string[] = [];
   const client = createActivityQueries(createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: (url, init) => {
@@ -36,7 +38,7 @@ it("reads the complete population, browses the selected snapshot and downloads b
   } }));
   const controller = new AbortController();
   const selection = await client.activityPopulation(DAY, DAY, controller.signal);
-  assert.equal(observedSignal, controller.signal);
+  assert.ok(observedSignal); assert.equal(observedSignal.aborted, false);
   assert.equal(selection.population.length, selection.report.totalRuns);
   assert.match(selection.snapshot.token, /^ap1\./u);
   const read = await client.readActivityPopulation(selection, undefined, controller.signal);
@@ -48,7 +50,7 @@ it("reads the complete population, browses the selected snapshot and downloads b
     const requested = new URL(paths.at(-1)!);
     const serialized = JSON.parse(requested.searchParams.get("browse")!) as Record<string, unknown>;
     assert.equal("query" in serialized, query !== undefined);
-    assert.equal(observedSignal, controller.signal);
+    assert.ok(observedSignal); assert.equal(observedSignal.aborted, false);
   }
   const download = await client.exportActivityPopulationCsv(selection, controller.signal);
   assert.equal(observedSignal, controller.signal);
@@ -57,7 +59,7 @@ it("reads the complete population, browses the selected snapshot and downloads b
 });
 
 it("rejects population content or range substitution and a selected response from another snapshot", async () => {
-  const h = harness();
+  const h = await harness();
   const valid = await httpClient(h).activityPopulation(DAY, DAY);
   const respond = (value: unknown) => createActivityQueries(createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: () => Promise.resolve(Response.json(value)) }));
   await assert.rejects(respond(valid).activityPopulation("2026-09-07", "2026-09-07"), /identity-mismatch/u);
@@ -76,7 +78,7 @@ it("rejects population content or range substitution and a selected response fro
 });
 
 it("rejects browse request, digest, range, token, selected run and presence substitutions", async () => {
-  const h = harness();
+  const h = await harness();
   const actual = httpClient(h);
   const selection = await actual.activityPopulation(DAY, DAY);
   const browse = { metric: "completed" as const, page: 0, query: "" };
@@ -100,7 +102,7 @@ it("rejects browse request, digest, range, token, selected run and presence subs
 });
 
 it("refuses substituted population downloads and preserves caller cancellation for every population read", async () => {
-  const h = harness();
+  const h = await harness();
   const selection = await httpClient(h).activityPopulation(DAY, DAY);
   const real = await h.app.request(`/api/v1/reports/activity/population.csv?${new URLSearchParams({ from: DAY, to: DAY, snapshot: selection.snapshot.token })}`);
   const bytes = await real.arrayBuffer();
@@ -112,12 +114,12 @@ it("refuses substituted population downloads and preserves caller cancellation f
   const corrupted = bytes.slice(0); new Uint8Array(corrupted)[0] ^= 1;
   const wrong = createActivityQueries(createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: () => Promise.resolve(new Response(corrupted, { headers: real.headers })) }));
   await assert.rejects(wrong.exportActivityPopulationCsv(selection), /mismatch/u);
-  for (const action of [
+  for (const [index, action] of [
     (client: ReturnType<typeof createActivityQueries>, signal: AbortSignal) => client.activityPopulation(DAY, DAY, signal),
     (client: ReturnType<typeof createActivityQueries>, signal: AbortSignal) => client.readActivityPopulation(selection, undefined, signal),
     (client: ReturnType<typeof createActivityQueries>, signal: AbortSignal) => client.readActivityPopulation(selection, { metric: "completed", page: 0 }, signal),
     (client: ReturnType<typeof createActivityQueries>, signal: AbortSignal) => client.exportActivityPopulationCsv(selection, signal),
-  ]) {
+  ].entries()) {
     let observedSignal: AbortSignal | undefined;
     const client = createActivityQueries(createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: (_url, init) => new Promise<Response>((_resolve, reject) => {
       observedSignal = init?.signal ?? undefined;
@@ -126,11 +128,14 @@ it("refuses substituted population downloads and preserves caller cancellation f
     const controller = new AbortController();
     const request = action(client, controller.signal); controller.abort();
     await assert.rejects(request, (error: unknown) => error instanceof DashboardClientError && error.kind === "network" && error.retryable);
-    assert.equal(observedSignal, controller.signal);
+    assert.ok(observedSignal);
+    assert.equal(observedSignal.aborted, true);
+    assert.equal(observedSignal.reason, controller.signal.reason);
+    if (index === 3) assert.equal(observedSignal, controller.signal);
   }
 });
 
-function httpClient(h: ReturnType<typeof harness>) {
+function httpClient(h: Awaited<ReturnType<typeof harness>>) {
   return createActivityQueries(createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: (url, init) => Promise.resolve(h.app.request(url, init)) }));
 }
 
@@ -139,7 +144,7 @@ import { harness, disposeHttpRouteHarness } from "../../../support/helpers/backe
 afterEach(disposeHttpRouteHarness);
 
 it("retains exact nonempty browse rows and refuses foreign row or run metadata", async () => {
-  const h = harness();
+  const h = await harness();
   const run = runRecordOf({ seed: 401, enqueuedAt: `${DAY}T12:00:00.000Z`, displayName: "Selected person" });
   h.database.authority.runs.enqueue(run);
   const client = httpClient(h);
@@ -162,10 +167,10 @@ it("retains exact nonempty browse rows and refuses foreign row or run metadata",
 });
 
 it("preserves stale and foreign snapshot refusals without replacing the selection", async () => {
-  const h = harness();
+  const h = await harness();
   const client = httpClient(h);
   const selection = await client.activityPopulation(DAY, DAY);
-  await assert.rejects(httpClient(harness()).readActivityPopulation(selection), (error: unknown) => error instanceof DashboardClientError && error.status === 409 && error.code === "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED");
+  await assert.rejects(httpClient(await harness()).readActivityPopulation(selection), (error: unknown) => error instanceof DashboardClientError && error.status === 409 && error.code === "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED");
   h.clock.advanceWall(15 * 60_000);
   await assert.rejects(client.readActivityPopulation(selection), (error: unknown) => error instanceof DashboardClientError && error.status === 409 && error.code === "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED");
   await assert.rejects(client.exportActivityPopulationCsv(selection), (error: unknown) => error instanceof DashboardClientError && error.status === 409 && error.code === "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED");

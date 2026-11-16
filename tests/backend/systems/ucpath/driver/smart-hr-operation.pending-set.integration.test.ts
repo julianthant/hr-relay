@@ -91,14 +91,14 @@ describe("Transactions in Progress exact-set join", () => {
     }) as unknown as Page;
 
     assert.equal(
-      await readInProgressSubjectOnPage(page([
+      await readInProgressSubjectOnPage(() => undefined, page([
         { eid: EID, name: "Person, Deterministic" },
         { eid: EID, name: "Deterministic Person" },
       ]), EID),
       "Person, Deterministic",
     );
     await assert.rejects(
-      readInProgressSubjectOnPage(page([
+      readInProgressSubjectOnPage(() => undefined, page([
         { eid: EID, name: "Person, Deterministic" },
         { eid: EID, name: "Somebody Else" },
       ]), EID),

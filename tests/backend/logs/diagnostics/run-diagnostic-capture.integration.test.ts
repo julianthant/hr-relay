@@ -1,9 +1,11 @@
-import { withBrowserActionBinding, withBrowserActionSession } from "../../../../src/backend/systems/browser-shared/action-notes.js";
-import { createDeclaredActionBinder } from "../../../../src/backend/runtime/writes/operation-action-binding.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { withBrowserActionSession } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { taskSpanPath } from "../../../../src/backend/logs/span-emitter.js";
-import { NodeIdSchema } from "../../../../src/rules/identity/ids.js";
+import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
+import { NodeIdSchema, TaskIdSchema } from "../../../../src/rules/identity/ids.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
@@ -16,7 +18,7 @@ import { SearchPersonOrg } from "../../../../src/models/systems/ucpath/search-pe
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { defineBrowserStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
-import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
+import { duoCeremonyGatesOver } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { FIXTURE_SESSION_ACQUIRE_MS } from "../../../support/helpers/phase1f-executor-harness.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { withBrowserActionNotes } from "../../../../src/backend/systems/browser-shared/action-notes.js";
@@ -24,9 +26,6 @@ import { z } from "zod";
 import { testRunLifecycle,testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { Readable } from "node:stream";
 import { afterEach,describe,it } from "vitest";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
@@ -49,7 +48,10 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import type { DiagnosticArtifactWriter } from "../../../../src/workflow-kit/artifacts.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
 import { HASH_A,HASH_B,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { RUN_ID,sequentialIdFactory,WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID,sequentialIdFactory,WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { SIGN_IN_REFUSAL_PROBES } from "../../../support/fixtures/sign-in-refusal-probes.js";
+import { assertDiagnosticExportSafe } from "../../../../src/models/trust/diagnostic-capture.js";
+import { SIGN_IN_CHECKS, SIGN_IN_PAGE_ORIGINS, SIGN_IN_PAGE_PATHS, SIGN_IN_STEPS } from "../../../../src/models/trust/failure.js";
 import {
 happySessionHarness,
 healthyUcpathDriver,
@@ -65,9 +67,9 @@ sessionManagerFor,
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
 /** A recording artifact writer: content-addressed by digest, like the real one. */
@@ -104,16 +106,19 @@ function recordingArtifacts(): DiagnosticArtifactWriter & { readonly puts: () =>
   });
 }
 
-function openDatabase(now = NOW): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-diagnostic-"));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "diagnostic-capture-test" },
-    manualClock(new Date(now)),
-  );
-  disposers.push(() => {
-    database.close();
-    rmSync(root, { recursive: true, force: true });
-  });
+async function openDatabase(now = NOW): Promise<AuthorityDatabase> {
+  const profile = await createBoundProfileFixture();
+  let database: AuthorityDatabase;
+  try {
+    database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "diagnostic-capture-test" },
+      manualClock(new Date(now)), undefined, undefined, undefined, boundProfileCredentials(profile.admission));
+  } catch (error) {
+    const failures: unknown[] = [error];
+    try { await profile.close(); } catch (cleanupError) { failures.push(cleanupError); }
+    if (failures.length > 1) throw new AggregateError(failures, "diagnostic fixture opening cleanup failed", { cause: error });
+    throw error;
+  }
+  disposers.push(async () => { database.close(); await profile.close(); });
   return database;
 }
 
@@ -135,7 +140,7 @@ function captureService(database: AuthorityDatabase, now = NOW): {
 
 describe("diagnostic values at capture", () => {
   it("retains classified originals and names unclassified values", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const { service } = captureService(database);
     const bundle = await service.prepare({
       trigger: "operator-request",
@@ -167,7 +172,7 @@ describe("diagnostic values at capture", () => {
   });
 
   it("retains a value even when its key names a credential source", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const { service } = captureService(database);
     const bundle = await service.prepare({
         trigger: "operator-request",
@@ -182,7 +187,7 @@ describe("diagnostic values at capture", () => {
   });
 
   it("refuses a non-screenshot attachment that stays restricted", async () => {
-    const database = openDatabase();
+    const database = await openDatabase();
     const { service } = captureService(database);
     await assert.rejects(
       service.prepare({
@@ -206,11 +211,11 @@ describe("diagnostic values at capture", () => {
 
 describe("the failure and its bundle land together", () => {
   for (const rollback of [false, true]) it(`settles diagnostic bundle with failure (rollback=${String(rollback)})`, async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     const sessions = sessionFactoryHarness({
-      ucpath: () => ({ ...healthyUcpathDriver(), searchPersonOrg: () => Promise.reject(new TaskError(CrmReadOnboardingRecord.id, "crm-unavailable", "CRM returned an unexpected page SSN 920741459", { cause: new Error("nested SSN 920-74-1459", { cause: new Error("deep SSN 902 48 1357") }) })) }),
+      ucpath: () => ({ ...healthyUcpathDriver(), searchPersonOrg: () => Promise.reject(new TaskError(CrmReadOnboardingRecord.id, "crm-unavailable", "CRM returned an unexpected page SSN 902481357", { cause: new Error("nested SSN 902-48-1357", { cause: new Error("deep SSN 902 48 1357") }) })) }),
       crm: () => Object.freeze({
         system: "crm" as const,
         verifyOnboardingRecord: () => Promise.reject(new TaskError(
@@ -233,7 +238,7 @@ describe("the failure and its bundle land together", () => {
       descriptor: personLookupDescriptor,
       stores: taskStoreRegistry,
       authority: database,
-      sessions: sessionManagerFor(sessions, clock),
+      sessions: await sessionManagerFor(sessions, clock),
       emitter: recordingEmitter().emitter,
       clock,
       ids: sequentialIdFactory("b"),
@@ -252,10 +257,10 @@ describe("the failure and its bundle land together", () => {
     };
 
     database.authority.runs.enqueue(personLookupQueuedRun());
-    const { workerId, workerLifetime } = testAdmittedWorker(database, clock, { path: authority.path,
+    const { workerId } = testAdmittedWorker(database, clock, { path: authority.path,
       workflow: WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
     const claimed = database.authority.runs.claimNext({
-      workerLifetime, workflow: WORKFLOW_ID,
+      workflow: WORKFLOW_ID,
       workerId: workerId,
       now: clock.now().toISOString(),
     });
@@ -323,12 +328,12 @@ describe("the failure and its bundle land together", () => {
     assert.ok(JSON.stringify(bundle).includes("UCPath search failed."));
     assert.ok(classifiedFailureFields(failure).length > 0);
     const persisted = JSON.stringify({ failure, bundle });
-    for (const value of ["920741459", "920-74-1459", "902 48 1357", "1357"]) assert.equal(persisted.includes(value), false);
+    for (const value of ["902481357", "902-48-1357", "902 48 1357", "1357"]) assert.equal(persisted.includes(value), false);
     assert.ok(failure.debug?.causes.some(cause => cause.includes("[SSN masked]")));
   });
 
   it("fails loud when a capture port is injected without an authority transaction", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     const { service } = captureService(database);
@@ -343,7 +348,7 @@ describe("the failure and its bundle land together", () => {
       descriptor: personLookupDescriptor,
       stores: taskStoreRegistry,
       authority: transactionless,
-      sessions: sessionManagerFor(happySessionHarness(), clock),
+      sessions: await sessionManagerFor(happySessionHarness(), clock),
       emitter: recordingEmitter().emitter,
       clock,
       ids: sequentialIdFactory("b"),
@@ -353,10 +358,10 @@ describe("the failure and its bundle land together", () => {
       diagnostics: createRunDiagnosticCapture({ service }),
     };
     database.authority.runs.enqueue(personLookupQueuedRun({ startAt: "not-a-node" }));
-    const { workerId, workerLifetime } = testAdmittedWorker(database, clock, { path: authority.path,
+    const { workerId } = testAdmittedWorker(database, clock, { path: authority.path,
       workflow: WORKFLOW_ID, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
     const claimed = database.authority.runs.claimNext({
-      workerLifetime, workflow: WORKFLOW_ID,
+      workflow: WORKFLOW_ID,
       workerId: workerId,
       now: clock.now().toISOString(),
     });
@@ -376,7 +381,7 @@ describe("the failure and its bundle land together", () => {
 describe("retention and the pin sweep", () => {
 
   it("purges only the due ordinary bundles and never a pin", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database, clock } = authority;
     // A run and a failure the bundles can reference.
@@ -406,7 +411,7 @@ describe("retention and the pin sweep", () => {
     });
 
     const early = createDiagnosticRetentionSweep({ authority: database.authority, clock, lifecycle: testRunService(database, clock) });
-    assert.deepEqual(early.sweep().purged, []);
+    assert.deepEqual(early.sweep([ordinary.bundleId, pinned.bundleId]).purged, []);
 
     const later = new Date(clock.now().getTime() + 2 * 86_400_000);
     const sweep = createDiagnosticRetentionSweep({
@@ -414,7 +419,7 @@ describe("retention and the pin sweep", () => {
       clock: manualClock(later),
       lifecycle: testRunService(database, manualClock(later)),
     });
-    const report = sweep.sweep();
+    const report = sweep.sweep([ordinary.bundleId, pinned.bundleId]);
     assert.deepEqual(report.purged, [ordinary.bundleId]);
     assert.equal(database.authority.diagnosticBundles.get(ordinary.bundleId), undefined);
     assert.ok(database.authority.diagnosticBundles.get(pinned.bundleId));
@@ -428,7 +433,7 @@ describe("retention and the pin sweep", () => {
 
 describe("selected lease screenshot actions", () => {
   it("persists once and records only the real returned screenshot attachment", async () => {
-    const authority = openAuthorityHarness();
+    const authority = await openAuthorityHarness();
     disposers.push(authority.dispose);
     const { database } = authority;
     database.authority.runs.enqueue(personLookupQueuedRun());
@@ -451,6 +456,34 @@ describe("selected lease screenshot actions", () => {
   });
 });
 
+it("retains exact pre/post-submit boundary metadata and refuses a foreign browser session", async () => {
+  const authority = await openAuthorityHarness();
+  disposers.push(authority.dispose);
+  const { database, clock } = authority;
+  database.authority.runs.enqueue(personLookupQueuedRun());
+  const { service } = captureService(database);
+  const capture = createRunBrowserScreenshotCapture({ service });
+  const sessionId = BrowserSessionIdSchema.parse("10000000-0000-4000-8000-000000000001");
+  const context = { runId: RUN_ID, configFingerprint: HASH_A, descriptorFingerprint: HASH_B, system: "ucpath",
+    screenshot: { state: "available" as const, sessionId, pageVersion: 1, observedAt: NOW,
+      bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720 } };
+  for (const boundary of ["before-submit", "after-submit"] as const) {
+    await withBrowserActionNotes(clock, () => withBrowserActionSession(sessionId, () => capture.capture({ ...context,
+      trigger: { kind: "task-point", nodeId: "submit-write", attempt: 1, boundary },
+    })), actions => { assert.equal(actions.filter(action => action.kind === "screenshot").length, 1); });
+  }
+  const bundles = database.authority.diagnosticBundles.listByRun(RUN_ID);
+  assert.equal(bundles.length, 2);
+  assert.deepEqual(bundles.map(bundle => bundle.redaction.fields.filter(field => field.state === "allowed").find(field => field.key === "captureBoundary")?.value), ["before-submit", "after-submit"]);
+  for (const bundle of bundles) {
+    assert.equal(bundle.redaction.fields.filter(field => field.state === "allowed").find(field => field.key === "nodeId")?.value, "submit-write");
+    assert.equal(bundle.redaction.fields.filter(field => field.state === "allowed").find(field => field.key === "runAttempt")?.value, 1);
+    assert.equal(bundle.redaction.fields.filter(field => field.state === "allowed").find(field => field.key === "browserSessionId")?.value, sessionId);
+  }
+  await assert.rejects(capture.capture({ ...context, trigger: { kind: "task-point", nodeId: "submit-write", attempt: 1, boundary: "before-submit" } }), /matching active browser lease/);
+  assert.equal(database.authority.diagnosticBundles.listByRun(RUN_ID).length, 2);
+});
+
 describe("task screenshot persistence before checkpoint", () => {
   for (const failure of ["none", "note", "unavailable", "capture", "persist", "undeclared"] as const) it(`preserves task results and screenshot action persistence rules (${failure})`, async () => {
     const world = createRunExecutorTestWorld();
@@ -464,14 +497,14 @@ describe("task screenshot persistence before checkpoint", () => {
         },
       });
       const stores = defineTaskStoreRegistry([...taskStoreRegistry.stores.filter(store => store.namespace !== "ucpath"), defineBrowserStore("ucpath", ucpathDriver, ucpathSession, { ...ucpathStore.tasks, searchPersonOrg: captureTask })], taskStoreRegistry.corpus);
-      const harness = world.executorHarness({ stores });
+      const harness = await world.executorHarness({ stores });
       const { database, clock } = harness.authority;
       const queued = RunRecordSchema.parse(personLookupQueuedRun());
-      const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: true } }, clock.now().toISOString());
+      const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: false } }, clock.now().toISOString());
       const { service } = captureService(database);
       const capture = createRunBrowserScreenshotCapture({ service });
       const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse(claimed.claim.workerId), workflowId: WorkflowIdSchema.parse("person-lookup"), stores,
-        factory: { open: async input => {
+        factory: { probeProfile: async () => undefined, open: async input => {
           const resource = await harness.sessions.factory.open(input);
           return { ...resource, screenshot: async () => {
             if (failure === "capture" && resource.system === "ucpath") throw Object.assign(new Error("private fixture content"), { name: "private fixture name" });
@@ -479,10 +512,10 @@ describe("task screenshot persistence before checkpoint", () => {
             return { state: "available" as const, sessionId: resource.sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 };
           } };
         } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-        duoCeremony: fixtureDuoCeremonyGates(clock), browserScreenshotCapture: failure === "persist" ? { capture: async context => { if (context.system === "ucpath") throw new TypeError("private persistence content"); await capture.capture(context); } } : capture,
+        duoCeremony: duoCeremonyGatesOver(database, clock), browserScreenshotCapture: failure === "persist" ? { capture: async context => { if (context.system === "ucpath") throw new TypeError("private persistence content"); await capture.capture(context); } } : capture,
       });
       sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,
-        descriptorFingerprint: claimed.run.envelope.contractFingerprint, captureBrowserScreenshots: true });
+        descriptorFingerprint: claimed.run.envelope.contractFingerprint });
       const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
       const result = await executeClaimedRun({ ...harness.deps, sessions, taskNotes: { ...notes, emitRunAction: (input, authority) => {
         if (failure === "note" && input.action.kind === "screenshot") throw new Error("note append failure");
@@ -492,20 +525,20 @@ describe("task screenshot persistence before checkpoint", () => {
         assert.equal(result.state, "done", JSON.stringify(database.authority.failures.listByRun(claimed.run.envelope.runId)));
         assert.ok(database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId }).some(row => row.payload.kind === "note" && row.payload.note.action?.kind === "screenshot"));
       } else if (failure === "unavailable" || failure === "capture" || failure === "persist") {
-        assert.equal(result.state, "done");
+        assert.equal(result.state, "failed");
         const settledRun = database.authority.runs.get(claimed.run.envelope.runId);
         assert.ok(settledRun);
         const lifecycle = settledRun.lifecycle;
-        assert.ok(lifecycle?.state === "terminal" && lifecycle.outcome === "done");
-        assert.deepEqual(database.authority.failures.listByRun(claimed.run.envelope.runId), []);
-        assert.ok(database.authority.runCheckpoints.latest(claimed.run.envelope.workflow, claimed.run.envelope.itemId, "searching"));
+        assert.ok(lifecycle?.state === "terminal" && lifecycle.outcome === "failed");
+        assert.equal(database.authority.failures.listByRun(claimed.run.envelope.runId)[0]?.code, "BROWSER_SCREENSHOT_CAPTURE_FAILED");
+        assert.equal(database.authority.runCheckpoints.latest(claimed.run.envelope.workflow, claimed.run.envelope.itemId, "searching"), undefined);
         const notes = database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId })
           .flatMap(row => row.payload.kind === "note" ? [row.payload.note] : []);
         assert.equal(notes.filter(note => note.spanPath === taskSpanPath(claimed.run.envelope.traceId, NodeIdSchema.parse("searching"), 1, claimed.claim.claimGeneration) && note.action?.kind === "screenshot").length, 0);
         const warnings = notes.filter(note => note.level === "warn");
         assert.equal(warnings.length, 1);
-        assert.equal(warnings[0]?.message, "Screenshot capture failed.");
-        assert.deepEqual(warnings[0]?.fields?.map(field => ({ key: field.key, value: field.value })), [{ key: "reason", value: failure === "unavailable" ? "secret-controls-present" : failure === "persist" ? "TypeError" : "Error" }]);
+        assert.equal(warnings[0]?.message, "Screenshot capture unavailable.");
+        assert.deepEqual(warnings[0]?.fields?.map(field => ({ key: field.key, value: field.value })), [{ key: "code", value: "BROWSER_SCREENSHOT_CAPTURE_FAILED" }, { key: "boundary", value: "step" }, { key: "reason", value: failure === "unavailable" ? "secret-controls-present" : failure === "persist" ? "TypeError" : "Error" }]);
         assert.doesNotMatch(JSON.stringify(warnings), /private/);
         const section = buildRunLogsSection({ timeline: database.authority.timelineEvents, projection: { runLogSnapshot: () => ({ entries: [] }) }, descriptors: { resolve: () => undefined } } as unknown as RunDetailQueryDeps,
           claimed.run.envelope.runId, undefined, settledRun);
@@ -525,28 +558,23 @@ describe("task screenshot persistence before checkpoint", () => {
   });
 });
 
-it("persists a task screenshot through a complete frozen binder into Logs without operation proof", async () => {
+it("persists a task screenshot into Logs without operation proof", async () => {
   const world = createRunExecutorTestWorld();
   try {
-    const harness = world.executorHarness({ descriptor: world.actionBindingCompiled.descriptor });
+    const harness = await world.executorHarness({ descriptor: world.actionBindingCompiled.descriptor });
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, world.actionBindingQueuedRun(clock.now().toISOString()), clock.now().toISOString(), world.ACTION_BINDING_WORKFLOW_ID);
-    const snapshot = claimed.run.envelope.operationDisplaySnapshot;
-    assert.ok(snapshot);
-    const binder = createDeclaredActionBinder({ snapshot, runId: claimed.run.envelope.runId, attempt: claimed.run.envelope.attempt,
-      claimGeneration: claimed.claim.claimGeneration, taskAttempt: 1, nodeId: "search", taskId: SearchPersonOrg.id, contractRole: "task",
-      parsedInput: { kind: "by-eid", emplId: "10873698" }, protectedBindings: [] });
     const { service } = captureService(database);
     const capture = createRunBrowserScreenshotCapture({ service });
     const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
     const sessionId = BrowserSessionIdSchema.parse("00000000-0000-4000-8000-000000000003");
     const address = { runId: claimed.run.envelope.runId, attempt: claimed.run.envelope.attempt, traceId: claimed.run.envelope.traceId,
       spanPath: taskSpanPath(claimed.run.envelope.traceId, NodeIdSchema.parse("search"), 1, claimed.claim.claimGeneration) };
-    await withBrowserActionNotes(clock, () => withBrowserActionSession(sessionId, () => withBrowserActionBinding(binder, () => capture.capture({
+    await withBrowserActionNotes(clock, () => withBrowserActionSession(sessionId, () => capture.capture({
       runId: claimed.run.envelope.runId, configFingerprint: claimed.run.envelope.configFingerprint, descriptorFingerprint: claimed.run.envelope.contractFingerprint,
       system: "ucpath", trigger: { kind: "task-point", nodeId: "search", attempt: claimed.run.envelope.attempt },
       screenshot: { state: "available", sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 },
-    }))), actions => { for (const action of actions) notes.emitRunAction({ workflow: claimed.run.envelope.workflow, address, action }, claimed.run); });
+    })), actions => { for (const action of actions) notes.emitRunAction({ workflow: claimed.run.envelope.workflow, address, action }, claimed.run); });
     const stored = database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId }).filter(row => row.payload.kind === "note");
     assert.equal(stored.length, 1);
     assert.ok(stored[0].payload.kind === "note");
@@ -562,9 +590,9 @@ it("persists a task screenshot through a complete frozen binder into Logs withou
   } finally { await world.cleanup(); }
 });
 
-describe("Person Lookup final capture points", () => {
+describe("Person Lookup per-task capture points", () => {
   for (const kind of ["selected", "empty", "ambiguous"] as const) for (const enabled of [true, false]) {
-    it(`captures exactly the final CRM ${kind} page (enabled=${enabled})`, async () => {
+    it(`captures each browser task once on the CRM ${kind} branch (enabled=${enabled})`, async () => {
       const world = createRunExecutorTestWorld();
       let sessions: WorkerSessionManager | undefined;
       try {
@@ -579,7 +607,7 @@ describe("Person Lookup final capture points", () => {
             verifyOnboardingRecord: async (record: Parameters<typeof baseCrm.verifyOnboardingRecord>[0]) => { pages.set("crm", "crm-record"); return record; },
           }),
         });
-        const harness = world.executorHarness({ sessions: factory });
+        const harness = await world.executorHarness({ sessions: factory });
         const { database, clock } = harness.authority;
         const queued = RunRecordSchema.parse(personLookupQueuedRun());
         const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: enabled } }, clock.now().toISOString());
@@ -587,24 +615,31 @@ describe("Person Lookup final capture points", () => {
         const capture = createRunBrowserScreenshotCapture({ service });
         const acquired: string[] = [];
         const persisted: string[] = [];
+        const capturedNodes: string[] = [];
         sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse(claimed.claim.workerId), workflowId: WorkflowIdSchema.parse("person-lookup"), stores: taskStoreRegistry,
-          factory: { open: async input => {
+          factory: { probeProfile: async () => undefined, open: async input => {
             const resource = await factory.factory.open(input);
             return { ...resource, screenshot: async () => {
               acquired.push(pages.get(input.system) ?? "unexpected-page");
               return { state: "available" as const, sessionId: resource.sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 };
             } };
-          } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: fixtureDuoCeremonyGates(clock),
-          browserScreenshotCapture: { capture: async context => { await capture.capture(context); persisted.push(pages.get(context.system) ?? "unexpected-page"); } },
+          } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: duoCeremonyGatesOver(database, clock),
+          browserScreenshotCapture: { capture: async context => {
+            assert.ok(context.trigger.kind === "task-point");
+            await capture.capture(context);
+            persisted.push(pages.get(context.system) ?? "unexpected-page");
+            capturedNodes.push(context.trigger.nodeId);
+          } },
         });
         sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,
-          descriptorFingerprint: claimed.run.envelope.contractFingerprint, captureBrowserScreenshots: enabled });
+          descriptorFingerprint: claimed.run.envelope.contractFingerprint });
         const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
         const result = await executeClaimedRun({ ...harness.deps, sessions, taskNotes: notes }, { ...claimed, signal: new AbortController().signal });
         assert.equal(result.state, "done", JSON.stringify(database.authority.failures.listByRun(claimed.run.envelope.runId)));
-        const points = enabled ? ["ucpath-detail", kind === "selected" ? "crm-record" : "crm-results"] : [];
+        const points = ["ucpath-detail", "crm-results", kind === "selected" ? "crm-record" : "crm-results"];
         assert.deepEqual(acquired, points);
         assert.deepEqual(persisted, points);
+        assert.deepEqual(capturedNodes, ["searching", "cross-verify", kind === "selected" ? "crm-selected-record" : "crm-results"]);
         const screenshotNotes = database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId }).flatMap(row => row.payload.kind === "note" && row.payload.note.action?.kind === "screenshot" ? [row.payload.note] : []);
         assert.equal(screenshotNotes.length, points.length);
         assert.equal(database.authority.diagnosticBundles.listByRun(claimed.run.envelope.runId).length, points.length);
@@ -612,4 +647,39 @@ describe("Person Lookup final capture points", () => {
       } finally { await sessions?.closeAll("worker-stop"); await world.cleanup(); }
     });
   }
+});
+
+describe("refused sign-in bundle", () => {
+  it("allows only closed sign-in leaves and copies none of the probe text", async () => {
+    const database = await openDatabase();
+    const { service } = captureService(database);
+    const capture = createRunDiagnosticCapture({ service });
+    const taskId = TaskIdSchema.parse("ucpath/search-person-org");
+    for (const row of SIGN_IN_REFUSAL_PROBES) {
+      const login = new BrowserLoginError("ucpath", "verify-landing", row.detail, row.observedUrl, undefined, undefined, "application-route");
+      const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
+        failureId: "10000000-0000-4000-8000-000000000007", nodeId: NodeIdSchema.parse("searching"), taskId,
+        error: new TaskError(taskId, login.code, login.message, { cause: login }), occurredAt: "2026-08-29T08:00:00.000Z" });
+      const bundle = await capture.captureForFailure({
+        failure, configFingerprint: HASH_A, descriptorFingerprint: HASH_B,
+      });
+      assertDiagnosticExportSafe(bundle.redaction);
+      const stored = JSON.stringify({ failure, bundle });
+      for (const canary of row.canaries) assert.equal(stored.includes(canary), false, `${row.name} ${canary}`);
+      const signIn = bundle.redaction.fields.filter(field => field.key.startsWith("signIn"));
+      const allowed = new Map(signIn.map(field => {
+        assert.equal(field.state, "allowed", row.name);
+        return [field.key, field.state === "allowed" ? field.value : ""] as const;
+      }));
+      assert.equal(allowed.get("signInSystem"), "ucpath", row.name);
+      assert.ok(SIGN_IN_STEPS.some(step => step === allowed.get("signInStep")), row.name);
+      assert.ok(SIGN_IN_CHECKS.some(check => check === allowed.get("signInCheck")), row.name);
+      assert.ok(SIGN_IN_PAGE_ORIGINS.some(origin => origin === allowed.get("signInPageOrigin")), row.name);
+      const pagePath = allowed.get("signInPagePath");
+      if (pagePath !== undefined) assert.ok(SIGN_IN_PAGE_PATHS.some(path => path === pagePath), row.name);
+      for (const key of allowed.keys()) {
+        assert.ok(["signInSystem", "signInStep", "signInCheck", "signInPageOrigin", "signInPagePath"].includes(key), key);
+      }
+    }
+  });
 });

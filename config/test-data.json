@@ -11,7 +11,7 @@
           "reason": "The operator-selected private source is available for read-only verification. Complete input admission and a Separations dry run were observed without external writes."
         },
         "provenance": {
-          "document": "994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md",
+          "document": "994837d1f65abd9b9e2f546b3ca52bff90646583",
           "section": "Task 1.6.7 full-chain acceptance after observation repair"
         },
         "usagePolicy": "read-only",
@@ -53,7 +53,7 @@
           "reason": "The operator-selected private source is available for read-only verification. Presence and complete input admission were observed without exposing the value."
         },
         "provenance": {
-          "document": "994837d1f65abd9b9e2f546b3ca52bff90646583:docs/rebuild/plans/phase-1/1.6-implement-canonical-run-and-settings-authorities/task-7-close-the-rebuilt-foundation.md",
+          "document": "994837d1f65abd9b9e2f546b3ca52bff90646583",
           "section": "Network recovery and current live acceptance"
         },
         "usagePolicy": "read-only",

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   ActorIdSchema,
+  CommandIdSchema,
   FailureIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
@@ -17,12 +18,16 @@ export const NotificationTriggerSchema = z.enum([
   "storage",
   "verified-done",
   "backfill-gap",
+  "command",
 ]);
 
 const NotificationLinkSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("run"), runId: RunIdSchema }),
   z.strictObject({ kind: z.literal("failure"), failureId: FailureIdSchema, runId: RunIdSchema }),
   z.strictObject({ kind: z.literal("storage"), diagnosticFingerprint: FingerprintSchema }),
+  z.strictObject({ kind: z.literal("recovery"), commandId: CommandIdSchema }),
+  z.strictObject({ kind: z.literal("command-result"), commandId: CommandIdSchema }),
+  z.strictObject({ kind: z.literal("bulk-result"), bulkCommandId: CommandIdSchema }),
 ]);
 
 const NotificationSnoozeSchema = z.discriminatedUnion("state", [
@@ -124,17 +129,33 @@ export function requireMutableNotification(input: unknown): NotificationRecord {
   return record;
 }
 
-/** Closed destinations resolved afresh from authority when the operator opens a row. */
-export const NotificationTargetSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, day: z.iso.date() }),
-  z.strictObject({ kind: z.literal("failure"), runId: RunIdSchema, failureId: FailureIdSchema, day: z.iso.date() }),
-  z.strictObject({ kind: z.literal("archive"), runId: RunIdSchema, reportDigest: FingerprintSchema }),
-  z.strictObject({ kind: z.literal("storage") }),
-  z.strictObject({ kind: z.literal("refused"), reason: z.enum(["wrong-actor", "notification-unavailable", "pinned", "run-unavailable", "failure-unavailable", "archive-unavailable", "target-unavailable"]) }),
-]);
-export type NotificationTarget = z.infer<typeof NotificationTargetSchema>;
 export const NotificationObservationStatusSchema = z.strictObject({
   state: z.enum(["ready", "failed", "stopped"]),
   code: z.enum(["NOTIFICATION_OBSERVATION_FAILED", "NOTIFICATION_RECEIPT_MISSING"]).optional(),
   pending: z.number().int().nonnegative(),
 });
+
+export const NotificationCollectionOperationSchema = z.enum(["read", "unread", "snooze", "unsnooze"]);
+export type NotificationCollectionOperation = z.infer<typeof NotificationCollectionOperationSchema>;
+export const NotificationCollectionTargetSchema = z.strictObject({
+  actorId: ActorIdSchema,
+  members: z.array(z.strictObject({ notificationId: NotificationIdSchema, expectedVersion: PositiveIntSchema })),
+  matchingCount: z.number().int().nonnegative(),
+}).superRefine((target, context) => {
+  if (target.matchingCount > target.members.length || target.members.some((row, index) => index > 0 && row.notificationId <= target.members[index - 1].notificationId)) {
+    context.addIssue({ code: "custom", message: "notification-collection-membership-invalid" });
+  }
+});
+export type NotificationCollectionTarget = z.infer<typeof NotificationCollectionTargetSchema>;
+export function notificationMatchesCollection(row: NotificationRecord, operation: NotificationCollectionOperation): boolean {
+  if (row.trigger === "backfill-gap") return false;
+  return operation === "read" ? row.status === "unread" : operation === "unread" ? row.status === "read"
+    : operation === "unsnooze" ? row.snooze.state === "snoozed" : true;
+}
+export function notificationCollectionTarget(records: readonly NotificationRecord[], actorId: string, operation: NotificationCollectionOperation): NotificationCollectionTarget {
+  const rows = records.map(row => NotificationRecordSchema.parse(row));
+  if (rows.some(row => row.actorId !== actorId)) throw new Error("notification-collection-actor-mismatch");
+  return NotificationCollectionTargetSchema.parse({ actorId,
+    members: rows.map(row => ({ notificationId: row.notificationId, expectedVersion: row.version })).sort((a, b) => a.notificationId < b.notificationId ? -1 : a.notificationId > b.notificationId ? 1 : 0),
+    matchingCount: rows.filter(row => notificationMatchesCollection(row, operation)).length });
+}

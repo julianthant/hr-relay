@@ -1,12 +1,12 @@
 
 import assert from "node:assert/strict";
-import { describe, expect, it } from "vitest";
+import { describe,expect,it } from "vitest";
 import { z } from "zod";
-import { descriptorSetHash as descriptorSetHash_m0 } from "../../../../src/backend/app/composition/dashboard/compose.js";
-import { INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
-import { buildBootstrap, type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
+import { DESCRIPTORS, descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { projectWorkbookCompatibilityFromRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { buildBootstrap,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
-import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { FrontendBootstrapWireSchema,WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
@@ -14,17 +14,17 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { flow as flow_m0 } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
 import { FixtureReadReceipt } from "../../../support/fixtures/descriptor-fixtures.js";
 import { healthyDashboardPreflightReport } from "../../../support/fixtures/preflight-seams.js";
-import { AUDITING_FORM, FOLDING_FORM, omissionCascadingDescriptor, READING_FORM } from "../../../support/fixtures/start-step-omission-fixtures.js";
-import { AT, makeWorld, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { AUDITING_FORM,FOLDING_FORM,omissionCascadingDescriptor,READING_FORM } from "../../../support/fixtures/start-step-omission-fixtures.js";
+import { AT,makeWorld,type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { PreflightReportSchema } from "../../../../src/models/preflight/preflight.js";
 
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
+import { workflowDryRunSupport } from '../../../../src/workflow-kit/workflow.js';
 
 {
 
@@ -68,7 +68,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
   return {
     appVersion: "0.1.0",
     clock: manualClock(AT),
-    modules: WORKFLOW_DESCRIPTORS.map((descriptor) => ({
+    modules: DESCRIPTORS.map((descriptor) => ({
       descriptor,
       role: defineWorkflowRole({ kind: "standalone" }),
 
@@ -76,39 +76,59 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
         ? {}
         : { intake: INTAKE_PROJECTIONS[String(descriptor.id)] }),
     })),
-    descriptorSetHash: descriptorSetHash_m0(WORKFLOW_DESCRIPTORS.map((d) => d.contractFingerprint)),
+    descriptorSetHash: descriptorSetHash_m0(DESCRIPTORS.map((d) => d.contractFingerprint)),
     settingsSchemaHash: descriptorSetHash_m0(["settings-schema"]),
     projection: world.projection,
+    actorLabel: () => "Fixture Operator",
     authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
-    backupSummary: () => "current",
+    workbookCompatibility: workflows => projectWorkbookCompatibilityFromRepository(world.database.authority.workbooks, workflows),
+
     preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
   };
 }
 
 describe("bootstrap start-surface block", () => {
-  it("serves, for every registered workflow, exactly what its descriptor declares", () => {
-    const world = makeWorld();
+  it("serves, for every registered workflow, exactly what its descriptor declares", async () => {
+    const world = await makeWorld();
     try {
       // Re-parsed on purpose: the producer's own `.parse` is what makes this a
       // statement about the WIRE rather than about an object literal.
       const wire = FrontendBootstrapWireSchema.parse(buildBootstrap(depsOf(world)));
+      expect(wire.workbookCompatibility.workflows.map(workflow => workflow.workflowId))
+        .toEqual(DESCRIPTORS.map(descriptor => descriptor.id));
       const served = new Map(
         WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)
           .map((entry) => [String(entry.id), entry.start] as const),
       );
       expect([...served.keys()].sort())
-        .toEqual(WORKFLOW_DESCRIPTORS.map((d) => String(d.id)).sort());
+        .toEqual(DESCRIPTORS.map((d) => String(d.id)).sort());
       const systemsByStep: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
         "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "crm-dates": ["crm"] },
         separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "job-summary": ["ucpath"], "kronos-timecard": ["new-kronos"], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
+        "crm-doc-download": { "search-records": ["crm"], reference: [], "read-idocs": ["crm"], "package-worksheets": [] },
+        onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "hire-review": ["ucpath"],
+          "i9-creation": ["i9"], "ucpath-hire": ["ucpath"], "master-results": [] },
+        "emergency-contact": { "read-document": [], members: [] },
+        "emergency-contact-member": { "contact-plan": ["ucpath"], "contact-preview": ["ucpath"] },
+        "i9-check-start": { documents: [], "roster-reference": [], retention: [] },
+        "work-study": { "ucpath-auth": ["ucpath"], transaction: ["ucpath"] },
       };
-      for (const descriptor of WORKFLOW_DESCRIPTORS) {
+      for (const descriptor of DESCRIPTORS) {
         expect(served.get(String(descriptor.id)), String(descriptor.id)).toEqual({
           ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
           enqueue: descriptor.enqueue,
           version: descriptor.version,
 
-          spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined,
+          readiness: descriptor.requiredWorkbookFields.length === 0
+            ? { scope: "workbook-sources", state: "ready" }
+            : wire.workbookCompatibility.workflows.find(workflow => workflow.workflowId === descriptor.id)?.sources.length
+              ? { scope: "workbook-sources", state: "selection-needed",
+                fixAction: { kind: "choose-workbook-sources", workflowId: descriptor.id } }
+              : { scope: "workbook-sources", state: "unavailable", reasonCode: "WORKBOOK_LIBRARY_EMPTY",
+                reason: "Import a Library spreadsheet before selecting a workflow source.",
+                fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
+          spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
+          ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
           steps: projectStartSteps(descriptor).map((step) => ({
             key: step.key,
             label: step.label,
@@ -124,19 +144,18 @@ describe("bootstrap start-surface block", () => {
           ...(descriptor.surfaces.inputRun === undefined
             ? {}
             : { inputRun: descriptor.surfaces.inputRun }),
+          ...(descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: { ...descriptor.surfaces.uploadRun, supportsDryRun: workflowDryRunSupport(descriptor).state === 'supported' } }),
         });
       }
-      // Both operator workflows carry a typed start door. The absent arm is
-      // exercised by the synthetic descriptor below.
       const doors = [...served.values()].map((start) => start?.inputRun !== undefined);
       expect(doors).toContain(true);
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("serves a synthetic bumped descriptor version verbatim", () => {
-    const world = makeWorld();
+  it("serves a synthetic bumped descriptor version verbatim", async () => {
+    const world = await makeWorld();
     try {
       const wire = FrontendBootstrapWireSchema.parse(buildBootstrap({
         ...depsOf(world),
@@ -150,12 +169,12 @@ describe("bootstrap start-surface block", () => {
       expect(WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)[0]?.start.version).toBe(VERSION_SEVEN_DESCRIPTOR.version);
       expect(WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)[0]?.start.inputRun).toBeUndefined();
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("serves a declared omission's form and cascade on the step's control", () => {
-    const world = makeWorld();
+  it("serves a declared omission's form and cascade on the step's control", async () => {
+    const world = await makeWorld();
     try {
       const wire = FrontendBootstrapWireSchema.parse(buildBootstrap({
         ...depsOf(world),
@@ -189,18 +208,41 @@ describe("bootstrap start-surface block", () => {
         },
       ]);
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 });
+it('serves implemented saved-row and CRM starts without stale implementation refusals', async () => {
+  const world = await makeWorld();
+  try {
+    const wire = buildBootstrap(depsOf(world));
+    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:i9-check-start')).toBe(false);
+    expect(wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'i9-check-start')?.start?.uploadRun?.pdfInput).toEqual({
+      documentsField: 'documents', asOfField: 'asOf', reviewerField: 'reviewerName',
+    });
+    expect(wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'emergency-contact')?.start?.uploadRun?.pdfInput).toEqual({
+      documentField: 'document', fileNameField: 'fileName', readingIdField: 'readingId', fixed: { roster: null, reading: { kind: 'subscription' } },
+    });
+    const uploadDryRun = (id: string) => wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === id)?.start?.uploadRun?.supportsDryRun;
+    expect([uploadDryRun('emergency-contact'), uploadDryRun('i9-check-start')]).toEqual([true, true]);
+    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:onboarding')).toBe(false);
+    const onboarding = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'onboarding');
+    expect(onboarding?.availability).toEqual({ state: 'available' });
+    expect(onboarding?.start?.inputRun?.workbookRows).toEqual({ typeId: 'onboarding-roster', inputField: 'email' });
+    expect(onboarding?.start?.inputRun?.typedInput?.initialMode).toBe(null);
+    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:crm-doc-download')).toBe(false);
+    const crm = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'crm-doc-download');
+    expect(crm?.availability).toEqual({ state: 'available' });
+    expect(crm?.start?.inputRun?.parser).toBeDefined();
+  } finally { await world.dispose(); }
+});
+
 }
 
 {
 
-type BackupSummary = ReturnType<BootstrapQueryDeps["backupSummary"]>;
-
 /** The wire's own vocabulary, read off the schema — never retyped. */
-function armsOf(key: "authority" | "backup"): readonly string[] {
+function armsOf(key: "authority"): readonly string[] {
   const field = StorageHealthSummaryWireSchema.shape[key];
   assert.ok(field instanceof z.ZodEnum, `${key} is expected to be a closed enum`);
   return Object.values(field.enum).map(String);
@@ -208,7 +250,7 @@ function armsOf(key: "authority" | "backup"): readonly string[] {
 
 function depsOf(
   world: DashboardWorld,
-  storage: Readonly<{ authorityReachable: boolean; backup: BackupSummary }>,
+  storage: Readonly<{ authorityReachable: boolean }>,
 ): BootstrapQueryDeps {
   return {
     appVersion: "0.1.0",
@@ -217,16 +259,18 @@ function depsOf(
     descriptorSetHash: descriptorSetHash_m0([fixtureDescriptor.contractFingerprint]),
     settingsSchemaHash: descriptorSetHash_m0(["settings-schema"]),
     projection: world.projection,
+    actorLabel: () => "Fixture Operator",
     authorityMeta: () => {
 
       if (!storage.authorityReachable) throw new Error("authority database is unreadable");
       return { schemaVersion: 13, authorityGeneration: 4 };
     },
-    backupSummary: () => storage.backup,
+    workbookCompatibility: workflows => projectWorkbookCompatibilityFromRepository(world.database.authority.workbooks, workflows),
+
     preflightReport: () => PreflightReportSchema.parse({
       configFingerprint: "a".repeat(64),
       checkedAt: AT.toISOString(),
-      requestedCapabilities: ["dashboard.serve"],
+      requestedCapabilities: ["dashboard.serve", "provider.nominatim"],
       results: [
         { status: "pass", check: "runtime.compatibility", summary: "runtime compatible" },
         { status: "pass", check: "config.valid", summary: "config valid" },
@@ -235,10 +279,10 @@ function depsOf(
         { status: "pass", check: "ports.available", summary: "ports available" },
         {
           status: "warning",
-          check: "process.orphans",
-          summary: "one stale process record",
+          check: "provider.nominatim",
+          summary: "Nominatim provider unavailable",
           impact: "operator review required",
-          remediation: "review and explicitly clear stale rebuild processes or leases",
+          remediation: "configure a registered provider cell or leave the optional capability unavailable",
         },
       ],
     }),
@@ -246,10 +290,10 @@ function depsOf(
 }
 
 describe("bootstrap storage summary", () => {
-  it("serves both ordinary and protected command schema identities", () => {
-    const world = makeWorld();
+  it("serves both ordinary and protected command schema identities", async () => {
+    const world = await makeWorld();
     try {
-      const deps = depsOf(world, { authorityReachable: true, backup: "current" });
+      const deps = depsOf(world, { authorityReachable: true });
       const wire = buildBootstrap(deps);
       assert.equal(wire.settingsSchemaHash, deps.settingsSchemaHash);
       assert.equal(wire.protectedSchemaHash, PROTECTED_SETTINGS_SCHEMA_HASH);
@@ -258,14 +302,14 @@ describe("bootstrap storage summary", () => {
         protectedSchemaHash: undefined,
       }).success, false);
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("projects the retained strict preflight report in registry order", () => {
-    const world = makeWorld();
+  it("projects the retained strict preflight report in registry order", async () => {
+    const world = await makeWorld();
     try {
-      const wire = buildBootstrap(depsOf(world, { authorityReachable: true, backup: "current" }));
+      const wire = buildBootstrap(depsOf(world, { authorityReachable: true }));
       assert.deepEqual(wire.preflight, [
         {
           id: "runtime.compatibility",
@@ -308,24 +352,24 @@ describe("bootstrap storage summary", () => {
           checkedAt: AT.toISOString(),
         },
         {
-          id: "process.orphans",
-          label: "process.orphans",
+          id: "provider.nominatim",
+          label: "provider.nominatim",
           verdict: "warning",
-          detail: "one stale process record — operator review required",
+          detail: "Nominatim provider unavailable — operator review required",
           blocks: [],
-          remediation: "review and explicitly clear stale rebuild processes or leases",
+          remediation: "configure a registered provider cell or leave the optional capability unavailable",
           checkedAt: AT.toISOString(),
         },
       ]);
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("projects retained preflight failures with their exact blocks and remediation", () => {
-    const world = makeWorld();
+  it("projects retained preflight failures with their exact blocks and remediation", async () => {
+    const world = await makeWorld();
     try {
-      const deps = depsOf(world, { authorityReachable: true, backup: "current" });
+      const deps = depsOf(world, { authorityReachable: true });
       const retained = deps.preflightReport();
       const failing = PreflightReportSchema.parse({
         ...retained,
@@ -353,51 +397,37 @@ describe("bootstrap storage summary", () => {
         checkedAt: AT.toISOString(),
       });
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("emits every authority arm the wire declares", () => {
-    const world = makeWorld();
+  it("emits every authority arm the wire declares", async () => {
+    const world = await makeWorld();
     try {
       const reached = new Set<string>();
       for (const authorityReachable of [true, false]) {
-        const wire = buildBootstrap(depsOf(world, { authorityReachable, backup: "current" }));
+        const wire = buildBootstrap(depsOf(world, { authorityReachable }));
         // Parsed again on purpose: the producer's own `.parse` is what makes
         // this a statement about the WIRE and not about a literal.
         reached.add(FrontendBootstrapWireSchema.parse(wire).storage.authority);
       }
       expect([...reached].sort()).toEqual([...armsOf("authority")].sort());
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
-  it("emits every backup arm the wire declares", () => {
-    const world = makeWorld();
-    try {
-      const reached = new Set<string>();
-      for (const backup of ["current", "stale", "missing", "unavailable"] as const) {
-        const wire = buildBootstrap(depsOf(world, { authorityReachable: true, backup }));
-        reached.add(FrontendBootstrapWireSchema.parse(wire).storage.backup);
-      }
-      expect([...reached].sort()).toEqual([...armsOf("backup")].sort());
-    } finally {
-      world.dispose();
-    }
-  });
-
-  it("an unreachable authority still serves the backup indicator", () => {
-    const world = makeWorld();
+  it("an unreachable authority stays explicitly unavailable", async () => {
+    const world = await makeWorld();
     try {
 
-      const wire = buildBootstrap(depsOf(world, { authorityReachable: false, backup: "stale" }));
+      const wire = buildBootstrap(depsOf(world, { authorityReachable: false }));
       assert.deepEqual(
-        { authority: wire.storage.authority, backup: wire.storage.backup },
-        { authority: "unavailable", backup: "stale" },
+        wire.storage,
+        { authority: "unavailable" },
       );
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 });

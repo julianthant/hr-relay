@@ -1,3 +1,5 @@
+import { afterAll } from "vitest";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
@@ -8,14 +10,16 @@ import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src
 import { RUN_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld();
+const profiles = createProfileFixtureSet();
+afterAll(() => profiles.close());
+const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld(profiles.create);
 
 afterEach(cleanup);
 
 
 describe("original claim at failure terminalization", () => {
   it("cannot borrow a replacement worker claim after awaiting diagnostic capture", async () => {
-    const h = executorHarness();
+    const h = await executorHarness();
     const { database, clock } = h.authority;
     const invalid = RunRecordSchema.parse(personLookupQueuedRun());
     const claimed = enqueueAndClaim(database, { ...invalid, input: {
@@ -28,10 +32,9 @@ describe("original claim at failure terminalization", () => {
         assert.ok(current);
         assert.equal(lifecycle.requeue({ commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", runId: RUN_ID,
           expectedVersion: current.version, claim: claimed.claim, cause: "recovery" }).state, "applied");
-        const { workerId, workerLifetime } = testAdmittedWorker(database, clock, { path: h.authority.path,
+        const { workerId } = testAdmittedWorker(database, clock, { path: h.authority.path,
           workflow: WORKFLOW_ID, poolIndex: 2, browserSystems: ["ucpath", "crm"] });
-        const replacement = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, workerLifetime,
-          now: clock.now().toISOString() });
+        const replacement = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: clock.now().toISOString() });
         assert.equal(replacement.state, "claimed");
         return DiagnosticBundleSchema.parse({ bundleId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
           runId: RUN_ID, origin: { kind: "failure", failureId: context.failure.failureId },

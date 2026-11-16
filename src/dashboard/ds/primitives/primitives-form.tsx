@@ -495,8 +495,10 @@ export function Switch({
   description,
   disabled,
   className,
+  hideLabel = false,
 }: {
   name?: string;
+  hideLabel?: boolean;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   label: ReactNode;
@@ -511,16 +513,16 @@ export function Switch({
         "ds-switch-control relative inline-flex shrink-0 cursor-pointer items-center rounded-full border",
         checked
           ? "ds-switch-control-checked border-transparent bg-[var(--ds-accent)]"
-          : "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]",
+          : "border-transparent bg-[var(--ui-stroke-control)]",
         dsFocus,
         dsMotion.fast,
         )}><HeroSwitch.Thumb className={cn(
-        "ds-switch-thumb block shrink-0 rounded-full transition-transform duration-[var(--ds-dur-1)] ease-[var(--ds-ease-out)]",
+        "ds-switch-thumb block shrink-0 rounded-full shadow-[0_1px_2px_rgb(0_0_0/0.3)] transition-transform duration-[var(--ds-dur-1)] ease-[var(--ds-ease-out)]",
         checked
           ? "ds-switch-thumb-checked bg-[var(--ds-accent-fg)]"
-          : "bg-[var(--ds-fg-muted)]",
+          : "bg-[var(--ds-body-switch-thumb-bg)]",
         )} /></HeroSwitch.Control>
-        <span className="ds-switch-copy flex min-w-0 flex-1 flex-col">
+        <span className={cn("ds-switch-copy flex min-w-0 flex-1 flex-col", hideLabel && "sr-only")}>
           <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{label}</span>
           {description && <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{description}</span>}
         </span>
@@ -529,14 +531,14 @@ export function Switch({
   );
 }
 
-/** A search field with its icon and a clear control. Used by every list. */
+/** The one search field: a pill with its icon, an optional shortcut hint and a clear × while it has text. `menu` is the 28px size for a field inside a dropdown menu; `sidebar` is the borderless 36px field above a sidebar's rows. */
 export const SearchInput = forwardRef<
   HTMLInputElement,
-  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; variant?: 'field' | 'toolbar' }
+  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; variant?: 'field' | 'toolbar' | 'menu' | 'sidebar' }
 >(function SearchInput({ className, onClear, shortcut, variant = 'field', value, defaultValue, disabled, readOnly, ...props }, ref) {
   const field = useFieldControl();
   return (
-    <HeroSearchField className={cn("ds-search-field", variant === 'toolbar' && 'ds-search-field--toolbar', className)} aria-label={props["aria-label"]}
+    <HeroSearchField className={cn("ds-search-field", variant === 'menu' && 'ds-search-field--menu', variant === 'sidebar' && 'ds-search-field--sidebar', className)} aria-label={props["aria-label"]}
       value={value === undefined ? undefined : String(value)} defaultValue={defaultValue === undefined ? undefined : String(defaultValue)}
       isDisabled={disabled ?? field.disabled} isReadOnly={readOnly} isInvalid={field["aria-invalid"] || props["aria-invalid"] === true} onClear={onClear}>
       <HeroSearchField.Group>

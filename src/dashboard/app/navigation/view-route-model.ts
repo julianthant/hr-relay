@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { z } from "zod";
+import { QueueMemberSelectionSchema } from "../../../models/dashboard/projection.js";
 import { RunIdSchema, FailureIdSchema } from "../../../rules/identity/ids.js";
 import { RerunValuesRequestSchema } from "../../../models/dashboard/rerun-values.js";
 import type { AppRouteState } from "./url-state.js";
@@ -7,13 +8,14 @@ import type { AppRouteState } from "./url-state.js";
 const identity = z.string().max(200);
 const stage = z.enum(["Input", "Options", "Steps", "Values", "Confirm", "Warning"]);
 export const ViewRouteSchema = z.object({
+  queueMember: QueueMemberSelectionSchema.optional(),
   logFailure: z.strictObject({ runId: RunIdSchema, failureId: FailureIdSchema }).optional(),
   workflow: identity.optional(), preview: identity.nullable().optional(), mockRun: identity.optional(), records: identity.optional(),
   launchRerun: RerunValuesRequestSchema.extend({ label: identity.optional(), traceId: identity.optional() }).optional(), launchServed: identity.optional(), launchWorkflow: identity.optional(), launchSource: identity.optional(), launchStage: stage.optional(), launchCustomize: z.boolean().optional(),
   reviewPages: z.record(identity, z.number().int().min(0).max(10000)).refine(value => Object.keys(value).length <= 200).optional(),
   queueOpen: z.array(identity).max(200).optional(),
   queueFilter: z.array(z.enum(["all", "needsYou", "queued", "running", "cancelling", "blocked", "awaiting-approval", "done", "failed", "cancelled", "partial"])).max(12).optional(), queueSort: z.enum(["attention", "newest", "oldest", "longest"]).optional(),
-  notifications: z.boolean().optional(), notificationFilter: z.enum(["all", "unread", "attention", "failed"]).optional(), notificationCategory: z.enum(["all", "attention", "failed"]).optional(),
+  notifications: z.boolean().optional(), notificationActive: z.string().max(200).optional(),
   workerWorkflow: identity.optional(), sessions: z.boolean().optional(), addWorkers: z.boolean().optional(),
   search: z.boolean().optional(), searchQuery: z.string().max(500).optional(), settingsQuery: z.string().max(500).optional(),
   spreadsheetImport: z.boolean().optional(), spreadsheetMapping: identity.optional(), spreadsheetImportView: z.enum(["mapping", "preview", "columns"]).optional(), spreadsheetType: identity.nullable().optional(),

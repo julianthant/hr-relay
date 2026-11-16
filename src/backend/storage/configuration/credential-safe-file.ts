@@ -1,30 +1,37 @@
-import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, readdirSync, type Stats } from "node:fs";
-import { join, parse, resolve } from "node:path";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { randomUUID } from "node:crypto";
+import { sameDirectory, fileIdentityObservation, fileTimestampMilliseconds, privateFileNumber, fileStatus, descriptorStatus, fileModified, fileChanged, type DirectoryIdentity } from "../file-identity.js";
+export { sameDirectory, privateFileNumber, numericFileIdentity, fileIdentityObservation, type DirectoryIdentity } from "../file-identity.js";
+import { systemClock } from "../../../rules/time/clock.js";
+import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../source-closure.js";
+import { createPrivateDirectory, fsyncPath, privatePathRejects } from "../private-path.js";
+import { closeSync, constants, fsyncSync, lstatSync, openSync, readFileSync, unlinkSync, writeFileSync, readdirSync, type Stats, type BigIntStats } from "node:fs";
+import { join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
-import { ProcessStartIdentitySchema } from "../sqlite/runtime-process-locks.js";
+import { ProcessStartIdentitySchema } from "../admission/process-identity.js";
 
 export const CREDENTIAL_DIRECTORY_MODE = 0o700;
 const CREDENTIAL_FILE_MODE = 0o600;
-export interface DirectoryIdentity {
-  readonly device: number;
-  readonly inode: number;
+
+export class PrivateFileReadTransitionError extends Error {
+  constructor(message: string) { super(message); this.name = "PrivateFileReadTransitionError"; }
 }
 
-const expectedUid = typeof process.getuid === "function" ? process.getuid() : undefined;
+export interface CredentialInventory {
+  readonly entriesAbsent: boolean;
+  readonly protectedPlaintext: boolean;
+  readonly stagePlaintext: boolean;
+  readonly backupPlaintext: readonly string[];
+  readonly unknownFormats: readonly string[];
+  readonly inventoryMissing: boolean;
+  readonly loginDataUcSdRows: number | "unreadable" | "absent";
+  readonly logoutComplete: boolean;
+}
 
 export function errorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
   return typeof error.code === "string" ? error.code : undefined;
-}
-
-export function fsyncPath(path: string): void {
-  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    fsyncSync(descriptor);
-  } finally {
-    closeSync(descriptor);
-  }
 }
 
 /** Verify each component before descendants; retain identities across every operation. */
@@ -35,7 +42,9 @@ export function noSymlinkAncestry(path: string, identities: Map<string, Director
   let cursor = root;
   const paths = [root, ...segments.map((segment) => { cursor = join(cursor, segment); return cursor; })];
   for (const component of paths) {
-    const status = lstatSync(component, { throwIfNoEntry: false });
+    const status = process.platform === "win32"
+      ? lstatSync(component, { bigint: true, throwIfNoEntry: false })
+      : lstatSync(component, { throwIfNoEntry: false });
     const prior = identities.get(component);
     if (status === undefined) {
       if (prior !== undefined) throw new Error("directory-integrity: credential ancestor disappeared");
@@ -43,11 +52,8 @@ export function noSymlinkAncestry(path: string, identities: Map<string, Director
     }
     if (status.isSymbolicLink()) throw new Error("directory-integrity: credential path ancestry contains a symbolic link");
     if (!status.isDirectory()) throw new Error("directory-integrity: credential path ancestry contains a non-directory");
-    if (expectedUid === undefined || (status.uid !== expectedUid && status.uid !== 0)) {
-      throw new Error("directory-integrity: credential ancestor has an untrusted owner");
-    }
-    if ((status.mode & 0o022) !== 0 && (status.mode & 0o1000) === 0) {
-      throw new Error("directory-integrity: credential ancestor is group/world-writable without sticky protection");
+    if (privatePathRejects(component, status, "ancestor")) {
+      throw new Error("directory-integrity: credential ancestor is group/world-writable without sticky protection or has an untrusted owner");
     }
     const observed = { device: status.dev, inode: status.ino };
     if (prior !== undefined && !sameDirectory(prior, observed)) throw new Error("directory-integrity: credential ancestor identity changed");
@@ -56,38 +62,38 @@ export function noSymlinkAncestry(path: string, identities: Map<string, Director
   return true;
 }
 
-export function statDirectory(path: string, label: string, exactMode?: number): DirectoryIdentity {
+export function statDirectory(path: string, label: string, exactMode?: typeof CREDENTIAL_DIRECTORY_MODE): DirectoryIdentity {
   let status;
   try {
-    status = lstatSync(path);
+    status = process.platform === "win32" ? lstatSync(path, { bigint: true }) : lstatSync(path);
   } catch {
     throw new Error(`directory-integrity: ${label} is unavailable`);
   }
   if (!status.isDirectory() || status.isSymbolicLink()) {
     throw new Error(`directory-integrity: ${label} is not a private directory`);
   }
-  if (expectedUid !== undefined && status.uid !== expectedUid) {
+  if (privatePathRejects(path, status, "owner")) {
     throw new Error(`directory-integrity: ${label} is owned by another user`);
   }
-  if (exactMode !== undefined && (status.mode & 0o7777) !== exactMode) {
+  if (exactMode !== undefined && privatePathRejects(path, status, "directory-0700")) {
     throw new Error(`directory-integrity: ${label} permissions must be 0700`);
   }
   return { device: status.dev, inode: status.ino };
 }
 
-export function sameDirectory(left: DirectoryIdentity, right: DirectoryIdentity): boolean {
-  return left.device === right.device && left.inode === right.inode;
+function equalByteCount(bytes: Buffer, size: number | bigint): boolean {
+  return typeof size === "bigint" ? BigInt(bytes.byteLength) === size : bytes.byteLength === size;
 }
 
 export function removeExactPath(
   path: string,
-  expected: DirectoryIdentity,
+  expected: Parameters<typeof sameDirectory>[1],
   missingIsSettled: boolean,
   changedMessage: string,
 ): boolean {
   let status;
   try {
-    status = lstatSync(path, { throwIfNoEntry: false });
+    status = fileStatus(path, true);
   } catch (error) {
     throw new Error(changedMessage, { cause: error });
   }
@@ -96,8 +102,8 @@ export function removeExactPath(
     throw new Error(changedMessage);
   }
   if (!status.isFile() || status.isSymbolicLink()
-    || status.dev !== expected.device || status.ino !== expected.inode
-    || (expectedUid !== undefined && status.uid !== expectedUid)) {
+    || !sameDirectory({ device: status.dev, inode: status.ino }, expected)
+    || privatePathRejects(path, status, "owner")) {
     throw new Error(changedMessage);
   }
   unlinkSync(path);
@@ -109,11 +115,11 @@ export function ensureChildDirectory(
   child: string,
   label: string,
   creationMode: number,
-  requiredMode?: number,
+  requiredMode?: typeof CREDENTIAL_DIRECTORY_MODE,
 ): void {
   statDirectory(parent, `${label} parent`);
   try {
-    mkdirSync(child, { mode: creationMode });
+    createPrivateDirectory(child, { mode: creationMode });
     fsyncPath(parent);
   } catch (error) {
     if (errorCode(error) !== "EEXIST") {
@@ -124,53 +130,72 @@ export function ensureChildDirectory(
 }
 
 interface PrivateFileOptions {
-  readonly label: "protected.json" | "lock" | "ChatGPT" | "Duo credential";
+  readonly label: "protected.json" | "lock" | "nonce lock" | "ChatGPT" | "Duo credential" | "erasure journal" | "authority database" | "managed data" | "launcher";
   readonly maxBytes: number;
   readonly allowedLinkCounts?: readonly number[];
 }
 
-export function readPrivateFile(path: string, options: PrivateFileOptions): { bytes: Buffer; identity: DirectoryIdentity; stat: Stats } | undefined {
+export function readPrivateFile(path: string, options: PrivateFileOptions): { bytes: Buffer; identity: DirectoryIdentity; stat: Stats | BigIntStats } | undefined {
   const { label, maxBytes, allowedLinkCounts = [1] } = options;
-  const lock = label === "lock", record = label === "ChatGPT" || label === "Duo credential";
+  const ordinary = label === "authority database" || label === "managed data";
+  const nonce = label === "nonce lock", lock = label === "lock" || nonce, record = lock || label === "protected.json" || label === "ChatGPT" || label === "Duo credential" || label === "erasure journal" || label === "launcher" || ordinary;
+  const rule = ordinary ? "group-write" : "file-0600";
   const unavailable = lock ? "directory-integrity: credential lock is unavailable" : `credential store ${label} is unavailable`;
   const invalid = lock ? "directory-integrity: credential lock permissions or identity are invalid" : `directory-integrity: ${label} permissions or identity are invalid`;
   let pathStatus;
-  try { pathStatus = lstatSync(path, { throwIfNoEntry: false }); }
+  try { pathStatus = fileStatus(path, true); }
   catch (error) { throw new Error(unavailable, { cause: error }); }
   if (pathStatus === undefined) return undefined;
-  if (!pathStatus.isFile() || pathStatus.isSymbolicLink() || !allowedLinkCounts.includes(pathStatus.nlink)
-    || ((lock || record) && (pathStatus.mode & 0o7777) !== CREDENTIAL_FILE_MODE)
-    || (expectedUid !== undefined && pathStatus.uid !== expectedUid)) {
+  if (!pathStatus.isFile() || pathStatus.isSymbolicLink() || !allowedLinkCounts.includes(privateFileNumber(pathStatus.nlink))
+    || privatePathRejects(path, pathStatus, lock || record ? rule : "owner")) {
     throw new Error(lock || record ? invalid : "directory-integrity: protected.json must be one private regular file");
   }
   let descriptor;
   try { descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
   catch (error) { throw new Error(unavailable, { cause: error }); }
+  let descriptorIdentity = pathStatus;
+  let result: ReturnType<typeof readPrivateFile>;
+  let primary: { error: unknown } | undefined;
   try {
-    const before = fstatSync(descriptor);
-    if (!before.isFile() || !allowedLinkCounts.includes(before.nlink) || (before.mode & 0o7777) !== CREDENTIAL_FILE_MODE
-      || (expectedUid !== undefined && before.uid !== expectedUid)
-      || (lock && before.size > maxBytes)
-      || (record && (before.dev !== pathStatus.dev || before.ino !== pathStatus.ino))) throw new Error(invalid);
+    const before = descriptorStatus(descriptor); descriptorIdentity = before;
+    if (!before.isFile() || !allowedLinkCounts.includes(privateFileNumber(before.nlink)) || privatePathRejects(path, before, rule)
+      || (lock && before.size > maxBytes)) throw new Error(invalid);
     if (before.size > maxBytes) throw new Error(`document-too-large: credential store ${label} exceeds its private bound`);
-    const bytes = readFileSync(descriptor), after = fstatSync(descriptor), live = lstatSync(path);
+    const bytes = readFileSync(descriptor), after = descriptorStatus(descriptor), live = fileStatus(path);
+    const moved = lock ? "directory-integrity: credential lock moved while it was read" : `directory-integrity: ${label} moved while it was read`;
+    const identityChanged = pathStatus.dev !== before.dev || pathStatus.ino !== before.ino
+      || live.dev !== before.dev || live.ino !== before.ino;
+    const descriptorStable = before.dev === after.dev && before.ino === after.ino && before.size === after.size
+      && before.mode === after.mode && before.uid === after.uid && fileModified(before) === fileModified(after)
+      && (before.nlink === after.nlink || (after.nlink === 0 || after.nlink === 0n))
+      && (fileChanged(before) === fileChanged(after) || (after.nlink === 0 || after.nlink === 0n));
+    const liveSafe = live.isFile() && !live.isSymbolicLink() && allowedLinkCounts.includes(privateFileNumber(live.nlink))
+      && !privatePathRejects(path, live, rule) && live.size <= maxBytes;
+    const liveMetadataStable = !record || (before.mode === live.mode && before.uid === live.uid && before.nlink === live.nlink);
+    if (identityChanged && descriptorStable && equalByteCount(bytes, before.size) && liveSafe && liveMetadataStable) {
+      throw new PrivateFileReadTransitionError(moved);
+    }
+    const nonceContentChanged = before.size !== after.size || fileModified(before) !== fileModified(after) || fileChanged(before) !== fileChanged(after);
+    if (nonce && nonceContentChanged && !identityChanged && before.dev === after.dev && before.ino === after.ino
+      && before.mode === after.mode && before.uid === after.uid && before.nlink === after.nlink
+      && liveSafe && liveMetadataStable && after.size <= maxBytes && bytes.byteLength <= maxBytes) {
+      throw new PrivateFileReadTransitionError(moved);
+    }
     if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
       || before.mode !== after.mode || before.uid !== after.uid || before.nlink !== after.nlink
-      || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs
-      || live.dev !== before.dev || live.ino !== before.ino || bytes.byteLength !== before.size
+      || fileModified(before) !== fileModified(after) || fileChanged(before) !== fileChanged(after)
+      || live.dev !== before.dev || live.ino !== before.ino || !equalByteCount(bytes, before.size)
       || (record && (before.mode !== live.mode || before.uid !== live.uid || before.nlink !== live.nlink))) {
-      throw new Error(lock ? "directory-integrity: credential lock moved while it was read" : `directory-integrity: ${label} moved while it was read`);
+      throw new Error(moved);
     }
-    return { bytes, stat: after, identity: { device: before.dev, inode: before.ino } };
-  } finally { closeSync(descriptor); }
+    result = { bytes, stat: after, identity: { device: before.dev, inode: before.ino } };
+  } catch (error) { primary = { error }; }
+  try { closeSync(descriptor); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+    { descriptor: { descriptor, identity: descriptorIdentity } }); }
+  if (primary !== undefined) throw primary.error;
+  return result;
 }
-
-export function writePrivateStage(path: string, bytes: Uint8Array): void {
-  writeFileSync(path, bytes, { mode: CREDENTIAL_FILE_MODE, flag: "wx" });
-  fsyncPath(path);
-}
-
-export function replacePrivateFile(stage: string, path: string): void { renameSync(stage, path); }
 
 export function createPrivateLock(path: string, credentialDirectory: string, bytes: Uint8Array, verify: () => boolean): boolean {
   let descriptor: number | undefined;
@@ -184,13 +209,18 @@ export function createPrivateLock(path: string, credentialDirectory: string, byt
     if (errorCode(error) !== "EEXIST") throw new Error("credential store lock could not be created", { cause: error });
   }
   if (descriptor === undefined) return false;
-  const createdStatus = fstatSync(descriptor);
+  let createdStatus: Stats | BigIntStats;
+  try { createdStatus = descriptorStatus(descriptor); }
+  catch (error) {
+    try { closeSync(descriptor); }
+    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { descriptor: { descriptor } }); }
+    throw error;
+  }
   const createdIdentity = { device: createdStatus.dev, inode: createdStatus.ino };
   let preparationError: Error | undefined;
   try {
-    if (!createdStatus.isFile() || createdStatus.nlink !== 1
-      || (createdStatus.mode & 0o777) !== CREDENTIAL_FILE_MODE
-      || (expectedUid !== undefined && createdStatus.uid !== expectedUid)) {
+    if (!createdStatus.isFile() || (createdStatus.nlink !== 1 && createdStatus.nlink !== 1n)
+      || privatePathRejects(path, createdStatus, "file-0600")) {
       throw new Error("directory-integrity: new credential lock permissions or identity are invalid");
     }
     writeFileSync(descriptor, bytes);
@@ -199,9 +229,10 @@ export function createPrivateLock(path: string, credentialDirectory: string, byt
     preparationError = error instanceof Error
       ? new Error("credential store lock could not be made durable", { cause: error })
       : new Error("credential store lock could not be made durable");
-  } finally {
-    closeSync(descriptor);
   }
+  try { closeSync(descriptor); }
+  catch (error) { throw retainAuthoritySourceClosure(preparationError === undefined ? [error] : [preparationError, error],
+    { descriptor: { descriptor, identity: createdStatus } }); }
 
   const failWithCleanup = (error: Error): never => {
     try {
@@ -223,12 +254,178 @@ export function createPrivateLock(path: string, credentialDirectory: string, byt
     if (!verify()) {
       throw new Error("directory-integrity: credential lock differs after creation");
     }
+    const published = fileStatus(path);
+    if (published.dev !== createdIdentity.device || published.ino !== createdIdentity.inode) {
+      throw new Error("directory-integrity: credential lock identity changed after creation");
+    }
   } catch (error) {
     failWithCleanup(error instanceof Error
       ? new Error("credential store lock could not be published exactly", { cause: error })
       : new Error("credential store lock could not be published exactly"));
   }
   return true;
+}
+
+
+const PrivateFileLockSchema = z.strictObject({ nonce: z.uuid() });
+export function assertPrivateFileLockBytes(bytes: Buffer): void {
+  try { PrivateFileLockSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))); }
+  catch { throw new Error("directory-integrity: private lock is malformed"); }
+}
+
+export function capturePriorPrivateFileLock(directory: string, name: string): (() => void) | undefined {
+  const parent = statDirectory(directory, "private lock parent", CREDENTIAL_DIRECTORY_MODE);
+  const path = join(directory, name);
+  const file = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
+  if (file === undefined) return undefined;
+  assertPrivateFileLockBytes(file.bytes);
+  return () => {
+    if (!sameDirectory(parent, statDirectory(directory, "private lock parent", CREDENTIAL_DIRECTORY_MODE))) throw new Error("directory-integrity: prior private lock parent changed");
+    const current = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
+    if (current === undefined || !sameDirectory(current.identity, file.identity) || !current.bytes.equals(file.bytes)) throw new Error("directory-integrity: prior private lock changed");
+    removeExactPath(path, file.identity, false, "directory-integrity: prior private lock changed");
+    fsyncPath(directory);
+  };
+}
+
+export interface PrivateFileLock {
+  assertHeld(): void;
+}
+
+export class PrivateFileLockUnavailableError extends Error {
+  readonly code = "PRIVATE_FILE_LOCK_UNAVAILABLE";
+  constructor() { super("private file lock is unavailable"); this.name = "PrivateFileLockUnavailableError"; }
+}
+
+/** Reused checks for one profile operation. Discarded when that operation ends; a nested lock keeps the outer proof. */
+export type OperationProof = {
+  active: boolean;
+  readonly slots: Map<string, unknown>;
+  readonly witnesses: Map<string, { assertUnchanged(): void }>;
+  readonly locks: Set<PrivateFileLock>;
+  readonly release: Array<() => void>;
+};
+const operationProof = new AsyncLocalStorage<OperationProof>();
+export function outermostOperationProof(): OperationProof | undefined {
+  const proof = operationProof.getStore();
+  return proof?.active === true ? proof : undefined;
+}
+export function clearOperationProofSlots(): void {
+  const proof = outermostOperationProof();
+  proof?.slots.clear();
+  proof?.witnesses.clear();
+}
+export function revalidateOperationProof(witnesses = outermostOperationProof()?.witnesses): void {
+  const proof = outermostOperationProof();
+  if (proof === undefined) return;
+  proof.slots.clear();
+  for (const lock of proof.locks) lock.assertHeld();
+  for (const witness of new Set([...(witnesses?.values() ?? []), ...proof.witnesses.values()])) witness.assertUnchanged();
+}
+function discardOperationProof(proof: OperationProof): void {
+  proof.slots.clear();
+  proof.witnesses.clear();
+  while (proof.release.length !== 0) {
+    const finish = proof.release[0];
+    if (finish === undefined) throw new Error("operation-proof-release-missing");
+    try { finish(); }
+    catch (error) { retainUnprovedSourceOwners(error, { operationProof: proof }); throw error; }
+    proof.release.shift();
+  }
+}
+export function withOperationProof<T>(body: () => T): T {
+  if (outermostOperationProof() !== undefined) return body();
+  const proof: OperationProof = { active: true, slots: new Map(), witnesses: new Map(), locks: new Set(), release: [] };
+  let settled = false;
+  const finish = (error?: unknown) => {
+    if (settled) return;
+    settled = true;
+    proof.active = false;
+    if (hasUnprovedSourceClosure(error)) {
+      proof.slots.clear();
+      proof.witnesses.clear();
+      retainUnprovedSourceOwners(error, { operationProof: proof });
+      return;
+    }
+    try { discardOperationProof(proof); }
+    catch (cleanup) {
+      if (error !== undefined) throw new AggregateError([error, cleanup], "operation and proof cleanup failed", { cause: cleanup });
+      throw cleanup;
+    }
+  };
+  try {
+    const result = operationProof.run(proof, body);
+    if (result instanceof Promise) return result.then((value: Awaited<T>) => { finish(); return value; }, (error: unknown) => { finish(error); throw error; }) as T;
+    finish();
+    return result;
+  } catch (error) {
+    finish(error);
+    throw error;
+  }
+}
+
+export function withPrivateFileLock<T>(directory: string, name: string, body: (held: PrivateFileLock) => T): T {
+  if (name === "." || name === ".." || name.includes("/") || name.includes("\\") || name.length === 0) {
+    throw new Error("directory-integrity: private lock name is invalid");
+  }
+  const ancestry = new Map<string, DirectoryIdentity>();
+  if (!noSymlinkAncestry(directory, ancestry)) throw new Error("directory-integrity: private lock parent is missing");
+  const parent = statDirectory(directory, "private lock parent", CREDENTIAL_DIRECTORY_MODE);
+  const path = join(directory, name);
+  const bytes = Buffer.from(JSON.stringify({ nonce: randomUUID() }));
+  const deadline = systemClock.monotonicMs() + 10_000;
+  let identity: DirectoryIdentity | undefined;
+  let active = true;
+  const assertParent = (): void => {
+    if (!noSymlinkAncestry(directory, ancestry)
+      || !sameDirectory(parent, statDirectory(directory, "private lock parent", CREDENTIAL_DIRECTORY_MODE))) {
+      throw new Error("directory-integrity: private lock parent changed");
+    }
+  };
+  const held: PrivateFileLock = Object.freeze({
+    assertHeld(): void {
+      if (!active) throw new Error("private lock operation has ended");
+      assertParent();
+      const file = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
+      if (file === undefined || identity === undefined || !sameDirectory(identity, file.identity) || !file.bytes.equals(bytes)) {
+        throw new Error("directory-integrity: private lock changed");
+      }
+    },
+  });
+  for (;;) {
+    assertParent();
+    if (createPrivateLock(path, directory, bytes, () => {
+      assertParent();
+      const file = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
+      if (file === undefined || !file.bytes.equals(bytes)) return false;
+      identity = file.identity;
+      return true;
+    })) break;
+    if (systemClock.monotonicMs() > deadline) throw new PrivateFileLockUnavailableError();
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+  }
+  let outcome: { kind: "value"; value: T } | { kind: "error"; error: unknown };
+  return withOperationProof(() => {
+    const proof = outermostOperationProof();
+    proof?.locks.add(held);
+    try { held.assertHeld(); outcome = { kind: "value", value: body(held) }; }
+    catch (error) { outcome = { kind: "error", error }; }
+    if (outcome.kind === "error" && hasUnprovedSourceClosure(outcome.error)) {
+      retainUnprovedSourceOwners(outcome.error, { directory: held }); throw outcome.error;
+    }
+    proof?.locks.delete(held);
+    try {
+      held.assertHeld();
+      if (identity === undefined) throw new Error("private lock identity is unavailable");
+      removeExactPath(path, identity, false, "directory-integrity: private lock changed before release");
+      fsyncPath(directory);
+    } catch (error) {
+      if (outcome.kind === "error") throw new AggregateError([outcome.error, error], "operation and private lock release failed", { cause: error });
+      throw error;
+    } finally { active = false; }
+    if (outcome.kind === "error") throw outcome.error;
+    return outcome.value;
+  });
 }
 
 export const ChatGptCredentialLockSchema = z.strictObject({ id: z.uuid(), pid: z.number().int().positive(), identity: ProcessStartIdentitySchema });
@@ -243,7 +440,7 @@ export function companionCredentialEntries(directory: string, record: "protected
   const chat = record === "protected";
   const fileName = chat ? "chatgpt-account.json" : "protected.json";
   if (names.includes(fileName)) {
-    if (readPrivateFile(join(directory, fileName), { label: chat ? "ChatGPT" : "protected.json", maxBytes: chat ? 64_000 : 16 * 1024 * 1024 }) === undefined) throw new Error("directory-integrity: companion credential record disappeared");
+    if (readPrivateFile(join(directory, fileName), { label: chat ? "ChatGPT" : "protected.json", maxBytes: chat ? 64_000 : Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 }) === undefined) throw new Error("directory-integrity: companion credential record disappeared");
     permitted.add(fileName);
   }
   const locks = chat ? [".chatgpt-account.lock"] : [".protected.lock", ".protected.reaper", ".protected.reaper-claim"];
@@ -276,8 +473,21 @@ export function companionCredentialEntries(directory: string, record: "protected
     const match = (chat ? /^\.chatgpt-account\.([^.]+)\.tmp$/u : /^\.protected\.([^.]+)\.([^.]+)\.tmp$/u).exec(name);
     if (match === null || writerId === undefined || match[1] !== writerId || !z.uuid().safeParse(match[1]).success
       || (!chat && !z.uuid().safeParse(match[2]).success)) throw new Error("directory-integrity: companion credential stage is not owned by its writer");
-    if (readPrivateFile(join(directory, name), { label: chat ? "ChatGPT" : "protected.json", maxBytes: chat ? 64_000 : 16 * 1024 * 1024 }) === undefined) throw new Error("directory-integrity: companion credential stage disappeared");
+    if (readPrivateFile(join(directory, name), { label: chat ? "ChatGPT" : "protected.json", maxBytes: chat ? 64_000 : Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 }) === undefined) throw new Error("directory-integrity: companion credential stage disappeared");
     permitted.add(name);
   }
   return permitted;
+}
+
+export function unpublishedDraftAbortMembership(root: string) {
+  const entries: { path: string; directory: boolean; device: number | string; inode: number | string; size: number; mode: number; modified: number; changed: number }[] = [];
+  const visit = (path: string): void => {
+    const info = fileStatus(path);
+    if (info.isSymbolicLink() || !info.isFile() && !info.isDirectory() || info.isFile() && privateFileNumber(info.nlink) !== 1
+      || privatePathRejects(path, info, "group-write")) throw new Error("profile-draft-abort-membership-unsafe");
+    entries.push({ path: relative(root, path), directory: info.isDirectory(), ...fileIdentityObservation({ device: info.dev, inode: info.ino }, { preserveSafeNumbers: true }), size: privateFileNumber(info.size),
+      mode: privateFileNumber(info.mode), ...fileTimestampMilliseconds(info) });
+    if (info.isDirectory()) for (const name of readdirSync(path).sort()) visit(join(path, name));
+  };
+  visit(root); return entries;
 }

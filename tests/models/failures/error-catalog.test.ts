@@ -7,8 +7,39 @@ import {
   formatErrorCatalogFailure,
   resolveErrorCatalogFailure,
 } from "../../../src/models/failures/error-catalog.js";
+import { AssistantRefusalCodeSchema } from "../../../src/models/profiles/assistant-permissions.js";
 
 describe("error catalog", () => {
+  it("keeps stopped backup closure and changed-source refusals fixed and private", () => {
+    const expected = {
+      STORAGE_BACKUP_CLOSURE_UNPROVED: "Relay could not verify a completed browser closure step for this backup. The backup is refused; preserve the current installation for recovery.",
+      STORAGE_BACKUP_SOURCE_CHANGED: "The source no longer matches the retained backup. The first backup is preserved; keep this installation for recovery.",
+    };
+    for (const code of ["STORAGE_BACKUP_CLOSURE_UNPROVED", "STORAGE_BACKUP_SOURCE_CHANGED"] as const) {
+      assert.equal(ErrorCatalogCodeSchema.parse(code), code);
+      const resolved = resolveErrorCatalogFailure({ code, parameters: {}, summary: "private native source path" }, "http-response");
+      assert.equal(resolved.state, "resolved");
+      if (resolved.state !== "resolved") throw new Error("backup refusal catalog unresolved");
+      assert.equal(resolved.text, expected[code]);
+      assert.equal(resolved.text.includes("private native source path"), false);
+    }
+  });
+
+  it("explains an unsatisfied delegation join with fixed text", () => {
+    const resolved = resolveErrorCatalogFailure({ code: "DELEGATION_OUTCOME_POLICY_UNSATISFIED", parameters: {}, summary: "delegation-outcome-policy-unsatisfied" }, "http-response");
+    assert.equal(resolved.state, "resolved");
+    if (resolved.state !== "resolved") throw new Error("delegation policy catalog unresolved");
+    assert.equal(resolved.text, "A step this run depends on did not finish, so the run stopped. Open that step for the reason.");
+  });
+
+  it("maps the HTTP internal failure code without exposing its native cause", () => {
+    const failure = { code: "INTERNAL_FAILURE", parameters: {}, summary: "private native path" };
+    const resolved = resolveErrorCatalogFailure(failure, "http-response");
+    assert.equal(resolved.state, "resolved");
+    assert.equal(resolved.code, "INTERNAL_FAILURE");
+    assert.equal(resolved.text, "Relay could not complete this request. Review the recorded local evidence before trying again.");
+    assert.equal(resolved.text.includes(failure.summary), false);
+  });
   it("registers Person Lookup and shared sign-in codes with fixed sentence-case text", () => {
     const expected = {
       PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS: "Match requires a date of birth or SSN.",
@@ -23,13 +54,14 @@ describe("error catalog", () => {
       PERSON_LOOKUP_CRM_DATES_CHECK_FAILED: "CRM dates check failed.",
       PERSON_LOOKUP_CRM_DATES_BINDING_INVALID: "CRM dates subject binding is invalid.",
       SHIBBOLETH_STALE_REQUEST: "Shibboleth served its stale-request page; the SAML execution expired during login.",
-      DUO_PROMPT_STALLED: "The Duo prompt never cleared; check that Duo Autopilot is loaded and its credential is current.",
+      DUO_PROMPT_STALLED: "The Duo prompt never cleared; check that Fast Duo is loaded and its credential is current.",
       DUO_REFUSAL_UNPROVEN: "The Duo prompt never cleared, and its terminal refusal could not be probed.",
       SSO_FIRST_FACTOR_REJECTED: "The UCSD SSO form is still on the page; the first factor was rejected.",
       LANDING_PROBE_UNAVAILABLE: "No authenticated landing appeared, and the stalled page could not be probed.",
       AUTHENTICATED_LANDING_MISSING: "No authenticated landing appeared.",
       TRAINING_REMINDER_REPEATED: "The UCSD training reminder appeared again after Continue Log In.",
-      DUO_TERMINAL_REFUSAL: "Duo refused the sign-in. Run it again; if it repeats, check Duo Autopilot.",
+      DUO_TERMINAL_REFUSAL: "Duo refused the sign-in. Run it again; if it repeats, check Fast Duo.",
+      UCPATH_MAINTENANCE: "UCPath is down for maintenance. Try again later.",
       UCPATH_SIGN_IN_FAILED: "UCPath sign-in failed.",
       CRM_SIGN_IN_FAILED: "CRM sign-in failed.",
       ONBASE_SIGN_IN_FAILED: "OnBase sign-in failed.",
@@ -39,6 +71,19 @@ describe("error catalog", () => {
       NEW_KRONOS_SIGN_IN_FAILED: "New Kronos sign-in failed.",
       OLD_KRONOS_SIGN_IN_FAILED: "Old Kronos sign-in failed.",
       SHAREPOINT_SIGN_IN_FAILED: "SharePoint sign-in failed.",
+    } as const;
+    for (const code of Object.keys(expected) as (keyof typeof expected)[]) {
+      const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
+      assert.equal(message.code, code);
+      assert.equal(message.text, expected[code]);
+    }
+  });
+
+  it("registers spreadsheet parsing refusals with operator recovery text", () => {
+    const expected = {
+      SPREADSHEET_WORKSHEET_REFERENCE_INVALID: "This workbook has an invalid worksheet reference. Export a new XLSX copy and try again.",
+      SPREADSHEET_WORKBOOK_XML_INVALID: "This workbook could not be read. Export a new XLSX copy and try again.",
+      SPREADSHEET_DIMENSIONS_INVALID: "This workbook has an invalid worksheet range. Export a new XLSX copy and try again.",
     } as const;
     for (const code of Object.keys(expected) as (keyof typeof expected)[]) {
       const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
@@ -73,8 +118,6 @@ describe("error catalog", () => {
       DASHBOARD_READ_FAILED: "The dashboard could not load this from the local service. Try again.",
       LOGS_READ_FAILED_TITLE: "Could not load logs",
       LOGS_UNAVAILABLE_TITLE: "Logs unavailable",
-      LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE: "Confirmed actions unavailable",
-      LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE: "The response did not supply complete confirmed-action evidence.",
     } as const;
     for (const code of Object.keys(expected) as (keyof typeof expected)[]) {
       const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
@@ -214,13 +257,32 @@ describe("error catalog", () => {
     assert.equal(result.catalogFault.cause instanceof Error, true);
     assert.notEqual(result.catalogFault.text.includes("private formatter detail"), true);
   });
+  it("registers every assistant refusal code with fixed operator text", () => {
+    const expected = {
+      ASSISTANT_AUTHORITY_INVALID: "The assistant permission could not be read. No action was taken.",
+      ASSISTANT_MODEL_PROPOSAL_REFUSED: "The assistant proposal was refused. No action was taken.",
+      ASSISTANT_PROPOSAL_MISMATCH: "The assistant proposal does not match this command. No action was taken.",
+      ASSISTANT_UNCLASSIFIED: "This command is not classified for the assistant. No action was taken.",
+      ASSISTANT_OPTIONS_UNBOUND: "This command's options cannot be bound exactly. No action was taken.",
+      ASSISTANT_SUBJECT_MISMATCH: "This command's subject does not match its classification. No action was taken.",
+      ASSISTANT_BINDING_STALE: "The assistant approval no longer matches this command. No action was taken.",
+      ASSISTANT_UNKNOWN_NOT_REPLAYABLE: "An uncertain assistant result cannot be replayed. Check its result before taking further action.",
+      ASSISTANT_EFFECT_UNDERSTATED: "This command does more than its assistant classification says. No action was taken.",
+    } as const;
+    assert.deepEqual([...AssistantRefusalCodeSchema.options].sort(), Object.keys(expected).sort());
+    for (const code of AssistantRefusalCodeSchema.options) {
+      const message = formatErrorCatalogFailure(createErrorCatalogFailure(code, {}));
+      assert.equal(message.code, code);
+      assert.equal(message.text, expected[code]);
+      assert.equal(ERROR_CATALOG[code].parameters.safeParse({ extra: true }).success, false);
+    }
+  });
 });
 
 it("owns Sessions availability and actual worker failure labels with strict empty parameters", () => {
   const entries = {
     SESSIONS_UNAVAILABLE: "Session information is unavailable.",
     WORKER_CRASHED: "crashed",
-    WORKER_LEASE_EXPIRED: "The worker stopped responding. Run it again.",
   } as const;
   for (const code of Object.keys(entries) as (keyof typeof entries)[]) {
     assert.equal(formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text, entries[code]);
@@ -231,4 +293,16 @@ it("owns Sessions availability and actual worker failure labels with strict empt
     if (resolved.state !== "resolved") throw new Error("catalog mapping failed");
     assert.equal(resolved.text, entries[code]); assert.equal(resolved.text.includes("private"), false);
   }
+});
+
+it("registers delegation config failure with fixed operator text and no private cause", () => {
+  const code = ErrorCatalogCodeSchema.parse("DELEGATION_CONFIG_UNAVAILABLE");
+  const expected = "Relay could not verify this run's saved settings, so the child workflow did not start. Review the run evidence before continuing.";
+  assert.equal(formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text, expected);
+  const resolved = resolveErrorCatalogFailure({ code, parameters: {}, summary: "private retained snapshot mismatch" }, "http-response");
+  assert.equal(resolved.state, "resolved");
+  assert.equal(resolved.code, code);
+  assert.equal(resolved.text, expected);
+  assert.equal(resolved.text.includes("private retained snapshot mismatch"), false);
+  assert.equal(ERROR_CATALOG[code].parameters.safeParse({ snapshotId: "private" }).success, false);
 });

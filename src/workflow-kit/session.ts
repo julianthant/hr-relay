@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../models/failures/error-catalog.js";
 import { z } from "zod";
 import type { DuoCeremonyGate } from "./duo-ceremony-lease.js";
 import { BrowserSystemIdSchema } from "../rules/identity/ids.js";
@@ -27,6 +28,7 @@ export interface BrowserSessionCloseProof {
 
 export type BrowserSessionCloseReason =
   | "fresh-boundary"
+  | "profile-reset"
   | "poisoned"
   | "parked"
   | "worker-stop"
@@ -55,12 +57,17 @@ export interface WorkerBrowserResource {
   readonly authentication: BrowserAuthenticationHandle;
   readonly driver: BrowserDriver;
   /** A viewport PNG from the resource's owned page; never a raw Page or path. */
-  readonly screenshot?: () => Promise<BrowserScreenshotEvidence>;
+  readonly screenshot?: (sampleLabels?: readonly string[]) => Promise<BrowserScreenshotEvidence>;
   readonly beginDiagnostics?: () => void;
   readonly endDiagnostics?: () => void;
   readonly reset: (input: Readonly<{ signal: AbortSignal }>) => Promise<void>;
   readonly close: (input: Readonly<{ reason: BrowserSessionCloseReason }>) =>
     Promise<BrowserSessionCloseProof>;
+}
+
+export class BrowserProfileStillClosingError extends Error {
+  readonly code = "BROWSER_PROFILE_STILL_CLOSING";
+  constructor(cause: unknown) { super(ERROR_CATALOG.BROWSER_PROFILE_STILL_CLOSING.text, { cause }); this.name = "BrowserProfileStillClosingError"; }
 }
 
 export class BrowserSessionClosureUnprovedError extends AggregateError {
@@ -72,6 +79,7 @@ export class BrowserSessionClosureUnprovedError extends AggregateError {
 
 /** The one concrete browser-creation port: the worker session manager is its only caller; implementations own launch, profile isolation, auth dispatch and provable teardown. */
 export interface WorkerBrowserSessionFactory {
+  readonly probeProfile: (input: Readonly<{ workerId: WorkerId; system: BrowserSystemId; instance?: string; browserMode?: BrowserPresentationMode; signal: AbortSignal }>) => Promise<void>;
   readonly open: (input: Readonly<{
     workerId: WorkerId;
     workflowId: WorkflowId;
@@ -86,6 +94,8 @@ export interface WorkerBrowserSessionFactory {
     duoCeremony: DuoCeremonyGate;
     acquisitionRemainingMs?: () => number;
     claimStaleRequestRecovery?: () => boolean;
+    /** An idle exclusive Reopen names the retained session it replaces. */
+    replacesSessionId?: string;
   }>) => Promise<WorkerBrowserResource>;
 // Duo refusal burns the profile; recreate it before the single retry.
   readonly discardProfile?: (input: Readonly<{

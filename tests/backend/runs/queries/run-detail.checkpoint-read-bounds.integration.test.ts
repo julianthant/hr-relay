@@ -8,12 +8,14 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { makeWorld, queuedEventOf, runRecordOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { assertStatementCounterObserves, countSqliteStatements } from "../../../perf/sqlite-statement-counter.js";
+import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
+import { TimelinePageRequestSchema } from "../../../../src/models/events/timeline.js";
 
 const worlds: DashboardWorld[] = [];
-afterEach(() => { for (const world of worlds.splice(0)) world.dispose(); });
+afterEach(async () => { for (const world of worlds.splice(0)) await world.dispose(); });
 
-it("keeps checkpoint reads fixed as timeline nodes and checkpoint executions grow", () => {
-  const w = makeWorld();
+it("keeps checkpoint reads fixed as timeline nodes and checkpoint executions grow", async () => {
+  const w = await makeWorld();
   worlds.push(w);
   queuedEventOf(w, { seed: 1 });
   for (const attempt of [2, 3]) {
@@ -40,7 +42,16 @@ it("keeps checkpoint reads fixed as timeline nodes and checkpoint executions gro
   }
   store("subject", 2, 1);
   assertStatementCounterObserves({ prepareProbe: () => checkpoints.latest("person-lookup", uuidOf(5001), "subject") });
-  const before = countSqliteStatements(() => buildRunDetail(deps, uuidOf(1)));
+  function countCheckpointRead() {
+    const native = readTimelineRecords(w.timeline, 0, uuidOf(1));
+    w.projection.runFold(uuidOf(1));
+    const timeline = { ...w.timeline, withReadSnapshot: <T>(read: () => T) => read(), highWaterMark: () => native.cursor, page: (input: Parameters<typeof w.timeline.page>[0]) => {
+      const request = TimelinePageRequestSchema.parse(input);
+      return native.records.filter(record => record.cursor > request.after && record.cursor <= (request.through ?? native.cursor)).slice(0, request.limit);
+    } };
+    return countSqliteStatements(() => buildRunDetail({ ...deps, timeline }, uuidOf(1)));
+  }
+  const before = countCheckpointRead();
   for (let index = 0; index < 20; index += 1) {
     const id = `read-${String(index)}`;
     nodes.push({ id, label: id });
@@ -53,7 +64,7 @@ it("keeps checkpoint reads fixed as timeline nodes and checkpoint executions gro
   store("subject", 2, 3);
   nodes.push({ id: "own", label: "Own" }, { id: "missing", label: "Missing" });
   store("own", 1, 1, 1);
-  const after = countSqliteStatements(() => buildRunDetail(deps, uuidOf(1)));
+  const after = countCheckpointRead();
   assert.equal(after.count.statements, before.count.statements);
   assert.equal(after.count.statements, 1);
   assert.equal(after.value.header.title, "Name 3.2");
@@ -68,7 +79,7 @@ it("keeps checkpoint reads fixed as timeline nodes and checkpoint executions gro
   const unneeded = countSqliteStatements(() => buildRunDetail({ ...deps, descriptors: { resolve: () => undefined } }, uuidOf(1)));
   assert.equal(unneeded.count.statements, 0);
 
-  const raw = new DatabaseSync(join(w.stateRoot, "authority.db"));
+  const raw = new DatabaseSync(join(w.stateRoot, "state.db"));
   try {
     const trigger = raw.prepare("SELECT sql FROM sqlite_schema WHERE name='run_checkpoints_immutable'").get();
     assert.equal(typeof trigger?.sql, "string");

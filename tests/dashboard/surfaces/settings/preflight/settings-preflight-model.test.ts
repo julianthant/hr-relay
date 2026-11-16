@@ -12,7 +12,7 @@ import type { EditableSettingsState } from "../../../../../src/dashboard/surface
 import { preflightVerdict } from "../../../../../src/dashboard/surfaces/shell/preflight-popover-model.js";
 import { FingerprintSchema } from "../../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
-import { FIXTURE_EDITABLE_SETTINGS } from "../../../../parity/helpers/fixture-settings.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../../mocks/helpers/fixture-settings.js";
 import { createPreflightHarness } from "../../../../support/fixtures/preflight-seams.js";
 
 import type { DashboardCommandBinding } from "../../../../../src/dashboard/app/dashboard-app-model.js";
@@ -72,7 +72,7 @@ for(const presentation of ["settings","compact"] as const)for(const outcome of [
   const copy=[...host.querySelectorAll(rowSelector)].map(row=>row.textContent);
   const assertPending=()=>{
     assert.equal(button.disabled,true);assert.equal(button.getAttribute("aria-busy"),"true");assert.equal(button.textContent,"Run preflight");
-    assert.match(host?.textContent??"",/Checking readiness/u);assert.doesNotMatch(host?.textContent??"",/Ready to run|Previous result|Loading readiness/u);
+    assert.match(host?.textContent??"",/Checking readiness/u);assert.doesNotMatch(host?.textContent??"",/Ready to run|Readiness check is out of date|Loading readiness/u);
     assert.deepEqual([...host?.querySelectorAll(selector)??[]],retained);
     assert.deepEqual([...host?.querySelectorAll(rowSelector)??[]].map(row=>row.textContent),copy);
     assert.equal(host?.querySelector("time")?.getAttribute("datetime"),served.checkedAt);
@@ -83,10 +83,10 @@ for(const presentation of ["settings","compact"] as const)for(const outcome of [
   assert.equal(button.disabled,false);assert.notEqual(button.getAttribute("aria-busy"),"true");
   assert.deepEqual([...host.querySelectorAll(selector)],retained);
   if(outcome==="failure"){
-    assert.match(host.textContent??"",/Previous result|Readback unavailable/u);
+    assert.match(host.textContent??"",/Readiness check is out of date|Readback unavailable/u);
     assert.match(host.textContent??"",/Previous check/u);
     assert.doesNotMatch(host.textContent??"",/Ready to run/u);
-  }else assert.doesNotMatch(host.textContent??"",/Previous result|Checking readiness/u);
+  }else assert.doesNotMatch(host.textContent??"",/Readiness check is out of date|Checking readiness/u);
 });
 it("Setup and doctor subscribers show the same report and command readback, then expire together",async()=>{
   vi.useFakeTimers();vi.setSystemTime(now);
@@ -97,7 +97,7 @@ it("Setup and doctor subscribers show the same report and command readback, then
   host=document.createElement("div");document.body.append(host);
   await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:[createElement(Subscriber,{key:"setup"}),createElement(Subscriber,{key:"doctor"})]})}));});
   const sections=host.children;assert.equal(sections.length,2);assert.equal(sections[0].textContent,sections[1].textContent);assert.match(host.textContent??"",/Last checked/u);
-  const button=[...host.querySelectorAll("button")].find(candidate=>candidate.textContent==="Run preflight");assert.ok(button);await act(async()=>button.click());assert.equal(reruns,1);assert.ok(reads>=3);assert.equal(sections[0].textContent,sections[1].textContent);
+  const button=[...host.querySelectorAll("button")].find(candidate=>candidate.textContent==="Run preflight");assert.ok(button);await act(async()=>button.click());assert.equal(reruns,1);assert.equal(reads,2);assert.equal(sections[0].textContent,sections[1].textContent);
   unavailable=true;await act(async()=>{await vi.advanceTimersByTimeAsync(60_000);});
   assert.equal(sections[0].textContent,sections[1].textContent);assert.match(host.textContent??"",/Expired on server/u);assert.equal(host.querySelectorAll("time").length,2);
 });

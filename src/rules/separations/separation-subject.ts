@@ -36,6 +36,7 @@ export const SeparationSubjectResolutionSchema = z.discriminatedUnion("state", [
 export type SeparationSubjectResolution = z.infer<typeof SeparationSubjectResolutionSchema>;
 
 export function resolveSeparationSubject(input: Readonly<{
+  operatorEmployeeId?: string;
   documentNumber: string;
   /** The name the separation form carries, verbatim. */
   employeeName: string;
@@ -45,6 +46,12 @@ export function resolveSeparationSubject(input: Readonly<{
   nameSelection: UcpathPersonSelection;
 }>): SeparationSubjectResolution {
   const candidateCount = input.nameSelection.candidateEids.length;
+  if (input.operatorEmployeeId !== undefined) {
+    return SeparationSubjectResolutionSchema.parse({ state: "resolved", subject: {
+      emplId: EidSchema.parse(input.operatorEmployeeId), emplIdSource: "operator-entered",
+      searchedName: input.employeeName, candidateCount,
+    } });
+  }
   if (input.documentEid.state === "present") {
     return SeparationSubjectResolutionSchema.parse({
       state: "resolved",

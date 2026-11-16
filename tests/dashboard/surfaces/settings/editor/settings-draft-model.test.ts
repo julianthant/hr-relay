@@ -7,18 +7,18 @@ import { draftError as draftError_m1,patchFromSettingsDraft as patchFromSettings
 import { performancePresentation as performancePresentation_m1,performanceSectionGroups as performanceSectionGroups_m1 } from "../../../../../src/dashboard/surfaces/settings/general/settings-performance-model.js";
 import { settingNote as settingNote_m1,settingTitle as settingTitle_m1 } from "../../../../../src/dashboard/surfaces/settings/settings-presentation.js";
 import type { EditableSettingsLeafWire as EditableSettingsLeafWire_m1 } from "../../../../../src/models/dashboard/settings-editor.js";
-import { fixtureSettingsDocument as fixtureSettingsDocument_m1 } from "../../../../parity/helpers/fixture-settings.js";
+import { fixtureSettingsDocument as fixtureSettingsDocument_m1 } from "../../../../mocks/helpers/fixture-settings.js";
 import { mountSettingsHarness as mountSettingsHarness_m0,syntheticSettingsAuthority as syntheticSettingsAuthority_m0 } from '../../../../support/helpers/dashboard/settings-harness.js';
 
 {
 
-const cleanups: (() => void)[] = [];
-const _afterEachFixture0 = () => { vi.useRealTimers(); for (const close of cleanups.splice(0).reverse()) close(); };
+const cleanups: (() => void | Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { vi.useRealTimers(); for (const close of cleanups.splice(0).reverse()) await close(); };
 describe_m0('confirmed Settings feedback through the current editor', () => {
 afterEach_m0(_afterEachFixture0);
 
   it_m0('names atomic route saves with their visible system label', async () => {
-    const authority = syntheticSettingsAuthority_m0(); cleanups.push(authority.close);
+    const authority = await syntheticSettingsAuthority_m0(); cleanups.push(authority.close);
     const { controller, notices, close } = await mountSettingsHarness_m0(authority); cleanups.push(close);
     vi.useFakeTimers();
     const leaf = controller().leaves.find(candidate => candidate.path === 'urls.crm.prod');

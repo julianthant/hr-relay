@@ -1,9 +1,8 @@
+import { FingerprintSchema, type Fingerprint } from "../../../rules/identity/ids.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 
 import { readFileSync } from "node:fs";
-import {
-  compileWorkflow,
-  composeWorkflowModule,
-} from "../../../workflow-kit/workflow-definition.js";
+import { compileWorkflow, composeWorkflowModule, type AnyWorkflowDefinition, type WorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import { workflowProjections } from "../../../workflow-kit/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { PendingImplBindingsSchema } from "../../../workflow-kit/validation/impl-bindings.js";
@@ -18,41 +17,68 @@ import {
   workflowRoleRegistry,
 } from "../../../workflow-kit/validation/workflow-module-audit.js";
 import { taskStoreRegistry } from "./task-registry.js";
-import { personLookupWorkflow } from "../../../workflows/person-lookup/workflow.js";
-import { separationsWorkflow } from "../../../workflows/separations/workflow.js";
+import { CHILD_ONLY_WORKFLOWS, createWorkflowDescriptorRegistry, PUBLIC_WORKFLOWS, WORKFLOW_REGISTRATIONS } from "../../../workflows/registry.js";
 
-
-export const personLookupModule = composeWorkflowModule(
-  compileWorkflow(personLookupWorkflow),
-  taskStoreRegistry.stores,
-);
-export const separationsModule = composeWorkflowModule(
-  compileWorkflow(separationsWorkflow),
-  taskStoreRegistry.stores,
-);
-export const WORKFLOW_MODULES = Object.freeze([
-  personLookupModule,
-  separationsModule,
-]);
-
-/** The registered module for one workflow id, or a loud refusal naming the registry. */
-export function workflowModuleOf(workflowId: string): (typeof WORKFLOW_MODULES)[number] {
-  const module = WORKFLOW_MODULES.find((candidate) => String(candidate.descriptor.id) === workflowId);
-  if (module === undefined) {
-    throw new Error(
-      `workflow ${workflowId} is not registered; registered: ${WORKFLOW_MODULES.map((candidate) => String(candidate.descriptor.id)).join(", ")}`,
-    );
-  }
-  return module;
+/** Binds one registered definition to the exact stores its contracts name. */
+export function composeRegisteredWorkflow(definition: AnyWorkflowDefinition): WorkflowModule {
+  return composeWorkflowModule(compileWorkflow(definition), taskStoreRegistry.stores);
 }
 
-export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = Object.freeze(
-  WORKFLOW_MODULES.map((module) => module.descriptor),
-);
+export const WORKFLOW_MODULES = Object.freeze(PUBLIC_WORKFLOWS.map(({ definition }) => composeRegisteredWorkflow(definition)));
+export const CHILD_ONLY_WORKFLOW_MODULES = Object.freeze(CHILD_ONLY_WORKFLOWS.map(({ definition }) => composeRegisteredWorkflow(definition)));
+export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
+  publicEntries: readonly PublicModule[],
+  childOnlyEntries: readonly WorkflowModule[],
+) {
+  const publicModules = Object.freeze([...publicEntries]);
+  const modules = new Map([...publicModules, ...childOnlyEntries].map(module => [String(module.descriptor.id), module]));
+  const descriptors = createWorkflowDescriptorRegistry(
+    publicModules.map(module => module.descriptor),
+    childOnlyEntries.map(module => module.descriptor),
+  );
+  const publicRegistry = Object.fromEntries(publicModules.map(module => [module.descriptor.id, module]));
+  Object.setPrototypeOf(publicRegistry, null);
+  return Object.freeze({
+    publicModules,
+    descriptors: descriptors.descriptors,
+    publicRegistry: Object.freeze(publicRegistry),
+    moduleOf(workflowId: string): PublicModule {
+      const module = publicModules.find(candidate => candidate.descriptor.id === workflowId);
+      if (module === undefined) {
+        throw new Error(
+          `workflow ${workflowId} is not registered; registered: ${publicModules.map(candidate => String(candidate.descriptor.id)).join(", ")}`,
+        );
+      }
+      return module;
+    },
+    childModuleOf(parentId: string, workflowId: string): WorkflowModule {
+      const descriptor = descriptors.resolveChild(parentId, workflowId);
+      const module = modules.get(workflowId);
+      if (module === undefined || module.descriptor !== descriptor) throw new Error(`workflow ${workflowId} module does not match its admitted descriptor`);
+      return module;
+    },
+  });
+}
 
-export const SERVER_REGISTRY = Object.freeze(Object.fromEntries(
-  WORKFLOW_MODULES.map((module) => [module.descriptor.id, module]),
-));
+const registry = createWorkflowRegistry(WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES);
+/** Resolve a public workflow, or refuse with its registered alternatives. */
+export const workflowModuleOf = registry.moduleOf;
+
+export function workflowQueueCapabilities(workflowId: string): Readonly<{
+  sessionItemScope?: boolean;
+  groupedBatchLayout?: boolean;
+  retryBatchMembers?: boolean;
+}> | undefined {
+  const registration = WORKFLOW_REGISTRATIONS.find(({ definition }) => String(definition.id) === workflowId);
+  return registration !== undefined && "queueCapabilities" in registration ? registration.queueCapabilities : undefined;
+}
+
+export const childWorkflowModuleOf = registry.childModuleOf;
+
+export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = registry.descriptors;
+export const READABLE_WORKFLOW_MODULES = Object.freeze([...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES]);
+
+export const SERVER_REGISTRY = registry.publicRegistry;
 
 
 export const PENDING_IMPL_BINDINGS_PATH = "src/backend/app/registries/pending-impl-bindings.json";
@@ -83,16 +109,19 @@ export const WORKFLOW_IDS_BY_CODE = workflowCodeRegistry(DESCRIPTORS);
 
 
 export function auditImplBindings(bindings: PendingImplBindings): readonly string[] {
+  const allModules = [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES];
   const violations: string[] = [
-    ...auditWorkflowModuleBindings(WORKFLOW_MODULES),
-    ...auditWorkflowModuleRoles(WORKFLOW_MODULES),
-    ...auditWorkflowCodes(DESCRIPTORS),
+    ...auditWorkflowModuleBindings(allModules),
+    ...auditWorkflowModuleRoles(allModules),
+    ...auditWorkflowCodes(allModules.map(module => module.descriptor)),
+
   ];
   const bound = new Set(boundTaskIds());
   const pending = new Map(bindings.tasks.map((entry) => [String(entry.taskId), entry]));
   const used = new Set<string>();
 
-  for (const descriptor of DESCRIPTORS) {
+  for (const { descriptor } of allModules) {
+
     for (const contract of workflowProjections(descriptor).contracts) {
       const id = String(contract.id);
       used.add(id);
@@ -116,4 +145,10 @@ export function auditImplBindings(bindings: PendingImplBindings): readonly strin
     }
   }
   return violations;
+}
+
+export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint {
+  return FingerprintSchema.parse(
+    sha256Hex(`hrauto:descriptor-set:v1\0${[...fingerprints].sort().join("\n")}`),
+  );
 }

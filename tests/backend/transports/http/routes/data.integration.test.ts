@@ -16,7 +16,7 @@ afterEach(cleanup);
 describe("read-only Context Data projection", () => {
 
   it("serves prior-run data through the production section route with exact source identity", async () => {
-    const current = world();
+    const current = await world();
     const source = sourceRun(current, { seed: 21, attempt: 1, claimGeneration: 1 });
     const laterBase = runRecordOf({ seed: 22, attempt: 2, claimGeneration: 1 });
     const later = RunRecordSchema.parse({

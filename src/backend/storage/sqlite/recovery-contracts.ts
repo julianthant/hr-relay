@@ -1,18 +1,7 @@
 import { ProtectedSettingsPresenceEntriesSchema } from "../../../models/config/protected-settings.js";
 import { z } from "zod";
 import { AuthorityTableNameSchema, ProjectionTableNameSchema, AuthorityUpgradePhaseSchema } from "../../../models/config/authority.js";
-import {
-  ActorIdSchema,
-  CommandIdSchema,
-  ConfigSnapshotIdSchema,
-  FingerprintSchema,
-  ItemIdSchema,
-  IsoInstantSchema,
-  PositiveIntSchema,
-  RunIdSchema,
-  TraceIdSchema,
-  WorkflowIdSchema,
-} from "../../../rules/identity/ids.js";
+import { CommandIdSchema, ConfigSnapshotIdSchema, FingerprintSchema, ItemIdSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, TraceIdSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 import {
   InstanceSelectionSchema,
   RunPrioritySchema,
@@ -22,12 +11,11 @@ import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./mi
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-const BackupSchemaVersionSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]);
+const BackupSchemaVersionSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]);
 
 export const AuthorityPendingCountsSchema = z.strictObject({
   pendingCommands: NonNegativeIntSchema,
   unresolvedWriteIntents: NonNegativeIntSchema,
-  leases: NonNegativeIntSchema,
   providerReservations: NonNegativeIntSchema,
   artifactOutbox: NonNegativeIntSchema,
 });
@@ -40,6 +28,8 @@ export const AuthorityInvariantResultSchema = z.strictObject({
 export const AuthorityCopyInspectionSchema = z.strictObject({
   applicationId: z.literal(AUTHORITY_APPLICATION_ID),
   schemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+  installationId: z.uuid(),
+  profileId: z.uuid(),
   pageCount: PositiveIntSchema,
   authorityGeneration: NonNegativeIntSchema,
   authorityContentFingerprint: FingerprintSchema,
@@ -59,6 +49,8 @@ export const BackupVerificationSchema = z.strictObject({
   observedAt: IsoInstantSchema,
   applicationId: z.literal(AUTHORITY_APPLICATION_ID),
   schemaVersion: BackupSchemaVersionSchema,
+  installationId: z.uuid().optional(),
+  profileId: z.uuid().optional(),
   pageCount: PositiveIntSchema,
   authorityGeneration: NonNegativeIntSchema,
   authorityContentFingerprint: FingerprintSchema,
@@ -74,6 +66,8 @@ const AuthorityBackupManifestBaseSchema = z.strictObject({
   sourceDatabaseIdentity: FingerprintSchema,
   applicationId: z.literal(AUTHORITY_APPLICATION_ID),
   schemaVersion: BackupSchemaVersionSchema,
+  installationId: z.uuid().optional(),
+  profileId: z.uuid().optional(),
   pageCount: PositiveIntSchema,
   authorityGeneration: NonNegativeIntSchema,
   authorityContentFingerprint: FingerprintSchema,
@@ -87,7 +81,10 @@ function requireObservedBackupIdentity(
   manifest: z.infer<typeof AuthorityBackupManifestBaseSchema>,
   context: z.RefinementCtx,
 ): void {
-  for (const field of ["applicationId", "schemaVersion", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
+  if (manifest.schemaVersion >= 7 && (manifest.installationId === undefined || manifest.profileId === undefined)) {
+    context.addIssue({ code: "custom", message: "profile backup binding is required" });
+  }
+  for (const field of ["applicationId", "schemaVersion", "installationId", "profileId", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
     if (manifest[field] !== manifest.verification[field]) {
       context.addIssue({ code: "custom", path: ["verification", field], message: `${field} must equal the value observed from the backup copy` });
     }
@@ -95,11 +92,24 @@ function requireObservedBackupIdentity(
 }
 
 /** DB-only current writer shape. Credentials have no backup representation. */
-export const AuthorityBackupManifestV3Schema = AuthorityBackupManifestBaseSchema.extend({
-  manifestVersion: z.literal(3),
+export const AuthorityBackupManifestV4Schema = AuthorityBackupManifestBaseSchema.extend({
+  manifestVersion: z.literal(4),
+  schemaVersion: z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  installationId: z.uuid(),
+  profileId: z.uuid(),
+  verification: BackupVerificationSchema.extend({ installationId: z.uuid(), profileId: z.uuid() }),
 }).superRefine(requireObservedBackupIdentity);
 
-export const AuthorityBackupManifestSchema = AuthorityBackupManifestV3Schema;
+export const UnboundPredecessorBackupManifestSchema = AuthorityBackupManifestBaseSchema.extend({
+  manifestVersion: z.literal(3),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]),
+  installationId: z.undefined().optional(),
+  profileId: z.undefined().optional(),
+  verification: BackupVerificationSchema.extend({ installationId: z.undefined().optional(), profileId: z.undefined().optional() }),
+}).superRefine(requireObservedBackupIdentity);
+
+export const AuthorityBackupManifestSchema = AuthorityBackupManifestV4Schema;
+export const StoppedAuthorityBackupManifestSchema = z.union([AuthorityBackupManifestSchema, UnboundPredecessorBackupManifestSchema]);
 
 export const AuthorityBackupRequestSchema = z.strictObject({
   trigger: z.enum(["interval", "schema-migration", "external-write", "graceful-drain", "operator"]),
@@ -112,7 +122,7 @@ export const AuthorityBackupRunReportSchema = z.strictObject({
   finalGeneration: NonNegativeIntSchema,
   coalescedRequests: PositiveIntSchema,
   followUpPerformed: z.boolean(),
-  manifests: z.array(AuthorityBackupManifestSchema).min(1).max(2),
+  manifests: z.array(StoppedAuthorityBackupManifestSchema).min(1).max(2),
 });
 
 export const StorageHealthCauseSchema = z.strictObject({
@@ -388,45 +398,8 @@ export const StorageDoctorReportSchema = z.strictObject({
   previousLocationBackups: z.array(PreviousLocationBackupSchema).optional(),
 });
 
-export const RecoveryProcessLockStateSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("stopped"), generation: PositiveIntSchema }),
-  z.strictObject({ state: z.literal("active"), generation: PositiveIntSchema, pid: PositiveIntSchema }),
-]);
-
-export const RecoveryRuntimeLockSnapshotSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  runtimeNamespace: z.literal("hrauto-rebuild"),
-  runtimeGeneration: PositiveIntSchema,
-  sourceDatabaseIdentity: FingerprintSchema,
-  recordedAt: IsoInstantSchema,
-  processLocks: z.strictObject({
-    server: RecoveryProcessLockStateSchema,
-    workers: RecoveryProcessLockStateSchema,
-    geocode: RecoveryProcessLockStateSchema,
-    "live-smoke": RecoveryProcessLockStateSchema,
-  }),
-});
-
-export const StoppedSystemProofSchema = z.strictObject({
-  state: z.literal("stopped"),
-  proofId: z.string().uuid(),
-  observedAt: IsoInstantSchema,
-  observedBy: ActorIdSchema,
-  sourceDatabaseIdentity: FingerprintSchema,
-  runtimeNamespace: z.literal("hrauto-rebuild"),
-  runtimeGeneration: PositiveIntSchema,
-  runtimeStateFingerprint: FingerprintSchema,
-  processLockGenerations: z.strictObject({
-    server: PositiveIntSchema,
-    workers: PositiveIntSchema,
-    geocode: PositiveIntSchema,
-    "live-smoke": PositiveIntSchema,
-  }),
-});
-
 export const OfflineRestoreRequestSchema = z.strictObject({
   manifestPath: z.string().min(1),
-  stoppedSystemProof: StoppedSystemProofSchema,
 });
 
 export const OfflineRestoreReportSchema = z.strictObject({
@@ -436,7 +409,7 @@ export const OfflineRestoreReportSchema = z.strictObject({
   backupFileName: SafeFileNameSchema,
   suspectFileName: SafeFileNameSchema,
   sourceDatabaseIdentity: FingerprintSchema,
-  schemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+  schemaVersion: BackupSchemaVersionSchema,
   authorityGeneration: NonNegativeIntSchema,
   projectionRebuilt: z.boolean(),
   authorityPreservedAcrossProjectionRebuild: z.literal(true),
@@ -445,7 +418,7 @@ export const OfflineRestoreReportSchema = z.strictObject({
 export type AuthorityPendingCounts = z.infer<typeof AuthorityPendingCountsSchema>;
 export type AuthorityCopyInspection = z.infer<typeof AuthorityCopyInspectionSchema>;
 export type AuthorityBackupManifest = z.infer<typeof AuthorityBackupManifestSchema>;
-export type AuthorityBackupManifestV3 = z.infer<typeof AuthorityBackupManifestV3Schema>;
+export type StoppedAuthorityBackupManifest = z.infer<typeof StoppedAuthorityBackupManifestSchema>;
 export type AuthorityBackupRequest = z.infer<typeof AuthorityBackupRequestSchema>;
 export type AuthorityBackupRunReport = z.infer<typeof AuthorityBackupRunReportSchema>;
 export type StorageHealthCause = z.infer<typeof StorageHealthCauseSchema>;
@@ -456,6 +429,4 @@ export type SpanAuthorityReconciliation = z.infer<typeof SpanAuthorityReconcilia
 export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;
 export type RestoreCandidate = z.infer<typeof RestoreCandidateSchema>;
 export type StorageDoctorReport = z.infer<typeof StorageDoctorReportSchema>;
-export type RecoveryRuntimeLockSnapshot = z.infer<typeof RecoveryRuntimeLockSnapshotSchema>;
-export type StoppedSystemProof = z.infer<typeof StoppedSystemProofSchema>;
 export type OfflineRestoreReport = z.infer<typeof OfflineRestoreReportSchema>;

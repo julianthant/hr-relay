@@ -2,9 +2,6 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import {
 activityPeopleEvidenceItems,
-activityPeriodOf,
-activityPeriodRange,
-activityRangeLabel,
 activityRangeValue,
 parseActivityRange,
 resolveActivityWho,
@@ -12,6 +9,7 @@ type QueueRowIdentity,
 } from "../../../../src/dashboard/surfaces/activity/activity-model.js";
 import { buildActivityVolumeBoundarySkeleton } from "../../../../src/models/dashboard/activity-volume.js";
 import {
+ACTIVITY_MEDIAN_ABSENT_REASON,
 ActivityReportWireSchema,
 type ActivityReportWire,
 } from "../../../../src/models/dashboard/activity.js";
@@ -30,12 +28,25 @@ function report(overrides: Record<string, unknown> = {}): ActivityReportWire {
     inFlightRuns: 2,
     people: { state: "present", distinct: 1, evidenceRows: 2 },
     completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
-    days: [{ day: "2026-09-08", runs: 1 }, { day: "2026-09-09", runs: 1 }],
+    outcomeSplit: { done: 0, failed: 0, attention: 0 },
+    typicalMedian: { measuredRuns: 0, medianMs: { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON } },
+    days: ["2026-09-08", "2026-09-09"].map(day => ({
+      day, runs: 1, outcomes: { done: 0, failed: 0, attention: 0 },
+      typicalTime: { measuredRuns: 0, medianMs: { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON } },
+    })),
     workflows: [{
       workflowId: "separations",
       registration: { state: "registered", code: "sp", label: "Separations", categoryId: "employment" },
       runs: 2,
       completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
+      needsAttention: 0, typicalTime: { measure: "successful-root-run-mean", measuredRuns: 0, unmeasuredRuns: 0, meanMs: { state: "absent", reason: "no successful root run in range carries a duration" } },
+      typicalMedian: { measuredRuns: 0, medianMs: { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON } },
+      outcomes: { done: 0, failed: 0, attention: 0 },
+      days: ["2026-09-08", "2026-09-09"].map(day => ({
+        day, runs: 1, outcomes: { done: 0, failed: 0, attention: 0 },
+        typicalTime: { measuredRuns: 0, medianMs: { state: "absent", reason: ACTIVITY_MEDIAN_ABSENT_REASON } },
+      })),
+      failedAt: [],
       failed: 0,
       cancelled: 0,
       partial: 0,
@@ -106,15 +117,12 @@ describe("Activity consumes the served summary boundary", () => {
     });
   });
 
-  it("keeps a valid URL range explicit and refuses invalid explicit selections without substituting month-to-date", () => {
+  it("keeps a valid URL range explicit and refuses invalid explicit selections; an empty selection opens on the last 7 days", () => {
     const valid = parseActivityRange("2026-09-08..2026-09-09", "2026-09-10");
     assert.deepEqual(valid, { from: "2026-09-08", to: "2026-09-09" });
     assert.equal(activityRangeValue(valid), "2026-09-08..2026-09-09");
-    assert.equal(activityRangeLabel(valid.from, valid.to), "09/08/2026 – 09/09/2026");
-    assert.deepEqual(activityPeriodRange("week", "2026-09-10"), { from: "2026-09-06", to: "2026-09-10" });
-    assert.equal(activityPeriodOf({ from: "2026-09-06", to: "2026-09-10" }, "2026-09-10"), "week");
     assert.deepEqual(parseActivityRange("", "2026-09-10"), {
-      from: "2026-09-01",
+      from: "2026-09-04",
       to: "2026-09-10",
     });
     for (const input of ["2026-09-10..2026-09-08", "2026-02-30..2026-03-01", "2026-09-08..", "2026-09-08..2026-09-09..extra"]) {

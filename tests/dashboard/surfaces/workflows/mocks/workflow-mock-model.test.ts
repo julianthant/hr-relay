@@ -1,3 +1,4 @@
+import { mockReviewProps } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { createElement as createElement_m1,createElement as createElement_m6 } from "react";
 import { renderToStaticMarkup as renderToStaticMarkup_m1,renderToStaticMarkup as renderToStaticMarkup_m6 } from "react-dom/server";
 import { describe as describe_m0,describe as describe_m1,describe as describe_m2,describe as describe_m3,describe as describe_m4,describe as describe_m5,describe as describe_m6,expect as expect_m0,expect as expect_m1,expect as expect_m2,expect as expect_m3,expect as expect_m4,expect as expect_m5,expect as expect_m6,it as it_m0,it as it_m1,it as it_m2,it as it_m3,it as it_m4,it as it_m5,it as it_m6 } from "vitest";
@@ -6,13 +7,14 @@ import { activeCount as activeCount_m4,workflowStatusCounts as workflowStatusCou
 import { OCR_DOCUMENT_FIXTURES as OCR_DOCUMENT_FIXTURES_m1,OCR_DOCUMENT_FIXTURES as OCR_DOCUMENT_FIXTURES_m6,documentSourcePages as documentSourcePages_m1,documentSourcePages as documentSourcePages_m2,documentSourcePages as documentSourcePages_m6,mockDocumentFixture as mockDocumentFixture_m1 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-document-model.js";
 import { editableMockDraft as editableMockDraft_m2,editableMockDraft as editableMockDraft_m4,manualReadFields as manualReadFields_m2,manualReadFields as manualReadFields_m4,mockStepInputError as mockStepInputError_m2,mockStepInputError as mockStepInputError_m4,mockStepIsLocked as mockStepIsLocked_m2,mockStepIsRequiredSignIn as mockStepIsRequiredSignIn_m2 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-manual-model.js";
 import { MOCK_WORKFLOWS as MOCK_WORKFLOWS_m3,MOCK_WORKFLOWS as MOCK_WORKFLOWS_m4,mockWorkflow as mockWorkflow_m2,mockWorkflow as mockWorkflow_m3,mockWorkflow as mockWorkflow_m4,type MockWorkflowId as MockWorkflowId_m4 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { approveMockRun as approveMockRun_m0,approveMockRun as approveMockRun_m1,approveMockRun as approveMockRun_m2,approveMockRun as approveMockRun_m3,approveMockRun as approveMockRun_m4,approveMockRun as approveMockRun_m6,initialMockDraft as initialMockDraft_m0,initialMockDraft as initialMockDraft_m2,initialMockDraft as initialMockDraft_m3,initialMockDraft as initialMockDraft_m4,initialMockDraft as initialMockDraft_m5,initialMockDraft as initialMockDraft_m6,mockApprovalError as mockApprovalError_m2,mockConfirmationFacts as mockConfirmationFacts_m2,mockConfirmationFacts as mockConfirmationFacts_m3,mockDeletionCopy as mockDeletionCopy_m3,mockDeletionIds as mockDeletionIds_m1,mockDeletionIds as mockDeletionIds_m5,mockDraftError as mockDraftError_m2,mockDraftError as mockDraftError_m3,mockInputEntries as mockInputEntries_m3,mockLaunchCount as mockLaunchCount_m3,mockNeedsReview as mockNeedsReview_m3,mockOathDuplicate as mockOathDuplicate_m3,mockOcrReadSteps as mockOcrReadSteps_m2,mockPipeline as mockPipeline_m3,mockQueueCounts as mockQueueCounts_m3,mockQueueView as mockQueueView_m3,mockRetrySource as mockRetrySource_m1,mockRetrySource as mockRetrySource_m5,mockRunLog as mockRunLog_m0,mockRunLog as mockRunLog_m2,mockRunLog as mockRunLog_m3,mockRunLog as mockRunLog_m4,mockRunLog as mockRunLog_m6,mockRunPipeline as mockRunPipeline_m3,mockRunPipeline as mockRunPipeline_m4,mockRunsForDraft as mockRunsForDraft_m0,mockRunsForDraft as mockRunsForDraft_m1,mockRunsForDraft as mockRunsForDraft_m2,mockRunsForDraft as mockRunsForDraft_m3,mockRunsForDraft as mockRunsForDraft_m4,mockRunsForDraft as mockRunsForDraft_m5,mockRunsForDraft as mockRunsForDraft_m6,mockSelectableSteps as mockSelectableSteps_m3,mockStepState as mockStepState_m2,mockStepState as mockStepState_m3,mockStepState as mockStepState_m4,mockWorkflowCounts as mockWorkflowCounts_m4,seedMockRuns as seedMockRuns_m1,seedMockRuns as seedMockRuns_m3,seedMockRuns as seedMockRuns_m4,seedMockRuns as seedMockRuns_m6,type MockDraft as MockDraft_m3,type MockDraft as MockDraft_m4,type MockRun as MockRun_m4 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { approveMockRun as approveMockRun_m0,approveMockRun as approveMockRun_m1,approveMockRun as approveMockRun_m2,approveMockRun as approveMockRun_m3,approveMockRun as approveMockRun_m4,approveMockRun as approveMockRun_m6,initialMockDraft as initialMockDraft_m0,initialMockDraft as initialMockDraft_m2,initialMockDraft as initialMockDraft_m3,initialMockDraft as initialMockDraft_m4,initialMockDraft as initialMockDraft_m5,initialMockDraft as initialMockDraft_m6,mockApprovalError as mockApprovalError_m2,mockConfirmationFacts as mockConfirmationFacts_m2,mockConfirmationFacts as mockConfirmationFacts_m3,mockDeletionCopy as mockDeletionCopy_m3,mockDeletionIds as mockDeletionIds_m1,mockDeletionIds as mockDeletionIds_m5,mockDraftError as mockDraftError_m2,mockDraftError as mockDraftError_m3,mockInputEntries as mockInputEntries_m3,mockLaunchCount as mockLaunchCount_m3,mockNeedsReview as mockNeedsReview_m3,mockOathDuplicate as mockOathDuplicate_m3,mockOcrReadSteps as mockOcrReadSteps_m2,mockPipeline as mockPipeline_m3,mockQueueCounts as mockQueueCounts_m3,mockQueueView as mockQueueView_m3,mockRetrySource as mockRetrySource_m1,mockRetrySource as mockRetrySource_m5,mockRunLog as mockRunLog_m0,mockRunLog as mockRunLog_m2,mockRunLog as mockRunLog_m3,mockRunLog as mockRunLog_m4,mockRunLog as mockRunLog_m6,mockRunPipeline as mockRunPipeline_m3,mockRunPipeline as mockRunPipeline_m4,mockRunsForDraft as mockRunsForDraft_m0,mockRunsForDraft as mockRunsForDraft_m1,mockRunsForDraft as mockRunsForDraft_m2,mockRunsForDraft as mockRunsForDraft_m3,mockRunsForDraft as mockRunsForDraft_m4,mockRunsForDraft as mockRunsForDraft_m5,mockRunsForDraft as mockRunsForDraft_m6,mockSelectableSteps as mockSelectableSteps_m3,mockStepState as mockStepState_m2,mockStepState as mockStepState_m3,mockStepState as mockStepState_m4,mockWorkflowCounts as mockWorkflowCounts_m4,seedMockRuns as seedMockRuns_m1,seedMockRuns as seedMockRuns_m3,seedMockRuns as seedMockRuns_m4,seedMockRuns as seedMockRuns_m6,type MockDraft as MockDraft_m3,type MockDraft as MockDraft_m4,type MockRun as MockRun_m4 ,mockQueueStatus as mockQueueStatus_m7,retryMockFault as retryMockFault_m7} from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import { mockOperationValue as mockOperationValue_m4,mockOperationValue as mockOperationValue_m6,mockOperations as mockOperations_m4 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-operation-model.js";
 import { mockQueueSurface as mockQueueSurface_m1 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 import { completeMockReviewAction as completeMockReviewAction_m5 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-action-model.js";
 import { discardMockReview as discardMockReview_m4,editReviewRecord as editReviewRecord_m1,editReviewRecord as editReviewRecord_m2,editReviewRecord as editReviewRecord_m4,editReviewRecord as editReviewRecord_m6,reviewCanApprove as reviewCanApprove_m2,reviewRecords as reviewRecords_m1,reviewRecords as reviewRecords_m2,reviewRecords as reviewRecords_m3,reviewRecords as reviewRecords_m4,reviewRecords as reviewRecords_m5,reviewRecords as reviewRecords_m6,reviewValue as reviewValue_m6,seedReviewRecords as seedReviewRecords_m2,seedReviewRecords as seedReviewRecords_m6,updateMockReview as updateMockReview_m1,updateMockReview as updateMockReview_m2,updateMockReview as updateMockReview_m4,updateMockReview as updateMockReview_m6 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
-import { reviewFieldBlocks as reviewFieldBlocks_m6,reviewFieldGroups as reviewFieldGroups_m6,reviewSourcePages as reviewSourcePages_m3,reviewSourcePages as reviewSourcePages_m6 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-source-model.js";
-import { WorkflowMockReview as WorkflowMockReview_m1,WorkflowMockReview as WorkflowMockReview_m6 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review.js";
+import { reviewFieldBlocks as reviewFieldBlocks_m6,reviewFieldGroups as reviewFieldGroups_m6 } from "../../../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
+import { reviewSourcePages as reviewSourcePages_m3,reviewSourcePages as reviewSourcePages_m6 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-source-model.js";
+import { RecordReview as RecordReview_m1,RecordReview as RecordReview_m6 } from "../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 
 
 {
@@ -49,7 +51,7 @@ describe_m1("document-complete OCR previews", () => {
   });
   it_m1("renders every document response field, including blank, boolean and unresolved values", () => {
     for (const run of seedMockRuns_m1().filter(run => run.workflowId === "ocr")) for (const record of reviewRecords_m1(run)) {
-      const markup = renderToStaticMarkup_m1(createElement_m1(WorkflowMockReview_m1, { run: { ...run, records: [record] }, onChange: () => {}, onApprove: () => {}, onRestore: () => {} }));
+      const markup = renderToStaticMarkup_m1(createElement_m1(RecordReview_m1, mockReviewProps({ run: { ...run, records: [record] }, onChange: () => {}, onApprove: () => {}, onRestore: () => {} })));
       for (const field of record.fields) expect_m1(markup).toContain(field.label.replaceAll("&", "&amp;"));
       expect_m1(record.fields.some(field => field.value === "")).toBe(true);
     }
@@ -93,7 +95,8 @@ describe_m1("document-complete OCR previews", () => {
     expect_m1(() => mockDeletionIds_m1(runs, "missing")).toThrow("MOCK_DELETE_TARGET_MISSING");
   });
   it_m1("uses stable uppercase workflow aliases with eight decimal digits without changing command IDs", () => {
-    const rows = seedMockRuns_m1().map(run => mockQueueSurface_m1(run, "2026-08-03"));
+    const runs = seedMockRuns_m1();
+    const rows = runs.map(run => mockQueueSurface_m1(run, "2026-08-03T16:10:00.000Z", runs.find(parent => parent.id === run.parentId)));
     const aliases = rows.map(row => runDisplayId_m1(row.runId, row.traceId));
     expect_m1(aliases.every(alias => /^[A-Z0-9]{1,4}\d{8}$/u.test(alias))).toBe(true);
     expect_m1(new Set(aliases).size).toBe(rows.length);
@@ -102,15 +105,14 @@ describe_m1("document-complete OCR previews", () => {
     expect_m1(row.runId).toMatch(/^[0-9a-f-]{36}$/u);
     expect_m1(runDisplayId_m1(row.runId, row.traceId)).toBe(runDisplayId_m1(row.runId, row.traceId));
   });
-  it_m1("retries delegation-only lookups through their exact OCR and runnable parent", () => {
+  it_m1("retries delegation-only lookups through their runnable host", () => {
     const runs = seedMockRuns_m1(), lookup = runs.find(run => run.workflowId === "i9-lookup")!;
-    const ocr = runs.find(run => run.id === lookup.parentId)!;
-    expect_m1(ocr).toMatchObject({ workflowId: "ocr", subject: "detect-test.pdf" });
+    const host = runs.find(run => run.id === lookup.parentId)!;
+    expect_m1(host).toMatchObject({ workflowId: "onbase", subject: "detect-test.pdf" });
     const source = mockRetrySource_m1(runs, lookup.id);
-    expect_m1(source).toBe(runs.find(run => run.id === ocr.parentId));
-    expect_m1(source.workflowId).toBe("onbase");
+    expect_m1(source).toBe(host);
     expect_m1(mockRetrySource_m1(runs, source.id)).toBe(source);
-    expect_m1(mockDeletionIds_m1(runs, ocr.id)).toContain(lookup.id);
+    expect_m1(mockDeletionIds_m1(runs, host.id)).toContain(lookup.id);
     expect_m1(() => mockRetrySource_m1(runs.filter(run => run.id !== source.id), lookup.id)).toThrow("MOCK_RETRY_SOURCE_MISSING");
     expect_m1(() => mockRetrySource_m1([{ ...lookup, parentId: lookup.id }], lookup.id)).toThrow("MOCK_RETRY_PARENT_CYCLE");
   });
@@ -153,13 +155,14 @@ describe_m2("manual OCR and reading inputs", () => {
   it_m2("shows one selectable OCR read with an internal approval gate in either extraction mode", () => {
     for (const ocrMode of ["extract", "manual"] as const) {
       const draft = { ...initialMockDraft_m2("emergency-contact"), ocrMode, files: [{ name: "contact.pdf", size: 100, digest: "synthetic" }] };
-      expect_m2(mockOcrReadSteps_m2("emergency-contact", draft).map(step => step.key)).toEqual(["read-document"]);
-      expect_m2(mockConfirmationFacts_m2("emergency-contact", draft).find(fact => fact.key === "Steps")?.value).toBe(ocrMode === "manual" ? "3 / 4 included" : "4 / 4 included");
+      expect_m2(mockOcrReadSteps_m2("emergency-contact", draft).map(step => step.key)).toEqual(["prep:ocr", "prep:person-lookup", "read-document"]);
+      expect_m2(mockConfirmationFacts_m2("emergency-contact", draft).find(fact => fact.key === "Steps")?.value).toBe(ocrMode === "manual" ? "4 / 6 included" : "6 / 6 included");
       const [parent, ocr] = mockRunsForDraft_m2("emergency-contact", draft, 1);
       expect_m2(parent.ocrRunId).toBe(ocr.id);
       expect_m2(mockOcrReadSteps_m2("emergency-contact", draft)[0]).toMatchObject({ label: "Read emergency contact", system: "OCR" });
       expect_m2(ocr.draft.formType).toBe("emergency-contact");
-      expect_m2(mockStepState_m2(parent, { key: "read-document", label: "Read emergency contact", message: "" })).toBe(ocrMode === "manual" ? "skipped" : "waiting");
+      expect_m2(mockStepState_m2(parent, { key: "read-document", label: "Review extracted records", message: "" })).toBe("waiting");
+      expect_m2(mockStepState_m2(parent, { key: "prep:ocr", label: "Read emergency contact", message: "" })).toBe(ocrMode === "manual" ? "skipped" : "completed");
       expect_m2(mockStepState_m2(parent, { key: "fill-form", label: "Fill", message: "" })).toBe("pending");
       expect_m2(mockStepState_m2(parent, { key: "save", label: "Save", message: "" })).toBe("pending");
       expect_m2(draft.selectedSteps).not.toContain("read-document");
@@ -216,8 +219,8 @@ describe_m2("manual OCR and reading inputs", () => {
     expect_m2(source.selectedSteps).toEqual(["navigation", "save"]);
   });
   it_m2("lets manual I-9 review bind sections to different source pages without changing their images", () => {
-    const draft = { ...initialMockDraft_m2("i9-check"), ocrMode: "manual" as const, files: [{ name: "i9.pdf", size: 4096, digest: "fixture:document:i9.pdf" }] };
-    const runs = mockRunsForDraft_m2("i9-check", draft, 1), ocr = runs[1];
+    const draft = { ...initialMockDraft_m2("i9-check-start"), ocrMode: "manual" as const, files: [{ name: "i9.pdf", size: 4096, digest: "fixture:document:i9.pdf" }] };
+    const runs = mockRunsForDraft_m2("i9-check-start", draft, 1), ocr = runs[1];
     let record = reviewRecords_m2(ocr)[0];
     for (const [key, value] of [["employeeId", "10000022"], ["firstName", "Sam"], ["lastName", "Rivera"], ["dateOfBirth", "01/01/2000"], ["hireDate", "10/06/2026"], ["section1", "3"], ["section2", "4"]]) record = editReviewRecord_m2(record, key, value);
     expect_m2(record.page).toBe(3);
@@ -256,7 +259,7 @@ describe_m2("manual OCR and reading inputs", () => {
     expect_m2(mockApprovalError_m2(source)).toMatch(/differs/u);
     expect_m2(() => approveMockRun_m2(runs, source.id)).toThrow(/differs/u);
     let record = reviewRecords_m2(source)[0];
-    for (const [key, value] of [["employeeId", "10000022"], ["firstName", "Sam"], ["lastName", "Rivera"]]) record = editReviewRecord_m2(record, key, value);
+    for (const [key, value] of [["employeeId", "10000022"], ["employeeName", "Sam Rivera"]]) record = editReviewRecord_m2(record, key, value);
     const approved = approveMockRun_m2(updateMockReview_m2(runs, source.id, [record]), source.id);
     const person = approved.find(run => run.role === "person")!;
     expect_m2(person.draft.selectedSteps).toEqual(["fill-form", "save"]);
@@ -325,7 +328,6 @@ describe_m3("legacy workflow previews", () => {
     const files = [file, { ...file, name: "second.pdf", digest: "second" }];
     expect_m3(mockLaunchCount_m3("emergency-contact", draft("emergency-contact", { files }))).toBe(2);
     expect_m3(mockLaunchCount_m3("onbase", draft("onbase", { files }))).toBe(1);
-    expect_m3(mockLaunchCount_m3("sharepoint-download", draft("sharepoint-download"))).toBe(1);
     expect_m3(mockLaunchCount_m3("onbase", draft("onbase", { files: [] }))).toBe(0);
   });
   it_m3("shows only the current processing mode's customizable steps", () => {
@@ -336,11 +338,13 @@ describe_m3("legacy workflow previews", () => {
     expect_m3(facts.some(row => row.key === "Roster" || row.key === "Workers")).toBe(false);
   });
   it_m3("confirms edited execution settings and omitted steps in operator language", () => {
-    const options = draft("onboarding", { priority: "background", browser: "headless", captures: false, workers: 3, hireType: "rehire", selectedSteps: ["transaction"] });
+    const options = draft("onboarding", { priority: "background", browser: "headless", hireType: "rehire", selectedSteps: ["transaction"] });
     const facts = Object.fromEntries(mockConfirmationFacts_m3("onboarding", options).map(row => [row.key, row.value]));
     expect_m3(facts.Queue).toBe("Bulk");
-    expect_m3(facts.Browser).toBe("Headless · screenshots off");
-    expect_m3(facts.Workers).toBe("3");
+    expect_m3(facts.Browser).toBe("Headless · screenshots required");
+    expect_m3(Object.hasOwn(options, "captures")).toBe(false);
+    expect_m3(Object.hasOwn(options, "workers")).toBe(false);
+    expect_m3(Object.hasOwn(facts, "Workers")).toBe(false);
     expect_m3(facts["Hire type"]).toBe("Rehire · UC_CONC_HIRE");
     expect_m3(facts.Steps).toBe("1 / 8 included · Omitted: Sign in to CRM, Find onboarding record, Read entry sheet, Download onboarding documents, Sign in to UCPath, Match existing person, Create I-9 profile");
   });
@@ -349,13 +353,13 @@ describe_m3("legacy workflow previews", () => {
     expect_m3(keys).toEqual(["servicenow-auth", "open-hr-form", "fill-form", "submit"]);
     const full = mockPipeline_m3("oath-upload", draft("oath-upload")).map(step => step.key);
     expect_m3(full.indexOf("wait-signatures")).toBeLessThan(full.indexOf("servicenow-auth"));
-    expect_m3(full[0]).toBe("read-document");
+    expect_m3(full[0]).toBe("prep:ocr");
   });
   it_m3("holds downstream work for approval, then creates independent oath signers", () => {
     const runs = mockRunsForDraft_m3("oath-upload", draft("oath-upload"), 1), run = runs[0];
     const log = mockRunLog_m3(run);
     expect_m3(log.timeline.find(step => step.label === "Sign in to ServiceNow")!.state).toBe("pending");
-    expect_m3(log.timeline.slice(0, 3).map(step => step.state)).toEqual(["waiting", "pending", "pending"]);
+    expect_m3(log.timeline.slice(0, 3).map(step => step.state)).toEqual(["completed", "completed", "waiting"]);
     const after = approveMockRun_m3(runs, runs[1].id);
     expect_m3(after.find(candidate => candidate.id === run.id)!.approved).toBe(true);
     expect_m3(after.find(candidate => candidate.workflowId === "oath-signature")!.parentId).toBe(run.id);
@@ -364,11 +368,11 @@ describe_m3("legacy workflow previews", () => {
     expect_m3(() => approveMockRun_m3([standalone], standalone.id)).toThrow("MOCK_APPROVAL_UNAVAILABLE");
   });
   it_m3("keeps I-9 downstream processing behind OCR approval and gives every log a unique step identity", () => {
-    const run = mockRunsForDraft_m3("i9-check", draft("i9-check"), 1)[0];
+    const run = mockRunsForDraft_m3("i9-check-start", draft("i9-check-start"), 1)[0];
     expect_m3(mockNeedsReview_m3(run)).toBe(false);
     const { steps } = mockRunLog_m3(run);
     expect_m3(new Set(steps.map(step => step.id)).size).toBe(steps.length);
-    const rerun = mockRunsForDraft_m3("i9-check", run.draft, 2, run.id);
+    const rerun = mockRunsForDraft_m3("i9-check-start", run.draft, 2, run.id);
     expect_m3(rerun).toHaveLength(2); expect_m3(rerun[0].sourceId).toBe(run.id);
     expect_m3(rerun[1].workflowId).toBe("ocr"); expect_m3(mockNeedsReview_m3(rerun[1])).toBe(true); expect_m3(rerun[1].parentId).toBe(rerun[0].id); expect_m3(rerun[1].id).not.toBe(`${run.id}:person:0`);
     expect_m3(steps.some(step => step.title === "Result")).toBe(false);
@@ -384,10 +388,8 @@ describe_m3("legacy workflow previews", () => {
     const lookup = mockRunsForDraft_m3("person-lookup", draft("person-lookup"), 1)[0];
     expect_m3(mockRunLog_m3(lookup).timeline.filter(step => step.state === "skipped").map(step => step.label)).toEqual(["Cross-check identity", "Read CRM dates"]);
   });
-  it_m3("rejects reversed dates and invalid workers", () => {
+  it_m3("rejects reversed and invalid dates", () => {
     expect_m3(mockDraftError_m3("old-kronos-reports", draft("old-kronos-reports", { startDate: "2026-02-01", endDate: "2026-01-31" }))).toMatch(/date range/);
-    expect_m3(mockDraftError_m3("work-study", draft("work-study", { effectiveDate: "2026-02-30" }))).toMatch(/effective date/);
-    expect_m3(mockDraftError_m3("ocr", draft("ocr", { workers: 0 }))).toMatch(/positive whole number/);
   });
   it_m3("retains source history on rerun and matches duplicates by content, not filename", () => {
     const source = mockRunsForDraft_m3("oath-upload", draft("oath-upload", { uploadMode: "upload-only", dryRun: false }), 1)[0];
@@ -409,10 +411,9 @@ describe_m3("legacy workflow previews", () => {
     expect_m3(mockQueueView_m3([done, waiting], ["all"], "oldest")).toEqual([waiting, done]);
   });
   it_m3("seeds each workflow with its own fictional input and log graph", () => {
-    const runs = seedMockRuns_m3(); expect_m3(runs.filter(run => !run.parentId)).toHaveLength(19);
-    expect_m3(runs).toHaveLength(26);
-    for (const id of ["i9-lookup", "sharepoint-download"]) expect_m3(runs.find(run => run.workflowId === id)!.parentId).toBe("mock:onbase:sample:ocr");
-    expect_m3(runs.find(run => run.id === "mock:onbase:sample:ocr")!.draft.roster).toBe("download");
+    const runs = seedMockRuns_m3(); expect_m3(runs.filter(run => !run.parentId)).toHaveLength(18);
+    expect_m3(runs).toHaveLength(24);
+    for (const id of ["i9-lookup"]) expect_m3(runs.find(run => run.workflowId === id)!.parentId).toBe("mock:onbase:sample");
     expect_m3(runs.filter(run => run.parentId && run.workflowId === "ocr")).toHaveLength(5);
     expect_m3(runs.filter(run => run.records !== undefined).every(run => run.workflowId === "ocr")).toBe(true);
     for (const run of runs) {
@@ -507,10 +508,7 @@ describe_m4("source-backed workflow operation detail", () => {
     expect_m4(clicks(concurrent)).toContain("Cancel unsubmitted draft"); expect_m4(clicks(concurrent)).not.toContain("Save and Submit");
     expect_m4(fields(concurrent)).toEqual(expect_m4.arrayContaining([expect_m4.objectContaining({ label: "Draft status", value: "Cancelled" })]));
   });
-  it_m4("carries exact Work-Study comments and OnBase import settings and all required keywords", () => {
-    const work = completed("work-study", { effectiveDate: "2026-09-12" })[0];
-    expect_m4(fields(work)).toEqual(expect_m4.arrayContaining([expect_m4.objectContaining({ label: "Position change reason", value: "JRL" }), expect_m4.objectContaining({ label: "Comments", value: "Updated pool id to F per work study award 09/12/2026" })]));
-    expect_m4(clicks(work)).toEqual(expect_m4.arrayContaining(["Job Data", "Additional Pay Data", "Save and Submit"]));
+  it_m4("carries exact OnBase import settings and all required keywords", () => {
     const imported = person("onbase"), values = fields(imported);
     expect_m4(values).toEqual(expect_m4.arrayContaining([expect_m4.objectContaining({ label: "File type", value: "PDF (.pdf)" }), expect_m4.objectContaining({ label: "Document name", value: "EMERGENCY CONTACT INFORMATION" })]));
     expect_m4(values.map(field => field.label)).toEqual(expect_m4.arrayContaining(["UCPath ID", "Last name", "First name", "Document name", "Department name", "Department code", "Vice Chancellor", "Vice Chancellor code"]));
@@ -518,7 +516,7 @@ describe_m4("source-backed workflow operation detail", () => {
   });
   it_m4("preserves extracted identity history and passes edited contact data to a separate person run", () => {
     const runs = create("emergency-contact"), ocr = runs[1], original = reviewRecords_m4(ocr)[0];
-    const changed = editReviewRecord_m4(editReviewRecord_m4(editReviewRecord_m4(original, "employeeId", "10000009"), "contactName", "Sam Lee"), "sameAddress", "false");
+    const changed = editReviewRecord_m4(editReviewRecord_m4(editReviewRecord_m4(original, "employeeId", "10000009"), "contactName", "Sam Lee"), "address", "1 Other Road, Irvine, CA 92602");
     const edited = updateMockReview_m4(runs, ocr.id, [changed]), history = fields(edited[1]);
     expect_m4(history).toEqual(expect_m4.arrayContaining([expect_m4.objectContaining({ label: "Employee ID", value: "10000001" })]));
     const child = approveMockRun_m4(edited, ocr.id).find(run => run.role === "person")!;
@@ -530,7 +528,7 @@ describe_m4("source-backed workflow operation detail", () => {
     const upload = completed("oath-upload").find(run => run.workflowId === "oath-upload")!;
     expect_m4(fields(upload)).toEqual(expect_m4.arrayContaining([expect_m4.objectContaining({ label: "Specifically", value: "Signing Ceremony (Oath)" }), expect_m4.objectContaining({ label: "Category", value: "Payroll" }), expect_m4.objectContaining({ label: "Description", value: "Please see attached oaths for employees hired under HDH." })]));
     expect_m4(clicks(person("oath-signature"))).toEqual(expect_m4.arrayContaining(["OK · stage oath row", "Save · commit oath"]));
-    expect_m4(fields(person("i9-check")).map(field => field.label)).toEqual(expect_m4.arrayContaining(["Section 1 page", "Section 2 page", "Hire date match", "PPS ID", "Section 1 present", "Section 2 present"]));
+    expect_m4(fields(person("i9-check-start")).map(field => field.label)).toEqual(expect_m4.arrayContaining(["Section 1 page", "Section 2 page", "Hire date match", "PPS ID", "Section 1 present", "Section 2 present"]));
     const report = completed("old-kronos-reports", { startDate: "2018-02-03", endDate: "2019-04-05" })[0];
     expect_m4(fields(report)).toEqual(expect_m4.arrayContaining([expect_m4.objectContaining({ label: "Start date", value: "02/03/2018" }), expect_m4.objectContaining({ label: "End date", value: "04/05/2019" }), expect_m4.objectContaining({ label: "Identity match", value: "Confirmed" })]));
   });
@@ -541,7 +539,7 @@ describe_m4("source-backed workflow operation detail", () => {
     const approved = mockWorkflowCounts_m4(approveMockRun_m4(runs, runs[1].id));
     expect_m4(approved.find(row => row.workflowId === "emergency-contact")!.count).toBe(2); expect_m4(activeCount_m4(workflowStatusCounts_m4(approved, "emergency-contact"))).toBe(0);
     const discarded = mockWorkflowCounts_m4(discardMockReview_m4(runs, runs[1].id));
-    expect_m4(discarded.find(row => row.workflowId === "ocr")!.statusCounts).toContainEqual({ status: "cancelled", count: 1 });
+    expect_m4(discarded.find(row => row.workflowId === "emergency-contact")!.statusCounts).toContainEqual({ status: "cancelled", count: 1 });
     for (const row of [...counts, ...approved, ...discarded]) expect_m4(row.statusCounts.reduce((sum, status) => sum + status.count, 0)).toBe(row.count);
   });
   it_m4("does not claim conditional identity correction or primary-contact demotion in the default path", () => {
@@ -590,7 +588,6 @@ describe_m5("completed review action notifications", () => {
   it_m5("uses the parent's predefined document fields when an uploaded fixture has another shape", () => {
     const runs = mockRunsForDraft_m5("emergency-contact", { ...draft, formType: "oath", files: [{ name: "single-oath.pdf", size: 4096, digest: "fixture:document:single-oath.pdf" }] }, 1);
     expect_m5(runs[1].draft.formType).toBe("emergency-contact");
-    expect_m5(() => mockRunsForDraft_m5("ocr", { ...initialMockDraft_m5("ocr"), formType: "verify", files: draft.files }, 3)).toThrow("Choose a supported form type.");
     const record = reviewRecords_m5(runs[1])[0];
     expect_m5(record.kind).toBe("contact");
     expect_m5(record.fields.some(field => field.key === "contactName")).toBe(true);
@@ -608,24 +605,24 @@ const preparation = () => mockRunsForDraft_m6("emergency-contact", { ...initialM
 describe_m6("OCR source comparison and corrected handoff", () => {
   it_m6("presents extracted oath dates with four-digit years without changing the source image", () => {
     const run = seedMockRuns_m6().find(run => run.id === "mock:oath-signature:sample:ocr")!;
-    const markup = renderToStaticMarkup_m6(createElement_m6(WorkflowMockReview_m6, { run, sourcePages: { "person-1": documentSourcePages_m6(run.draft, reviewRecords_m6(run)[0])! }, onChange: () => {}, onRestore: () => {} }));
+    const markup = renderToStaticMarkup_m6(createElement_m6(RecordReview_m6, mockReviewProps({ run, sourcePages: { "person-1": documentSourcePages_m6(run.draft, reviewRecords_m6(run)[0])! }, onChange: () => {}, onRestore: () => {} })));
     expect_m6(markup).toContain('value="04/27/2026"'); expect_m6(markup).toContain('value="04/23/2026"');
     expect_m6(markup).not.toContain('value="04/27/26"'); expect_m6(markup).not.toContain('value="4-23-26"');
     expect_m6(markup).toContain('single-oath-1.webp');
   });
   it_m6("accepts source image URLs separately from the extracted field response", () => {
     const run = preparation()[1];
-    const markup = renderToStaticMarkup_m6(createElement_m6(WorkflowMockReview_m6, { run, sourcePages: { "person-1": [{ page: 1, imageUrl: "/retained/source-page-1.png" }] }, onChange: () => {}, onRestore: () => {} }));
+    const markup = renderToStaticMarkup_m6(createElement_m6(RecordReview_m6, mockReviewProps({ run, sourcePages: { "person-1": [{ page: 1, imageUrl: "/retained/source-page-1.png" }] }, onChange: () => {}, onRestore: () => {} })));
     expect_m6(markup).toContain('src="/retained/source-page-1.png"');
     expect_m6(markup).not.toContain("data:image/svg");
-    const missing = renderToStaticMarkup_m6(createElement_m6(WorkflowMockReview_m6, { run, sourcePages: {}, onChange: () => {}, onRestore: () => {} }));
+    const missing = renderToStaticMarkup_m6(createElement_m6(RecordReview_m6, mockReviewProps({ run, sourcePages: {}, onChange: () => {}, onRestore: () => {} })));
     expect_m6(missing).toContain("No source page for this record"); expect_m6(missing).not.toContain("<img");
   });
   it_m6("preserves every response field exactly once in the editor, including blank and unknown fields", () => {
     const record = reviewRecords_m6(preparation()[1])[0];
     const additional = { ...record, fields: [...record.fields, { key: "newKey", label: "Additional field", value: "", section: "Other" }] };
     expect_m6(reviewFieldGroups_m6(additional).flatMap(group => group.fields)).toEqual(additional.fields);
-    expect_m6(reviewFieldGroups_m6(additional).map(group => group.title)).toEqual(["Employee", "Employee address", "Emergency contact", "Other"]);
+    expect_m6(reviewFieldGroups_m6(additional).map(group => group.title)).toEqual(["Employee", "Emergency contact", "Other"]);
     for (const response of [...OCR_DOCUMENT_FIXTURES_m6.flatMap(document => document.records), additional]) {
       const displayed = reviewFieldGroups_m6(response).flatMap(group => reviewFieldBlocks_m6(group.fields).flat());
       expect_m6(displayed).toEqual(response.fields);
@@ -637,7 +634,7 @@ describe_m6("OCR source comparison and corrected handoff", () => {
     const run = preparation()[1], record = reviewRecords_m6(run)[0];
     const corrected = editReviewRecord_m6(record, "relationship", "Cousin");
     const raw = { ...corrected, fields: [...corrected.fields, { key: "rawDate", label: "Date as printed", value: "4-23-26", kind: "date" as const }] };
-    const markup = renderToStaticMarkup_m6(createElement_m6(WorkflowMockReview_m6, { run: { ...run, records: [raw] }, onChange: () => {}, onRestore: () => {} }));
+    const markup = renderToStaticMarkup_m6(createElement_m6(RecordReview_m6, mockReviewProps({ run: { ...run, records: [raw] }, onChange: () => {}, onRestore: () => {} })));
     expect_m6(markup).toContain('name="rawDate"'); expect_m6(markup).toContain('value="4-23-26"');
     expect_m6(markup).not.toContain('type="date"'); expect_m6(markup).toContain("Cousin");
     const oathRuns = mockRunsForDraft_m6("oath-signature", { ...initialMockDraft_m6("oath-signature"), method: "pdf", files: [{ name: "oath.pdf", size: 1024, digest: "fixture" }] }, 1);
@@ -685,3 +682,38 @@ describe_m6("OCR source comparison and corrected handoff", () => {
   });
 });
 }
+
+describe_m0("mock final employee identity", () => {
+  it_m0("keeps the resolved employee ID distinct from the separation Kuali input", () => {
+    const run = mockRunsForDraft_m0("separations", { ...initialMockDraft_m0("separations"), text: "48216" }, 0)[0];
+    const steps = mockRunLog_m0(run).steps;
+    const fields = steps.flatMap(step => step.entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []));
+    expect_m0(fields.filter(field => field.label === "Employee ID").map(field => field.value)).toEqual(expect_m0.arrayContaining(["10000001"]));
+    expect_m0(fields.filter(field => field.label === "Employee ID").every(field => field.value === "10000001")).toBe(true);
+    expect_m0(fields.find(field => field.id === `${run.id}:field:0`)).toMatchObject({ label: "Kuali ID", value: "48216" });
+    expect_m0(fields.find(field => field.id === `${run.id}:field:2`)).toMatchObject({ label: "Employee ID", value: "10000001" });
+  });
+
+});
+
+const faultDraft = (fault: MockDraft_m4["fault"]): MockDraft_m4 => ({ ...initialMockDraft_m2("emergency-contact"), fault, files: [{ name: "contact.pdf", size: 100, digest: "synthetic" }] });
+describe_m4("host scenario fixtures", () => {
+  it_m4("fails only the page read, offers Retry step on its card and retries only that step", () => {
+    const [host, ocr] = mockRunsForDraft_m4("emergency-contact", faultDraft("page"), 1);
+    expect_m4(mockQueueStatus_m7(host)).toBe("failed");
+    const { timeline, steps } = mockRunLog_m4(host);
+    expect_m4(timeline.slice(0, 3).map(stage => stage.state)).toEqual(["failed", "pending", "pending"]);
+    const card = steps[0].entries.flatMap(entry => entry.kind === "decision" ? [entry.decision] : [])[0];
+    expect_m4(card).toMatchObject({ state: "failed", served: { options: [{ label: "Retry step" }] } });
+    const retried = retryMockFault_m7([host, ocr], [host.id, ocr.id]);
+    expect_m4(mockQueueStatus_m7(retried[0])).toBe("running");
+    expect_m4(mockRunLog_m4(retried[0]).timeline.slice(0, 3).map(stage => stage.state)).toEqual(["completed", "completed", "waiting"]);
+  });
+
+  it_m4("fails the first approved member only and clears it on Retry", () => {
+    const runs = approveMockRun_m4(mockRunsForDraft_m4("emergency-contact", faultDraft("member"), 1), "mock:emergency-contact:1:0:ocr");
+    const members = runs.filter(run => run.role === "person");
+    expect_m4(members.map(member => mockQueueStatus_m7(member))).toEqual(["failed", ...members.slice(1).map(() => "done")]);
+    expect_m4(mockQueueStatus_m7(retryMockFault_m7(members, [members[0].id])[0])).toBe("done");
+  });
+});

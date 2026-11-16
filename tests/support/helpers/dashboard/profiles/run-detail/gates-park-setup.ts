@@ -1,3 +1,6 @@
+import { publicWriteTarget } from "../../../../../../src/backend/runs/commands/write-command-target.js";
+import { parkedWriteDecision } from "../../../../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { ActionDescriptorWireSchema } from "../../../../../../src/models/dashboard/actions.js";
 import { traceOf } from "../../../../fixtures/dashboard/fixture-identity.js";
 import { sectionResponse } from "../../../../fixtures/dashboard/run-detail/section-wire.js";
 import { SubjectProofSchema, WriteIntentRecordSchema, WriteAttemptRecordSchema, deriveWriteBindingProofDigest, deriveIdempotencyKeyDigest } from "../../../../../../src/rules/write-safety/write-safety.js";
@@ -14,31 +17,25 @@ at: typeof FixtureIdentityTypes.at;
 uuidOf: typeof FixtureIdentityTypes.uuidOf;
 FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
 }) {
-  const GATE_NODE_ID = "identity-approval";
-
   const FIXTURE_IDENTITY_GATE = { ...buildFixtureIdentityGate({
     runId: FIXTURE_IDS.openGateRun,
-    gateId: GATE_NODE_ID,
     label: "Identity Approval",
     parkedAt: at(49),
-    resumeAt: "approval",
+    order: 4,
     expectedVersion: 5,
     observedAt: at(48),
     documentName: "Morrow, Bea",
-  }), native: { eventId: uuidOf(9501), order: 4, runId: FIXTURE_IDS.openGateRun, attempt: 1,
-    traceId: traceOf(5), spanPath: `${traceOf(5)}/${GATE_NODE_ID}`, nodeId: GATE_NODE_ID } };
+  }) };
 
-  const FIXTURE_IDENTITY_GATE_TYPED_EID = { ...buildFixtureIdentityGate({
-    runId: FIXTURE_IDS.gateTypedEidRun,
-    gateId: GATE_NODE_ID,
+  const FIXTURE_IDENTITY_GATE_NAME_MISMATCH = { ...buildFixtureIdentityGate({
+    runId: FIXTURE_IDS.gateNameMismatchRun,
     label: "Identity Approval",
     parkedAt: at(24),
-    resumeAt: "approval",
+    order: 4,
     expectedVersion: 44,
     observedAt: at(23),
     documentName: "Okonkwo, Adaeze",
-  }), native: { eventId: uuidOf(13401), order: 4, runId: FIXTURE_IDS.gateTypedEidRun, attempt: 1,
-    traceId: traceOf(44), spanPath: `${traceOf(44)}/${GATE_NODE_ID}`, nodeId: GATE_NODE_ID } };
+  }) };
 
   const PARKED_WRITE_INTENT_ID = uuidOf(906);
 
@@ -75,15 +72,16 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
     parkedCode: "unknown", message: "Fixture verification unknown", authorityReason: PARKED_WRITE_REASON,
   });
 
-  const PARKED_WRITE_TARGET = { writeIntentId: PARKED_WRITE_INTENT.writeIntentId,
+  const PARKED_WRITE_TARGET = publicWriteTarget({ writeIntentId: PARKED_WRITE_INTENT.writeIntentId,
     intentGeneration: PARKED_WRITE_INTENT.generation, writeAttemptId: PARKED_WRITE_ATTEMPT.writeAttemptId,
-    bindingProofDigest: PARKED_WRITE_BINDING_DIGEST, occurrenceKeyDigest: PARKED_WRITE_INTENT.idempotencyKeyDigest };
+    bindingProofDigest: PARKED_WRITE_BINDING_DIGEST, occurrenceKeyDigest: PARKED_WRITE_INTENT.idempotencyKeyDigest });
 
   const PARKED_WRITE_SYSTEM = "ucpath";
 
   const PARKED_WRITE_REVISION = 6;
 
-  const FIXTURE_PARKED_WRITE = {
+  const PARKED_WRITE_BASE = {
+    acceptsTransactionId: true,
     runId: FIXTURE_IDS.parkedRun,
     native: { eventId: uuidOf(9960), order: 50, runId: FIXTURE_IDS.parkedRun, attempt: 1, traceId: traceOf(6), nodeId: "terminate" },
     writeIntentId: PARKED_WRITE_INTENT_ID,
@@ -134,21 +132,20 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
     },
     actions: [
       {
-        key: "resolve-write-present",
-        label: "I confirmed it IS there",
-        detail: "Record the transaction you found, with its proof. The run settles as committed and never clicks again.",
+        key: "recheck-write",
+        label: "Check again",
+        detail: "Read the target system again. A verified transaction continues the run; uncertainty keeps the write parked.",
         intent: "warning",
         icon: "resolve",
         placement: ["banner", "footer"],
         kind: "command",
-        command: "resolve-write-present",
+        command: "recheck-write",
         expectedVersion: PARKED_WRITE_REVISION,
         confirm: {
-          title: "Confirm the transaction exists",
-          body: `This files ${PARKED_WRITE_SYSTEM} transaction ${PARKED_WRITE_INTENT_ID} as committed on this run's `
-            + "evidence. If it is not actually there, the run finishes reporting work nobody did.",
-          confirmLabel: "It is there",
-          tone: "destructive",
+          title: "Check the target system again",
+          body: "Relay reads ucpath again and submits nothing. If it finds this write, the run continues to its next step.",
+          confirmLabel: "Check again",
+          tone: "neutral",
         },
         writeTarget: PARKED_WRITE_TARGET,
       },
@@ -174,6 +171,10 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
     ],
   } as const;
 
+  const FIXTURE_PARKED_WRITE = { ...PARKED_WRITE_BASE,
+    decision: parkedWriteDecision({ taskId: PARKED_WRITE_BASE.taskId, parkedCode: PARKED_WRITE_BASE.parkedCode, readBack: false, acceptsTransactionId: PARKED_WRITE_BASE.acceptsTransactionId },
+      ActionDescriptorWireSchema.array().parse(PARKED_WRITE_BASE.actions)) };
+
   const FIXTURE_GATE_PARK_SECTIONS = Object.freeze({
     [FIXTURE_IDS.parkedRun]: Object.freeze({
       "parked-write": sectionResponse({ section: "parked-write", payload: FIXTURE_PARKED_WRITE }),
@@ -184,13 +185,13 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
         payload: { state: "available", value: FIXTURE_IDENTITY_GATE },
       }),
     }),
-    [FIXTURE_IDS.gateTypedEidRun]: Object.freeze({
+    [FIXTURE_IDS.gateNameMismatchRun]: Object.freeze({
       "identity-gate": sectionResponse({
         section: "identity-gate",
-        payload: { state: "available", value: FIXTURE_IDENTITY_GATE_TYPED_EID },
+        payload: { state: "available", value: FIXTURE_IDENTITY_GATE_NAME_MISMATCH },
       }),
     }),
   });
 
-  return { PARKED_WRITE_INTENT, FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_TYPED_EID, FIXTURE_PARKED_WRITE, FIXTURE_GATE_PARK_SECTIONS };
+  return { PARKED_WRITE_INTENT, FIXTURE_IDENTITY_GATE, FIXTURE_IDENTITY_GATE_NAME_MISMATCH, FIXTURE_PARKED_WRITE, FIXTURE_GATE_PARK_SECTIONS };
 }

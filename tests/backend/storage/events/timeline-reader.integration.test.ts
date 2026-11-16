@@ -7,7 +7,7 @@ import { TimelineAppendSchema } from "../../../../src/models/events/timeline.js"
 import { NOW } from "../../../support/helpers/database-foundation/fixtures.js";
 import { resolutionApp,resolutionCommand,resolutionFixture } from "../../../support/helpers/failure-resolution/fixtures.js";
 
-function snapshot(f: ReturnType<typeof resolutionFixture>, excludeHttpDiagnostics = false) {
+function snapshot(f: Awaited<ReturnType<typeof resolutionFixture>>, excludeHttpDiagnostics = false) {
   const sql = new DatabaseSync(f.path);
   try { return JSON.stringify({ ...(excludeHttpDiagnostics ? {} : { generation: f.db.getMeta().authorityGeneration }),
     tables: Object.fromEntries(["runs", "run_failures", "commands", "command_audits", "timeline_events", "run_receipts"]
@@ -16,8 +16,8 @@ function snapshot(f: ReturnType<typeof resolutionFixture>, excludeHttpDiagnostic
 }
 
 describe("D resolution command authority", () => {
-  it("strict history binds scope/time/source, duplicate identity and ordinary retention", () => {
-    const f = resolutionFixture();
+  it("strict history binds scope/time/source, duplicate identity and ordinary retention", async () => {
+    const f = await resolutionFixture();
     try {
       f.kernel.execute(resolutionCommand());
       const record = readTimelineRecords(f.db.authority.timelineEvents).records.find(row => row.payload.kind === "failure-resolution"); assert.ok(record);
@@ -30,13 +30,13 @@ describe("D resolution command authority", () => {
       assert.ok(f.db.authority.timelineEvents.pruneBefore("2026-09-10") >= 1);
       assert.equal(f.db.authority.timelineEvents.get(record.eventId), undefined);
       assert.equal(f.db.authority.failureResolution.read(f.record.runId, f.record.failureId)?.resolution.status, "resolved");
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });
 
 describe("D actual HTTP admission", () => {
   it("admits actor and server time, refuses forged actor/Host/Origin and malformed actions without mutation", async () => {
-    const f = resolutionFixture();
+    const f = await resolutionFixture();
     try {
       const app = resolutionApp(f); const before = snapshot(f, true);
       const headers = { host: "localhost", origin: "http://localhost", "content-type": "application/json" };
@@ -66,6 +66,6 @@ describe("D actual HTTP admission", () => {
       const refusal = await divergent.text();
       assert.match(refusal, /command-divergent/u); assert.ok(!refusal.includes("PRIVATE_CHANGED_NOTE"));
       assert.equal(snapshot(f, true), committed);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });

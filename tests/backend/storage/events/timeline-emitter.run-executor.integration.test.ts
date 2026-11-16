@@ -45,7 +45,7 @@ describe("failure, retry, and resume", () => {
         return output;
       },
     });
-    const first = executorHarness({ sessions: failingCrm, stores: registryWithCrmSearch(failingSearch) });
+    const first = await executorHarness({ sessions: failingCrm, stores: registryWithCrmSearch(failingSearch) });
     const { database, clock } = first.authority;
     const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
     const failed = await executeClaimedRun(first.deps, { ...claimed, signal: SIGNAL });
@@ -57,10 +57,11 @@ describe("failure, retry, and resume", () => {
     const retryEnvelope = retryRun.envelope as Record<string, unknown>;
     retryEnvelope.runId = UUID_5;
     retryEnvelope.retryOf = RUN_ID;
+    assert.equal(retryEnvelope.continuation, undefined, "this raw retryOf fixture has no authenticated continuation");
     database.authority.runs.enqueue(retryRun);
-    const { workerId, workerLifetime } = testWorkerLifetime(database, WORKFLOW_ID, 1);
+    const { workerId } = testWorkerLifetime(database, WORKFLOW_ID, 1);
     const reclaimed = database.authority.runs.claimNext({
-      workerLifetime, workflow: WORKFLOW_ID,
+      workflow: WORKFLOW_ID,
       workerId: workerId,
       now: clock.now().toISOString(),
     });
@@ -81,7 +82,7 @@ describe("failure, retry, and resume", () => {
       },
       crm: () => healthyCrmDriver(),
     });
-    const second = executorHarness({ sessions: healthySessions });
+    const second = await executorHarness({ sessions: healthySessions });
     // Reuse the FIRST authority database — the checkpoints live there.
     const secondDeps: RunExecutorDependencies = {
       ...second.deps,

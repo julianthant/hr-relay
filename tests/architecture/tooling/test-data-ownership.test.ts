@@ -1,27 +1,31 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { describe, it } from "vitest";
+import { existsSync,readFileSync,realpathSync } from "node:fs";
+import { dirname,isAbsolute,join,relative,resolve } from "node:path";
 import ts from "typescript";
-import { TEST_DATA_CONFIG_PATH, TEST_DATA_LOCAL_CONFIG_PATH, TEST_DATA_LOCAL_EXAMPLE_PATH } from "../../../src/models/config/test-data.js";
-import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
+import { describe,it } from "vitest";
+import { TEST_DATA_CONFIG_PATH,TEST_DATA_LOCAL_CONFIG_PATH,TEST_DATA_LOCAL_EXAMPLE_PATH } from "../../../src/models/config/test-data.js";
+import { gitVisibleFiles,repoRelative,REPO_ROOT } from "../support/helpers/guard-files.js";
 
 function isUnitTest(path: string): boolean {
   return path.startsWith("tests/") && /\.test\.(?:ts|js)$/u.test(path)
     && !/\.integration\.test\.(?:ts|js)$/u.test(path)
-    && !/^tests\/(?:architecture|parity|perf)\//u.test(path);
+    && !/^tests\/(?:architecture|mocks|perf)\//u.test(path);
 }
 const ARCHITECTURE_HELPERS_ROOT = /^tests\/architecture\/(?:support|[^/]+)\/helpers\//u;
 const SHARED_RESOURCE_HARNESSES = new Set([
-  "tests/support/helpers/credential-doctor-fixtures.ts",
-  "tests/support/fixtures/integration/activity-person-pseudonym-fixtures.ts",
-  "tests/support/fixtures/integration/dry-run-admission-fixtures.ts",
+  "tests/support/helpers/predecessor-profile-credentials.ts",
+  "tests/support/helpers/exclusive-session-leases.ts",
+  "tests/support/helpers/backend/storage-restore-world.ts",
+  "tests/support/helpers/backend/emergency-contact-retry-world.ts",
+  'tests/support/helpers/backend/dashboard-port-world.ts',
+  "tests/support/helpers/credential-persistence-fixtures.ts",
+  "tests/support/helpers/credential-source-retention.ts",
+  "tests/support/helpers/synthetic-database-admission.ts",
+  "tests/support/fixtures/integration/separations-run-fixtures.ts",
   "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts",
-  "tests/support/helpers/dashboard/settings-harness.tsx",
   "tests/support/helpers/integration/storage-recovery-fixture.ts",
-  "tests/support/helpers/storage/storage-relocation-fixture.ts",
 
   "tests/support/fixtures/preflight/corpus.ts",
   "tests/support/helpers/synthetic-storage-admission.ts",
@@ -29,13 +33,18 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/helpers/backend/dashboard-harness.ts",
   "tests/support/helpers/backend/settings-authority-world.ts",
   "tests/support/helpers/backend/http-route-harness.ts",
-  "tests/support/helpers/storage/native-authority/retained-database-fixture.ts",
+  "tests/support/helpers/dashboard/assistant-history-server.ts",
+  "tests/support/helpers/assistant-m1-history-fixture.ts",
+  "tests/support/fixtures/storage/historical-flat-profile-fixture.ts",
+  "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts",
+  "tests/support/fixtures/storage/retained-historical-data.ts",
+  "tests/support/fixtures/storage/historical-run-schema.ts",
+  "tests/support/fixtures/storage/older-build-authority.ts",
 ]);
 const SHARED_ROOTS = ["tests/support/fixtures", "tests/support/helpers"];
 const CROSS_TIER_ROOTS = ["tests", "scripts", "src"];
 /** Seams a shared fixture may never touch at import time. */
 const FORBIDDEN_SHARED_IMPORTS: readonly RegExp[] = [
-  /src\/control\/test-data\.js$/u,
   /src\/backend\/storage\/configuration\/credential-store\.js$/u,
   /secure-env-bootstrap/u,
   /^dotenv/u,
@@ -52,7 +61,7 @@ function importsFromText(path: string, text: string): { specifier: string; resol
   return [...text.matchAll(IMPORT_SPECIFIER)].map((match) => {
     const specifier = match[1] ?? "";
     return { specifier, resolved: specifier.startsWith(".")
-      ? relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), specifier)) : specifier };
+      ? repoRelative(resolve(REPO_ROOT, dirname(path), specifier)) : specifier };
   });
 }
 function importsOf(path: string) {
@@ -60,27 +69,61 @@ function importsOf(path: string) {
 }
 
 const DEFERRED_CAPABILITIES = [
-  { importer: "tests/support/helpers/credential-doctor-fixtures.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
-  { importer: "tests/support/fixtures/integration/activity-person-pseudonym-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
-  { importer: "tests/support/fixtures/integration/dry-run-admission-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/predecessor-profile-credentials.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "authenticateDocument" },
+  { importer: "tests/support/helpers/exclusive-session-leases.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/backend/storage-restore-world.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/backend/emergency-contact-retry-world.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/backend/emergency-contact-retry-world.ts", module: "node:sqlite", symbol: "backup" },
+  { importer: "tests/support/helpers/credential-source-retention.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
+  { importer: "tests/support/helpers/credential-source-retention.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: 'tests/support/helpers/backend/dashboard-port-world.ts', module: 'src/backend/storage/configuration/credential-store.js', symbol: 'createCredentialStore' },
+  { importer: "tests/support/helpers/credential-persistence-fixtures.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
+  { importer: "tests/support/helpers/synthetic-database-admission.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
+  { importer: "tests/support/fixtures/integration/separations-run-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
-  { importer: "tests/support/helpers/dashboard/settings-harness.tsx", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/integration/storage-recovery-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
-  { importer: "tests/support/helpers/storage/storage-relocation-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
-  { importer: "tests/support/helpers/storage/storage-relocation-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/admission-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/synthetic-storage-admission.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/backend/dashboard-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/backend/settings-authority-world.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/fixtures/preflight/corpus.ts", module: "playwright", symbol: "chromium" },
   { importer: "tests/support/helpers/backend/http-route-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
-  { importer: "tests/support/helpers/storage/native-authority/retained-database-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/dashboard/assistant-history-server.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/assistant-m1-history-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/fixtures/storage/historical-run-schema.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/fixtures/storage/older-build-authority.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/fixtures/storage/historical-flat-profile-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/fixtures/storage/retained-historical-data.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "authenticateDocument" },
+  { importer: "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
 ] as const;
+const RETENTION_CASES_MODULES = ["tests/support/processes/startup-upgrade-retention-cases.js", "tests/support/processes/browser-root-retention.js"];
+const RETENTION_CASES_OWNER = "tests/support/processes/credential-source-retention-worker.ts";
 const PROCESS_ENTRYPOINTS = [
-  { file: "worker-browser-control-cli.ts", consumers: ["tests/backend/runtime/workers/worker-supervisor.integration.test.ts", "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts"] },
+  { file: "ec-member-retry-controller.ts", consumers: ["tests/workflows/emergency-contact/workflow.member-retry.crash.integration.test.ts"] },
+  { file: "relay-launcher-parent.ts", consumers: ["tests/scripts/dev/relay.windows-native.integration.test.ts"] },
+  { file: "relay-drain-child.ts", consumers: ["tests/scripts/dev/relay.integration.test.ts"] },
+  { file: "debug-event-child.ts", consumers: ["tests/backend/logs/debug-events.integration.test.ts"] },
+  { file: "command-custody-worker.ts", consumers: ["tests/backend/runtime/browser/command-browser.integration.test.ts"] },
+  { file: "credential-source-retention-worker.ts", consumers: ["tests/support/helpers/credential-source-retention.ts"] },
+  { file: "duo-credential-worker.ts", consumers: ["tests/backend/storage/configuration/canonical-credential-store.recovery.integration.test.ts"] },
+  { file: "chatgpt-credential-worker.ts", consumers: ["tests/backend/storage/configuration/chatgpt-credential-repository.integration.test.ts"] },
+  { file: "failure-resolution-peer.ts", consumers: ["tests/support/helpers/failure-resolution/fixtures.ts"] },
+  { file: 'child-execution-crash-worker.ts', consumers: ['tests/backend/app/composition/worker-compose.child-crash.integration.test.ts'] },
+  { file: 'duo-credential-store-worker.ts', consumers: ['tests/backend/storage/configuration/duo-signing.integration.test.ts'] },
+  { file: 'storage-restore-attempt-worker.ts', consumers: ['tests/support/helpers/backend/storage-restore-world.ts'] },
+  { file: "worker-composition-child.ts", consumers: ["tests/support/helpers/backend/worker-composition-world.ts"] },
+  { file: "onboarding-native-orphan-owner.ts", consumers: ["tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts"] },
+  { file: "owner-image-close-retention.ts", consumers: ["tests/architecture/storage/readonly-authority-snapshot.test.ts"] },
+  { file: "owner-image-heartbeat-peer.ts", consumers: ["tests/backend/storage/sqlite/storage-doctor.heartbeat-claim.integration.test.ts"] },
+  { file: "onboarding-closure-hold-worker.ts", consumers: ["tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts"] },
+  { file: "profile-onboarding-abort-worker.ts", consumers: ["tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts"] },
   { file: "worker-stub-cli.ts", consumers: ["tests/support/helpers/backend/dashboard-child-world.ts"] },
+  { file: "fixture-pool-worker.ts", consumers: ["tests/support/helpers/backend/dashboard-child-world.ts"] },
+  { file: "dashboard-signal-child.ts", consumers: ["tests/backend/app/composition/dashboard/compose.ctrl-c-mid-run.integration.test.ts"] },
+  { file: "write-fence-owner.ts", consumers: ["tests/support/helpers/backend/worker-lifetime-world.ts"] },
   { file: "run-record-race-worker.ts", consumers: ["tests/support/helpers/backend/run-record-service-world.ts"] },
-  { file: "runtime-lock-contender.ts", consumers: ["tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts"] },
+  { file: "workbook-queue-peer.ts", consumers: ["tests/backend/workbooks/workbook-library-service.master.integration.test.ts"] },
 ] as const;
 
 function parseSource(path: string, text: string) {
@@ -109,7 +152,7 @@ function capabilityViolations(path: string, text: string): string[] {
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword
       && node.arguments[0] !== undefined && ts.isStringLiteral(node.arguments[0])) {
       const specifier = node.arguments[0].text;
-      const resolved = specifier.startsWith(".") ? relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), specifier)) : specifier;
+      const resolved = specifier.startsWith(".") ? repoRelative(resolve(REPO_ROOT, dirname(path), specifier)) : specifier;
       if (FORBIDDEN_SHARED_IMPORTS.some((pattern) => pattern.test(resolved) || pattern.test(specifier))) failures.push(`${path}: dynamic capability import`);
     }
     ts.forEachChild(node, rejectDynamicCapability);
@@ -119,7 +162,7 @@ function capabilityViolations(path: string, text: string): string[] {
     if (!(ts.isImportDeclaration(declaration) || ts.isExportDeclaration(declaration))
       || declaration.moduleSpecifier === undefined || !ts.isStringLiteral(declaration.moduleSpecifier)) continue;
     const specifier = declaration.moduleSpecifier.text;
-    const resolved = specifier.startsWith(".") ? relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), specifier)) : specifier;
+    const resolved = specifier.startsWith(".") ? repoRelative(resolve(REPO_ROOT, dirname(path), specifier)) : specifier;
     if (!FORBIDDEN_SHARED_IMPORTS.some((pattern) => pattern.test(resolved) || pattern.test(specifier))) continue;
     if ((ts.isExportDeclaration(declaration) && declaration.isTypeOnly)
       || (ts.isImportDeclaration(declaration) && declaration.importClause?.isTypeOnly)) continue;
@@ -186,15 +229,50 @@ function capabilityViolations(path: string, text: string): string[] {
 }
 function processImportViolations(path: string, text: string): string[] {
   return importsFromText(path, text).filter(({ resolved }) => resolved.startsWith("tests/support/processes/"))
+    .filter(({ resolved }) => path !== RETENTION_CASES_OWNER || !RETENTION_CASES_MODULES.includes(resolved))
     .map(({ resolved }) => `${path} -> ${resolved}`);
 }
 
 function childEntrypointBound(path: string, text: string, file: string): boolean {
+  const fileUrlNames = new Set<string>();
+  const inheritedChildNames = new Set<string>();
+  const launcherNames = new Set<string>();
+  let urlShadowed = false;
   const source = parseSource(path, text);
   const joinNames = new Set(["join"]);
   for (const declaration of source.statements) {
-    if (!ts.isImportDeclaration(declaration) || !ts.isStringLiteral(declaration.moduleSpecifier)
-      || declaration.moduleSpecifier.text !== "node:path") continue;
+    if (!ts.isImportDeclaration(declaration) || !ts.isStringLiteral(declaration.moduleSpecifier)) continue;
+    const clause = declaration.importClause;
+    if (clause?.name?.text === 'URL' || clause?.namedBindings !== undefined
+      && (ts.isNamespaceImport(clause.namedBindings) ? clause.namedBindings.name.text === 'URL'
+        : clause.namedBindings.elements.some(binding => binding.name.text === 'URL'))) urlShadowed = true;
+    const resolved = declaration.moduleSpecifier.text.startsWith(".")
+      ? repoRelative(resolve(REPO_ROOT, dirname(path), declaration.moduleSpecifier.text)) : declaration.moduleSpecifier.text;
+    if (resolved === "scripts/dev/relay.js") {
+      const bindings = clause?.namedBindings;
+      if (bindings !== undefined && ts.isNamedImports(bindings) && !clause?.isTypeOnly) {
+        for (const binding of bindings.elements) {
+          if (!binding.isTypeOnly && (binding.propertyName ?? binding.name).text === "startRelay") launcherNames.add(binding.name.text);
+        }
+      }
+    }
+    if (resolved === "tests/support/helpers/backend/runtime-lifetime.js") {
+      const bindings = clause?.namedBindings;
+      if (bindings !== undefined && ts.isNamedImports(bindings) && !clause?.isTypeOnly) {
+        for (const binding of bindings.elements) {
+          if (!binding.isTypeOnly && (binding.propertyName ?? binding.name).text === "runInheritedRuntimeChild") inheritedChildNames.add(binding.name.text);
+        }
+      }
+    }
+    if (declaration.moduleSpecifier.text === 'node:url') {
+      const bindings = declaration.importClause?.namedBindings;
+      if (bindings !== undefined && ts.isNamedImports(bindings)) {
+        for (const binding of bindings.elements) {
+          if (!declaration.importClause?.isTypeOnly && !binding.isTypeOnly && (binding.propertyName ?? binding.name).text === 'fileURLToPath') fileUrlNames.add(binding.name.text);
+        }
+      }
+    }
+    if (declaration.moduleSpecifier.text !== 'node:path') continue;
     const bindings = declaration.importClause?.namedBindings;
     if (bindings !== undefined && ts.isNamedImports(bindings)) {
       for (const binding of bindings.elements) {
@@ -204,6 +282,14 @@ function childEntrypointBound(path: string, text: string, file: string): boolean
   }
   const declarations = new Map<string, ts.Expression>();
   function collect(node: ts.Node) {
+    if ((ts.isVariableDeclaration(node) || ts.isParameter(node) || ts.isFunctionDeclaration(node)
+      || ts.isBindingElement(node) || ts.isClassDeclaration(node) || ts.isFunctionExpression(node) || ts.isClassExpression(node))
+      && node.name !== undefined && ts.isIdentifier(node.name)) {
+      fileUrlNames.delete(node.name.text);
+      inheritedChildNames.delete(node.name.text);
+      launcherNames.delete(node.name.text);
+      if (node.name.text === 'URL') urlShadowed = true;
+    }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined) declarations.set(node.name.text, node.initializer);
     ts.forEachChild(node, collect);
   }
@@ -213,9 +299,13 @@ function childEntrypointBound(path: string, text: string, file: string): boolean
       seen.add(node.text); const initializer = declarations.get(node.text);
       return initializer !== undefined && canonicalPath(initializer, seen);
     }
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && fileUrlNames.has(node.expression.text)) {
+      const url = node.arguments[0];
+      return !urlShadowed && node.arguments.length === 1 && url !== undefined && ts.isNewExpression(url) && canonicalPath(url);
+    }
     if (ts.isNewExpression(node) && node.expression.getText(source) === "URL" && node.arguments?.length === 2) {
-      return ts.isStringLiteral(node.arguments[0]) && node.arguments[0].text.endsWith(`/support/processes/${file}`)
-        && relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), node.arguments[0].text)) === `tests/support/processes/${file}`
+      return ts.isStringLiteral(node.arguments[0])
+        && repoRelative(resolve(REPO_ROOT, dirname(path), node.arguments[0].text)) === `tests/support/processes/${file}`
         && node.arguments[1].getText(source) === "import.meta.url";
     }
     if (ts.isCallExpression(node) && joinNames.has(node.expression.getText(source)) && node.arguments[0]?.getText(source) === "process.cwd()") {
@@ -226,11 +316,22 @@ function childEntrypointBound(path: string, text: string, file: string): boolean
   }
   let bound = false;
   function visit(node: ts.Node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && launcherNames.has(node.expression.text)) {
+      const options = node.arguments[0];
+      if (options !== undefined && ts.isObjectLiteralExpression(options)) {
+        for (const property of options.properties) {
+          if (ts.isPropertyAssignment(property) && property.name.getText(source) === "backendArguments"
+            && ts.isArrayLiteralExpression(property.initializer) && property.initializer.elements.some(element => canonicalPath(element))) bound = true;
+        }
+      }
+    }
     if (ts.isPropertyAssignment(node) && node.name.getText(source) === "prefixArgs") {
       let value = node.initializer;
       if (ts.isCallExpression(value) && value.expression.getText(source) === "Object.freeze" && value.arguments[0] !== undefined) value = value.arguments[0];
       if (ts.isArrayLiteralExpression(value) && value.elements.some((element) => canonicalPath(element))) bound = true;
     }
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && inheritedChildNames.has(node.expression.text)
+      && !urlShadowed && node.arguments[1] !== undefined && canonicalPath(node.arguments[1])) bound = true;
     if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && ["fork", "Worker", "spawn"].includes(node.expression.getText(source))) {
       if (node.expression.getText(source) === "spawn") {
         const args = node.arguments?.[1];
@@ -277,7 +378,7 @@ describe("test-data ownership", () => {
     assert.deepEqual(observed, [], "cross-tier code must use shared fixture homes");
     assert.equal(isUnitTest("tests/backend/helper.test.js"), true);
     assert.equal(isUnitTest("tests/support/helpers/helper.test.ts"), true);
-    for (const path of ["tests/backend/helper.integration.test.js", "tests/architecture/guard.test.ts", "tests/parity/reference.test.ts", "tests/perf/benchmark.ts", "tests/support/helpers/helper.ts"]) {
+    for (const path of ["tests/backend/helper.integration.test.js", "tests/architecture/guard.test.ts", "tests/mocks/reference.test.ts", "tests/perf/benchmark.ts", "tests/support/helpers/helper.ts"]) {
       assert.equal(isUnitTest(path), false, path);
     }
     assert.equal(importsFromText("tests/backend/composition.integration.test.ts", 'import "../models/helper.test.js";')[0]?.resolved, "tests/models/helper.test.js");
@@ -298,7 +399,12 @@ describe("test-data ownership", () => {
   it("process fixtures are exactly recorded child entrypoints and cannot be imported", () => {
     const files = sourceFiles(["tests", "scripts", "src"]);
     assert.deepEqual(sourceFiles(["tests/support/processes"]).map((path) => path.split("/").at(-1)).toSorted(),
-      PROCESS_ENTRYPOINTS.map((entry) => entry.file).toSorted());
+      [...PROCESS_ENTRYPOINTS.map((entry) => entry.file), ...RETENTION_CASES_MODULES.map(path => path.split("/").at(-1)?.replace(/\.js$/u, ".ts"))].toSorted());
+    for (const module of RETENTION_CASES_MODULES) {
+      assert.equal(importsOf(RETENTION_CASES_OWNER).filter(({ resolved }) => resolved === module).length, 1);
+      assert.equal(processImportViolations("tests/support/helpers/violation.ts", `import "../processes/${module.split("/").at(-1) ?? ""}";`).length, 1);
+    }
+    assert.equal(processImportViolations("tests/support/helpers/violation.ts", 'import "../processes/startup-upgrade-retention-cases.js";').length, 1);
     assert.deepEqual(files.filter((path) => path !== "tests/architecture/tooling/test-data-ownership.test.ts").flatMap((path) => processImportViolations(path, readFileSync(join(REPO_ROOT, path), "utf8"))), []);
     for (const entry of PROCESS_ENTRYPOINTS) {
       const consumers = files.filter((path) => path !== "tests/architecture/tooling/test-data-ownership.test.ts" && !path.startsWith("tests/support/processes/")
@@ -307,6 +413,26 @@ describe("test-data ownership", () => {
       for (const path of consumers) assert.ok(childEntrypointBound(path, readFileSync(join(REPO_ROOT, path), "utf8"), entry.file), `${path}: ${entry.file} must bind a canonical child entrypoint`);
     }
     assert.equal(processImportViolations("tests/support/helpers/violation.ts", 'import "../processes/worker-stub-cli.js";').length, 1);
+    const importer = 'tests/backend/app/composition/worker-compose.child-crash.integration.test.ts';
+    const file = 'child-execution-crash-worker.ts';
+    const canonical = `new URL('../../../support/processes/${file}', import.meta.url)`;
+    const prefix = `import { fileURLToPath as fromUrl } from 'node:url'; import { spawn } from 'node:child_process';`;
+    assert.equal(childEntrypointBound(importer, `${prefix} spawn(process.execPath, [fromUrl(${canonical})]);`, file), true);
+    assert.equal(childEntrypointBound(importer, `${prefix} spawn(process.execPath, [fromUrl(new URL('file:///foreign/${file}'))]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} let root = new URL('file:///foreign/'); spawn(process.execPath, [fromUrl(new URL('../../../support/processes/${file}', root))]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `import { spawn } from 'node:child_process'; const fromUrl = (value: URL) => value; spawn(process.execPath, [fromUrl(${canonical})]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} spawn(process.execPath, [fromUrl(${canonical}, 'extra')]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} function launch(fromUrl: (value: URL) => URL) { spawn(process.execPath, [fromUrl(${canonical})]); }`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} function launch({ fromUrl }: { fromUrl: (value: URL) => URL }) { spawn(process.execPath, [fromUrl(${canonical})]); }`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} const [fromUrl] = supplied; spawn(process.execPath, [fromUrl(${canonical})]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} const { nested: { ...fromUrl } } = supplied; spawn(process.execPath, [fromUrl(${canonical})]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} function launch() { class fromUrl {} spawn(process.execPath, [fromUrl(${canonical})]); }`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} const URL = supplied; spawn(process.execPath, [fromUrl(${canonical})]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} import { URL } from 'untrusted'; spawn(process.execPath, [fromUrl(${canonical})]);`, file), false);
+    assert.equal(childEntrypointBound(importer, `${prefix} function launch({ URL }: { URL: unknown }) { spawn(process.execPath, [fromUrl(${canonical})]); }`, file), false);
+    assert.equal(childEntrypointBound(importer, `import { fileURLToPath as wrapper } from "node:url"; const holder = function wrapper() { spawn(wrapper(${canonical}), []); };`, file), false);
+    assert.equal(childEntrypointBound(importer, `import { fileURLToPath as wrapper } from "node:url"; const holder = class wrapper { launch() { spawn(wrapper(${canonical}), []); } };`, file), false);
+
   });
 
   it("child-entrypoint controls require canonical executable launch binding", () => {
@@ -315,9 +441,34 @@ describe("test-data ownership", () => {
     assert.equal(childEntrypointBound(path, `const child = ${literal}; spawn(process.execPath, ["--import", "tsx", child]);`, file), true);
     assert.equal(childEntrypointBound(path, `import { join as join_m1 } from "node:path"; const child = ${literal.replace("join(", "join_m1(")}; spawn(process.execPath, ["--import", "tsx", child]);`, file), true);
     assert.equal(childEntrypointBound(path, `const child = ${literal.replace("join(", "join_m1(")}; spawn(process.execPath, ["--import", "tsx", child]);`, file), false);
+    const imported = 'import { runInheritedRuntimeChild as runFile } from "../../support/helpers/backend/runtime-lifetime.js";';
+    const fileUrl = 'new URL("../../support/processes/worker-stub-cli.ts", import.meta.url)';
+    assert.equal(childEntrypointBound(path, `${imported} runFile(lock, ${fileUrl}, []);`, file), true);
+    for (const text of [
+      `runFile(lock, ${fileUrl}, []);`,
+      `${imported} const runFile = () => {}; runFile(lock, ${fileUrl}, []);`,
+      `${imported.replace("import {", "import type {")} runFile(lock, ${fileUrl}, []);`,
+      `${imported} const URL = class {}; runFile(lock, ${fileUrl}, []);`,
+      `${imported} runFile(lock, new URL("../../support/process-fixtures/worker-stub-cli.ts", import.meta.url), []);`,
+    ]) assert.equal(childEntrypointBound(path, text, file), false, text);
     for (const text of [`// spawn(process.execPath, [${literal}]);`, `const unused = ${literal};`, `spawn(process.execPath, [${literal.replace('"support", "processes"', '"process-fixtures"')}]);`, 'import "../../support/processes/worker-stub-cli.ts";']) {
       assert.equal(childEntrypointBound(path, text, file), false, text);
     }
+  });
+
+  it("binds launcher fixture arguments only through the real imported launcher", () => {
+    const path = "tests/scripts/dev/relay.integration.test.ts", file = "relay-drain-child.ts";
+    const imported = 'import { startRelay as launch } from "../../../scripts/dev/relay.js"; import { fileURLToPath } from "node:url";';
+    const target = 'fileURLToPath(new URL("../../support/processes/relay-drain-child.ts", import.meta.url))';
+    const options = `{ backendArguments: ["--import", "tsx", ${target}] }`;
+    assert.equal(childEntrypointBound(path, `${imported} launch(${options});`, file), true);
+    for (const source of [
+      `launch(${options});`, `${imported} function launch() {} launch(${options});`,
+      `${imported.replace("import { startRelay", "import type { startRelay")} launch(${options});`,
+      `${imported.replace("scripts/dev/relay.js", "scripts/dev/foreign.js")} launch(${options});`,
+      `${imported} const unused = ${options};`, `${imported} launch(${options.replace("backendArguments", "args")});`,
+      `${imported} launch(${options.replace("support/processes", "support/foreign")});`,
+    ]) assert.equal(childEntrypointBound(path, source, file), false, source);
   });
 
   it("recorded credential capabilities are deferred producer functions", () => {
@@ -423,8 +574,8 @@ describe("test-data ownership", () => {
       const declared = resolve(REPO_ROOT, dirname(TEST_DATA_CONFIG_PATH), file.path);
       assert.ok(existsSync(declared), `declared file ${name} must exist`);
       const real = realpathSync(declared);
-      assert.ok(real.startsWith(`${repoReal}/`), `declared file ${name} must resolve inside the repository`);
-      const rel = relative(repoReal, real);
+      const rel = relative(repoReal, real).replaceAll("\\", "/");
+      assert.ok(rel !== "" && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel), `declared file ${name} must resolve inside the repository`);
       assert.ok(visible.has(rel), `declared file ${name} (${rel}) must be visible to git`);
       assert.equal(isIgnored(rel), false, `declared file ${name} must not be ignored`);
     }

@@ -1,21 +1,33 @@
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { claimEventOf, cleanReceiptOf, DAY, instantOffsetOf, receiptWithOutputOf, runEndedEventOf, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { deriveEvidenceEntryId } from "../../../../src/models/trust/evidence-identity.js";
+import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../../src/models/trust/evidence-identity.js";
 import { RunIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 
-const {world, runRecordOf, queuedEventOf, appendOther, cleanup } = createRunQueueProjectionTestWorld();
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+
+const {world, runRecordOf, queuedEventOf, appendOther, cleanup } = createRunQueueProjectionTestWorld(profileFixtures.create);
 
 
 afterEach(cleanup);
 
+function verifyOutputs(receipt: ReturnType<typeof receiptWithOutputOf>) {
+  receipt.configFingerprint = runRecordOf({ seed: 1 }).envelope.configFingerprint;
+  if (receipt.output.length === 0) { receipt.verification = []; return; }
+  for (const fact of receipt.output) fact.id = deriveEvidenceEntryId(receipt.receiptId, "output", fact.field);
+  receipt.verification = [{ id: deriveEvidenceEntryId(receipt.receiptId, "verification", "completion.terminal-result"),
+    obligation: "completion.terminal-result", mandatory: true, verdict: "verified", evidence: receipt.output.map(fact => evidenceEntryRef(fact.id)) }];
+}
+
 
 describe("the queue row's ordinal, class, links and outcome", () => {
-  it("keeps the Person Lookup input title and binds its EID subtitle to the exact receipt output", () => {
-    const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+  it("keeps the input title and binds its EID subtitle to the exact verified receipt output", async () => {
+    const w = await world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined, details: [] }) } });
     for (const seed of [50, 51, 52, 54, 55]) {
       terminalDone(w, seed, { title: "Example, Person" });
       const receipt = receiptWithOutputOf({ seed, outputs: [{ field: "eid", value: seed === 51 ? null : "10000001", ...(seed === 54 ? { redact: "drop" as const } : {}) }] });
@@ -29,6 +41,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
         const fact = receipt.output[0]; assert.ok(fact.state === "satisfied");
         fact.value = { key: "activeStatus.details.eid", state: "transformed", classification: "direct-identifier", transform: "last4", value: "0001" };
       }
+      receipt.verification = [{ id: deriveEvidenceEntryId(receipt.receiptId, "verification", "completion.terminal-result"),
+        obligation: "completion.terminal-result", mandatory: true, verdict: "verified", evidence: [evidenceEntryRef(receipt.output[0].id)] }];
       w.authority.receipts.set(uuidOf(seed), receipt);
     }
     const rows = w.projection.buildDashboardDayWire(DAY).queueSurfaces;
@@ -39,17 +53,19 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     w.authority.receipts.set(uuidOf(50), { ...source, runId: RunIdSchema.parse(uuidOf(51)) });
     assert.throws(() => w.projection.buildDashboardDayWire(DAY), /result-subtitle-receipt-identity-mismatch/u);
   });
-  it("projects a declared result subtitle for an arbitrary workflow identity and result field", () => {
+  it("projects a declared result subtitle for an arbitrary workflow identity and result field", async () => {
     const workflow = "fixture-result-subtitle";
     const fieldPath = "activeStatus.details.matchedEid";
-    const descriptor = { ...personLookupDescriptor, id: WorkflowIdSchema.parse(workflow), subtitleProjection: { fieldPath, display: "eid" as const } };
-    const w = world({ descriptors: { resolve: () => descriptor } });
+    const descriptor = { ...personLookupDescriptor, titleProjection: undefined, details: [], id: WorkflowIdSchema.parse(workflow), subtitleProjection: { fieldPath, display: "eid" as const } };
+    const w = await world({ descriptors: { resolve: () => descriptor } });
     const seed = 53;
     queuedEventOf(w, { seed, workflow }); claimEventOf(w, seed); runEndedEventOf(w, seed, "done", { workflow });
     w.authority.put(runRecordOf({ seed, workflow, lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 60_000) }, claimGeneration: 1, version: 3 }));
     const receipt = receiptWithOutputOf({ seed, workflow, outputs: [{ field: "matchedEid", value: "10000002" }] });
     receipt.configFingerprint = runRecordOf({ seed, workflow }).envelope.configFingerprint;
     receipt.output[0].id = deriveEvidenceEntryId(receipt.receiptId, "output", fieldPath);
+    receipt.verification = [{ id: deriveEvidenceEntryId(receipt.receiptId, "verification", "completion.terminal-result"),
+      obligation: "completion.terminal-result", mandatory: true, verdict: "verified", evidence: [evidenceEntryRef(receipt.output[0].id)] }];
     w.authority.receipts.set(uuidOf(seed), receipt);
     assert.deepEqual(w.projection.buildDashboardDayWire(DAY).queueSurfaces.find(row => row.runId === uuidOf(seed))?.subtitle, { state: "present", value: "10000002" });
   });
@@ -72,8 +88,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     }));
   }
 
-  it("serves the durable ordinal and names the absence of an unstamped one", () => {
-    const w = world();
+  it("serves the durable ordinal and names the absence of an unstamped one", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, runNumber: 12 });
     queuedEventOf(w, { seed: 2 });
     const rows = w.projection.buildDashboardDayWire(DAY).queueSurfaces;
@@ -85,8 +101,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
       reason: "workflow ordinal was not recorded at enqueue",
     });
   });
-  it("serves the worker POOL block from authority — one entry per planned workflow, absent means version 0", () => {
-    const w = world();
+  it("serves the worker POOL block from authority — one entry per planned workflow, absent means version 0", async () => {
+    const w = await world();
     assert.deepEqual(w.projection.buildDashboardDayWire(DAY).workerPools, []);
     w.authority.putWorkerPool({
       workflow: "person-lookup", desiredWorkers: 2, plannedBy: "local-operator",
@@ -106,8 +122,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     assert.equal(day.workerCards.length, 0);
   });
 
-  it("reads priority from the envelope, which is what a bump rewrites", () => {
-    const w = world();
+  it("reads priority from the envelope, which is what a bump rewrites", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, priority: "bulk" });
     assert.equal(w.projection.buildDashboardDayWire(DAY).queueSurfaces[0].priority, "bulk");
 
@@ -116,9 +132,9 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     assert.equal(w.projection.buildDashboardDayWire(DAY).queueSurfaces[0].priority, "interactive");
   });
 
-  it("classifies containment from shape and lineage, and chips only the linked children", () => {
+  it("projects one parent fact and chips only linked children", async () => {
 
-    const w = world({ descriptors: { resolve: () => personLookupDescriptor } });
+    const w = await world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined }) } });
     queuedEventOf(w, { seed: 1, shape: "operation" });
     queuedEventOf(w, { seed: 2, shape: "operation-member", parentSeed: 1, title: "Ada Lovelace" });
     queuedEventOf(w, { seed: 3, shape: "operation-member", parentSeed: 1, title: "Grace Hopper" });
@@ -132,9 +148,9 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     const member = byRun.get(uuidOf(2));
     const linked = byRun.get(uuidOf(4));
     assert.ok(group !== undefined && member !== undefined && linked !== undefined);
-    assert.equal(group.containment, "root");
-    assert.equal(member.containment, "member");
-    assert.equal(linked.containment, "linked");
+    assert.equal(group.parent, null);
+    assert.deepEqual(member.parent, { runId: group.runId, visibility: "inline", partitionDay: DAY, workflowId: group.workflowId, label: personLookupDescriptor.label, title: group.title, panelKind: group.panelKind, status: group.status });
+    assert.deepEqual(linked.parent, { ...member.parent, visibility: "linked" });
 
     // The two partitions are disjoint: the linked child is chipped and NOT
     // counted, the members are counted and NOT chipped.
@@ -153,7 +169,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     assert.deepEqual(linked.linkedRuns, []);
     // A build that cannot resolve the descriptor labels the chip with what the
     // run IS, never with a guessed pretty name.
-    const unregistered = world();
+    const unregistered = await world();
     queuedEventOf(unregistered, { seed: 1, shape: "operation" });
     queuedEventOf(unregistered, { seed: 4, shape: "single", parentSeed: 1 });
     const bare = unregistered.projection.queueSurface(uuidOf(1));
@@ -162,8 +178,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     assert.deepEqual(group.memberPreview, { state: "present", value: "Ada Lovelace, Grace Hopper" });
   });
 
-  it("names the absence of a member preview a group cannot compose", () => {
-    const w = world();
+  it("names the absence of a member preview a group cannot compose", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, shape: "operation" });
     const group = w.projection.buildDashboardDayWire(DAY).queueSurfaces[0];
     assert.ok(group.surfaceKind === "operation");
@@ -173,19 +189,20 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     });
   });
 
-  it("renders a satisfied empty-string receipt fact without rejecting the feed", () => {
-    const w = world();
+  it("omits a satisfied empty-string declared detail without rejecting the feed", async () => {
+    const w = await world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined, subtitleProjection: undefined, details: [{ key: "reason", label: "Reason", source: { kind: "result", fieldPath: "reason" }, display: "text" }] }) } });
     terminalDone(w, 6);
-    w.authority.receipts.set(uuidOf(6), receiptWithOutputOf({ seed: 6,
-      outputs: [{ field: "reason", value: "" }],
-    }));
+    const receipt = receiptWithOutputOf({ seed: 6, outputs: [{ field: "reason", value: "" }] });
+    verifyOutputs(receipt);
+    w.authority.receipts.set(uuidOf(6), receipt);
     const feed = DashboardDayWireSchema.parse(w.projection.buildDashboardDayWire(DAY));
     assert.deepEqual(feed.queueSurfaces.find(row => row.runId === uuidOf(6))?.facts,
-      { state: "present", value: [{ label: "reason", value: "(empty)" }] });
+      { state: "absent", reason: "this run has no applicable detail values" });
   });
 
-  it("chips the receipt's own printable outputs, and keeps four absences apart", () => {
-    const w = world();
+  it("chips only declared verified outputs and keeps unknown authority explicit", async () => {
+    const w = await world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined, outcomeProjection: undefined, subtitleProjection: undefined,
+      details: ["displayedName", "hdh", "records"].map(field => ({ key: field === "displayedName" ? "name" : field, label: field, source: { kind: "result", fieldPath: field }, display: "text" })) }) } });
     // 1 — in flight: no terminal result exists to have facts about.
     queuedEventOf(w, { seed: 1 });
 
@@ -193,7 +210,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     // 3 — a derived receipt that recorded no output at all.
     terminalDone(w, 3);
     w.authority.receipts.set(uuidOf(3), cleanReceiptOf({ seed: 3 }));
-    // 4 — every output leaf redacted or structured: nothing the queue may print.
+    // 4 — no output matches a declared detail.
     terminalDone(w, 4);
     w.authority.receipts.set(uuidOf(4), receiptWithOutputOf({
       seed: 4,
@@ -202,7 +219,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
         { field: "grid", value: { rows: 3 } },
       ],
     }));
-    // 5 — the ordinary settled run: allowed primitives become chips.
+    // 5 — declared verified primitives become chips.
     terminalDone(w, 5);
     w.authority.receipts.set(uuidOf(5), receiptWithOutputOf({
       seed: 5,
@@ -214,6 +231,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
       ],
     }));
 
+    for (const seed of [3, 4, 5]) { const receipt = w.authority.receipts.get(uuidOf(seed)); assert.ok(receipt); verifyOutputs(receipt); }
     const byRun = new Map(w.projection.buildDashboardDayWire(DAY).queueSurfaces.map((row) => [String(row.runId), row.facts]));
     assert.deepEqual(byRun.get(uuidOf(1)), {
       state: "absent",
@@ -225,12 +243,9 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     });
     assert.deepEqual(byRun.get(uuidOf(3)), {
       state: "absent",
-      reason: "this run's evidence receipt records no output fact",
+      reason: "detail name has no verified value",
     });
-    assert.deepEqual(byRun.get(uuidOf(4)), {
-      state: "present",
-      value: [{ label: "grid", value: '{"rows":3}' }],
-    });
+    assert.deepEqual(byRun.get(uuidOf(4)), { state: "absent", reason: "detail name has no verified value" });
     assert.deepEqual(byRun.get(uuidOf(5)), {
       state: "present",
       value: [
@@ -241,8 +256,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     });
   });
 
-  it("sums a step's duration over every execution and leaves an unmeasured step undated", () => {
-    const w = world();
+  it("sums a step's duration over every execution and leaves an unmeasured step undated", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...ORDINAL_CLAIM }, claimGeneration: 1, version: 2 }));
     claimEventOf(w, 1);
@@ -276,8 +291,8 @@ describe("the queue row's ordinal, class, links and outcome", () => {
   });
 
 
-  it("binds a close to the LAST OPEN entry at its identity — two executions at one span path stay two facts", () => {
-    const w = world();
+  it("binds a close to the LAST OPEN entry at its identity — two executions at one span path stay two facts", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     w.authority.put(runRecordOf({ seed: 1, lifecycle: { state: "running", ...ORDINAL_CLAIM }, claimGeneration: 1, version: 2 }));
     claimEventOf(w, 1);

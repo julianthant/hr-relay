@@ -1,7 +1,6 @@
+import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
 import { jsonLeafPaths } from "../../../src/backend/runs/provenance/task-provenance.js";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "./admission-fixture.js";
 import { buildRunResult } from "../../../src/backend/runs/lifecycle/run-result.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
@@ -49,9 +48,10 @@ export function personLookupTerminalIdentityEvidence(run: import("../../../src/m
   ];
 }
 
-export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER))) {
+export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER)), profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
 
   const roots: string[] = [];
+  const profiles: BoundProfileStorageFixture[] = [];
 
   const databases: AuthorityDatabase[] = [];
 
@@ -61,16 +61,16 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
 
   const ACTIVE = PERSON_LOOKUP_ACTIVE;
 
-  function openDatabase(hooks?: AuthorityTerminalizationHooks): AuthorityDatabase {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-run-terminal-"));
-    roots.push(root);
+  async function openDatabase(hooks?: AuthorityTerminalizationHooks): Promise<AuthorityDatabase> {
+    const profile = await profileFixture(); profiles.push(profile);
+    roots.push(profile.stateRoot);
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
       CLOCK,
       undefined,
       hooks,
     );
-    testWorkerPorts(database, CLOCK, { path: join(root, "authority.sqlite"), descriptor: personLookupDescriptor, poolIndex: 1 });
+    testWorkerPorts(database, CLOCK, { path: profile.path, descriptor: personLookupDescriptor, poolIndex: 1 });
     databases.push(database);
     return database;
   }
@@ -92,6 +92,8 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
         },
       },
     });
+    const claimMember1 = database.authority.workerSlots.get(WORKER_ID);
+    if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
     const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now: NOW });
     if (claimed.state !== "claimed") throw new Error("run was not claimed");
     const validating = database.authority.runs.transition({
@@ -201,9 +203,10 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
       failureId: UUID_6,
     };
   }
-  const cleanup = () => {
-    for (const database of databases.splice(0)) database.close();
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  const cleanup = async () => {
+    for (const database of databases.splice(0)) { releaseSeededWriteOwners(database, CLOCK.now().toISOString()); database.close(); }
+    for (const profile of profiles.splice(0)) await profile.close();
+    roots.splice(0);
   };
   return { roots, databases, CLAIM, ACTIVE, openDatabase, startRunning, resultRequest, WORKER_ID, failure, failureAuthorization, cleanup };
 }

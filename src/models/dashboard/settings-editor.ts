@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { SETTINGS_CATALOG } from "../config/catalog.js";
-import { SettingsPatchSchema, SettingsRuntimeStatusSchema } from "../config/settings.js";
+import { isRetiredSettingsPath, SettingsPatchSchema, SettingsRuntimeStatusSchema } from "../config/settings.js";
 import { HostConfigFactsSchema } from "../config/host-display.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsNameSchema, ProtectedSettingsReadbackSchema, ProtectedStoreEntriesSchema } from "../config/protected-settings.js";
 import { FingerprintSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
@@ -92,7 +92,7 @@ export const EditableSettingsWireSchema = z.strictObject({
   const leaves = document.sections.flatMap(section => section.leaves);
   const keys = leaves.map(leaf => leaf.path);
   if (new Set(keys).size !== keys.length) issue("editable settings inventory repeats a path");
-  const expected = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && !row.key.startsWith("annualDates.")).map(row => row.key);
+  const expected = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && !row.key.startsWith("annualDates.") && !isRetiredSettingsPath(row.key)).map(row => row.key);
   const currentJobEndDate = `annualDates.FY${String(document.currentFiscalYear)}.jobEndDate`;
   if (expected.some(key => !keys.includes(key)) || keys.filter(key => key.startsWith("annualDates.")).join("\0") !== currentJobEndDate
     || keys.some(key => !new Set<string>(expected).has(key) && key !== currentJobEndDate)) issue("editable settings inventory membership mismatch");

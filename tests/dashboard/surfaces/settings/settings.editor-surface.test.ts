@@ -1,46 +1,42 @@
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../mocks/helpers/fixture-settings.js";
+import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
 import { syntheticSettingsAuthority } from "../../../support/helpers/dashboard/settings-harness.js";
-import { FIXTURE_EDITABLE_SETTINGS, FIXTURE_STORAGE_RELOCATION } from "../../../parity/helpers/fixture-settings.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act,createElement } from "react";
+import { act,createElement, type ComponentProps } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it,vi } from "vitest";
-import { createDashboardClient, type DashboardClient } from "../../../../src/dashboard/client/index.js";
+import { createDashboardClient,type DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
-import { settingInput } from "../../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../src/models/failures/error-catalog.js";
-import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 const DOCUMENT = FIXTURE_EDITABLE_SETTINGS;
 
-const STORAGE = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-08-28T17:00:00.000Z" });
 let root: Root | undefined;
 let host: HTMLElement | undefined;
-const authorities: ReturnType<typeof syntheticSettingsAuthority>[] = [];
+const authorities: Awaited<ReturnType<typeof syntheticSettingsAuthority>>[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   if (root !== undefined) act(() => { root?.unmount(); });
   host?.remove();
   vi.useRealTimers();
-  for (const authority of authorities.splice(0)) authority.close();
+  for (const authority of authorities.splice(0)) await authority.close();
   root = undefined;
   host = undefined;
 });
 
-function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "lost" = "confirmed") {
-  const authority = syntheticSettingsAuthority();
+async function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "lost" = "confirmed") {
+  const authority = await syntheticSettingsAuthority();
   authorities.push(authority);
   let stored = false;
   let release!: () => void;
   const responseReady = mode === "held" ? new Promise<void>(resolve => { release = resolve; }) : Promise.resolve();
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
     if (url.endsWith("/settings/editable")) return new Response(JSON.stringify(stored ? authority.read() : DOCUMENT), { status: 200 });
-    if (url.endsWith("/settings/storage-relocation")) return new Response(JSON.stringify(FIXTURE_STORAGE_RELOCATION), { status: 200 });
     if (url.endsWith("/commands") && typeof init?.body === "string") {
       const request: unknown = JSON.parse(init.body);
       applied.push(request);
@@ -57,20 +53,20 @@ function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "lost" 
 
 async function mountSettingsPage(client: DashboardClient, section: string,
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void,
-  nowIso = "2026-08-28T18:00:00.000Z") {
+  nowIso = "2026-08-28T18:00:00.000Z", profileName = "Synthetic Operator", accountPage?: ComponentProps<typeof SettingsPage>["accountPage"]) {
   const element = document.createElement("div");
   host = element;
   document.body.append(element);
   await act(async () => {
     root = createRoot(element);
-    root.render(createElement(DashboardClientProvider, { client,
+    root.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client,
       children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso,
-        children: createElement(SettingsPage, { onClose: () => undefined, storage: STORAGE, sections: [],
-          workflowLabels: new Map<string, string>(), section, actorId: "local-operator",
-          descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
-          ...(onExitGuardChange === undefined ? {} : { onExitGuardChange }) }),
+        children: createElement(SettingsPage, { profileName, onClose: () => undefined,
+          section, actorId: "local-operator",
+          descriptorFingerprint: "d".repeat(64), onSection: () => undefined,
+          ...(onExitGuardChange === undefined ? {} : { onExitGuardChange }), ...(accountPage === undefined ? {} : { accountPage }) }),
       }),
-    }));
+    }) }));
   });
   await act(async () => undefined);
   return element;
@@ -89,10 +85,26 @@ function overlayButton(name: string): HTMLButtonElement {
 }
 
 describe("editable Settings surface", () => {
+  it("shows the served profile name and per-word initials without editable or removal controls", async () => {
+    const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => {
+      if (String(url).endsWith("/settings/editable")) return Response.json(DOCUMENT);
+      throw new Error("unexpected-read-only-settings-request");
+    } });
+    host = await mountSettingsPage(client, "credentials", undefined, "2026-08-28T18:00:00.000Z", "Synthetic Middle Operator");
+    assert.match(host.textContent ?? "", /Timekeeper nameSynthetic Middle Operator/u);
+    assert.match(host.textContent ?? "", /Timekeeper initialsSMO/u);
+    assert.doesNotMatch(host.textContent ?? "", /Historical Activity pseudonym/u);
+    assert.equal(host.querySelector('input[name="timekeeperName"]'), null);
+    assert.equal(host.querySelector('input[name="activityPersonPseudonym"]'), null);
+    assert.equal(host.querySelector('button[aria-label="Remove Timekeeper name"]'), null);
+    assert.equal(host.querySelector('button[aria-label="Remove Timekeeper initials"]'), null);
+    assert.equal(host.querySelectorAll("input").length, 3, "navigation search and the two UCPath credentials remain editable");
+  });
+
   it("guards retained workflow credentials before leaving after an unconfirmed write", async () => {
     let guard: ((proceed: () => void) => void) | undefined;
     let exited = 0;
-    const transport = settingsClient([], "lost");
+    const transport = await settingsClient([], "lost");
     host = await mountSettingsPage(transport.client, "credentials", next => { guard = next; });
     const input = host.querySelector<HTMLInputElement>('input[name="ucpathUserId"]');
     assert.ok(input);
@@ -107,8 +119,7 @@ describe("editable Settings surface", () => {
     await act(async () => overlayButton("Keep editing").click());
     assert.equal(input.value, "synthetic-local");
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 1250)); });
-    assert.match(host.textContent ?? "", /Credentials write unconfirmed/u);
-    assert.ok(host.textContent?.includes(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})).text));
+    assert.match(host.textContent ?? "", /Credentials save unconfirmed.*Your draft is retained\./u);
     assert.equal(button("Retry exact attempt").disabled, false);
     assert.equal(transport.authority.credentials.read().revision, 2, "the lost response retains an actually stored protected write");
     await act(async () => guard?.(() => { exited += 1; }));
@@ -124,7 +135,7 @@ describe("editable Settings surface", () => {
     const applied: unknown[] = [];
     let closeCount = 0;
     let exitGuard: ((proceed: () => void) => void) | undefined;
-    const transport = settingsClient(applied, "held");
+    const transport = await settingsClient(applied, "held");
     host = await mountSettingsPage(transport.client, "performance", guard => { exitGuard = guard; });
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-28T18:00:00.000Z"));
@@ -174,7 +185,7 @@ describe("editable Settings surface", () => {
     const applied: unknown[] = [];
     let closeCount = 0;
     let exitGuard: ((proceed: () => void) => void) | undefined;
-    const transport = settingsClient(applied);
+    const transport = await settingsClient(applied);
     host = await mountSettingsPage(transport.client, "performance", guard => { exitGuard = guard; });
     vi.useFakeTimers();
     const ocrDisclosure = [...(host?.querySelectorAll(".settings-performance-disclosure button") ?? [])].find(candidate => candidate.textContent?.includes("OCR processing"));
@@ -202,12 +213,13 @@ describe("editable Settings surface", () => {
 
   it("uses the shared segmented job-end date picker and keeps incomplete edits unsent", async () => {
     const applied: unknown[] = [];
-    const transport = settingsClient(applied);
+    const transport = await settingsClient(applied);
     host = await mountSettingsPage(transport.client, "general");
     vi.useFakeTimers();
     const datePath = `annualDates.FY${String(DOCUMENT.currentFiscalYear)}.jobEndDate`;
     assert.equal(host.querySelector('[data-settings-path="display.viewport"]'), null);
-    assert.equal(host.querySelector('input[name="display.screenWidth"], input[name="display.screenHeight"]'), null);
+    assert.equal(host.querySelector<HTMLElement>('[data-settings-path="browser.headless"] button[aria-label="Browser window"]')?.dataset.value, "Hidden");
+    assert.equal(host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 0);
     const date = host.querySelector(`[data-settings-path="${datePath}"] .ds-date-picker`);
     assert.ok(date);
     assert.equal(date.querySelectorAll('.ds-date-text-input').length, 0);
@@ -220,43 +232,46 @@ describe("editable Settings surface", () => {
     assert.ok(date.querySelector('button[aria-label="Choose job end date"]'));
   });
 
-  it("autosaves valid production routes after 700 ms but retains invalid partial URLs", async () => {
+  it("holds a UCPath pencil-dialog draft through the timer, blur, Escape and Cancel and writes only on Save", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const applied: unknown[] = [];
-    const transport = settingsClient(applied);
-    host = await mountSettingsPage(transport.client, "routes");
-    assert.match(host.textContent ?? "", /Routes/u);
-    assert.doesNotMatch(host.textContent ?? "", /Test routes/u);
-    const input = host.querySelector('[data-settings-path="urls.crm.prod"] input');
-    if (!(input instanceof HTMLInputElement)) throw new Error("missing CRM route input");
-    const crm = DOCUMENT.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "urls.crm.prod");
-    assert.ok(crm);
-    const original = settingInput(crm);
-    assert.notEqual(typeof original, "string");
-    vi.useFakeTimers();
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-    if (setter === undefined) throw new Error("HTML input value setter is unavailable");
-    const enter = async (value: string): Promise<void> => { await act(async () => {
-      Reflect.apply(setter, input, [value]);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    }); };
-    await enter("https://");
-    await act(async () => { await vi.advanceTimersByTimeAsync(701); });
-    assert.equal(applied.length, 0, "an invalid partial URL stays in the draft");
-    await enter("https://crm.example.test/new");
-    await act(async () => { await vi.advanceTimersByTimeAsync(699); });
-    assert.equal(applied.length, 0, "route edits wait for the debounce");
-    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-    assert.equal(applied.length, 1);
-    assert.doesNotMatch(host.textContent ?? "", /Save routes/u);
-    const command = applied[0] as { payload: { patch: Record<string, { set: Record<string, string> }> } };
-    assert.equal(command.payload.patch["urls.crm.prod"]?.set.entry, "https://crm.example.test/new");
-    assert.equal(transport.authority.read().revision, 2);
-    assert.deepEqual(transport.authority.read().sections.flatMap(section => section.leaves).find(leaf => leaf.path === "urls.crm.prod")?.settingsValue, command.payload.patch["urls.crm.prod"]?.set);
-    assert.equal(typeof original, "object");
-    if (typeof original === "string") throw new Error("CRM route values are not an object");
-    assert.deepEqual(command.payload.patch["urls.crm.prod"]?.set, { ...original, entry: "https://crm.example.test/new" }, "editing one row retains the other four URLs");
+    const transport = await settingsClient(applied);
+    host = await mountSettingsPage(transport.client, "account", undefined, undefined, undefined,
+      { values: { name: "Synthetic Operator", initials: "SO", timekeeper: "Synthetic Operator", timekeeperInitials: "SO", lastSignedInAt: "2026-08-28T08:00:00-08:00" }, duo: "ready", onSignOut: () => undefined,
+        details: async () => ({ state: "refused", code: "PROFILE_INITIALS_REFUSED" }), login: { changePassword: async () => ({ state: "changed" }), changeUsername: async () => ({ state: "changed" }) } });
+    const open = async (): Promise<HTMLInputElement> => {
+      const pencil = host?.querySelector<HTMLButtonElement>('button[aria-label="Edit UCPath username"]');
+      assert.ok(pencil);
+      await act(async () => pencil.click());
+      const field = document.body.querySelector<HTMLInputElement>('[role="dialog"] input[name="ucpathUserId"]');
+      assert.ok(field);
+      return field;
+    };
+    const type = async (field: HTMLInputElement, value: string): Promise<void> => {
+      await act(async () => { // eslint-disable-next-line @typescript-eslint/unbound-method
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+        if (setter === undefined) throw new Error("input setter unavailable");
+        Reflect.apply(setter, field, [value]); field.dispatchEvent(new Event("input", { bubbles: true })); });
+    };
+    const wait = async (): Promise<void> => { await act(async () => { await vi.advanceTimersByTimeAsync(5000); }); };
+    let field = await open();
+    await type(field, "held-operator"); await wait();
+    assert.equal(applied.length, 0, "the autosave timer does not write the dialog draft");
+    await act(async () => { field.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); }); await wait();
+    assert.equal(applied.length, 0, "blur does not write the dialog draft");
+    await act(async () => { document.body.querySelector('[role="dialog"]')?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); }); await wait();
+    assert.equal(document.body.querySelector('[role="dialog"]'), null);
+    assert.equal(applied.length, 0, "Escape discards without a write");
+    field = await open();
+    assert.equal(field.value, "", "the discarded draft is gone");
+    await type(field, "cancelled-operator");
+    await act(async () => overlayButton("Cancel").click()); await wait();
+    assert.equal(applied.length, 0, "Cancel discards without a write");
+    field = await open();
+    await type(field, "saved-operator");
+    await act(async () => overlayButton("Save").click());
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    assert.equal(applied.length, 1, "Save writes exactly once");
   });
 });
 
@@ -264,7 +279,6 @@ it("publishes a failed refresh while retaining the verified document and unsaved
   let fail = false;
   let controller: ReturnType<typeof useEditableSettings> | undefined;
   const client = { editableSettings: () => fail ? Promise.reject(new Error("synthetic read failure")) : Promise.resolve(DOCUMENT),
-    storageRelocationPlans: () => Promise.reject(new Error("synthetic no relocation")),
   } as unknown as DashboardClient;
   function Surface() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); return null; }
   host = document.createElement("div"); document.body.append(host);
@@ -282,3 +296,19 @@ it("publishes a failed refresh while retaining the verified document and unsaved
   assert.deepEqual(current().draft, retained);
   assert.equal(current().dirtyCount, 1);
 });
+
+for (const section of ["general", "performance"]) for (const mode of ["failed", "hung"]) {
+  it(`renders the catalog body in the ${section} failed part after a ${mode} initial read`, async () => {
+    vi.useFakeTimers();
+    const client = { editableSettings: () => mode === "hung" ? new Promise(() => {}) : Promise.reject(new Error("private fixture error")),
+    } as unknown as DashboardClient;
+    const dom = await mountSettingsPage(client, section);
+    if (mode === "hung") await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes("Settings unavailable"));
+    assert.ok(failure);
+    assert.ok(failure.textContent?.includes(ERROR_CATALOG.SETTINGS_INITIAL_READ_UNAVAILABLE.text.replace(/ Try again\.$/u, "")));
+    assert.doesNotMatch(failure.textContent ?? "", /private fixture error/);
+  });
+}
+
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";

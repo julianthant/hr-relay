@@ -1,8 +1,9 @@
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { terminalDone, depsOf, observedDepsOf, observedEvent } from "../../../support/helpers/backend/note-scope-fixtures.js";
 
 import assert from "node:assert/strict";
 
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { buildRunSection, createRunNoteScanCache, type RunNoteScanEntry } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { type RunRecord } from "../../../../src/models/run/record.js";
@@ -12,14 +13,16 @@ import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/su
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 
 const { descriptor: subjectDescriptor } = createSubjectTitleTestWorld();
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
 const worlds: DashboardWorld[] = [];
-function world(): DashboardWorld {
-  const created = makeWorld({ descriptors: { resolve: () => subjectDescriptor } });
+async function world(): Promise<DashboardWorld> {
+  const created = await makeWorld({ profileFixture: profileFixtures.create, descriptors: { resolve: () => subjectDescriptor } });
   worlds.push(created);
   return created;
 }
-afterEach(() => {
-  for (const w of worlds.splice(0)) w.dispose();
+afterEach(async () => {
+  for (const w of worlds.splice(0)) await w.dispose();
 });
 
 /** A settled `done` run, fold and authority agreeing, as the projector sees one. */
@@ -28,15 +31,17 @@ afterEach(() => {
 function countAuthorityReads<Result>(
   w: DashboardWorld,
   work: () => Result,
-): { value: Result; getRun: number; canonicalRead: number; canonicalList: number; latestCheckpoint: number; getReceipt: number } {
+): { value: Result; getRun: number; canonicalRead: number; canonicalList: number; canonicalTree: number; latestCheckpoint: number; getReceipt: number } {
   const original = {
     canonicalRead: w.runReader.read.bind(w.runReader),
     canonicalList: w.runReader.list.bind(w.runReader),
+    canonicalTree: w.runReader.withRunTreeSnapshot.bind(w.runReader),
     getRun: w.authority.getRun.bind(w.authority),
     latestCheckpoint: w.authority.latestCheckpoint.bind(w.authority),
     getReceipt: w.authority.getReceipt.bind(w.authority),
   };
-  const counts = { getRun: 0, canonicalRead: 0, canonicalList: 0, latestCheckpoint: 0, getReceipt: 0 };
+  const counts = { getRun: 0, canonicalRead: 0, canonicalList: 0, canonicalTree: 0, latestCheckpoint: 0, getReceipt: 0 };
+  w.runReader.withRunTreeSnapshot = (ids, read) => { counts.canonicalTree += 1; return original.canonicalTree(ids, read); };
   w.runReader.read = (runId) => {
     counts.canonicalRead += 1;
     return original.canonicalRead(runId);
@@ -66,6 +71,7 @@ function countAuthorityReads<Result>(
   } finally {
     w.runReader.read = original.canonicalRead;
     w.runReader.list = original.canonicalList;
+    w.runReader.withRunTreeSnapshot = original.canonicalTree;
     w.authority.getRun = original.getRun;
     w.authority.latestCheckpoint = original.latestCheckpoint;
     w.authority.getReceipt = original.getReceipt;
@@ -94,8 +100,8 @@ describe("member preview slices before joining", () => {
     }
   }
 
-  it("names the first three and counts the rest", () => {
-    const w = world();
+  it("names the first three and counts the rest", async () => {
+    const w = await world();
     groupOf(w, 8);
     const group = w.projection.queueSurface(uuidOf(1));
     assert.ok(group !== undefined && group.surfaceKind === "operation");
@@ -105,21 +111,22 @@ describe("member preview slices before joining", () => {
     });
   });
 
-  it("joins authority for at most the three members it can name", () => {
-    const w = world();
+  it("joins authority for at most the three members it can name", async () => {
+    const w = await world();
     groupOf(w, 8);
     const counted = countAuthorityReads(w, () => w.projection.queueSurface(uuidOf(1)));
 
     assert.equal(counted.latestCheckpoint, 4);
     assert.equal(counted.getRun, 0);
     assert.equal(counted.canonicalRead, 1);
-    assert.equal(counted.canonicalList, 1);
+    assert.equal(counted.canonicalList, 0);
+    assert.equal(counted.canonicalTree, 1);
   });
 
-  it("costs the same three joins whether the group has four members or forty", () => {
-    const small = world();
+  it("costs the same three joins whether the group has four members or forty", async () => {
+    const small = await world();
     groupOf(small, 4);
-    const large = world();
+    const large = await world();
     groupOf(large, 40);
     const smallCount = countAuthorityReads(small, () => small.projection.queueSurface(uuidOf(1)));
     const largeCount = countAuthorityReads(large, () => large.projection.queueSurface(uuidOf(1)));
@@ -129,8 +136,8 @@ describe("member preview slices before joining", () => {
     assert.equal(largeCount.canonicalList, smallCount.canonicalList);
   });
 
-  it("still counts every member the fold has seen in the `+N more` tail", () => {
-    const w = world();
+  it("still counts every member the fold has seen in the `+N more` tail", async () => {
+    const w = await world();
     groupOf(w, 40);
     const group = w.projection.queueSurface(uuidOf(1));
     assert.ok(group !== undefined && group.surfaceKind === "operation");
@@ -140,8 +147,8 @@ describe("member preview slices before joining", () => {
     });
   });
 
-  it("names the absence when the fold has seen no member of a group that claims some", () => {
-    const w = world();
+  it("names the absence when the fold has seen no member of a group that claims some", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1, shape: "operation" });
     const group = w.projection.queueSurface(uuidOf(1));
     assert.ok(group !== undefined && group.surfaceKind === "operation");
@@ -153,30 +160,30 @@ describe("member preview slices before joining", () => {
 });
 
 describe("a row reads its evidence receipt once", () => {
-  it("reads the receipt exactly once for a terminal row", () => {
-    const w = world();
+  it("reads the receipt exactly once for a terminal row", async () => {
+    const w = await world();
     terminalDone(w, 1);
     w.authority.receipts.set(uuidOf(1), boundReceipt(w, cleanReceiptOf({ seed: 1 })));
     const counted = countAuthorityReads(w, () => w.projection.queueSurface(uuidOf(1)));
     assert.equal(counted.getReceipt, 1);
   });
 
-  it("reads it once even when the run has no derived receipt at all", () => {
-    const w = world();
+  it("reads it once even when the run has no derived receipt at all", async () => {
+    const w = await world();
     terminalDone(w, 1);
     const counted = countAuthorityReads(w, () => w.projection.queueSurface(uuidOf(1)));
     assert.equal(counted.getReceipt, 1);
   });
 
-  it("reads none for a row that has not produced a terminal result", () => {
-    const w = world();
+  it("reads none for a row that has not produced a terminal result", async () => {
+    const w = await world();
     queuedEventOf(w, { seed: 1 });
     const counted = countAuthorityReads(w, () => w.projection.queueSurface(uuidOf(1)));
     assert.equal(counted.getReceipt, 0);
   });
 
-  it("keeps both consumers' answers, from that one read", () => {
-    const w = world();
+  it("keeps both consumers' answers, from that one read", async () => {
+    const w = await world();
     terminalDone(w, 1);
     w.authority.receipts.set(uuidOf(1), boundReceipt(w, cleanReceiptOf({ seed: 1 })));
     const row = w.projection.queueSurface(uuidOf(1));
@@ -191,8 +198,8 @@ describe("a row reads its evidence receipt once", () => {
     });
   });
 
-  it("keeps `unread` and `none` apart when no receipt was ever derived", () => {
-    const w = world();
+  it("keeps `unread` and `none` apart when no receipt was ever derived", async () => {
+    const w = await world();
     terminalDone(w, 1);
     const row = w.projection.queueSurface(uuidOf(1));
     assert.ok(row !== undefined);
@@ -202,8 +209,8 @@ describe("a row reads its evidence receipt once", () => {
     });
   });
 
-  it("scales the day wire's receipt reads with the TERMINAL rows, not with every row", () => {
-    const w = world();
+  it("scales the day wire's receipt reads with the TERMINAL rows, not with every row", async () => {
+    const w = await world();
     terminalDone(w, 1);
     terminalDone(w, 2);
     queuedEventOf(w, { seed: 3 });
@@ -215,8 +222,8 @@ describe("a row reads its evidence receipt once", () => {
     assert.equal(counted.getReceipt, 2);
   });
 
-  it("reuses each terminal row's safe receipt projection for the Activity completion split", () => {
-    const w = world();
+  it("reuses each terminal row's safe receipt projection for the Activity completion split", async () => {
+    const w = await world();
 
     terminalDone(w, 1);
     terminalDone(w, 2);
@@ -280,8 +287,27 @@ describe("a logs GET opens only its run partitions", () => {
 
 
 
-  it("serves a completed browser action as a concise Logs line", () => {
-    const w = world();
+  it("serves a span-owned browser action without inventing a node identity", async () => {
+    const w = await world();
+    terminalDone(w, 1);
+    const authority = w.authority.getRun(uuidOf(1));
+    assert.ok(authority);
+    const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
+    notes.emitRunAction({ workflow: "person-lookup",
+      address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) },
+      action: { kind: "clicked", targetId: "ucpath.person-org.search-button", at: w.clock.now().toISOString() },
+    }, authority);
+    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
+    assert.equal(section.section, "logs");
+    const native = section.payload.notes[0]?.native;
+    assert.ok(native);
+    assert.equal(native.spanPath, traceOf(1));
+    assert.equal(Object.hasOwn(native, "nodeId"), false);
+    assert.deepEqual(section.payload.rows?.map(row => row.native), [native]);
+  });
+
+  it("serves a completed browser action as a concise Logs line", async () => {
+    const w = await world();
     terminalDone(w, 1);
     const authority = w.authority.getRun(uuidOf(1));
     assert.ok(authority !== undefined);
@@ -294,11 +320,11 @@ describe("a logs GET opens only its run partitions", () => {
     const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
     assert.equal(section.section, "logs");
     assert.deepEqual(section.payload.rows?.map((row) => row.kind), ["note"]);
-    assert.equal(section.payload.notes[0]?.message, "Clicked ucpath person org search button");
+    assert.equal(section.payload.notes[0]?.message, "Click: Person Org Search button");
   });
 
-  it("serves classified note values in Logs", () => {
-    const w = world();
+  it("serves classified note values in Logs", async () => {
+    const w = await world();
     terminalDone(w, 1);
     const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     notes.emitNote({
@@ -306,35 +332,35 @@ describe("a logs GET opens only its run partitions", () => {
       address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) },
       level: "step",
       message: "Entered person details",
-      fields: [{ key: "ssn", classification: "direct-identifier", transform: "last4", value: "920-74-1459" }],
+      fields: [{ key: "ssn", classification: "direct-identifier", transform: "last4", value: "902-48-1357" }],
     });
     const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
     assert.equal(section.section, "logs");
     assert.deepEqual(section.payload.notes[0]?.fields, [{ key: "ssn", kind: "text", value: "[SSN masked]" }]);
   });
 
-  it("refuses a same-run observation whose trace is not the run authority trace", () => {
-    const w = world();
+  it("refuses a same-run observation whose trace is not the run authority trace", async () => {
+    const w = await world();
     terminalDone(w, 1);
     assert.throws(() => observedEvent(w, { traceId: traceOf(2) }), /timeline-event-owner-mismatch/u);
   });
 
-  it("refuses observed rows under a foreign workflow or outside the run's legal attempts", () => {
-    const foreignWorkflow = world();
+  it("refuses observed rows under a foreign workflow or outside the run's legal attempts", async () => {
+    const foreignWorkflow = await world();
     terminalDone(foreignWorkflow, 1);
     assert.throws(() => observedEvent(foreignWorkflow, { workflow: "separations" }), /timeline-event-owner-mismatch/u);
-    const foreignAttempt = world();
+    const foreignAttempt = await world();
     terminalDone(foreignAttempt, 1);
     assert.throws(() => observedEvent(foreignAttempt, { attempt: 2 }), /timeline-event-owner-mismatch/u);
   });
 
-  it("refuses foreign note workflow and trace identities by source line", () => {
-    const foreignWorkflow = world();
+  it("refuses foreign note workflow and trace identities by source line", async () => {
+    const foreignWorkflow = await world();
     terminalDone(foreignWorkflow, 1);
     const foreignNotes = createNoteTimelineWriter({ repository: foreignWorkflow.timeline, clock: foreignWorkflow.clock, pid: 4242 });
     assert.throws(() => foreignNotes.emitNote({ workflow: "separations", address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) }, level: "step", message: "foreign workflow" }), /timeline-event-owner-mismatch/u);
 
-    const foreignTrace = world();
+    const foreignTrace = await world();
     terminalDone(foreignTrace, 1);
     const notes = createNoteTimelineWriter({ repository: foreignTrace.timeline, clock: foreignTrace.clock, pid: 4242 });
     assert.throws(() => notes.emitNote({ workflow: "person-lookup", address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(2), spanPath: traceOf(2) }, level: "step", message: "foreign trace" }), /timeline-note-owner-mismatch/u);
@@ -345,8 +371,8 @@ describe("a logs GET opens only its run partitions", () => {
 describe("native logs snapshot scans a run once", () => {
 
 
-  it("scans once across a whole page walk, and every page is the same list", () => {
-    const w = world();
+  it("scans once across a whole page walk, and every page is the same list", async () => {
+    const w = await world();
     terminalDone(w, 1);
     const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     for (let index = 0; index < 450; index += 1) {
@@ -382,8 +408,8 @@ describe("native logs snapshot scans a run once", () => {
     assert.equal(messages.at(-1), "note 449");
   });
 
-  it("re-reads the corpus on EVERY call when no cache is handed in", () => {
-    const w = world();
+  it("re-reads the corpus on EVERY call when no cache is handed in", async () => {
+    const w = await world();
     terminalDone(w, 1);
     const notes = createNoteTimelineWriter({ repository: w.database.authority.timelineEvents, clock: w.clock, pid: 4242 });
     const emit = (message: string): void => {

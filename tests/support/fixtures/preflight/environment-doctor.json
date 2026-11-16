@@ -34,10 +34,6 @@
       "injection": "workflow-secret-missing"
     },
     {
-      "scenario": "preflight/orphan-process",
-      "injection": "orphan-process"
-    },
-    {
       "scenario": "preflight/endpoint-prod",
       "injection": "endpoint-prod"
     },

@@ -1,3 +1,4 @@
+import { isQueueTopLevel } from "../../../../../src/models/dashboard/queue-parent.js";
 
 import { mkdtempSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,9 +22,9 @@ afterEach(async () => {
 });
 
 async function boot(): Promise<SeededServer> {
-  const distDir = mkdtempSync(join(tmpdir(), "hrauto-parity-dist-"));
+  const distDir = mkdtempSync(join(tmpdir(), "hrauto-mock-dist-"));
   roots.push(distDir);
-  writeFileSync(join(distDir, "index.html"), "<!doctype html><title>parity</title>");
+  writeFileSync(join(distDir, "index.html"), "<!doctype html><title>mock</title>");
   // API-only probe: nothing renders the app here, so the bundle is declared
   // unverified instead of demanding a working-tree build.
   const server = await startSeededServer({
@@ -41,7 +42,7 @@ async function dashboardDay(baseUrl: string, day: string) {
   return body;
 }
 
-describe("seeded parity BFF (adapter #2 — real machinery)", () => {
+describe("seeded mock BFF (adapter #2 — real machinery)", () => {
   it("serves a strict bootstrap document", async () => {
     const server = await boot();
     const bootstrap = FrontendBootstrapWireSchema.parse(
@@ -57,7 +58,7 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
       await dashboardDay(server.baseUrl, server.day),
     );
     // Keyed by the plain string: run ids are branded on the wire, and the
-    // seed reports them as the raw ids a parity spec would address.
+    // seed reports them as the raw ids a mock spec would address.
     const byId = new Map(day.queueSurfaces.map((surface) => [String(surface.runId), surface]));
 
     const expected: readonly [string, string][] = [
@@ -83,8 +84,9 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
       expect(group.memberRollup.total).toBe(3);
     }
     const member = byId.get(server.runIds.memberRun);
-    expect(member?.surfaceKind).toBe("member");
-    expect(member?.lineage).toEqual({ state: "child", parentRunId: server.runIds.groupRun });
+    expect(member?.surfaceKind).toBe("single");
+    expect(member?.parent?.runId).toBe(server.runIds.groupRun);
+    expect(member?.parent?.visibility).toBe("inline");
   });
 
   it("keeps counts on the one path, excluding member surfaces", async () => {
@@ -92,7 +94,7 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
     const day = DashboardDayWireSchema.parse(
       await dashboardDay(server.baseUrl, server.day),
     );
-    const countable = day.queueSurfaces.filter((surface) => surface.surfaceKind !== "member");
+    const countable = day.queueSurfaces.filter((surface) => isQueueTopLevel(surface));
 
     const statuses = new Map<string, number>();
     for (const surface of countable) {
@@ -153,13 +155,14 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
     expect(response.status, "a parked run with no intent answers 500, not an empty panel").toBe(200);
     const section = RunDetailSectionResponseSchema.parse(await response.json());
     if (section.section !== "parked-write") throw new Error("expected the parked-write section");
+    expect(section.payload.acceptsTransactionId).toBe(false);
     expect(section.payload.generation).toBe(1);
     expect(section.payload.system).toBe("ucpath");
     expect(section.payload.subject.state).toBe("subject-match");
     // Both typed resolutions, both intent-scoped, both confirm-first — the
     // three properties a surface may not supply for itself.
     expect(section.payload.actions.map((action) => action.kind === "command" && action.command))
-      .toEqual(["resolve-write-present", "resolve-write-absent"]);
+      .toEqual(["recheck-write", "resolve-write-absent"]);
     for (const action of section.payload.actions) {
       if (action.kind !== "command") throw new Error("expected a command descriptor");
       expect(action.confirm).toBeDefined();

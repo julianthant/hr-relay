@@ -1,10 +1,11 @@
 import { z } from "zod";
-import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../config/catalog.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../config/catalog.js";
 import { HOST_PRIMARY_DISPLAY_ENV } from "../config/host-display.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS } from "../config/secrets.js";
+import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS, DEVELOPMENT_DEBUG_MIRROR_ENV, PARENT_BUILD_ID_ENV } from "../config/secrets.js";
 
-const EnvironmentKeySchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
+const EnvironmentKeySchema = z.union([z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.enum(["SystemRoot", "ProgramFiles", "ProgramFiles(x86)"])]);
+const PROCESS_MECHANICS_ENVIRONMENT_OWNER = "src/models/config/secrets.ts";
 const EnvironmentFamilyPrefixSchema = z.string().regex(/^[A-Z][A-Z0-9_]*$/);
 const SourcePathSchema = z.string().regex(/^[a-z0-9_.-]+(?:\/[a-z0-9_.-]+)*\.(?:[cm]?[jt]sx?)$/);
 export const RuntimeEnvironmentExactSpecSchema = z.discriminatedUnion("disposition", [
@@ -12,7 +13,7 @@ export const RuntimeEnvironmentExactSpecSchema = z.discriminatedUnion("dispositi
     key: EnvironmentKeySchema,
     classification: z.enum(["secret", "direct-identifier", "non-secret-config"]),
     disposition: z.literal("active"),
-    channel: z.enum(["config", "config-default", "secret", "config-and-secret", "provider-model", "process-ownership"]),
+    channel: z.enum(["config", "config-default", "secret", "config-and-secret", "provider-model", "process-ownership", "development-diagnostics", "process-mechanics", "host-storage", "host-programs"]),
     owner: z.string().regex(/^src\/[a-z0-9/_-]+\.ts$/),
     documented: z.boolean(),
   }),
@@ -68,6 +69,7 @@ const ComputedReaderBulkTargetSchema = z.strictObject({
     "dashboard-child-processes",
     "secure-local-environment-admission",
     "test-command-child",
+    "xcode-tool-child",
   ]),
   reason: z.string().min(1),
 });
@@ -124,7 +126,12 @@ const SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
   "OCR_OPENROUTER_MODEL", "OCR_SAMBANOVA_MODEL",
 ] as const;
 
-const TEST_ONLY_ENVIRONMENT_KEYS = ["PARITY_UPDATE", "TZ"] as const;
+const TEST_ONLY_ENVIRONMENT_KEYS = [
+  "SESSIONS_BAR_RENDER_DIR", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN", "RELAY_TEST_NATIVE", "RELAY_TEST_TIME_SCALE", "RELAY_TEST_PROCESS_IMPORT",
+  "RELAY_TEST_HOST",
+  "NOTIFICATIONS_MOCK_OUT", "NOTIFICATIONS_MOCK_THEMES", "NOTIFICATIONS_MOCK_SCALE", "AX_MOCK_OUT", "AX_MOCK_THEMES", "AX_MOCK_WIDTH", "AX_MOCK_ONLY", "AX_MOCK_SCALE", "STATUS_MOCK_OUT", "STATUS_MOCK_THEMES", "STATUS_MOCK_WIDTH", "STATUS_MOCK_ONLY", "STATUS_MOCK_SCALE", "LOGS_CARDS_OUT", "LOGS_CARDS_ONLY", "LOGS_CARDS_HEIGHT",
+  "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP",
+] as const;
 
 const INERT_RETIRED_ENVIRONMENT_KEYS = [
   ...PROVIDER_MODEL_ENVIRONMENT_KEYS, ...SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS,
@@ -148,18 +155,88 @@ export const RETIRED_ENVIRONMENT_KEYS = deepFreeze(
   [...MIGRATED_SETTINGS_ENVIRONMENT_KEYS],
 );
 
-const DOCUMENTED_ENVIRONMENT_KEYS: ReadonlySet<string> = new Set();
+const DOCUMENTED_ENVIRONMENT_KEYS: ReadonlySet<string> = new Set(["RELAY_TEST_HOST"]);
 
 const TEST_ONLY_ENVIRONMENT_OWNERS = {
-  PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
+  NODE_OPTIONS: ["playwright.mocks.config.ts", "tests/support/duo-ceremony-setup.ts", "tests/support/helpers/credential-keychain-fake.ts"],
+  RELAY_TEST_KEYCHAIN: ["tests/support/helpers/credential-keychain-fake.ts"],
+  RELAY_TEST_NATIVE: ["vitest.config.ts", "tests/architecture/tooling/guard-manifest.test.ts"],
+  RELAY_TEST_TIME_SCALE: ["tests/support/time-scale.ts"],
+  RELAY_TEST_PROCESS_IMPORT: ["tests/support/compiled-process.ts", "tests/support/compiled-process-setup.ts"],
+  RELAY_TEST_HOST: ["scripts/test/pc.ts"],
+  SESSIONS_BAR_RENDER_DIR: ["tests/mocks/sessions-bar-hover.test.ts"],
+  NOTIFICATIONS_MOCK_OUT: ["tests/mocks/notifications-mock.test.ts", "tests/mocks/notifications-sweep-decisions.test.ts", "tests/mocks/notifications-sweep.test.ts"],
+  NOTIFICATIONS_MOCK_THEMES: ["tests/mocks/notifications-mock.test.ts", "tests/mocks/notifications-sweep-decisions.test.ts", "tests/mocks/notifications-sweep.test.ts"],
+  NOTIFICATIONS_MOCK_SCALE: ["tests/mocks/notifications-mock.test.ts", "tests/mocks/notifications-sweep-decisions.test.ts", "tests/mocks/notifications-sweep.test.ts"],
+  AX_MOCK_OUT: ["tests/mocks/zz-assistant-explorer-mock.test.ts"],
+  AX_MOCK_THEMES: ["tests/mocks/zz-assistant-explorer-mock.test.ts"],
+  AX_MOCK_WIDTH: ["tests/mocks/zz-assistant-explorer-mock.test.ts"],
+  AX_MOCK_ONLY: ["tests/mocks/zz-assistant-explorer-mock.test.ts"],
+  AX_MOCK_SCALE: ["tests/mocks/zz-assistant-explorer-mock.test.ts"],
+  STATUS_MOCK_OUT: ["tests/mocks/zz-status-mock.test.ts"],
+  STATUS_MOCK_THEMES: ["tests/mocks/zz-status-mock.test.ts"],
+  STATUS_MOCK_WIDTH: ["tests/mocks/zz-status-mock.test.ts"],
+  STATUS_MOCK_ONLY: ["tests/mocks/zz-status-mock.test.ts"],
+  STATUS_MOCK_SCALE: ["tests/mocks/zz-status-mock.test.ts"],
+  LOGS_CARDS_OUT: ["tests/mocks/zz-status-mock.test.ts"],
+  LOGS_CARDS_ONLY: ["tests/mocks/zz-status-mock.test.ts"],
+  LOGS_CARDS_HEIGHT: ["tests/mocks/zz-status-mock.test.ts"],
+  TMPDIR: [
+    "tests/support/private-temp-setup.ts",
+    "tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts",
+    "tests/backend/storage/sqlite/readonly-authority-snapshot.integration.test.ts",
+  ],
+  TMP: [
+    "tests/support/private-temp-setup.ts",
+    "tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts",
+  ],
+  TEMP: [
+    "tests/support/private-temp-setup.ts",
+    "tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts",
+  ],
+  KEEP_TEST_TMP: ["tests/support/private-temp-setup.ts"],
   TZ: [
     "tests/backend/runs/projections/run-summary.derivation.integration.test.ts",
     "tests/perf/dashboard-fixture.integration.test.ts",
-    "tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts",
+    "tests/backend/storage/admission/process-identity.integration.test.ts",
   ],
 } as const;
 
 export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecSchema.array().parse([
+  ...["ProgramFiles", "ProgramFiles(x86)"].map(key => ({ key, classification: "non-secret-config", disposition: "active",
+    channel: "host-programs", owner: PROCESS_MECHANICS_ENVIRONMENT_OWNER, documented: true })),
+  {
+    key: "LOCALAPPDATA",
+    classification: "direct-identifier",
+    disposition: "active",
+    channel: "host-storage",
+    owner: "src/models/config/secrets.ts",
+    documented: true,
+  },
+  {
+    key: DEVELOPMENT_DEBUG_MIRROR_ENV,
+    classification: "non-secret-config",
+    disposition: "active",
+    channel: "development-diagnostics",
+    owner: "src/models/config/secrets.ts",
+    documented: true,
+  },
+  {
+    key: "SystemRoot",
+    classification: "non-secret-config",
+    disposition: "active",
+    channel: "process-mechanics",
+    owner: PROCESS_MECHANICS_ENVIRONMENT_OWNER,
+    documented: true,
+  },
+  {
+    key: PARENT_BUILD_ID_ENV,
+    classification: "non-secret-config",
+    disposition: "active",
+    channel: "process-mechanics",
+    owner: PROCESS_MECHANICS_ENVIRONMENT_OWNER,
+    documented: false,
+  },
   {
     key: "HRAUTO_DASHBOARD_LAUNCH_NONCE",
     classification: "direct-identifier",
@@ -186,6 +263,8 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     disposition: "migrated-refused",
     reason: TEST_TARGET_SECRET_ENVIRONMENT_KEY_SET.has(key)
       ? "test-target input moved to ignored config/test-data.local.json; remove it"
+      : RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS.some(retired => retired === key)
+      ? "protected setting retired; remove it from the environment"
       : "setting moved to the settings authority; set it in Settings, then remove it",
     documented: false,
   })),
@@ -207,7 +286,17 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
 
 export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilySpecSchema.array().parse([]));
 
-export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([]));
+export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([
+  { key: "ProgramFiles", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
+  { key: "ProgramFiles(x86)", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
+  { key: "LOCALAPPDATA", paths: ["src/models/config/secrets.ts"] },
+  { key: DEVELOPMENT_DEBUG_MIRROR_ENV, paths: ["src/models/config/secrets.ts"] },
+  { key: "SystemRoot", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
+  { key: PARENT_BUILD_ID_ENV, paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
+  { key: "NODE_OPTIONS", paths: ["playwright.mocks.config.ts"] },
+  { key: "RELAY_TEST_HOST", paths: ["scripts/test/pc.ts"] },
+  { key: "RELAY_TEST_NATIVE", paths: ["vitest.config.ts"] },
+]));
 
 interface ComputedReaderInput {
   readonly path: string;
@@ -228,7 +317,8 @@ interface ComputedReaderInput {
         readonly boundary:
           | "dashboard-child-processes"
           | "secure-local-environment-admission"
-          | "test-command-child";
+          | "test-command-child"
+          | "xcode-tool-child";
         readonly reason: string;
       };
 }
@@ -248,10 +338,10 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [...RETIRED_ENVIRONMENT_KEYS, HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-process-mechanics", exact: WORKER_PROCESS_MECHANIC_KEYS } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "hostAwareResolutionEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
-  computedReader({ path: "scripts/dev/dashboard.ts", enclosingSymbol: "<module>", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "target-bootstrap", targets: { kind: "bulk-pass-through", boundary: "dashboard-child-processes", reason: "the dashboard launcher forwards its inherited environment plus one owned nonce to the two same-runtime child processes" } }),
-  computedReader({ path: "scripts/test/runner.ts", enclosingSymbol: "main", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the batch test wrapper forwards its inherited environment with owned scratch paths to the installed Vitest child" } }),
-  computedReader({ path: "scripts/verify-parity-json.ts", enclosingSymbol: "main", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the parity wrapper forwards its inherited environment to its same-checkout Playwright child" } }),
+  computedReader({ path: "scripts/dev/dashboard.ts", enclosingSymbol: "runDevDashboard", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "target-bootstrap", targets: { kind: "bulk-pass-through", boundary: "dashboard-child-processes", reason: "the dashboard launcher forwards its inherited environment plus one owned nonce to the two same-runtime child processes" } }),
   computedReader({ path: "vite.dashboard.config.ts", enclosingSymbol: "<module>", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "5c77e74cb49d532097f685ae27e9a8029afb783349dbaff9f709b90a7cece316", classification: "target-bootstrap", targets: { kind: "closed-targets", exact: ["HRAUTO_DASHBOARD_LAUNCH_NONCE"], families: [] } }),
+  computedReader({ path: "scripts/test/pc.ts", enclosingSymbol: "mac", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the PC Vitest listing passes the inherited environment with RELAY_TEST_NATIVE set" } }),
+  computedReader({ path: "scripts/test/pc.ts", enclosingSymbol: "remote", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the PC remote Vitest run passes the inherited environment with RELAY_TEST_NATIVE set" } }),
 ]));
 
 export const RuntimeEnvironmentRegistrySchema = z.strictObject({
@@ -297,13 +387,38 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
   }
 
   const exact = new Map(registry.exact.map((spec) => [spec.key, spec]));
+  const systemRoot = exact.get("SystemRoot");
+  if (systemRoot?.disposition !== "active" || systemRoot.classification !== "non-secret-config"
+    || systemRoot.channel !== "process-mechanics" || systemRoot.owner !== PROCESS_MECHANICS_ENVIRONMENT_OWNER) {
+    violations.push("SystemRoot must retain the canonical accessor's non-secret process-mechanics ownership");
+  }
+  const systemRootReader = registry.exactReaderOwners.find(reader => reader.key === "SystemRoot");
+  if (systemRootReader?.paths.length !== 1 || systemRootReader.paths[0] !== PROCESS_MECHANICS_ENVIRONMENT_OWNER) {
+    violations.push("SystemRoot exact reader must be solely the canonical environment accessor");
+  }
+  const parentBuild = exact.get(PARENT_BUILD_ID_ENV);
+  if (parentBuild?.disposition !== "active" || parentBuild.classification !== "non-secret-config"
+    || parentBuild.channel !== "process-mechanics" || parentBuild.owner !== PROCESS_MECHANICS_ENVIRONMENT_OWNER) {
+    violations.push("RELAY_PARENT_BUILD_ID must retain the canonical accessor's non-secret process-mechanics ownership");
+  }
+  const parentBuildReader = registry.exactReaderOwners.find(reader => reader.key === PARENT_BUILD_ID_ENV);
+  if (parentBuildReader?.paths.length !== 1 || parentBuildReader.paths[0] !== PROCESS_MECHANICS_ENVIRONMENT_OWNER) {
+    violations.push("RELAY_PARENT_BUILD_ID exact reader must be solely the canonical environment accessor");
+  }
   for (const spec of registry.exact) {
     if (spec.disposition !== "active") continue;
-    const expectedOwner = spec.channel === "process-ownership"
+    if (spec.channel === "process-mechanics" && (spec.key === "SystemRoot" || spec.key === PARENT_BUILD_ID_ENV)) continue;
+    const expectedOwner = spec.channel === "host-programs" && ["ProgramFiles", "ProgramFiles(x86)"].includes(spec.key) && spec.classification === "non-secret-config"
+      ? PROCESS_MECHANICS_ENVIRONMENT_OWNER
+      : spec.channel === "host-storage" && spec.key === "LOCALAPPDATA" && spec.classification === "direct-identifier"
+      ? "src/models/config/secrets.ts"
+      : spec.channel === "process-ownership"
       ? "src/models/dashboard/dashboard-frontend-owner.ts"
       : spec.channel === "config-default"
         ? "src/models/config/host-display.ts"
-        : undefined;
+        : spec.channel === "development-diagnostics" && spec.key === DEVELOPMENT_DEBUG_MIRROR_ENV
+          ? "src/models/config/secrets.ts"
+          : undefined;
     if (expectedOwner === undefined) {
       violations.push(`${spec.key} retains forbidden active ${spec.channel} environment ownership`);
       continue;

@@ -1,7 +1,6 @@
 import { RunRecordSchema } from "../../../src/models/run/record.js";
-import { ExplorerOverrideImportReceiptSchema, ExplorerOverrideImportSourceSchema } from "../../../src/models/dashboard/explorer-override.js";
 import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/write-authority-reason.js";
-import { createRunTerminalEvidenceResult, deriveTerminalFailureDigest, RunTerminalEvidenceResultSchema } from "../../../src/models/run/result.js";
+import { createRunTerminalEvidenceResult, deriveTerminalFailureDigest, RunTerminalEvidenceResultSchema, NotRunTerminalDependencySchema, ResolvedTerminalDependencySchema, GateTerminalDependencySchema, RunResultRecordSchema, TerminalDependencyRecordSchema, TerminalNotRunReasonSchema, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, deriveRunResultDigest, deriveTerminalDependencyDigest } from "../../../src/models/run/result.js";
 import { RunCompletionSchema, completionFromAuthorization } from "../../../src/models/run/completion.js";
 import { currentAtomicWriteFixture } from "../../support/helpers/timeline-write-fixture.js";
 import { CredentialStoreApplyOutcomeSchema } from "../../../src/models/config/credential-store.js";
@@ -31,27 +30,23 @@ import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/boots
 import { DiagnosticBundleWireSchema } from "../../../src/models/dashboard/diagnostic-bundle.js";
 import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
 import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
-import { DashboardStreamEnvelopeSchema, DashboardTopicPatchSchema, DashboardTopicSnapshotSchema } from "../../../src/models/dashboard/subscription.js";
+import { DashboardStreamEnvelopeSchema } from "../../../src/models/dashboard/subscription.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../src/rules/workflow/dependencies.js";
 import { GateResultRecordSchema } from "../../../src/models/workflow/gates.js";
-import { LedgerEntryPayloadSchema, LedgerEntrySchema, LedgerOutboxPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../src/rules/runs/ledger.js";
+import { LedgerEntryPayloadSchema, LedgerEntrySchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../src/rules/runs/ledger.js";
 import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
-import { AtomicOutboxPayloadSchema, AtomicOutboxRecordSchema } from "../../../src/models/notifications/outbox.js";
 import { ProviderAdapterOutcomeSchema, ProviderUnavailableReasonSchema, ProviderExecutionIdentitySchema, ProviderEvidenceSchema, ProviderRequestEnvelopeSchema, ProviderResponseEnvelopeSchema } from "../../../src/models/providers/providers.js";
 import { buildPreflightReport, PreflightObservationSchema, PreflightReportSchema, PreflightResultSchema, requiredPreflightChecks } from "../../../src/models/preflight/preflight.js";
 import { ClassifiedDiagnosticValueSchema, RedactionResultSchema } from "../../../src/rules/redaction/redaction.js";
 import { RUNTIME_DEPENDENCY_REGISTRY, RuntimeDependencyRegistrySchema } from "../../../src/models/runtime/runtime-dependencies.js";
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema } from "../../../src/models/runtime/runtime-environment.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../src/models/validation/schema-bound-value.js";
-import { NotRunTerminalDependencySchema, ResolvedTerminalDependencySchema, RunResultRecordSchema, TerminalDependencyRecordSchema, TerminalNotRunReasonSchema, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, deriveRunResultDigest, deriveTerminalDependencyDigest } from "../../../src/models/run/result.js";
 import { FailureTerminalAuthorizationRecordSchema, SuccessTerminalAuthorizationRecordSchema, TerminalAuthorizationRecordSchema, TerminalizationClaimSchema } from "../../../src/models/run/terminal-authorization.js";
-
 import { DataPointSchema, RecordedDataPointSchema, TaskExecutionIdentitySchema, TaskProvenanceResultSchema, TaskUpstreamCheckpointEvidenceSchema } from "../../../src/rules/workflow/task-provenance.js";
 import { GraphCoveragePointSchema, ScenarioCoverageClaimSchema } from "../../../src/workflow-kit/validation/scenario-coverage.js";
 import { ApproveContextSchema, ApprovedDocumentSchema, CompletionConsumptionSpecSchema, CompletionProgramSampleSchema, ExtractedFieldSchema, MemberPlanEntrySchema, PreviewRecordSchema } from "../../../src/models/workflow/completion.js";
 import { FileAcceptSpecSchema, InputParserSpecSchema, ParsedInputEntrySchema, SurfaceFieldSchema, TextTemplateSchema, UploadFieldSpecSchema, UploadedFileSchema, WorkflowSurfacesSchema } from "../../../src/models/workflow/ingress.js";
-import { DetailProjectionSpecRuntimeSchema, DurableArtifactProjectionSpecRuntimeSchema, GateProjectionDefinitionSchema, StepProjectionSchema, SurfaceShapeSchema, VerdictDefinitionSchema, WorkflowActionPolicySchema, WorkflowCapabilitiesSchema } from "../../../src/models/workflow/presentation.js";
-import { BUILD_MANIFEST, BuildManifestSchema, SourceHashSchema } from "../../../src/workflow-kit/validation/build-manifest.js";
+import { ResultTitleProjectionSchema, DetailProjectionSpecRuntimeSchema, DurableArtifactProjectionSpecRuntimeSchema, GateProjectionDefinitionSchema, StepProjectionSchema, SurfaceShapeSchema, VerdictDefinitionSchema, WorkflowActionPolicySchema, WorkflowCapabilitiesSchema } from "../../../src/models/workflow/presentation.js";
 import { CheckpointExpectationSchema, CheckpointMissReasonSchema, FactProvenanceSchema, FreshnessOverrideSchema, RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { ChildVisibilitySchema, DelegationManifestRefSchema, DelegationPolicySchema, GraphNodeKindSchema, ParallelBranchSpecSchema, childRunOutcomeSchema } from "../../../src/models/workflow/graph.js";
 import { TimecardDateRangeSchema, TimecardMonthDaySchema, VisibleTimecardMonthDaysSchema } from "../../../src/rules/time/timecard-period.js";
@@ -59,9 +54,7 @@ import { IdleRefreshCadenceSchema, LoginResultSchema, RetryPolicySchema, Session
 import { FreshnessPolicySchema, ProvenancePolicySchema, SubjectBindingSpecSchema, TaskEffectSchema } from "../../../src/models/task/task-contract.js";
 import { UiVerificationEvidenceManifestSchema, UiVerificationScenarioSchema } from "../../../src/models/ui/contracts.js";
 import { CRM_ONBOARDING_DISPLAYED_EID, CrmOnboardingDatesReadSchema, CrmOnboardingRecordReadSchema, CrmSubjectBindingSchema } from "../../../src/models/ui/crm-onboarding.js";
-import { ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE, ActivityPersonPseudonymSecretReferenceSchema, SECRET_FILE_SPECS, SECRET_SPECS, ProtectedSecretSourceSchema, SecretFileSpecSchema, SecretAvailabilitySchema, SecretSpecSchema } from "../../../src/models/config/secrets.js";
-import { ActivityPersonPseudonymEvidenceSchema, ActivityPersonPseudonymGenerationBindingSchema } from "../../../src/models/trust/activity-person-pseudonym.js";
-
+import { SECRET_SPECS, ProtectedSecretSourceSchema, SecretAvailabilitySchema, SecretSpecSchema } from "../../../src/models/config/secrets.js";
 import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
 import { ActionEvidenceSchema, DecisionEvidenceSchema, EvidenceFactSchema, ReuseEvidenceSchema, RunEvidenceReceiptSchema, UncertaintyEvidenceSchema, VerificationEvidenceSchema } from "../../../src/models/trust/evidence.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
@@ -69,15 +62,12 @@ import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../src/models/trust/prefligh
 import { ScenarioManifestSchema } from "../../../src/models/trust/scenario.js";
 import { DryRunScenarioResultSchema } from "../../../src/models/trust/dry-run-scenario-result.js";
 import { AbsentEvidenceSchema, IdempotencyKeySchema, NegativeSettlementDecisionSchema, NegativeSettlementEvaluationInputSchema, NegativeSettlementPolicySchema, PresentProofReferenceSchema, RecoveryProbeVerdictSchema, SubjectEvidenceSchema, SubjectProofSchema, TransactionOutcomeSchema, UNSCOPED_COMMIT_REASON_REGISTRY, UnscopedBindingProofSchema, UnscopedCommitReasonSpecSchema, WriteAttemptRecordSchema, WriteBindingProofSchema, WriteIntentRecordSchema } from "../../../src/rules/write-safety/write-safety.js";
-import { ArtifactOutboxStorageRecordSchema, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, AtomicWriteCommitStorageStepSchema, AuthorityBackupManifestSchema, AuthorityBackupRequestSchema, AuthorityBackupRunReportSchema, AuthorityBackupServiceOptionsSchema, AuthorityBootReportSchema, AuthorityCopyInspectionSchema, AuthorityDatabaseOptionsSchema, AuthorityInvariantResultSchema, AuthorityMetaSchema, AuthorityPendingCountsSchema, AuthoritySchemaInspectionSchema, BackupHealthSchema, BackupVerificationSchema, ImmutableInsertDispositionSchema, OfflineRestoreOptionsSchema, OfflineRestoreReportSchema, OfflineRestoreRequestSchema, PermanentWriteResolutionSchema, RecoveryProcessLockStateSchema, RecoveryRuntimeLockSnapshotSchema, RecoveryStopProofStoreOptionsSchema, RestoreCandidateSchema, StoppedSystemProofSchema, StoppedSystemProofIssueRequestSchema, StorageDoctorOptionsSchema, StorageDoctorReportSchema, StorageHealthCauseSchema, WriteFenceInputSchema, FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, FailureTerminalizationStorageStepSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, SuccessTerminalizationStorageStepSchema } from "../../../src/backend/storage/sqlite/index.js";
+import { ArtifactOutboxStorageRecordSchema, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, AtomicWriteCommitStorageStepSchema, AuthorityBackupManifestSchema, AuthorityBackupRequestSchema, AuthorityBackupRunReportSchema, AuthorityBackupServiceOptionsSchema, AuthorityBootReportSchema, AuthorityCopyInspectionSchema, AuthorityDatabaseOptionsSchema, AuthorityInvariantResultSchema, AuthorityMetaSchema, AuthorityPendingCountsSchema, AuthoritySchemaInspectionSchema, BackupHealthSchema, BackupVerificationSchema, ImmutableInsertDispositionSchema, OfflineRestoreOptionsSchema, OfflineRestoreReportSchema, OfflineRestoreRequestSchema, PermanentWriteResolutionSchema, RestoreCandidateSchema, StorageDoctorOptionsSchema, StorageDoctorReportSchema, StorageHealthCauseSchema, WriteFenceInputSchema, FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, FailureTerminalizationStorageStepSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, SuccessTerminalizationStorageStepSchema } from "../../../src/backend/storage/sqlite/index.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { CRM_UI_REGISTRY } from "../../../src/backend/systems/crm/driver/ui-registry.js";
 import { UCPATH_UI_REGISTRY } from "../../../src/backend/systems/ucpath/driver/ui-registry.js";
-import { ABSENCE_1, ABSENCE_2, ATOMIC_WRITE_COMMIT, COMMAND_FIXTURES, COMMITTED_OUTCOME, CONFIG_SNAPSHOT, DELEGATION_MANIFEST, DEPENDENCY_RECORD, GATE_RESULT, IDEMPOTENCY_KEY, IDEMPOTENCY_KEY_DIGEST, LEDGER_OUTBOX_RECORD, LEDGER_OUTBOX_PAYLOAD, LEDGER_PAYLOAD, NOTIFICATION, SPAN_OUTBOX_PAYLOAD, SPAN_OUTBOX_RECORD, SUBJECT_EVIDENCE, SUBJECT_PROOF, UNSCOPED_PROOF, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
-
-
+import { ABSENCE_1, ABSENCE_2, ATOMIC_WRITE_COMMIT, COMMAND_FIXTURES, COMMITTED_OUTCOME, CONFIG_SNAPSHOT, DELEGATION_MANIFEST, DEPENDENCY_RECORD, GATE_RESULT, IDEMPOTENCY_KEY, IDEMPOTENCY_KEY_DIGEST, LEDGER_OUTBOX_RECORD, LEDGER_PAYLOAD, NOTIFICATION, SPAN_OUTBOX_PAYLOAD, SPAN_OUTBOX_RECORD, SUBJECT_EVIDENCE, SUBJECT_PROOF, UNSCOPED_PROOF, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
-
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
 
@@ -286,13 +276,14 @@ const UNCERTAINTY_EVIDENCE = {
 const BOOTSTRAP = {
   wireVersion: 1, appVersion: "1.0.0", descriptorHash: HASH_A, settingsSchemaHash: HASH_B, protectedSchemaHash: HASH_A,
   projectionGeneration: 1, actor: { id: "local-operator", label: "Local operator" },
+  workbookCompatibility: { workflows: [], libraries: [] },
   serverClock: { now: NOW, zone: "America/Los_Angeles" },
-  storage: { authority: "healthy", backup: "current", checkedAt: NOW }, workflows: [],
+  storage: { authority: "healthy" }, workflows: [],
   systemInstances: [], settingsSections: [], featureAvailability: [],
 };
 const DAY = {
   day: "2026-07-31", descriptorHash: HASH_A, projectionGeneration: 1, snapshotCursor: "pc:1",
-  monthCounts: [], workflowCounts: [], statusCounts: [], queueSurfaces: [], workerCards: [], workerAuthority: { state: "present", members: [] }, workerOperations: [], workerPools: [], notifications: [],
+  monthCounts: [], workflowCounts: [], statusCounts: [], queueSurfaces: [], workerCards: [], workerAuthority: { state: "present", members: [] }, workerPools: [], notifications: [],
 };
 const DETAIL = {
   runId: UUID_1, rowRevision: 1, panelKind: "run",
@@ -343,7 +334,7 @@ const BULK_RUN_COMMAND = {
   family: "run",
   type: "bump",
   targets: [{ runId: UUID_3, expectedVersion: 1 }],
-  mode: "all-or-none",
+  mode: "best-effort",
 };
 const PRESENT_PROOF_REFERENCE = {
   proofSchemaHash: HASH_A,
@@ -404,13 +395,6 @@ const WRITE_ATTEMPT_FIXTURES = [
   { ...WRITE_ATTEMPT, outcome: { state: "parked", code: "operator-required", message: "Manual confirmation required", authorityReason: deriveWriteAuthorityReason("manual-confirmation-required", "proof", "Synthetic verifier requires manual confirmation") } },
 ];
 const LEDGER_ENTRY = { outboxId: UUID_1, seq: 0, payload: LEDGER_PAYLOAD };
-const atomicOutbox = (payload: unknown) => ({
-  outboxId: UUID_1,
-  aggregate: { kind: "write-intent", writeIntentId: UUID_1, generation: 1 },
-  payload,
-  projection: { state: "pending" },
-  createdAt: NOW,
-});
 const SQLITE_SCHEMA_INSPECTION = {
   applicationId: 1_217_249_861,
   schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
@@ -438,13 +422,14 @@ const SQLITE_ARTIFACT_OUTBOX = {
 const AUTHORITY_PENDING_COUNTS = {
   pendingCommands: 1,
   unresolvedWriteIntents: 1,
-  leases: 1,
   providerReservations: 1,
   artifactOutbox: 1,
 };
 const AUTHORITY_COPY_INSPECTION = {
   applicationId: 1_217_249_861,
   schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
+  installationId: UUID_1,
+  profileId: UUID_2,
   pageCount: 24,
   authorityGeneration: 4,
   authorityContentFingerprint: HASH_A,
@@ -460,6 +445,8 @@ const BACKUP_VERIFICATION = {
   observedAt: NOW,
   applicationId: 1_217_249_861,
   schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
+  installationId: UUID_1,
+  profileId: UUID_2,
   pageCount: 24,
   authorityGeneration: 4,
   authorityContentFingerprint: HASH_A,
@@ -470,11 +457,13 @@ const BACKUP_VERIFICATION = {
 };
 const BACKUP_MANIFEST = {
   kind: "hrauto-authority-backup",
-  manifestVersion: 3,
+  manifestVersion: 4,
   backupFileName: "authority-g4.sqlite",
   sourceDatabaseIdentity: HASH_B,
   applicationId: 1_217_249_861,
   schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
+  installationId: UUID_1,
+  profileId: UUID_2,
   pageCount: 24,
   authorityGeneration: 4,
   authorityContentFingerprint: HASH_A,
@@ -496,30 +485,7 @@ const RESTORE_CANDIDATE = {
   ageMs: 1_000,
   generationGap: { state: "known", value: 0 },
 };
-const STOPPED_SYSTEM_PROOF = {
-  state: "stopped",
-  proofId: UUID_1,
-  observedAt: NOW,
-  observedBy: "local-operator",
-  sourceDatabaseIdentity: HASH_B,
-  runtimeNamespace: "hrauto-rebuild",
-  runtimeGeneration: 7,
-  runtimeStateFingerprint: HASH_A,
-  processLockGenerations: { server: 11, workers: 13, geocode: 17, "live-smoke": 19 },
-};
-const RECOVERY_RUNTIME_LOCK_SNAPSHOT = {
-  schemaVersion: 1,
-  runtimeNamespace: "hrauto-rebuild",
-  runtimeGeneration: 7,
-  sourceDatabaseIdentity: HASH_B,
-  recordedAt: NOW,
-  processLocks: {
-    server: { state: "stopped", generation: 11 },
-    workers: { state: "stopped", generation: 13 },
-    geocode: { state: "stopped", generation: 17 },
-    "live-smoke": { state: "stopped", generation: 19 },
-  },
-};
+
 const STORAGE_DOCTOR_REPORT = {
   recovery: { state: "clear" },
   authorityUpgrades: { state: "absent", reason: "journal-empty" },
@@ -570,63 +536,31 @@ interface BoundaryCatalogEntry {
 }
 
 const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
-  { name: "ExplorerOverrideImportSource", schema: ExplorerOverrideImportSourceSchema, fixtures: [
-    { state: "absent" }, { state: "present", sha256: HASH_A, byteLength: 123, document: { documentVersion: 1, workflows: [{
-      overrideVersion: 1, workflowId: "person-lookup", descriptorVersion: 1, contractFingerprint: HASH_B,
-      revision: 1, appliedCommandId: UUID_1, commandFingerprint: HASH_A, presentation: { label: "People search" },
-    }] } },
-  ] },
-  { name: "ExplorerOverrideImportReceipt", schema: ExplorerOverrideImportReceiptSchema, fixtures: [
-    { format: 1, sourceDatabaseIdentity: HASH_A, backupSha256: "fresh", source: { state: "absent" } },
-    { format: 1, sourceDatabaseIdentity: HASH_A, backupSha256: HASH_B, source: { state: "present", sha256: HASH_A, byteLength: 2, document: { documentVersion: 1, workflows: [] } } },
-  ] },
   { name: "AuthorityTableSpec", schema: TableSpecSchema, fixtures: AUTHORITY_TABLE_REGISTRY },
   { name: "AuthorityTableRegistry", schema: AuthorityTableRegistrySchema, fixtures: [AUTHORITY_TABLE_REGISTRY] },
   { name: "AuthorityDatabaseOptions", schema: AuthorityDatabaseOptionsSchema, fixtures: [{ path: "/tmp/authority.sqlite", busyTimeoutMs: 250, migrationOwner: "unit-test" }] },
-  { name: "AuthorityMeta", schema: AuthorityMetaSchema, fixtures: [{ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityGeneration: 0, updatedAt: NOW }] },
+  { name: "AuthorityMeta", schema: AuthorityMetaSchema, fixtures: [{ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, installationId: UUID_1, profileId: UUID_2, authorityGeneration: 0, updatedAt: NOW }] },
   { name: "AuthoritySchemaInspection", schema: AuthoritySchemaInspectionSchema, fixtures: [SQLITE_SCHEMA_INSPECTION] },
-  { name: "ActivityPersonPseudonymEvidence", schema: ActivityPersonPseudonymEvidenceSchema, fixtures: [{
-    runId: UUID_2,
-    workflowId: "separations",
-    keyGeneration: "activity-person-g1",
-    pseudonym: HASH_A,
-    derivation: "hmac-sha-256/activity-person/v1",
-  }] },
-  {
-    name: "ActivityPersonPseudonymGenerationBinding",
-    schema: ActivityPersonPseudonymGenerationBindingSchema,
-    fixtures: [{
-      keyGeneration: "activity-person-g1",
-      keyCommitment: HASH_A,
-      derivation: "hmac-sha-256/activity-person-key-commitment/v1",
-    }],
-  },
-  
-  
-  
-  
-  { name: "ActivityPersonPseudonymSecretReference", schema: ActivityPersonPseudonymSecretReferenceSchema, fixtures: [
-    ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
-  ] },
-  
+
+
+
+
+
+
   { name: "ImmutableInsertDisposition", schema: ImmutableInsertDispositionSchema, fixtures: ["inserted", "existing"] },
-  
-  
-  
-  
-  
+
+
+
+
+
   // Raw submissions and canonical inputs are open JSON by contract, not unvalidated wire mirrors.
-  
-  
+
+
   { name: "ArtifactOutboxStorageRecord", schema: ArtifactOutboxStorageRecordSchema, fixtures: [SQLITE_ARTIFACT_OUTBOX], openFixturePaths: ["payload.value"] },
-  
+
   { name: "AuthorityBackupServiceOptions", schema: AuthorityBackupServiceOptionsSchema, fixtures: [{ directory: "/tmp/backups" }] },
   { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ stateRootTrustAnchor: "/tmp", stateRoot: "/tmp/state", authorityPath: "/tmp/state.sqlite", backupDirectory: "/tmp/backups", maxBackupAgeMs: 60_000, busyTimeoutMs: 250 }] },
-  { name: "OfflineRestoreOptions", schema: OfflineRestoreOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", suspectDirectory: "/tmp/suspects", busyTimeoutMs: 250, processLockRoot: "/tmp/rebuild-locks", stoppedProofMaxAgeMs: 60_000 }] },
-  { name: "RecoveryStopProofStoreOptions", schema: RecoveryStopProofStoreOptionsSchema, fixtures: [{ processLockRoot: "/tmp/rebuild-locks", maxProofAgeMs: 60_000 }] },
-  { name: "RecoveryProcessLockState", schema: RecoveryProcessLockStateSchema, fixtures: [{ state: "stopped", generation: 11 }, { state: "active", generation: 12, pid: 1234 }] },
-  { name: "RecoveryRuntimeLockSnapshot", schema: RecoveryRuntimeLockSnapshotSchema, fixtures: [RECOVERY_RUNTIME_LOCK_SNAPSHOT] },
-  { name: "StoppedSystemProofIssueRequest", schema: StoppedSystemProofIssueRequestSchema, fixtures: [{ observedBy: "local-operator", sourceDatabaseIdentity: HASH_B }] },
+  { name: "OfflineRestoreOptions", schema: OfflineRestoreOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", suspectDirectory: "/tmp/suspects", busyTimeoutMs: 250, processLockRoot: "/tmp/rebuild-locks"}] },
   { name: "AuthorityPendingCounts", schema: AuthorityPendingCountsSchema, fixtures: [AUTHORITY_PENDING_COUNTS] },
   { name: "AuthorityInvariantResult", schema: AuthorityInvariantResultSchema, fixtures: [{ state: "valid", violations: [] }] },
   { name: "AuthorityCopyInspection", schema: AuthorityCopyInspectionSchema, fixtures: [AUTHORITY_COPY_INSPECTION] },
@@ -656,8 +590,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     STORAGE_DOCTOR_REPORT,
     { ...STORAGE_DOCTOR_REPORT, tombstoneOrdinals: { state: "unavailable", cause: HEALTH_CAUSE }, authority: { state: "degraded", cause: HEALTH_CAUSE }, counts: { state: "unavailable", cause: HEALTH_CAUSE }, backup: { state: "missing", cause: { code: "backup-missing", summary: "no backup exists" } }, restoreCandidates: [] },
   ] },
-  { name: "StoppedSystemProof", schema: StoppedSystemProofSchema, fixtures: [STOPPED_SYSTEM_PROOF] },
-  { name: "OfflineRestoreRequest", schema: OfflineRestoreRequestSchema, fixtures: [{ manifestPath: "/tmp/authority.manifest.json", stoppedSystemProof: STOPPED_SYSTEM_PROOF }] },
+  { name: "OfflineRestoreRequest", schema: OfflineRestoreRequestSchema, fixtures: [{ manifestPath: "/tmp/authority.manifest.json" }] },
   { name: "OfflineRestoreReport", schema: OfflineRestoreReportSchema, fixtures: [{ state: "restored", schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, restoredAt: NOW, manifestFileName: "authority-g4.sqlite.manifest.json", backupFileName: "authority-g4.sqlite", suspectFileName: "suspect-state.sqlite", sourceDatabaseIdentity: HASH_B, authorityGeneration: 4, projectionRebuilt: true, authorityPreservedAcrossProjectionRebuild: true }] },
   { name: "SchemaBoundCanonicalValue", schema: SchemaBoundCanonicalValueSchema, fixtures: [{ schemaHash: HASH_A, value: "approved" }] },
   { name: "RebuildArtifactRoot", schema: RebuildArtifactRootSchema, fixtures: [".tracker/data/artifacts"] },
@@ -742,7 +675,12 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     { review: false, editData: true },
     { review: true, editData: true, delegationDisplay: "inline" },
   ] },
+  { name: "ResultTitleProjection", schema: ResultTitleProjectionSchema, fixtures: [
+    { fieldPath: "activeStatus.details.name", display: "person-name", protectedInput: "eid" },
+  ] },
   { name: "DetailProjectionSpecRuntime", schema: DetailProjectionSpecRuntimeSchema, fixtures: [
+    { key: "result-name", label: "Name", source: { kind: "result", fieldPath: "activeStatus.details.name" }, display: "text", when: { source: { kind: "input", fieldPath: "mode" }, equals: "match" } },
+    { key: "search", label: "Search", source: { kind: "input-title" }, display: "text" },
     { key: "resolved-eid", label: "EID", source: { nodeId: "searching", fieldPath: "selection.selected" }, display: "eid" },
   ] },
   { name: "DurableArtifactProjectionSpecRuntime", schema: DurableArtifactProjectionSpecRuntimeSchema, fixtures: [
@@ -763,13 +701,19 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "TerminalNotRunReason", schema: TerminalNotRunReasonSchema, fixtures: TerminalNotRunReasonSchema.options },
   { name: "ResolvedTerminalDependency", schema: ResolvedTerminalDependencySchema, fixtures: [RESOLVED_TERMINAL_DEPENDENCY] },
   { name: "NotRunTerminalDependency", schema: NotRunTerminalDependencySchema, fixtures: [NOT_RUN_TERMINAL_DEPENDENCY] },
-  { name: "TerminalDependencyRecord", schema: TerminalDependencyRecordSchema, fixtures: [RESOLVED_TERMINAL_DEPENDENCY, NOT_RUN_TERMINAL_DEPENDENCY] },
+  { name: "GateTerminalDependency", schema: GateTerminalDependencySchema, fixtures: [{ state: "gate-resolved", nodeId: GATE_RESULT.nodeId,
+    gate: { runId: GATE_RESULT.runId, gateId: GATE_RESULT.gateId }, resultSchemaHash: GATE_RESULT.result.schemaHash,
+    checkpointFingerprint: GATE_RESULT.checkpointFingerprint, recordDigest: HASH_A }] },
+  { name: "TerminalDependencyRecord", schema: TerminalDependencyRecordSchema, fixtures: [RESOLVED_TERMINAL_DEPENDENCY, NOT_RUN_TERMINAL_DEPENDENCY,
+    { state: "gate-resolved", nodeId: GATE_RESULT.nodeId, gate: { runId: GATE_RESULT.runId, gateId: GATE_RESULT.gateId },
+      resultSchemaHash: GATE_RESULT.result.schemaHash, checkpointFingerprint: GATE_RESULT.checkpointFingerprint, recordDigest: HASH_A }] },
   { name: "RunTerminalEvidenceResult", schema: RunTerminalEvidenceResultSchema, fixtures: [FAILED_RESULT.result.value, { kind: "lifecycle-evidence", outcome: "cancelled", commandId: UUID_1, auditId: UUID_1, requestFingerprint: HASH_A, appliedVersion: 2 }] },
   { name: "RunResultRecord", schema: RunResultRecordSchema, fixtures: [RUN_RESULT], openFixturePaths: ["result.value"] },
-  
+
   { name: "TerminalDependencyEvidence", schema: TerminalDependencyEvidenceSchema, fixtures: [
     { state: "resolved", nodeId: RUN_CHECKPOINT.nodeId, checkpoint: RUN_CHECKPOINT },
     NOT_RUN_TERMINAL_DEPENDENCY,
+    { state: "gate-resolved", nodeId: GATE_RESULT.nodeId, gate: GATE_RESULT },
   ], openFixturePaths: ["checkpoint.output.value"] },
   { name: "CheckpointExpectation", schema: CheckpointExpectationSchema, fixtures: [
     { descriptorVersion: 1, contractFingerprint: HASH_A, implFingerprint: HASH_B, outputSchemaHash: HASH_A },
@@ -778,8 +722,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "FreshnessOverride", schema: FreshnessOverrideSchema, fixtures: [
     { nodeId: "searching", fieldPaths: ["selection.selected"], confirmedAt: NOW, reason: "confirmed with the operator", validForAttempt: 2 },
   ] },
-  { name: "SourceHash", schema: SourceHashSchema, fixtures: [{ path: "src/rules/identity/ids.ts", sha256: HASH_A }] },
-  { name: "BuildManifest", schema: BuildManifestSchema, fixtures: [BUILD_MANIFEST] },
   { name: "GraphNodeKind", schema: GraphNodeKindSchema, fixtures: ["task", "transaction", "branch", "parallel", "child-run", "gate"] },
   { name: "ChildVisibility", schema: ChildVisibilitySchema, fixtures: ["inline", "linked", "hidden-unless-failed"] },
   { name: "ParallelBranchSpec", schema: ParallelBranchSpecSchema, fixtures: [{ id: "org", nodes: ["search-person"] }] },
@@ -819,7 +761,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "IntakeCommandRequest", schema: IntakeCommandRequestSchema, fixtures: commandFixtures("intake") },
   { name: "WorkerBrowserCommandRequest", schema: WorkerBrowserCommandRequestSchema, fixtures: commandFixtures("worker-browser") },
   { name: "SettingsCommandRequest", schema: SettingsCommandRequestSchema, fixtures: commandFixtures("settings") },
-  
+
   { name: "RunCommandRequest", schema: RunCommandRequestSchema, fixtures: commandFixtures("run") },
   { name: "GateCommandRequest", schema: GateCommandRequestSchema, fixtures: commandFixtures("gate") },
   { name: "NotificationCommandRequest", schema: NotificationCommandRequestSchema, fixtures: commandFixtures("notification") },
@@ -887,13 +829,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     { ...LEDGER_PAYLOAD, subject: { state: "absent" }, externalOccurredAt: { state: "present", value: ABSENCE_1.observedAt } },
   ] },
   { name: "LedgerEntry", schema: LedgerEntrySchema, fixtures: [LEDGER_ENTRY] },
-  { name: "LedgerOutboxPayload", schema: LedgerOutboxPayloadSchema, fixtures: [LEDGER_OUTBOX_PAYLOAD] },
   { name: "WriteCommittedSpanOutboxPayload", schema: WriteCommittedSpanOutboxPayloadSchema, fixtures: [SPAN_OUTBOX_PAYLOAD], openFixturePaths: ["outcome.output.value"] },
-  { name: "AtomicOutboxPayload", schema: AtomicOutboxPayloadSchema, fixtures: [LEDGER_OUTBOX_PAYLOAD, SPAN_OUTBOX_PAYLOAD], openFixturePaths: ["outcome.output.value"] },
-  { name: "AtomicOutboxRecord", schema: AtomicOutboxRecordSchema, fixtures: [
-    atomicOutbox(LEDGER_OUTBOX_PAYLOAD),
-    { ...atomicOutbox(SPAN_OUTBOX_PAYLOAD), projection: { state: "projected", projectedAt: ABSENCE_1.observedAt, projectionFingerprint: HASH_A } },
-  ], openFixturePaths: ["payload.outcome.output.value"] },
   { name: "WriteFenceInput", schema: WriteFenceInputSchema, fixtures: [{ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT, claim: { workerId: "fixture-worker", claimGeneration: 1 } }] },
   { name: "PermanentWriteResolution", schema: PermanentWriteResolutionSchema, fixtures: [
     { state: "refused", refusal: { reason: "lost" } },
@@ -978,7 +914,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "CrmOnboardingRecordRead", schema: CrmOnboardingRecordReadSchema, fixtures: [CRM_RECORD_READ] },
   { name: "CrmOnboardingDatesRead", schema: CrmOnboardingDatesReadSchema, fixtures: [CRM_DATES_READ] },
   { name: "SecretSpec", schema: SecretSpecSchema, fixtures: [SECRET_SPECS[0]] },
-  { name: "SecretFileSpec", schema: SecretFileSpecSchema, fixtures: [SECRET_FILE_SPECS[0]] },
   { name: "SecretAvailability", schema: SecretAvailabilitySchema, fixtures: [{ name: "ucpathPassword", source: "protected-store", state: "unknown", diagnostic: "registered source could not be read" }] },
   { name: "ProtectedSecretSource", schema: ProtectedSecretSourceSchema, fixtures: [{ read: () => ({}) }] },
   { name: "TestTargetRegistry", schema: TestTargetRegistrySchema, fixtures: [TEST_TARGET_REGISTRY] },
@@ -1027,8 +962,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ArtifactRef", schema: ArtifactRefWireSchema, fixtures: [ARTIFACT_REF] },
   { name: "CapturePointer", schema: CapturePointerWireSchema, fixtures: [{ artifactId: UUID_1, dimensions: { state: "missing", reason: "not captured" } }] },
   { name: "ArtifactResource", schema: ArtifactResourceWireSchema, fixtures: [ARTIFACT] },
-  { name: "DashboardTopicSnapshot", schema: DashboardTopicSnapshotSchema, fixtures: [{ topic: "artifact", payload: ARTIFACT }] },
-  { name: "DashboardTopicPatch", schema: DashboardTopicPatchSchema, fixtures: [{ topic: "artifact", payload: { operation: "replace-artifact-resource", target: { artifactId: UUID_1 }, replacement: ARTIFACT } }] },
   { name: "DashboardStreamEnvelope", schema: DashboardStreamEnvelopeSchema, fixtures: [{ type: "health", state: "live" }] },
 ];
 
@@ -1102,8 +1035,6 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/validation/schema-path.ts:ResolvedSchemaPath",
   "src/models/validation/schema-path.ts:SchemaPathFailure",
   // In-process transaction/reader methods, not wire data. Their values and receipts are strict schemas.
-  "src/models/dashboard/explorer-override.ts:ExplorerOverrideReader",
-  "src/models/dashboard/explorer-override.ts:ExplorerOverrideRepository",
   // In-process credential authority port: methods consume and return schema-derived data.
   "src/models/config/credential-store.ts:CredentialStore",
   "src/backend/app/composition/runtime-composition.ts:RebuildRuntimeStart",
@@ -1144,6 +1075,8 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrObservations",
   "src/models/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrTerminationDriver",
 
+  "src/models/ui/ucpath-emergency-contact.ts:UcpathEmergencyContactDriver",
+  "src/models/ui/ucpath-emergency-contact.ts:UcpathContactObservations",
   "src/models/ui/ucpath-driver.ts:UcpathStoreDriver",
   "src/models/task/task-contract.ts:ReadTaskContract",
   "src/models/task/task-contract.ts:PrepareTaskContract",
@@ -1167,36 +1100,6 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/rules/identity/ids.ts:LiteralTaskId",
   "src/models/sessions/session.ts:SessionNeed",
   // Graph bind, choose and resolve functions are generic in-process values; crossing data uses strict schemas.
-  "src/models/workflow/operation-display.ts:OperationActionKind",
-  "src/models/workflow/operation-display.ts:WorkflowCompositionActionKind",
-  "src/models/workflow/operation-display.ts:LogicalSessionReference",
-  "src/models/workflow/operation-display.ts:LogicalPageReference",
-  "src/models/workflow/operation-display.ts:TaskOperationValueSlot",
-  "src/models/workflow/operation-display.ts:TemplateVariable",
-  "src/models/workflow/operation-display.ts:TemplateCondition",
-  "src/models/workflow/operation-display.ts:OperationTemplateSegment",
-  "src/models/workflow/operation-display.ts:OperationTemplate",
-  "src/models/workflow/operation-display.ts:OperationTransformDeclaration",
-  "src/models/workflow/operation-display.ts:OperationOutcomeCase",
-  "src/models/workflow/operation-display.ts:TaskOperationAction",
-  "src/models/workflow/operation-display.ts:TaskOperationDeclaration",
-  "src/models/workflow/operation-display.ts:WorkflowValueReference",
-  "src/models/workflow/operation-display.ts:WorkflowResultSourceBinding",
-  "src/models/workflow/operation-display.ts:WorkflowDisplayTransformDeclaration",
-  "src/models/workflow/operation-display.ts:WorkflowOutcomePredicate",
-  "src/models/workflow/operation-display.ts:WorkflowOutcomeCase",
-  "src/models/workflow/operation-display.ts:OperationInvocationDeclaration",
-  "src/models/workflow/operation-display.ts:WorkflowOperationPresentationNode",
-  "src/models/workflow/operation-display.ts:WorkflowOperationDisplayDeclaration",
-  "src/models/workflow/operation-display.ts:WorkflowOperationContractProjection",
-  "src/models/workflow/operation-display.ts:WorkflowOperationEntryProjection",
-  "src/models/workflow/operation-display.ts:WorkflowOperationDisplayCompileInput",
-  "src/models/workflow/operation-display.ts:LegacyWorkflowOperationDisplay",
-  "src/models/workflow/operation-display.ts:CompleteWorkflowOperationDisplay",
-  "src/models/workflow/operation-display.ts:WorkflowOperationDisplay",
-  // In-process identity argument; requireWorkflowOperationDisplaySnapshot parses
-  // both fields and compares them with the schema-validated durable snapshot.
-  "src/models/workflow/operation-display-snapshot.ts:OperationDisplaySnapshotIdentity",
   "src/models/workflow/canonical-input.ts:CanonicalInputSchema",
 
   "src/models/config/test-data.ts:TestDataLocalInputEntry",
@@ -1253,8 +1156,6 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/intake/enqueue.ts:IntakeEnqueueSessionView",
   "src/models/intake/enqueue.ts:IntakeEnqueuePlan",
   "src/models/intake/enqueue.ts:IntakeEnqueuePlanInput",
-  // The identity domain retains a secret in a closure; only its schema-bound derivation crosses boundaries.
-  "src/models/trust/activity-person-pseudonym.ts:ActivityPersonPseudonymDomain",
   // Omission declarations carry producer functions and plans use Maps; crossing values have strict schemas.
   "src/models/workflow/step-omission.ts:StepOmissionProduceContext",
   "src/models/workflow/step-omission.ts:StepOmissionDeclaration",
@@ -1343,17 +1244,20 @@ describe("strict boundary schemas", () => {
     assert.deepEqual(invalid, []);
   });
 
-  it("rejects an unknown key at every exercised nested object boundary", () => {
-    for (const entry of BOUNDARY_SCHEMA_CATALOG) for (const fixture of entry.fixtures) {
-      const parsed = entry.schema.parse(fixture);
-      for (const path of objectPaths(parsed)) {
+  for (const entry of BOUNDARY_SCHEMA_CATALOG) for (const [index, fixture] of entry.fixtures.entries()) {
+    const parsed = entry.schema.parse(fixture);
+    const paths = objectPaths(parsed).filter(path => {
+      const text = pathText(path);
+      return !entry.openFixturePaths?.some(open => text === open || text.startsWith(`${open}.`));
+    });
+    it(`rejects unknown keys: ${entry.name} fixture ${String(index)} $`, () => {
+      for (const path of paths) {
         const text = pathText(path);
-        if (entry.openFixturePaths?.some((open) => text === open || text.startsWith(`${open}.`))) continue;
         assert.equal(entry.schema.safeParse(addUnknown(parsed, path)).success, false,
           `${entry.name} accepted unknown key at ${text || "$"}`);
       }
-    }
-  });
+    });
+  }
 
   it("walks every object arm nested under arrays, unions, lazies, and wrappers", () => {
     const nested = z.lazy(() => z.strictObject({
@@ -1385,24 +1289,6 @@ describe("strict boundary schemas", () => {
     assert.equal(boundarySourceViolations("src/domain/new-boundary.ts", fixture).length >= 5, true);
   });
 
-  it("keeps exact operational classifications from exempting either display module", () => {
-    const fixtures = [
-      { source: "export interface UndeclaredWire { value: string }", refusal: "exported boundary interface has no schema" },
-      { source: "export type UndeclaredWire = { value: string }", refusal: "exported boundary type is not schema-derived" },
-      { source: "export const Schema = z.object({ value: z.string() });", refusal: "z.object is open" },
-      { source: "export interface OperationTransformDeclaration { value: any }", refusal: "any is forbidden" },
-      { source: "export const value = input as OperationTransformDeclaration;", refusal: "unchecked type assertion" },
-      { source: "export const parsed = Schema.parse(input ?? {});", refusal: "parse cannot default malformed boundary input" },
-    ];
-    for (const path of ["src/models/workflow/operation-display.ts", "src/models/workflow/operation-display-snapshot.ts"]) {
-      const current = readFileSync(join(REPO_ROOT, path), "utf8");
-      assert.deepEqual(boundarySourceViolations(path, current), []);
-      for (const { source, refusal } of fixtures) {
-        assert.equal(boundarySourceViolations(path, `${current}\n${source}`).some((violation) => violation.includes(refusal)), true,
-          `${path} did not refuse ${refusal}`);
-      }
-    }
-  });
 
   it("keeps relocated validation classifications exact to their reviewed files and types", () => {
     const path = "src/domain/validation/new-boundary.ts";
@@ -1439,4 +1325,9 @@ describe("strict boundary schemas", () => {
       .flatMap((path) => boundarySourceViolations(path, readFileSync(join(REPO_ROOT, path), "utf8")));
     assert.deepEqual(violations, []);
   });
+});
+
+it("refuses retired persisted stopped proofs in an offline restore request", () => {
+  assert.equal(OfflineRestoreRequestSchema.safeParse({ manifestPath: "/tmp/authority.manifest.json", stoppedSystemProof: {} }).success, false);
+  assert.equal(OfflineRestoreRequestSchema.safeParse({ manifestPath: "/tmp/authority.manifest.json", stoppedSystemProof: { schemaVersion: 1, proofId: UUID_1 } }).success, false);
 });

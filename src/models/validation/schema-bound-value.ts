@@ -1,4 +1,4 @@
-import { ProtectedInputBindingsSchema } from "../write-safety/protected-input.js";
+import { ProtectedInputBindingsSchema, EvidenceProtectedInputBindingsSchema } from "../write-safety/protected-input.js";
 import { z } from "zod";
 import { JsonValueSchema, canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { FingerprintSchema, type Fingerprint } from "../../rules/identity/ids.js";
@@ -9,6 +9,9 @@ export const SchemaBoundCanonicalValueSchema = z.strictObject({
   value: JsonValueSchema,
   protectedBindings: ProtectedInputBindingsSchema.optional(),
 });
+
+/** Proof payloads keep their durable contract independent of run-input profile provenance. */
+export const SchemaBoundEvidenceValueSchema = SchemaBoundCanonicalValueSchema.extend({ protectedBindings: EvidenceProtectedInputBindingsSchema.optional() });
 
 export function schemaBoundValueSchema<ValueSchema extends z.ZodType>(
   valueSchema: ValueSchema,

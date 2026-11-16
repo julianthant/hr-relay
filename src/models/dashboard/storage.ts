@@ -78,7 +78,6 @@ export const BackupHealthWireSchema = z.discriminatedUnion("state", [
 export const StoragePendingCountsWireSchema = z.strictObject({
   pendingCommands: NonNegativeIntSchema,
   unresolvedWriteIntents: NonNegativeIntSchema,
-  leases: NonNegativeIntSchema,
   providerReservations: NonNegativeIntSchema,
   artifactOutbox: NonNegativeIntSchema,
 });
@@ -103,7 +102,7 @@ const DeletedSpanAuthorityWireSchema = z.strictObject({
   runId: RunIdSchema,
   workflow: WorkflowIdSchema,
   traceId: TraceIdSchema,
-  origin: z.enum(["queue", "archive"]),
+  origin: z.enum(["queue", "archive", "storage"]),
   commandId: CommandIdSchema,
   deletedAt: IsoInstantSchema,
 });

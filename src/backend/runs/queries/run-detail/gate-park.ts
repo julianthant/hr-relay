@@ -1,4 +1,13 @@
+import { publicWriteTarget } from "../../commands/write-command-target.js";
+import { readRunCheckpoint } from "../../../storage/sqlite/run-continuation.js";
+import { acceptsRecheckTransactionId } from "../../../../rules/write-safety/parked-resolution.js";
+import { retainedUcpathFindings } from "./ucpath-findings.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
+import type { IdentityGateAnswerResolution } from "../../commands/operator-command-ingress.js";
+import { CommandRequestSchema, ParkedWriteCheckTargetSchema, type CommandRequest, type GateArmAnswerRequest, type IdentityGateAnswerRequest, type ParkedWriteCheckTarget } from "../../../../rules/commands/commands.js";
+import { IdentityApprovalResultSchema, type IdentityApprovalResult } from "../../../../rules/separations/identity-approval.js";
+import { requireParkedWriteCheckTarget } from "../../../runtime/writes/write-recovery.js";
+import { WorkerControlRefusal } from "../../../../models/run/worker-control.js";
 import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
 import { protectIdentityEvidencePacket } from "../../../../rules/separations/identity-evidence.js";
 import {
@@ -7,6 +16,12 @@ import {
   publicTransactionKeyDigest,
 } from "../../../../models/write-safety/protected-input.js";
 import { deriveIdentityEvidenceDigest } from "../../../../rules/separations/identity-evidence.js";
+import { z } from "zod";
+import { HirePlanSchema } from "../../../../models/workflows/onboarding/read-hire-plan.js";
+import { SearchPersonMatchOutputSchema } from "../../../../models/systems/ucpath/search-person-match.js";
+import { ONBOARDING_WRITE_REVIEW_GATE, OnboardingWriteApprovalSchema } from "../../../../models/workflows/onboarding/read-write-plan.js";
+import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
+import { hireReviewChoices, type HireReviewChoices } from "../../../../rules/onboarding/match-hire-subject.js";
 import { MatchIdentityOutputSchema } from "../../../../models/workflows/separations/match-identity.js";
 import type { IdentityEvidencePacket } from "../../../../rules/separations/identity-evidence.js";
 import {
@@ -22,19 +37,24 @@ import { findGateDecision } from "../../../../models/trust/gate-decisions.js";
 import type { RunRecord } from "../../../../models/run/record.js";
 import type { RunFoldRecord } from "../../projections/run-queue-projection.js";
 import { deterministicUuid } from "../../lifecycle/support.js";
-import { idempotencyKeyDigestReference } from "../../../../rules/redaction/redaction.js";
+import { directIdentifierDisplay, idempotencyKeyDigestReference, maskedEid } from "../../../../rules/redaction/redaction.js";
 import { SectionUnavailableError } from "../../commands/refusals.js";
 import type { RunDetailQueryDeps } from "../run-detail-types.js";
+import { correctionStartRequest } from "./receipts-failures.js";
 import { requireTrustRun } from "../../trust/run-reader.js";
 import { availableSections } from "./availability.js";
 import { descriptorRuntimeNodes, runtimeNodeLabel } from "../../../../workflow-kit/workflow.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../../workflow-kit/fingerprints.js";
 import { checkpointLookupKey } from "../../../../models/workflow/checkpoint.js";
 import { deriveSchemaHash } from "../../../../models/validation/schema-bound-value.js";
 import { deriveStableUuid, lifecycleCommandId } from "../../../../rules/identity/identifiers.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
-import { readRunCheckpoint } from "../../../runtime/checkpoints/run-checkpoint-reader.js";
 import { timelineCheckpointReference } from "../../../../models/events/timeline.js";
+import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
+import type { DecisionInputWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
+import { IDENTITY_REVIEW_TEXT, PARKED_WRITE_RECORDS, parkedWriteRecordId, type ParkedWriteRecord } from "../../decisions/decision-catalog.js";
+import { projectDecision, rowActionOption } from "../../decisions/project-decision.js";
+import { decisionAnswerer, type DecisionAnswerer } from "../../decisions/decision-answer.js";
 
 
 function settledGateWire(
@@ -42,6 +62,7 @@ function settledGateWire(
   workflowId: string,
   stored: GateResultRecord | undefined,
   folded: RunFoldRecord["resolvedGates"][number] | undefined,
+  answer: DecisionAnswerer | undefined,
 ): unknown {
   if (stored === undefined) {
     return folded === undefined
@@ -101,7 +122,140 @@ function settledGateWire(
     resolvedBy: stored.resolvedBy,
     resolvedAt: stored.resolvedAt,
     revision: 2,
+    ...(answer === undefined || gateId !== ONBOARDING_WRITE_REVIEW_GATE ? {} : { answer: answer(stored.commandId, { id: arm.value, label: arm.label }, stored.resolvedAt) }),
   };
+}
+
+/** D4 for the hire review: both arms are served from `hireReviewChoices` over the run's own UCPath match, exactly as `readOnboardingWritePlan` accepts them. Other operator gates stay unprojected: the identity gate has its own section, and no other arm's result can be built from served facts. */
+function reviewBeforeWriteDecision(deps: RunDetailQueryDeps, authority: RunRecord, gateId: string): RunDecisionWire | undefined {
+  const arms = findGateDecision(authority.envelope.workflow, gateId)?.arms;
+  if (gateId !== ONBOARDING_WRITE_REVIEW_GATE || arms === undefined) return undefined;
+  const review = hireReviewFacts(deps, authority);
+  return review === undefined ? undefined
+    : hireReviewDecision(review.mode, review.match, review.plan.employee, arms, gateId, authority.version);
+}
+
+const RunModeSchema = z.object({ mode: OnboardingInput.shape.mode });
+
+/** The run's mode, UCPath match and hire plan, or undefined when any is unreadable for this run. */
+function hireReviewFacts(deps: RunDetailQueryDeps, authority: RunRecord) {
+  const mode = RunModeSchema.safeParse(authority.input.parsed.value);
+  const match = hireReviewCheckpoint(deps, authority, "ucpath-source", SearchPersonMatchOutputSchema);
+  const plan = hireReviewCheckpoint(deps, authority, "hire-plan", HirePlanSchema);
+  return !mode.success || match === undefined || plan === undefined ? undefined : { mode: mode.data.mode, match, plan };
+}
+
+/** Structural failure from `assertClassifiedMatch`: the hit is not a hire-review decision. */
+const UNCLASSIFIED_HIRE_MATCH = { state: "unclassified" } as const;
+const UNCLASSIFIED_MATCH_ERRORS = new Set([
+  "UCPath match confirmation has no originating hit",
+  "UCPath Search/Match returned duplicate person IDs",
+  "UCPath confirmation names a person outside its search hits",
+  "UCPath confirmation did not classify every person exactly once",
+]);
+
+/** `hireReviewChoices`, or undefined for a match that fails its structural checks. */
+function safeHireReviewChoices(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>,
+  hire: Readonly<{ firstName: string; middleName: string; lastName: string }>): HireReviewChoices | undefined {
+  const choices = classifyHireReviewChoices(mode, match, hire);
+  if ("state" in choices) return undefined;
+  return choices;
+}
+
+function classifyHireReviewChoices(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>,
+  hire: Readonly<{ firstName: string; middleName: string; lastName: string }>): HireReviewChoices | typeof UNCLASSIFIED_HIRE_MATCH {
+  try {
+    return hireReviewChoices(mode, match, hire);
+  } catch (error) {
+    if (error instanceof Error && UNCLASSIFIED_MATCH_ERRORS.has(error.message)) return UNCLASSIFIED_HIRE_MATCH;
+    throw error;
+  }
+}
+
+type HireNames = Pick<z.infer<typeof HirePlanSchema>["employee"], "firstName" | "middleName" | "lastName"
+  | "preferredFirstName" | "preferredMiddleName" | "preferredLastName" | "ssn">;
+const nameParts = (first: string, middle: string, last: string) => `first ${first}, ${middle === "" ? "no middle name" : `middle ${middle}`}, last ${last}`;
+
+/** The split legal and preferred names are served before approval because the hire writes them; an unconfirmed match lists every dropped hit with its reason. No SSN or date of birth is served. */
+export function hireReviewDecision(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>, names: HireNames,
+  arms: readonly Readonly<{ value: string; label: string; hint: string }>[], gateId: string, expectedVersion: number): RunDecisionWire | undefined {
+  const choices = safeHireReviewChoices(mode, match, names);
+  if (choices === undefined) return undefined;
+  const unconfirmed = match.hits.length > 0 && match.confirmed.length === 0, count = match.hits.length;
+  const unpickable = unconfirmed ? match.dropped.filter(hit => !choices.existing.some(person => person.emplId === hit.emplId)) : [];
+  const send = (arm: string) => ({ via: "gate-arm" as const, gateNodeId: gateId, expectedVersion, arm });
+  const served = arms.flatMap(arm => {
+    if (arm.value === "new-hire" && choices.newHire) return [unconfirmed
+      ? { id: arm.value, label: "File as a new hire", hint: `None of the ${String(count)} UCPath matches is this person. Relay creates a new person.`, send: send(arm.value),
+        confirm: { title: "File as a new hire", body: `You are ruling out all ${String(count)} UCPath matches. Relay creates a new person in UCPath.`, confirmLabel: "File new hire", tone: "destructive" as const } }
+      : { id: arm.value, label: arm.label, hint: arm.hint, send: send(arm.value) }];
+    if (arm.value === "existing-person" && choices.existing.length > 0) return [{ id: arm.value, label: arm.label, send: send(arm.value),
+      hint: unconfirmed ? "One of the UCPath matches is this person. Relay files the hire under that employee ID." : arm.hint,
+      input: { kind: "candidate" as const, table: {
+        title: unconfirmed ? "UCPath matches" : "Confirmed UCPath matches",
+        columns: [{ id: "name", label: "Name" }, { id: "eid", label: "Employee ID" }, ...unconfirmed ? [{ id: "check", label: "UCPath check" }] : []],
+        rows: choices.existing.map(person => ({ id: person.emplId, name: person.name, eid: person.emplId, cells: [
+          { columnId: "name", value: person.name }, { columnId: "eid", value: maskedEid(person.emplId) },
+          ...person.reason === undefined ? [] : [{ columnId: "check", value: person.reason, tone: "attention" as const }],
+        ] })),
+      } },
+      ...unconfirmed ? { confirm: { title: "Use an unconfirmed employee", body: "Relay did not confirm this person in Person Org. The hire is filed under the employee ID you picked.",
+        confirmLabel: "Use this employee", tone: "destructive" as const } } : {} }];
+    return [];
+  });
+  // The confirmable existing-person arm opens first, so the matches are on screen when the card opens.
+  const ordered = [...served.filter(option => option.id === "existing-person"), ...served.filter(option => option.id !== "existing-person")];
+  const context = `Legal name: ${nameParts(names.firstName, names.middleName, names.lastName)}. `
+    + `Preferred name: ${nameParts(names.preferredFirstName, names.preferredMiddleName, names.preferredLastName)}.`
+    + (unconfirmed ? ` UCPath returned ${String(count)} possible ${count === 1 ? "match" : "matches"} and Relay confirmed none. `
+      + (names.ssn === null ? "Searched by name and date of birth." : "Searched by name, date of birth and SSN.") : "")
+    + (unpickable.length === 0 ? "" : ` Under another name: ${unpickable.map(hit => `${hit.name} (${directIdentifierDisplay(maskedEid(hit.emplId))}): ${hit.reason}`).join("; ")}. `
+      + "Relay cannot file a hire under another name. If one of them is this person, cancel this run and file the rehire by hand in UCPath.");
+  // With no eligible arm (a concurrent hire whose hits are all under another name) the card still explains the manual rehire.
+  return ordered.length === 0 && unpickable.length === 0 ? undefined : projectDecision("review-before-write", ordered, { context });
+}
+
+const STALE_HIRE_REVIEW = "This review changed. Reload it before answering.";
+
+/** Resolve the dashboard's gate-arm answer to the kernel's `resolve-gate`, composing the hire-review result from the UCPath match this run holds now. */
+export function resolveGateArmAnswer(deps: RunDetailQueryDeps, answer: GateArmAnswerRequest, journaled: CommandRequest | undefined): IdentityGateAnswerResolution {
+  const refused = (code: "invalid-state" | "command-divergent", message: string) => ({ state: "refused" as const, code, message });
+  if (journaled !== undefined) {
+    const approval = journaled.family === "gate" && journaled.type === "resolve-gate" ? OnboardingWriteApprovalSchema.safeParse(journaled.payload.result.value) : undefined;
+    return approval?.success === true && canonicalJsonStringify(journaled.target) === canonicalJsonStringify(answer.target)
+      && approval.data.decision === answer.payload.arm && (approval.data.decision === "existing-person" ? approval.data.emplId : undefined) === answer.payload.rowId
+      ? { state: "accepted", request: journaled }
+      : refused("command-divergent", "command-divergent: this command was already used for a different answer");
+  }
+  const authority = requireTrustRun(deps.runReader, answer.target.runId);
+  if (authority.lifecycle.state !== "parked-gate" || String(authority.lifecycle.gateId) !== String(answer.target.gateId)
+    || String(answer.target.gateId) !== ONBOARDING_WRITE_REVIEW_GATE || authority.version !== answer.target.expectedVersion) return refused("invalid-state", STALE_HIRE_REVIEW);
+  const review = hireReviewFacts(deps, authority);
+  const choices = review === undefined ? undefined : safeHireReviewChoices(review.mode, review.match, review.plan.employee);
+  if (review === undefined || choices === undefined) return refused("invalid-state", STALE_HIRE_REVIEW);
+  const { arm, rowId } = answer.payload;
+  const person = choices.existing.find(entry => entry.emplId === rowId);
+  const value = arm === "new-hire" && choices.newHire && rowId === undefined
+    ? { decision: "new-hire" as const, ruledOut: review.match.hits.map(hit => hit.emplId).sort() }
+    : arm === "existing-person" && person !== undefined ? { decision: "existing-person" as const, emplId: person.emplId, confirmedBy: person.confirmedBy } : undefined;
+  if (value === undefined) return refused("invalid-state", STALE_HIRE_REVIEW);
+  const { commandId, requestedAt, requestedBy, source, target } = answer;
+  return { state: "accepted", request: CommandRequestSchema.parse({ commandId, requestedAt, requestedBy, source, family: "gate", type: "resolve-gate",
+    target, payload: { result: { schemaHash: deriveSchemaHash(OnboardingWriteApprovalSchema, "output"), value: OnboardingWriteApprovalSchema.parse(value) } } }) };
+}
+
+/** The run's own checkpoint for `nodeId`, or undefined when it cannot be read for this run's bound descriptor. */
+function hireReviewCheckpoint<S extends z.ZodType>(deps: RunDetailQueryDeps, authority: RunRecord, nodeId: string, schema: S): z.infer<S> | undefined {
+  const canonical = deps.canonical;
+  if (canonical === undefined) return undefined;
+  const { envelope } = authority;
+  const stored = readRunCheckpoint(canonical.database.authority, envelope, nodeId, true);
+  if (stored === undefined || stored.workflowId !== envelope.workflow || stored.itemId !== envelope.itemId
+    || stored.attempt > envelope.attempt || stored.descriptorVersion !== envelope.descriptorVersion
+    || stored.contractFingerprint !== envelope.contractFingerprint
+    || stored.output.schemaHash !== deriveSchemaHash(schema, "output")) return undefined;
+  const parsed = schema.safeParse(stored.output.value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function buildRunGate(
@@ -122,6 +276,7 @@ export function buildRunGate(
     const gate = descriptor !== undefined && descriptor.version === run.envelope.descriptorVersion && descriptor.contractFingerprint === run.envelope.contractFingerprint
       ? descriptorRuntimeNodes(descriptor).find((node) => node.kind === "gate" && String(node.id) === gateId)
       : undefined;
+    const decision = gate === undefined ? undefined : reviewBeforeWriteDecision(deps, authority, gateId);
     return {
       state: "open",
       gateId: deterministicUuid(`gate:${runId}:${run.lifecycle.gateId}`),
@@ -129,9 +284,12 @@ export function buildRunGate(
       label: gate === undefined ? run.lifecycle.gateId : runtimeNodeLabel(gate),
       openedAt: run.lifecycle.parkedAt,
       revision: 1,
+      ...(decision === undefined ? {} : { decision }),
     };
   }
-  return settledGateWire(runId, run.envelope.workflow, stored.at(-1), row?.resolvedGates.at(-1));
+  const answer = deps.operatorName === undefined || deps.canonical === undefined ? undefined
+    : decisionAnswerer(deps.canonical.database.authority.commands, deps.operatorName);
+  return settledGateWire(runId, run.envelope.workflow, stored.at(-1), row?.resolvedGates.at(-1), answer);
 }
 
 /* ── the parked-write section (ref write-safety ) ──────────────────────────────── */
@@ -199,25 +357,24 @@ function parkedWriteActions(
   authority: RunRecord,
   intent: Extract<WriteIntentRecord, { status: "parked" }>,
 ): unknown[] {
-  const writeTarget = { writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
-    writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest };
+  const writeTarget = publicWriteTarget({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
+    writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest });
   return [
     {
-      key: "resolve-write-present",
-      label: "I confirmed it IS there",
-      detail: "Record the transaction you found, with its proof. The run settles as committed and never clicks again.",
+      key: "recheck-write",
+      label: "Check again",
+      detail: "Read the target system again. A verified transaction continues the run; uncertainty keeps the write parked.",
       intent: "warning",
       icon: "resolve",
       placement: ["banner", "footer"],
       kind: "command",
-      command: "resolve-write-present",
+      command: "recheck-write",
       expectedVersion: authority.version,
       confirm: {
-        title: "Confirm the transaction exists",
-        body: `This files ${intent.system} transaction ${intent.writeIntentId} as committed on this run's `
-          + "evidence. If it is not actually there, the run finishes reporting work nobody did.",
-        confirmLabel: "It is there",
-        tone: "destructive",
+        title: "Check the target system again",
+        body: `Relay reads ${intent.system} again and submits nothing. If it finds this write, the run continues to its next step.`,
+        confirmLabel: "Check again",
+        tone: "neutral",
       },
       writeTarget,
     },
@@ -244,49 +401,57 @@ function parkedWriteActions(
 }
 
 
-function buildIdentityGatePayload(
+type IdentityOption = Readonly<{ ref: string; eid: string; chosenFrom: "checked" | "name-search" | "manual"; displayName: string; maskedEid: string; origin: string }>;
+type IdentityArm = Readonly<{ outcome: string; label: string; hint: string; rejectReason?: string }>;
+type IdentityGateFacts = Readonly<{
+  runId: string; gateId: string; label: string; parkedAt: string; version: number; resultSchemaHash: string;
+  packet: IdentityEvidencePacket; evidenceDigest: string; gateRef: string; order: number | undefined;
+  options: readonly IdentityOption[]; arms: readonly IdentityArm[]; rejected: IdentityArm | undefined;
+}>;
+
+/** Opaque: binds an answer to this run version's exact evidence without serving the digest. */
+function identityGateRef(runId: string, gateId: string, version: number, evidenceDigest: string): string {
+  return deriveStableUuid("identity-gate-ref", canonicalJsonStringify([runId, gateId, version, evidenceDigest]));
+}
+/** Keyed by the unserved evidence digest: a served ref plus the served last four digits must not recover the Employee ID. */
+const identityOptionRef = (evidenceDigest: string, eid: string): string => deriveStableUuid("identity-gate-option", canonicalJsonStringify([evidenceDigest, eid]));
+
+function readIdentityGate(
   deps: RunDetailQueryDeps,
   authority: RunRecord,
-): unknown {
+): Readonly<{ state: "missing"; reason: string }> | Readonly<{ state: "available"; facts: IdentityGateFacts }> {
   const { lifecycle } = authority;
   const runId = authority.envelope.runId;
   if (lifecycle.state !== "parked-gate") {
     throw new Error(`run ${runId} advertises an identity-gate section while it is ${lifecycle.state}`);
   }
-  const missing = (reason: string): unknown => ({ state: "missing", reason });
+  const missing = { state: "missing" as const, reason: IDENTITY_REVIEW_TEXT.unavailable };
   const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
   if (descriptor === undefined) {
-    return missing(`workflow ${authority.envelope.workflow} has no registered descriptor in this build`);
+    return missing;
   }
   const gate = (descriptor.gateNodes ?? [])
     .find(({ nodeId }) => nodeId === String(lifecycle.gateId));
   if (gate === undefined) {
-    return missing(
-      `${authority.envelope.workflow} declares no gate "${String(lifecycle.gateId)}"; this build cannot `
-      + "describe the decision this run is parked on",
-    );
+    return missing;
   }
   if (deps.canonical === undefined) {
-    return missing(`gate "${gate.nodeId}" cannot verify checkpoint identity without canonical authority`);
+    return missing;
   }
   const runtimeDescriptor = deps.canonical.descriptors.resolve(authority.envelope.workflow);
   if (runtimeDescriptor === undefined) {
-    return missing(`workflow ${authority.envelope.workflow} has no canonical descriptor for checkpoint verification`);
+    return missing;
   }
   if (runtimeDescriptor.version !== authority.envelope.descriptorVersion
     || runtimeDescriptor.contractFingerprint !== authority.envelope.contractFingerprint) {
-    return missing(
-      `workflow ${authority.envelope.workflow} descriptor ${String(runtimeDescriptor.version)}/`
-      + `${runtimeDescriptor.contractFingerprint} does not match the run's bound descriptor `
-      + `${String(authority.envelope.descriptorVersion)}/${authority.envelope.contractFingerprint}`,
-    );
+    return missing;
   }
   const runtimeGate = descriptorRuntimeNodes(runtimeDescriptor)
     .find((candidate) => candidate.kind === "gate" && String(candidate.id) === gate.nodeId);
   if (runtimeGate === undefined || runtimeGate.kind !== "gate"
     || deriveSchemaHash(runtimeGate.result, "output") !== gate.resultSchemaHash
     || canonicalJsonStringify(runtimeGate.dependsOn.map(String)) !== canonicalJsonStringify(gate.dependsOn)) {
-    return missing(`gate "${gate.nodeId}" does not match the registered descriptor used by this run`);
+    return missing;
   }
   const expectedOutputHash = deriveSchemaHash(MatchIdentityOutputSchema, "output");
   const evidence = gate.dependsOn
@@ -304,7 +469,7 @@ function buildIdentityGatePayload(
         .find((candidate) => candidate.kind === "task" && String(candidate.id) === String(stored.nodeId));
       if (runtimeNode === undefined || runtimeNode.kind !== "task"
         || deriveSchemaHash(runtimeNode.uses.output, "output") !== expectedOutputHash
-        || stored.implFingerprint !== resolveTaskImplFingerprint(BUILD_MANIFEST, runtimeNode.uses.id)) return [];
+        || stored.implFingerprint !== taskImplFingerprint(runtimeNode.uses)) return [];
       const currentExecution = stored.runId === runId && stored.attempt === authority.envelope.attempt
         && Number(stored.claimGeneration) === Number(authority.claimGeneration);
       const eventId = currentExecution
@@ -332,36 +497,30 @@ function buildIdentityGatePayload(
       return [parsed.data];
     });
   if (evidence.length !== 1) {
-    return missing(
-      `gate "${gate.nodeId}" waits on ${String(gate.dependsOn.length)} node(s), and `
-      + `${String(evidence.length)} of them hold an identity decision packet; exactly one must, or the `
-      + "packet this gate is about is not identifiable",
-    );
+    return missing;
   }
   const found = evidence[0];
   if (found === undefined) throw new Error(`gate "${gate.nodeId}" evidence disappeared mid-projection`);
   const packet = protectIdentityEvidencePacket(found.packet, retainedRunProtectedBindings(authority));
   const evidenceDigest = deriveIdentityEvidenceDigest(packet);
-  if (packet.emplIdSource !== "name-resolved") {
-    return missing(
-      `gate "${gate.nodeId}" is parked on ${packet.emplIdSource} evidence, but this build requires an `
-      + "operator decision only for a name-resolved EID; this historical run cannot be resolved under the current contract",
-    );
+  if (packet.emplIdSource !== "name-resolved" && packet.emplIdSource !== "operator-entered") {
+    return missing;
   }
+  const source = packet.emplIdSource;
   const nameSearchEid = packet.nameSearch.status === "resolved" ? packet.nameSearch.candidate.eid : undefined;
-  const options = packet.approvableEids.map((eid) => ({
+  const gateRef = identityGateRef(runId, gate.nodeId, authority.version, evidenceDigest);
+  const { origin, value: text } = IDENTITY_REVIEW_TEXT;
+  const options: IdentityOption[] = packet.approvableEids.map((eid) => ({
+    ref: identityOptionRef(evidenceDigest, eid),
     eid,
     chosenFrom: eid === packet.emplId ? "checked" : eid === nameSearchEid ? "name-search" : "manual",
     displayName: eid === packet.emplId
       ? packet.ucpathName
       : eid === nameSearchEid && packet.nameSearch.status === "resolved"
         ? packet.nameSearch.candidate.name
-        : "EID candidate",
-    origin: eid === packet.emplId
-      ? `the EID this run checked (${packet.emplIdSource})`
-      : eid === nameSearchEid
-        ? `a UCPath search on the document's name "${packet.documentName}" resolved this person`
-        : `a UCPath search on the document's name "${packet.documentName}" listed this EID among its candidates`,
+        : text.unnamed,
+    maskedEid: maskedEid(eid),
+    origin: eid === packet.emplId ? origin[source] : eid === nameSearchEid ? origin["name-search"] : origin.manual,
   }));
   const nativeEvents = readTimelineRecords(deps.timeline, 0, runId).records.filter(record =>
     record.payload.kind === "span" && record.payload.event.t === "gate.opened"
@@ -371,79 +530,199 @@ function buildIdentityGatePayload(
   const native = nativeEvent?.payload.kind === "span" && nativeEvent.payload.event.t === "gate.opened"
     ? nativeEvent.payload.event : undefined;
   if (native !== undefined && native.traceId !== authority.envelope.traceId) throw new LogIdentityRefusedError("RUN_LOG_GATE_NATIVE_IDENTITY_MISMATCH");
+  const arms = findGateDecision(authority.envelope.workflow, String(gate.nodeId))?.arms ?? [];
+  return { state: "available", facts: {
+    runId, gateId: gate.nodeId, label: gate.label, parkedAt: lifecycle.parkedAt, version: authority.version,
+    resultSchemaHash: gate.resultSchemaHash, packet, evidenceDigest, gateRef,
+    order: native === undefined || nativeEvent === undefined ? undefined : nativeEvent.cursor,
+    options, arms, rejected: arms.find(arm => arm.outcome === "rejected"),
+  } };
+}
+
+function buildIdentityGatePayload(deps: RunDetailQueryDeps, authority: RunRecord): unknown {
+  const read = readIdentityGate(deps, authority);
+  if (read.state === "missing") return read;
+  const { facts } = read;
+  const actions = ActionDescriptorWireSchema.array().parse(identityGateActions(facts));
+  const correction = facts.options.length > 1 ? identityGateCorrection(deps, authority, facts.gateId) : undefined;
   return {
     state: "available",
     value: IdentityGateDetailWireSchema.parse({
-      ...(native === undefined || nativeEvent === undefined ? {} : { native: {
-        eventId: nativeEvent.eventId, order: nativeEvent.cursor, runId,
-        attempt: native.attempt, traceId: native.traceId, spanPath: native.spanPath, nodeId: gate.nodeId,
-      } }),
-      runId,
-      gateId: gate.nodeId,
-      label: gate.label,
-      parkedAt: lifecycle.parkedAt,
-      resumeAt: lifecycle.resumeAt,
-      expectedVersion: authority.version,
-      resultSchemaHash: gate.resultSchemaHash,
-      evidenceDigest,
-      packet,
-      options,
-      approvalShape: packet.approvalShape,
-      actions: identityGateActions(authority, packet),
+      runId: facts.runId,
+      gateRef: facts.gateRef,
+      label: facts.label,
+      parkedAt: facts.parkedAt,
+      expectedVersion: facts.version,
+      ...(facts.order === undefined ? {} : { order: facts.order }),
+      reason: identityReviewReason(facts.packet, facts.options.length),
+      comparisons: identityComparisons(facts.packet),
+      options: facts.options.map(({ ref, displayName, maskedEid, origin }) => ({ ref, displayName, maskedEid, origin })),
+      approvalShape: facts.options.length > 1 ? "choose-a-candidate" : "one-click",
+      actions,
+      decision: identityGateDecision(facts.options, actions, facts.arms, deps.projection.queueSurface(facts.runId)?.actions,
+        { documentName: facts.packet.documentName }, correction),
+      ...(correction === undefined ? {} : { correction }),
     }),
   };
 }
 
+/** The fill row's lookup: a typed value restarts this run's lookup for that person, served only where the workflow declares it for this gate. */
+function identityGateCorrection(deps: RunDetailQueryDeps, authority: RunRecord, gateId: string) {
+  const canonical = deps.canonical;
+  const descriptor = canonical?.descriptors.resolve(authority.envelope.workflow);
+  const declared = descriptor?.gateCorrections?.find(entry => entry.gateId === gateId);
+  if (canonical === undefined || descriptor === undefined || declared === undefined) return undefined;
+  const request = correctionStartRequest(canonical, descriptor, authority, { gateCorrection: { gateId, inputField: declared.inputField } });
+  return request === undefined ? undefined : { inputField: declared.inputField, label: declared.label, placeholder: declared.placeholder,
+    pattern: declared.pattern, expectedVersion: authority.version, confirm: { ...IDENTITY_REVIEW_TEXT.lookup, tone: "neutral" as const }, request };
+}
 
-function identityGateActions(authority: RunRecord, packet: IdentityEvidencePacket): unknown[] {
-  const disagreements = packet.comparisons.filter(({ agrees }) => !agrees);
+/** Why Relay asks: several matches, else the first disagreement in the packet's disagreements-first order. */
+function identityReviewReason(packet: IdentityEvidencePacket, candidates: number): string {
+  const { reason } = IDENTITY_REVIEW_TEXT;
+  if (candidates > 1) return reason["several-people"];
+  if (packet.emplIdSource === "operator-entered") return reason["eid-entered"];
+  const first = packet.comparisons.find(({ agrees }) => !agrees);
+  if (first === undefined) return reason.agreed;
+  if (first.field === "eid") return reason.eid;
+  return reason[first.field];
+}
+
+/** The Request and UCPath table, with display labels and masked Employee IDs in place of the packet's keys, notes and full IDs. */
+function identityComparisons(packet: IdentityEvidencePacket): readonly Readonly<{ label: string; request: string; ucpath: string; agrees: boolean }>[] {
+  const { label, value } = IDENTITY_REVIEW_TEXT;
+  const { jobs, nameSearch } = packet;
+  const cells: Readonly<Record<IdentityEvidencePacket["comparisons"][number]["field"], readonly [string, string]>> = {
+    name: [packet.documentName, packet.ucpathName],
+    eid: [/^\d{8}$/u.test(packet.documentEidText) ? maskedEid(packet.documentEidText) : value.noFormEid, maskedEid(packet.emplId)],
+    employment: [value.oneActiveJob, jobs.disposition === "single-active-job" ? value.oneActiveJob
+      : jobs.disposition === "no-active-job" ? value.noActiveJob
+        : jobs.disposition === "concurrent-active-jobs" ? `${String(jobs.activeRowCount)} active jobs` : value.unknownJob],
+    "name-search": [packet.documentName, nameSearch.status === "resolved" ? `${nameSearch.candidate.name} · ${maskedEid(nameSearch.candidate.eid)}`
+      : nameSearch.status === "ambiguous" ? `${String(nameSearch.candidateEids.length)} people` : value.noMatch],
+  };
+  return packet.comparisons.map(({ field, agrees }) => ({ label: label[field], request: cells[field][0], ucpath: cells[field][1], agrees }));
+}
+
+/** D1 (one candidate): approve or, where the gate declares it, reject. D2 (several): pick a served candidate, or cancel the run. */
+export function identityGateDecision(
+  options: readonly Pick<IdentityOption, "ref" | "displayName" | "maskedEid" | "origin">[],
+  actions: readonly ActionDescriptorWire[],
+  arms: readonly Readonly<{ outcome: string; label: string; hint: string }>[],
+  rowActions: readonly ActionDescriptorWire[] | undefined,
+  subject?: Readonly<{ documentName: string }>,
+  typed?: Readonly<{ label: string; placeholder: string; pattern: string }>,
+): RunDecisionWire {
+  const find = (resolution: "approved" | "rejected") => actions.find(action => action.kind === "command" && action.resolution === resolution);
+  const approved = find("approved"), approve = approved?.key, reject = find("rejected")?.key;
+  // The approve option carries the served approval's confirm; the rejection descriptor has none.
+  const approveConfirm = approved?.kind === "command" && approved.confirm !== undefined ? { confirm: approved.confirm } : {};
+  const text = (outcome: string) => { const arm = arms.find(candidate => candidate.outcome === outcome); return arm === undefined ? {} : { label: arm.label, hint: arm.hint }; };
+  if (options.length === 1) {
+    return projectDecision("identity-mismatch", [
+      ...(approve === undefined ? [] : [{ id: "approve", send: { via: "action" as const, actionKey: approve }, ...text("approved"), ...approveConfirm }]),
+      ...(reject === undefined ? [] : [{ id: "reject", send: { via: "action" as const, actionKey: reject }, ...text("rejected") }]),
+    ]);
+  }
+  return projectDecision("pick-person", [
+    ...(approve === undefined ? [] : [{ id: "confirm", send: { via: "action" as const, actionKey: approve }, ...approveConfirm, input: { kind: "candidate" as const, table: {
+      title: "Search results",
+      columns: [{ id: "name", label: "Name" }, { id: "eid", label: "Employee ID" }, { id: "origin", label: "Found by" }],
+      rows: options.map(option => ({ id: option.ref, name: option.displayName, cells: [
+        { columnId: "name", value: option.displayName }, { columnId: "eid", value: option.maskedEid }, { columnId: "origin", value: option.origin },
+      ] })),
+      ...(typed === undefined ? {} : { typed: { label: typed.label, placeholder: typed.placeholder, pattern: typed.pattern, lookup: true as const } }),
+    } } }]),
+    ...rowActionOption("cancel-run", "cancel", rowActions),
+  ], subject === undefined ? {} : { title: `Which ${subject.documentName} is this run about?`, context: `UCPath found ${options.length} people with this name.` });
+}
+
+function identityGateActions(facts: IdentityGateFacts): unknown[] {
+  const { packet, options, rejected } = facts;
+  const agreed = packet.comparisons.every(({ agrees }) => agrees);
+  const { confirm } = IDENTITY_REVIEW_TEXT;
   return [
     {
       key: "resolve-gate-approved",
-      label: packet.approvalShape === "one-click" ? "Approve this person" : "Approve the chosen EID",
-      detail: packet.approvalShape === "type-the-eid"
-        ? "This decision is ambiguous: the EID must be typed, not selected."
-        : packet.approvalShape === "choose-a-candidate"
-          ? "Choose which candidate the separation document means."
-          : "One unambiguous candidate, one active job, and the names agree.",
+      label: options.length === 1 ? "Approve this person" : "Approve the chosen person",
+      detail: options.length > 1
+        ? "Choose which candidate the separation document means."
+        : "Confirm the one candidate the separation document means.",
       intent: "primary",
       icon: "resolve",
       placement: ["banner", "footer"],
       kind: "command",
       command: "resolve-gate",
-      expectedVersion: authority.version,
+      expectedVersion: facts.version,
       resolution: "approved",
       confirm: {
         title: "Approve this identity",
-        body: disagreements.length === 0
-          ? `Every compared field agreed for ${packet.documentName} on separation document `
-            + `${packet.documentNumber}. Approving binds the rest of this separation to this person.`
-          : `${String(disagreements.length)} field(s) DISAGREE: ${
-            disagreements.map(({ field }) => field).join(", ")
-          }. Approving files the rest of this separation against this person anyway.`,
+        body: agreed ? confirm.agreed : `${identityReviewReason(packet, options.length)} ${confirm.disagreed}`,
         confirmLabel: "Approve",
-        tone: disagreements.length === 0 ? "neutral" : "destructive",
+        tone: agreed ? "neutral" : "destructive",
       },
     },
-    {
+    ...(rejected === undefined ? [] : [{
       key: "resolve-gate-rejected",
-      label: "Reject — this is not the right person",
-      detail: "Ends the run with the reason recorded. Nothing downstream runs.",
+      label: rejected.label,
+      detail: rejected.hint,
       intent: "destructive",
-      icon: "resolve",
-      placement: ["banner", "footer"],
+      icon: "cancel",
+      placement: ["footer"],
       kind: "command",
       command: "resolve-gate",
-      expectedVersion: authority.version,
+      expectedVersion: facts.version,
       resolution: "rejected",
-      confirm: {
-        title: "Reject this identity",
-        body: `The run ends and records why. Separation document ${packet.documentNumber} stays untouched.`,
-        confirmLabel: "Reject",
-        tone: "neutral",
-      },
-    },
+    }]),
   ];
+}
+
+const STALE_IDENTITY_ANSWER = "This identity review changed. Reload it before answering.";
+
+/** Resolve the dashboard's opaque identity answer to the kernel's `resolve-gate`, against the evidence this run holds now. */
+export function resolveIdentityGateAnswer(
+  deps: RunDetailQueryDeps,
+  answer: IdentityGateAnswerRequest,
+  journaled: CommandRequest | undefined,
+): IdentityGateAnswerResolution {
+  const refused = (code: "invalid-state" | "command-divergent", message: string) => ({ state: "refused" as const, code, message });
+  if (journaled !== undefined) {
+    return journaled.family === "gate" && journaled.type === "resolve-gate" && journaledAnswerMatches(journaled, answer)
+      ? { state: "accepted", request: journaled }
+      : refused("command-divergent", "command-divergent: this command was already used for a different answer");
+  }
+  const authority = requireTrustRun(deps.runReader, answer.target.runId);
+  if (authority.lifecycle.state !== "parked-gate" || String(authority.lifecycle.gateId) !== String(answer.target.gateId)
+    || authority.version !== answer.target.expectedVersion) return refused("invalid-state", STALE_IDENTITY_ANSWER);
+  const read = readIdentityGate(deps, authority);
+  if (read.state === "missing" || read.facts.gateRef !== answer.payload.gateRef) return refused("invalid-state", STALE_IDENTITY_ANSWER);
+  const { facts } = read;
+  const { payload } = answer;
+  let value: IdentityApprovalResult;
+  if (payload.decision === "rejected") {
+    if (facts.rejected?.rejectReason === undefined) return refused("invalid-state", "This identity review has no reject answer.");
+    value = IdentityApprovalResultSchema.parse({ decision: "rejected", reason: facts.rejected.rejectReason, evidenceDigest: facts.evidenceDigest });
+  } else {
+    const option = facts.options.find(({ ref }) => ref === payload.optionRef);
+    if (option === undefined) return refused("invalid-state", STALE_IDENTITY_ANSWER);
+    value = IdentityApprovalResultSchema.parse({ decision: "approved", eid: option.eid, chosenFrom: option.chosenFrom, evidenceDigest: facts.evidenceDigest });
+  }
+  const { commandId, requestedAt, requestedBy, source, target } = answer;
+  return { state: "accepted", request: CommandRequestSchema.parse({ commandId, requestedAt, requestedBy, source, family: "gate", type: "resolve-gate",
+    target, payload: { result: { schemaHash: facts.resultSchemaHash, value } } }) };
+}
+
+/** A replayed answer is the journaled command only when its refs re-derive from that command's own evidence and choice. */
+function journaledAnswerMatches(journaled: Extract<CommandRequest, { family: "gate" }>, answer: IdentityGateAnswerRequest): boolean {
+  const { target } = journaled;
+  if (canonicalJsonStringify(target) !== canonicalJsonStringify(answer.target)) return false;
+  const parsed = IdentityApprovalResultSchema.safeParse(journaled.payload.result.value);
+  if (!parsed.success || parsed.data.decision !== answer.payload.decision) return false;
+  const gateRef = identityGateRef(target.runId, target.gateId, target.expectedVersion, parsed.data.evidenceDigest);
+  if (gateRef !== answer.payload.gateRef) return false;
+  const { payload } = answer;
+  if (parsed.data.decision === "rejected" || payload.decision === "rejected") return true;
+  return identityOptionRef(parsed.data.evidenceDigest, parsed.data.eid) === payload.optionRef;
 }
 
 function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord): unknown {
@@ -491,7 +770,49 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
   if (native !== undefined && (native.runId !== runId || native.attempt !== intent.runAttempt
     || native.traceId !== authority.envelope.traceId || native.workflow !== authority.envelope.workflow
     || intent.bindingProof.afterPrepareSpanPath !== `${native.traceId}/${native.nodeId}/prepare`)) throw new LogIdentityRefusedError("RUN_LOG_WRITE_NATIVE_IDENTITY_MISMATCH");
-  return ParkedWriteDetailWireSchema.parse({
+  const descriptor = deps.canonical?.descriptors.resolve(authority.envelope.workflow);
+  const acceptsTransactionId = descriptor !== undefined
+    && descriptor.version === authority.envelope.descriptorVersion
+    && descriptor.contractFingerprint === authority.envelope.contractFingerprint
+    && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction"
+      && node.commit.uses.id === intent.taskId && acceptsRecheckTransactionId(node.commit.uses.writeSafety.completion));
+  const repositories = deps.canonical?.database?.authority;
+  let check: { state: "available"; target: ParkedWriteCheckTarget } | { state: "unavailable"; code: "PARKED_CHECK_UNAVAILABLE" }
+    = { state: "unavailable", code: "PARKED_CHECK_UNAVAILABLE" };
+  if (repositories !== undefined && deps.authorityIdentity !== undefined && native !== undefined
+    && intent.bindingProof.kind === "subject-match" && ["ucpath/create-termination", "ucpath/delete-pending-terminations", "kuali/save-separation-finalization"].includes(intent.taskId)) {
+    // The check runs on an idle running member of the run's workflow; its card fence is the pool's lifetime and version.
+    const worker = repositories.workerSlots.list(authority.envelope.workflow).filter(slot => slot.retiredAt === null)
+      .map(slot => ({ slot, view: deps.workerMembers?.().find(view => view.member.workerId === slot.workerId) }))
+      .find(({ slot, view }) => view?.state === "running" && (view.activity === undefined || view.activity.state === "idle")
+        && !repositories.runs.listByWorker(slot.workerId).some(run => ["claimed", "validating", "running"].includes(run.lifecycle.state)));
+    if (worker?.view !== undefined) {
+      const { slot, view } = worker;
+      const target = ParkedWriteCheckTargetSchema.parse({ ...deps.authorityIdentity, workerId: slot.workerId, lifetimeId: view.lifetimeId, expectedVersion: view.version,
+      workflowId: authority.envelope.workflow, itemId: authority.envelope.itemId, runId, runVersion: authority.version,
+        runAttempt: authority.envelope.attempt, traceId: authority.envelope.traceId, nodeId: native.nodeId,
+        writeIntentId: intent.writeIntentId, intentVersion: intent.version, intentGeneration: intent.generation,
+        writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest });
+      try {
+        requireParkedWriteCheckTarget(repositories, target, deps.canonical?.descriptors.resolve(authority.envelope.workflow));
+        check = { state: "available", target: publicWriteTarget(target) };
+      } catch (error) { if (!(error instanceof WorkerControlRefusal)) throw error; }
+    }
+  }
+  const latest = repositories?.commandAudits.parkedWriteChecks(runId).findLast(({ request }) => request.type === "check-parked-write"
+    && request.requestedBy === "local-operator" && request.source === "run-detail"
+    && request.target.installationId === deps.authorityIdentity?.installationId && request.target.profileId === deps.authorityIdentity?.profileId
+    && request.target.workflowId === authority.envelope.workflow && request.target.itemId === authority.envelope.itemId
+    && request.target.runAttempt === authority.envelope.attempt && request.target.traceId === authority.envelope.traceId
+    && request.target.nodeId === native?.nodeId
+    && request.target.runId === runId && request.target.writeIntentId === intent.writeIntentId
+    && request.target.intentGeneration === intent.generation && request.target.writeAttemptId === intent.currentAttemptId
+    && request.target.bindingProofDigest === intent.bindingProofDigest && request.target.occurrenceKeyDigest === intent.idempotencyKeyDigest
+    && request.target.runVersion === authority.version && request.target.intentVersion === intent.version);
+  const lastCheck = latest?.parkedWriteCheck?.result;
+  const actions = ActionDescriptorWireSchema.array().parse(parkedWriteActionsWithCheck(authority, intent, check));
+  return ParkedWriteDetailWireSchema.parse({ acceptsTransactionId, check, ...(lastCheck === undefined ? {} : { lastCheck: { ...lastCheck, target: publicWriteTarget(lastCheck.target) } }),
+    ...(intent.taskId === "ucpath/create-termination" ? { ucpathFindings: retainedUcpathFindings(deps, authority, intent, latest) } : {}),
     ...(native === undefined || nativeEvent === undefined ? {} : { native: {
       eventId: nativeEvent.eventId, order: nativeEvent.cursor, runId: native.runId,
       attempt: native.attempt, traceId: native.traceId, nodeId: native.nodeId,
@@ -511,8 +832,56 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
       + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(authority))}. Verify the target system, then use one typed resolution.`,
     subject: parkedWriteSubject(intent.bindingProof),
     proofContract: parkedWriteProofContract(deps, authority, intent),
-    actions: parkedWriteActions(authority, intent),
+    actions,
+    decision: parkedWriteDecision({ taskId: intent.taskId, parkedCode: intent.parkedCode, acceptsTransactionId,
+      ...(hasProtectedTransactionInput(authority) || intent.occurrence !== undefined ? {} : { recordId: parkedWriteRecordId(intent.taskId, intent.idempotencyKey) }),
+      readBack: ["post-click-verifier-exception", "post-click-verifier-unknown"].includes(intent.authorityReason.code) }, actions),
   });
+}
+
+/** D5/D6: "Did the <record> save in <system>?" — Check again (held check only), Saved (Relay re-reads; a typed transaction number where the verifier takes one), Not saved (confirmed absence). */
+export function parkedWriteDecision(parked: Readonly<{ taskId: string; parkedCode: string; readBack: boolean; acceptsTransactionId: boolean; recordId?: string }>,
+  actions: readonly ActionDescriptorWire[]): RunDecisionWire {
+  const find = (command: string) => actions.find(action => action.kind === "command" && action.command === command);
+  const sending = (id: string, action: ActionDescriptorWire | undefined, text: Readonly<{ label?: string; hint?: string }>, input?: DecisionInputWire) => action === undefined ? []
+    : [{ id, send: { via: "action" as const, actionKey: action.key }, ...text, ...(input === undefined ? {} : { input }),
+      ...(action.kind === "command" && action.confirm !== undefined ? { confirm: action.confirm } : {}) }];
+  // A task no longer registered keeps both typed resolutions in the catalog's general wording.
+  const record = PARKED_WRITE_RECORDS[parked.taskId];
+  const transaction = parked.acceptsTransactionId ? { kind: "text" as const, label: "Transaction number", placeholder: "T00000000", pattern: "^T\\d+$" } : undefined;
+  return projectDecision(parked.parkedCode === "unknown" ? "write-unknown" : "write-parked", [
+    ...sending("check-again", find("check-parked-write"), record === undefined ? {} : { hint: `Reads ${record.check} again; files nothing.` }),
+    ...sending("saved", find("recheck-write"), record === undefined ? {} : { label: `Saved in ${record.system}`,
+      hint: transaction === undefined ? `Relay checks ${record.system}, then the run continues.` : "Relay checks this number, then the run continues." }, transaction),
+    ...sending("not-saved", find("resolve-write-absent"), record === undefined ? {} : { label: `Not saved, ${record.again}`, hint: record.againHint }),
+  ], { ...(record === undefined ? {} : parkedWriteText(record, parked.readBack, parked.recordId)),
+    // After a failed read-back the frame preselects the read that files nothing.
+    ...(parked.readBack ? { recommend: "check-again" } : {}) });
+}
+
+/** The question and its context line; a park after the saved-effect read failed says the system accepted the write but its status could not be read. */
+function parkedWriteText(record: ParkedWriteRecord, readBack: boolean, recordId: string | undefined) {
+  const where = recordId === undefined || record.id === undefined ? `${record.check} in ${record.system}` : record.id.where(recordId);
+  return readBack
+    ? { title: `${record.record[0]?.toUpperCase() ?? ""}${record.record.slice(1)} saved, but the read-back failed`,
+      context: `${record.system} accepted the ${record.act.toLowerCase()}, but Relay could not read its status. Check ${where}.` }
+    : { title: `Did the ${record.record} save in ${record.system}?`, context: `${record.act} did not confirm. Check ${where}.` };
+}
+
+function parkedWriteActionsWithCheck(
+  authority: RunRecord,
+  intent: Extract<WriteIntentRecord, { status: "parked" }>,
+  check: { state: "available"; target: ParkedWriteCheckTarget } | { state: "unavailable"; code: "PARKED_CHECK_UNAVAILABLE" },
+): unknown[] {
+  return [...parkedWriteActions(authority, intent), ...(intent.taskId !== "ucpath/create-termination" || check.state !== "available" ? [] : [{
+      key: "check-parked-write", label: "Check again", detail: "Read UCPath while keeping this write parked.",
+      intent: "warning", icon: "resolve", placement: ["review"], kind: "command", command: "check-parked-write",
+      expectedVersion: authority.version, checkTarget: check.target,
+      writeTarget: publicWriteTarget({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId,
+        bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest }),
+      confirm: { title: "Read UCPath transaction findings", body: "Read the transaction list and details. The write stays parked; Relay submits nothing and does not authorize a retry.",
+        confirmLabel: "Check again", tone: "neutral" },
+    }])];
 }
 
 export type GateParkSection = "parked-write" | "identity-gate";

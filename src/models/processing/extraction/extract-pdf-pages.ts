@@ -4,6 +4,9 @@ import { ArtifactRefSchema } from "../../artifacts/artifacts.js";
 import { taskId } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 
+/** Pages one render may return; one recorded origin per page leaf must fit a 256 KiB timeline event. */
+export const PDF_PAGE_LIMIT = 120;
+
 export const ExtractPdfPagesInputSchema = z.strictObject({
   document: ArtifactRefSchema,
     /* 1-based inclusive window; absent means every page, and a window past the end is refused rather than clamped. */
@@ -27,7 +30,7 @@ export const ExtractPdfPages = defineTaskContract({
   effect: "read",
   input: ExtractPdfPagesInputSchema,
   output: ExtractPdfPagesOutputSchema,
-  errorCodes: ["unreadable-pdf", "empty-document", "page-out-of-range"],
+  errorCodes: ["unreadable-pdf", "empty-document", "page-out-of-range", "too-many-pages"],
   subject: { kind: "none", reason: "rasterizing a local document resolves no person" },
   freshness: {
     defaultMaxAgeMs: Number.POSITIVE_INFINITY,

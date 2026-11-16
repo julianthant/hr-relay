@@ -1,6 +1,6 @@
 
 import {
-  WORKFLOW_MODULES,
+  READABLE_WORKFLOW_MODULES,
   readPendingImplBindings,
 } from "../../../src/backend/app/registries/workflow-registry.js";
 import type { Clock } from "../../../src/rules/time/clock.js";
@@ -25,7 +25,7 @@ export function explorerQueryDeps(
 ): ExplorerQueryDeps {
   return {
     clock,
-    modules: WORKFLOW_MODULES,
+    modules: READABLE_WORKFLOW_MODULES,
     descriptorSetHash,
     pendingImplBindings: readPendingImplBindings(REPO_ROOT),
     uiTaskLinks: buildUiTaskLinks(),

@@ -1,3 +1,4 @@
+import { PlannedRunOutputSchema } from "../dashboard/run-outputs.js";
 import { valueFreeProtectedData, valueFreeProtectedInput, type ProtectedInputBinding } from "../write-safety/protected-input.js";
 import { StartSupersedeTargetsSchema } from "./start-supersede.js";
 /** The start plan — what a `start-run` command consumes: planning and starting are two steps, and refusals ride the plan as data. */
@@ -22,7 +23,6 @@ import {
   BrowserPresentationModeSchema,
   InstanceSelectionSchema,
   RunPrioritySchema,
-  RunWorkersSchema,
   RunShapeSchema,
   RunRecoveryModeSchema,
 } from "./envelope.js";
@@ -31,6 +31,8 @@ import {
 export { StartRefusalCodeSchema, type StartRefusalCode } from "./start-refusal.js";
 
 export const PlannedRunSchema = z.strictObject({
+  outputs: z.array(PlannedRunOutputSchema).optional(),
+  workbookReferences: z.array(SchemaBoundCanonicalValueSchema).optional(),
   supersedeTargets: StartSupersedeTargetsSchema.optional(),
   itemId: ItemIdSchema,
   /** The exact title/subtitle the confirmation surface showed. */
@@ -75,7 +77,6 @@ export const StartPlanRecordSchema = z.strictObject({
   priority: RunPrioritySchema,
   dryRun: z.boolean(),
   recovery: RunRecoveryModeSchema.optional(),
-  workers: RunWorkersSchema,
   browserMode: BrowserPresentationModeSchema.optional(),
   captureBrowserScreenshots: z.boolean().optional(),
     /** Omitted steps with their typed facts; copied unchanged onto every run this plan starts. */
@@ -174,6 +175,8 @@ export function derivePlannedInputFingerprint(
         rawInput: valueFreeProtectedData(run.rawInput, run.input.protectedBindings),
         canonicalInput: { ...run.input, value: valueFreeProtectedInput(run.input.value, run.input.protectedBindings) },
         canonicalInputDigest: run.canonicalInputDigest,
+        ...(run.outputs === undefined ? {} : { outputs: run.outputs }),
+        ...(run.workbookReferences === undefined ? {} : { workbookReferences: run.workbookReferences }),
       })),
     }))
     .digest("hex"));

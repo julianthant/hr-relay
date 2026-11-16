@@ -1,10 +1,21 @@
+import { failureCodeFromTaskCode } from "../failures/error-catalog.js";
+import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, OcrReviewChangeSchema } from "../ocr/review.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../rules/validation/sha256.js";
+import { StartPlanRequestSchema } from "./start-plan.js";
+import { ActionConfirmWireSchema, type ActionDescriptorWire } from "./actions.js";
+import { DecisionAnswerWireSchema, RunDecisionWireSchema, type RunDecisionWire } from "./run-decision.js";
+import { FailureCorrectionSchema } from "../workflow/failure-correction.js";
+import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema, OcrReviewCommandRequestSchema, GateCommandRequestSchema, CommandResultSchema, WorkbookRowChoiceTargetSchema, WorkbookReferenceRowChoiceTargetSchema } from "../../rules/commands/commands.js";
+import { WorkbookOperationReceiptSchema, WorkbookCellValuesSchema } from "./workbooks.js";
+import { UcpathFindingsDetailSchema } from "./ucpath-findings.js";
 import { FailureDisplaySchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
-import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
+import { FailureResolutionCaptureSchema } from "../trust/failure-resolution.js";
 import { PublicTransactionKeyDigestSchema } from "../write-safety/protected-input.js";
+import { WriteParkCodeSchema } from "../../rules/write-safety/write-safety-primitives.js";
 import { z } from "zod";
-import { ConfirmedActionEventSchema } from "../events/confirmed-action.js";
+import { DataObservationOriginSchema } from "../events/data-observation-origin.js";
 import {
   ActorIdSchema,
   ArtifactIdSchema,
@@ -33,8 +44,6 @@ import {
   WriteIntentIdSchema,
 } from "../../rules/identity/ids.js";
 import { UnscopedCommitReasonIdSchema } from "../write-safety/unscoped-commit.js";
-import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
-import { IdentityEvidencePacketSchema } from "../../rules/separations/identity-evidence.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { TimelineCategoryKeySchema } from "../workflow/presentation.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
@@ -54,11 +63,20 @@ import {
   wireResourceSchema,
 } from "./primitives.js";
 import { QueueStatusSchema } from "./projection.js";
-import { RunOperationStructureWireSchema } from "./operation-structure.js";
 import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../events/types.js";
+
+/** Every `action` option of a served decision names an action served beside it, so a decision never offers an unreachable control. */
+function refineDecisionActions(decision: RunDecisionWire | undefined, actions: readonly Pick<ActionDescriptorWire, "key">[], context: z.RefinementCtx, path: (string | number)[]): void {
+  if (decision === undefined) return;
+  const keys = new Set(actions.map(({ key }) => key));
+  const named = decision.options.flatMap(({ send }) => send.via === "action" ? [send.actionKey] : []);
+  if (named.some(key => !keys.has(key))) context.addIssue({ code: "custom", path, message: "a decision option must name an action served on the same section" });
+}
 
 export const RunIdentityWireSchema = z.strictObject({
   runId: RunIdSchema,
+  parentRunId: RunIdSchema.optional(),
+  retryOf: RunIdSchema.optional(),
   traceId: TraceIdSchema,
   workflowId: WorkflowIdSchema,
   actorId: ActorIdSchema.optional(),
@@ -99,13 +117,6 @@ export const NativeRunEventWireSchema = z.strictObject({
   message: "a native event must name its node or span",
 });
 export type NativeRunEventWire = z.infer<typeof NativeRunEventWireSchema>;
-
-export const ConfirmedActionBindingWireSchema = z.strictObject({
-  eventId: z.string().min(1),
-  logId: NoteIdSchema,
-  native: NativeRunEventWireSchema,
-});
-export type ConfirmedActionBindingWire = z.infer<typeof ConfirmedActionBindingWireSchema>;
 
 export const TimelineEventWireSchema = z.strictObject({
   native: NativeRunEventWireSchema.optional(),
@@ -180,6 +191,7 @@ export const TimelineStepMemberWireSchema = z.strictObject({
 
 /** The CATEGORICAL timeline step: one segment per descriptor-declared category (or per node for a workflow that declares nothing), never one per raw execution. */
 export const TimelineStepWireSchema = z.strictObject({
+  system: z.union([BrowserSystemIdSchema, z.literal("local")]).optional(),
   key: TimelineCategoryKeySchema.optional(),
   label: z.string().min(1),
   state: TimelineStepStateSchema,
@@ -207,8 +219,8 @@ export const TimelineWireSchema = z.strictObject({
 /** The `resolved` arm carries the APPROVER: `resolvedBy` is REQUIRED and safe to require, because the arm is newly reachable and no stored record predates the field. */
 export const GateDecisionWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
-  z.strictObject({ state: z.literal("open"), gateId: NoteIdSchema, nodeId: NodeIdSchema.optional(), label: z.string().min(1), openedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
-  z.strictObject({ state: z.literal("resolved"), gateId: NoteIdSchema, nodeId: NodeIdSchema.optional(), label: z.string().min(1), resolution: z.enum(["approved", "rejected"]), resolvedBy: ActorIdSchema, resolvedAt: IsoInstantSchema, revision: RecordRevisionSchema }),
+  z.strictObject({ state: z.literal("open"), gateId: NoteIdSchema, nodeId: NodeIdSchema.optional(), label: z.string().min(1), openedAt: IsoInstantSchema, revision: RecordRevisionSchema, decision: RunDecisionWireSchema.optional() }),
+  z.strictObject({ state: z.literal("resolved"), gateId: NoteIdSchema, nodeId: NodeIdSchema.optional(), label: z.string().min(1), resolution: z.enum(["approved", "rejected"]), resolvedBy: ActorIdSchema, resolvedAt: IsoInstantSchema, revision: RecordRevisionSchema, answer: DecisionAnswerWireSchema.optional() }),
 ]);
 /** A REHEARSAL's terminal outcome: `rehearsal` states that this run's terminal record is a dry-run PREVIEW, so nothing downstream reads it as a completed workflow. */
 export const OutcomeWireSchema = z.discriminatedUnion("state", [
@@ -269,12 +281,25 @@ export const RunDetailWireSchema = z.strictObject({
   gate: GateDecisionWireSchema,
   outcome: OutcomeWireSchema,
   context: ContextSummaryWireSchema,
+  ocrReviewChanges: z.array(OcrReviewChangeSchema).min(1).optional(),
+  ocrRecordCount: z.number().int().nonnegative().optional(),
+  childRetry: z.strictObject({
+    key: z.literal("retry-child"), label: z.literal("Retry"), kind: z.literal("command"), command: z.literal("retry"),
+    expectedVersion: RowRevisionSchema, intent: z.literal("neutral"), icon: z.literal("retry"), placement: z.array(z.literal("banner")).length(1),
+  }).optional(),
   /** Historical archives may omit captures; every live read emits them. */
   captures: RunCaptureAvailabilityWireSchema.optional(),
     /* The timeline steps this run OMITTED at start, by descriptor key; keys only — the operator's typed facts are the run's input and never cross this wire. */
   omittedSteps: z.array(TimelineCategoryKeySchema).min(1).optional(),
+    /* The run-level decision (member retry, paused, stalled, cancelling); run controls send the queue row's own descriptors. */
+  decision: RunDecisionWireSchema.optional(),
   availableSections: z.array(RunDetailSectionSchema),
 }).superRefine((detail, context) => {
+  refineDecisionActions(detail.decision, detail.childRetry === undefined ? [] : [detail.childRetry], context, ["decision"]);
+  if (detail.childRetry !== undefined && (detail.header.parentRunId === undefined || detail.header.status !== "failed"
+    || detail.childRetry.expectedVersion !== detail.rowRevision)) {
+    context.addIssue({ code: "custom", path: ["childRetry"], message: "child retry requires the exact failed run revision" });
+  }
   if (detail.runId !== detail.header.runId) {
     context.addIssue({ code: "custom", path: ["header", "runId"], message: "run detail and header identities must match" });
   }
@@ -306,6 +331,16 @@ export const NoteWireSchema = z.strictObject({
   level: z.enum(["info", "warning", "error"]),
   message: z.string().min(1),
   fields: z.array(NoteFieldWireSchema).optional(),
+  operatorAction: z.strictObject({
+    kind: z.enum(["click", "fill", "read", "action", "screenshot"]),
+    value: z.string().optional(),
+    label: z.string().min(1),
+    registryLabel: z.literal(true).optional(),
+    sessionId: BrowserSessionIdSchema.optional(),
+    system: BrowserSystemIdSchema.optional(),
+    state: z.enum(["started", "completed", "failed", "not-run", "confirmed"]).optional(),
+    reason: z.enum(["condition-false", "dry-run", "cancelled", "callback-failed"]).optional(),
+  }).optional(),
   screenshot: z.strictObject({ bundleId: DiagnosticBundleIdSchema, artifactId: ArtifactIdSchema, sessionId: BrowserSessionIdSchema }).optional(),
 });
 
@@ -336,6 +371,12 @@ export const ObservedLogRowWireSchema = z.strictObject({
   ...LogSpanIdentityWireSchema.shape,
   producer: LogProducerWireSchema,
   points: z.array(ObservedDataPointWireSchema).min(1),
+  /* A field carries its observed value, or `unread` when the node's read failed before observing it. */
+  displayFields: z.array(z.union([
+    z.strictObject({ direction: z.enum(["read", "write"]), label: z.string().min(1), value: z.string().min(1),
+      causal: z.strictObject({ declaration: z.string().min(1), origin: DataObservationOriginSchema }).optional() }),
+    z.strictObject({ direction: z.literal("read"), label: z.string().min(1), unread: z.literal(true) }),
+  ])).optional(),
 });
 
 export const LogRowWireSchema = z.discriminatedUnion("kind", [
@@ -367,12 +408,19 @@ export const LogPageCursorSchema = z.string()
   .regex(/^lc:[0-9a-f]{64}:[1-9]\d*$/, "log cursor must be lc:<snapshot digest>:<positive offset>")
   .brand<"LogPageCursor">();
 
+export const DryRunPreviewWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("pending") }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.enum(["preview-authority-unavailable", "preview-not-completed", "preview-result-unreadable"]) }),
+  z.strictObject({ state: z.literal("available"), coverage: z.enum(["full", "partial"]), stages: z.array(z.strictObject({
+    id: NodeIdSchema, label: z.string().min(1), state: z.enum(["exercised", "unavailable", "skipped"]), detail: z.string().min(1),
+    submitNotClicked: z.literal(true).optional(),
+    sample: z.strictObject({ label: z.literal("dry-run sample"), value: z.string().min(1) }).optional(),
+  })) }),
+]);
+
 export const NotePageSchema = z.strictObject({
   runId: RunIdSchema,
-  confirmedActions: z.array(ConfirmedActionEventSchema).optional(),
-  confirmedActionBindings: z.array(ConfirmedActionBindingWireSchema).optional(),
-  /** Live Logs always send this; older frozen archive pages predate it. */
-  operationStructure: RunOperationStructureWireSchema.optional(),
+  dryRunPreview: DryRunPreviewWireSchema.optional(),
     /* The one combined page; optional only so a frozen archive written before observed-log rows existed remains readable, and `notes` stays as an exact compatibility mirror. */
   rows: z.array(LogRowWireSchema).optional(),
   notes: z.array(NoteWireSchema),
@@ -400,7 +448,8 @@ export const NotePageSchema = z.strictObject({
         && note.level === mirrored.level
         && (note.native === undefined ? mirrored.native === undefined : mirrored.native !== undefined
           && canonicalJsonStringify(note.native) === canonicalJsonStringify(mirrored.native))
-        && note.message === mirrored.message;
+        && note.message === mirrored.message
+        && canonicalJsonStringify(note.operatorAction ?? null) === canonicalJsonStringify(mirrored.operatorAction ?? null);
     });
     if (!sameNotes) {
       context.addIssue({ code: "custom", path: ["notes"], message: "notes must exactly mirror the note rows of this combined log page" });
@@ -419,11 +468,34 @@ export const ReviewRecordWireSchema = z.strictObject({
 export const ReviewPageSchema = z.strictObject({
   runId: RunIdSchema,
   records: z.array(ReviewRecordWireSchema),
+  ocr: z.strictObject({ revision: OcrReviewRevisionSchema, digest: FingerprintSchema,
+    approvedSnapshots: z.array(OcrApprovedSnapshotSchema), invalidatedCorrections: z.array(OcrReviewChangeSchema).min(1).optional(),
+    editing: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("available"), runVersion: RowRevisionSchema }),
+      z.strictObject({ state: z.literal("unavailable"), reason: z.enum(["approved", "run-busy", "retained-workflow"]) }),
+    ]),
+    approval: GateCommandRequestSchema.shape.target.optional(),
+  }).optional(),
 }).superRefine((page, context) => {
   if (page.records.some(({ runId }) => runId !== page.runId)) context.addIssue({ code: "custom", path: ["records"], message: "review record run identities must match page" });
+  if (page.ocr !== undefined && page.ocr.revision.sourceRunId !== page.runId) context.addIssue({ code: "custom", message: "OCR review must belong to the requested run" });
+  if (page.ocr?.approval !== undefined && (page.ocr.approval.runId !== page.runId || page.ocr.approval.gateId !== "approve-records"
+    || page.ocr.editing?.state !== "available" || page.ocr.approval.expectedVersion.valueOf() !== page.ocr.editing.runVersion.valueOf())) {
+    context.addIssue({ code: "custom", message: "OCR approval must match the editable run authority" });
+  }
+  if (page.ocr?.editing?.state === "available" && page.ocr.approvedSnapshots.length > 0) {
+    context.addIssue({ code: "custom", message: "Approved OCR records are read-only" });
+  }
   const ids = page.records.map(({ recordId }) => recordId);
   if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", path: ["records"], message: "review record ids must be unique" });
 });
+
+export type ReviewPage = z.infer<typeof ReviewPageSchema>;
+
+export const OcrCommandResultWireSchema = z.union([
+  z.strictObject({ state: z.literal("unavailable") }),
+  z.strictObject({ state: z.literal("recorded"), request: z.union([OcrReviewCommandRequestSchema, GateCommandRequestSchema]), result: CommandResultSchema }),
+]);
 
 export const PeopleMemberWireSchema = z.strictObject({
   runId: RunIdSchema,
@@ -561,7 +633,14 @@ const ReceiptSectionSchema = RunEvidenceReceiptSchema;
 export const FailureDetailWireSchema = z.strictObject({
   native: NativeRunEventWireSchema.optional(),
   display: FailureDisplaySchema.optional(),
-  resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),
+  recovery: z.strictObject({
+    correction: FailureCorrectionSchema, expectedVersion: z.number().int().positive(),
+    /* The rejected value; served only when the correction is declared display-safe. */
+    prefill: z.string().min(1).optional(),
+    retry: ActionDescriptorWireSchema, confirm: ActionConfirmWireSchema, request: StartPlanRequestSchema,
+  }).optional(),
+  resolution: z.strictObject({capture:FailureResolutionCaptureSchema}).optional(),
+  decision: RunDecisionWireSchema.optional(),
   runId: RunIdSchema,
   failureId: FailureIdSchema,
   traceId: TraceIdSchema,
@@ -604,6 +683,16 @@ export const FailureDetailWireSchema = z.strictObject({
   ]),
   occurredAt: IsoInstantSchema,
 }).superRefine((failure, context) => {
+  const recovery = failure.recovery;
+  if (recovery !== undefined) {
+    const source = recovery.request.rerunSource;
+    if (failure.writeState !== "not-attempted" || failureCodeFromTaskCode(recovery.correction.code) !== failure.code || recovery.correction.nodeId !== failure.nodeId
+      || recovery.retry.kind !== "command" || recovery.retry.command !== "retry" || recovery.retry.expectedVersion !== recovery.expectedVersion
+      || source?.runId !== failure.runId || source.expectedVersion !== recovery.expectedVersion
+      || source.failureCorrection?.failureId !== failure.failureId || source.failureCorrection.inputField !== recovery.correction.inputField
+      || recovery.request.workflowId !== failure.workflowId) context.addIssue({ code: "custom", path: ["recovery"], message: "Failure recovery must target this exact failure and revision" });
+  }
+  refineDecisionActions(failure.decision, failure.recovery === undefined ? [] : [failure.recovery.retry], context, ["decision"]);
   if (failure.sameFingerprintSeen < 1) {
     context.addIssue({
       code: "custom",
@@ -616,7 +705,8 @@ export const FailureDetailWireSchema = z.strictObject({
 /** Provenance is a closed membership, not failure detail or actor data. */
 export const RunCaptureOriginWireSchema = z.strictObject({
   operation: DeclaredActionIdentitySchema.optional(),
-  browserCapture: z.strictObject({ nodeId: NodeIdSchema, attempt: PositiveIntSchema, sessionId: BrowserSessionIdSchema }).optional(),
+  browserCapture: z.strictObject({ nodeId: NodeIdSchema, attempt: PositiveIntSchema, sessionId: BrowserSessionIdSchema,
+    boundary: z.enum(["step", "before-submit", "after-submit"]).optional() }).optional(),
   capturedAt: IsoInstantSchema.optional(),
   bundleId: DiagnosticBundleIdSchema,
   originKind: z.enum(["failure", "unexpected-state", "subject-mismatch", "recovery-park", "operator-request"]),
@@ -664,14 +754,7 @@ export const CaptureListSchema = z.strictObject({
 
 /* ── the parked-write vocabulary, mirrored across the browser boundary ────── */
 
-/** The park codes and subject-binding evidence, RE-DECLARED here rather than imported, and pinned to the durable originals by the wire-connectivity test. */
-const ParkedWriteCodeSchema = z.enum([
-  "unknown",
-  "ambiguous",
-  "present-proof-invalid",
-  "binding-invalid",
-  "operator-required",
-]);
+/** The subject-binding evidence, RE-DECLARED here rather than imported, and pinned to the durable original by the wire-connectivity test. */
 
 export const ParkedWriteSubjectEvidenceSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -715,12 +798,12 @@ export const ParkedWriteSubjectWireSchema = z.discriminatedUnion("state", [
 export const ProofFieldWireSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("fixed"),
-    path: ContractFieldPathSchema,
+    path: ContractFieldPathSchema, nullable: z.literal(true).optional(),
     value: z.union([z.string(), z.number(), z.boolean()]),
   }),
   z.strictObject({
     kind: z.literal("text"),
-    path: ContractFieldPathSchema,
+    path: ContractFieldPathSchema, nullable: z.literal(true).optional(),
     minLength: z.number().int().nonnegative().optional(),
     maxLength: z.number().int().positive().optional(),
     /** The regex SOURCE — a client cannot be handed a zod schema. */
@@ -731,12 +814,12 @@ export const ProofFieldWireSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({
     kind: z.literal("choice"),
-    path: ContractFieldPathSchema,
+    path: ContractFieldPathSchema, nullable: z.literal(true).optional(),
     options: z.array(z.string().min(1)).min(1),
   }),
   z.strictObject({
     kind: z.literal("integer"),
-    path: ContractFieldPathSchema,
+    path: ContractFieldPathSchema, nullable: z.literal(true).optional(),
     minimum: z.number().int().optional(),
     maximum: z.number().int().optional(),
   }),
@@ -744,7 +827,7 @@ export const ProofFieldWireSchema = z.discriminatedUnion("kind", [
 ]);
 export type ProofFieldWire = z.infer<typeof ProofFieldWireSchema>;
 
-/** WHAT A CONFIRMED-PRESENT RESOLUTION MUST CARRY: the resolution refuses any proof whose `schemaHash` is not the commit contract's own, and parses the value through that exact schema. */
+/** Completion-proof metadata for parked-write evidence; rechecks obtain proof from the target system. */
 export const ProofContractWireSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("served"),
@@ -752,7 +835,7 @@ export const ProofContractWireSchema = z.discriminatedUnion("state", [
     commitTaskId: TaskIdSchema,
       /* How this write WOULD have proved itself unattended; context the operator needs, because `save-verify` means a reload read-back is the only landing proof. */
     completionKind: z.enum(["receipt", "save-verify", "upload-verify"]),
-    /** The exact value the resolution's `proof.schemaHash` must equal. */
+    /** Schema identity of the completion proof. */
     schemaHash: FingerprintSchema,
     fields: z.array(ProofFieldWireSchema).min(1),
   }),
@@ -762,6 +845,13 @@ export type ProofContractWire = z.infer<typeof ProofContractWireSchema>;
 
 /** The parked-write section: a `parked-write` run is the one lifecycle whose ordinary controls are REFUSED BY NAME, because a fenced write may already exist in a real HR system. */
 export const ParkedWriteDetailWireSchema = z.strictObject({
+  ucpathFindings: UcpathFindingsDetailSchema.optional(),
+  acceptsTransactionId: z.boolean(),
+  check: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("available"), target: ParkedWriteCheckTargetSchema }),
+    z.strictObject({ state: z.literal("unavailable"), code: z.literal("PARKED_CHECK_UNAVAILABLE") }),
+  ]).optional(),
+  lastCheck: ParkedWriteCheckResultSchema.optional(),
   native: NativeRunEventWireSchema.optional(),
   runId: RunIdSchema,
   writeIntentId: WriteIntentIdSchema,
@@ -775,7 +865,7 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   idempotencyKeyDigest: PublicTransactionKeyDigestSchema,
   fencedAt: IsoInstantSchema,
   parkedAt: IsoInstantSchema,
-  parkedCode: ParkedWriteCodeSchema,
+  parkedCode: WriteParkCodeSchema,
   /** A repository-authored digest projection; authority retains the original park evidence. */
   parkedMessage: z.string().min(1),
   subject: ParkedWriteSubjectWireSchema,
@@ -783,7 +873,27 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   proofContract: ProofContractWireSchema,
     /* An interactive control exists only because the SERVER described it; both typed resolutions are always served for a parked run, because hiding either would pre-decide the operator's question. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
+  decision: RunDecisionWireSchema.optional(),
 }).superRefine((parked, context) => {
+  refineDecisionActions(parked.decision, parked.actions, context, ["decision"]);
+  if (parked.ucpathFindings !== undefined && (parked.system !== "ucpath" || parked.taskId !== "ucpath/create-termination")) {
+    context.addIssue({ code: "custom", path: ["ucpathFindings"], message: "UCPath findings belong to a parked termination submit" });
+  }
+  for (const target of [parked.check?.state === "available" ? parked.check.target : undefined, parked.lastCheck?.target]) {
+    if (target !== undefined && (target.runId !== parked.runId || target.writeIntentId !== parked.writeIntentId
+      || target.intentGeneration !== parked.generation || target.runAttempt !== parked.runAttempt
+      || parked.native === undefined || target.traceId !== parked.native.traceId || target.nodeId !== parked.native.nodeId
+      || target.runAttempt !== parked.native.attempt)) {
+      context.addIssue({ code: "custom", message: "a parked check must name this exact retained write and native occurrence" });
+    }
+  }
+  for (const action of parked.actions) {
+    if (action.kind === "command" && action.command === "check-parked-write"
+      && (parked.check?.state !== "available" || canonicalJsonStringify(action.checkTarget) !== canonicalJsonStringify(parked.check.target)
+        || action.expectedVersion !== parked.check.target.runVersion)) {
+      context.addIssue({ code: "custom", path: ["actions"], message: "held check action must name this exact available check" });
+    }
+  }
   if (Date.parse(parked.parkedAt) < Date.parse(parked.fencedAt)) {
     context.addIssue({
       code: "custom",
@@ -804,50 +914,48 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   }
 });
 
-/** The identity-approval gate section: the whole server side of the approval UI — a command arm plus wire state ONLY. */
+/** The identity review: display text and opaque refs only; the evidence packet, digests and node ids stay server-side. */
 export const IdentityGateOptionWireSchema = z.strictObject({
-  eid: z.string().regex(/^\d{8}$/),
-  /** The label a `resolve-gate` payload must carry for this EID. */
-  chosenFrom: z.enum(["checked", "name-search", "manual"]),
-  /** The name UCPath displayed for this EID, when the packet carried one. */
+  /** Opaque; an `answer-identity-gate` command names the candidate by this ref. */
+  ref: z.uuid(),
   displayName: z.string().min(1),
-  /** Why this EID is on the list, in the operator's terms. */
+  maskedEid: z.string().regex(/^••••\d{4}$/u),
+  /** Why this person is on the list, as a closed sentence. */
   origin: z.string().min(1),
 });
 
 export const IdentityGateDetailWireSchema = z.strictObject({
-  native: NativeRunEventWireSchema.optional(),
   runId: RunIdSchema,
-  gateId: NodeIdSchema,
+  /** Opaque; binds an answer to this gate's exact evidence. */
+  gateRef: z.uuid(),
   label: z.string().min(1),
   parkedAt: IsoInstantSchema,
-  /** The node the run resumes at once the gate resolves. */
-  resumeAt: NodeIdSchema,
-  /** The run version a `resolve-gate` command must CAS against. */
+  /** The run version an answer must CAS against. */
   expectedVersion: z.number().int().positive(),
-  /** The descriptor's exact gate-result schema hash the kernel will require. */
-  resultSchemaHash: FingerprintSchema,
-  /** The digest an approval or rejection must carry (ref write-safety ). */
-  evidenceDigest: FingerprintSchema,
-  packet: IdentityEvidencePacketSchema,
+  /** The log position of the gate's opening, when the run recorded it. */
+  order: z.number().int().nonnegative().optional(),
+  /** Why Relay asks, as a closed sentence. */
+  reason: z.string().min(1),
+  /** The Request and UCPath table: display labels and display-safe values. */
+  comparisons: z.array(z.strictObject({ label: z.string().min(1), request: z.string().min(1), ucpath: z.string().min(1), agrees: z.boolean() })).min(1),
   options: z.array(IdentityGateOptionWireSchema).min(1),
     /* The SERVER decides how much ceremony the decision costs, so a surface cannot quietly turn a risky approval into one click. */
-  approvalShape: z.enum(["one-click", "choose-a-candidate", "type-the-eid"]),
+  approvalShape: z.enum(["one-click", "choose-a-candidate"]),
   /** Ref frontend-backend-integration: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
+  decision: RunDecisionWireSchema.optional(),
+  /** The fill row's lookup: a typed value starts this one-field rerun, which replaces the parked run; it never answers the gate. */
+  correction: z.strictObject({
+    inputField: z.string().min(1), label: z.string().min(1), placeholder: z.string().min(1), pattern: z.string().min(1),
+    expectedVersion: z.number().int().positive(), confirm: ActionConfirmWireSchema, request: StartPlanRequestSchema,
+  }).optional(),
 }).superRefine((gate, context) => {
-  const eids = gate.options.map(({ eid }) => eid);
-  if (new Set(eids).size !== eids.length) {
-    context.addIssue({ code: "custom", path: ["options"], message: "gate options must be unique by EID" });
+  refineDecisionActions(gate.decision, gate.actions, context, ["decision"]);
+  if (gate.approvalShape !== (gate.options.length > 1 ? "choose-a-candidate" : "one-click")) {
+    context.addIssue({ code: "custom", path: ["approvalShape"], message: "presentation must match the shown candidate count" });
   }
-  for (const [index, option] of gate.options.entries()) {
-    if (!gate.packet.approvableEids.map(String).includes(option.eid)) {
-      context.addIssue({
-        code: "custom",
-        path: ["options", index, "eid"],
-        message: `option ${directIdentifierDisplay(option.eid)} is not one the packet showed`,
-      });
-    }
+  if (new Set(gate.options.map(({ ref }) => ref)).size !== gate.options.length) {
+    context.addIssue({ code: "custom", path: ["options"], message: "gate options must be unique by ref" });
   }
   const targeted = gate.actions.filter((action) => action.kind === "command"
     && action.command === "resolve-gate"
@@ -862,7 +970,87 @@ export const IdentityGateDetailWireSchema = z.strictObject({
 });
 export type IdentityGateDetailWire = z.infer<typeof IdentityGateDetailWireSchema>;
 
+export const WorkbookReferenceRowCandidateWireSchema = z.strictObject({
+  sheetId: z.string().min(1), rowId: z.string().min(1), label: z.string().min(1),
+  referenceDigest: FingerprintSchema.optional(), workbookVersion: PositiveIntSchema.optional(),
+  values: z.array(z.strictObject({ fieldId: WorkbookCellValuesSchema.keyType, value: WorkbookCellValuesSchema.valueType })).min(1),
+}).refine(candidate => new Set(candidate.values.map(cell => cell.fieldId)).size === candidate.values.length,
+  "reference candidate fields must be unique")
+  .refine(candidate => (candidate.referenceDigest === undefined) === (candidate.workbookVersion === undefined),
+    "a cross-source candidate names its captured reference and revision together");
+
+export const RunWorkbookReferenceChoiceWireSchema = z.strictObject({
+  native: NativeRunEventWireSchema,
+  libraryId: z.string().min(1), typeId: z.string().min(1), referenceDigest: FingerprintSchema,
+  key: z.string().min(1), reason: z.enum(["row-missing", "row-ambiguous"]),
+  resolution: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("unavailable"), code: z.literal("WORKBOOK_ROW_CHOICE_UNAVAILABLE"), candidates: z.tuple([]) }),
+    z.strictObject({ state: z.literal("available"), target: WorkbookReferenceRowChoiceTargetSchema,
+      action: ActionDescriptorWireSchema, candidates: z.array(WorkbookReferenceRowCandidateWireSchema).min(1), decision: RunDecisionWireSchema.optional() }),
+    z.strictObject({ state: z.literal("resolved"), workbookVersion: z.number().int().positive(), resolvedAt: IsoInstantSchema,
+      selected: WorkbookReferenceRowCandidateWireSchema, answer: DecisionAnswerWireSchema.optional() }),
+  ]),
+}).superRefine((choice, ctx) => {
+  const resolution = choice.resolution;
+  if (resolution.state !== "available") return;
+  const { target, action, candidates } = resolution;
+  refineDecisionActions(resolution.decision, [action], ctx, ["resolution", "decision"]);
+  if (target.libraryId !== choice.libraryId || target.typeId !== choice.typeId || target.referenceDigest !== choice.referenceDigest
+    || target.key !== choice.key || action.kind !== "command" || action.command !== "resolve-workbook-reference-row"
+    || action.expectedVersion !== target.expectedVersion || action.referenceTarget === undefined
+    || canonicalJsonStringify(action.referenceTarget) !== canonicalJsonStringify(target)
+    || new Set(candidates.map(candidate => JSON.stringify([candidate.referenceDigest ?? choice.referenceDigest, candidate.sheetId, candidate.rowId]))).size !== candidates.length) {
+    ctx.addIssue({ code: "custom", message: "reference choices must preserve exact captured reference, target and candidate membership" });
+  }
+});
+export type RunWorkbookReferenceChoiceWire = z.infer<typeof RunWorkbookReferenceChoiceWireSchema>;
+
+export const RunWorkbookWritesWireSchema = z.strictObject({ runId: RunIdSchema,
+  referenceChoices: z.array(RunWorkbookReferenceChoiceWireSchema).optional(), operations: z.array(z.strictObject({
+  receipt: WorkbookOperationReceiptSchema, native: NativeRunEventWireSchema,
+  resolution: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("not-required") }),
+    z.strictObject({ state: z.literal("resolved"), answer: DecisionAnswerWireSchema.optional() }),
+    z.strictObject({ state: z.literal("unavailable"), code: z.literal("WORKBOOK_ROW_CHOICE_UNAVAILABLE") }),
+    z.strictObject({ state: z.literal("available"), target: WorkbookRowChoiceTargetSchema, action: ActionDescriptorWireSchema,
+      candidates: z.array(z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1), label: z.string().min(1) })).min(1),
+      decision: RunDecisionWireSchema.optional() }),
+  ]),
+})) }).superRefine((section, ctx) => {
+  const references = section.referenceChoices ?? [];
+  if (new Set(references.map(choice => JSON.stringify([choice.typeId, choice.key]))).size !== references.length
+    || references.some(choice => choice.native.runId !== section.runId
+      || choice.resolution.state === "available" && choice.resolution.target.runId !== section.runId
+      || references.some(other => other.typeId === choice.typeId
+        && (other.libraryId !== choice.libraryId || other.referenceDigest !== choice.referenceDigest)))) {
+    ctx.addIssue({ code: "custom", message: "reference choices must preserve exact run and type membership" });
+  }
+  const ids = new Set<string>();
+  for (const operation of section.operations) {
+    const { receipt, native, resolution } = operation;
+    const key = JSON.stringify([receipt.libraryId, receipt.operationId]);
+    if (ids.has(key) || native.runId !== section.runId || (receipt.source.kind !== "run" && receipt.source.kind !== "run-reference") || receipt.source.runId !== section.runId) {
+      ctx.addIssue({ code: "custom", message: "workbook writes must preserve exact run and operation membership" });
+    }
+    ids.add(key);
+    if ((resolution.state === "not-required") !== (receipt.state !== "resolve-required")) {
+      ctx.addIssue({ code: "custom", message: "workbook receipt and resolution states must agree" });
+    }
+    if (resolution.state === "available" && (receipt.state !== "resolve-required" || resolution.target.runId !== section.runId
+      || resolution.target.libraryId !== receipt.libraryId || resolution.target.operationId !== receipt.operationId
+      || resolution.target.receiptDigest !== sha256Hex(canonicalJsonStringify(receipt))
+      || resolution.action.kind !== "command" || resolution.action.command !== "resolve-workbook-row"
+      || resolution.action.workbookTarget === undefined
+      || canonicalJsonStringify(resolution.action.workbookTarget) !== canonicalJsonStringify(resolution.target))) {
+      ctx.addIssue({ code: "custom", message: "workbook row choice must target its retained receipt" });
+    }
+    if (resolution.state === "available") refineDecisionActions(resolution.decision, [resolution.action], ctx, ["operations", "resolution", "decision"]);
+  }
+});
+export type RunWorkbookWritesWire = z.infer<typeof RunWorkbookWritesWireSchema>;
+
 export const RunDetailSectionResponseSchema = z.discriminatedUnion("section", [
+  z.strictObject({ section: z.literal("workbook-writes"), payload: RunWorkbookWritesWireSchema }),
   z.strictObject({ section: z.literal("logs"), payload: NotePageSchema }),
   z.strictObject({ section: z.literal("receipt"), payload: wireResourceSchema(ReceiptSectionSchema) }),
   z.strictObject({ section: z.literal("review"), payload: ReviewPageSchema }),

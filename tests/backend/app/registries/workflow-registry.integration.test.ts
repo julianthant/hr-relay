@@ -1,9 +1,10 @@
+import { projectWorkbookCompatibilityFromRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { Hono } from "hono";
 import { default as assert } from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
-import { descriptorSetHash as descriptorSetHash_m0 } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash as descriptorSetHash_m0 } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { DESCRIPTORS, WORKFLOW_DEFINITIONS, WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { buildBootstrap } from "../../../../src/backend/runs/queries/bootstrap.js";
@@ -81,8 +82,8 @@ describe("workflow definition registry conformance", () => {
     }
   });
 
-  it("serves every definition-backed workflow through the existing bootstrap/start, detail timeline, and Explorer projections", () => {
-    const world = makeWorld();
+  it("serves every definition-backed workflow through the existing bootstrap/start, detail timeline, and Explorer projections", async () => {
+    const world = await makeWorld();
     try {
       const bootstrap = buildBootstrap({
         appVersion: "0.1.0",
@@ -91,8 +92,10 @@ describe("workflow definition registry conformance", () => {
         descriptorSetHash: descriptorSetHash_m0(WORKFLOW_MODULES.map(({ descriptor }) => descriptor.contractFingerprint)),
         settingsSchemaHash: descriptorSetHash_m0(["settings-schema"]),
         projection: world.projection,
+        actorLabel: () => "Fixture Operator",
         authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
-        backupSummary: () => "current",
+        workbookCompatibility: workflows => projectWorkbookCompatibilityFromRepository(world.database.authority.workbooks, workflows),
+
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       });
       const bootstrapWorkflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);
@@ -125,7 +128,7 @@ describe("workflow definition registry conformance", () => {
           details: details.map(({ key }) => key),
         })), id).toEqual(descriptor.nodes.map(({ id: nodeId }) => ({
           id: String(nodeId),
-          details: descriptor.details.filter((detail) => detail.source.nodeId === String(nodeId)).map(({ key }) => key),
+          details: descriptor.details.filter((detail) => "nodeId" in detail.source && detail.source.nodeId === String(nodeId)).map(({ key }) => key),
         })));
 
         const seed = 501 + index;
@@ -148,7 +151,7 @@ describe("workflow definition registry conformance", () => {
         })));
       }
     } finally {
-      world.dispose();
+      await world.dispose();
     }
   });
 
@@ -183,7 +186,7 @@ describe("workflow definition registry conformance", () => {
 /** Real SQLite summary consumers through their independently composed HTTP/read ports. */
 describe("composed Activity and Queue boundaries", () => {
   it("serves JSON and CSV from the same bounded Activity query and pages Queue independently", async () => {
-    const f = foundationFixture();
+    const f = await foundationFixture();
     try {
       f.db.withAuthorityTransaction(() => {
         for (let n = 0; n < 7; n += 1) f.db.authority.runs.enqueue(RunRecordSchema.parse({ ...f.run,
@@ -225,7 +228,7 @@ describe("composed Activity and Queue boundaries", () => {
         assert.notEqual((await app.request(path)).status, 200, "a missing or reversed range cannot become a default report");
       }
       assert.throws(() => queue.queue({ fromDay: to, toDay: "2026-09-08", limit: 2, topLevel: true }), /range-invalid/u);
-    } finally { f.dispose(); }
+    } finally { await f.dispose(); }
   });
 });
 }

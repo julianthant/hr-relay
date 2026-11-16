@@ -3,7 +3,7 @@ import { it } from "vitest";
 import { deriveCanonicalPerson } from "../../../../src/backend/runs/projections/run-summary.js";
 import { queryActivitySummaries } from "../../../../src/backend/runs/queries/run-summaries.js";
 import { RunResultRecordSchema } from "../../../../src/models/run/result.js";
-import { TERMINAL_SEPARATIONS_RESULT,TERMINAL_SEPARATIONS_RUN } from "../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { TERMINAL_SEPARATIONS_RESULT,TERMINAL_SEPARATIONS_RUN } from "../../../support/fixtures/integration/separations-run-fixtures.js";
 import { foundationFixture } from "../../../support/helpers/database-foundation/fixtures.js";
 
 it("refuses each canonical identity mismatch with a sanitized error",()=>{
@@ -14,11 +14,11 @@ it("refuses each canonical identity mismatch with a sanitized error",()=>{
 });
 
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { activityPersonPseudonymResultRecord,CURRENT_SEPARATIONS_RESULT,seedSeparationsRunAuthority } from "../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { separationsRunResultRecord,CURRENT_SEPARATIONS_RESULT,seedSeparationsRunAuthority } from "../../../support/fixtures/integration/separations-run-fixtures.js";
 import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { id,NOW } from "../../../support/helpers/database-foundation/fixtures.js";
-it("deduplicates people across days and computes the lower selected median, matching the retained projector",()=>{
-  const f=foundationFixture(),world=makeWorld();try{
+it("deduplicates people across days and computes the lower selected median, matching the retained projector",async ()=>{
+  const f=await foundationFixture(),world=await makeWorld();try{
     const identities=new Map<string,ReturnType<typeof deriveCanonicalPerson>>();
     Object.assign(world.authority,{canonicalPerson:(runId:string)=>identities.get(runId)??{state:"unavailable",reason:"fixture-unavailable"}});
     for(let n=0;n<6;n++){
@@ -27,7 +27,7 @@ it("deduplicates people across days and computes the lower selected median, matc
       const endedAt=new Date(Date.parse(enqueuedAt)+duration).toISOString();
       const base=TERMINAL_SEPARATIONS_RUN;
       const run=RunRecordSchema.parse({...base,envelope:{...base.envelope,runId:id(6000+n),itemId:n===1?id(6000):id(6000+n),attempt:n===1?2:1,...(n===1?{retryOf:id(6000)}:{}),...(n>=4?{shape:"operation-member",parent:{runId:id(6000),tracePrefix:base.envelope.traceId,edgeId:"member"}}:{}),enqueuedAt,configSnapshotId:f.snapshot.configSnapshotId,configFingerprint:f.snapshot.fingerprint},lifecycle:{state:"terminal",outcome:"done",endedAt},createdAt:enqueuedAt,updatedAt:endedAt,completion:{...base.completion,authorizedAt:endedAt}});
-      const result=activityPersonPseudonymResultRecord(run,CURRENT_SEPARATIONS_RESULT);
+      const result=separationsRunResultRecord(run,CURRENT_SEPARATIONS_RESULT);
       seedSeparationsRunAuthority(f.db,f.path,run,result);
       identities.set(run.envelope.runId,deriveCanonicalPerson(run,result));world.authority.put(run);
     }
@@ -43,5 +43,5 @@ it("deduplicates people across days and computes the lower selected median, matc
     assert.equal(volume.state,"complete");assert.equal(volume.coveredRuns,report.totalRuns);
     assert.equal(volume.buckets.reduce((total,bucket)=>total+bucket.runs,0),report.totalRuns);
     assert.ok(!JSON.stringify(report).includes(CURRENT_SEPARATIONS_RESULT.approved.emplId));
-  }finally{world.dispose();f.dispose();}
+  }finally{await world.dispose();await f.dispose();}
 });

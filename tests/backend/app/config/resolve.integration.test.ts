@@ -1,3 +1,8 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
+import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createCredentialStore as createOwnedCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import assert from "node:assert/strict";
 import { describe, it, vi, onTestFinished } from "vitest";
 import { ConfigProvenanceSchema, configLeafPaths, resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -9,6 +14,7 @@ import { resolveInstances, resolveSystemEntryUrl } from "../../../../src/models/
 import { ConfigSchema, SettingsOverrideSchema } from "../../../../src/models/config/schema.js";
 import { SettingsPatchSchema, derivePersistedSettingsFingerprint, mergeSettingsPatch, SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
+import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
@@ -16,10 +22,9 @@ import { EditableSettingsWireSchema } from "../../../../src/models/dashboard/set
 import { SettingsFactsWireSchema } from "../../../../src/models/dashboard/settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures, AuthorityDatabase, createCredentialStore } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, AuthorityDatabase } from "../../../support/helpers/admission-fixture.js";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -34,7 +39,6 @@ import { settingsFixture } from "../../../support/helpers/backend/settings-activ
 import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { EXECUTOR_WORKER_ID, ManualScheduler, happySessionHarness, recordingLogger, recordingTimelineEmitter } from "../../../support/helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { requireSecretFile } from "../../../../src/models/config/secrets.js";
 
 {
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
@@ -50,7 +54,7 @@ describe("strict config resolution", () => {
   });
 
   it("resolves an admitted storage pair without changing ordinary settings or an older snapshot", () => {
-    const settings = { paths: { browserProfileRoot: "/tmp/profile" }, browser: { headless: false } };
+    const settings = { browser: { headless: false } };
     const ordinaryFingerprint = derivePersistedSettingsFingerprint(settings);
     const oldSnapshot = resolveConfigWithProvenance(settings, hostConfigFacts({}), CLOCK);
     const oldConfig = structuredClone(oldSnapshot.config);
@@ -59,12 +63,13 @@ describe("strict config resolution", () => {
 
     assert.equal(moved.config.paths.stateRoot, pair.stateRoot);
     assert.equal(moved.config.paths.artifactRoot, pair.artifactRoot);
-    assert.equal(moved.config.paths.browserProfileRoot, "/tmp/profile");
+    assert.equal(moved.config.paths.browserProfileRoot, "/tmp/relocated-state/browsers");
+    assert.throws(() => resolveConfigWithProvenance({ ...settings, paths: { browserProfileRoot: "/tmp/profile" } }, hostConfigFacts({}), CLOCK, pair), /fixed-person-browser-root-required/u);
     assert.equal(moved.config.paths.duoCredential, "/tmp/relocated-state/credentials/duo-webauthn.json");
     assert.equal(moved.provenance["paths.duoCredential"], "default");
     assert.equal(moved.provenance["paths.stateRoot"], "default");
     assert.equal(moved.provenance["paths.artifactRoot"], "default");
-    assert.equal(moved.provenance["paths.browserProfileRoot"], "settings");
+    assert.equal(moved.provenance["paths.browserProfileRoot"], "default");
     assert.deepEqual(Object.keys(moved.provenance).sort(), [...configLeafPaths(moved.config)].sort());
     assert.notEqual(moved.fingerprint, oldSnapshot.fingerprint);
     assert.deepEqual(oldSnapshot.config, oldConfig);
@@ -98,7 +103,7 @@ describe("strict config resolution", () => {
     assert.equal(resolveConfigWithProvenance(saved, hostConfigFacts({}), CLOCK).config.urls.crm.prod.entry, crm.entry);
     assert.equal(SettingsPatchSchema.safeParse({ "urls.crm.prod": { set: { entry: crm.entry } } }).success, false);
     assert.equal(SettingsPatchSchema.safeParse({ "urls.crm.test": { set: { entry: crm.entry } } }).success, true);
-    assert.throws(() => mergeSettingsPatch({}, { "urls.crm.test": { set: { entry: crm.entry } } }), /retired test routes/u);
+    assert.throws(() => mergeSettingsPatch({}, { "urls.crm.test": { set: { entry: crm.entry } } }), /retired settings cannot be edited/u);
   });
 
   it("applies settings over defaults with complete value-free provenance", () => {
@@ -199,32 +204,28 @@ describe("instance and fiscal safety", () => {
 }
 
 {
-const roots: string[] = [];
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 
-const cleanupOriginalFixture = () => {
+const cleanupOriginalFixture = async () => {
   for (const database of openDatabases.splice(0)) database.close();
-  releaseAdmissionFixtures();
-  for (const root of roots.splice(0)) {
-    releaseAdmissionFixture(root);
-    rmSync(root, { recursive: true, force: true });
-  }
+  for (const profile of profiles.splice(0)) await profile.close();
 };
 
 const NOW = "2026-08-03T09:00:00.000Z";
 
-function repoRootWithState(): { repoRoot: string; stateRoot: string } {
-  const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-worker-compose-"));
-  roots.push(repoRoot);
-  const stateRoot = installationAdmission(repoRoot).stateRoot;
+async function repoRootWithState() {
+  const profile = await createBoundProfileFixture(); profiles.push(profile);
+  const repoRoot = profile.workspace;
+  const stateRoot = profile.stateRoot;
   writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "worker-composition-fixture", version: "0.1.0", type: "module" }));
-  return { repoRoot, stateRoot };
+  return { repoRoot, stateRoot, admission: profile.admission, profile };
 }
 
-function reopen(stateRoot: string, clock: TestClock): AuthorityDatabase {
-  const database = AuthorityDatabase.open(
-    { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    clock,
+function reopen(admission: RuntimeAdmission, credentials: CredentialStore, clock: TestClock): AuthorityDatabase {
+  const database = NativeAuthorityDatabase.open(admission,
+    { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    clock, undefined, undefined, undefined, credentials,
   );
   openDatabases.push(database);
   return database;
@@ -250,42 +251,53 @@ function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, pa
 function journalWorkerSettings(
   database: AuthorityDatabase,
   persisted: ReturnType<typeof persistUnjournaledWorkerSettings>,
-  stateRoot: string,
+  admission: RuntimeAdmission,
+  credentials: CredentialStore,
 ): void {
+  const stateRoot = admission.stateRoot;
   const clock = manualClock(new Date(NOW));
   if (database.authority.runtimeConfig.get() === undefined) {
     const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, {
-      stateRoot, artifactRoot: join(stateRoot, "artifacts"),
+      stateRoot, artifactRoot: admission.artifactRoot,
     });
-    database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
+    database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: 1,
       fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(),
       capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
   }
   const result = executeSettingsCommand({ authority: database, clock, ids: sequentialIdFactory("4"),
-    settings: createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }), createCredentialStore({ stateRoot })) }, persisted.command);
+    settings: createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, hostConfigFacts({}), clock, { stateRoot, artifactRoot: admission.artifactRoot }), credentials) }, persisted.command);
   assert.equal(result.state, "applied");
 }
 
 it("F composed dashboard reads active settings after boot through real HTTP", async () => {
-onTestFinished(cleanupOriginalFixture);
+const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?: RuntimeAdmission } = {};
+ onTestFinished(async () => { await acquired.profile?.close(); acquired.admission?.release(); await cleanupOriginalFixture(); });
 
- const { repoRoot, stateRoot } = repoRootWithState();
+ const { repoRoot, stateRoot, profile: owner } = await repoRootWithState();
  const clock = manualClock(new Date(NOW));
  for (const name of ["package.json", "package-lock.json"])
   writeFileSync(join(repoRoot, name), readFileSync(join(process.cwd(), name)));
- const dashboard = await composeDashboardRuntime({ admission: installationAdmission(repoRoot), isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock,
-  backendPortOverride: 0, frontendPortOverride: 0 });
+ const profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null } });
+ acquired.profile = profile;
+ const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+ assert.equal(active.state, 'active');
+ if (active.state !== 'active') throw new Error('config fixture sign-in refused');
+ const currentAdmission = owner.machine.admitProfile(active.profileId);
+ acquired.admission = currentAdmission;
+ const credentials = createOwnedCredentialStore({ admission: currentAdmission, stateRoot });
+ const dashboard = await composeDashboardRuntime({ lifetimeLock: owner.lifetime, admission: owner.machine, profile: { runtime: profile, token: active.token },
+   isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
  try {
-  const database = reopen(stateRoot, clock);
+  const database = reopen(currentAdmission, credentials, clock);
   const before = database.authority.runtimeConfig.get();
   assert.ok(before !== undefined);
   const snapshot = database.authority.configSnapshots.get(before.configSnapshotId);
   assert.ok(snapshot !== undefined);
   const settings = persistUnjournaledWorkerSettings(repoRoot, clock, { display: { screenWidth: 1980, screenHeight: 1080 } });
-  journalWorkerSettings(database, settings, stateRoot);
+  journalWorkerSettings(database, settings, currentAdmission, credentials);
   const record = readSettings(database.authority);
-  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") });
-  database.authority.configSnapshots.insert({ configSnapshotId: UUID_7, revision: 1,
+  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock, { stateRoot, artifactRoot: currentAdmission.artifactRoot });
+  database.authority.configSnapshots.insert({ ...PREFERENCES_SNAPSHOT, configSnapshotId: UUID_7, revision: 1,
    fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
    capturedAt: NOW, capturedBy: "local-operator" });
   database.authority.runtimeConfig.activate({ settingsRevision: record.revision, settingsFingerprint: record.settingsFingerprint,
@@ -307,19 +319,22 @@ onTestFinished(cleanupOriginalFixture);
   assert.equal(factsResponse.status, 200);
   const facts = SettingsFactsWireSchema.parse(await factsResponse.json());
   assert.equal(facts.systemHosts.find(entry => entry.system === "crm")?.production, "https://synthetic.example.invalid/");
- } finally { await dashboard.stop(); }
+ } finally {
+   for (const database of openDatabases.splice(0)) database.close();
+   await dashboard.stop();
+ }
 });
 }
 
 {
-const cleanups: (() => void)[] = [];
-const cleanupOriginalFixture = () => { for (const close of cleanups.splice(0).reverse()) close(); vi.restoreAllMocks(); };
-function fixture(isolateBrowser = false) { const f = settingsFixture(isolateBrowser); cleanups.push(f.close); return f; }
+const cleanups: (() => void | Promise<void>)[] = [];
+const cleanupOriginalFixture = async () => { for (const close of cleanups.splice(0).reverse()) await close(); vi.restoreAllMocks(); };
+async function fixture(isolateBrowser = false) { const f = await settingsFixture(isolateBrowser); cleanups.push(f.close); return f; }
 
 it("saved idle cadence applies at the next boundary without retiming the pending wait", async () => {
 onTestFinished(cleanupOriginalFixture);
 
-  const f = fixture();
+  const f = await fixture();
   const scheduler = new ManualScheduler(f.clock, 0);
   const stop = new AbortController();
   const sessions = happySessionHarness();
@@ -330,7 +345,7 @@ onTestFinished(cleanupOriginalFixture);
     descriptor: personLookupDescriptor, stores: taskStoreRegistry, authority: f.database,
     sessionFactory: sessions.factory, emitter: recordingTimelineEmitter(f.database, f.clock).emitter,
     clock: f.clock, ids: { uuid: randomUUID }, scheduler, taskDeadlineMs: 60_000, sessionAcquireMs: 20_000,
-    duoCeremony: fixtureDuoCeremonyGates(f.clock), heartbeatIntervalMs: 500, idleRepollMs: initial,
+    duoCeremony: await fixtureDuoCeremonyGates(f.clock), heartbeatIntervalMs: 500, idleRepollMs: initial,
     idleCadence: cadence, log: recordingLogger().log, stopSignal: stop.signal, exitWhenIdle: false,
     controlPoll: () => "pause",
   });
@@ -353,15 +368,10 @@ onTestFinished(cleanupOriginalFixture);
 {
 describe("closed secret access", () => {
 
-  it("does not accept an arbitrary secret-file path", () => {
-
-    const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date("2026-08-10T12:00:00-07:00"))).config;
-    const config = {
-      ...resolved,
-      paths: { ...resolved.paths, duoCredential: "/nonexistent-rebuild-secret-root/duo-webauthn.json" },
-    };
-    assert.equal(requireSecretFile.length, 2);
-    assert.throws(() => requireSecretFile("duoWebauthnCredential", config), /registered rebuild credential path/);
+  it("exposes no credential-file reader", async () => {
+    const secrets = await import("../../../../src/models/config/secrets.js");
+    assert.equal(Object.hasOwn(secrets, "requireSecretFile"), false);
+    assert.equal(Object.hasOwn(secrets, "resolveSecretFileIdentity"), false);
   });
 });
 }

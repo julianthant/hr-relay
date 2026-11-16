@@ -1,3 +1,4 @@
+import { PersonPreferencesSchema } from "../../../src/models/config/person-preferences.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -7,9 +8,10 @@ import { z } from "zod";
 import type { JSONSchema } from "zod/v4/core";
 import { ConfigSchema, PROVIDER_CAPABILITY_CONFIG_KEYS, SettingsOverrideSchema } from "../../../src/models/config/schema.js";
 import { ProtectedValueSchemas } from "../../../src/models/config/protected-settings.js";
-import { SECRET_FILE_SPECS, SECRET_SPECS } from "../../../src/models/config/secrets.js";
+import { SECRET_SPECS } from "../../../src/models/config/secrets.js";
 import { RUNTIME_DEPENDENCY_REGISTRY } from "../../../src/models/runtime/runtime-dependencies.js";
-import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS, SETTINGS_CATALOG, SettingsCatalogRowSchema, SettingsCatalogSchema, settingsCatalogRow, ordinarySettingsObject } from "../../../src/models/config/catalog.js";
+import { RUNTIME_ENVIRONMENT_EXACT } from "../../../src/models/runtime/runtime-environment.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS, SETTINGS_CATALOG, SettingsCatalogRowSchema, SettingsCatalogSchema, settingsCatalogRow, ordinarySettingsObject } from "../../../src/models/config/catalog.js";
 import { gitVisibleFiles, REPO_ROOT, repoRelative } from "../support/helpers/guard-files.js";
 
 interface ReaderCatalogRow {
@@ -58,11 +60,9 @@ function productionDeclarations(): ReadonlyMap<string, readonly string[]> {
 
 
 function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
-  const secretFileConfigPaths = new Set<string>(SECRET_FILE_SPECS.map(({ configPath }) => configPath));
   const ordinaryComposition = rows.filter((row) =>
     (row.sourceClass === "ordinary-settings" && !row.key.startsWith("providers."))
-    || (row.sourceClass === "runtime-isolation" && row.sensitivity === "ordinary"
-      && !secretFileConfigPaths.has(row.key))
+    || (row.sourceClass === "runtime-isolation" && row.sensitivity === "ordinary")
     || row.sourceClass === "derived-host"
   ).map(({ key }) => key);
   // Runtime-path defaults and provider accessors have their own direct source
@@ -81,11 +81,11 @@ function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
   return [
     { declaration: "resolveConfigWithProvenance", keys: ordinaryComposition },
     { declaration: "createSettingsRuntimeReader", keys: settingsReadback },
+    { declaration: "preferencesFromSettings", keys: rows.filter(({ key }) => key.startsWith("preferences.")).map(({ key }) => key) },
     { declaration: "createProtectedSettingsRuntimeReader", keys: protectedReadback },
     { declaration: "defaultRuntimePaths", keys: rows.filter(({ defaultKind }) => defaultKind === "runtime-path").map(({ key }) => key) },
     { declaration: "providerInvocationConfig", keys: Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS).map((key) => `providers.${key}`) },
     { declaration: "optionalSecret", keys: SECRET_SPECS.map(({ name }) => name) },
-    { declaration: "requireSecretFile", keys: SECRET_FILE_SPECS.flatMap(({ name, configPath }) => [name, configPath]) },
     { declaration: "RUNTIME_DEPENDENCY_REGISTRY", keys: dependencySecretNames },
     { declaration: "establishHostPrimaryDisplay", keys: rows.filter(({ sourceClass }) => sourceClass === "derived-host").map(({ key }) => key) },
   ];
@@ -156,22 +156,23 @@ function assertRecursivelyFrozen(value: unknown): void {
 
 describe("settings catalog", () => {
   it("covers every schema leaf and every secret family in both directions", () => {
-    const leaves = schemaLeaves(z.toJSONSchema(ConfigSchema));
+    const leaves = [...schemaLeaves(z.toJSONSchema(ConfigSchema)), ...schemaLeaves(z.toJSONSchema(PersonPreferencesSchema), "preferences")];
     assert.deepEqual(coverageViolations(leaves), []);
     assert.deepEqual(coverageViolations([...leaves, "uncatalogued.setting"]), ["uncatalogued.setting"]);
     assert.deepEqual(coverageViolations(leaves.filter((leaf) => leaf !== "actor.label")), ["actor.label"]);
-    const external = [...SECRET_SPECS, ...SECRET_FILE_SPECS]
+    assert.deepEqual(coverageViolations(leaves.filter((leaf) => leaf !== "preferences.theme")), ["preferences.theme"]);
+    const external = SECRET_SPECS
       .map((spec) => spec.name);
     assert.deepEqual(SETTINGS_CATALOG.filter((row) => !["ordinary-settings", "runtime-isolation", "derived-host"].includes(row.sourceClass))
-      .map((row) => row.key).filter((key) => key !== "activityPersonPseudonym").sort(),
-    external.filter((key) => key !== "duoWebauthnCredential").sort());
+      .map((row) => row.key).sort(),
+    external.sort());
     assert.deepEqual(SETTINGS_CATALOG.filter((row) => row.sourceClass === "protected-store")
       .map((row) => row.key).sort(), Object.keys(ProtectedValueSchemas).sort());
   });
 
   it("generates exactly ordinary document members with no protected leaf", () => {
     const ordinary = schemaLeaves(z.toJSONSchema(SettingsOverrideSchema)).filter((leaf) => !leaf.includes(".test."));
-    const expected = schemaLeaves(z.toJSONSchema(ConfigSchema)).filter((leaf) =>
+    const expected = [...schemaLeaves(z.toJSONSchema(ConfigSchema)), ...schemaLeaves(z.toJSONSchema(PersonPreferencesSchema), "preferences")].filter((leaf) =>
       SETTINGS_CATALOG.some((row) => row.sourceClass === "ordinary-settings"
         && (leaf === row.key || leaf.startsWith(`${row.key}.`))));
     assert.deepEqual(ordinary.sort(), expected.sort());
@@ -182,15 +183,15 @@ describe("settings catalog", () => {
     assert.equal(SettingsOverrideSchema.safeParse({ urls: { kuali: { test: { entry: "https://example.invalid" } } } }).success, true);
     assert.throws(() => ordinarySettingsObject("actor", z.strictObject({ id: z.string() })), /actor.label is missing/u);
   });
-  it("pins the 65-row closed registry and refuses a missing or duplicated row", () => {
-    assert.equal(SETTINGS_CATALOG.length, 65);
+  it("pins the 72-row closed registry and refuses a missing or duplicated row", () => {
+    assert.equal(SETTINGS_CATALOG.length, 72);
     assert.deepEqual(Object.fromEntries([
       "ordinary-settings", "protected-store", "derived-host", "runtime-isolation",
     ].map((sourceClass) => [sourceClass, SETTINGS_CATALOG.filter((row) => row.sourceClass === sourceClass).length])), {
-      "ordinary-settings": 55,
-      "protected-store": 5,
+      "ordinary-settings": 65,
+      "protected-store": 3,
       "derived-host": 1,
-      "runtime-isolation": 4,
+      "runtime-isolation": 3,
     });
     assert.equal(SettingsCatalogSchema.safeParse(SETTINGS_CATALOG.slice(1)).success, false);
     assert.equal(SettingsCatalogSchema.safeParse([...SETTINGS_CATALOG.slice(1), SETTINGS_CATALOG[1]]).success, false);
@@ -201,7 +202,7 @@ describe("settings catalog", () => {
 
   it("refuses every protected, provider and observed value in the ordinary document", () => {
     const protectedRows = SETTINGS_CATALOG.filter((row) => row.sourceClass === "protected-store");
-    assert.equal(protectedRows.length, 5);
+    assert.equal(protectedRows.length, 3);
     for (const row of SETTINGS_CATALOG.filter((row) => row.sensitivity !== "ordinary")) {
       const parsed = SettingsCatalogRowSchema.safeParse({ ...row, sourceClass: "ordinary-settings" });
       assert.equal(parsed.success, false, row.key);
@@ -211,7 +212,7 @@ describe("settings catalog", () => {
       ...settingsCatalogRow("ucpathPassword"), editability: "deployment",
     }).success, false);
     assert.deepEqual(SETTINGS_CATALOG.filter((row) => row.sensitivity === "protected-secret"
-      && row.sourceClass === "runtime-isolation").map((row) => row.key), ["duoWebauthnCredential"]);
+      && row.sourceClass === "runtime-isolation").map((row) => row.key), []);
   });
 
   it("matches the production settings-source reader inventory in both directions", () => {
@@ -227,10 +228,10 @@ describe("settings catalog", () => {
   });
 
   it("assigns protected credentials next-use and refuses canary environment keys", () => {
-    for (const name of ["ucpathUserId", "ucpathPassword", "timekeeperName", "sharepointOnboardingRosterUrl", "activityPersonPseudonym"]) {
+    for (const name of ["ucpathUserId", "ucpathPassword", "sharepointOnboardingRosterUrl"]) {
       assert.equal(settingsCatalogRow(name).restartScope, "next-use", name);
     }
-    for (const name of ["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]) {
+    for (const name of ["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid", "timekeeperName", "activityPersonPseudonym"]) {
       assert.throws(() => settingsCatalogRow(name), new RegExp(`settings catalog has no key ${name}`, "u"));
     }
     assert.equal(SETTINGS_CATALOG.some((row) => row.restartScope === "next-start"), false);
@@ -241,6 +242,11 @@ describe("settings catalog", () => {
     for (const key of RETIRED_TEST_TARGET_ENVIRONMENT_KEYS) {
       assert.equal(MIGRATED_SETTINGS_ENVIRONMENT_KEYS.includes(key), true, key);
       assert.equal(SETTINGS_CATALOG.some((row) => row.currentSource.some((source) => source.kind === "env" && (source.name as string) === key)), false, key);
+    }
+    for (const key of RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS) {
+      const entry = RUNTIME_ENVIRONMENT_EXACT.find(row => row.key === key);
+      assert.ok(entry?.disposition === "migrated-refused");
+      assert.equal(entry.reason, "protected setting retired; remove it from the environment");
     }
     for (const row of SETTINGS_CATALOG.filter((row) => row.sourceClass === "ordinary-settings")) {
       assert.equal(row.restartScope, "generation", row.key);

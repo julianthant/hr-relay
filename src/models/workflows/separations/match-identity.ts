@@ -14,6 +14,7 @@ import { defineTaskContract } from "../../task/task-contract.js";
 
 export const MatchIdentityOutputSchema = z.strictObject({
   packet: IdentityEvidencePacketSchema,
+  approvalRequired: z.boolean(),
   /** The digest machine verification or an approval binds to (§14.5). */
   evidenceDigest: FingerprintSchema,
 });
@@ -62,6 +63,7 @@ export const SeparationsMatchIdentity = defineTaskContract({
     "separations-identity-check/concurrent-active-jobs",
   ],
   example: {
+    approvalRequired: false,
     packet: {
       documentNumber: "4510",
       emplId: "10873698",

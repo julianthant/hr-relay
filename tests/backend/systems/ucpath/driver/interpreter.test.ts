@@ -55,7 +55,7 @@ describe("semantic UI registry", () => {
 
   it("enforces element states immediately and uses the one verified display locator", async () => {
     const events: string[] = [];
-    const driver = createUcpathPersonOrgDriver(recordingPage(events), systemClock, {
+    const driver = createUcpathPersonOrgDriver(() => undefined, recordingPage(events), systemClock, {
       searchPersonOrg: () => Promise.reject(new Error("semantic search is outside this primitive-driver test")),
       readJobSummary: () => Promise.reject(new Error("the semantic job-summary read is outside this primitive-driver test")),
     });

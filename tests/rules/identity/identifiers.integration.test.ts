@@ -1,8 +1,6 @@
 import { createSeparationStartFixtures } from "../../support/helpers/backend/separation-start-fixtures.js";
 import assert_m0 from "node:assert/strict";
-import { mkdtempSync as mkdtempSync_m0, rmSync as rmSync_m0 } from "node:fs";
-import { tmpdir as tmpdir_m0 } from "node:os";
-import { join as join_m0 } from "node:path";
+import { rmSync as rmSync_m0 } from "node:fs";
 import { afterEach as afterEach_m0, describe as describe_m0, it as it_m0 } from "vitest";
 
 import { deriveItemId as deriveItemId_m0 } from "../../../src/rules/identity/identifiers.js";
@@ -11,6 +9,7 @@ import { NOW as NOW_m0 } from "../../support/fixtures/phase1c-contract-fixtures.
 
 
 
+import { createBoundProfileFixture as createBoundProfileFixture_m0 } from "../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase as AuthorityDatabase_m0 } from "../../support/helpers/synthetic-storage-admission.js";
 
 import assert_m1 from "node:assert/strict";
@@ -29,9 +28,11 @@ const SUBMISSION = Object.freeze({
 
 const roots: string[] = [];
 const databases: AuthorityDatabase_m0[] = [];
+const profiles: { close(): Promise<void> }[] = [];
 
-const _afterEachFixture0 = () => {
+const _afterEachFixture0 = async () => {
   while (databases.length > 0) databases.pop()?.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   while (roots.length > 0) {
     const root = roots.pop();
     if (root !== undefined) rmSync_m0(root, { recursive: true, force: true });
@@ -39,13 +40,13 @@ const _afterEachFixture0 = () => {
 
 };
 
-function openDatabase(): AuthorityDatabase_m0 {
-  const root = mkdtempSync_m0(join_m0(tmpdir_m0(), "hrauto-separations-wire-"));
-  roots.push(root);
+async function openDatabase(): Promise<AuthorityDatabase_m0> {
+  const profile = await createBoundProfileFixture_m0();
   const database = AuthorityDatabase_m0.open(
-    { path: join_m0(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
   );
+  profiles.push(profile);
   databases.push(database);
   return database;
 }
@@ -55,9 +56,9 @@ const { plan } = createSeparationStartFixtures(openDatabase, CLOCK);
 describe_m0("separations — start planning through the existing service", () => {
 afterEach_m0(_afterEachFixture0);
 
-  it_m0("plans one item per document, and refuses a submission the ingress does not admit", () => {
+  it_m0("plans one item per document, and refuses a submission the ingress does not admit", async () => {
 
-    const planned = plan([SUBMISSION, { ...SUBMISSION, actionId: "6a7a33b2ac106d428b3217e0" }]);
+    const planned = await plan([SUBMISSION, { ...SUBMISSION, actionId: "6a7a33b2ac106d428b3217e0" }]);
     assert_m0.equal(planned.planned.length, 1);
     assert_m0.equal(planned.planned[0]?.matchKey, "separations:4510");
     assert_m0.equal(

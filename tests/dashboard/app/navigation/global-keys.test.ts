@@ -17,7 +17,7 @@ let root: Root_m0 | undefined;
 const _afterEachFixture0 = async () => {await act_m0(async () => root?.unmount());document.body.innerHTML="";};
 async function mount() {
   const calls: string[]=[];
-  const bindings: GlobalKeyBindings_m0 = {onStartRun:()=>calls.push("run"),onCyclePanelMode:()=>calls.push("cycle"),panelMode:"icon",onMinimisePanel:()=>calls.push("minimise"),visibleRunIds:["one","two"],attentionRunIds:["two"],selectedRunId:"one",onSelectRun:id=>calls.push(id),panelTabs:["logs","receipt"],onTab:tab=>calls.push(tab)};
+  const bindings: GlobalKeyBindings_m0 = {onStartRun:()=>calls.push("run"),onCyclePanelMode:()=>calls.push("cycle"),panelMode:"icon",onMinimisePanel:()=>calls.push("minimise"),visibleQueueKeys:["one","two"],attentionQueueKeys:["two"],selectedQueueKey:"one",onSelectQueueKey:id=>calls.push(id),panelTabs:["logs","receipt"],onTab:tab=>calls.push(tab)};
   function Harness() {useGlobalKeys_m0(bindings);return createElement_m0("select",{"aria-label":"Native choice"},createElement_m0("option",null,"One"));}
   const host=document.createElement("div");document.body.append(host);root=createRoot_m0(host);
   await act_m0(async () => root?.render(createElement_m0(Harness)));

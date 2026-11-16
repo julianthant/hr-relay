@@ -3,14 +3,16 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { DEVELOPMENT_DEBUG_MIRROR_ENV } from "../../src/models/config/secrets.js";
 import {
   DASHBOARD_LAUNCH_NONCE_ENV,
   DashboardLaunchNonceSchema,
 } from "../../src/backend/transports/http/frontend-owner.js";
 
-const launchNonce = DashboardLaunchNonceSchema.parse(randomBytes(32).toString("hex"));
-const childEnvironment = { ...process.env, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce };
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
+const STARTUP_PROGRESS_MS = 30_000;
 
 interface Managed {
   readonly name: string;
@@ -19,26 +21,54 @@ interface Managed {
 }
 
 export interface DashboardLauncherOptions {
-  readonly startupTimeoutMs?: number;
+  readonly mode?: "dashboard" | "backend" | "web";
+  readonly frontendOwnerFile?: string;
   readonly signals?: EventEmitter;
   readonly writeError?: (message: string) => void;
 }
 
 export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise<number> {
-  const signals = options.signals ?? process;
+  const mode = options.mode ?? "dashboard";
+  const frontendOwnerFile = options.frontendOwnerFile ?? join(repositoryRoot, "node_modules", ".cache", "relay-dashboard", "frontend-owner");
   const writeError = options.writeError ?? ((message: string) => { process.stderr.write(message); });
+  let launchNonce: string;
+  try {
+    launchNonce = mode === "web" ? DashboardLaunchNonceSchema.parse(readFileSync(frontendOwnerFile, "utf8"))
+      : DashboardLaunchNonceSchema.parse(randomBytes(32).toString("hex"));
+  } catch (error) {
+    if (!(mode === "web" && error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    writeError('[dashboard] Start npm run backend first and wait for "listening".\n');
+    return Promise.resolve(1);
+  }
+  const childEnvironment = { ...process.env, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce, [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1" };
+  const signals = options.signals ?? process;
   const managed: Managed[] = [];
   let stopping = false;
   let result = 0;
   let forwardedSignal: NodeJS.Signals | undefined;
   let ready = false;
+  let progress: ReturnType<typeof setInterval> | undefined;
   let finish: (code: number) => void = () => undefined;
   const done = new Promise<number>(resolve => { finish = resolve; });
+
+  function stopProgress(): void {
+    if (progress === undefined) return;
+    clearInterval(progress);
+    progress = undefined;
+  }
 
   function completeIfClosed(): void {
     if (!stopping || !managed.every(item => item.closed)) return;
     signals.removeListener("SIGINT", onInterrupt);
     signals.removeListener("SIGTERM", onTerminate);
+    if (mode === "backend" && ready) {
+      try { if (readFileSync(frontendOwnerFile, "utf8") === launchNonce) unlinkSync(frontendOwnerFile); }
+      catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+          writeError("[dashboard] frontend ownership handoff cleanup failed.\n"); result = 1;
+        }
+      }
+    }
     finish(result);
   }
 
@@ -47,7 +77,7 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     stopping = true;
     result = code;
     forwardedSignal = signal;
-    clearTimeout(startupTimer);
+    stopProgress();
     for (const { child, closed } of managed) {
       if (!closed && child.exitCode === null && child.signalCode === null) child.kill(signal);
     }
@@ -85,23 +115,40 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
   function onTerminate(): void { stop("SIGTERM", 0); }
   signals.on("SIGINT", onInterrupt);
   signals.on("SIGTERM", onTerminate);
-  const startupTimer = setTimeout(() => {
-    writeError("[dashboard] BFF readiness timed out; stopping the backend.\n");
-    stop("SIGTERM", 1);
-  }, options.startupTimeoutMs ?? 30_000);
 
-  const backend = launch("bff", ["--import", "tsx", fileURLToPath(new URL("./secure-env-bootstrap.ts", import.meta.url)), "cli", "dashboard"], true);
+  const launchWeb = () => launch("web", [fileURLToPath(new URL("../../node_modules/vite/bin/vite.js", import.meta.url)), "--config", "vite.dashboard.config.ts"]);
+  if (mode === "web") {
+    ready = true;
+    launchWeb();
+    return done;
+  }
+  const backend = launch("bff", ["--conditions=development", "--import", "tsx", fileURLToPath(new URL("./secure-env-bootstrap.ts", import.meta.url)), "cli", "dashboard"], true);
+  progress = setInterval(() => {
+    if (stopping || ready) return;
+    writeError("[dashboard] still starting (preparing saved data)...\n");
+  }, STARTUP_PROGRESS_MS);
   backend.on("message", (message: unknown) => {
     if (stopping || ready || message === null || typeof message !== "object"
       || !("type" in message) || message.type !== "hrauto-dashboard-ready") return;
     ready = true;
-    clearTimeout(startupTimer);
-    launch("web", [fileURLToPath(new URL("../../node_modules/vite/bin/vite.js", import.meta.url)), "--config", "vite.dashboard.config.ts"]);
+    stopProgress();
+    if (mode === "dashboard") launchWeb();
+    else {
+      try {
+        mkdirSync(dirname(frontendOwnerFile), { recursive: true });
+        const temporary = `${frontendOwnerFile}.${process.pid}.tmp`;
+        writeFileSync(temporary, launchNonce, { flag: "wx", mode: 0o600 });
+        renameSync(temporary, frontendOwnerFile);
+      } catch {
+        writeError("[dashboard] frontend ownership handoff failed.\n");
+        stop("SIGTERM", 1);
+      }
+    }
   });
   return done;
 }
 
 const entryPath = process.argv[1];
 if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url) {
-  process.exitCode = await runDevDashboard();
+  process.exitCode = await runDevDashboard({ mode: process.argv.includes("--backend-only") ? "backend" : process.argv.includes("--web-only") ? "web" : "dashboard" });
 }

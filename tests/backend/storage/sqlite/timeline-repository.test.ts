@@ -57,8 +57,8 @@ it.each(["pid", "worker", "workflow", "kind"] as const)("does not pair a reused 
   } finally { f.database.close(); }
 });
 
- it.each(["done", "failed", "interrupted", "open"] as const)("pairs actual run.claimed with its %s run completion", outcome => {
-  const native = foundationFixture();
+ it.each(["done", "failed", "interrupted", "open"] as const)("pairs actual run.claimed with its %s run completion", async outcome => {
+  const native = await foundationFixture();
   terminalizeFixtureFailure(native, native.run, failure());
   const f = fixture(native.path);
   try {
@@ -70,11 +70,11 @@ it.each(["pid", "worker", "workflow", "kind"] as const)("does not pair a reused 
     const before = f.repository.page({});
     assert.equal(f.repository.pruneBefore("2026-03-01"), outcome === "done" ? 2 : 0);
     assert.deepEqual(f.repository.page({}), outcome === "done" ? [] : before);
-  } finally { f.database.close(); native.dispose(); }
+  } finally { f.database.close(); await native.dispose(); }
 });
 
-it("preserves the actual lifecycle command's claimed and failed completion pair after settlement", () => {
-  const f = foundationFixture();
+it("preserves the actual lifecycle command's claimed and failed completion pair after settlement", async () => {
+  const f = await foundationFixture();
   try {
     assert.ok(f.run.lifecycle.state === "running");
     const workerId = f.run.lifecycle.workerId;
@@ -82,10 +82,12 @@ it("preserves the actual lifecycle command's claimed and failed completion pair 
       claim: { workerId, claimGeneration: f.run.claimGeneration }, cause: "recovery", now: f.clock.now().toISOString() }).state, "applied");
     const service = testRunService(f.db, f.clock);
     const runtime = f.db.authority.runtimeConfig.get(); assert.ok(runtime);
+    const slot = f.db.authority.workerSlots.get(workerId); assert.ok(slot);
     assert.equal(service.claimNext({ commandId: randomUUID(), workflow: f.run.envelope.workflow, workerId,
       runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
         settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } }).state, "applied");
     let current = f.db.authority.runs.get(f.run.envelope.runId); assert.ok(current);
+    assert.ok(current.lifecycle.state === "claimed");
     const claim = { workerId, claimGeneration: current.claimGeneration }, now = f.clock.now().toISOString();
     const validating = f.db.authority.runs.transition({ runId: current.envelope.runId, expectedVersion: current.version,
       claim, lifecycle: { state: "validating", workerId, claimedAt: now, heartbeatAt: now }, now });
@@ -104,5 +106,18 @@ it("preserves the actual lifecycle command's claimed and failed completion pair 
     assert.deepEqual(before.filter(row => row.payload.kind === "span").map(row => row.payload.kind === "span" ? row.payload.event.t : null), ["run.claimed", "span.ended"]);
     assert.equal(f.db.authority.timelineEvents.pruneBefore("2027-01-01"), 0);
     assert.deepEqual(f.db.authority.timelineEvents.page({ runId: current.envelope.runId }), before);
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
+});
+
+it("finds a worker's last claim by index seek, including for a worker with no claim", () => {
+  const { database, repository } = fixture();
+  const prepared: string[] = [];
+  const prepare = database.prepare.bind(database);
+  database.prepare = (sql: string) => { prepared.push(sql); return prepare(sql); };
+  assert.equal(repository.lastWorkerClaim("person-lookup-worker-1"), undefined);
+  const sql = prepared.find(text => text.includes("run.claimed"));
+  assert(sql);
+  const plan = JSON.stringify(prepare(`EXPLAIN QUERY PLAN ${sql}`).all("person-lookup-worker-1"));
+  assert.match(plan, /SEARCH timeline_events USING INDEX timeline_worker_claim_idx/u);
+  assert.doesNotMatch(plan, /SCAN timeline_events/u);
 });

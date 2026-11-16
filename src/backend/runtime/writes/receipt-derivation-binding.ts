@@ -1,14 +1,15 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 
 import { z } from "zod";
 import {
   descriptorRuntimeNodes,
-  workflowDryRunSupport,
+  workflowPreviewDependencyIds,
   workflowTerminalResultExecution,
   type AnyWorkflowDescriptor,
 } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import { terminalEvidenceResult, type RunResultRecord } from "../../../models/run/result.js";
+import { readRunPreviewResult, terminalEvidenceResult, terminalDelegationDependencyRecord, type RunResultRecord, type DelegationTerminalEvidenceSchema } from "../../../models/run/result.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -64,6 +65,7 @@ export type ReceiptDerivationBinding =
   }>;
 
 export interface ReceiptDerivationBindingInput {
+  readonly schemaReader?: EvidenceSchemaReader;
   readonly descriptor: AnyWorkflowDescriptor;
   readonly run: RunRecord;
   /** The immutable success result or truthful final evidence owner. */
@@ -74,6 +76,7 @@ export interface ReceiptDerivationBindingInput {
   readonly writes?: readonly WriteIntentRecord[];
 
   readonly gateResults?: readonly GateResultRecord[];
+  readonly delegations?: readonly z.infer<typeof DelegationTerminalEvidenceSchema>[];
 }
 
 /* ── rendering ───────────────────────────────────────────────────────────── */
@@ -137,7 +140,8 @@ export function evaluateReceiptDerivationBinding(
     ));
 
   const currentInputHash = deriveSchemaHash(descriptor.canonicalInput, "output");
-  checks.push(currentInputHash === run.input.parsed.schemaHash
+  const admittedInputHash = input.schemaReader?.({ kind: "run-input", id: run.envelope.runId }, run.input, run.input.parsed.schemaHash, currentInputHash) ?? run.input.parsed.schemaHash;
+  checks.push(currentInputHash === admittedInputHash
     ? held("canonical-input", `both bind canonical schema ${short(currentInputHash)}`)
     : moved(
       "canonical-input",
@@ -152,6 +156,23 @@ export function evaluateReceiptDerivationBinding(
   const commitTaskIds = new Set(nodes.flatMap((node) =>
     node.kind === "transaction" ? [String(node.commit.uses.id)] : []));
   const graphGaps: string[] = [];
+  const delegationIds = new Set<string>();
+  for (const evidence of input.delegations ?? []) {
+    const node = nodes.find(candidate => candidate.id === evidence.nodeId);
+    const retained = result?.dependencies.find(dependency => dependency.nodeId === evidence.nodeId);
+    if (delegationIds.has(evidence.nodeId) || node?.kind !== "child-run"
+      || evidence.parentRunId !== run.envelope.runId || evidence.manifest.parentRunId !== run.envelope.runId
+      || evidence.edgeId !== node.edgeId || evidence.manifest.edgeId !== node.edgeId
+      || (input.schemaReader?.({ kind: "delegation-input", id: evidence.manifest.manifestId }, evidence.manifest, evidence.manifest.inputSchemaHash, deriveSchemaHash(node.target.input, "input")) ?? evidence.manifest.inputSchemaHash) !== deriveSchemaHash(node.target.input, "input")
+      || (input.schemaReader?.({ kind: "delegation-result", id: evidence.manifest.manifestId }, evidence.manifest, evidence.manifest.resultSchemaHash, deriveSchemaHash(node.target.result, "output")) ?? evidence.manifest.resultSchemaHash) !== deriveSchemaHash(node.target.result, "output")
+      || evidence.manifest.cardinality !== node.cardinality || evidence.manifest.join !== node.join
+      || evidence.children.some(child => child.run.envelope.workflow !== node.target.id)
+      || canonicalJsonStringify(evidence.manifest.policy) !== canonicalJsonStringify(node.policy)
+      || retained === undefined || canonicalJsonStringify(retained) !== canonicalJsonStringify(terminalDelegationDependencyRecord(evidence))) {
+      graphGaps.push(`delegation evidence for "${evidence.nodeId}" does not match its native terminal dependency and declared edge`);
+    }
+    delegationIds.add(evidence.nodeId);
+  }
   for (const record of input.checkpoints) {
     if (!nodeIds.has(String(record.nodeId))) {
       graphGaps.push(`checkpoint node "${record.nodeId}" left the graph`);
@@ -194,19 +215,16 @@ export function evaluateReceiptDerivationBinding(
     ));
   } else {
     // Preview terminal dependencies bind the preview boundary, not ordinary workflow success dependencies.
-    const dryRun = workflowDryRunSupport(descriptor);
-    const previewed = run.envelope.dryRun;
-    const declared = (previewed && dryRun.state === "supported"
-      ? descriptorRuntimeNodes(descriptor)
-        .find((node) => String(node.id) === dryRun.stopsAt)?.dependsOn ?? []
-      : workflowTerminalResultExecution(descriptor).dependsOn).map(String);
+    const preview = readRunPreviewResult(result);
+    const declared = preview === undefined ? [...new Set([...workflowTerminalResultExecution(descriptor).dependsOn.map(String), ...delegationIds])]
+      : [...new Set([...workflowPreviewDependencyIds(descriptor, preview.steps).map(String), ...delegationIds])];
     const retained = result.dependencies.map((dependency) => String(dependency.nodeId));
     checks.push(canonicalJsonStringify([...declared].sort()) === canonicalJsonStringify([...retained].sort())
       ? held("terminal-dependency-set", `both depend on [${declared.join(", ")}]`)
       : moved(
         "terminal-dependency-set",
         `the stored result was built from [${retained.join(", ")}] and this build's `
-        + `${run.envelope.dryRun ? "dry-run preview" : "terminal execution"} depends on `
+        + `${preview === undefined ? "terminal execution" : "dry-run preview"} depends on `
         + `[${declared.join(", ")}]; the mandatory-evidence set would move`,
       ));
   }

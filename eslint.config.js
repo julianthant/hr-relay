@@ -37,7 +37,7 @@ const typeAwareTuning = {
 };
 
 export default ts.config(
-  { ignores: ["dist", "node_modules", "coverage", "duo-autopilot", ".work"] },
+  { ignores: ["dist", "node_modules", "coverage", ".work"] },
   js.configs.recommended,
   ...ts.configs.recommended,
   ...ts.configs.recommendedTypeChecked,
@@ -70,7 +70,7 @@ export default ts.config(
 
   // Lint the same authored root configs as TypeScript.
   {
-    files: ["vitest.config.ts", "vite.dashboard.config.ts", "vite.parity.config.ts"],
+    files: ["vitest.config.ts", "vite.dashboard.config.ts", "vite.mocks.config.ts"],
     plugins: { "unused-imports": unusedImports },
     languageOptions: { globals: { ...globals.node } },
     rules: { ...unusedImportsRules, ...typeAwareTuning },

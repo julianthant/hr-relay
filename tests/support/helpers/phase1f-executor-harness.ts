@@ -1,3 +1,6 @@
+import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
+import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "./admission-fixture.js";
 import assert from "node:assert/strict";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { readTimelineRecords } from "../../../src/backend/storage/events/timeline-reader.js";
@@ -5,9 +8,7 @@ import { ExecutorSpanEventSchema } from "../../../src/backend/logs/span-emitter.
 import type { ProtectedInputBinding } from "../../../src/models/write-safety/protected-input.js";
 
 import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import type { DuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import type { BrowserDriver, TaskLogger } from "../../../src/workflow-kit/task.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import type { TestClock } from "../../../src/rules/time/clock.js";
@@ -52,36 +53,68 @@ export const EXECUTOR_NOW = "2026-08-03T09:00:00.000Z";
 
 /* ── authority ───────────────────────────────────────────────────────────── */
 
-export interface AuthorityHarness {
+export interface AuthorityHarness<Profile extends BoundProfileStorageFixture = Awaited<ReturnType<typeof createBoundProfileFixture>>> {
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
+  readonly profile: Profile;
 
   readonly path: string;
   readonly stateRoot: string;
-  readonly dispose: () => void;
+  readonly replaceClosedDatabase: (database: AuthorityDatabase) => void;
+  readonly closeDatabase: () => void;
+  readonly dispose: () => void | Promise<void>;
 }
 
-export function openAuthorityHarness(): AuthorityHarness {
+const retainedAuthorityHarnessOwners = new Set<object>();
+
+export function openAuthorityHarness<Profile extends BoundProfileStorageFixture>(profileFixture: () => Promise<Profile>, options?: number | { readonly existing?: boolean }): Promise<AuthorityHarness<Profile>>;
+export function openAuthorityHarness(): Promise<AuthorityHarness>;
+export async function openAuthorityHarness(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture, options: number | { readonly existing?: boolean } = {}): Promise<AuthorityHarness<BoundProfileStorageFixture>> {
+  const busyTimeoutMs = typeof options === "number" ? options : 250;
+  const existing = typeof options === "object" && options.existing === true;
+  const held: { fixture?: BoundProfileStorageFixture; database?: AuthorityDatabase; primary?: { error: unknown } } = {};
+  retainedAuthorityHarnessOwners.add(held);
+  try {
   const clock = manualClock(new Date(EXECUTOR_NOW));
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-1f-executor-"));
-  const path = join(root, "authority.sqlite");
-  const database = AuthorityDatabase.open(
-    { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
+  const fixture = await profileFixture(); held.fixture = fixture;
+  const root = fixture.stateRoot, path = fixture.path;
+  let database = AuthorityDatabase.open(
+    { path, busyTimeoutMs, migrationOwner: "unit-test" },
     clock,
-  );
-  const config = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  ); held.database = database;
+  const config = existing ? database.authority.runtimeConfig.get() : database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  assert.ok(config);
   assert.equal(config.configSnapshotId, QUEUED_RUN.envelope.configSnapshotId);
   assert.equal(config.configFingerprint, QUEUED_RUN.envelope.configFingerprint);
+  let closeAttempted = false, closeFailure: Error | undefined;
+  const closeDatabase = (): void => {
+    if (closeAttempted) { if (closeFailure !== undefined) throw closeFailure; return; }
+    closeAttempted = true;
+    try {
+      releaseSeededWriteOwners(database, clock.now().toISOString());
+      database.close();
+    } catch (error) {
+      held.primary = { error }; closeFailure = retainAuthoritySourceClosure([error], { admission: held }); throw closeFailure;
+    }
+  };
+  let disposed = false;
   return {
-    database,
+    get database() { return database; },
+    replaceClosedDatabase(successor) { database = successor; held.database = successor; },
     clock,
+    profile: fixture,
     path,
     stateRoot: root,
-    dispose: (): void => {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
+    closeDatabase,
+    dispose: async (): Promise<void> => {
+      if (disposed) return;
+      try {
+        closeDatabase(); await fixture.close(); retainedAuthorityHarnessOwners.delete(held); disposed = true;
+      }
+      catch (error) { held.primary = { error }; closeFailure = retainAuthoritySourceClosure([error], { admission: held }); throw closeFailure; }
     },
   };
+} catch (error) { held.primary = { error }; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 
 /** A queued person-lookup run whose fingerprints match the REAL descriptor. */
@@ -250,7 +283,7 @@ export function sessionFactoryHarness(
   const closeReasons: BrowserSessionCloseReason[] = [];
   const trace: SessionFactoryTraceEntry[] = [];
   return {
-    factory: {
+    factory: { probeProfile: async () => undefined,
       async open(input) {
         opens += 1;
         const systemOpens = (opensBySystem.get(input.system) ?? 0) + 1;
@@ -278,6 +311,8 @@ export function sessionFactoryHarness(
           acceptDownloads: input.acceptDownloads,
           exclusive: input.exclusive,
           driver,
+          screenshot: async () => ({ state: "available" as const, sessionId, pageVersion: 1,
+            observedAt: EXECUTOR_NOW, bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720 }),
           authentication: {
             authenticate: async (): Promise<"logged-in"> => {
               logins += 1;
@@ -290,7 +325,8 @@ export function sessionFactoryHarness(
           async close(closeInput: Readonly<{ reason: BrowserSessionCloseReason }>): Promise<BrowserSessionCloseProof> {
             closeReasons.push(closeInput.reason);
             trace.push({ kind: "close", system: input.system, sessionId, reason: closeInput.reason });
-            return { sessionId, system: input.system, pagesClosed: true, contextClosed: true };
+            return { sessionId, system: input.system, pagesClosed: true, contextClosed: true,
+              ...(input.exclusive ? { exclusiveLeaseReleased: true } : {}) };
           },
         };
       },
@@ -336,24 +372,27 @@ export function happySessionHarness(): SessionFactoryHarness {
 
 export const FIXTURE_SESSION_ACQUIRE_MS = 60_000;
 
-export function sessionManagerFor(
+export async function sessionManagerFor(
   harness: SessionFactoryHarness,
   clock: TestClock,
   onEvent?: (event: WorkerSessionEvent) => void,
   scheduler: MonotonicDeadlineScheduler = new ManualScheduler(clock),
-): WorkerSessionManager {
+  duoCeremony?: DuoCeremonyGateFactory,
+  screenshotCapture?: NonNullable<ConstructorParameters<typeof WorkerSessionManager>[0]["browserScreenshotCapture"]>,
+): Promise<WorkerSessionManager> {
   const manager = new WorkerSessionManager({
     workerId: EXECUTOR_WORKER_ID,
     workflowId: EXECUTOR_WORKFLOW_ID,
     stores: taskStoreRegistry,
     factory: harness.factory,
+    browserScreenshotCapture: screenshotCapture ?? { capture: async context => { assert.equal(context.screenshot.state, "available"); } },
     clock,
     scheduler,
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-    duoCeremony: fixtureDuoCeremonyGates(clock),
+    duoCeremony: duoCeremony ?? await fixtureDuoCeremonyGates(clock),
     ...(onEvent === undefined ? {} : { onEvent }),
   });
 
-  manager.bindRunConfigFingerprint(FingerprintSchema.parse(QUEUED_RUN.envelope.configFingerprint));
+  manager.bindRunConfigFingerprint(FingerprintSchema.parse(QUEUED_RUN.envelope.configFingerprint), "headless", { runId: QUEUED_RUN.envelope.runId, descriptorFingerprint: QUEUED_RUN.envelope.contractFingerprint });
   return manager;
 }

@@ -1,3 +1,4 @@
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { type MonotonicDeadlineScheduler } from "../../../../src/backend/runtime/scheduling/deadline-scheduler.js";
 import { type BrowserSessionCloseProof, type WorkerBrowserSessionFactory, type WorkerSessionEvent, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
@@ -11,7 +12,7 @@ import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../phase1f-executor
 
 
 
-export function createWorkerSessionManagerTestWorld() {
+export function createWorkerSessionManagerTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
   const WORKER_ID = WorkerIdSchema.parse("worker-session-fixture");
 
   const WORKFLOW_ID = WorkflowIdSchema.parse("person-lookup");
@@ -28,19 +29,21 @@ export function createWorkerSessionManagerTestWorld() {
     loginHangs?: boolean;
   }> = {}): Readonly<{
     factory: WorkerBrowserSessionFactory;
+    probes: () => number;
     opens: () => number;
     logins: () => number;
     resets: () => number;
     closes: () => number;
     screenshots: () => number;
   }> {
+    let probes = 0;
     let opens = 0;
     let logins = 0;
     let resets = 0;
     let closes = 0;
     let screenshots = 0;
     return {
-      factory: {
+      factory: { probeProfile: async () => { probes++; },
         async open(input) {
           opens += 1;
           const sessionId = BrowserSessionIdSchema.parse(
@@ -104,6 +107,7 @@ export function createWorkerSessionManagerTestWorld() {
           };
         },
       },
+      probes: () => probes,
       opens: () => opens,
       logins: () => logins,
       resets: () => resets,
@@ -112,16 +116,15 @@ export function createWorkerSessionManagerTestWorld() {
     };
   }
 
-  function manager(
+  async function manager(
     harness: ReturnType<typeof sessionFactory>,
     events: WorkerSessionEvent[] = [],
     options: {
       clock?: TestClock;
       scheduler?: MonotonicDeadlineScheduler;
       browserScreenshotCapture?: RunBrowserScreenshotCapture;
-      captureBrowserScreenshots?: boolean;
     } = {},
-  ): WorkerSessionManager {
+  ): Promise<WorkerSessionManager> {
     const clock = options.clock ?? manualClock(new Date("2026-08-02T18:00:00.000Z"));
     const sessions = new WorkerSessionManager({
       workerId: WORKER_ID,
@@ -131,7 +134,7 @@ export function createWorkerSessionManagerTestWorld() {
       clock,
       scheduler: options.scheduler ?? new ManualScheduler(clock),
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: fixtureDuoCeremonyGates(clock),
+      duoCeremony: await fixtureDuoCeremonyGates(clock, undefined, profileFixture),
       onEvent: (event) => events.push(event),
       ...(options.browserScreenshotCapture === undefined
         ? { browserScreenshotCapture: { capture: async () => undefined } }
@@ -141,9 +144,6 @@ export function createWorkerSessionManagerTestWorld() {
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT, undefined, {
       runId: "00000000-0000-4000-8000-000000000099",
       descriptorFingerprint: RUN_FINGERPRINT,
-      ...(options.captureBrowserScreenshots === undefined
-        ? {}
-        : { captureBrowserScreenshots: options.captureBrowserScreenshots }),
     });
     return sessions;
   }

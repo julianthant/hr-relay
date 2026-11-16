@@ -100,11 +100,11 @@ export {
  * one place the shared arrival lives. Never wrap it in a `Panel` — the card */
   TakeoverFrame,
   Banner,
+  Refusal,
   Disclosure,
   MetaLine,
   /** A wrapping row of PEER facts. */
   ChipRow,
-  Refusal,
   BulletList,
   EmptyState,
   Tabs,
@@ -151,6 +151,7 @@ export {
   DialogContent,
   DialogBody,
   DialogFooter,
+  ConfirmDialog,
   Drawer,
   DrawerTrigger,
   DrawerClose,
@@ -171,6 +172,7 @@ export {
   Tooltip,
   TooltipProvider,
   ToastProvider,
+  Notice,
   useToasts,
   useDsModalPresence,
   useDsModalOpen,
@@ -197,3 +199,7 @@ export {
   RankedList,
 } from "./primitives/primitives-data.js";
 export type { DsRankedItem, DsSortDirection, DsStep, DsStepState } from "./primitives/primitives-data.js";
+
+export { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton } from './primitives/input-group.js';
+export { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel,
+  DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator } from './primitives/dropdown-menu.js';

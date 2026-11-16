@@ -6,38 +6,12 @@ import { auditRuntimeEnvironmentInventory, COMPUTED_ENVIRONMENT_READERS, EXACT_E
 import { ENVIRONMENT_SOURCE_EXTENSIONS, inventoryEnvironmentAccesses, type EnvironmentAccessOccurrence } from "../runtime/helpers/environment-read-audit.js";
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
-interface ExampleEnvironmentInventory {
-  readonly keys: readonly string[];
-  readonly violations: readonly string[];
-}
-
-
 function repositoryOccurrences(): readonly EnvironmentAccessOccurrence[] {
   const scannable = (path: string): boolean =>
     ENVIRONMENT_SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension));
   return gitVisibleFiles(["."])
     .filter(scannable)
     .flatMap((path) => inventoryEnvironmentAccesses(path, readFileSync(resolve(REPO_ROOT, path), "utf8")));
-}
-
-function parseExampleEnvironment(content: string): ExampleEnvironmentInventory {
-  const keys: string[] = [];
-  const violations: string[] = [];
-  const assignment = /^\s*(?:#\s*)?(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=\s*(?:(?:"(?:[^"\\]|\\.)*")|(?:'(?:[^'\\]|\\.)*')|(?:[^#\r\n]*?))(?:\s+#.*)?\s*$/;
-  const candidate = /^\s*(?:#\s*)?(?:export\s+)?[A-Z][A-Z0-9_]*\s*=/;
-
-  for (const [index, line] of content.split(/\r?\n/).entries()) {
-    if (!line.trim() || (/^\s*#/.test(line) && !candidate.test(line))) continue;
-    const match = assignment.exec(line);
-    if (!match) {
-      if (candidate.test(line) || !/^\s*#/.test(line)) violations.push(`line ${index + 1}: malformed environment assignment`);
-      continue;
-    }
-    keys.push(match[1]);
-  }
-  const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index);
-  if (duplicates.length > 0) violations.push(`duplicate .env.example keys: ${[...new Set(duplicates)].join(", ")}`);
-  return { keys, violations };
 }
 
 /** Test-lane paths on either side, which own their own environment reads. */
@@ -165,34 +139,63 @@ describe("runtime environment inventory coverage", () => {
     }
   });
 
-  it("parses .env.example grammar without ever retaining values and pins documented exactness", () => {
-    const actual = parseExampleEnvironment(readFileSync(resolve(REPO_ROOT, ".env.example"), "utf8"));
-    assert.deepEqual(actual.violations, []);
-    assert.deepEqual(
-      [...actual.keys].sort(),
-      RUNTIME_ENVIRONMENT_FAMILIES
-        .filter(({ disposition }) => disposition === "active")
-        .map(({ prefix }) => prefix)
-        .sort(),
-    );
-    assert.deepEqual(parseExampleEnvironment([
-      "export ALPHA = value # explanation",
-      " # BRAVO='quoted empty is allowed'",
-      "CHARLIE=\"value with # hash\"",
-      "DELTA=",
-      "# prose is ignored",
-    ].join("\n")), { keys: ["ALPHA", "BRAVO", "CHARLIE", "DELTA"], violations: [] });
-    assert.deepEqual(parseExampleEnvironment("ALPHA=x\nALPHA=y\nBROKEN KEY=x").violations, [
-      "line 3: malformed environment assignment",
-      "duplicate .env.example keys: ALPHA",
-    ]);
-  });
-
   it("keeps the current family inventory empty and unknown keys unregistered", () => {
     assert.deepEqual(RUNTIME_ENVIRONMENT_FAMILIES, []);
     for (const key of ["UNKNOWN_KEY", "UNKNOWN_KEY2"]) {
       assert.equal(runtimeEnvironmentFamilyForKey(key), undefined);
       assert.equal(isRegisteredEnvironmentKey(key), false);
+    }
+  });
+
+  it("pins the user-path LOCALAPPDATA authority to its exact host-storage owner", () => {
+    const spec = RUNTIME_ENVIRONMENT_EXACT.find(candidate => candidate.key === "LOCALAPPDATA");
+    assert.ok(spec?.disposition === "active");
+    assert.equal(spec.classification, "direct-identifier"); assert.equal(spec.channel, "host-storage");
+    const arbitrary = { ...RUNTIME_ENVIRONMENT_REGISTRY,
+      exact: [...RUNTIME_ENVIRONMENT_REGISTRY.exact, { ...spec, key: "RELAY_OTHER_HOST_STORAGE" }],
+      exactReaderOwners: [...RUNTIME_ENVIRONMENT_REGISTRY.exactReaderOwners, { key: "RELAY_OTHER_HOST_STORAGE", paths: ["src/models/config/secrets.ts"] }] };
+    assert.match(auditRuntimeEnvironmentInventory(arbitrary).join("\n"), /RELAY_OTHER_HOST_STORAGE retains forbidden active host-storage environment ownership/u);
+    const wrongOwner = { ...RUNTIME_ENVIRONMENT_REGISTRY,
+      exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.map(candidate => candidate.key === "LOCALAPPDATA"
+        ? { ...candidate, owner: "src/backend/app/config/runtime-isolation.ts" } : candidate) };
+    assert.match(auditRuntimeEnvironmentInventory(wrongOwner).join("\n"), /LOCALAPPDATA is owned by .* expected src\/models\/config\/secrets\.ts/u);
+    const wrongClassification = { ...RUNTIME_ENVIRONMENT_REGISTRY,
+      exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.map(candidate => candidate.key === "LOCALAPPDATA"
+        ? { ...candidate, classification: "non-secret-config" } : candidate) };
+    assert.match(auditRuntimeEnvironmentInventory(wrongClassification).join("\n"), /LOCALAPPDATA retains forbidden active host-storage environment ownership/u);
+  });
+
+  it("allows the parent build id beside SystemRoot and no other process-mechanics key", () => {
+    const spec = RUNTIME_ENVIRONMENT_EXACT.find(candidate => candidate.key === "RELAY_PARENT_BUILD_ID");
+    assert.ok(spec?.disposition === "active");
+    assert.equal(spec.channel, "process-mechanics");
+    assert.equal(spec.owner, "src/models/config/secrets.ts");
+    assert.deepEqual(EXACT_ENVIRONMENT_READER_OWNERS.find(reader => reader.key === "RELAY_PARENT_BUILD_ID")?.paths, ["src/models/config/secrets.ts"]);
+    const extra = { ...RUNTIME_ENVIRONMENT_REGISTRY, exact: [...RUNTIME_ENVIRONMENT_REGISTRY.exact, {
+      key: "RELAY_OTHER_PROCESS_MECHANIC", classification: "non-secret-config" as const, disposition: "active" as const,
+      channel: "process-mechanics" as const, owner: "src/models/config/secrets.ts", documented: false,
+    }] };
+    assert.match(auditRuntimeEnvironmentInventory(extra).join("\n"), /RELAY_OTHER_PROCESS_MECHANIC retains forbidden active process-mechanics/u);
+  });
+
+  it("pins development diagnostics to its exact flag and environment owner", () => {
+    for (const change of [{ key: "RELAY_UNKNOWN_DEBUG_FLAG" }, { owner: "src/backend/logs/debug-events.ts" }]) {
+      const altered = { ...RUNTIME_ENVIRONMENT_REGISTRY,
+        exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.map(spec => spec.key === "RELAY_DEV_DEBUG_MIRROR" ? { ...spec, ...change } : spec) };
+      assert.ok(auditRuntimeEnvironmentInventory(altered).length > 0);
+    }
+  });
+
+  it("limits host-program roots to their exact names and canonical accessor", () => {
+    for (const key of ["ProgramFiles", "ProgramFiles(x86)"]) {
+      const spec = RUNTIME_ENVIRONMENT_EXACT.find(candidate => candidate.key === key);
+      assert.ok(spec?.disposition === "active");
+      assert.equal(spec.channel, "host-programs"); assert.equal(spec.owner, "src/models/config/secrets.ts");
+      assert.deepEqual(EXACT_ENVIRONMENT_READER_OWNERS.find(reader => reader.key === key)?.paths, ["src/models/config/secrets.ts"]);
+      for (const change of [{ key: "RELAY_OTHER_PROGRAM_ROOT" }, { owner: "src/backend/app/config/runtime-isolation.ts" }, { classification: "secret" }]) {
+        const altered = { ...RUNTIME_ENVIRONMENT_REGISTRY, exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.map(row => row.key === key ? { ...row, ...change } : row) };
+        assert.ok(auditRuntimeEnvironmentInventory(altered).length > 0);
+      }
     }
   });
 

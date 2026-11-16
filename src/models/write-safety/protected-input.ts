@@ -2,6 +2,9 @@ import { FingerprintSchema } from "../../rules/identity/ids.js";
 import { z } from "zod";
 import { JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 
+/** Admitted with the timekeeper name from the same profile identity; value-free projections omit it, as the name's binding covers it. */
+export const PROFILE_INITIALS_INPUT_PATH = "timekeeperInitials";
+
 /** The first admitted protected workflow input; data only, safe in descriptor bundles. */
 export const ProtectedInputDeclarationSchema = z.strictObject({
   inputPath: z.literal("timekeeperName"),
@@ -10,7 +13,7 @@ export const ProtectedInputDeclarationSchema = z.strictObject({
 const ProtectedInputPathSchema = z.enum(["timekeeperName", "documentNumber", "emplId"]);
 const ProtectedInputNameSchema = z.enum(["timekeeperName", "separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]);
 /** Where a protected input's VALUE came from; no member ever carries a value or a value-derived surrogate. */
-export const ProtectedInputBindingSchema = z.discriminatedUnion("kind", [
+export const EvidenceProtectedInputBindingSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("protected-store"), inputPath: z.literal("timekeeperName"),
     name: z.literal("timekeeperName"), valueId: z.uuid() }),
   z.strictObject({ kind: z.literal("test-data-local"), inputPath: z.enum(["documentNumber", "emplId"]),
@@ -20,11 +23,28 @@ export const ProtectedInputBindingSchema = z.discriminatedUnion("kind", [
     emplId: "personLookupCanaryEid" };
   if (expected[binding.inputPath] !== binding.name) ctx.addIssue({ code: "custom", message: "protected input path/name mismatch" });
 });
+export const EvidenceProtectedInputBindingsSchema = z.array(EvidenceProtectedInputBindingSchema).max(3).superRefine((bindings, ctx) => {
+  if (new Set(bindings.map(({ inputPath }) => inputPath)).size !== bindings.length)
+    ctx.addIssue({ code: "custom", message: "duplicate protected input binding" });
+});
+export const ProtectedInputBindingSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("profile"), inputPath: z.literal("timekeeperName"), name: z.literal("timekeeperName"), profileId: z.uuid(), sessionEpoch: z.number().int().safe().positive() }),
+  ...EvidenceProtectedInputBindingSchema.options,
+]).superRefine((binding, ctx) => {
+  if (binding.kind !== "profile" && !EvidenceProtectedInputBindingSchema.safeParse(binding).success)
+    ctx.addIssue({ code: "custom", message: "protected input path/name mismatch" });
+});
 export const ProtectedInputBindingsSchema = z.array(ProtectedInputBindingSchema).max(3).superRefine((bindings, ctx) => {
   if (new Set(bindings.map(({ inputPath }) => inputPath)).size !== bindings.length)
     ctx.addIssue({ code: "custom", message: "duplicate protected input binding" });
 });
+
 export type ProtectedInputDeclaration = z.infer<typeof ProtectedInputDeclarationSchema>;
+
+/** Every input path the timekeeper profile declaration admits: the name and the stored initials. */
+export function protectedDeclarationPaths(declaration: ProtectedInputDeclaration): readonly string[] {
+  return [declaration.inputPath, PROFILE_INITIALS_INPUT_PATH];
+}
 export type ProtectedInputBinding = z.infer<typeof ProtectedInputBindingSchema>;
 
 export function protectedInputBindings(value: unknown, bindings?: readonly ProtectedInputBinding[]): readonly ProtectedInputBinding[] {
@@ -53,6 +73,8 @@ export function valueFreeProtectedInput(value: unknown, bindings?: readonly Prot
     if (!Object.hasOwn(parsed, binding.inputPath)) throw new Error(`protected input ${binding.name} is absent`);
     copy.set(binding.inputPath, binding);
   }
+  // The timekeeperName binding names the profile that also supplied the initials; it stands for both.
+  if (identities.some(({ inputPath }) => inputPath === "timekeeperName")) copy.delete(PROFILE_INITIALS_INPUT_PATH);
   return JsonValueSchema.parse(Object.fromEntries(copy));
 }
 
@@ -62,13 +84,15 @@ const PublicProtectedInputMarkerSchema = z.strictObject({ kind: z.literal("legac
 /** Closed protected fields that can occur in the admitted Separations input/output graph. */
 const PROTECTED_COMMENT_FIELDS = new Set(["timekeeperComments", "dateChangeComments", "observedExistingComments"]);
 
+function isJsonArray(value: JsonValue): value is readonly JsonValue[] { return Array.isArray(value); }
+
 /** Fingerprint projection only: private execution values stay in their canonical records. */
 export function valueFreeProtectedData(value: unknown, bindings?: readonly ProtectedInputBinding[]): JsonValue {
   const parsed = JsonValueSchema.parse(value);
   const sensitive = new Map<string, string>();
   const collect = (entry: JsonValue, inherited: readonly ProtectedInputBinding[]): void => {
     if (entry === null || typeof entry !== "object") return;
-    if (Array.isArray(entry)) { for (const child of entry) collect(JsonValueSchema.parse(child), inherited); return; }
+    if (isJsonArray(entry)) { for (const child of entry) collect(child, inherited); return; }
     const metadata: unknown = Reflect.get(entry, "protectedBindings");
     const active = metadata === undefined ? inherited : ProtectedInputBindingsSchema.parse(metadata);
     for (const [key, child] of Object.entries(entry)) {
@@ -81,10 +105,10 @@ export function valueFreeProtectedData(value: unknown, bindings?: readonly Prote
   collect(parsed, bindings ?? []);
   const project = (entry: JsonValue, inherited: readonly ProtectedInputBinding[]): JsonValue => {
     if (entry === null || typeof entry !== "object") return entry;
-    if (Array.isArray(entry)) return entry.map((child) => project(JsonValueSchema.parse(child), inherited));
+    if (isJsonArray(entry)) return entry.map((child) => project(child, inherited));
     const metadata: unknown = Reflect.get(entry, "protectedBindings");
     const ownBindings = metadata === undefined ? inherited : ProtectedInputBindingsSchema.parse(metadata);
-    return Object.fromEntries(Object.entries(entry).map(([key, child]) => {
+    return Object.fromEntries(Object.entries(entry).filter(([key]) => key !== PROFILE_INITIALS_INPUT_PATH).map(([key, child]) => {
       if (key === "timekeeper" && child !== null && typeof child === "object" && !Array.isArray(child)) {
         const safe = Object.fromEntries(Object.entries(child).map(([field, value]) => [field,
           field === "name" ? { kind: "legacy-protected-input", name: "timekeeperName", inputPath: "timekeeperName" }
@@ -125,24 +149,6 @@ export function hasProtectedTransactionInput(run: Readonly<{
   const bindings = run.input.parsed.protectedBindings;
   if (bindings === undefined) throw new Error("protected input bindings are absent");
   return ProtectedInputBindingsSchema.parse(bindings).some(({ inputPath }) => inputPath !== "timekeeperName");
-}
-
-/** Remove protected-source evidence leaves after their declared classification was checked. */
-export function valueFreeProtectedEvidence(value: unknown, protectedPaths: readonly string[]): JsonValue {
-  const walk = (node: JsonValue): JsonValue => {
-    if (node === null || typeof node !== "object") return node;
-    if (Array.isArray(node)) return node.map((entry) => walk(JsonValueSchema.parse(entry)));
-    const name: unknown = Reflect.get(node, "key");
-    if (typeof name === "string" && typeof Reflect.get(node, "classification") === "string" && typeof Reflect.get(node, "transform") === "string") {
-      if (name.includes("timekeeper") || name.endsWith("dateChangeComments") || name.endsWith("observedExistingComments")
-        || (protectedPaths.some((path) => name === path || name.endsWith(`.${path}`))
-          || (protectedPaths.includes("emplId") && /(?:observedEid|eid|emplId|Eid|Eids)$/u.test(name))
-          || (protectedPaths.length > 0 && /(?:idempotencyKeyDigest|businessKeyDigest|occurrenceKeyDigest)$/u.test(name))))
-        return { key: name, state: "redacted", classification: "direct-identifier", transform: "drop" };
-    }
-    return Object.fromEntries(Object.entries(node).map(([key, entry]) => [key, walk(entry)]));
-  };
-  return walk(JsonValueSchema.parse(value));
 }
 
 export function retainedRunProtectedBindings(run: Readonly<{

@@ -1,3 +1,4 @@
+import { recoverInterruptedTestRun } from "../../support/helpers/backend/run-record-service-world.js";
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { createWorkerLoopHarness as workerHarness } from "../../support/helpers/backend/worker-loop-world.js";
@@ -20,15 +21,14 @@ type SessionFactoryHarness
 
 const ACTIVE_STATES = new Set(["claimed", "validating", "running"]);
 const HEARTBEAT_INTERVAL_MS = 500;
-const CLAIM_STALE_AFTER_MS = 60_000;
 
-const disposers: (() => void)[] = [];
-afterEach(() => {
-  for (const dispose of disposers.splice(0)) dispose();
+const disposers: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const dispose of disposers.splice(0)) await dispose();
 });
 
-function sharedAuthority(): AuthorityHarness {
-  const authority = openAuthorityHarness();
+async function sharedAuthority(): Promise<AuthorityHarness> {
+  const authority = await openAuthorityHarness();
   disposers.push(authority.dispose);
   return authority;
 }
@@ -53,12 +53,9 @@ function claimForWorker(authority: AuthorityHarness, poolIndex: number) {
   testWorkerPorts(database, clock, { path: authority.path, descriptor: personLookupDescriptor, poolIndex });
   const member = database.authority.workerSlots.list().find((slot) => slot.poolIndex === poolIndex);
   assert.ok(member);
-  const lease = database.authority.workerLeases.get(member.workerId);
-  assert.ok(lease);
   return database.authority.runs.claimNext({
     workflow: WORKFLOW_ID,
     workerId: member.workerId,
-    workerLifetime: { membershipRevision: member.membershipRevision, leaseGeneration: lease.leaseGeneration },
     now: clock.now().toISOString(),
   });
 }
@@ -132,7 +129,7 @@ function gatedUcpathSessions(hooks: Readonly<{
 
 describe("two live worker loops drain one queue", () => {
   it("executes every run exactly once, one active claim per worker, and genuinely overlaps", async () => {
-    const authority = sharedAuthority();
+    const authority = await sharedAuthority();
     const observer = overlapObserver(authority.database);
     const enqueued: string[] = [];
     for (let index = 1; index <= 6; index += 1) {
@@ -189,7 +186,7 @@ describe("two live worker loops drain one queue", () => {
 
 describe("a live loop's row is invisible to every other claimer", () => {
   it("never serves the held row to a sibling worker and refuses a second claim for the holder", async () => {
-    const authority = sharedAuthority();
+    const authority = await sharedAuthority();
     const { database } = authority;
     database.authority.runs.enqueue(queuedRun(1));
     database.authority.runs.enqueue(queuedRun(2));
@@ -231,9 +228,9 @@ describe("a live loop's row is invisible to every other claimer", () => {
   });
 });
 
-describe("claim sweep overlaps a live heartbeat", () => {
-  it("leaves the freshly renewed claim alone and requeues only the genuinely stale one", async () => {
-    const authority = sharedAuthority();
+describe("interrupted-run recovery overlaps a live heartbeat", () => {
+  it("leaves the live claim alone and fails only the selected interrupted run", async () => {
+    const authority = await sharedAuthority();
     const { database, clock } = authority;
     database.authority.runs.enqueue(queuedRun(1));
     database.authority.runs.enqueue(queuedRun(2));
@@ -255,30 +252,21 @@ describe("claim sweep overlaps a live heartbeat", () => {
     const liveRunId = activeClaimsByWorker(database).get("person-lookup-worker-1")?.[0];
     assert.ok(liveRunId !== undefined);
 
-    // A second worker takes the sibling row and then dies: it never renews.
+
     const abandoned = claimForWorker(authority, 2);
     assert.equal(abandoned.state, "claimed");
     const staleRunId = abandoned.state === "claimed" ? runIdOf(abandoned.run) : "";
 
-    // Wall time passes past the staleness bound for BOTH rows. The live one is
-    // saved by its heartbeat, not by its state — the sweep reads heartbeat_at.
     clock.advanceWall(90_000);
     const heartbeat = harness.scheduler.pending()
       .find((entry) => entry.deadlineMonotonicMs === clock.monotonicMs() + HEARTBEAT_INTERVAL_MS);
     assert.ok(heartbeat, "the live run's heartbeat must be scheduled while it executes");
     heartbeat.fire();
 
-    const now = clock.now().toISOString();
-    const swept = database.authority.runs.sweepExpiredClaims({
-      workflow: WORKFLOW_ID,
-      staleBefore: new Date(clock.nowMs() - CLAIM_STALE_AFTER_MS).toISOString(),
-      now,
-    });
-
-
-    assert.equal(swept.length, 1);
-    assert.equal(swept[0]?.state, "requeued");
-    assert.equal(swept[0] === undefined ? "" : runIdOf(swept[0].run), staleRunId);
+    assert.equal(database.authority.runs.get(staleRunId)?.lifecycle.state, "claimed");
+    const recovered = recoverInterruptedTestRun(database, clock, staleRunId, authority.profile.lifetime);
+    assert.ok(recovered.lifecycle.state === "terminal" && recovered.lifecycle.outcome === "failed");
+    assert.equal(database.authority.failures.listByRun(staleRunId)[0]?.code, "RUN_INTERRUPTED_BY_CRASH");
 
     const live = database.authority.runs.get(liveRunId);
     assert.ok(live !== undefined);
@@ -289,28 +277,25 @@ describe("claim sweep overlaps a live heartbeat", () => {
 
     const stale = database.authority.runs.get(staleRunId);
     assert.ok(stale !== undefined);
-    assert.equal(stale.lifecycle.state, "queued");
-    assert.equal("requeuedFrom" in stale.lifecycle ? stale.lifecycle.requeuedFrom : undefined, "recovery");
+    assert.ok(stale.lifecycle.state === "terminal" && stale.lifecycle.outcome === "failed");
     assert.equal(stale.envelope.attempt, 1);
     assert.ok(abandoned.state === "claimed");
     assert.deepEqual(stale.envelope, abandoned.run.envelope);
     assert.equal(stale.claimGeneration, abandoned.run.claimGeneration);
 
-    // The requeued row is genuinely re-claimable: the SAME live loop drains it
-    // after its own run settles, so a sweep never strands work.
     releaseDriver();
     const report = await looping;
-    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done", "done"]);
+    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
     assert.deepEqual(
       [...report.outcomes].map(({ runId }) => runId).sort(),
-      [liveRunId, staleRunId].sort(),
+      [liveRunId],
     );
   });
 });
 
 describe("a heartbeat that lost its row never renews it", () => {
-  it("reports lost to the live loop after a sweep re-owned the run, and never resurrects the claim", async () => {
-    const authority = sharedAuthority();
+  it("reports lost after an explicit fenced reassignment and never resurrects the claim", async () => {
+    const authority = await sharedAuthority();
     const { database, clock } = authority;
     database.authority.runs.enqueue(queuedRun(1));
 
@@ -337,15 +322,12 @@ describe("a heartbeat that lost its row never renews it", () => {
     assert.ok(runId !== undefined);
     const generationBefore = database.authority.runs.get(runId)?.claimGeneration;
 
-    // A recovery sweep requeues the row (its heartbeat went stale), and a
-    // second worker claims it — the first loop's claim generation is history.
     clock.advanceWall(90_000);
-    const swept = database.authority.runs.sweepExpiredClaims({
-      workflow: WORKFLOW_ID,
-      staleBefore: new Date(clock.nowMs() - CLAIM_STALE_AFTER_MS).toISOString(),
-      now: clock.now().toISOString(),
-    });
-    assert.deepEqual(swept.map(({ state }) => state), ["requeued"]);
+    const owned = database.authority.runs.get(runId); assert.ok(owned);
+    const released = database.authority.runs.requeue({ runId, expectedVersion: owned.version,
+      claim: { workerId: "person-lookup-worker-1", claimGeneration: owned.claimGeneration },
+      cause: "reassign", now: clock.now().toISOString() });
+    assert.equal(released.state, "applied");
     const reclaimed = claimForWorker(authority, 2);
     assert.equal(reclaimed.state, "claimed");
     assert.ok(generationBefore !== undefined

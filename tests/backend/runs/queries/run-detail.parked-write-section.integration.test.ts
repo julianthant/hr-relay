@@ -1,16 +1,23 @@
+import { publicWriteTarget, resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { availableSections, buildRunDetail, buildRunSection, type RunDetailQueryDeps, type RunDetailWriteContractView } from "../../../../src/backend/runs/queries/run-detail.js";
+import { RepeatOccurrenceSchema, repeatOccurrenceKey } from "../../../../src/models/run/rerun.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
-import { WriteIntentRecordSchema, deriveWriteBindingProofDigest, type WriteIntentRecord } from "../../../../src/rules/write-safety/write-safety.js";
+import { WriteIntentRecordSchema, deriveIdempotencyKeyDigest, deriveWriteBindingProofDigest, type WriteIntentRecord } from "../../../../src/rules/write-safety/write-safety.js";
 import { FIXTURE_PARKED_WRITE } from "../../../support/fixtures/dashboard/fixture-day.js";
 import { FIXTURE_PARKED_WRITE_INTENT } from "../../../support/fixtures/dashboard/run-detail/gates-park.js";
 import { IDEMPOTENCY_KEY, IDEMPOTENCY_KEY_DIGEST, NOW, SUBJECT_PROOF, UNSCOPED_PROOF } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { queuedEventOf, runRecordOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const {world, RUN_ID, cleanup } = createRunDetailTestWorld();
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
+
+const {world, RUN_ID, cleanup } = createRunDetailTestWorld(profileFixtures.create);
 
 afterEach(cleanup);
 const ITEM_ID = uuidOf(5001);
@@ -28,6 +35,10 @@ function parkedIntentOf(input?: Readonly<{
   generation?: number;
   proof?: unknown;
   status?: "parked" | "attempting";
+  taskId?: string;
+  system?: string;
+  idempotencyKey?: string;
+  occurrence?: unknown;
 }>) {
   const proof = proofFor(input?.proof ?? SUBJECT_PROOF);
   const status = input?.status ?? "parked";
@@ -35,10 +46,12 @@ function parkedIntentOf(input?: Readonly<{
     writeIntentId: INTENT_ID,
     workflowId: "person-lookup",
     itemId: ITEM_ID,
-    taskId: "ucpath/terminate-person",
-    system: "ucpath",
-    idempotencyKey: IDEMPOTENCY_KEY,
-    idempotencyKeyDigest: IDEMPOTENCY_KEY_DIGEST,
+    taskId: input?.taskId ?? "ucpath/terminate-person",
+    system: input?.system ?? "ucpath",
+    idempotencyKey: input?.idempotencyKey ?? IDEMPOTENCY_KEY,
+    idempotencyKeyDigest: input?.idempotencyKey === undefined ? IDEMPOTENCY_KEY_DIGEST
+      : deriveIdempotencyKeyDigest(input.system ?? "ucpath", input.idempotencyKey),
+    ...(input?.occurrence === undefined ? {} : { occurrence: input.occurrence }),
     currentAttemptId: ATTEMPT_ID,
     generation: input?.generation ?? 1,
     runId: RUN_ID,
@@ -114,8 +127,8 @@ function parkedSection(w: DashboardWorld, writeContracts?: RunDetailWriteContrac
 }
 
 describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
-  it("serves the exact recorded parked event identity and leaves absent native evidence absent", () => {
-    const w = world();
+  it("serves the exact recorded parked event identity and leaves absent native evidence absent", async () => {
+    const w = await world();
     const run = runRecordOf({ seed: 1 });
     const proof = { ...SUBJECT_PROOF, runId: RUN_ID, afterPrepareSpanPath: `${run.envelope.traceId}/termination/prepare` };
     seed(w, { intent: parkedIntentOf({ proof }) });
@@ -128,8 +141,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       runId: RUN_ID, attempt: 1, traceId: run.envelope.traceId, nodeId: "termination" });
   });
 
-  it("advertises and serves the section with the durable intent's exact facts", () => {
-    const w = world();
+  it("advertises and serves the section with the durable intent's exact facts", async () => {
+    const w = await world();
     seed(w);
 
     const detail = buildRunDetail(depsOf(w), RUN_ID);
@@ -145,17 +158,24 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.equal(payload.runAttempt, 1);
     assert.equal(payload.system, "ucpath");
     assert.equal(payload.taskId, "ucpath/terminate-person");
+    assert.equal(payload.acceptsTransactionId, false, "missing canonical contract cannot accept a typed ID");
     assert.equal(payload.idempotencyKeyDigest, IDEMPOTENCY_KEY_DIGEST);
     assert.equal(payload.fencedAt, NOW);
     assert.equal(payload.parkedAt, NOW);
     assert.equal(payload.parkedCode, "unknown");
+    // An UNKNOWN park without a typed-ID contract asks Saved (Relay re-reads) or Not saved (confirmed absence), never Retry.
+    assert.equal(payload.decision?.type, "write-unknown");
+    assert.deepEqual(payload.decision?.options.map(({ id, send, recommended, input }) => [id, send, recommended, input]), [
+      ["saved", { via: "action", actionKey: "recheck-write" }, true, undefined],
+      ["not-saved", { via: "action", actionKey: "resolve-write-absent" }, undefined, undefined],
+    ]);
     assert.equal(payload.parkedMessage.includes(IDEMPOTENCY_KEY), false);
     assert.equal(payload.parkedMessage.includes("10101010"), false);
     assert.ok(payload.parkedMessage.includes(IDEMPOTENCY_KEY_DIGEST.slice(0, 12)));
   });
 
-  it("serves the subject as the durable binding evidence, both proof kinds", () => {
-    const w = world();
+  it("serves the subject as the durable binding evidence, both proof kinds", async () => {
+    const w = await world();
     seed(w);
     const subject = parkedSection(w).subject;
     assert.equal(subject.state, "subject-match");
@@ -170,7 +190,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       displaySuffix: "1234",
     });
 
-    const unscoped = world();
+    const unscoped = await world();
     seed(unscoped, { intent: parkedIntentOf({ proof: UNSCOPED_PROOF }) });
     const other = parkedSection(unscoped).subject;
     assert.equal(other.state, "unscoped");
@@ -180,8 +200,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.ok(!("evidence" in other));
   });
 
-  it("leaks no direct identifier or permanent key into the served bytes", () => {
-    const w = world();
+  it("leaks no direct identifier or permanent key into the served bytes", async () => {
+    const w = await world();
     seed(w);
     const serialized = JSON.stringify(parkedSection(w));
 
@@ -196,8 +216,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
 
 
   describe("the served proof contract", () => {
-    it("serves the composition root's derived hash and field list verbatim", () => {
-      const w = world();
+    it("serves the composition root's derived hash and field list verbatim", async () => {
+      const w = await world();
       seed(w);
       const contract = parkedSection(w, [DESCRIBED_TERMINATION_PROOF]).proofContract;
       assert.equal(contract.state, "served");
@@ -209,8 +229,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       assert.deepEqual(contract.fields.map((field) => field.path), ["kind", "transactionId"]);
     });
 
-    it("names the missing descriptor rather than serving a form for a workflow it cannot describe", () => {
-      const w = world();
+    it("names the missing descriptor rather than serving a form for a workflow it cannot describe", async () => {
+      const w = await world();
       seed(w);
       const contract = parkedSection(w).proofContract;
       assert.equal(contract.state, "unavailable");
@@ -222,8 +242,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
         action.kind === "command" && action.command === "resolve-write-absent"));
     });
 
-    it("names the missing transaction node when no contract commits this task", () => {
-      const w = world();
+    it("names the missing transaction node when no contract commits this task", async () => {
+      const w = await world();
       seed(w);
       const contract = parkedSection(w, [{
         ...DESCRIBED_TERMINATION_PROOF,
@@ -235,8 +255,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       assert.match(contract.reason, /transaction-node/);
     });
 
-    it("passes an undescribable proof's own reason through instead of guessing a shape", () => {
-      const w = world();
+    it("passes an undescribable proof's own reason through instead of guessing a shape", async () => {
+      const w = await world();
       seed(w);
       const contract = parkedSection(w, [{
         ...DESCRIBED_TERMINATION_PROOF,
@@ -249,14 +269,14 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     });
   });
 
-  it("serves both typed resolutions, targeted at this exact intent generation", () => {
-    const w = world();
+  it("serves both typed resolutions, targeted at this exact intent generation", async () => {
+    const w = await world();
     seed(w);
     const { actions } = parkedSection(w);
 
     assert.deepEqual(
       actions.map((action) => (action.kind === "command" ? action.command : action.kind)),
-      ["resolve-write-present", "resolve-write-absent"],
+      ["recheck-write", "resolve-write-absent"],
     );
     for (const action of actions) {
       assert.equal(action.kind, "command");
@@ -264,16 +284,16 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       // The run version, because that is what both resolutions CAS against.
       assert.equal(action.expectedVersion, 4);
       assert.deepEqual(action.writeTarget, { writeIntentId: INTENT_ID, intentGeneration: 1,
-        writeAttemptId: ATTEMPT_ID, occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST,
+        writeAttemptId: ATTEMPT_ID, occurrenceKeyDigest: publicWriteTarget({ writeIntentId: INTENT_ID, intentGeneration: 1, writeAttemptId: ATTEMPT_ID, occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST }).occurrenceKeyDigest,
         bindingProofDigest: parkedIntentOf().bindingProofDigest });
-      // Neither resolution may be one click: both settle a real HR write.
+      // Neither may be one click: a found write resumes the run, and absence authorizes a resubmit.
       assert.ok(action.confirm !== undefined);
-      assert.equal(action.confirm.tone, "destructive");
+      assert.equal(action.confirm.tone, action.command === "recheck-write" ? "neutral" : "destructive");
     }
   });
 
-  it("emits every binding the kernel's own command schema requires", () => {
-    const w = world();
+  it("emits every binding the kernel's own command schema requires", async () => {
+    const w = await world();
     seed(w);
     const action = parkedSection(w).actions[0];
     assert.ok(action !== undefined && action.kind === "command");
@@ -293,25 +313,28 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
         expectedVersion: action.expectedVersion,
         ...writeTarget,
       },
-      payload: { occurrenceKeyDigest, proof: { schemaHash: "a".repeat(64), value: "receipt-123" }, evidenceNote: "confirmed in UCPath" },
+      payload: { occurrenceKeyDigest },
     });
     assert.equal(command.family, "run");
-    if (command.family !== "run" || command.type !== "resolve-write-present") throw new Error("unreachable");
+    if (command.family !== "run" || command.type !== "recheck-write") throw new Error("unreachable");
     assert.equal(command.target.writeIntentId, INTENT_ID);
     assert.equal(command.target.intentGeneration, 1);
     assert.equal(command.target.expectedVersion, 4);
     assert.equal(command.target.writeAttemptId, ATTEMPT_ID);
     assert.equal(command.target.bindingProofDigest, parkedIntentOf().bindingProofDigest);
-    assert.equal(command.payload.occurrenceKeyDigest, IDEMPOTENCY_KEY_DIGEST);
+    assert.notEqual(command.payload.occurrenceKeyDigest, IDEMPOTENCY_KEY_DIGEST);
+    const native = resolveWriteCommandTarget(command, { commands: { get: () => undefined }, writeIntents: { get: () => parkedIntentOf() } });
+    assert.ok(native.family === "run" && native.type === "recheck-write");
+    assert.equal(native.payload.occurrenceKeyDigest, IDEMPOTENCY_KEY_DIGEST);
   });
 
-  it("does not advertise or serve the section for a run that is not parked", () => {
+  it("does not advertise or serve the section for a run that is not parked", async () => {
     for (const lifecycle of [
       { state: "queued" },
       { state: "parked-gate", parkedAt: NOW, gateId: "identity-approval", resumeAt: "probe" },
       { state: "terminal", outcome: "done", endedAt: NOW },
     ]) {
-      const w = world();
+      const w = await world();
       seed(w, { lifecycle, intent: null });
       const record = w.authority.getRun(RUN_ID);
       assert.ok(record);
@@ -325,8 +348,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     }
   });
 
-  it("refuses loudly when the park names an intent authority does not hold", () => {
-    const w = world();
+  it("refuses loudly when the park names an intent authority does not hold", async () => {
+    const w = await world();
     seed(w, { intent: null });
     assert.throws(
       () => parkedSection(w),
@@ -334,20 +357,20 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     );
   });
 
-  it("refuses loudly when the run park and the intent disagree", () => {
+  it("refuses loudly when the run park and the intent disagree", async () => {
     // The intent moved on — exactly the state a stale operator tab would try
     // to resolve. It is a contradiction in authority, never an empty panel.
-    const advanced = world();
+    const advanced = await world();
     seed(advanced, { intent: parkedIntentOf({ generation: 2 }) });
     assert.throws(() => parkedSection(advanced), /is at generation 2/);
 
-    const settled = world();
+    const settled = await world();
     seed(settled, { intent: parkedIntentOf({ status: "attempting" }) });
     assert.throws(() => parkedSection(settled), /which is attempting/);
   });
 
-  it("refuses loudly when the intent belongs to a different run", () => {
-    const w = world();
+  it("refuses loudly when the intent belongs to a different run", async () => {
+    const w = await world();
     const foreign = WriteIntentRecordSchema.parse({
       ...parkedIntentOf(),
       runId: uuidOf(2),
@@ -359,8 +382,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
   });
 
 
-  it("pins the parity fixture's safe message and resolution descriptors to this query", () => {
-    const w = world();
+  it("pins the mock fixture's safe message and resolution descriptors to this query", async () => {
+    const w = await world();
     seed(w);
     const served = parkedSection(w);
 
@@ -369,16 +392,16 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       for (const action of payload.actions) {
         assert.equal(action.kind, "command");
         if (action.kind !== "command") throw new Error("unreachable");
-        assert.deepEqual(action.writeTarget, { writeIntentId: intent.writeIntentId,
+        assert.deepEqual(action.writeTarget, publicWriteTarget({ writeIntentId: intent.writeIntentId,
           intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId,
-          occurrenceKeyDigest: intent.idempotencyKeyDigest, bindingProofDigest: intent.bindingProofDigest });
+          occurrenceKeyDigest: intent.idempotencyKeyDigest, bindingProofDigest: intent.bindingProofDigest }));
       }
       return (
       JSON.parse(
         JSON.stringify(payload.actions)
           .replaceAll(payload.writeIntentId, "<intent>")
           .replaceAll(intent.currentAttemptId, "<attempt>")
-          .replaceAll(intent.idempotencyKeyDigest, "<occurrence>")
+          .replaceAll(publicWriteTarget({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId, occurrenceKeyDigest: intent.idempotencyKeyDigest }).occurrenceKeyDigest, "<occurrence>")
           .replaceAll(intent.bindingProofDigest, "<binding>")
           // Compare adapter shapes at their own row versions; pinning one version would confuse fixtures with schema.
           .replaceAll(/"expectedVersion":\d+/gu, '"expectedVersion":0'),
@@ -397,8 +420,8 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.deepEqual(normalize(FIXTURE_PARKED_WRITE, FIXTURE_PARKED_WRITE_INTENT), normalize(served, parkedIntentOf()));
   });
 
-  it("re-reads the intent per request rather than folding it into the projection", () => {
-    const w = world();
+  it("re-reads the intent per request rather than folding it into the projection", async () => {
+    const w = await world();
     seed(w);
     assert.equal(parkedSection(w).generation, 1);
 
@@ -414,5 +437,52 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     const payload = parkedSection(w);
     assert.equal(payload.generation, 2);
     assert.ok(payload.actions.every((action) => action.kind === "command" && action.expectedVersion === 5));
+  });
+
+  it("serves a repeat occurrence in the general wording and never names its occurrence key", async () => {
+    const w = await world();
+    const occurrence = RepeatOccurrenceSchema.parse({ nodeId: "termination", taskId: "ucpath/create-termination", system: "ucpath",
+      businessKeyDigest: "b".repeat(64), writeIntentId: uuidOf(21), evidenceDigest: "c".repeat(64),
+      confirmationCommandId: uuidOf(22), sourceRunId: uuidOf(23), sourceVersion: 3, warningDigest: "d".repeat(64),
+      baselineEvidence: [{ writeIntentId: uuidOf(21), evidenceDigest: "c".repeat(64) }] });
+    const idempotencyKey = repeatOccurrenceKey(occurrence.businessKeyDigest, occurrence.confirmationCommandId, occurrence.nodeId);
+    seed(w, { intent: parkedIntentOf({ taskId: "ucpath/create-termination", idempotencyKey, occurrence }) });
+    const payload = parkedSection(w);
+    assert.deepEqual(payload.decision?.options.map(({ id, send }) => [id, send]), [
+      ["saved", { via: "action", actionKey: "recheck-write" }],
+      ["not-saved", { via: "action", actionKey: "resolve-write-absent" }],
+    ]);
+    assert.equal(payload.decision?.context, "UCPath accepted the submit, but Relay could not read its status. Check Smart HR Transactions in UCPath.");
+    const serialized = JSON.stringify(payload);
+    assert.ok(!serialized.includes(idempotencyKey));
+    assert.ok(!serialized.includes("hrauto-repeat"));
+  });
+
+  describe("a Kuali finalization park names its document only for unprotected input", () => {
+    const KEY = "kuali:3170001|finalization|T00012345";
+    const kualiIntent = () => parkedIntentOf({ taskId: "kuali/save-separation-finalization", system: "kuali", idempotencyKey: KEY });
+
+    it("names the document in the context", async () => {
+      const w = await world();
+      seed(w, { intent: kualiIntent() });
+      assert.equal(parkedSection(w).decision?.context, "Kuali accepted the save, but Relay could not read its status. Check document 3170001 in Kuali.");
+    });
+
+    it("withholds the document number, key and digest from the whole payload when the run input is protected", async () => {
+      const w = await world();
+      seed(w, { intent: kualiIntent() });
+      const run = w.authority.getRun(RUN_ID);
+      const value = run?.input.parsed.value;
+      assert.ok(run && value !== null && typeof value === "object" && !Array.isArray(value));
+      w.authority.put(RunRecordSchema.parse({ ...run, input: { ...run.input, parsed: { ...run.input.parsed,
+        value: { ...value, documentNumber: "3170001" }, protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber",
+          name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: uuidOf(24) }] } } }));
+      const payload = parkedSection(w);
+      const digest = deriveIdempotencyKeyDigest("kuali", KEY);
+      const served = JSON.stringify(payload);
+      for (const secret of ["3170001", KEY, digest, digest.slice(0, 12)]) assert.ok(!served.includes(secret), secret);
+      assert.equal(payload.idempotencyKeyDigest, "withheld-protected-input");
+      assert.equal(payload.decision?.context, "Kuali accepted the save, but Relay could not read its status. Check the separation document in Kuali.");
+    });
   });
 });

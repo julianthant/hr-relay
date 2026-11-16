@@ -50,20 +50,6 @@ export const intentPill = (intent: ActionIntent, size: "sm" | "md"): string =>
     INTENT_PILL[intent],
   );
 
-const PARK_COMMANDS: ReadonlySet<string> = new Set(["resolve-write-present", "resolve-write-absent"]);
-
-function isParkCommand(action: ActionDescriptorWire): boolean {
-  return action.kind === "command" && PARK_COMMANDS.has(action.command);
-}
-
-export function bannerPills(actions: readonly ActionDescriptorWire[]): readonly ActionDescriptorWire[] {
-  return actionsAt(actions, "banner").filter((a) => !isParkCommand(a));
-}
-
-export function parkResolutions(actions: readonly ActionDescriptorWire[]): readonly ActionDescriptorWire[] {
-  return actionsAt(actions, "banner").filter(isParkCommand);
-}
-
 export function outcomeAction(actions: readonly ActionDescriptorWire[]): ActionDescriptorWire | undefined {
   return actionsAt(actions, "outcome")[0];
 }
@@ -132,3 +118,6 @@ export function toastAppliedCommandResult(
     description: `${input.subject} · ${input.clock}`,
   });
 }
+
+export const commandResultTitle = (entry: CommandResultFeedEntry) => `${entry.actionLabel}: ${entry.settlement.reason === "conflict" ? "row changed" : "rejected"}`;
+export const commandResultDetail = (entry: CommandResultFeedEntry) => `${entry.subject} · ${entry.settlement.message}`;

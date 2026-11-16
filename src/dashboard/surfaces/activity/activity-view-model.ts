@@ -1,5 +1,6 @@
 import type { ActivityVolume } from "../../../models/dashboard/activity-volume.js";
 import type { ActivityDateRange } from "./activity-model.js";
+import type { AnalyticsData } from "./analytics-model.js";
 import type { ActivityRunRecord } from './activity-drilldown-model.js';
 
 export interface ActivityWorkflow {
@@ -37,6 +38,7 @@ export interface ActivitySummary {
   readonly durationWorkflows?: readonly ActivityWorkflow[];
   readonly transactions: readonly { readonly id: string; readonly label: string; readonly count: number; readonly environment: "production" | "test" }[];
   readonly volume?: ActivityVolume;
+  readonly analytics: AnalyticsData;
 }
 
 /** Presentation data; neither a transport response nor an execution authority. */

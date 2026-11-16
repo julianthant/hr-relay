@@ -13,9 +13,27 @@ export const INTEGRATION_WALK_FILE_PATTERN = /^tests\/scenario\/[a-z0-9-]+\.walk
 export const DASHBOARD_SCENARIO_FILE_PATTERN =
   /^tests\/scenario\/dashboard\/[a-z0-9-]+\/[a-z0-9-]+\.scenario\.test\.ts$/u;
 
+const INTEGRATION_SCENARIO_FILES = [
+  "tests/backend/processing/providers/ocr-approved-snapshot-adapter.integration.test.ts",
+  "tests/workflows/emergency-contact-member/workflow.integration.test.ts",
+  "tests/workflows/emergency-contact-member/workflow.save.integration.test.ts",
+  "tests/workflows/i9-check-start/workflow.integration.test.ts",
+  "tests/backend/processing/providers/workbook-library-adapter.test.ts",
+  "tests/backend/processing/providers/ocr-review-adapter.integration.test.ts",
+  "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts",
+  "tests/workflows/i9-check/workflow.integration.test.ts",
+  "tests/workflows/onboarding/workflow.integration.test.ts",
+  "tests/backend/workbooks/workflow-workbook-service.integration.test.ts",
+  "tests/backend/workbooks/workflow-workbook-service.reference.integration.test.ts",
+  "tests/workflows/crm-doc-download/workflow.integration.test.ts",
+  "tests/workflows/work-study/workflow.integration.test.ts",
+  "tests/backend/systems/onbase/tasks/read-source-page.test.ts",
+  "tests/backend/systems/onbase/driver/interpreter.test.ts",
+  "tests/workflows/onbase/workflow.integration.test.ts",
+] as const;
 export const ExecutableScenarioSpecSchema = z.strictObject({
   scenarioId: ScenarioIdSchema,
-  file: z.union([z.string().regex(GRAPH_SCENARIO_FILE_PATTERN), z.literal("tests/workflows/person-lookup/workflow.scenarios.integration.test.ts")]),
+  file: z.union([z.string().regex(GRAPH_SCENARIO_FILE_PATTERN), z.enum(INTEGRATION_SCENARIO_FILES)]),
 });
 
 /** Production scenario ids are registered here; contracts and descriptors may reference only these, and a lane separately proves each row is a real `it(...)` in its file. */
@@ -34,9 +52,47 @@ const SEPARATIONS_KUALI_FINALIZATION_FILE = workflowStructuralScenarioPath("sepa
 const SEPARATIONS_FILE = workflowStructuralScenarioPath("separations", defineWorkflowRole({ kind: "composition" }));
 
 /** The person-lookup workflow — ONE structural scenario file, as §10.3 admits exactly one collected structural scenario per workflow. */
-const PERSON_LOOKUP_FILE = workflowStructuralScenarioPath("person-lookup", defineWorkflowRole({ kind: "standalone" }));
+const PERSON_LOOKUP_FILE = workflowStructuralScenarioPath("person-lookup", defineWorkflowRole({ kind: "composition" }));
+const I9_LOOKUP_FILE = workflowStructuralScenarioPath("i9-lookup", defineWorkflowRole({ kind: "standalone" }));
 
 export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
+  { scenarioId: "ocr/approved-snapshot", file: "tests/backend/processing/providers/ocr-approved-snapshot-adapter.integration.test.ts" },
+  { scenarioId: "emergency-contact/unambiguous-addition", file: "tests/workflows/emergency-contact-member/workflow.integration.test.ts" },
+  { scenarioId: "emergency-contact/exact-existing-effect", file: "tests/workflows/emergency-contact-member/workflow.integration.test.ts" },
+  { scenarioId: "emergency-contact/conflict-refused", file: "tests/workflows/emergency-contact-member/workflow.integration.test.ts" },
+  { scenarioId: "emergency-contact/dry-run", file: "tests/workflows/emergency-contact-member/workflow.integration.test.ts" },
+  { scenarioId: "emergency-contact/unknown", file: "tests/workflows/emergency-contact-member/workflow.integration.test.ts" },
+  { scenarioId: "emergency-contact/verified-save", file: "tests/workflows/emergency-contact-member/workflow.save.integration.test.ts" },
+  { scenarioId: "i9-check-start/pdfs", file: "tests/workflows/i9-check-start/workflow.integration.test.ts" },
+  { scenarioId: "workbooks/read-reference", file: "tests/backend/processing/providers/workbook-library-adapter.test.ts" },
+  { scenarioId: "ocr/approved-records", file: "tests/backend/processing/providers/ocr-review-adapter.integration.test.ts" },
+  { scenarioId: "onboarding/crm-extraction", file: "tests/workflows/onboarding/workflow.integration.test.ts" },
+  { scenarioId: "onboarding/write-transactions", file: "tests/workflows/onboarding/workflow.integration.test.ts" },
+  { scenarioId: "workbooks/publish", file: "tests/backend/workbooks/workflow-workbook-service.integration.test.ts" },
+  { scenarioId: "workbooks/read-reference", file: "tests/backend/workbooks/workflow-workbook-service.reference.integration.test.ts" },
+  { scenarioId: "crm-doc-download/worksheet-archives", file: "tests/workflows/crm-doc-download/workflow.integration.test.ts" },
+  { scenarioId: "work-study/planned-transaction", file: "tests/workflows/work-study/workflow.integration.test.ts" },
+  { scenarioId: "work-study/verified-save", file: "tests/workflows/work-study/workflow.integration.test.ts" },
+  { scenarioId: "work-study/already-filed", file: "tests/workflows/work-study/workflow.integration.test.ts" },
+  { scenarioId: "work-study/unknown", file: "tests/workflows/work-study/workflow.integration.test.ts" },
+  { scenarioId: "i9-check/person", file: "tests/workflows/i9-check/workflow.integration.test.ts" },
+  { scenarioId: "onbase/one-page", file: "tests/backend/systems/onbase/tasks/read-source-page.test.ts" },
+  { scenarioId: "onbase/invalid-pdf", file: "tests/backend/systems/onbase/tasks/read-source-page.test.ts" },
+  { scenarioId: "onbase/prepare", file: "tests/backend/systems/onbase/driver/interpreter.test.ts" },
+  { scenarioId: "onbase/keyset-miss", file: "tests/backend/systems/onbase/driver/interpreter.test.ts" },
+  { scenarioId: "onbase/identity-mismatch", file: "tests/backend/systems/onbase/driver/interpreter.test.ts" },
+  { scenarioId: "onbase/saved-effect", file: "tests/backend/systems/onbase/driver/interpreter.test.ts" },
+  { scenarioId: "onbase/committed", file: "tests/workflows/onbase/workflow.integration.test.ts" },
+  { scenarioId: "onbase/unknown", file: "tests/workflows/onbase/workflow.integration.test.ts" },
+  { scenarioId: "onbase/dry-run", file: "tests/workflows/onbase/workflow.integration.test.ts" },
+  { scenarioId: "i9-lookup/signed", file: I9_LOOKUP_FILE },
+  { scenarioId: "i9-lookup/unsigned", file: I9_LOOKUP_FILE },
+  { scenarioId: "i9-lookup/historical", file: I9_LOOKUP_FILE },
+  { scenarioId: "i9-lookup/not-found", file: I9_LOOKUP_FILE },
+  { scenarioId: "i9-lookup/restricted", file: I9_LOOKUP_FILE },
+  { scenarioId: "i9-lookup/ambiguous", file: I9_LOOKUP_FILE },
+  { scenarioId: "i9-lookup/read-failed", file: I9_LOOKUP_FILE },
+
   { scenarioId: "person-lookup/s1", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
   { scenarioId: "person-lookup/s2", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
   { scenarioId: "person-lookup/s3", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
@@ -330,7 +386,7 @@ export function auditScenarioCorpusLayout(
   }
 
   for (const { file, itTitles } of files) {
-    const isGraphScenario = GRAPH_SCENARIO_FILE_PATTERN.test(file) || file === "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts";
+    const isGraphScenario = GRAPH_SCENARIO_FILE_PATTERN.test(file) || INTEGRATION_SCENARIO_FILES.some(registered => registered === file);
     const isWalk = INTEGRATION_WALK_FILE_PATTERN.test(file);
     const isDashboardScenario = DASHBOARD_SCENARIO_FILE_PATTERN.test(file);
     if (!isGraphScenario && !isWalk && !isDashboardScenario) {

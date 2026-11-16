@@ -1,40 +1,35 @@
+import { randomUUID } from "node:crypto";
 import { testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
 import { FingerprintSchema } from "../../src/rules/identity/ids.js";
 import { manualClock } from "../../src/rules/time/clock.js";
 import {
 assertDuoCeremonyLeaseToken,
+type DuoCeremonyLeaseToken,
 isDuoCeremonyLeaseToken,
 } from "../../src/workflow-kit/duo-ceremony-lease.js";
-import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
+import { openBoundDatabaseFixture } from "../support/helpers/admission-fixture.js";
+import type { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
 
 const CREDENTIAL = FingerprintSchema.parse("ab".repeat(32));
 const OTHER_CREDENTIAL = FingerprintSchema.parse("cd".repeat(32));
 const TTL_MS = 80_000;
 const T0 = "2026-08-21T10:00:00.000Z";
 
-const roots: string[] = [];
-function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-duo-lease-"));
-  roots.push(root);
+const closers: (() => void | Promise<void>)[] = [];
+async function openDatabase(): Promise<AuthorityDatabase> {
   const clock = manualClock(new Date(T0));
-  const path = join(root, "authority.sqlite");
-  const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
-    clock,
-  );
-  for (const poolIndex of [1, 2]) testWorkerPorts(database, clock, { path, descriptor: personLookupDescriptor, poolIndex });
-  assert.deepEqual(database.authority.workerSlots.list().map(slot => slot.workerId), ["person-lookup-worker-1", "person-lookup-worker-2"]);
-  return database;
+  const opened = await openBoundDatabaseFixture("unit-test", clock);
+  closers.push(async () => await opened.close());
+  for (const poolIndex of [1, 2]) testWorkerPorts(opened.database, clock, { path: opened.path, descriptor: personLookupDescriptor, poolIndex });
+  assert.deepEqual(opened.database.authority.workerSlots.list().map(slot => slot.workerId), ["person-lookup-worker-1", "person-lookup-worker-2"]);
+  return opened.database;
 }
-afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+afterEach(async () => {
+  for (const close of closers.splice(0)) await close();
 });
 
 function at(offsetMs: number): string {
@@ -42,8 +37,8 @@ function at(offsetMs: number): string {
 }
 
 describe("duo_ceremony_leases — acquire / release / takeover", () => {
-  it("acquires a free credential at generation 1 and mints the one token the helpers accept", () => {
-    const database = openDatabase();
+  it("acquires a free credential at generation 1 and mints the one token the helpers accept", async () => {
+    const database = await openDatabase();
     const outcome = database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
@@ -65,14 +60,17 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     assert.equal(outcome.token.generation, 1);
     const stored = database.authority.duoCeremonyLeases.get(CREDENTIAL);
     assert.deepEqual(stored, outcome.lease);
+    assert.equal(database.authority.duoCeremonyLeases.release({ token: outcome.token, now: at(20_000) }).state, "released");
     database.close();
   });
 
-  it("refuses a second acquirer while the lease is live, naming the holder", () => {
-    const database = openDatabase();
-    database.authority.duoCeremonyLeases.acquire({
+  it("refuses a second acquirer while the lease is live, naming the holder", async () => {
+    const database = await openDatabase();
+    const first = database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
+    assert.equal(first.state, "acquired");
+    if (first.state !== "acquired") throw new Error("first fixture lease unavailable");
     const second = database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-2", system: "crm", now: at(1_000), ttlMs: TTL_MS,
     });
@@ -92,11 +90,14 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
       credentialKey: OTHER_CREDENTIAL, workerId: "person-lookup-worker-2", system: "crm", now: at(2_000), ttlMs: TTL_MS,
     });
     assert.equal(other.state, "acquired");
+    if (other.state !== "acquired") throw new Error("other fixture lease unavailable");
+    assert.equal(database.authority.duoCeremonyLeases.release({ token: first.token, now: at(3_000) }).state, "released");
+    assert.equal(database.authority.duoCeremonyLeases.release({ token: other.token, now: at(3_000) }).state, "released");
     database.close();
   });
 
-  it("releases under the held generation, retires the token, and lets the next acquirer in at generation 2", () => {
-    const database = openDatabase();
+  it("releases under the held generation, retires the token, and lets the next acquirer in at generation 2", async () => {
+    const database = await openDatabase();
     const first = database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
@@ -122,11 +123,12 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     assert.equal(second.lease.generation, 2);
     assert.equal(second.tookOver, null);
     assert.equal(second.lease.createdAt, at(0), "one row per credential keeps its creation instant");
+    assert.equal(database.authority.duoCeremonyLeases.release({ token: second.token, now: at(23_000) }).state, "released");
     database.close();
   });
 
-  it("takes over an EXPIRED lease at the next generation and records whom it took it from", () => {
-    const database = openDatabase();
+  it("takes over an EXPIRED lease at the next generation and records whom it took it from", async () => {
+    const database = await openDatabase();
     const first = database.authority.duoCeremonyLeases.acquire({
       credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(0), ttlMs: TTL_MS,
     });
@@ -152,11 +154,12 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     assert.equal(stale.current.holder.workerId, "person-lookup-worker-2");
     assert.throws(() => assertDuoCeremonyLeaseToken(first.token), /retired/);
     assert.deepEqual(database.authority.duoCeremonyLeases.get(CREDENTIAL), takeover.lease);
+    assert.equal(database.authority.duoCeremonyLeases.release({ token: takeover.token, now: at(TTL_MS + 6) }).state, "released");
     database.close();
   });
 
-  it("refuses a forged token, a malformed request, and a non-positive TTL", () => {
-    const database = openDatabase();
+  it("refuses a forged token, a malformed request, and a non-positive TTL", async () => {
+    const database = await openDatabase();
     assert.throws(
       () => database.authority.duoCeremonyLeases.release({
         token: { credentialKey: CREDENTIAL, generation: 1, holder: { workerId: "person-lookup-worker-1", system: "ucpath" }, expiresAt: at(1) },
@@ -177,4 +180,47 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     );
     database.close();
   });
+});
+
+it("shares the real credential row across honest command and worker holders", async () => {
+  const database = await openDatabase(), commandId = randomUUID();
+  const unsettled = new Set<DuoCeremonyLeaseToken>();
+  const acquire = (input: Parameters<typeof database.authority.duoCeremonyLeases.acquire>[0]) => {
+    const outcome = database.authority.duoCeremonyLeases.acquire(input);
+    if (outcome.state === "acquired") unsettled.add(outcome.token);
+    return outcome;
+  };
+  const release = (token: DuoCeremonyLeaseToken, now: string) => {
+    const outcome = database.authority.duoCeremonyLeases.release({ token, now }); unsettled.delete(token); return outcome;
+  };
+  try {
+    const command = acquire({ credentialKey: CREDENTIAL, commandId, system: "sharepoint", now: at(0), ttlMs: TTL_MS });
+    assert.equal(command.state, "acquired"); if (command.state !== "acquired") throw new Error("command lease missing");
+    assert.deepEqual(command.token.holder, { commandId, system: "sharepoint" });
+    assertDuoCeremonyLeaseToken(command.token, { system: "sharepoint" });
+    assert.deepEqual(database.authority.duoCeremonyLeases.get(CREDENTIAL)?.holder, command.token.holder);
+    const workerBlocked = acquire({ credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(1), ttlMs: TTL_MS });
+    assert.equal(workerBlocked.state, "held");
+    assert.equal(release(command.token, at(2)).state, "released");
+    const worker = acquire({ credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(3), ttlMs: TTL_MS });
+    assert.equal(worker.state, "acquired"); if (worker.state !== "acquired") throw new Error("worker lease missing");
+    assert.equal(worker.token.generation, command.token.generation + 1);
+    const commandBlocked = acquire({ credentialKey: CREDENTIAL, commandId: randomUUID(), system: "sharepoint", now: at(4), ttlMs: TTL_MS });
+    assert.equal(commandBlocked.state, "held");
+    assert.throws(() => acquire({ credentialKey: CREDENTIAL, commandId, workerId: "person-lookup-worker-1", system: "sharepoint", now: at(5), ttlMs: TTL_MS }));
+    assert.throws(() => acquire({ credentialKey: CREDENTIAL, commandId, system: "ucpath", now: at(5), ttlMs: TTL_MS }));
+    assert.throws(() => release(command.token, at(6)), /already retired; a lease is released exactly once/u);
+    assert.equal(release(worker.token, at(7)).state, "released");
+    const expired = acquire({ credentialKey: CREDENTIAL, commandId: randomUUID(), system: "sharepoint", now: at(8), ttlMs: TTL_MS });
+    assert.equal(expired.state, "acquired"); if (expired.state !== "acquired") throw new Error("expiring command lease missing");
+    const takeover = acquire({ credentialKey: CREDENTIAL, workerId: "person-lookup-worker-2", system: "ucpath", now: at(TTL_MS + 9), ttlMs: TTL_MS });
+    assert.equal(takeover.state, "acquired"); if (takeover.state !== "acquired") throw new Error("worker takeover missing");
+    assert.equal(takeover.token.generation, expired.token.generation + 1);
+    assert.deepEqual(takeover.tookOver, { generation: expired.token.generation, holder: expired.token.holder });
+    assert.equal(release(expired.token, at(TTL_MS + 10)).state, "superseded");
+    assert.equal(release(takeover.token, at(TTL_MS + 11)).state, "released");
+  } finally {
+    for (const token of unsettled) release(token, at(TTL_MS + 20));
+    database.close();
+  }
 });

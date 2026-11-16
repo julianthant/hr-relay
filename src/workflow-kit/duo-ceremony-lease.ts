@@ -1,5 +1,5 @@
 // Only lease-store tokens authorize a Duo ceremony; caller claims cannot.
-import type { DuoCeremonyLeaseHolder } from "../rules/sessions/duo-ceremony-lease.js";
+import { DuoCeremonyLeaseHolderSchema, type DuoCeremonyLeaseHolder } from "../rules/sessions/duo-ceremony-lease.js";
 import type { BrowserSystemId, Fingerprint, IsoInstant, PositiveInt } from "../rules/identity/ids.js";
 
 declare const DUO_CEREMONY_LEASE_TOKEN_BRAND: unique symbol;
@@ -28,7 +28,7 @@ export function mintDuoCeremonyLeaseToken(input: MintedTokenShape): DuoCeremonyL
   const value: MintedTokenShape = Object.freeze({
     credentialKey: input.credentialKey,
     generation: input.generation,
-    holder: Object.freeze({ workerId: input.holder.workerId, system: input.holder.system }),
+    holder: Object.freeze(DuoCeremonyLeaseHolderSchema.parse(input.holder)),
     expiresAt: input.expiresAt,
   });
   const token = value as DuoCeremonyLeaseToken;

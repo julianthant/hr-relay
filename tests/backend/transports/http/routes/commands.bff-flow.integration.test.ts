@@ -1,3 +1,4 @@
+import { EditableSettingsWireSchema } from "../../../../../src/models/dashboard/settings-editor.js";
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -16,7 +17,7 @@ import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-execu
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("refuses a foreign-origin settings command before any authority effect", async () => {
-    const h = harness();
+    const h = await harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b79";
     const patch = { "browser.headless": { set: false } } as const;
     const command = {
@@ -34,6 +35,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       },
     };
     const before = settingsAuthoritySnapshot(h, commandId);
+    const beforeFault = faultAuthoritySnapshot(h);
 
     const response = await h.app.request("http://localhost/api/v1/commands", {
       method: "POST",
@@ -47,7 +49,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     assert.equal(response.status, 403);
     assert.equal((await json(response)).code, "OPERATOR_MUTATION_ORIGIN_REFUSED");
-    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+    assert.deepEqual({ ...settingsAuthoritySnapshot(h, commandId), authorityGeneration: before.authorityGeneration }, before);
+    assertHttpFaultOnly(h, beforeFault, 1);
   });
 
   it.each([
@@ -55,7 +58,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ["foreign Origin", { ...OPERATOR_JSON_HEADERS, origin: "https://hostile.example" }, 403, "OPERATOR_MUTATION_ORIGIN_REFUSED"],
     ["text/plain", { ...OPERATOR_JSON_HEADERS, "content-type": "text/plain" }, 415, "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED"],
   ] as const)("refuses %s without consuming either command body or changing authority", async (_label, headers, status, code) => {
-    const h = harness();
+    const h = await harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b74";
     const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b73";
     const patch = { "browser.headless": { set: false } } as const;
@@ -78,6 +81,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         targets: [{ runId: RUN_ID, expectedVersion: 1 }],
       }],
     ] as const) {
+      const beforeFault = faultAuthoritySnapshot(h);
       // Pass this exact Request to Hono: spies wrap the real raw-body methods,
       // and valid JSON makes early consumption observable even if refusal still wins.
       const request = new Request(`http://localhost${path}`, {
@@ -92,7 +96,10 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       assert.equal((await json(response)).code, code, path);
       for (const read of reads) expect(read).not.toHaveBeenCalled();
       assert.equal(request.bodyUsed, false, path);
-      assert.deepEqual(snapshot(), before, `${path} has zero authority effects`);
+      const after = snapshot();
+      assert.deepEqual({ ...after, settings: { ...after.settings, authorityGeneration: before.settings.authorityGeneration },
+        child: { ...after.child, authorityGeneration: before.child.authorityGeneration } }, before, `${path} has zero command effects`);
+      assertHttpFaultOnly(h, beforeFault, 1);
     }
   });
 
@@ -109,7 +116,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       extra: true,
     } }, { targets: [] }],
   ] as const)("refuses %s through strict command ingress with zero effects", async (_label, singleChange, bulkChange) => {
-    const h = harness();
+    const h = await harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b72";
     const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b71";
     const patch = { "browser.headless": { set: false } } as const;
@@ -121,7 +128,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       child: settingsAuthoritySnapshot(h, deriveBulkChildCommandId(bulkCommandId, RUN_ID)),
     });
     const before = snapshot();
-    const beforeFault = faultAuthoritySnapshot(h);
     const single = {
       commandId, family: "settings", type: "apply-settings",
       target: { expectedRevision: 1 },
@@ -135,6 +141,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       ["/api/v1/commands", { ...single, ...singleChange }, 400, "SCHEMA_INVALID"],
       ["/api/v1/commands/bulk", { ...bulk, ...bulkChange }, 422, "schema-mismatch"],
     ] as const) {
+      const beforeFault = faultAuthoritySnapshot(h);
       const response = await h.app.request(path, {
         method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body),
       });
@@ -149,7 +156,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("returns not-editable for a protected key submitted through ordinary settings before authority access", async () => {
     let journalReads = 0;
-    const h = harness({
+    const h = await harness({
       commandJournal: (real) => ({
         get(commandId) {
           journalReads += 1;
@@ -160,6 +167,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b69";
     const patch = { ucpathPassword: { set: "never-return-this-value" } };
     const before = settingsAuthoritySnapshot(h, commandId);
+    const beforeFault = faultAuthoritySnapshot(h);
 
     const response = await h.app.request("/api/v1/commands", {
       method: "POST",
@@ -185,7 +193,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       message: "not-editable { key: ucpathPassword }",
     });
     assert.equal(journalReads, 0);
-    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+    assert.deepEqual({ ...settingsAuthoritySnapshot(h, commandId), authorityGeneration: before.authorityGeneration }, before);
+    assertHttpFaultOnly(h, beforeFault, 1);
   });
 
   it.each([
@@ -193,7 +202,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ["deployment-owned ordinary", { "paths.stateRoot": { set: "/tmp/foreign-root" } }, "paths.stateRoot", "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b6b"],
   ] as const)("returns not-editable for %s before authority access", async (_label, patch, key, commandId) => {
     let journalReads = 0;
-    const h = harness({
+    const h = await harness({
       commandJournal: (real) => ({
         get(commandId) {
           journalReads += 1;
@@ -202,6 +211,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       }),
     });
     const before = settingsAuthoritySnapshot(h, commandId);
+    const beforeFault = faultAuthoritySnapshot(h);
 
     const response = await h.app.request("/api/v1/commands", {
       method: "POST",
@@ -224,7 +234,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       state: "rejected", commandId, code: "not-editable", message: `not-editable { key: ${key} }`,
     });
     assert.equal(journalReads, 0);
-    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+    assert.deepEqual({ ...settingsAuthoritySnapshot(h, commandId), authorityGeneration: before.authorityGeneration }, before);
+    assertHttpFaultOnly(h, beforeFault, 1);
   });
 
   it.each([
@@ -232,7 +243,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     { label: "partial display clear", seed: { "display.screenWidth": { set: 1600 }, "display.screenHeight": { set: 900 } }, patch: { "display.screenHeight": { clear: true } }, missing: ["display.screenHeight"] },
     { label: "partial annual dates clear", seed: { "annualDates.FY2027.jobEndDate": { set: "06/30/2027" }, "annualDates.FY2027.kronosDefaultEndDate": { set: "06/30/2027" }, "annualDates.FY2027.kronosDefaultStartDate": { set: "07/01/2026" } }, patch: { "annualDates.FY2027.jobEndDate": { clear: true } }, missing: ["annualDates.FY2027.jobEndDate"] },
   ])("returns cross-field-invalid for $label without durable effects", async ({ seed, patch, missing }) => {
-    const h = harness();
+    const h = await harness();
     const send = (commandId: string, expectedRevision: number, changes: unknown) => h.app.request("/api/v1/commands", {
       method: "POST", headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ commandId, family: "settings", type: "apply-settings", target: { expectedRevision },
@@ -242,15 +253,17 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     if (seeded) assert.equal((await send("00000000-0000-4000-8000-000000000901", 1, seed)).status, 200);
     const commandId = "00000000-0000-4000-8000-000000000902";
     const before = settingsAuthoritySnapshot(h, commandId);
+    const beforeFault = faultAuthoritySnapshot(h);
     const response = await send(commandId, seeded ? 2 : 1, patch);
     assert.equal(response.status, 422);
     assert.deepEqual(await json(response), { state: "rejected", commandId, code: "cross-field-invalid",
       message: `cross-field-invalid { keys: ${missing.join(", ")} }` });
-    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+    assert.deepEqual({ ...settingsAuthoritySnapshot(h, commandId), authorityGeneration: before.authorityGeneration }, before);
+    assertHttpFaultOnly(h, beforeFault, 1);
   });
 
   it("accepts a current-year job-end date without Kronos fields", async () => {
-    const h = harness();
+    const h = await harness();
     const path = `annualDates.FY${String(h.clock.fiscalYear())}.jobEndDate`;
     const patch = { [path]: { set: "06/30/2027" } };
     const response = await h.app.request("/api/v1/commands", {
@@ -267,11 +280,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("refuses invalid or unauthorized requests before protected retry identity and journal reads", async () => {
     let reads = 0;
     const forbiddenRead = () => { reads += 1; throw new Error("forbidden request-only authority read"); };
-    const h = harness({ protectedCommandAcceptedAt: forbiddenRead, commandJournal: () => ({ get: forbiddenRead }) });
+    const h = await harness({ protectedCommandAcceptedAt: forbiddenRead, commandJournal: () => ({ get: forbiddenRead }) });
     const commandId = "00000000-0000-4000-8000-000000000907";
     const request = { commandId, family: "settings", type: "apply-protected-settings", target: { expectedRevision: 1 },
       payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000908", entries: { ucpathPassword: { set: "synthetic-validation-only" } } } };
     const before = settingsAuthoritySnapshot(h, commandId);
+    const beforeFault = faultAuthoritySnapshot(h);
     for (const { body, headers, status } of [
       { body: { ...request, payload: { ...request.payload, protectedSchemaHash: "0".repeat(64) } }, headers: OPERATOR_JSON_HEADERS, status: 422 },
       { body: { ...request, payload: { ...request.payload, entries: { ucpathPassword: { set: 42 } } } }, headers: OPERATOR_JSON_HEADERS, status: 422 },
@@ -281,18 +295,23 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       assert.equal(response.status, status);
     }
     assert.equal(reads, 0);
-    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+    assert.deepEqual({ ...settingsAuthoritySnapshot(h, commandId), authorityGeneration: before.authorityGeneration }, before);
+    assertHttpFaultOnly(h, beforeFault, 3);
   });
 
   it.each(["set", "clear"] as const)("settles an uncertain credential %s audit through HTTP after the server clock advances", async (operation) => {
-    const h = harness();
+    const h = await harness();
+    const current = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable"))).protectedSettings;
+    assert.equal(current.state, "available");
+    if (current.state !== "available") throw new Error("protected-settings-unavailable");
+    const revision = current.readback.revision;
     const commandId = "00000000-0000-4000-8000-000000000903";
-    const request = { commandId, family: "settings", type: "apply-protected-settings", target: { expectedRevision: operation === "clear" ? 2 : 1 },
+    const request = { commandId, family: "settings", type: "apply-protected-settings", target: { expectedRevision: revision + (operation === "clear" ? 1 : 0) },
       payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000904",
         entries: { ucpathPassword: operation === "clear" ? { clear: true } : { set: "synthetic-http-retry-private" } } } };
     const send = (body: unknown = request) => h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body) });
     if (operation === "clear") {
-      const seed = { ...request, commandId: "00000000-0000-4000-8000-000000000905", target: { expectedRevision: 1 },
+      const seed = { ...request, commandId: "00000000-0000-4000-8000-000000000905", target: { expectedRevision: revision },
         payload: { ...request.payload, writeId: "00000000-0000-4000-8000-000000000906", entries: { ucpathPassword: { set: "synthetic-http-retry-private" } } } };
       assert.equal((await send(seed)).status, 200);
       h.clock.advanceWall(1000);
@@ -308,10 +327,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const bytes = readFileSync(privatePath);
     assert.equal(h.database.authority.commands.get(commandId), undefined);
     const beforeForeign = settingsAuthoritySnapshot(h, commandId);
+    const beforeForeignFault = faultAuthoritySnapshot(h);
     const foreign = await send({ commandId, family: "run", type: "cancel", target: { runId: UUID_4, expectedVersion: 1 } });
     assert.equal(foreign.status, 422);
     assert.equal((await json(foreign)).code, "command-divergent");
-    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), beforeForeign);
+    assert.deepEqual({ ...settingsAuthoritySnapshot(h, commandId), authorityGeneration: beforeForeign.authorityGeneration }, beforeForeign);
+    assertHttpFaultOnly(h, beforeForeignFault, 1);
     h.clock.advanceWall(1000);
     const divergent = { ...request, payload: { ...request.payload, entries: { ucpathPassword: { set: "synthetic-http-retry-divergent" } } } };
     const denied = await json(await send(divergent));
@@ -329,7 +350,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("returns invalid-value for an ordinary settings leaf before authority access", async () => {
     let journalReads = 0;
-    const h = harness({
+    const h = await harness({
       commandJournal: (real) => ({
         get(commandId) {
           journalReads += 1;
@@ -340,6 +361,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b66";
     const patch = { "browser.headless": { set: "not-a-boolean" } };
     const before = settingsAuthoritySnapshot(h, commandId);
+    const beforeFault = faultAuthoritySnapshot(h);
 
     const response = await h.app.request("/api/v1/commands", {
       method: "POST",
@@ -365,12 +387,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       message: "invalid-value { key: browser.headless }",
     });
     assert.equal(journalReads, 0);
-    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+    assert.deepEqual({ ...settingsAuthoritySnapshot(h, commandId), authorityGeneration: before.authorityGeneration }, before);
+    assertHttpFaultOnly(h, beforeFault, 1);
   });
 
   it("returns invalid-value for a protected settings leaf before authority access", async () => {
     let journalReads = 0;
-    const h = harness({
+    const h = await harness({
       commandJournal: (real) => ({
         get(commandId) {
           journalReads += 1;
@@ -380,6 +403,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b68";
     const before = settingsAuthoritySnapshot(h, commandId);
+    const beforeFault = faultAuthoritySnapshot(h);
 
     const response = await h.app.request("/api/v1/commands", {
       method: "POST",
@@ -405,7 +429,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       message: "invalid-value { key: sharepointOnboardingRosterUrl }",
     });
     assert.equal(journalReads, 0);
-    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+    assert.deepEqual({ ...settingsAuthoritySnapshot(h, commandId), authorityGeneration: before.authorityGeneration }, before);
+    assertHttpFaultOnly(h, beforeFault, 1);
   });
 
   it.each([
@@ -459,7 +484,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ],
   ] as const)("preserves %s at mixed-failure ingress", async (_label, commandId, request, code, message) => {
     let journalReads = 0;
-    const h = harness({
+    const h = await harness({
       commandJournal: (real) => ({
         get(commandId) {
           journalReads += 1;
@@ -468,6 +493,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       }),
     });
     const before = settingsAuthoritySnapshot(h, commandId);
+    const beforeFault = faultAuthoritySnapshot(h);
 
     const response = await h.app.request("/api/v1/commands", {
       method: "POST",
@@ -483,12 +509,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       message,
     });
     assert.equal(journalReads, 0);
-    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+    assert.deepEqual({ ...settingsAuthoritySnapshot(h, commandId), authorityGeneration: before.authorityGeneration }, before);
+    assertHttpFaultOnly(h, beforeFault, 1);
   });
 
   it("returns not-editable for an unknown protected settings key before authority access", async () => {
     let journalReads = 0;
-    const h = harness({
+    const h = await harness({
       commandJournal: (real) => ({
         get(commandId) {
           journalReads += 1;
@@ -498,6 +525,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b65";
     const before = settingsAuthoritySnapshot(h, commandId);
+    const beforeFault = faultAuthoritySnapshot(h);
 
     const response = await h.app.request("/api/v1/commands", {
       method: "POST",
@@ -523,18 +551,19 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       message: "not-editable { key: unknownProtectedName }",
     });
     assert.equal(journalReads, 0);
-    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+    assert.deepEqual({ ...settingsAuthoritySnapshot(h, commandId), authorityGeneration: before.authorityGeneration }, before);
+    assertHttpFaultOnly(h, beforeFault, 1);
   });
 
   it.each([[null], [[]], ["command"], [1]])("refuses a non-object command body (%j) without authority effects", async (body) => {
-    const h = harness();
+    const h = await harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b70";
     const before = settingsAuthoritySnapshot(h, commandId);
-    const beforeFault = faultAuthoritySnapshot(h);
     for (const [path, status, code] of [
       ["/api/v1/commands", 400, "SCHEMA_INVALID"],
       ["/api/v1/commands/bulk", 422, "schema-mismatch"],
     ] as const) {
+      const beforeFault = faultAuthoritySnapshot(h);
       const response = await h.app.request(path, {
         method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body),
       });
@@ -546,7 +575,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("stamps accepted command provenance from the server-owned operator session", async () => {
-    const h = harness();
+    const h = await harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b78";
     const patch = { "browser.headless": { set: false } } as const;
     const acceptedAt = h.clock.now().toISOString();
@@ -602,7 +631,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("replays the first server-accepted canonical command after the clock advances", async () => {
-    const h = harness();
+    const h = await harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b77";
     const acceptedAt = h.clock.now().toISOString();
     const patch = { "browser.headless": { set: false } } as const;

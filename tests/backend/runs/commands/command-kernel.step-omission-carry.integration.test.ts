@@ -17,9 +17,11 @@ import { type AuthorityDatabase } from "../../../support/helpers/synthetic-stora
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
+const profiles: { close(): Promise<void> }[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
+  for (const profile of profiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -63,7 +65,7 @@ const rejectActiveDescriptor = defineWorkflowDescriptor({
 
 const DESCRIPTOR_SET = [rejectActiveDescriptor, fixtureDescriptor];
 
-const { createHarness, nextCommandId, runCommand } = createKernelStubCommandFixtures({
+const { createHarness, nextCommandId, runCommand } = createKernelStubCommandFixtures({ profiles,
   roots,
   openDatabases,
   prefix: "hrauto-kernel-omission-",
@@ -113,8 +115,8 @@ function startCommand(plan: ReturnType<typeof createPlan>) {
 }
 
 describe("command-kernel start/retry step-omission carry", () => {
-  it("carries the consumed start plan's stepOmissions onto the created run's envelope", () => {
-    const harness = createHarness();
+  it("carries the consumed start plan's stepOmissions onto the created run's envelope", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, ["10800000"], STEP_OMISSIONS);
     const result = harness.kernel.execute(startCommand(plan));
     assert.equal(result.state, "applied");
@@ -124,8 +126,8 @@ describe("command-kernel start/retry step-omission carry", () => {
     assert.deepEqual(run.envelope.stepOmissions, STEP_OMISSIONS);
   });
 
-  it("omits stepOmissions from the created run's envelope when the plan carried none", () => {
-    const harness = createHarness();
+  it("omits stepOmissions from the created run's envelope when the plan carried none", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, ["10800001"]);
     const result = harness.kernel.execute(startCommand(plan));
     assert.equal(result.state, "applied");
@@ -134,8 +136,8 @@ describe("command-kernel start/retry step-omission carry", () => {
     assert.equal(Object.hasOwn(run.envelope, "stepOmissions"), false);
   });
 
-  it("carries the retried run's stepOmissions onto the fresh attempt, byte for byte", () => {
-    const harness = createHarness();
+  it("carries the retried run's stepOmissions onto the fresh attempt, byte for byte", async () => {
+    const harness = await createHarness();
     const plan = createPlan(harness, ["10800000"], STEP_OMISSIONS);
     const started = harness.kernel.execute(startCommand(plan));
     assert.equal(started.state, "applied");

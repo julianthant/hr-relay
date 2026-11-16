@@ -21,7 +21,7 @@ import { SeparationWritePlanSchema } from "./write-plan.js";
 import type { SeparationWritePlan } from "./write-plan.js";
 
 /** Retain the source of the EID being checked. */
-export const IdentityEidSourceSchema = z.enum(["document-eid", "canonical-eid", "name-resolved"]);
+export const IdentityEidSourceSchema = z.enum(["document-eid", "canonical-eid", "name-resolved", "operator-entered"]);
 export type IdentityEidSource = z.infer<typeof IdentityEidSourceSchema>;
 
 export const IdentityCandidateSchema = z.strictObject({
@@ -134,7 +134,6 @@ function nameSearchFrom(selection: UcpathPersonSelection): z.infer<typeof Identi
       : { status: "not-found", candidateEids: [] },
   );
 }
-
 /** The control's shape, decided by the RISK and nothing else; the order of the tests is the policy, and only a single unambiguous candidate is a one-click approve. */
 export function deriveApprovalShape(input: Readonly<{
   nameTier: z.infer<typeof NameSimilarityTierSchema>;
@@ -214,6 +213,8 @@ export function buildIdentityEvidencePacket(
         ? "the checked EID is the one the separation document carries"
         : input.emplIdSource === "canonical-eid"
           ? "the harness supplied the checked EID independently; UCPath's actual detail read-back must match it"
+          : input.emplIdSource === "operator-entered"
+            ? "the operator entered this EID in Logs; UCPath read it exactly, and identity still requires operator approval"
           : "the separation document did not supply this EID; it was resolved by name (S18), so the "
             + "document itself confirms nothing about who this is",
     },
@@ -244,7 +245,8 @@ export function buildIdentityEvidencePacket(
   ];
   comparisons.sort((left, right) => Number(left.agrees) - Number(right.agrees));
 
-  const approvableEids = [...new Set([
+  // An entered ID is the operator's answer to the candidates they rejected: only that person is offered.
+  const approvableEids = input.emplIdSource === "operator-entered" ? [input.jobSummary.emplId] : [...new Set([
     input.jobSummary.emplId,
     ...nameSearch.candidateEids,
   ])];

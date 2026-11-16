@@ -1,4 +1,8 @@
-import type { RuntimeProcessLockHandle } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import type { WorkerActivity } from "../../../../../src/backend/runtime/workers/worker-messages.js";
+import { runningWorkerView } from "../../backend/fake-worker-port.js";
+import { createBoundProfileFixture } from '../../admission-fixture.js';
+import { retainAuthoritySourceClosure } from '../../../../../src/backend/storage/source-closure.js';
+
 import { sqliteRunReader } from "../../canonical-run-reader.js";
 import { personLookupDescriptor } from "../../registered-workflows.js";
 import { AuthorityDatabase } from "../../synthetic-storage-admission.js";
@@ -8,11 +12,12 @@ import { SEEDED_AT } from "../served-fixtures/seeded-identity.js";
 import { SEEDED_DAY } from "../served-fixtures/seeded-identity.js";
 import { WORKFLOW_ID } from "../served-fixtures/seeded-identity.js";
 import { seed } from "../served-fixtures/seeded-lifecycle.js";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+
+import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { tmpdir } from "node:os";
+
 import { join } from "node:path";
-import { descriptorSetHash } from "../../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { createRunQueueProjection } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
@@ -21,7 +26,7 @@ import type { DashboardAppDeps } from "../../../../../src/backend/transports/htt
 import { type DashboardApp } from "../../../../../src/backend/transports/http/routes/api.js";
 import type { Clock } from "../../../../../src/rules/time/clock.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
-import { type ParityBundleProof } from "../served-fixtures/bundle.js";
+import { type MockBundleProof } from "../served-fixtures/bundle.js";
 import { createStaticAssetFixture } from "../static-assets.js";
 import type * as SeededServicesTypes from "../served-fixtures/seeded-services.js";
 import type * as BundleTypes from "../served-fixtures/bundle.js";
@@ -36,9 +41,11 @@ export interface SeededServer {
   close(): Promise<void>;
 }
 
+const retainedSeededFixtureOwners = new Set<object>();
+
 export function createSeededBffSetup({ seedRuntimeConfig, composeFixtureServices, assertServedBundle, dateNavigationReader, seedDateNavigation }: {
 seedRuntimeConfig: (database: AuthorityDatabase, clock: Clock) => void;
-composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub"> & { closeRunLogs: () => void };
+composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub">;
 assertServedBundle: typeof BundleTypes.assertServedBundle;
 dateNavigationReader: typeof DateNavigationServerTypes.dateNavigationReader;
 seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
@@ -94,29 +101,37 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
   }
 
   async function startSeededServer(
-    input: Readonly<{ distDir: string; bundle: ParityBundleProof; dateNavigation?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
+    input: Readonly<{ distDir: string; bundle: MockBundleProof; dateNavigation?: boolean; /** Opt-in: serve the production workflow catalog and a signed-in, Duo-ready profile session. */ productApp?: boolean; prepareSelection?: (context:{database:AuthorityDatabase;clock:Clock;root:string}) => Promise<Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports"> | undefined> }>,
   ): Promise<SeededServer> {
     // Ref frontend-backend-integration: the same working-tree proof the fixture adapter demands —
     // asserted before any temp root, database or port exists.
     assertServedBundle(input.distDir, input.bundle);
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-parity-seeded-")));
-    const stateRoot = join(root, ".tracker");
-    mkdirSync(stateRoot, { mode: 0o700 });
+    const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; server?: Server; services?: ReturnType<typeof composeFixtureServices>; workers?: Map<string, WorkerActivity>; primary?: unknown } = {};
+    retainedSeededFixtureOwners.add(held);
+    const profile = await createBoundProfileFixture();
+    held.profile = profile;
+    const root = profile.workspace, stateRoot = profile.stateRoot;
     const clock = manualClock(SEEDED_AT);
-    const database = AuthorityDatabase.open(
-      { path: join(stateRoot, "state.db"), busyTimeoutMs: 1000, migrationOwner: "parity-seeded-bff" },
-      clock,
-    );
+    let database: AuthorityDatabase;
+    try { database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 1000, migrationOwner: "mock-seeded-bff" }, clock); }
+    catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
+    held.database = database;
 
-    const workerHandles: RuntimeProcessLockHandle[] = [];
-    const cleanupAuthority = (): void => {
-      const failures: unknown[] = [];
-      for (const handle of workerHandles.splice(0).reverse()) {
-        try { handle.release(); } catch (error) { failures.push(error); }
+    const workers = new Map<string, WorkerActivity>();
+    held.workers = workers;
+    let cleanupAttempted = false, cleanupFailure: Error | undefined;
+    const cleanupAuthority = async (): Promise<void> => {
+      if (cleanupAttempted) { if (cleanupFailure !== undefined) throw cleanupFailure; return; }
+      cleanupAttempted = true;
+      try {
+        database.close();
+        await profile.close();
+        retainedSeededFixtureOwners.delete(held);
+      } catch (error) {
+        cleanupFailure = retainAuthoritySourceClosure([error], { admission: { held, workers } });
+        retainedSeededFixtureOwners.add(held);
+        throw cleanupFailure;
       }
-      try { database.close(); } catch (error) { failures.push(error); }
-      try { rmSync(root, { recursive: true, force: true }); } catch (error) { failures.push(error); }
-      if (failures.length > 0) throw new AggregateError(failures, "seeded authority cleanup failed");
     };
     try {
     seedRuntimeConfig(database, clock);
@@ -132,15 +147,14 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
       ledger: createTransactionHistory(database.authority),
       authority: {
+        queueParents: envelopes => database.authority.dependencies.parents(envelopes),
         listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
         listNotificationCheckpoints: (workflowId: string, itemId: string, nodeId: string, attempt: number) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
+        listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
+        listGateResults: runId => database.authority.gateResults.listByRun(runId),
         listWorkerSlots: () => database.authority.workerSlots.list(),
         listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
-        workerOwnerAlive: lease => database.workerLifetimeCustody(lease.workerId).state === "alive",
-        workerControls: () => database.authority.workerControls.list(),
-        workerBrowsers: workerId => database.authority.workerControls.browsers(workerId),
-        listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-        getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
+        workerMembers: () => database.authority.workerSlots.list().flatMap(slot => { const activity = workers.get(slot.workerId); return activity === undefined ? [] : [runningWorkerView(slot, { activity })]; }),
         listWorkerPools: () => database.authority.workerPools.list(),
         listRunBatches: () => database.authority.runSessions.list(),
         getRunBatch: (id) => database.authority.runSessions.get(id),
@@ -167,7 +181,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
 
     const runIds = seed({ database, spans, notes, clock, authorityPath: join(stateRoot, "state.db"),
-      retainWorker: handle => workerHandles.push(handle) });
+      workers });
     if (input.dateNavigation === true) {
       const source = runIds.runningRun;
       if (source === undefined) throw new Error("date-proof-source-run-missing");
@@ -175,11 +189,20 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     }
 
     const selectionServices = await input.prepareSelection?.({database,clock,root});
-    const { app, hub, closeRunLogs } = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices});
+    const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices,productWorkflows:input.productApp===true});
+    held.services = services;
+    const { app, hub } = services;
 
     const server: Server = createServer((req, res) => {
       void (async (): Promise<void> => {
         const url = new URL(req.url ?? "/", "http://127.0.0.1");
+        // The real session needs a profile registry, keychain and Duo; the product app is served a fixed signed-in state.
+        if (input.productApp === true && url.pathname === "/api/v1/profile/state") {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify(PublicProfileStateSchema.parse({ state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready",
+            account: { name: "Smoke Test", initials: "ST", timekeeper: "Smoke Test", timekeeperInitials: "ST", lastSignedInAt: "2026-11-10T08:30:00-08:00" } })));
+          return;
+        }
         if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/events/")) {
           await bridge(app, req, res, url);
           return;
@@ -200,6 +223,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       });
     });
 
+    held.server = server;
     await new Promise<void>((resolvePromise) => {
       server.listen(0, "127.0.0.1", resolvePromise);
     });
@@ -208,27 +232,33 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       throw new Error("seeded server bound no TCP address");
     }
 
+    let closePromise: Promise<void> | undefined;
     return Object.freeze({
       port: address.port,
       baseUrl: `http://127.0.0.1:${address.port}`,
       day: SEEDED_DAY,
       runIds: Object.freeze(runIds),
-      close: async (): Promise<void> => {
+      close: (): Promise<void> => {
+        if (closePromise !== undefined) return closePromise;
+        closePromise = (async () => {
         try {
           server.closeAllConnections();
           await new Promise<void>((resolvePromise, rejectPromise) => {
             server.close((error) => (error === undefined ? resolvePromise() : rejectPromise(error)));
           });
           hub.close();
-          closeRunLogs();
-        } finally { cleanupAuthority(); }
+        } catch (error) {
+          held.primary = error;
+          throw retainAuthoritySourceClosure([error], { admission: { held, workers } });
+        }
+        await cleanupAuthority();
+        })();
+        return closePromise;
       },
     });
     } catch (error) {
-      const failures = [error];
-      try { cleanupAuthority(); } catch (cleanupError) { failures.push(cleanupError); }
-      if (failures.length > 1) throw new AggregateError(failures, "seeded setup and cleanup failed", { cause: error });
-      throw error;
+      held.primary = error;
+      throw retainAuthoritySourceClosure([error], { admission: { held, workers } });
     }
   }
 

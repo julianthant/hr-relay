@@ -1,9 +1,10 @@
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { separationsDescriptor } from "../../registered-workflows.js";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../../../../src/models/dashboard/bootstrap.js";
+import { projectWorkbookCompatibility } from "../../../../../src/models/dashboard/workbook-library.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../../../src/models/dashboard/start-plan.js";
-import { descriptorSetHash } from "../../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import type * as BootstrapTypes from "../../../../../src/backend/runs/queries/bootstrap.js";
 import type * as FixtureBootstrapTypes from "../../../fixtures/dashboard/fixture-bootstrap.js";
@@ -20,17 +21,17 @@ uuidOf: typeof FixtureIdentityTypes.uuidOf;
 WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
 FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
 }) {
-  const START_PICKER_MODULES = WORKFLOW_MODULES;
   const mockLookupStart = WorkflowBootstrapPrimitiveSchema.parse(FIXTURE_BOOTSTRAP.workflows[0]).start;
 
   const FIXTURE_START_PICKER_DESCRIPTOR_HASH = descriptorSetHash(
-    START_PICKER_MODULES.map(({ descriptor }) => descriptor.contractFingerprint),
+    WORKFLOW_MODULES.map(({ descriptor }) => descriptor.contractFingerprint),
   );
 
   const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
     ...FIXTURE_BOOTSTRAP,
+    workbookCompatibility: projectWorkbookCompatibility(WORKFLOW_MODULES.map(module => module.descriptor), []),
     descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
-    workflows: START_PICKER_MODULES.map((module) => ({
+    workflows: WORKFLOW_MODULES.map((module) => ({
       id: module.descriptor.id,
       code: module.descriptor.code,
       label: module.descriptor.label,
@@ -39,6 +40,11 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
       availability: { state: "available" },
       role: module.role,
       start: {
+        readiness: module.descriptor.requiredWorkbookFields.length === 0
+          ? { scope: "workbook-sources", state: "ready" }
+          : { scope: "workbook-sources", state: "unavailable", reasonCode: "WORKBOOK_LIBRARY_EMPTY",
+            reason: "Import a Library spreadsheet before selecting a workflow source.",
+            fixAction: { kind: "import-workbook", workflowId: module.descriptor.id } },
         ...(module.descriptor.summary === undefined ? {} : { summary: module.descriptor.summary }),
         enqueue: module.descriptor.enqueue,
         version: module.descriptor.id === "person-lookup" ? 1 : module.descriptor.version,
@@ -46,8 +52,11 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
         ...(module.descriptor.id === "person-lookup"
           ? { inputRun: mockLookupStart.inputRun, summary: mockLookupStart.summary }
           : module.descriptor.surfaces.inputRun === undefined ? {} : { inputRun: module.descriptor.surfaces.inputRun }),
+        ...(module.descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: module.descriptor.surfaces.uploadRun }),
 
-        spreadsheetIntake: "intake" in module && module.intake !== undefined,
+        ...(module.descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: module.descriptor.surfaces.uploadRun }),
+        spreadsheetIntake: "intake" in module && module.intake !== undefined, requiredWorkbookFields: [...module.descriptor.requiredWorkbookFields],
+        ...(module.descriptor.workbookReference === undefined ? {} : { workbookReference: module.descriptor.workbookReference }),
       },
     })),
   });
@@ -59,7 +68,6 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
 
   const FIXTURE_START_PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
     wireVersion: 1,
-    workers: "auto",
     startPlanId: uuidOf(900),
     workflowId: WORKFLOW_ID,
     expectedVersion: 1,
@@ -86,7 +94,6 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
 
   const FIXTURE_SEPARATIONS_START_PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
     wireVersion: 1,
-    workers: "auto",
     startPlanId: uuidOf(930),
     workflowId: separationsDescriptor.id,
     expectedVersion: separationsDescriptor.version,

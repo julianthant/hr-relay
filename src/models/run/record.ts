@@ -1,12 +1,13 @@
-import { WorkerClaimLifetimeSchema } from "./worker.js";
 import { ProtectedInputBindingsSchema, valueFreeProtectedInput } from "../write-safety/protected-input.js";
 /** The durable run record: lifecycle as one discriminated union, with the claim generation as the ownership fence. */
 import { z } from "zod";
 import { RunCompletionSchema } from "./completion.js";
 import { DiagnosticSafetyVersionSchema } from "../trust/failure.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import { RunDisplayNameSchema } from "../../rules/commands/commands.js";
+import { WriteParkCodeSchema } from "../../rules/write-safety/write-safety-primitives.js";
+import { RunDisplayNameSchema } from "./display-name.js";
 import {
+  CommandIdSchema,
   EvidenceReceiptIdSchema,
   FailureIdSchema,
   FingerprintSchema,
@@ -22,7 +23,8 @@ import {
 import { AppVersionSchema } from "../dashboard/primitives.js";
 import { SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-value.js";
 import { VerdictKeySchema } from "../workflow/presentation.js";
-import { RunEnvelopeSchema } from "./envelope.js";
+import { PredecessorRunEnvelopeSchema, RunEnvelopeSchema } from "./envelope.js";
+import type { DependencyRecord } from "../../rules/workflow/dependencies.js";
 
 /** The outcome union; `cancelled`, `discarded`, `interrupted` and `superseded` are first-class outcomes. */
 export const RunOutcomeSchema = z.enum([
@@ -52,7 +54,6 @@ export const RunStateSchema = z.enum([
 export type RunState = z.infer<typeof RunStateSchema>;
 
 const ClaimFields = {
-  workerLifetime: WorkerClaimLifetimeSchema.optional(),
   workerId: WorkerIdSchema,
   claimedAt: IsoInstantSchema,
   heartbeatAt: IsoInstantSchema,
@@ -95,8 +96,8 @@ export const RunLifecycleSchema = z.discriminatedUnion("state", [
     writeIntentId: WriteIntentIdSchema,
     intentGeneration: PositiveIntSchema,
     parkedAt: IsoInstantSchema,
-    /** Ref write-safety park codes; there is no generic Done/Retry from here. */
-    code: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
+    /** There is no generic Done/Retry from here. */
+    code: WriteParkCodeSchema,
     message: z.string().min(1),
   }),
   z.strictObject({
@@ -132,7 +133,6 @@ export type RunLifecycle = z.infer<typeof RunLifecycleSchema>;
 /** The lifecycle states in which exactly one worker owns the row. */
 export const ClaimedRunStateSchema = z.enum(["claimed", "validating", "running"]);
 export type ClaimedRunState = z.infer<typeof ClaimedRunStateSchema>;
-export const CLAIMED_RUN_STATES = Object.freeze(ClaimedRunStateSchema.options);
 
 export function isClaimedRunState(state: RunState): state is ClaimedRunState {
   return ClaimedRunStateSchema.safeParse(state).success;
@@ -142,13 +142,13 @@ export function isTerminalRunState(lifecycle: RunLifecycle): boolean {
   return lifecycle.state === "terminal";
 }
 
-/** The state machine as data; everything absent is illegal, and a terminal row reopens only through an `interrupted` outcome being requeued. */
+/** The state machine as data; everything absent is illegal, and a terminal row reopens only through a named requeue in TERMINAL_RUN_REQUEUES. */
 const LEGAL_RUN_TRANSITIONS: ReadonlyMap<RunState, readonly RunState[]> = new Map([
   // Every non-terminal state may also update in place; `terminal` deliberately has no
   // self-edge: a settled outcome is settled.
   ["queued", ["queued", "claimed", "terminal"]],
-  ["claimed", ["claimed", "validating", "queued", "terminal"]],
-  ["validating", ["validating", "running", "queued", "terminal"]],
+  ["claimed", ["claimed", "validating", "parked-write", "queued", "terminal"]],
+  ["validating", ["validating", "running", "parked-write", "queued", "terminal"]],
   ["running", ["running", "parked-gate", "parked-write", "queued", "terminal"]],
   // A gate or write resolution re-enqueues; the fresh claim reacquires sessions
   // (ref workflow-model ). A parked run holds no worker, so it can never resume in place.
@@ -157,8 +157,16 @@ const LEGAL_RUN_TRANSITIONS: ReadonlyMap<RunState, readonly RunState[]> = new Ma
   ["terminal", ["queued"]],
 ]);
 
-/** `undefined` when the transition is legal, otherwise the reason it is not. */
-export function runTransitionViolation(from: RunLifecycle, to: RunLifecycle): string | undefined {
+/** The named terminal → queued edges and the outcomes each reopens; every other terminal outcome is final. */
+export const TERMINAL_RUN_REQUEUES = Object.freeze({
+  "interrupted-requeue": Object.freeze(["interrupted"] as const),
+  /** A member Retry reopens a finished parent; the requeued row must carry a waiting delegation refresh. */
+  "delegation-refresh-reopen": Object.freeze(["done", "failed"] as const),
+});
+
+/** `undefined` when the transition is legal, otherwise the reason it is not; `target` is the row the transition writes. */
+export function runTransitionViolation(from: RunLifecycle, to: RunLifecycle,
+  target?: Readonly<{ delegationRefresh?: RunDelegationRefresh }>): string | undefined {
   // Lifecycle equality is not itself a lifecycle edge. Callers separately
   // authorize in-place mutations such as rename or archive revision advance.
   if (canonicalJsonStringify(from) === canonicalJsonStringify(to)) return undefined;
@@ -168,7 +176,12 @@ export function runTransitionViolation(from: RunLifecycle, to: RunLifecycle): st
     return `${from.state} cannot transition to ${to.state}; legal next states are ${allowed.join(", ")}`;
   }
   if (from.state === "terminal") {
-    if (from.outcome !== "interrupted") {
+    const requeues: Readonly<Record<keyof typeof TERMINAL_RUN_REQUEUES, readonly RunOutcome[]>> = TERMINAL_RUN_REQUEUES;
+    if (requeues["delegation-refresh-reopen"].includes(from.outcome)) {
+      if (target?.delegationRefresh?.phase !== "waiting") {
+        return `a ${from.outcome} run is final; only an interrupted run may be requeued, or a done or failed parent reopened with a waiting delegation refresh`;
+      }
+    } else if (!requeues["interrupted-requeue"].includes(from.outcome)) {
       return `a ${from.outcome} run is final; only an interrupted run may be requeued`;
     }
   }
@@ -179,8 +192,27 @@ export function runTransitionViolation(from: RunLifecycle, to: RunLifecycle): st
   return undefined;
 }
 
+type DelegationDependencyState = DependencyRecord["state"];
+/** One parent-to-child edge: an active member settles to its child's outcome; a member Retry reopens a failed or cancelled one. */
+const LEGAL_DELEGATION_DEPENDENCY_TRANSITIONS: ReadonlyMap<DelegationDependencyState, readonly DelegationDependencyState[]> = new Map([
+  ["active", ["satisfied", "failed", "cancelled"]],
+  ["failed", ["active"]],
+  ["cancelled", ["active"]],
+  // A satisfied member is never retried.
+  ["satisfied", []],
+]);
+
+/** `undefined` when the dependency edge is legal, otherwise the reason it is not. */
+export function delegationDependencyTransitionViolation(from: DelegationDependencyState, to: DelegationDependencyState): string | undefined {
+  const allowed = LEGAL_DELEGATION_DEPENDENCY_TRANSITIONS.get(from) ?? [];
+  if (allowed.includes(to)) return undefined;
+  return allowed.length === 0 ? `a ${from} delegation member is final`
+    : `a ${from} delegation member cannot become ${to}; legal next states are ${allowed.join(", ")}`;
+}
+
 /** The raw submission, the parsed canonical value and both schema hashes, stored separately; Edit Data can patch neither. */
 export const RunInputStorageSchema = z.strictObject({
+  workbookReferences: z.array(SchemaBoundCanonicalValueSchema).optional(),
   raw: JsonValueSchema,
   /** Parsed through the workflow's canonical-input schema, bound to its hash. */
   parsed: SchemaBoundCanonicalValueSchema.extend({protectedBindings:ProtectedInputBindingsSchema}).superRefine((parsed, context) => {
@@ -192,6 +224,21 @@ export const RunInputStorageSchema = z.strictObject({
 export type RunInputStorage = z.infer<typeof RunInputStorageSchema>;
 
 
+export const RunPauseSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("requested"), commandId: z.uuid(), requestedAt: IsoInstantSchema }),
+  z.strictObject({ state: z.literal("paused"), commandId: z.uuid(), requestedAt: IsoInstantSchema, pausedAt: IsoInstantSchema }),
+]);
+export type RunPause = z.infer<typeof RunPauseSchema>;
+
+export const RunDelegationRefreshSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  nodeId: NodeIdSchema,
+  phase: z.enum(["waiting", "settled"]),
+  retryCommandIds: z.array(CommandIdSchema).min(1),
+}).refine(value => new Set(value.retryCommandIds).size === value.retryCommandIds.length,
+  { message: "delegation refresh retries must be unique" });
+export type RunDelegationRefresh = z.infer<typeof RunDelegationRefreshSchema>;
+
 const RunRecordBaseSchema = z.strictObject({
   envelope: RunEnvelopeSchema,
   input: RunInputStorageSchema,
@@ -200,6 +247,10 @@ const RunRecordBaseSchema = z.strictObject({
   claimGeneration: NonNegativeIntSchema,
     /** Operator intent; a claimed worker alone settles the cancellation. */
   cancelRequested: z.literal(true).optional(),
+    /** The errorSummary a Relay-requested cancel settles with; absent when the operator cancelled. */
+  cancelSummary: z.string().min(1).optional(),
+  pause: RunPauseSchema.optional(),
+  delegationRefresh: RunDelegationRefreshSchema.optional(),
     /** Operator-assigned label over a stable id; never identity. */
   displayName: RunDisplayNameSchema.optional(),
     /* The app build this run was enqueued under, stamped once and never rewritten; optional because it is read forward, never back-filled. */
@@ -212,7 +263,9 @@ const RunRecordBaseSchema = z.strictObject({
   version: PositiveIntSchema,
   createdAt: IsoInstantSchema,
   updatedAt: IsoInstantSchema,
-}).superRefine((record, context) => {
+});
+type RefinedRunRecord = Omit<z.infer<typeof RunRecordShapeSchema>, "envelope"> & { envelope: { enqueuedAt: string } };
+function refineRunRecord(record: RefinedRunRecord, context: z.RefinementCtx): void {
   if (Date.parse(record.updatedAt) < Date.parse(record.createdAt)) {
     context.addIssue({ code: "custom", path: ["updatedAt"], message: "run record updatedAt precedes createdAt" });
   }
@@ -224,6 +277,7 @@ const RunRecordBaseSchema = z.strictObject({
       message: "a newly enqueued run record is created at the moment it is enqueued",
     });
   }
+  refineRunCompletion(record, context);
   if (!isClaimedRunState(record.lifecycle.state) || !("heartbeatAt" in record.lifecycle)) return;
   if (record.claimGeneration === 0) {
     context.addIssue({
@@ -239,10 +293,12 @@ const RunRecordBaseSchema = z.strictObject({
       message: "a claim heartbeat cannot predate the run's enqueue",
     });
   }
-});
-export const RunRecordSchema = RunRecordBaseSchema.safeExtend({
-  completion: RunCompletionSchema.optional(),
-}).superRefine((run, context) => {
+}
+function refineRunCompletion(run: RefinedRunRecord, context: z.RefinementCtx): void {
+  if (run.delegationRefresh?.phase === "waiting" && run.lifecycle.state !== "queued"
+    && !(run.lifecycle.state === "terminal" && !["done", "failed"].includes(run.lifecycle.outcome))) {
+    context.addIssue({ code: "custom", path: ["delegationRefresh"], message: "a waiting delegation refresh cannot execute or complete" });
+  }
   const completion = run.completion;
   const settled = run.lifecycle.state === "terminal" && ["done", "failed"].includes(run.lifecycle.outcome);
   if (settled !== (completion !== undefined)) {
@@ -258,7 +314,14 @@ export const RunRecordSchema = RunRecordBaseSchema.safeExtend({
     context.addIssue({ code: "custom", path: ["completion"], message: "completion does not bind the exact terminal consequence" });
   }
 
-});
+}
+
+const RunRecordShapeSchema = RunRecordBaseSchema.extend({ completion: RunCompletionSchema.optional() });
+export const RunRecordSchema = RunRecordShapeSchema.superRefine(refineRunRecord);
+/** A pre-22 run. A build id already stored is kept; the upgrade does not insert one. */
+export const PredecessorRunRecordSchema = RunRecordShapeSchema.extend({ envelope: PredecessorRunEnvelopeSchema })
+  .superRefine(refineRunRecord);
+export type PredecessorRunRecord = z.infer<typeof PredecessorRunRecordSchema>;
 export type RunRecord = z.infer<typeof RunRecordSchema>;
 
 export const RunClaimSchema = z.strictObject({
@@ -270,7 +333,7 @@ export const RunClaimSchema = z.strictObject({
 export type RunClaim = z.infer<typeof RunClaimSchema>;
 
 /** No claim is explicit absence; callers must branch. */
-export function runClaim(record: RunRecord): RunClaim | undefined {
+export function runClaim(record: Pick<RunRecord, "lifecycle" | "claimGeneration">): RunClaim | undefined {
   const { lifecycle } = record;
   if (!isClaimedRunState(lifecycle.state)) return undefined;
   if (!("workerId" in lifecycle)) return undefined;

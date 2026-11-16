@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
-import { chromium, type Page } from "playwright";
+import { chromium, type Browser, type Page } from "playwright";
 import { PNG } from "pngjs";
-import { describe, it } from "vitest";
+import { afterAll, beforeAll, describe, it } from "vitest";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { fixtureDuoCeremonyGate } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -17,22 +19,22 @@ const fixtures = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-
 const content = '<div style="height:1000px;background:rgb(210,20,30)"></div><div style="height:1000px;background:rgb(20,210,30)"></div><div style="height:1000px;background:rgb(20,30,210)"></div>';
 const html = (body: string) => `<style>html,body{margin:0}*{box-sizing:border-box}</style>${body}`;
 
+let browser: Browser;
+beforeAll(async () => { browser = await chromium.launch({ headless: true }); });
+afterAll(async () => { await browser?.close(); });
+
 async function withPage(body: string, check: (page: Page, resource: WorkerBrowserResource) => Promise<void>, authenticated = true) {
   await fixtures.withTempRuntime(async ({ config }) => {
-    const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
     const page = await context.newPage();
     await page.setContent(html(body));
-    let closed = false;
-    context.on("close", () => { closed = true; });
     const harness = { ...fixtures.fakeLauncher(), launcher: {
-      observeProcess: () => ({ pid: 123, observation: closed ? { state: "gone" as const } : { state: "alive" as const, identity: { platform: "darwin" as const, startToken: "fixture" } } }),
       launch: async (input: { profileDirectory: string }) => { mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 }); return context; },
     } };
     const factory = fixtures.factoryFor(config, harness, fixtures.recordingBindings({ verify: fixtures.verifierFor({ authenticated }).verify }));
-    const resource = await factory.open({ workerId, workflowId: WorkflowIdSchema.parse("person-lookup"), system: "ucpath", instance: "prod", configFingerprint: FingerprintSchema.parse("ab".repeat(32)), acceptDownloads: false, exclusive: false, signal: new AbortController().signal, duoCeremony: fixtureDuoCeremonyGate("ucpath", workerId, clock) });
+    const resource = await factory.open({ workerId, workflowId: WorkflowIdSchema.parse("person-lookup"), system: "ucpath", instance: "prod", configFingerprint: FingerprintSchema.parse("ab".repeat(32)), acceptDownloads: false, exclusive: false, signal: new AbortController().signal, duoCeremony: await fixtureDuoCeremonyGate("ucpath", workerId, clock) });
     try { await check(page, resource); }
-    finally { await resource.close({ reason: "worker-stop" }); await browser.close(); }
+    finally { await resource.close({ reason: "worker-stop" }); }
   });
 }
 
@@ -47,6 +49,24 @@ async function image(resource: WorkerBrowserResource) {
 const pixel = (png: PNG, x: number, y: number) => [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)];
 
 describe("whole-page factory screenshots", () => {
+  it("adds a visible dry-run sample banner without hiding any form pixels and removes the temporary label", async () => {
+    await withPage(content, async (page, resource) => {
+      const plain = await image(resource);
+      const evidence = await resource.screenshot?.(["dry-run sample: UCPath transaction number = T000000000000"]);
+      assert.ok(evidence?.state === "available");
+      const labelled = PNG.sync.read(Buffer.from(evidence.bytes));
+      assert.equal(labelled.width, plain.width);
+      assert.ok(labelled.height > plain.height);
+      const bannerHeight = labelled.height - plain.height;
+      assert.deepEqual(pixel(labelled, 2, 2), [255, 240, 179]);
+      const form = new PNG({ width: plain.width, height: plain.height });
+      PNG.bitblt(labelled, form, 0, bannerHeight, form.width, form.height, 0, 0);
+      assert.deepEqual(form.data, plain.data, "the banner must not cover or change any form pixel");
+      assert.equal(await page.locator("#relay-dry-run-sample-banner").count(), 0);
+      assert.deepEqual(page.viewportSize(), { width: 800, height: 600 });
+    });
+  });
+
   for (const target of ["window", "element", "iframe"] as const) {
     it(`captures the complete painted ${target} content as one image`, async () => {
       const body = target === "window" ? content : target === "element" ? `<div style="height:600px;overflow:auto">${content}</div>` : `<iframe style="border:0;width:100%;height:600px" srcdoc='${html(content)}'></iframe>`;
@@ -59,6 +79,16 @@ describe("whole-page factory screenshots", () => {
       });
     });
   }
+  it("captures a page whose body scrolls under a clipped root as one image", async () => {
+    await withPage(`<style>html{overflow:hidden;height:100%}body{height:100%;overflow-y:auto}</style>${content}`, async (page, resource) => {
+      const png = await image(resource);
+      assert.equal(png.height, 3000);
+      assert.deepEqual(pixel(png, 20, 20), [210, 20, 30]);
+      assert.deepEqual(pixel(png, 20, 1500), [20, 210, 30]);
+      assert.deepEqual(pixel(png, 20, 2980), [20, 30, 210]);
+      assert.equal(await page.evaluate(() => document.body.scrollTop), 0);
+    });
+  });
   for (const target of ["window", "element", "iframe"] as const) {
     it(`refuses residual horizontal overflow at the width limit for a ${target}`, async () => {
       const wide = '<div style="width:7000px;height:620px;background:rgb(20,30,210)"></div>';
@@ -223,6 +253,91 @@ describe("whole-page factory screenshots", () => {
       });
     });
   }
+  // The I-9 app keeps a closed change-password form in every page (live probe, onboarding-served-switch-05).
+  const hiddenPasswordForm = '<div id="change-password" style="display:none"><input type="password" id="OldPassword"><input type="password" id="WebPassword"><input type="password" id="ConfirmWebPassword"></div>';
+  it("captures a page whose only secret controls are never painted", async () => {
+    await withPage(`${content}${hiddenPasswordForm}`, async (_page, resource) => {
+      const png = await image(resource);
+      assert.equal(png.height, 3000);
+    });
+  });
+  it("captures through the tsx loader the dashboard runs on", async () => {
+    // Vitest compiles without keepNames; tsx wraps named inner functions in a __name helper the page realm lacks (live run 6).
+    const output = execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+      import { chromium } from "playwright";
+      import { captureFullPage } from "./src/backend/runtime/browser/full-page-capture.ts";
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        await page.setContent(${JSON.stringify(html(`${content}${hiddenPasswordForm}`))});
+        const capture = await captureFullPage(page, { assertCurrent: () => undefined, assertSafe: async () => undefined, mask: () => [],
+          secretControls: 'input[type="password"]', afterCapture: async () => undefined });
+        process.stdout.write(JSON.stringify({ height: capture.height }));
+      } catch (error) { process.stdout.write(JSON.stringify({ failed: error.message.split("\\n")[0] })); }
+      finally { await browser.close(); }
+    `], { cwd: fileURLToPath(new URL("../../../..", import.meta.url)), encoding: "utf8" });
+    assert.deepEqual(JSON.parse(output), { height: 3000 });
+  });
+  it("refuses an unpainted secret control painted only during a band", async () => {
+    await withPage(`${content}${hiddenPasswordForm}`, async (page, resource) => {
+      const screenshot = page.screenshot.bind(page);
+      let bands = 0;
+      page.screenshot = async options => {
+        if (++bands !== 2) return screenshot(options);
+        await page.locator("#change-password").evaluate(el => { el.style.display = "block"; });
+        try { return await screenshot(options); }
+        finally { await page.locator("#change-password").evaluate(el => { el.style.display = "none"; }); }
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal(bands, 2);
+    });
+  });
+  it("refuses an unpainted secret control in a shadow tree the capture observer cannot watch", async () => {
+    await withPage(`<div id="shadow-host"></div>${content}`, async (page, resource) => {
+      await page.locator("#shadow-host").evaluate(host => {
+        host.attachShadow({ mode: "open" }).innerHTML = '<input id="otp" autocomplete="one-time-code" style="display:none;width:200px;height:40px;background:rgb(255,0,255)">';
+      });
+      const screenshot = page.screenshot.bind(page);
+      let bands = 0;
+      page.screenshot = async options => {
+        if (++bands !== 1) return screenshot(options);
+        const otp = page.locator("#otp");
+        await otp.evaluate(el => { el.style.display = "block"; });
+        try { return await screenshot(options); }
+        finally { await otp.evaluate(el => { el.style.display = "none"; }); }
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal(bands, 0);
+    });
+  });
+  it("refuses an unpainted secret control that leaves the watched light DOM during a band", async () => {
+    await withPage(`<div id="shadow-host"></div>${content}<input id="otp" autocomplete="one-time-code" style="display:none;width:200px;height:40px;background:rgb(255,0,255)">`, async (page, resource) => {
+      await page.locator("#shadow-host").evaluate(host => { host.attachShadow({ mode: "open" }); });
+      const screenshot = page.screenshot.bind(page);
+      let bands = 0;
+      page.screenshot = async options => {
+        if (++bands !== 1) return screenshot(options);
+        await page.evaluate(() => { document.querySelector("#shadow-host")!.shadowRoot!.append(document.querySelector("#otp")!); });
+        await page.evaluate(() => { document.querySelector<HTMLElement>("#shadow-host")!.shadowRoot!.querySelector<HTMLElement>("#otp")!.style.display = "block"; });
+        try { return await screenshot(options); }
+        finally {
+          await page.evaluate(() => {
+            const otp = document.querySelector("#shadow-host")!.shadowRoot!.querySelector<HTMLElement>("#otp")!;
+            otp.style.display = "none";
+            document.body.append(otp);
+          });
+        }
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal(bands, 1);
+    });
+  });
   it("refuses a frame attached and removed between bands", async () => {
     await withPage(content, async (page, resource) => {
       const screenshot = page.screenshot.bind(page);
@@ -285,6 +400,7 @@ describe("whole-page factory screenshots", () => {
       let finalProofs = 0;
       page.screenshot = async () => { runInNewContext("throw undefined"); return Buffer.alloc(0); };
       const capture = () => captureFullPage(page, {
+        assertCurrent: () => undefined,
         assertSafe: async () => undefined,
         afterCapture: async () => { finalProofs += 1; },
         mask: () => [],

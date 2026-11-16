@@ -42,6 +42,7 @@ export type OcrFieldSpec = z.infer<typeof OcrFieldSpecSchema>;
 export const OcrFormSpecSchema = z.strictObject({
   formType: OcrFormTypeSchema,
   title: z.string().min(1),
+  lookup: z.enum(["person-lookup", "i9-lookup"]),
     /** Classify/extract loose pages independently; subject pairing belongs to grouping. */
   pageKinds: z.array(OcrPageKindSchema).min(1),
   /** One paragraph of orientation, prepended to every generated instruction. */
@@ -70,6 +71,7 @@ function field(
 
 const OATH: z.input<typeof OcrFormSpecSchema> = {
   formType: "oath",
+  lookup: "person-lookup",
   pageKinds: ["oath"],
   title: "Oath / Patent Policy signature roster",
   description:
@@ -100,6 +102,7 @@ const OATH: z.input<typeof OcrFormSpecSchema> = {
 
 const EMERGENCY_CONTACT: z.input<typeof OcrFormSpecSchema> = {
   formType: "emergency-contact",
+  lookup: "person-lookup",
   pageKinds: ["emergency-contact"],
   title: "Emergency contact form",
   description:
@@ -122,15 +125,15 @@ const EMERGENCY_CONTACT: z.input<typeof OcrFormSpecSchema> = {
       + "`not-on-form` rather than forcing them into US fields.",
   ],
   fields: [
-    field("employee.name", "The employee's printed name.", "fullName", { mandatory: true }),
     field("employee.employeeId", "The employee's UCPath ID — eight digits beginning 10.", "eid"),
-    field("employee.pid", "The employee's UCSD PID, if the form shows one.", "pid"),
-    field("employee.homePhone", "The employee's home telephone number.", "homePhone"),
-    field("employee.cellPhone", "The employee's mobile telephone number.", "cellPhone"),
+    field("employee.name", "The employee's printed name.", "fullName", { mandatory: true }),
+    field("employee.dateCompleted", "The date the employee completed this form, exactly as written.", null),
     field("employee.address1", "The employee's street address line.", "address1"),
     field("employee.city", "The employee's city.", "city"),
     field("employee.state", "The employee's state.", "state"),
     field("employee.postalCode", "The employee's ZIP code.", "postalCode"),
+    field("employee.cellPhone", "The employee's mobile telephone number.", "cellPhone"),
+    field("employee.homePhone", "The employee's home telephone number.", "homePhone"),
     field("contact.name", "The EMERGENCY CONTACT's printed name.", "fullName", { mandatory: true }),
     field("contact.relationship", "How the emergency contact is related to the employee.", "relationship", { mandatory: true }),
     field("contact.cellPhone", "The emergency contact's mobile telephone number.", "cellPhone"),
@@ -146,6 +149,7 @@ const EMERGENCY_CONTACT: z.input<typeof OcrFormSpecSchema> = {
 /** One UNIFORM record across both sections, as the prompt demanded: every record has the SAME fields, and which ones are filled depends on the page kind. */
 const I9: z.input<typeof OcrFormSpecSchema> = {
   formType: "i9",
+  lookup: "i9-lookup",
   pageKinds: ["i9-section1", "i9-section2"],
   title: "Form I-9 employment eligibility verification",
   description:

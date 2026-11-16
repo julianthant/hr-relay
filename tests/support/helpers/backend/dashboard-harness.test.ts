@@ -5,8 +5,8 @@ import { describe,it } from "vitest";
 import { makeWorld,queuedEventOf } from "./dashboard-harness.js";
 
 describe("canonical reader fixture contract", () => {
-  it("uses the actual native timeline and admitted snapshot owner without a second event database", () => {
-    const world=makeWorld();
+  it("uses the actual native timeline and admitted snapshot owner without a second event database", async () => {
+    const world=await makeWorld();
     try {
       const event=queuedEventOf(world,{seed:4});
       const stored=world.database.authority.runs.get(event.runId);
@@ -18,6 +18,6 @@ describe("canonical reader fixture contract", () => {
       assert.equal(rows[0]?.payload.kind,"span");
       assert.deepEqual(world.timeline.page({limit:100}),rows);
       assert.equal(existsSync(join(world.stateRoot,"timeline.sqlite")),false);
-    }finally{world.dispose();}
+    }finally{await world.dispose();}
   });
 });

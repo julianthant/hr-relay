@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { deepFreeze } from "../validation/immutability.js";
 import { JsonValueSchema } from "../validation/canonical-json.js";
 import {
   ArtifactIdSchema,
@@ -8,7 +9,7 @@ import {
   ObservationIdSchema,
   PageStateIdSchema,
 } from "../identity/ids.js";
-import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
+import { SchemaBoundEvidenceValueSchema } from "../../models/validation/schema-bound-value.js";
 
 /** The identity a write is fenced against; it lives in the browser-safe half because a descriptor closure has to be able to hash a schema that embeds it. */
 export const SubjectEvidenceSchema = z.discriminatedUnion("kind", [
@@ -30,6 +31,11 @@ export const SubjectEvidenceSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 export type SubjectEvidence = z.infer<typeof SubjectEvidenceSchema>;
+
+/** The one list of codes a parked write intent or attempt may carry. */
+export const WRITE_PARK_CODES = deepFreeze(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"] as const);
+export const WriteParkCodeSchema = z.enum(WRITE_PARK_CODES);
+export type WriteParkCode = z.infer<typeof WriteParkCodeSchema>;
 
 export const AbsentEvidenceSchema = z.strictObject({
   idempotencyKeyDigest: FingerprintSchema,
@@ -71,15 +77,15 @@ export const TransactionOutcomeSchema = z.discriminatedUnion("disposition", [
   z.strictObject({
     disposition: z.literal("committed"),
     proofSource: z.enum(["normal-output", "recovery-probe", "operator-attestation"]),
-    proof: SchemaBoundCanonicalValueSchema,
-    output: SchemaBoundCanonicalValueSchema,
+    proof: SchemaBoundEvidenceValueSchema,
+    output: SchemaBoundEvidenceValueSchema,
     confirmedAt: IsoInstantSchema,
   }),
   z.strictObject({
     disposition: z.literal("already-present"),
     proofSource: z.enum(["live-probe", "durable-intent"]),
-    proof: SchemaBoundCanonicalValueSchema,
-    output: SchemaBoundCanonicalValueSchema,
+    proof: SchemaBoundEvidenceValueSchema,
+    output: SchemaBoundEvidenceValueSchema,
     observedAt: IsoInstantSchema,
   }),
 ]);
@@ -90,18 +96,18 @@ export const DryRunProbeObservationSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("durable-intent"),
     status: z.enum(["committed", "observed-present"]),
-    proof: SchemaBoundCanonicalValueSchema,
-    output: SchemaBoundCanonicalValueSchema,
+    proof: SchemaBoundEvidenceValueSchema,
+    output: SchemaBoundEvidenceValueSchema,
   }),
   z.strictObject({
     state: z.literal("present"),
-    proof: SchemaBoundCanonicalValueSchema,
-    output: SchemaBoundCanonicalValueSchema,
+    proof: SchemaBoundEvidenceValueSchema,
+    output: SchemaBoundEvidenceValueSchema,
   }),
   z.strictObject({ state: z.literal("absent"), evidence: AbsentEvidenceSchema }),
   z.strictObject({
     state: z.literal("not-required"),
-    reason: z.literal("policy-retries-and-recovery-only"),
+    reason: z.enum(["policy-retries-and-recovery-only", "preview-only-sample"]),
   }),
 ]);
 export type DryRunProbeObservation = z.infer<typeof DryRunProbeObservationSchema>;

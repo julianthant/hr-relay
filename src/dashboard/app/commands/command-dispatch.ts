@@ -1,13 +1,17 @@
+import type { ParkedWriteDetailWire,RunDetailWire } from "../../../models/dashboard/run-detail.js";
+import { CommandRequestSchema } from "../../../rules/commands/commands.js";
 import type { DashboardClient } from "../../client/index.js";
-import type { CommandRequest, CommandResult, BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import type { CommandRequest, CommandResult, BulkRunCommandOutcome, DashboardCommandRequest } from "../../../rules/commands/commands.js";
 import type { DashboardDayWire, QueueSurfaceWire } from "../../../models/dashboard/projection.js";
+import { isTerminalQueueStatus } from "../../../models/dashboard/projection.js";
 import type { CommandReadbackVerification } from "./command-executor.js";
 import { lifecycleCommandId } from "../../../rules/commands/lifecycle-command-id.js";
 /** Turning a SERVED action descriptor into the ONE command envelope (ref frontend-backend-integration
  * §3.4), for the confirm-first flow the app root mounts. */
 import { systemClock } from "../../../rules/time/clock.js";
 import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js";
-import { directIdentifierDisplay } from "../../../rules/redaction/redaction.js";
 import type { ActionTarget } from "../../surfaces/shared/actions/actions.js";
 import {
   identityCeremonyFor,
@@ -17,8 +21,28 @@ import {
   type IdentityGatePayload,
 } from "../../surfaces/run-detail/identity/identity-ceremony.js";
 import { renameDraftProblem } from "../../surfaces/run-detail/identity/rename-draft.js";
+import type { RunWorkbookWritesWire } from "../../../models/dashboard/run-detail.js";
+import { deriveStableUuid } from "../../../rules/identity/stable-uuid.js";
+import { workbookReferenceMatchesReplay } from "../../surfaces/run-detail/logs/workbook-write-model.js";
+import { lookupBatchId } from "../../surfaces/queue/queue-model.js";
 
 export type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
+
+export function childRetrySourceMatches(detail: RunDetailWire, target: ActionTarget): boolean {
+  return detail.runId === target.runId && detail.rowRevision.valueOf() === target.expectedVersion.valueOf()
+    && detail.header.status === "failed" && detail.header.parentRunId !== undefined;
+}
+
+export function batchMemberRetrySourceMatches(row: QueueSurfaceWire, target: ActionTarget): boolean {
+  return row.runId === target.runId && row.rowRevision.valueOf() === target.expectedVersion.valueOf()
+    && row.status === "failed" && lookupBatchId(row) !== undefined;
+}
+
+export function batchMemberRetryAction(row: QueueSurfaceWire): CommandAction | undefined {
+  if (!batchMemberRetrySourceMatches(row, { runId: row.runId, expectedVersion: row.rowRevision })) return undefined;
+  return row.actions.find((action): action is CommandAction => action.kind === "command" && action.command === "retry"
+    && action.key === "retry-batch-member" && action.expectedVersion === row.rowRevision && action.placement.includes("banner"));
+}
 
 /** What the app can say about a descriptor it was asked to dispatch; `refused`
  * is a legitimate answer with a sentence the surface reports. */
@@ -41,6 +65,16 @@ export interface CommandContext {
   readonly source: "queue" | "run-detail";
   /** the gate section the run advertised, when one is open */
   readonly gate?: IdentityGatePayload | undefined;
+  /** the open gate's node, from the run detail; the identity review itself serves no node ids */
+  readonly gateId?: string | undefined;
+  readonly parkedWrite?: ParkedWriteDetailWire | undefined;
+  readonly childRetry?: RunDetailWire["childRetry"];
+  readonly batchMemberRetry?: QueueSurfaceWire;
+  readonly transactionId?: string | undefined;
+  readonly workbookWrite?: RunWorkbookWritesWire["operations"][number];
+  readonly workbookAnswer?: Extract<CommandRequest, { type: "resolve-workbook-row" }>["payload"];
+  readonly workbookReferenceChoice?: NonNullable<RunWorkbookWritesWire["referenceChoices"]>[number];
+  readonly workbookReferenceAnswer?: Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>["payload"];
   /** What the operator answered in the ceremony dialog. It is OPTIONAL because
  * exactly one ceremony needs no answer — a `one-click` packet naming one */
   readonly gateAnswer?: IdentityGateAnswer | undefined;
@@ -51,37 +85,40 @@ export interface CommandContext {
   readonly requestedAt?: string | undefined;
 }
 
-/** The identity gate's answer: the operator's decision, wearing the server's
- * facts. */
+/** The identity gate's answer: the operator's decision, naming the served refs; the server resolves them. */
 function composeGateResult(
   action: CommandAction,
   gate: IdentityGatePayload | undefined,
   answer: IdentityGateAnswer | undefined,
+  gateId: string | undefined,
   envelope: CommandEnvelopeFields,
 ): ComposedCommand {
   if (gate === undefined || gate.state !== "available") {
     return {
       state: "refused",
       reason: gate === undefined
-        ? "this run served no identity-gate section, so there is no packet to answer"
+        ? "this run served no identity-gate section, so there is no review to answer"
         : `the identity-gate section is ${gate.state}: ${"reason" in gate ? gate.reason : gate.message}`,
     };
   }
+  if (gateId === undefined) return { state: "refused", reason: "the run detail names no open gate to answer" };
   const served = gate.value;
-  const { resolution } = action;
-  if (resolution === undefined) {
+  const request = (payload: unknown) => ({ state: "ready" as const, request: { ...envelope, family: "gate", type: "answer-identity-gate",
+    target: { runId: served.runId, gateId, expectedVersion: action.expectedVersion }, payload } });
+  if (action.resolution === "rejected") return request({ decision: "rejected", gateRef: served.gateRef });
+  if (action.resolution !== "approved") {
     return {
       state: "refused",
-      reason: `the served gate action ${action.key} names no typed resolution`,
+      reason: `the served gate action ${action.key} is not an approval`,
     };
   }
-  const ceremony = identityCeremonyFor(served, resolution);
+  const ceremony = identityCeremonyFor(served);
   if (ceremony.kind === "unsupported") return { state: "refused", reason: ceremony.reason };
 
   // The ONE ceremony whose answer is a served fact: the server said one click,
   // and named exactly one candidate. Everything else waits for a human.
   const decided: IdentityGateAnswer | undefined = answer
-    ?? (ceremony.kind === "confirm" ? { decision: "approved", eid: ceremony.option.eid } : undefined);
+    ?? (ceremony.kind === "confirm" ? { decision: "approved", optionRef: ceremony.option.ref } : undefined);
   if (decided === undefined) {
     return {
       state: "refused",
@@ -89,63 +126,13 @@ function composeGateResult(
         + "the identity-approval dialog owns that answer and nothing here may author it",
     };
   }
-  if (decided.decision !== resolution) {
-    return {
-      state: "refused",
-      reason: `the operator answered "${decided.decision}" and the control pressed was `
-        + `"${resolution}"; nothing is sent while the two disagree`,
-    };
-  }
 
-  const problem = identityDraftProblem(ceremony, {
-    eid: decided.decision === "approved" ? decided.eid : "",
-    reason: decided.decision === "rejected" ? decided.reason : "",
-  });
+  const problem = identityDraftProblem(ceremony, decided);
   if (problem !== undefined) return { state: "refused", reason: problem };
-
-  const value = ((): Record<string, unknown> | undefined => {
-    if (decided.decision === "rejected") {
-      return {
-        decision: "rejected",
-        reason: decided.reason.trim(),
-        evidenceDigest: served.evidenceDigest,
-      };
-    }
-    const option = optionFor(served.options, decided.eid);
-    // `identityDraftProblem` already refused an unshown EID on every approval
-// ceremony, so this is unreachable — and it refuses rather than asserting
-    if (option === undefined) {
-      return undefined;
-    }
-    return {
-      decision: "approved",
-      eid: option.eid,
-      chosenFrom: option.chosenFrom,
-      evidenceDigest: served.evidenceDigest,
-    };
-  })();
-  if (value === undefined) {
-    return {
-      state: "refused",
-      reason: `EID ${decided.decision === "approved" ? directIdentifierDisplay(decided.eid) : "unavailable"} is not among the candidates `
-        + "this packet served, so there is no `chosenFrom` label to record it under",
-    };
+  if (optionFor(served.options, decided.optionRef) === undefined) {
+    return { state: "refused", reason: "the picked candidate is not one this review served" };
   }
-
-  return {
-    state: "ready",
-    request: {
-      ...envelope,
-      family: "gate",
-      type: "resolve-gate",
-      target: {
-        runId: served.runId,
-        gateId: served.gateId,
-        expectedVersion: action.expectedVersion,
-      },
-      payload: { result: { schemaHash: served.resultSchemaHash, value } },
-    },
-  };
+  return request({ decision: "approved", gateRef: served.gateRef, optionRef: decided.optionRef });
 }
 
 /** Refuse unknown served verbs by name; never turn new commands into silent no-ops. */
@@ -161,11 +148,47 @@ export function composeCommandRequest(
     source: context.source,
   };
   switch (action.command) {
-    case "retry":
-    case "restart":
+    case "resolve-workbook-reference-row": {
+      const choice = context.workbookReferenceChoice?.resolution, answer = context.workbookReferenceAnswer;
+      if (choice?.state !== "available" || answer === undefined || canonicalJsonStringify(choice.action) !== canonicalJsonStringify(action)
+        || action.referenceTarget?.runId !== target.runId || action.referenceTarget.expectedVersion !== target.expectedVersion
+        || !choice.candidates.some(candidate => candidate.sheetId === answer.sheetId && candidate.rowId === answer.rowId
+          && candidate.referenceDigest === answer.referenceDigest && candidate.workbookVersion === answer.workbookVersion)) {
+        return { state: "refused", reason: "The roster row choice changed. Reload before choosing." };
+      }
+      const parsed = CommandRequestSchema.safeParse({ ...envelope, family: "run", type: "resolve-workbook-reference-row", target: action.referenceTarget, payload: answer });
+      return parsed.success ? { state: "ready", request: parsed.data } : { state: "refused", reason: "The roster row choice is unavailable." };
+    }
+    case "resolve-workbook-row": {
+      const choice = context.workbookWrite?.resolution;
+      const answer = context.workbookAnswer;
+      if (choice?.state !== "available" || answer === undefined || canonicalJsonStringify(choice.action) !== canonicalJsonStringify(action)
+        || action.workbookTarget?.runId !== target.runId || action.workbookTarget.expectedVersion !== target.expectedVersion
+        || !choice.candidates.some(candidate => candidate.sheetId === answer.sheetId && candidate.rowId === answer.rowId)) {
+        return { state: "refused", reason: "The workbook row choice changed. Reload before choosing." };
+      }
+      const parsed = CommandRequestSchema.safeParse({ ...envelope, family: "run", type: "resolve-workbook-row", target: action.workbookTarget, payload: answer });
+      return parsed.success ? { state: "ready", request: parsed.data } : { state: "refused", reason: "The workbook row choice is unavailable." };
+    }
+    case "retry": {
+      if (context.source === "run-detail" && context.childRetry?.kind === "command" && context.childRetry.command === "retry"
+        && context.childRetry.key === "retry-child" && action.expectedVersion === target.expectedVersion
+        && canonicalJsonStringify(action) === canonicalJsonStringify(context.childRetry)) {
+        return { state: "ready", request: { ...envelope, family: "run", type: "retry", target: { runId: target.runId, expectedVersion: target.expectedVersion } } };
+      }
+      const row = context.batchMemberRetry;
+      const served = row === undefined ? undefined : batchMemberRetryAction(row);
+      if (context.source === "run-detail" && row?.runId === target.runId && row.rowRevision === target.expectedVersion
+        && served !== undefined && canonicalJsonStringify(served) === canonicalJsonStringify(action)) {
+        return { state: "ready", request: { ...envelope, family: "run", type: "retry", target: { runId: target.runId, expectedVersion: target.expectedVersion } } };
+      }
       return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
+    }
     case "archive":
       return { state: "refused", reason: "Archive page removed" };
+    case "recover-run":
+    case "pause":
+    case "resume":
     case "cancel":
     case "bump":
     case "delete":
@@ -188,8 +211,12 @@ export function composeCommandRequest(
           reason: "no name was supplied; the rename dialog owns that value and nothing here may author one",
         };
       }
-      const problem = renameDraftProblem(answer);
-      if (problem !== undefined) return { state: "refused", reason: problem };
+      const trimmed = answer.trim();
+      // An empty name is the clear: the kernel restores the default title.
+      if (trimmed.length > 0) {
+        const problem = renameDraftProblem(answer);
+        if (problem !== undefined) return { state: "refused", reason: problem };
+      }
       return {
         state: "ready",
         request: {
@@ -197,19 +224,44 @@ export function composeCommandRequest(
           family: "run",
           type: "rename",
           target: { runId: target.runId, expectedVersion: action.expectedVersion },
-          payload: { displayName: answer.trim() },
+          payload: { displayName: trimmed },
         },
       };
     }
     case "resolve-gate":
-      return composeGateResult(action, context.gate, context.gateAnswer, envelope);
-    case "resolve-write-present":
-    case "resolve-write-absent":
-      // Park resolutions use the evidence-note dialog; this composer cannot carry that required proof.
-      return {
-        state: "refused",
-        reason: `${action.command} is answered by the parked-write dialog, not by this dispatcher`,
-      };
+      return composeGateResult(action, context.gate, context.gateAnswer, context.gateId, envelope);
+    case "check-parked-write": {
+      const write = context.parkedWrite;
+      const served = write?.actions.find(candidate => candidate.key === action.key);
+      if (write?.check?.state !== "available" || action.checkTarget === undefined || context.transactionId !== undefined
+        || write.runId !== target.runId || target.expectedVersion !== action.expectedVersion || action.checkTarget.runVersion !== action.expectedVersion
+        || canonicalJsonStringify(action.checkTarget) !== canonicalJsonStringify(write.check.target)
+        || canonicalJsonStringify(served) !== canonicalJsonStringify(action)) {
+        return { state: "refused", reason: "The held check target changed. Reload before checking." };
+      }
+      const parsed = CommandRequestSchema.safeParse({ ...envelope, family: "worker-browser", type: "check-parked-write", target: action.checkTarget });
+      return parsed.success ? { state: "ready", request: parsed.data } : { state: "refused", reason: "The held check is unavailable." };
+    }
+    case "recheck-write":
+    case "resolve-write-absent": {
+      const parked = context.parkedWrite;
+      const served = parked?.actions.find(candidate => candidate.key === action.key);
+      const write = action.writeTarget;
+      if (parked === undefined || parked.runId !== target.runId || target.expectedVersion !== action.expectedVersion
+        || served === undefined || canonicalJsonStringify(served) !== canonicalJsonStringify(action)
+        || write === undefined || write.writeIntentId !== parked.writeIntentId || write.intentGeneration !== parked.generation
+        || (context.transactionId !== undefined && (action.command !== "recheck-write" || !parked.acceptsTransactionId))) {
+        return { state: "refused", reason: "The parked write or its served action has changed. Reload before deciding." };
+      }
+      const { occurrenceKeyDigest, ...writeTarget } = write;
+      const parsed = CommandRequestSchema.safeParse({
+        ...envelope, family: "run", type: action.command,
+        target: { runId: target.runId, expectedVersion: action.expectedVersion, ...writeTarget },
+        payload: { occurrenceKeyDigest, ...(context.transactionId === undefined ? {} : { transactionId: context.transactionId.trim() }) },
+      });
+      return parsed.success ? { state: "ready", request: parsed.data }
+        : { state: "refused", reason: "The parked-write answer is invalid. Check the transaction number." };
+    }
   }
 }
 
@@ -219,15 +271,88 @@ export { composeStopWorkerCommand, composePlanWorkerCountCommand, composeSpawnWo
 export async function verifyShellCommandEffect(
   client: DashboardClient,
   day: string,
-  request: CommandRequest,
+  request: DashboardCommandRequest,
   reply: CommandResult | BulkRunCommandOutcome,
 ): Promise<CommandReadbackVerification> {
   const mismatch = (evidence: unknown) => ({ state: "mismatch" as const, evidence });
-  if (request.family === "notification") {
+  let batchRetryDetails: readonly RunDetailWire[] | undefined;
+  if (request.family === "run" && request.type === "resolve-workbook-reference-row") {
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 2
+      || !reply.affectedTargets.some(target => target.family === "run" && target.runId === request.target.runId)
+      || !reply.affectedTargets.some(target => target.family === "gate" && target.runId === request.target.runId
+        && target.gateId === request.target.gateId)) return mismatch(reply);
+    const detail = await client.runDetail(request.target.runId);
+    if (detail.runId !== request.target.runId || detail.rowRevision < request.target.expectedVersion || !detail.availableSections.includes("workbook-writes")) return mismatch(detail);
+    const section = await client.runSection(request.target.runId, "workbook-writes");
+    if (section.section !== "workbook-writes" || section.payload.runId !== request.target.runId) return mismatch(section);
+    const choice = section.payload.referenceChoices?.find(choice => choice.libraryId === request.target.libraryId && choice.typeId === request.target.typeId
+      && choice.referenceDigest === request.target.referenceDigest && choice.key === request.target.key);
+    return choice !== undefined && workbookReferenceMatchesReplay(choice, request, detail)
+      ? { state: "matched", evidence: section } : mismatch(section);
+  }
+  if (request.family === "run" && request.type === "resolve-workbook-row") {
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1 || reply.affectedTargets[0]?.family !== "run"
+      || reply.affectedTargets[0].runId !== request.target.runId) return mismatch(reply);
+    const detail = await client.runDetail(request.target.runId);
+    if (detail.runId !== request.target.runId || detail.rowRevision.valueOf() < request.target.expectedVersion.valueOf()
+      || !detail.availableSections.includes("workbook-writes")) return mismatch(detail);
+    const section = await client.runSection(request.target.runId, "workbook-writes");
+    if (section.section !== "workbook-writes") return mismatch(section);
+    const original = section.payload.operations.find(operation => operation.receipt.libraryId === request.target.libraryId
+      && operation.receipt.operationId === request.target.operationId);
+    const resolution = section.payload.operations.find(operation => operation.receipt.libraryId === request.target.libraryId
+      && operation.receipt.operationId === deriveStableUuid("run-workbook-row-resolution", request.commandId));
+    return original?.resolution.state === "resolved" && sha256Hex(canonicalJsonStringify(original.receipt)) === request.target.receiptDigest
+      && resolution?.receipt.state === "applied"
+      && resolution.receipt.version === request.target.workbookVersion + 1
+      ? { state: "matched", evidence: section } : mismatch(section);
+  }
+  if (request.family === "application") {
+    const current = await client.applicationLifecycle();
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1
+      || reply.affectedTargets[0]?.family !== "application" || reply.affectedTargets[0].runtimeGeneration !== request.target.runtimeGeneration
+      || current.runtimeGeneration !== request.target.runtimeGeneration) return mismatch(current);
+    for (const target of request.payload.targets) {
+      const row = current.targets.find(row => row.runId === target.runId);
+      if (row !== undefined) {
+        if (row.expectedVersion < target.expectedVersion || row.pause === undefined && row.pauseUnavailable !== true) return mismatch(current);
+      } else {
+        const detail = await client.runDetail(target.runId);
+        if (detail.runId !== target.runId || detail.rowRevision < target.expectedVersion || !isTerminalQueueStatus(detail.header.status)) return mismatch(detail);
+      }
+    }
+    return { state: "matched", evidence: current };
+  }
+  if (request.family === "notification" && "members" in request.target) {
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== request.target.matchingCount) return mismatch(reply);
+    const rows = await client.notificationSnapshot();
+    if (rows.length !== request.target.members.length || new Set(rows.map(row => row.notificationId)).size !== rows.length) return mismatch(rows);
+    if (new Set(reply.affectedTargets.map(target => target.family === "notification" ? target.notificationId : "")).size !== reply.affectedTargets.length) return mismatch(reply);
+    for (const member of request.target.members) {
+      const row = rows.find(row => row.notificationId === member.notificationId);
+      if (row === undefined || row.actorId !== request.target.actorId) return mismatch(rows);
+      const affected = reply.affectedTargets.some(target => target.family === "notification" && target.notificationId === member.notificationId);
+      if (!affected && row.kind === "notification" && Number(row.revision) !== Number(member.expectedVersion)) return mismatch(row);
+    }
+    const evidence = [];
+    for (const target of reply.affectedTargets) {
+      if (target.family !== "notification") return mismatch(reply);
+      const before = request.target.members.find(member => member.notificationId === target.notificationId);
+      const row = rows.find(member => member.notificationId === target.notificationId);
+      if (before === undefined || row?.kind !== "notification" || row.actorId !== request.target.actorId || row.revision !== before.expectedVersion + 1) return mismatch(rows);
+      const matches = request.type === "notification-read-all" ? row.readState === "read" : request.type === "notification-unread-all" ? row.readState === "unread"
+        : request.type === "notification-unsnooze-all" ? row.state !== "snoozed" : row.state === "snoozed" && row.snoozedUntil !== undefined && Date.parse(row.snoozedUntil) > Date.parse(request.requestedAt);
+      if (!matches) return mismatch(row);
+      evidence.push(row);
+    }
+    return { state: "matched", evidence };
+  }
+  if (request.family === "notification" && "notificationId" in request.target) {
     if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1 || reply.affectedTargets[0]?.family !== "notification"
       || reply.affectedTargets[0].notificationId !== request.target.notificationId) return mismatch(reply);
     const rows = await client.notificationSnapshot();
-    const row = rows.find(row => row.notificationId === request.target.notificationId);
+    const target = request.target;
+    const row = rows.find(row => row.notificationId === target.notificationId);
     if (request.target.actorId !== request.requestedBy || row?.actorId !== request.target.actorId || row.kind !== "notification"
       || row.revision !== request.target.expectedVersion + 1) return mismatch(rows);
     const matches = request.type === "notification-read" ? row.readState === "read"
@@ -236,9 +361,60 @@ export async function verifyShellCommandEffect(
       : row.state === "snoozed" && row.snoozedUntil !== undefined && Date.parse(row.snoozedUntil) > Date.parse(request.requestedAt);
     return matches ? { state: "matched", evidence: row } : mismatch(row);
   }
+  if (request.family === "run" && (request.type === "recheck-write" || request.type === "resolve-write-absent")) {
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1 || reply.affectedTargets[0]?.family !== "run"
+      || reply.affectedTargets[0].runId !== request.target.runId) return mismatch(reply);
+    const detail = await client.runDetail(request.target.runId);
+    return detail.runId === request.target.runId && detail.rowRevision > request.target.expectedVersion
+      ? { state: "matched", evidence: detail } : mismatch(detail);
+  }
+  if (request.family === "run" && request.type === "retry") {
+    if (!("affectedTargets" in reply) || ![2, 3].includes(reply.affectedTargets.length)
+      || !reply.affectedTargets.every(target => target.family === "run")
+      || new Set(reply.affectedTargets.map(target => target.family === "run" ? target.runId : undefined)).size !== reply.affectedTargets.length
+      || reply.affectedTargets.filter(target => target.family === "run" && target.runId === request.target.runId).length !== 1) return mismatch(reply);
+    const details = await Promise.all(reply.affectedTargets.map(target => {
+      if (target.family !== "run") throw new Error("Child retry target must be a run");
+      return client.runDetail(target.runId);
+    }));
+    if (!details.every((detail, index) => {
+      const target = reply.affectedTargets[index];
+      return target?.family === "run" && detail.runId === target.runId && detail.header.runId === target.runId;
+    })) return mismatch(details);
+    const source = details.find(detail => detail.runId === request.target.runId);
+    const replacements = details.filter(detail => detail.runId !== request.target.runId && detail.header.retryOf === request.target.runId);
+    const next = replacements[0];
+    if (source?.header.parentRunId === undefined) {
+      if (source === undefined || source.rowRevision.valueOf() !== request.target.expectedVersion.valueOf() || source.header.status !== "failed"
+        || details.length !== 2 || replacements.length !== 1
+        || next === undefined || next.header.parentRunId !== undefined || next.header.workflowId !== source.header.workflowId
+        || next.header.attempt <= source.header.attempt) return mismatch(details);
+      batchRetryDetails = details;
+    } else return replacements.length === 1 && next !== undefined && childRetrySourceMatches(source, request.target)
+      && next.header.retryOf === source.runId && next.header.parentRunId === source.header.parentRunId
+      && next.header.workflowId === source.header.workflowId && next.header.attempt > source.header.attempt
+      && details.every(detail => detail === source || detail === next || detail.runId === source.header.parentRunId)
+      ? { state: "matched", evidence: details } : mismatch(details);
+  }
+  if (request.family === "worker-browser" && request.type === "check-parked-write") {
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 2
+      || !reply.affectedTargets.some(target => target.family === "run" && target.runId === request.target.runId)
+      || !reply.affectedTargets.some(target => target.family === "worker-browser" && target.workerId === request.target.workerId)) return mismatch(reply);
+    const detail = await client.runDetail(request.target.runId);
+    if (detail.runId !== request.target.runId || detail.rowRevision.valueOf() !== request.target.runVersion.valueOf() || detail.header.traceId !== request.target.traceId || detail.header.attempt !== request.target.runAttempt
+      || detail.header.workflowId !== request.target.workflowId || !detail.availableSections.includes("parked-write")) return mismatch(detail);
+    const section = await client.runSection(request.target.runId, "parked-write");
+    if (section.section !== "parked-write") return mismatch(section);
+    const write = section.payload, observed = write.lastCheck;
+    return write.runId === request.target.runId && write.writeIntentId === request.target.writeIntentId
+      && write.generation === request.target.intentGeneration && write.runAttempt === request.target.runAttempt
+      && observed?.commandId === request.commandId && observed.requestedBy === request.requestedBy && observed.held
+      && canonicalJsonStringify(observed.target) === canonicalJsonStringify(request.target) ? { state: "matched", evidence: observed } : mismatch(section);
+  }
   if (request.family === "gate") {
     const detail = await client.runDetail(request.target.runId);
-    const value = request.payload.result.value;
+    // Every hire-review arm records an approval.
+    const value = request.type === "answer-identity-gate" ? request.payload : request.type === "answer-gate-arm" ? { decision: "approved" } : request.payload.result.value;
     const decision = typeof value === "object" && value !== null && "decision" in value ? value.decision : undefined;
     return detail.rowRevision > request.target.expectedVersion && detail.gate.state === "resolved"
       && detail.gate.nodeId !== undefined && String(detail.gate.nodeId) === String(request.target.gateId) && detail.gate.resolvedBy === request.requestedBy
@@ -290,9 +466,61 @@ export async function verifyShellCommandEffect(
   const rootRead = await readRow(request.target.runId);
   if (rootRead === undefined) return mismatch([...snapshots.values()]);
   const root = rootRead;
-  if (request.type === "rename") return root.rowRevision === request.target.expectedVersion + 1
-    && root.displayName.state === "present" && root.displayName.value === request.payload.displayName
-    ? { state: "matched", evidence: root } : mismatch(root);
+  if (request.type === "retry") {
+    const source = batchRetryDetails?.find(detail => detail.runId === root.runId);
+    const replacement = batchRetryDetails?.find(detail => detail.runId !== root.runId);
+    if (source === undefined || replacement === undefined || !batchMemberRetrySourceMatches(root, request.target)
+      || root.workflowId !== source.header.workflowId || root.traceId !== source.header.traceId
+      || root.attempt !== source.header.attempt || root.session.state !== "present") return mismatch(root);
+    const next = await readRow(replacement.runId);
+    return next !== undefined && next.parent === null && next.workflowId === root.workflowId && next.itemId === root.itemId
+      && next.traceId === replacement.header.traceId && next.attempt === replacement.header.attempt && next.attempt > root.attempt && next.session.state === "present"
+      && next.session.sessionId === root.session.sessionId
+      ? { state: "matched", evidence: { details: batchRetryDetails, rows: [root, next] } } : mismatch(next);
+  }
+  if (request.type === "recover-run") {
+    if (!("affectedTargets" in reply) || root.rowRevision.valueOf() !== request.target.expectedVersion.valueOf()
+      || !reply.affectedTargets.some(target => target.family === "run" && target.runId === root.runId)) return mismatch(reply);
+    const rows: QueueSurfaceWire[] = [];
+    for (const target of reply.affectedTargets) {
+      if (target.family !== "run") return mismatch(reply);
+      const row = await readRow(target.runId);
+      if (row === undefined) return mismatch(reply);
+      rows.push(row);
+    }
+    const recovered = rows.filter(row => row.runId !== root.runId && row.workflowId === root.workflowId
+      && row.itemId === root.itemId && row.attempt > root.attempt);
+    if (recovered.length !== 1 || recovered[0] === undefined) return mismatch(rows);
+    const next = recovered[0];
+    if (next.descriptorHash !== root.descriptorHash || next.configFingerprint !== root.configFingerprint || next.dryRun !== root.dryRun) return mismatch(rows);
+    for (const row of rows) {
+      if (root.parent !== null && next.parent?.runId === root.parent.runId && row.runId === root.parent.runId) continue;
+      let current = row;
+      const visited = new Set<string>();
+      while (current.runId !== root.runId && current.runId !== next.runId) {
+        if (visited.size >= 32 || visited.has(current.runId) || current.parent === null) return mismatch(rows);
+        visited.add(current.runId);
+        const parent = await readRow(current.parent.runId);
+        if (parent === undefined) return mismatch(rows);
+        current = parent;
+      }
+    }
+    return { state: "matched", evidence: rows };
+  }
+  if (request.type === "rename") {
+    const name = request.payload.displayName.trim();
+    const nameMatches = name.length === 0
+      ? root.displayName.state === "absent"
+      : root.displayName.state === "present" && root.displayName.value === name;
+    return root.rowRevision === request.target.expectedVersion + 1 && nameMatches
+      ? { state: "matched", evidence: root } : mismatch(root);
+  }
+  if (request.type === "pause" || request.type === "resume") {
+    const commandId = lifecycleCommandId(`operator-${request.type}`, request.commandId);
+    const matches = request.type === "pause" ? root.pause?.commandId === commandId
+      : root.pause === undefined && root.rowRevision > request.target.expectedVersion;
+    return root.rowRevision >= request.target.expectedVersion && matches ? { state: "matched", evidence: root } : mismatch(root);
+  }
   if (request.type === "bump") return root.rowRevision >= request.target.expectedVersion && root.priority === "interactive"
     ? { state: "matched", evidence: root } : mismatch(root);
   if (request.type !== "cancel") return mismatch(root);
@@ -304,9 +532,9 @@ export async function verifyShellCommandEffect(
     const path = new Map<string, QueueSurfaceWire>();
     while (descendant !== undefined && !legal.has(descendant.runId)) {
       const row = descendant;
-      if (path.has(row.runId) || row.lineage.state !== "child") return mismatch([...path.values()]);
+      if (path.has(row.runId) || row.parent === null) return mismatch([...path.values()]);
       path.set(row.runId, row);
-      descendant = await readRow(row.lineage.parentRunId);
+      descendant = await readRow(row.parent.runId);
     }
     if (descendant === undefined) return mismatch([...snapshots.values()]);
     for (const [runId, row] of path) legal.set(runId, row);

@@ -1,19 +1,18 @@
+import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
+import { unusedWorkerPool } from "../../helpers/backend/unused-worker-pool.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
-import { descriptorSetHash } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createRunQueueProjection } from "../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { registerQueueRoutes } from "../../../../src/backend/transports/http/routes/queue.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../../helpers/admission-fixture.js";
 /** Disposable production Intake pipeline. Surrounding dashboard reads use the named fixture server. */
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createServer } from "node:http";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -34,18 +33,18 @@ import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../phase1f-run-fixtures.js";
 import { intakeFixtureDescriptor, intakeFixtureProjection } from "../intake-workflow-fixture.js";
 import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
-import type { ParityBundleProof } from "../../../parity/helpers/bundle.js";
+import type { MockBundleProof } from "../../../mocks/helpers/bundle.js";
 
 export const INTAKE_CSV = "Employee ID#,Effective Date,Dept\n10456712,07/01/2026,Housing\n10-4567,07/01/2026,Housing\n10998801,07/01/2026,Student Affairs\n";
-export function createIntakeAuthority() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-intake-authority-"));
-  const path = join(root, "authority.sqlite");
+export async function createIntakeAuthority(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  const profile = await profileFixture();
+  const root = profile.stateRoot, path = profile.path, artifactRoot = profile.admission.artifactRoot;
   const clock = manualClock(new Date(NOW));
   let database = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "intake-disposable-proof" }, clock);
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: CONFIG_SNAPSHOT.fingerprint,
     configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
-  const ownedArtifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")) });
+  const ownedArtifacts = createContentAddressedArtifactWriter({ admission: profile.admission });
   let artifactReads = 0;
   const artifacts = { ...ownedArtifacts, open: (...args: Parameters<typeof ownedArtifacts.open>) => {
     artifactReads += 1;
@@ -72,17 +71,18 @@ export function createIntakeAuthority() {
     } }),
       appVersion: "0.1.0", authority: database, clock, ids: kernelIds,
       configIdentity: { configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: UUID_1 }, descriptors,
-      writeResolution: { resolvePresent: forbidden, resolveAbsent: forbidden },
-      workerRuntime: { pool: { planPoolWorkerCount: forbidden, spawnPoolWorker: forbidden, refreshPoolBrowser: forbidden, reopenPoolBrowser: forbidden, stopPoolWorker: forbidden, pausePoolWorker: forbidden, resumePoolWorker: forbidden } },
+      writeResolution: { recheck: forbidden, resolveAbsent: forbidden },
+      workerRuntime: { pool: unusedWorkerPool(forbidden) },
       intakeParser: parser, intakeProjections: projections });
     const projection = createRunQueueProjection({
-      timeline: database.authority.timelineEvents, reader: sqliteRunReader(database, clock), stateRoot: join(root, ".tracker"),
+      timeline: database.authority.timelineEvents, reader: sqliteRunReader(database, clock), stateRoot: root,
       clock, appVersion: "0.1.0", descriptorSetHash: descriptorSetHash([descriptor.contractFingerprint]),
       ledger: createTransactionHistory(database.authority),
       authority: {
+        queueParents: envelopes => database.authority.dependencies.parents(envelopes),
         listNotifications: () => [], listNotificationCheckpoints: () => [],
-        listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
-        getWorkerLease: workerId => database.authority.workerLeases.get(workerId),
+        listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
+        listGateResults: runId => database.authority.gateResults.listByRun(runId),
         listWorkerPools: () => database.authority.workerPools.list(),
         listRunBatches: () => database.authority.runSessions.list(), getRunBatch: id => database.authority.runSessions.get(id),
         getFailure: failureId => database.authority.failures.get(failureId),
@@ -111,14 +111,16 @@ export function createIntakeAuthority() {
     execute: request => runtime.kernel.execute(request),
     submit: async request => runtime.kernel.execute(request),
     executeBulk: forbidden,
+    completeConsumed: forbidden,
+    publish: forbidden,
   };
-  registerCommandsRoutes(app, { clock, commands, commandJournal: { get: id => database.authority.commands.get(id) },
+  registerCommandsRoutes(app, { clock, commands, resolveWriteCommand: request => resolveWriteCommandTarget(request, database.authority), commandJournal: { get: id => database.authority.commands.get(id) },
     protectedCommandAcceptedAt: forbidden, bulkCommandAcceptances: { withTransaction: work => database.withAuthorityTransaction(repositories => work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })) },
-    intake: { prepare: request => runtime.intake.prepare(request) },
+    intake: { prepare: request => runtime.intake.prepare(request) }, resolveIdentityGateAnswer: forbidden, resolveGateArmAnswer: forbidden,
   });
   app.onError((error, c) => c.json({ state: "error", code: "INTAKE_PROOF_ERROR", message: error.message, retryable: false }, 500));
   return {
-    root, path, clock, app, artifacts,
+    root, path, artifactRoot, clock, app, artifacts,
     get artifactReads() { return artifactReads; },
     get mintedIds() { return [...ids.minted(), ...kernelIds.minted(), ...lifecycleIds.minted()]; },
     get database() { return database; }, get intake() { return runtime.intake; }, get kernel() { return runtime.kernel; },
@@ -131,11 +133,11 @@ export function createIntakeAuthority() {
     },
     async post(request: unknown) { return app.request("http://127.0.0.1/api/v1/commands", { method: "POST", headers: { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": "application/json" }, body: JSON.stringify(request) }); },
     async upload(csv = INTAKE_CSV) { const result = await runtime.intake.upload({ workflow: descriptor.id, fileName: "synthetic.csv", mediaType: "text/csv", bytes: new TextEncoder().encode(csv) }); if (result.state === "refused") throw new Error(result.message); return result; },
-    close() { database.close(); rmSync(root, { recursive: true, force: true }); },
+    async close() { database.close(); await profile.close(); },
   };
 }
 
-export async function startIntakeAuthorityServer(input: { distDir: string; bundle: ParityBundleProof }) {
+export async function startIntakeAuthorityServer(input: { distDir: string; bundle: MockBundleProof }) {
   const [{DEFAULT_DASHBOARD_PROFILE},{startFixtureServer}]=await Promise.all([import("./fixture-profile.js"),
     import("../../helpers/dashboard/fixture-bff.js")]);
   const template = DEFAULT_DASHBOARD_PROFILE.bootstrap.workflows.map(workflow => WorkflowBootstrapPrimitiveSchema.parse(workflow)).find(workflow => workflow.start?.spreadsheetIntake === true);
@@ -144,7 +146,7 @@ export async function startIntakeAuthorityServer(input: { distDir: string; bundl
     workflows: [{ ...template, id: intakeFixtureDescriptor.id, label: "Intake fixture", code: "if" }],
   }) };
   const fixture = await startFixtureServer({ ...input, profile });
-  const authority = createIntakeAuthority();
+  const authority = await createIntakeAuthority();
   const server = createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "127.0.0.1"}`);
@@ -172,6 +174,6 @@ export async function startIntakeAuthorityServer(input: { distDir: string; bundl
   const address = server.address(); if (address === null || typeof address === "string") throw new Error("Intake proof did not bind loopback");
   return { authority, baseUrl: `http://127.0.0.1:${address.port}`, async close() {
     server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error === undefined ? resolve() : reject(error)));
-    await fixture.close(); authority.close();
+    await fixture.close(); await authority.close();
   } };
 }

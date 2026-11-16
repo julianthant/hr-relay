@@ -6,11 +6,11 @@ import { DashboardDayWireSchema } from "../../../../src/models/dashboard/project
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { CONFIG_SNAPSHOT, NOW } from "../phase1c-contract-fixtures.js";
 
-const authorities: ReturnType<typeof createIntakeAuthority>[] = [];
-afterEach(() => { for (const authority of authorities.splice(0)) authority.close(); });
+const authorities: Awaited<ReturnType<typeof createIntakeAuthority>>[] = [];
+afterEach(async () => { for (const authority of authorities.splice(0)) await authority.close(); });
 
 it("serves actual Intake fan-out relationships over the production HTTP day query without read effects, including restart", async () => {
-  const authority = createIntakeAuthority(); authorities.push(authority);
+  const authority = await createIntakeAuthority(); authorities.push(authority);
   let session = (await authority.upload()).session;
   for (const [targetFieldId, column] of [["emplId", 0], ["effectiveDate", 1]] as const) {
     const result = CommandResultSchema.parse(await (await authority.post(authority.request(session, "confirm-intake-mapping", {

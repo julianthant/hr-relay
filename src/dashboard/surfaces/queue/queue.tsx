@@ -1,8 +1,8 @@
 import type { QueueBusinessOutcome } from "../shared/status/status-model.js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
-import { memo, useMemo, useState } from "react";
+import { Fragment, memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Pause, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import {
   BareButton,
@@ -19,7 +19,9 @@ import {
   dsText,
 } from "../../ds/ui.js";
 import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js";
+import type { QueueMemberSelection, QueueRecordMember } from "../../../models/dashboard/projection.js";
 import { isTerminalQueueStatus } from "../../../models/dashboard/projection.js";
+import { IconActionButton } from "../shared/actions/icon-action-button.js";
 import {
   FooterActions,
   OutcomeActionButton,
@@ -32,21 +34,24 @@ import { StatusBadge } from "../shared/status/status.js";
 import {
   PROPOSED_STATUS,
   dsStatusOf,
-  statusAccessibleName,
   statusText,
   type ProposedStatus,
 } from "../shared/status/status-model.js";
 import type { QueueSortKey } from "./queue-model.js";
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
+import { RenameableTitle } from "../shared/rename/renameable-title.js";
 import {
   type LinkedRunWire,
-  type MemberSurfaceWire,
   type OperationSurfaceWire,
   type PipelineStep,
   type QueueSurfaceWire,
   bandOf,
   canViewAllMembers,
-  orderMembers,
+  queueMemberLines,
+  queueMemberPresentation,
+  type QueueMemberLine,
+  queueMemberKey,
+  queueMemberRollup,
   partition,
   queueGateAge,
   queueRowAccessibleName,
@@ -65,6 +70,7 @@ import {
 export interface QueueViewState {
   /** the row the detail panel is showing */
   selectedRunId?: string;
+  selectedMember?: QueueMemberSelection;
   /** Which member WELLS are open to their tall shape. */
   openWells: ReadonlySet<string>;
   /** bulk-selection mode: checkboxes on top-level rows */
@@ -81,6 +87,7 @@ export interface QueueViewState {
 export interface QueueHandlers {
   onSetBatchGrouping?: (batch: QueueBatch, grouped: boolean) => Promise<void>;
   onSelect: (runId: string) => void;
+  onOpenMember?: (member: QueueRecordMember) => void;
   /** every command control on a row goes through here — see `./actions.js` */
   onAction?: DashboardActionHandler;
   /** grow this row's member well from 5 lines to 20, or back */
@@ -95,23 +102,19 @@ export interface QueueHandlers {
   onPreviewAction?: (action: 'retry' | 'delete', ids: readonly string[]) => void;
   /** Mark a loaded member checked by you. This has no authority effect. */
   /** Jump to the run that delegated this one — the panel switch AND the selection */
-  onOpenParent?: (runId: string) => void;
+  onOpenParent?: (parent: NonNullable<QueueSurfaceWire["parent"]>) => void;
   /** Jump to a run this row DELEGATED TO . Same shape as
  * `onOpenParent` and separate from it on purpose: the wire hands the whole */
   onOpenLinked?: (link: LinkedRunWire) => void;
+  /** Double-click renames the row title in place; an empty name restores the default. Offered only when a host supplies it. */
+  onRenameTitle?: (runId: string, name: string) => void;
 }
-
-/** What a row needs to draw a route back to its parent: the parent's own
- * identity and status, resolved from the SERVED day projection. It answers */
-export type QueueParentLookup = (
-  parentRunId: string,
-) => { runId: string; title: string; workflowLabel: string; status: ProposedStatus } | undefined;
 
 /** How a surface reaches its served actions. The default is honest emptiness. */
 export type QueueActionsOf = (surface: QueueSurfaceWire) => readonly ActionDescriptorWire[];
 
 const NO_ACTIONS: QueueActionsOf = () => [];
-const NO_MEMBERS: readonly MemberSurfaceWire[] = [];
+const NO_MEMBERS: readonly QueueSurfaceWire[] = [];
 
 /** the band ordering and its sort vocabulary live in `queue-model.ts` — see the note there */
 export type { QueueSortKey };
@@ -184,7 +187,9 @@ function HeaderChips({
   surface,
   status,
   nowIso,
+  rollup,
 }: {
+  rollup?: OperationSurfaceWire["memberRollup"];
   outcome?: QueueBusinessOutcome;
   surface: QueueSurfaceWire;
   status: ProposedStatus;
@@ -227,7 +232,10 @@ function HeaderChips({
       )}
       <StatusBadge
         status={status}
+        pauseControl={surface.pauseControl}
+        interrupt={surface.interrupt}
         outcome={outcome}
+        cancelledBy={surface.cancelledBy}
         presentation="queue"
         hideIcon={status !== "running" && status !== "waiting" && status !== "failed"}
         {...(gateAge === undefined ? {} : { age: gateAge })}
@@ -235,12 +243,12 @@ function HeaderChips({
       {surface.surfaceKind === "operation" && (
         <span
           data-queue-member-count
-          title={`${surface.memberRollup.terminal} of ${surface.memberRollup.total} finished; ${surface.memberRollup.failed} failed`}
-          aria-label={`${surface.memberRollup.terminal} of ${surface.memberRollup.total} finished; ${surface.memberRollup.failed} failed`}
+          title={`${(rollup ?? surface.memberRollup).terminal} of ${(rollup ?? surface.memberRollup).total} finished; ${(rollup ?? surface.memberRollup).failed} failed`}
+          aria-label={`${(rollup ?? surface.memberRollup).terminal} of ${(rollup ?? surface.memberRollup).total} finished; ${(rollup ?? surface.memberRollup).failed} failed`}
           className={cn(dsText.meta, dsText.nums, dsRadius.sm, dsBorder.base,
             "inline-flex h-[var(--ds-h-xs)] min-w-[var(--ds-w-queue-counter)] items-center justify-center whitespace-nowrap border bg-[var(--ds-surface-2)] px-[var(--ds-space-tight)] text-[color:var(--ds-fg-secondary)]")}
         >
-          {surface.memberRollup.terminal}/{surface.memberRollup.total}
+          {(rollup ?? surface.memberRollup).terminal}/{(rollup ?? surface.memberRollup).total}
         </span>
       )}
     </>
@@ -249,7 +257,7 @@ function HeaderChips({
 
 const PANEL_EXPLANATION: Record<QueueSurfaceWire["panelKind"], string> = {
   run: "Opening it shows the logs, recorded values, screenshots and operator decisions.",
-  review: "Opening it starts the review — the scanned page beside the fields read from it, one person at a time.",
+  review: "Opening it shows the run's logs and review status.",
   group: "Opening it lists the people it holds, attention first, and you can open any one of them from there.",
   member: "Opening it walks the set — previous, next, and a checked mark so you keep your place in it.",
 };
@@ -288,6 +296,7 @@ function RowFooterLine({
   // Settled durations need a served end; never substitute now for an unmeasured terminal run.
   const timing = isTerminalQueueStatus(surface.status) && surface.endedAt.state === "absent"
     ? undefined : runTiming(surface, nowIso, isTerminalQueueStatus);
+  const groupCount = surface.surfaceKind === "operation" ? Math.max(surface.memberRollup.total - surface.memberRollup.terminal, 1) : undefined;
   return (
     <div
       data-queue-row-footer
@@ -315,7 +324,7 @@ function RowFooterLine({
           onSelect={onSelect}
         />
         {/* The compact alias is display-only; the tooltip retains the exact trace. */}
-        <span className="min-w-0 truncate text-[color:var(--ds-fg-secondary)]" title={surface.traceId}>
+        <span className="min-w-0 truncate text-[color:var(--ds-fg-secondary)] max-[1099px]:hidden" title={surface.traceId}>
           {runDisplayId(surface.runId, surface.traceId)}
         </span>
         {timing !== undefined && (
@@ -329,6 +338,7 @@ function RowFooterLine({
           actions={actions}
           target={{ runId: surface.runId, expectedVersion: surface.rowRevision }}
           onPreviewAction={onPreviewAction}
+          {...(groupCount === undefined ? {} : { groupCount })}
           {...(onAction === undefined ? {} : { onAction })}
         />
       </div>
@@ -363,40 +373,42 @@ function MemberWell({
   );
 }
 
-function MemberLine({ surface, item, selected, onSelect }: {
-  surface: MemberSurfaceWire;
-  item: QueueItemGroup;
+function MemberLine({ line, selectedRunId, selected, bulkSelected, onSelect, onSelectRun }: {
+  line: QueueMemberLine;
+  selectedRunId?: string;
   selected: boolean;
-  onSelect: (runId: string) => void;
+  bulkSelected?: boolean;
+  onSelect?: () => void;
+  onSelectRun: (runId: string) => void;
 }) {
-  const status = dsStatusOf(surface.status);
-  const spec = PROPOSED_STATUS[status];
-  const Icon = spec.icon;
-  const selectionLabel = `${queueRowTitle(surface)} ${
-    surface.subtitle.state === "present" ? surface.subtitle.value : statusAccessibleName(status).toLowerCase()
-  }`;
-  return (
-    <tr data-demo-row-id={surface.runId}
-      title={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
-      className={cn(dsText.body, dsMotion.fast, "h-[var(--ds-h-queue-member-line)] hover:bg-[var(--ds-surface-3)]", selected && "bg-[var(--ds-surface-selected)]")}
-    >
-      <td className="max-w-0 border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]">
-        <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
-          <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass, status === "running" && "animate-spin motion-reduce:animate-none")} />
-          <BareButton type="button" title={surface.subtitle.state === "present" ? surface.subtitle.value : surface.subtitle.reason}
-            aria-label={selectionLabel} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); onSelect(String(surface.runId)); }}
-            className={cn("min-w-0 truncate text-left text-[color:var(--ds-fg)] hover:underline", dsFocus)}
-          >{queueRowTitle(surface)}</BareButton>
-          {item.attempts.length > 1 && <QueueAttemptSelector title={queueRowTitle(surface)} surface={surface} item={item}
-            selectedRunId={String(surface.runId)} onSelect={onSelect} />}
-
-        </div>
-      </td>
-      <td className={cn(dsText.meta, "w-px whitespace-nowrap border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-right", status === "waiting" || status === "running" ? "text-ui-info" : status === "failed" ? "text-ui-danger" : spec.soloTone)}>
-        <span aria-label={statusAccessibleName(status)}>{statusText(status)}</span>
-      </td>
-    </tr>
-  );
+  const view = queueMemberPresentation(line, selectedRunId);
+  const status = dsStatusOf(view.status);
+  const spec = PROPOSED_STATUS[view.paused ? "queued" : status];
+  const Icon = view.paused ? Pause : spec.icon;
+  return <tr data-demo-row-id={view.key}
+    data-queue-record-id={line.kind === "record" && line.member.kind === "record" ? line.member.record.recordId : undefined}
+    title={`${view.title} — ${view.statusAccessibleLabel.toLowerCase()}`}
+    onClick={onSelect === undefined ? undefined : event => { event.stopPropagation(); onSelect(); }}
+    className={cn(dsText.body, dsMotion.fast, "h-[var(--ds-h-queue-member-line)] cursor-pointer hover:bg-[var(--ds-surface-3)]", selected && "bg-[var(--ds-surface-selected)]")}
+  >
+    <td className="max-w-0 border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]">
+      <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
+        {bulkSelected !== undefined && <Checkbox checked={bulkSelected}
+          label={<span className="sr-only">Select {view.title} for a bulk command</span>}
+          onClick={event => event.stopPropagation()} onCheckedChange={() => onSelect?.()} />}
+        <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass, status === "running" && !view.paused && "animate-spin motion-reduce:animate-none")} />
+        <BareButton type="button" title={view.buttonTitle} disabled={onSelect === undefined}
+          aria-label={view.accessibleName} aria-pressed={selected} onClick={event => { event.stopPropagation(); onSelect?.(); }}
+          className={cn("min-w-0 truncate text-left text-[color:var(--ds-fg)]", dsFocus)}
+        >{view.title}</BareButton>
+        {view.native !== undefined && view.native.item.attempts.length > 1 && <QueueAttemptSelector title={view.title}
+          surface={view.native.surface} item={view.native.item} selectedRunId={String(view.native.surface.runId)} onSelect={onSelectRun} />}
+      </div>
+    </td>
+    <td className={cn(dsText.meta, "w-px whitespace-nowrap border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-right", view.paused ? spec.soloTone : status === "waiting" || status === "running" ? "text-ui-info" : status === "failed" ? "text-ui-danger" : spec.soloTone)}>
+      <span aria-label={view.statusAccessibleLabel}>{view.statusLabel}</span>
+    </td>
+  </tr>;
 }
 
 
@@ -412,21 +424,25 @@ function GroupMemberList({
   surface,
   itemKey,
   members,
+  membersOf,
   state,
   handlers,
 }: {
-  surface: OperationSurfaceWire;
+  surface: OperationSurfaceWire | QueueBatch;
   itemKey: string;
-  members: readonly MemberSurfaceWire[];
+  members: readonly QueueSurfaceWire[];
+  membersOf?: ReadonlyMap<string, readonly QueueSurfaceWire[]>;
   state: QueueViewState;
   handlers: QueueHandlers;
 }) {
-  const itemGroups = groupQueueAttempts(members);
-  const ordered = orderMembers(itemGroups.map((item) => item.representative) as MemberSurfaceWire[]);
+  const ordered = queueMemberLines(surface, members);
+  const rollup = queueMemberRollup(surface, members);
   const wellOpen = state.openWells.has(itemKey);
   const canExpand = ordered.length > MEMBER_WELL_LINES;
   /** Offer roster navigation only when its destination handler exists. */
-  const canOpenRoster = canViewAllMembers(surface.memberRollup.total) && handlers.onOpenRoster !== undefined;
+  const batch = "kind" in surface ? surface : undefined;
+  const title = "kind" in surface ? "Person Lookup" : queueRowTitle(surface);
+  const canOpenRoster = batch === undefined && canViewAllMembers(rollup.total) && handlers.onOpenRoster !== undefined;
   const { onToggleWell, onOpenRoster } = handlers;
 
   const disclosures = (
@@ -451,7 +467,7 @@ function GroupMemberList({
           type="button"
           onClick={(event) => {
             event.stopPropagation();
-            onOpenRoster(surface.runId);
+            if (!("kind" in surface)) onOpenRoster(surface.runId);
           }}
           className={disclosureLink}
         >
@@ -467,10 +483,11 @@ function GroupMemberList({
   return (
     <MemberWell
       open={wellOpen && canExpand}
-      header={ordered.length > 0 && ordered.length < surface.memberRollup.total && (
+      header={(batch !== undefined || ordered.length > 0 && ordered.length < rollup.total) && (
         <div className={cn(dsText.meta, "flex flex-wrap items-center gap-[var(--ds-space-base)] border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
-          {ordered.length > 0 && ordered.length < surface.memberRollup.total && <span>
-            {ordered.length} of {plural(surface.memberRollup.total, "member")} loaded
+          {batch !== undefined && <span>{plural(rollup.total, "person", "people")} on this day</span>}
+          {batch === undefined && ordered.length > 0 && ordered.length < rollup.total && <span>
+            {ordered.length} of {plural(rollup.total, "member")} loaded
           </span>}
         </div>
       )}
@@ -489,7 +506,7 @@ function GroupMemberList({
         ) : undefined
       }
     >
-      <table aria-label={`Members of ${queueRowTitle(surface)}`} className="w-full border-collapse text-left [&_tbody>tr:last-child>td]:border-b-0">
+      <table aria-label={`Members of ${title}`} className="w-full border-collapse text-left [&_tbody>tr:last-child>td]:border-b-0">
         <thead className="sticky top-0 bg-[var(--ds-surface-2)]">
           <tr className={cn(dsText.meta, "h-[var(--ds-h-queue-member-head)] text-[color:var(--ds-fg-secondary)]")}>
             <th scope="col" className="border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-snug)] font-medium">Name</th>
@@ -498,13 +515,30 @@ function GroupMemberList({
         </thead>
         <tbody>
           {ordered.length === 0 && <tr><td colSpan={2} className={cn(dsText.body, "px-[var(--ds-space-base)] py-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>Members not loaded</td></tr>}
-          {ordered.map((member) => {
-            const item = itemGroups.find((candidate) => candidate.representative.runId === member.runId);
-            if (item === undefined) throw new Error(`member list lost item ${String(member.itemId)}`);
-            const visible = item.attempts.find((attempt) => String(attempt.runId) === state.selectedRunId) ?? member;
-            const selected = item.attempts.some((attempt) => String(attempt.runId) === state.selectedRunId);
-            return <MemberLine key={item.key} surface={visible as MemberSurfaceWire} item={item} selected={selected}
-              onSelect={handlers.onSelect} />;
+          {ordered.map(line => {
+            if (line.kind === "record") {
+              const selected = state.selectedMember !== undefined && queueMemberKey(state.selectedMember) === line.key;
+              return <MemberLine key={line.key} line={line} selected={selected} onSelectRun={handlers.onSelect}
+                onSelect={handlers.onOpenMember === undefined ? undefined : () => handlers.onOpenMember?.(line.member)} />;
+            }
+            const item = line.item;
+            const bulkMember = batch !== undefined && state.selectMode === true;
+            const visible = bulkMember ? item.representative : item.attempts.find(attempt => String(attempt.runId) === state.selectedRunId) ?? item.representative;
+            const selected = item.attempts.some(attempt => String(attempt.runId) === state.selectedRunId);
+            return <Fragment key={line.key}>
+              <MemberLine line={line} selectedRunId={bulkMember ? undefined : state.selectedRunId} selected={selected}
+                bulkSelected={bulkMember ? state.bulkIds?.has(item.representative.runId) === true : undefined}
+                onSelect={() => bulkMember ? handlers.onToggleBulk?.(item.representative.runId) : handlers.onSelect(String(visible.runId))}
+                onSelectRun={handlers.onSelect} />
+              {(visible.linkedRuns.length > 0 || visible.surfaceKind === "operation" && (visible.memberRunIds.length > 0 || (visible.recordMembers?.members.length ?? 0) > 0)) && <tr><td colSpan={2}>
+                {visible.linkedRuns.length > 0 && <div className="flex flex-wrap gap-2 px-3 py-2">
+                  {visible.linkedRuns.map(link => <LinkedRunChip key={link.runId} link={link} onOpen={() => handlers.onOpenLinked?.(link)} />)}
+                </div>}
+                {visible.surfaceKind === "operation" && (visible.memberRunIds.length > 0 || (visible.recordMembers?.members.length ?? 0) > 0) && <GroupMemberList
+                  surface={visible} itemKey={item.key} members={membersOf?.get(visible.runId) ?? NO_MEMBERS}
+                  membersOf={membersOf} state={state} handlers={handlers} />}
+              </td></tr>}
+            </Fragment>;
           })}
         </tbody>
       </table>
@@ -563,14 +597,14 @@ function ParentBackChip({
   parent,
   onOpen,
 }: {
-  parent: NonNullable<ReturnType<QueueParentLookup>>;
+  parent: NonNullable<QueueSurfaceWire["parent"]>;
   onOpen: () => void;
 }) {
   return (
     <PanelRedirectChip
-      label={parent.workflowLabel}
-      status={parent.status}
-      title={`${parent.workflowLabel} · ${parent.title} — the run that delegated this one`}
+      label={parent.label}
+      status={dsStatusOf(parent.status)}
+      title={`${parent.label} · ${parent.title} — the run that delegated this one`}
       onOpen={onOpen}
     />
   );
@@ -608,19 +642,26 @@ function QueueAttemptSelector({ title, surface, item, selectedRunId, onSelect }:
   surface: QueueSurfaceWire;
   item?: QueueItemGroup;
   selectedRunId?: string;
+  selectedMember?: QueueMemberSelection;
   onSelect: (runId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const attempts = item?.attempts ?? [surface];
+  const group = item ?? groupQueueAttempts([surface])[0];
+  const attempts = group.attempts;
+  const dayNumber = (runId: string): number => {
+    const number = group.dayNumberByRunId.get(runId);
+    if (number === undefined) throw new Error(`queue run has no day number: ${runId}`);
+    return number;
+  };
   return <DropdownMenu open={open} onOpenChange={setOpen}>
-    <DropdownMenuTrigger asChild><BareButton type="button" aria-label={`Attempts for ${title}`} title={`Attempt ${surface.attempt}`} onClick={event => event.stopPropagation()}
+    <DropdownMenuTrigger asChild><BareButton type="button" aria-label={`Attempts for ${title}`} title={`Attempt ${dayNumber(surface.runId)}`} onClick={event => event.stopPropagation()}
       className={cn("inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-caption text-ui-muted hover:bg-ui-hover hover:text-ui-primary", dsFocus)}>
-      #{surface.attempt}<ChevronDown aria-hidden className="size-3" />
+      #{dayNumber(surface.runId)}<ChevronDown aria-hidden className="size-3" />
     </BareButton></DropdownMenuTrigger>
-    <DropdownMenuContent aria-label={`Attempts for ${title}`} className="w-56" onClick={event => event.stopPropagation()}>
+    <DropdownMenuContent side="top" aria-label={`Attempts for ${title}`} className="w-56 max-w-[calc(100vw-16px)]" onClick={event => event.stopPropagation()}>
       <DropdownMenuRadioGroup value={selectedRunId ?? String(surface.runId)} onValueChange={id => { onSelect(id); setOpen(false); }}>
         {[...attempts].reverse().map(attempt => <DropdownMenuRadioItem key={attempt.runId} value={String(attempt.runId)}>
-          <span className="text-caption tabular-nums text-ui-muted">#{attempt.attempt}</span><StatusBadge status={dsStatusOf(attempt.status)} presentation="queue" />
+          <span className="text-caption tabular-nums text-ui-muted">#{dayNumber(attempt.runId)}</span><StatusBadge status={dsStatusOf(attempt.status)} presentation="queue" />
         </DropdownMenuRadioItem>)}
       </DropdownMenuRadioGroup>
     </DropdownMenuContent>
@@ -632,68 +673,88 @@ function QueueAttemptSelector({ title, surface, item, selectedRunId, onSelect }:
 export function QueueRow({
   outcome,
   surface,
+  batch,
   itemGroup,
   members = NO_MEMBERS,
+  membersOf,
   state,
   handlers,
   actionsOf = NO_ACTIONS,
   workflowLabelOf,
-  parentOf,
   deferOffscreen = false,
 }: {
   outcome?: QueueBusinessOutcome;
   surface: QueueSurfaceWire;
+  batch?: QueueBatch;
   itemGroup?: QueueItemGroup;
   /** the joined member surfaces, for an operation row */
-  members?: readonly MemberSurfaceWire[];
+  members?: readonly QueueSurfaceWire[];
+  membersOf?: ReadonlyMap<string, readonly QueueSurfaceWire[]>;
   state: QueueViewState;
   handlers: QueueHandlers;
   actionsOf?: QueueActionsOf;
   workflowLabelOf: (workflowId: string) => string;
-  /** Resolve parents across the whole day because delegation can cross workflows. */
-  parentOf?: QueueParentLookup;
   deferOffscreen?: boolean;
 }) {
-  const status = dsStatusOf(surface.status);
+  const status = dsStatusOf(batch?.status ?? surface.status);
   const announcing = useAttentionAnnounce(status);
-  const selected = itemGroup?.attempts.some((attempt) => String(attempt.runId) === state.selectedRunId)
+  const selected = batch !== undefined ? [...batch.members, ...batch.history].some(row => row.runId === state.selectedRunId) : itemGroup?.attempts.some((attempt) => String(attempt.runId) === state.selectedRunId)
     ?? state.selectedRunId === surface.runId;
-  const actions = actionsOf(surface);
+  const actions = batch === undefined ? actionsOf(surface) : [];
   const target = { runId: surface.runId, expectedVersion: surface.rowRevision };
   const workflowLabel = workflowLabelOf(surface.workflowId);
   /** Operation identity and visible member lists are distinct; unloaded members do not erase group chrome. */
-  const isOperation = surface.surfaceKind === "operation";
-  const membersVisible = isOperation && members.length > 0;
+  const memberSurface = batch ?? (surface.surfaceKind === "operation" ? surface : undefined);
+  const isOperation = memberSurface !== undefined;
+  const membersVisible = batch !== undefined || surface.surfaceKind === "operation" && queueMemberLines(surface, members).length > 0;
   /** Hide a group’s redundant subline while its member evidence is visible. */
   const subline =
     membersVisible || surface.liveMessage.state !== "present" ? undefined : surface.liveMessage.value;
-  const parent = surface.lineage.state === "child" ? parentOf?.(surface.lineage.parentRunId) : undefined;
+  const parent = batch === undefined ? surface.parent ?? undefined : undefined;
   /** Redirects own spare width; neighboring facts retain readable natural widths. */
-  const hasRedirect = parent !== undefined || surface.linkedRuns.length > 0;
+  const hasRedirect = parent !== undefined || batch === undefined && surface.linkedRuns.length > 0;
   const { onToggleBulk, onAction } = handlers;
   const bulkIds = state.bulkIds;
-  const titleTooltip = queueRowTitleTooltip(surface);
+  const titleTooltip = batch === undefined ? queueRowTitleTooltip(surface) : undefined;
+  const title = batch === undefined ? queueRowTitle(surface) : workflowLabel;
+  const { onRenameTitle } = handlers;
+  const renameTitle = batch === undefined && onRenameTitle !== undefined
+    && surface.actions.some((action) => action.kind === "command" && action.command === "rename")
+    ? onRenameTitle : undefined;
+  const selectedBatchMember = batch === undefined ? undefined
+    : batch.items.flatMap(item => item.attempts).find(attempt => attempt.runId === state.selectedRunId);
+  /** The batch footer's Pause all / Stop all: one command per member still running. */
+  const batchAll = (command: "pause" | "cancel") => (batch?.members ?? []).filter(member => !isTerminalQueueStatus(member.status)).flatMap(member =>
+    actionsOf(member).filter(action => action.kind === "command" && action.command === command).map(action => () => onAction?.(action, { runId: member.runId, expectedVersion: member.rowRevision })));
+  const bulkKey = batch?.key ?? surface.runId;
+  const batchTiming = batch === undefined ? undefined : runTiming(batch, state.nowIso, isTerminalQueueStatus);
+  const batchWarnings = batch?.members.flatMap(member => member.warnings.state === "present" ? [member.warnings] : []) ?? [];
+  const batchTestSystems = batch === undefined ? [] : [...new Set(batch.members.flatMap(member => testInstanceSystems(member.resolvedInstances)))];
+  const bulkChecked = batch === undefined ? bulkIds?.has(surface.runId) === true
+    : batch.members.every(member => bulkIds?.has(member.runId) === true) ? true
+      : batch.members.some(member => bulkIds?.has(member.runId) === true) ? "indeterminate" as const : false;
 
   return (
     <div className="flex items-start gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pt-[var(--ds-space-snug)] first:pt-[var(--ds-space-cozy)]">
       {state.selectMode === true && onToggleBulk !== undefined && <Checkbox
-        checked={bulkIds?.has(surface.runId) ?? false}
-        label={<span className="sr-only">Select {queueRowTitle(surface)} for a bulk command</span>}
-        onCheckedChange={() => onToggleBulk(surface.runId)}
+        checked={bulkChecked}
+        label={<span className="sr-only">Select {title} for a bulk command</span>}
+        onCheckedChange={() => onToggleBulk(bulkKey)}
         className="mt-[var(--ds-space-queue-top)] shrink-0"
       />}
         <div
           onClick={event => {
             if (event.detail > 1) return;
-            if (state.selectMode === true) handlers.onToggleBulk?.(surface.runId);
-            else handlers.onSelect(surface.runId);
+            if (state.selectMode === true) handlers.onToggleBulk?.(bulkKey);
+            else if (batch === undefined) handlers.onSelect(surface.runId);
           }}
-          role="button"
-          tabIndex={0}
-          aria-pressed={selected}
+          role={batch === undefined || state.selectMode === true ? "button" : "group"}
+          tabIndex={batch === undefined || state.selectMode === true ? 0 : undefined}
+          aria-pressed={batch === undefined || state.selectMode === true ? selected : undefined}
           // Accessible row names include warning completion and gate age, never hue alone.
-          aria-label={queueRowAccessibleName(surface, state.nowIso)}
-          data-demo-row-id={surface.runId}
+          aria-label={batch === undefined ? queueRowAccessibleName(surface, state.nowIso) : `${title} batch — ${statusText(status).toLowerCase()}`}
+          data-demo-row-id={batch === undefined ? surface.runId : undefined}
+          data-queue-batch-id={batch?.id}
           onKeyDown={(event) => {
             // Nested controls keep native Enter/Space activation. Only the
             // focused row itself uses those keys to open its detail.
@@ -701,8 +762,8 @@ export function QueueRow({
             if (event.key === 'Escape' && state.selectMode === true) { event.preventDefault(); event.stopPropagation(); handlers.onExitSelection?.(); return; }
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
-              if (state.selectMode === true) handlers.onToggleBulk?.(surface.runId);
-              else handlers.onSelect(surface.runId);
+              if (state.selectMode === true) handlers.onToggleBulk?.(bulkKey);
+              else if (batch === undefined) handlers.onSelect(surface.runId);
             }
           }}
           className={cn(
@@ -723,19 +784,20 @@ export function QueueRow({
           <div data-queue-body className="flex min-w-0 flex-col gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pb-[var(--ds-space-cozy)] pt-[var(--ds-space-queue-top)]">
             <div className="flex min-w-0 items-center gap-x-[var(--ds-space-base)]">
               <div className="flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)]">
-                <span
+                <RenameableTitle
                   data-demo-row-title
+                  name={title}
+                  {...(renameTitle === undefined ? {} : { onRename: (name: string) => renameTitle(surface.runId, name) })}
+                  inputClassName={dsText.title}
                   className={cn(
                     dsText.title,
                     // Truncate rather than wrap — wrapping shoved the status
                     // pill onto a second line under the name.
-                    "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]",
+                    "min-w-0 truncate font-normal text-[color:var(--ds-fg-list)]",
                   )}
                   // A renamed row’s subject identity outranks a tooltip repeating its truncated custom name.
                   {...(titleTooltip === undefined ? {} : { title: titleTooltip })}
-                >
-                  {queueRowTitle(surface)}
-                </span>
+                />
                 {/* Name workflow ownership only when the surface mixes workflows. */}
                 {surface.workflowId !== state.panelWorkflowId && (
                   <span className={rowChip("neutral", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}>
@@ -746,7 +808,19 @@ export function QueueRow({
               <div className="ml-auto flex shrink-0 flex-nowrap items-center justify-end gap-[var(--ds-space-snug)]">
                 {/* Status ALWAYS sits on the title row's right — never on the
                     subline. */}
-                <HeaderChips outcome={outcome} surface={surface} status={status} nowIso={state.nowIso} />
+                {batch !== undefined ? <>
+                  {batchTestSystems.length > 0 && <span title={testInstanceHazardTitle(batchTestSystems)} className={rowChip("info")}>test</span>}
+                  {batch.members.some(member => member.dryRun) && <span className={rowChip("rehearsal")}
+                    title="Includes dry-run people — rehearsals read the systems and write nothing.">dry run</span>}
+                  {batchWarnings.length > 0 && <span className={rowChip("warning")} title={batchWarnings.map(warning => warning.first).join("; ")}>
+                    <AlertTriangle aria-hidden className={dsIcon.sm} />{batchWarnings.reduce((total, warning) => total + warning.count, 0)}
+                  </span>}
+                  <StatusBadge status={status} presentation="queue" />
+                  <span data-queue-member-count className={rowChip("neutral")} title="Finished people on this day">
+                    {queueMemberRollup(batch, []).terminal}/{batch.members.length}
+                  </span>
+                </> : <HeaderChips outcome={outcome} surface={surface} status={status} nowIso={state.nowIso}
+                  rollup={surface.surfaceKind === "operation" ? queueMemberRollup(surface, members) : undefined} />}
               </div>
             </div>
 
@@ -754,6 +828,7 @@ export function QueueRow({
             {isOperation
               && surface.surfaceKind === "operation"
               && !membersVisible
+              && surface.recordMembers === undefined
               && surface.memberPreview.state === "present" && (
               <div
                 className={cn(dsText.meta, "truncate text-[color:var(--ds-fg-muted)]")}
@@ -794,12 +869,13 @@ export function QueueRow({
             )}
 
 
-            {isOperation && surface.surfaceKind === "operation" && (
+            {memberSurface !== undefined && (
               <div className="flex flex-col gap-[var(--ds-space-base)]">
                 <GroupMemberList
-                  surface={surface}
-                  itemKey={itemGroup?.key ?? String(surface.runId)}
+                  surface={memberSurface}
+                  itemKey={batch?.key ?? itemGroup?.key ?? String(surface.runId)}
                   members={members}
+                  membersOf={membersOf}
                   state={state}
                   handlers={handlers}
                 />
@@ -807,7 +883,7 @@ export function QueueRow({
             )}
 
             {/* Render only served links and receipt facts; never infer an extracted-person count from arbitrary output arrays. */}
-            {(parent !== undefined || surface.linkedRuns.length > 0 || surface.facts.state === "present") && (
+            {batch === undefined && (parent !== undefined || surface.linkedRuns.length > 0 || surface.facts.state === "present") && (
               <div
                 className={cn(
                   "flex w-full min-w-0 flex-wrap items-center",
@@ -818,7 +894,7 @@ export function QueueRow({
                   <LinkedRunChip key={link.runId} link={link} onOpen={() => handlers.onOpenLinked?.(link)} />
                 ))}
                 {parent !== undefined && (
-                  <ParentBackChip parent={parent} onOpen={() => handlers.onOpenParent?.(parent.runId)} />
+                  <ParentBackChip parent={parent} onOpen={() => handlers.onOpenParent?.(parent)} />
                 )}
                 {surface.facts.state === "present"
                   && surface.facts.value.map((fact) => (
@@ -828,7 +904,29 @@ export function QueueRow({
             )}
           </div>
 
-          <RowFooterLine
+          {batch !== undefined ? <div data-queue-row-footer className={cn(dsText.meta, dsText.nums, dsBorder.subtle,
+            "flex items-center gap-[var(--ds-space-base)] border-t bg-[var(--ds-recess-bg)] px-[var(--ds-space-cozy)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
+            <div className="flex min-h-[var(--ds-h-sm)] min-w-0 flex-1 items-center gap-[var(--ds-space-base)]">
+              <span className="shrink-0 whitespace-nowrap">{fmtClock(batch.startedAt)}</span>
+              <span className="min-w-0 truncate" title={`Batch ${batch.id} · revision ${batch.version}${batch.origin === undefined ? " · origin unavailable" : ` · ${batch.origin.kind} ${batch.origin.kind === "start-plan" ? batch.origin.startPlanId : batch.origin.intakeManifestId}`}`}>Batch {batch.id.slice(0, 8)}</span>
+              <span className="shrink-0 whitespace-nowrap" title={batchTiming?.title}>{batchTiming?.text}</span>
+            </div>
+            <div data-queue-member-actions role="group"
+              aria-label={selectedBatchMember === undefined ? "Person actions — no person selected" : `Actions for ${queueRowTitle(selectedBatchMember)}, attempt ${selectedBatchMember.attempt}`}
+              title={selectedBatchMember === undefined ? "Select a person for run actions"
+                : `${queueRowTitle(selectedBatchMember)} · attempt ${selectedBatchMember.attempt} · run ${selectedBatchMember.runId} · revision ${selectedBatchMember.rowRevision}`}
+              className="flex shrink-0 items-center gap-[var(--ds-space-tight)]">
+              {([["pause", "Pause all", <Pause key="p" aria-hidden className={dsIcon.md} />], ["cancel", "Stop all", <X key="x" aria-hidden className={dsIcon.md} />]] as const).map(([command, word, icon]) => {
+                const each = batchAll(command);
+                return each.length === 0 ? null : <IconActionButton key={command} tone="muted" icon={icon} label={`${word} ${each.length}`}
+                  onClick={event => { event.stopPropagation(); each.forEach(run => run()); }} />;
+              })}
+              <span className="sr-only">{selectedBatchMember === undefined ? "Select a person for run actions" : `Selected person: ${queueRowTitle(selectedBatchMember)}, attempt ${selectedBatchMember.attempt}`}</span>
+              {selectedBatchMember !== undefined && <FooterActions actions={actionsOf(selectedBatchMember)}
+                target={{ runId: selectedBatchMember.runId, expectedVersion: selectedBatchMember.rowRevision }}
+                {...(onAction === undefined ? {} : { onAction })} />}
+            </div>
+          </div> : <RowFooterLine
             surface={surface}
             actions={actions}
             {...(handlers.onPreviewAction === undefined ? {} : { onPreviewAction: (action: 'retry' | 'delete') => handlers.onPreviewAction?.(action, [surface.runId]) })}
@@ -836,7 +934,7 @@ export function QueueRow({
             nowIso={state.nowIso}
             itemGroup={itemGroup}
             onSelect={handlers.onSelect}
-          />
+          />}
         </div>
     </div>
   );
@@ -858,11 +956,18 @@ const MemoQueueRow = memo(QueueRow, (before, after) => {
   if (!shallowEqual(beforeProps, afterProps) || !shallowEqual(beforeHandlers, afterHandlers)
     || !shallowEqual(beforeView, afterView)) return false;
   if (beforeSelected === afterSelected) return true;
-  const belongs = (id: string | undefined): boolean => id !== undefined && (
-    String(after.surface.runId) === id
-    || after.itemGroup?.attempts.some(attempt => String(attempt.runId) === id) === true
-    || after.members?.some(member => String(member.runId) === id) === true
-  );
+  const belongs = (id: string | undefined): boolean => {
+    if (id === undefined) return false;
+    if (String(after.surface.runId) === id || after.itemGroup?.attempts.some(attempt => String(attempt.runId) === id)
+      || after.members?.some(member => String(member.runId) === id)
+      || after.batch?.items.some(item => item.attempts.some(attempt => attempt.runId === id))) return true;
+    const descendants = new Set([String(after.surface.runId)]);
+    for (const parentId of descendants) for (const member of after.membersOf?.get(parentId) ?? []) {
+      if (member.runId === id) return true;
+      descendants.add(member.runId);
+    }
+    return false;
+  };
   return !belongs(beforeSelected) && !belongs(afterSelected);
 });
 
@@ -874,7 +979,6 @@ export const QueuePanel = memo(function QueuePanel({
   handlers,
   actionsOf = NO_ACTIONS,
   workflowLabelOf,
-  parentOf,
   panelLabel,
   day,
   isToday = false,
@@ -890,7 +994,6 @@ export const QueuePanel = memo(function QueuePanel({
   handlers: QueueHandlers;
   actionsOf?: QueueActionsOf;
   workflowLabelOf: (workflowId: string) => string;
-  parentOf?: QueueParentLookup;
   /** the Workflow Panel entry this queue is scoped to — the header's one word */
   panelLabel: string;
   /** the day partition these rows came from, as `YYYY-MM-DD`; formatted here */
@@ -907,6 +1010,7 @@ export const QueuePanel = memo(function QueuePanel({
   const { top, membersOf } = useMemo(() => partition(surfaces), [surfaces]);
   const { displayTop, itemByRunId } = useMemo(() => queueItemLayout(top), [top]);
   const bands = queueDisplayGroups(displayTop, sort, state.nowIso);
+  const grouped = displayTop.some(row => "kind" in row);
 
   /** The digest counts drawn finished rows; it cannot replace authoritative day totals. */
   const finished = displayTop.filter((surface) => bandOf(dsStatusOf(surface.status)) === "finished");
@@ -975,6 +1079,7 @@ export const QueuePanel = memo(function QueuePanel({
                 {band.key === "finished" && !isToday ? "Finished" : band.label}
                 {/* Band counts describe visible rows; day totals belong to the served status projection. */}
                 <span
+                  title={grouped ? "Displayed rows; each Lookup batch counts once." : undefined}
                   className={cn(
                     dsText.nums,
                     dsText.micro,
@@ -1001,8 +1106,8 @@ export const QueuePanel = memo(function QueuePanel({
                   <span className="font-semibold text-[color:var(--ds-fg-secondary)]">
                     {isToday ? "Today:" : `${dayLabel(day)}:`}
                   </span>
-                  <span>
-                    <span className="font-semibold text-[color:var(--ds-success-fg)]">{digest.done}</span> verified
+                  <span title={grouped ? "Completed Queue rows; each Lookup batch counts once. Run totals remain in the status filters." : undefined}>
+                    <span className="font-semibold text-[color:var(--ds-success-fg)]">{digest.done}</span> completed
                   </span>
                   {digest.warned > 0 && (
                     <span className="text-[color:var(--ds-status-waiting-fg)]">
@@ -1022,6 +1127,8 @@ export const QueuePanel = memo(function QueuePanel({
                 </div>
               )}
               {band.rows.map((surface) => {
+                if ("kind" in surface) return <MemoQueueRow key={surface.key} batch={surface} surface={surface.representative}
+                  state={state} handlers={handlers} actionsOf={actionsOf} workflowLabelOf={workflowLabelOf} />;
                 const renderRow = (row: QueueSurfaceWire) => {
                   const item = itemByRunId.get(String(row.runId));
                   if (item === undefined) throw new Error(`queue row lost item ${String(row.itemId)}`);
@@ -1033,12 +1140,12 @@ export const QueuePanel = memo(function QueuePanel({
                     outcome={outcomes?.get(String(visible.runId))}
                     itemGroup={item}
                     members={membersOf.get(String(visible.runId)) ?? NO_MEMBERS}
+                    membersOf={membersOf}
                     deferOffscreen={displayTop.length > 100}
                     state={state}
                     handlers={handlers}
                     actionsOf={actionsOf}
                     workflowLabelOf={workflowLabelOf}
-                    {...(parentOf === undefined ? {} : { parentOf })}
                   />;
                 };
                 return renderRow(surface);

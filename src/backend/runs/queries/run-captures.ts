@@ -115,7 +115,8 @@ async function verifyRunCaptures(
     };
     const taskPoint = field("captureStage") === "task-point";
     const anchored = taskPoint ? RunCaptureOriginWireSchema.safeParse({ bundleId: bundle.bundleId, originKind: bundle.origin.kind,
-      capturedAt: bundle.createdAt, browserCapture: { nodeId: field("nodeId"), attempt: field("runAttempt"), sessionId: field("browserSessionId") },
+      capturedAt: bundle.createdAt, browserCapture: { nodeId: field("nodeId"), attempt: field("runAttempt"), sessionId: field("browserSessionId"),
+        ...(field("captureBoundary") === undefined ? {} : { boundary: field("captureBoundary") }) },
     }) : undefined;
     if (anchored?.success === false) captureCorrupt(runId, "task screenshot capture identity is invalid", anchored.error);
     for (const attachment of bundle.attachments) {

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { ArrowUpRight, CheckCheck, Cpu, Monitor, PencilLine, X } from "lucide-react";
 import { Button, dsElev, dsFocus, IconButton } from "../../ds/ui.js";
-import type { FieldSource } from "./explorer-flow-model.js";
+import type { FieldSource } from "../../../models/workflow/explorer-preview.js";
 
 export function ExplorerSource({ label, destination, source, onClose, onJump }: {
   label: string; destination: string; source?: FieldSource; onClose: () => void;

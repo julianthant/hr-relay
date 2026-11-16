@@ -1,21 +1,15 @@
 // Login requires positive application evidence and no sign-in form; shared hosts and redirects prove neither.
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 import type { Page } from "playwright";
-import type { DuoCeremonyGate } from "../../../workflow-kit/duo-ceremony-lease.js";
+import type { DuoCeremonyGate, DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import type { Config } from "../../../models/config/schema.js";
 import type { RuntimeInstance } from "../../../models/config/instance.js";
 import type { BrowserSystemId } from "../../../rules/identity/ids.js";
+import type { SignInCheck, SignInStep } from "../../../models/trust/failure.js";
 import type { LoginResult } from "../../../models/sessions/session.js";
 
 /** The bounded step vocabulary a login failure can name. */
-export type BrowserLoginStep =
-  | "navigate-login-entry"
-  | "campus-discovery"
-  | "sso-form"
-  | "credential-fill"
-  | "sso-submit"
-  | "duo-clearance"
-  | "verify-landing";
+export type BrowserLoginStep = SignInStep;
 
 
 type BrowserSignInCode = Extract<ErrorCatalogCode, `${string}_SIGN_IN_FAILED`>;
@@ -25,12 +19,22 @@ export type BrowserLandingStallCode = Extract<ErrorCatalogCode,
   | "AUTHENTICATED_LANDING_MISSING"
 >;
 type BrowserLoginFailureCode = BrowserSignInCode | BrowserLandingStallCode
-  | Extract<ErrorCatalogCode, "DUO_TERMINAL_REFUSAL">;
+  | Extract<ErrorCatalogCode, "DUO_TERMINAL_REFUSAL" | "UCPATH_MAINTENANCE">;
 const SIGN_IN_CODES = {
   ucpath: "UCPATH_SIGN_IN_FAILED", crm: "CRM_SIGN_IN_FAILED", onbase: "ONBASE_SIGN_IN_FAILED",
   kuali: "KUALI_SIGN_IN_FAILED", servicenow: "SERVICENOW_SIGN_IN_FAILED", i9: "I9_SIGN_IN_FAILED",
   "new-kronos": "NEW_KRONOS_SIGN_IN_FAILED", "old-kronos": "OLD_KRONOS_SIGN_IN_FAILED", sharepoint: "SHAREPOINT_SIGN_IN_FAILED",
 } as const satisfies Record<BrowserSystemId, BrowserSignInCode>;
+
+const UCPATH_MAINTENANCE_HOST = "ucpath-notifications.universityofcalifornia.edu";
+const UCPATH_MAINTENANCE_PATH = "/ucpath-maintenance.html";
+
+// Scheduled UCPath maintenance, recognized by host and path. Query and fragment are ignored.
+export function ucpathMaintenanceFailureCode(observedUrl: string): "UCPATH_MAINTENANCE" | undefined {
+  const url = URL.parse(observedUrl);
+  if (url?.hostname !== UCPATH_MAINTENANCE_HOST || url.pathname !== UCPATH_MAINTENANCE_PATH) return undefined;
+  return "UCPATH_MAINTENANCE";
+}
 
 export class BrowserLoginError extends Error {
   constructor(
@@ -40,6 +44,7 @@ export class BrowserLoginError extends Error {
     readonly observedUrl: string,
     options?: ErrorOptions,
     readonly code: BrowserLoginFailureCode = SIGN_IN_CODES[system],
+    readonly check?: SignInCheck,
   ) {
     super(ERROR_CATALOG[code].text, options);
     this.name = "BrowserLoginError";
@@ -84,10 +89,11 @@ export class BrowserLandingStallError extends BrowserLoginError {
 
   constructor(system: BrowserSystemId, code: BrowserLandingStallCode,
     page: Readonly<{ host: string; path: string; title: string }>, options?: ErrorOptions) {
-    super(system, "duo-clearance", ERROR_CATALOG[code].text, "", options, code);
+    const url = URL.parse(`https://${page.host}${page.path}`);
+    const observedUrl = url === null || url.origin === "null" ? "" : `${url.origin}${url.pathname}`;
+    super(system, "duo-clearance", ERROR_CATALOG[code].text, observedUrl, options, code);
     this.name = "BrowserLandingStallError";
     this.code = code;
-    const url = URL.parse(`https://${page.host}${page.path}`);
     this.host = url?.hostname ?? "unknown";
     this.path = url?.pathname ?? "unknown";
     this.title = page.title.replace(/https?:\/\/\S+/giu, "[URL]").slice(0, 200);
@@ -106,10 +112,11 @@ export interface AuthenticatedApplicationEvidence {
 // An unprovable probe is unauthenticated with its own reason, never an inferred session.
 export type AuthenticationProbe =
   | Readonly<{ authenticated: true; evidence: AuthenticatedApplicationEvidence }>
-  | Readonly<{ authenticated: false; reason: string }>;
+  | Readonly<{ authenticated: false; reason: string; check: SignInCheck }>;
 
 
 export interface AuthenticationVerificationContext {
+  readonly assertCurrent: () => void;
   readonly page: Page;
   readonly config: Config;
   // Authentication evidence must reach a readable channel; a hidden proof cannot explain a session.
@@ -129,6 +136,7 @@ export interface SystemLoginContext extends AuthenticationVerificationContext {
   readonly credentials: Readonly<{ userId: string; password: string }>;
 
   readonly duoCeremony: DuoCeremonyGate;
+  readonly withDuoSigningScope?: <T>(token: DuoCeremonyLeaseToken, run: () => Promise<T>) => Promise<T>;
   readonly acquisitionRemainingMs?: () => number;
   readonly claimStaleRequestRecovery?: () => boolean;
 }

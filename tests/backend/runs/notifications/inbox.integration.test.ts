@@ -1,13 +1,13 @@
+import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { createProfileFixtureSet, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { runInheritedRuntimeChild } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createNotificationInboxTestWorld } from "../../../support/helpers/backend/notification-inbox-world.js";
 
 
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
 
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
 
@@ -15,17 +15,118 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 
 import { NOW, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+
+const profileFixtures = createProfileFixtureSet();
+afterAll(() => profileFixtures.close());
 
 {
 
-const { _afterEachFixture0, record, harness, command } = createNotificationInboxTestWorld();
+const { _afterEachFixture0, record, harness, command } = createNotificationInboxTestWorld(profileFixtures.create);
+
+describe("notification collection commands", () => {
+  afterEach(_afterEachFixture0);
+  const actor = "local-operator";
+  const collectionCommand = (database: Awaited<ReturnType<typeof harness>>["database"], type = "notification-read-all") => ({
+    ...command(type, 1), target: database.withAuthorityReadSnapshot(() => database.authority.notifications.collection(actor, type === "notification-read-all" ? "read" : type === "notification-unread-all" ? "unread" : type === "notification-snooze-all" ? "snooze" : "unsnooze")),
+  });
+  it("changes more than twenty current notices atomically, preserves pinned and UNKNOWN evidence, and replays one aggregate audit", async () => {
+    const { database, kernel } = await harness();
+    const ids = Array.from({ length: 25 }, () => randomUUID());
+    for (const [index, notificationId] of ids.entries()) database.authority.notifications.create(record({ notificationId, dedupeFingerprint: index.toString(16).padStart(64, "0"), trigger: "write-parked" }));
+    const pinned = record({ notificationId: randomUUID(), dedupeFingerprint: "b".repeat(64), trigger: "backfill-gap", links: [] });
+    database.authority.notifications.create(pinned);
+    const before = database.authority.notifications.listByActor(actor);
+    const request = collectionCommand(database);
+    assert.equal(request.target.members.length, 26); assert.equal(request.target.matchingCount, 25);
+    const result = kernel.execute(request); assert.equal(result.state, "applied");
+    if (result.state !== "applied") throw new Error("bulk applied result required");
+    assert.equal(result.affectedTargets.length, 25);
+    assert.deepEqual(database.authority.notifications.get(pinned.notificationId), pinned);
+    for (const original of before.filter(row => row.trigger !== "backfill-gap")) {
+      assert.deepEqual(database.authority.notifications.get(original.notificationId), { ...original, status: "read", version: 2, updatedAt: request.requestedAt });
+    }
+    const audit = database.authority.commandAudits.findByCommand(request.commandId); assert.ok(audit);
+    assert.equal(audit.versionChanges.length, 25);
+    const generation = database.getMeta().authorityGeneration;
+    assert.deepEqual(kernel.execute(request), { ...result, state: "already-applied" });
+    assert.deepEqual(database.authority.commandAudits.findByCommand(request.commandId), audit);
+    assert.equal(database.getMeta().authorityGeneration, generation);
+  });
+  it.each(["added", "changed", "foreign", "duplicate", "omitted"])("refuses the whole collection after %s membership drift", async change => {
+    const { database, kernel } = await harness();
+    database.authority.notifications.create(record());
+    const request = collectionCommand(database);
+    if (change === "added") database.authority.notifications.create(record({ notificationId: randomUUID(), dedupeFingerprint: "c".repeat(64) }));
+    if (change === "changed") database.authority.notifications.updateState({ notificationId: UUID_7, expectedVersion: 1, status: "unread", snooze: { state: "not-snoozed" }, updatedAt: request.requestedAt });
+    const candidate = change === "foreign" ? { ...request, target: { ...request.target, actorId: "other-operator" } }
+      : change === "duplicate" ? { ...request, target: { ...request.target, members: [...request.target.members, ...request.target.members] } }
+      : change === "omitted" ? { ...request, target: { ...request.target, members: [], matchingCount: 0 } } : request;
+    const rows = database.authority.notifications.listByActor(actor);
+    const result = change === "duplicate" ? undefined : kernel.execute(candidate);
+    if (change === "duplicate") assert.throws(() => kernel.execute(candidate)); else assert.equal(result?.state, "rejected");
+    assert.deepEqual(database.authority.notifications.listByActor(actor), rows);
+  });
+  it.each(["late-row", "audit"])("keeps notification rows unchanged and leaves the command admitted when %s fails", async boundary => {
+    let writes = 0;
+    const { database, kernel } = await harness(repositories => ({ ...repositories,
+      notifications: { ...repositories.notifications, updateState: input => {
+        writes++; if (boundary === "late-row" && writes === 23) throw new Error("controlled late row failure");
+        return repositories.notifications.updateState(input);
+      } },
+      commandAudits: { ...repositories.commandAudits, insert: input => {
+        if (boundary === "audit") throw new Error("controlled audit failure"); return repositories.commandAudits.insert(input);
+      } },
+    }));
+    for (let index = 0; index < 25; index++) database.authority.notifications.create(record({ notificationId: randomUUID(), dedupeFingerprint: index.toString(16).padStart(64, "0") }));
+    const request = collectionCommand(database), rows = database.authority.notifications.listByActor(actor), generation = database.getMeta().authorityGeneration;
+    assert.throws(() => kernel.execute(request)); assert(writes >= 23);
+    assert.deepEqual(database.authority.notifications.listByActor(actor), rows);
+    assert.equal(database.authority.commands.get(request.commandId)?.commandId, request.commandId);
+    assert.equal(database.authority.commandAudits.findByCommand(request.commandId), undefined);
+    assert.equal(database.getMeta().authorityGeneration, generation + 1);
+  });
+  it.each(["read", "unread", "snooze", "unsnooze"] as const)("uses the same per-row %s rules and never includes another actor", async operation => {
+    const { database, kernel } = await harness();
+    const mutable = record({ status: operation === "unread" ? "read" : "unread", snooze: { state: "snoozed", until: "2026-08-01T18:00:00.000Z" } });
+    const pinned = record({ notificationId: randomUUID(), dedupeFingerprint: "b".repeat(64), trigger: "backfill-gap", links: [] });
+    const foreign = record({ notificationId: randomUUID(), actorId: "other-operator" });
+    for (const row of [mutable, pinned, foreign]) database.authority.notifications.create(row);
+    const request = collectionCommand(database, `notification-${operation}-all`);
+    assert.equal(request.target.members.length, 2); assert.equal(request.target.matchingCount, 1);
+    assert.equal(kernel.execute(request).state, "applied");
+    const changed = database.authority.notifications.get(UUID_7); assert.ok(changed);
+    assert.equal(changed.version, 2);
+    assert.equal(changed.status, operation === "read" ? "read" : operation === "unread" ? "unread" : mutable.status);
+    assert.deepEqual(changed.snooze, operation === "snooze" ? { state: "snoozed", until: "2026-07-31T18:01:00.000Z" } : operation === "unsnooze" ? { state: "not-snoozed" } : mutable.snooze);
+    assert.deepEqual(database.authority.notifications.get(pinned.notificationId), pinned);
+    assert.deepEqual(database.authority.notifications.get(foreign.notificationId), foreign);
+  });
+  it("honestly applies an empty current collection with no affected rows", async () => {
+    const { database, kernel } = await harness(), request = collectionCommand(database), result = kernel.execute(request);
+    assert.equal(result.state, "applied"); if (result.state !== "applied") throw new Error("applied required");
+    assert.deepEqual(result.affectedTargets, []);
+    assert.equal(result.noChange, "no-matching-notifications");
+    const audit = database.authority.commandAudits.findByCommand(request.commandId); assert.ok(audit);
+    assert.deepEqual(audit.result, result); assert.deepEqual(audit.versionChanges, []);
+    const replay = kernel.execute(request); assert.deepEqual(replay, { ...result, state: "already-applied" });
+    assert.deepEqual(database.authority.commandAudits.findByCommand(request.commandId), audit);
+    const generation = database.getMeta().authorityGeneration;
+    for (const candidate of [
+      { ...request, type: "notification-read", target: { actorId: "local-operator", notificationId: randomUUID(), expectedVersion: 1 } },
+      { ...request, target: { actorId: "local-operator", members: [{ notificationId: randomUUID(), expectedVersion: 1 }], matchingCount: 1 } },
+      { ...request, family: "workflow-batch", type: "set-batch-grouping", target: { batchId: randomUUID(), expectedVersion: 1 }, payload: { groupInQueue: false } },
+    ]) assert.throws(() => database.withAuthorityTransaction(repositories => repositories.commandAudits.insert({ ...audit, auditId: randomUUID(), request: candidate })), { name: "ZodError" });
+    assert.equal(database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(database.authority.commandAudits.findByCommand(request.commandId), audit);
+  });
+});
 
 describe("notification lifecycle arms", () => {
 afterEach(_afterEachFixture0);
 
-  it("refuses a crafted mark-read command for a pinned backfill gap", () => {
-    const { database, kernel } = harness();
+  it("refuses a crafted mark-read command for a pinned backfill gap", async () => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record({
       trigger: "backfill-gap",
       links: [],
@@ -43,8 +144,8 @@ afterEach(_afterEachFixture0);
     assert.equal(unchanged?.version, 1);
   });
 
-  it("refuses a crafted snooze command for a pinned backfill gap", () => {
-    const { database, kernel } = harness();
+  it("refuses a crafted snooze command for a pinned backfill gap", async () => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record({
       trigger: "backfill-gap",
       links: [],
@@ -59,8 +160,8 @@ afterEach(_afterEachFixture0);
     assert.equal(unchanged?.version, 1);
   });
 
-  it("refuses a crafted same-state mark-unread command for a pinned backfill gap", () => {
-    const { database, kernel } = harness();
+  it("refuses a crafted same-state mark-unread command for a pinned backfill gap", async () => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record({
       trigger: "backfill-gap",
       links: [],
@@ -73,8 +174,8 @@ afterEach(_afterEachFixture0);
     assert.equal(database.authority.notifications.get(UUID_7)?.version, 1);
   });
 
-  it("marks read preserving the snooze, and unread preserving it too", () => {
-    const { database, kernel } = harness();
+  it("marks read preserving the snooze, and unread preserving it too", async () => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record({
       snooze: { state: "snoozed", until: "2026-07-31T18:00:00.000Z" },
     }));
@@ -88,8 +189,8 @@ afterEach(_afterEachFixture0);
     assert.equal(database.authority.notifications.get(UUID_7)?.status, "unread");
   });
 
-  it("snoozes for one backend-clock hour, preserving read state, then unsnoozes", () => {
-    const { database, kernel } = harness();
+  it("snoozes for one backend-clock hour, preserving read state, then unsnoozes", async () => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record({ status: "read", version: 1 }));
 
     const snoozed = kernel.execute(command("notification-snooze", 1));
@@ -105,8 +206,8 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(database.authority.notifications.get(UUID_7)?.snooze, { state: "not-snoozed" });
   });
 
-  it("rejects a stale version and a foreign actor", () => {
-    const { database, kernel } = harness();
+  it("rejects a stale version and a foreign actor", async () => {
+    const { database, kernel } = await harness();
     database.authority.notifications.create(record());
 
     const stale = kernel.execute(command("notification-read", 7));
@@ -125,34 +226,49 @@ afterEach(_afterEachFixture0);
 
 {
 
-const roots: string[] = [];
-const _afterEachFixture0 = () => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true }));
+const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+const _afterEachFixture0 = async () => {
+  const failures: unknown[] = [];
+  for (const profile of profiles.splice(0)) { try { await profile.close(); } catch (error) { failures.push(error); } }
+  if (failures.length > 0) throw new AggregateError(failures, "notification publication fixture cleanup failed");
+};
 const event = { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: "a".repeat(64) };
-function harness() {
-  const root = mkdtempSync(join(tmpdir(), "notification-publication-")); roots.push(root);
+async function harness() {
+  const profile = await createBoundProfileFixture({ sharedMachine: true }); profiles.push(profile);
   const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
-  const path = join(root, "state.db");
-  const open = () => AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "notification-test" }, clock);
+  const path = profile.path;
+  const open = () => AuthorityDatabase.open(profile.admission, { path, busyTimeoutMs: 250, migrationOwner: "notification-test" }, clock,
+    undefined, undefined, undefined, boundProfileCredentials(profile.admission));
   const inbox = (db: AuthorityDatabase) => createNotificationInbox({ authority: db, clock, ids: sequentialIdFactory("a"), actorId: "local-operator" });
-  return { open, inbox, clock, path };
+  return { open, inbox, clock, path, lifetime: profile.lifetime, workspace: profile.workspace, profileId: profile.admission.profileBinding.profileId };
 }
 describe("durable notification publication", () => {
 afterEach(_afterEachFixture0);
 
-  it.each(["before", "after"])("survives process death %s publication commit", boundary => {
-    const f = harness(); const initial = f.open(); initial.close();
+  it.each(["before", "after"])("survives process death %s publication commit", async boundary => {
+    const f = await harness(); const initial = f.open(); initial.close();
     const script = `
-      import { AuthorityDatabase } from ${JSON.stringify(join(process.cwd(), "tests/support/helpers/synthetic-storage-admission.ts"))};
+      import { AuthorityDatabase } from ${JSON.stringify(join(process.cwd(), "src/backend/storage/sqlite/authority-database.ts"))};
+      import { acquireSharedRuntimeAdmission } from ${JSON.stringify(join(process.cwd(), "src/backend/storage/admission/admission.ts"))};
+      import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(join(process.cwd(), "src/backend/storage/admission/lifetime-lock.ts"))};
+      import { createProfileRegistry } from ${JSON.stringify(join(process.cwd(), "src/backend/profiles/registry.ts"))};
+      import { registerBoundProfile, boundProfileCredentials } from ${JSON.stringify(join(process.cwd(), "tests/support/helpers/synthetic-database-admission.ts"))};
+      import { join } from "node:path";
       import { manualClock } from ${JSON.stringify(join(process.cwd(), "src/rules/time/clock.ts"))};
       import { createNotificationInbox } from ${JSON.stringify(join(process.cwd(), "src/backend/runs/notifications/inbox.ts"))};
       const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
-      const db = AuthorityDatabase.open({path:process.argv[1],busyTimeoutMs:250,migrationOwner:"crash-proof"},clock);
+      const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
+      const machine = acquireSharedRuntimeAdmission(process.argv[2], lifetime);
+      const admission = machine.admitProfile(process.argv[3]);
+      registerBoundProfile(admission, machine);
+      const db = AuthorityDatabase.open(admission,{path:join(admission.stateRoot,"state.db"),busyTimeoutMs:250,migrationOwner:"crash-proof"},clock,
+        undefined,undefined,undefined,boundProfileCredentials(admission));
       const inbox = createNotificationInbox({authority:db,clock,ids:{uuid:()=>"00000000-0000-4000-8000-000000000991"},actorId:"local-operator"});
       const event = ${JSON.stringify(event)};
-      if(process.argv[2]==="before") db.withAuthorityTransaction(()=>{void inbox.publish(event);process.exit(71);});
+      if(process.argv[4]==="before") db.withAuthorityTransaction(()=>{void inbox.publish(event);process.exit(71);});
       else {await inbox.publish(event);process.exit(72);}
     `;
-    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, f.path, boundary], { cwd: process.cwd(), encoding: "utf8" });
+    const child = await runInheritedRuntimeChild(f.lifetime, script, [f.workspace, f.profileId, boundary]);
     expect(child.status, child.stderr).toBe(boundary === "before" ? 71 : 72);
     const db = f.open();
     try {
@@ -161,7 +277,7 @@ afterEach(_afterEachFixture0);
     } finally { db.close(); }
   });
   it("adopts historical occurrences without resetting the existing operator row", async () => {
-    const f = harness(), db = f.open();
+    const f = await harness(), db = f.open();
     try {
       const inbox = f.inbox(db);
       const { projectNotificationTrigger } = await import("../../../../src/rules/notifications/notification-triggers.js");
@@ -178,7 +294,7 @@ afterEach(_afterEachFixture0);
     } finally { db.close(); }
   });
   it("retains a committed source without an OS delivery channel across restart", async () => {
-    const f = harness(); let db = f.open();
+    const f = await harness(); let db = f.open();
     try {
       const inbox = f.inbox(db);
       expect((await inbox.publish(event)).delivery.state).toBe("no-channel");
@@ -187,7 +303,7 @@ afterEach(_afterEachFixture0);
   });
 
   it("commits one occurrence under concurrent replay and preserves read/snooze across restart", async () => {
-    const f = harness(); let db = f.open();
+    const f = await harness(); let db = f.open();
     try {
       const inbox = f.inbox(db);
       const reports = await Promise.all([inbox.publish(event), inbox.publish(event)]);
@@ -200,7 +316,7 @@ afterEach(_afterEachFixture0);
     } finally { db.close(); }
   });
   it("rolls back source and row together, then folds each distinct source once", async () => {
-    const f = harness(), db = f.open();
+    const f = await harness(), db = f.open();
     try {
       const inbox = f.inbox(db);
       const first = await inbox.publish(event);
@@ -220,11 +336,11 @@ afterEach(_afterEachFixture0);
 }
 
 describe("committed publication signal", () => {
-  const world = createNotificationInboxTestWorld();
+  const world = createNotificationInboxTestWorld(profileFixtures.create);
   afterEach(world._afterEachFixture0);
   const event = { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: "a".repeat(64) };
   it("emits created and folded exactly once after the outer commit, excluding replay and state commands", async () => {
-    const { database } = world.harness();
+    const { database } = await world.harness();
     const inbox = createNotificationInbox({ authority: database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("f"), actorId: "local-operator" });
     const emitted: import("../../../../src/backend/runs/notifications/inbox.js").NotificationPublication[] = [];
     const dispose = inbox.onPublication(value => { assert(database.authority.notificationPublications.get(value.sourceId)); emitted.push(value); });
@@ -252,7 +368,7 @@ describe("committed publication signal", () => {
     assert.equal(emitted.length, 2);
   });
   it("discards both outer and nested rolled-back publications, permitting later retry after rollback", async () => {
-    const { database } = world.harness();
+    const { database } = await world.harness();
     const inbox = createNotificationInbox({ authority: database, clock: manualClock(new Date(NOW)), ids: sequentialIdFactory("f"), actorId: "local-operator" });
     const emitted: unknown[] = []; inbox.onPublication(value => emitted.push(value));
     let pending: ReturnType<typeof inbox.publish> | undefined;

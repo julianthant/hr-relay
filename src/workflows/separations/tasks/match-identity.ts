@@ -22,7 +22,7 @@ export const matchIdentityTask = defineTask(SeparationsMatchIdentity, {
     const documentEidValue = input.documentEid.state === "present" ? input.documentEid.value : undefined;
     const documentEidPresent = documentEidValue !== undefined;
     if ((input.emplIdSource === "document-eid" && documentEidValue !== input.emplId)
-      || (input.emplIdSource !== "document-eid" && documentEidPresent)) {
+      || (input.emplIdSource !== "document-eid" && input.emplIdSource !== "operator-entered" && documentEidPresent)) {
       return ctx.fail(
         "identity-source-inconsistent",
         `identity source ${input.emplIdSource} is inconsistent with the document EID field; correct the canonical input or source classification before retrying.`,
@@ -44,10 +44,12 @@ export const matchIdentityTask = defineTask(SeparationsMatchIdentity, {
     });
     const output = MatchIdentityOutputSchema.parse({
       packet,
+      approvalRequired: packet.emplIdSource === "name-resolved" || packet.emplIdSource === "operator-entered",
       evidenceDigest: deriveIdentityEvidenceDigest(packet),
     });
     ctx.recordData([
       { direction: "read", field: "packet", value: output.packet },
+      { direction: "read", field: "approvalRequired", value: output.approvalRequired },
       { direction: "read", field: "evidenceDigest", value: output.evidenceDigest },
     ]);
     return output;
