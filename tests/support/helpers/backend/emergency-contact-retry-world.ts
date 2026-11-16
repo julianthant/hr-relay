@@ -34,6 +34,7 @@ import { registerBoundFixtureWorker, registerBoundProfile, unregisterBoundProfil
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { createOcrReviewWorld } from "./ocr-review-world.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../phase1f-executor-harness.js";
+import { onbaseFilingFixture } from "./onbase-filing-fixture.js";
 
 export const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 
@@ -160,7 +161,7 @@ export function createEmergencyContactRetryWorld() {
   const world = createOcrReviewWorld();
   const templates = new Map<string, MemberStageTemplate>();
   const adopted: (() => Promise<void>)[] = [];
-  function pieces(options: RetryOptions, seed?: MemberStageSeed) {
+  function pieces(options: RetryOptions, filing: Awaited<ReturnType<typeof onbaseFilingFixture>>, seed?: MemberStageSeed) {
     const control = { failuresRemaining: seed?.failuresRemaining ?? options.failures ?? 1, unknownAfterSave: false, failAfterSave: seed?.failAfterSave ?? options.secondMemberAlreadyPresent === true, failAccounting: false, changeApprovedSnapshot: false, snapshotReads: seed?.snapshotReads ?? 0, changeApprovedRecord: false, recordReads: seed?.recordReads ?? 0 };
     const hooks: { onSpan?: (event: Parameters<SpanEmitter["emit"]>[0]) => void; onTransactionSettled?: () => void } = {};
     let ticks = seed?.ticks ?? Date.parse(fixture.page.observedAt);
@@ -171,7 +172,8 @@ export function createEmergencyContactRetryWorld() {
       for (const submission of contact.submissions) backend.submissions.push(UcpathContactPageSnapshotSchema.parse(submission));
       persistence.set(contact.emplId, backend);
     }
-    const sessions = sessionFactoryHarness({ ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
+    const clock: { current?: TestClock } = {};
+    const sessions = sessionFactoryHarness({ onbase: filing.session(() => { assert.ok(clock.current); return clock.current; }), ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
       const base = createDeterministicUcpathPersonOrgDriver();
       let activeEid: string | undefined;
       let active: ReturnType<typeof createDeterministicUcpathPersonOrgDriver> | undefined;
@@ -237,12 +239,13 @@ export function createEmergencyContactRetryWorld() {
         return readEmergencyContactResultTask.impl.run(args);
       },
     }) });
-    return { control, hooks, persistence, sessions, approvedReader, accountingStore, member, now, tickCount: () => ticks, approvedReadFailed: () => approvedReadFailed };
+    return { control, hooks, persistence, sessions, approvedReader, accountingStore, member, now, tickCount: () => ticks, approvedReadFailed: () => approvedReadFailed, filing, clock };
   }
   async function build(options: RetryOptions) {
-    const live = pieces({ ...options, onFencedSave: undefined });
+    const live = pieces({ ...options, onFencedSave: undefined }, await onbaseFilingFixture());
     const ids = sequentialIdFactory("b");
-    const f = await world.fixture({ ids, coordinator: true, member: live.member, approvedStore: live.accountingStore,
+    const f = await world.fixture({ ids, coordinator: true, member: live.member, approvedStore: live.accountingStore, documentBytes: live.filing.bytes,
+      onHarness: harness => { live.clock.current = harness.authority.clock; },
       approvedReader: live.approvedReader, onSpan: event => live.hooks.onSpan?.(event),
       onTransactionSettled: run => {
         live.hooks.onTransactionSettled?.();
@@ -270,6 +273,13 @@ export function createEmergencyContactRetryWorld() {
     }
     const interrupted = await f.canonical.execute(f.parentRun, new AbortController().signal);
     assert.equal(interrupted.run?.lifecycle.state, "queued", "a terminal failed sibling requeues the allow-partial parent");
+    // A saved member waits on its OnBase filing child; settle every member before the template is captured.
+    const memberActive = () => f.database.authority.runs.listChildren(f.parentRun.envelope.runId)
+      .some(child => child.envelope.workflow === "emergency-contact-member" && child.lifecycle.state !== "terminal");
+    while (memberActive()) {
+      const next = await f.canonical.step(f.parentRun, new AbortController().signal);
+      assert.ok(next.outcome.state === "done" || next.outcome.state === "yielded-delegation", `filing stopped: ${next.run.envelope.workflow} ${next.outcome.state}`);
+    }
     return { ...f, live, mintedIds: ids.minted().length };
   }
   function present(f: Awaited<ReturnType<typeof world.fixture>>, live: ReturnType<typeof pieces>) {
@@ -278,7 +288,15 @@ export function createEmergencyContactRetryWorld() {
       type, source: "run-detail" as const, requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(),
       target: { runId: run.envelope.runId, expectedVersion: run.version } });
     const children = () => f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(run => run.envelope.workflow === "emergency-contact-member");
-    return { ...f, facts, persistence: live.persistence, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children };
+    // A member step includes its OnBase filing: the yield, the filing child and the member's re-entry.
+    const step: typeof f.canonical.step = async (root, signal) => {
+      const executed = await f.canonical.step(root, signal);
+      if (executed.run.envelope.workflow !== "emergency-contact-member" || executed.outcome.state !== "yielded-delegation") return executed;
+      const filed = await f.canonical.step(root, signal);
+      assert.equal(filed.run.envelope.workflow, "onbase"); assert.equal(filed.run.envelope.parent?.runId, executed.run.envelope.runId);
+      return f.canonical.step(root, signal);
+    };
+    return { ...f, canonical: { ...f.canonical, step }, facts, persistence: live.persistence, control: live.control, hooks: live.hooks, approvedReader: live.approvedReader, current, runCommand: command, children, filing: live.filing };
   }
   async function capture(built: Awaited<ReturnType<typeof build>>): Promise<MemberStageTemplate> {
     const source = built.harness.authority.profile.workspace;
@@ -310,10 +328,11 @@ export function createEmergencyContactRetryWorld() {
     const close = () => adoptedWorld.cleanup();
     adopted.push(close);
     try {
-      const live = pieces(options, template.seed);
+      const live = pieces(options, await onbaseFilingFixture(), template.seed);
       const ids = sequentialIdFactory("b");
       for (let index = 0; index < template.seed.mintedIds; index += 1) ids.uuid();
       const f = await adoptedWorld.fixture({ ids, adoptExisting: true, coordinator: true, member: live.member, approvedStore: live.accountingStore,
+        onHarness: harness => { live.clock.current = harness.authority.clock; },
         approvedReader: live.approvedReader, onSpan: event => live.hooks.onSpan?.(event),
         onTransactionSettled: run => {
           live.hooks.onTransactionSettled?.();

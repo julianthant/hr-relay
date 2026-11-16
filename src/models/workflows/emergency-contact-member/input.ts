@@ -1,9 +1,16 @@
 import { PERSON_LOOKUP_EXAMPLE_EID } from "../person-lookup/input.js";
 import { defineCanonicalInput } from "../../workflow/canonical-input.js";
+import { z } from "zod";
+import { ONBASE_EXAMPLE_INPUT, OnbaseInputSchema } from "../../systems/onbase/import-document.js";
 import { ApprovedOcrRecordInputSchema } from "../ocr/approved-record.js";
 
-export const EmergencyContactMemberInputSchema = ApprovedOcrRecordInputSchema;
-export const EMERGENCY_CONTACT_MEMBER_EXAMPLE = EmergencyContactMemberInputSchema.parse({
+// The run's PDF and the record's first source page, filed to OnBase after the Save; null when another record of this person already files that page.
+export const EmergencyContactMemberInputSchema = z.strictObject({ approval: ApprovedOcrRecordInputSchema.shape.approval, record: ApprovedOcrRecordInputSchema.shape.record,
+  document: OnbaseInputSchema.shape.document, sourcePage: OnbaseInputSchema.shape.sourcePage.nullable() })
+  .superRefine(({ approval, record }, context) => {
+    if (!ApprovedOcrRecordInputSchema.safeParse({ approval, record }).success) context.addIssue({ code: "custom", message: "An approved member requires a ready selected record" });
+  });
+export const EMERGENCY_CONTACT_MEMBER_EXAMPLE = EmergencyContactMemberInputSchema.parse({ document: ONBASE_EXAMPLE_INPUT.document, sourcePage: 1,
   approval: { sourceRunId: "00000000-0000-4000-8000-000000000002", snapshotId: "00000000-0000-4000-8000-000000000001",
     revision: 1, digest: "a".repeat(64) },
   record: { recordId: `${"b".repeat(64)}#emergency-contact#1`, discarded: false, assertedEid: PERSON_LOOKUP_EXAMPLE_EID, fields: {

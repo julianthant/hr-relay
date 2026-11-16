@@ -70,11 +70,6 @@ export const LedgerEntrySchema = z.strictObject({
   payload: LedgerEntryPayloadSchema,
 });
 
-export const LedgerOutboxPayloadSchema = z.strictObject({
-  kind: z.literal("ledger-entry"),
-  entry: LedgerEntryPayloadSchema,
-});
-
 export const WriteCommittedSpanOutboxPayloadSchema = z.strictObject({
   kind: z.literal("write-committed-span"),
   writeIntentId: WriteIntentIdSchema,

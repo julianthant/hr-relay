@@ -1,6 +1,6 @@
 import { ASSISTANT_UNKNOWN_NOTICE, assistantConfirmRefusal, type AssistantMockProposal } from "../assistant/assistant-model.js";
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
-import { useEffect, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
 import { ArrowDown, Check, History, Paperclip, Plus, X } from "lucide-react";
 import { assistantFrame, ASSISTANT_FRAMES } from "../assistant/assistant-mock-frames.js";
 import { AssistantMockThread, AssistantReply } from "./assistant-mock-thread.js";
@@ -11,36 +11,50 @@ import { ComposerInput } from './composer-input.js';
 import { useAssistantPanel, type AssistantConversationPort, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
 import { assistantActivity, type AssistantTurnPhase } from './assistant-launcher-model.js';
 import './assistant-panel.css';
-import { type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
+import { type AssistantModelPreferenceView, type AssistantProposalRow } from '../../../models/dashboard/assistant.js';
 
 export function AssistantFileChip({ file }: { file: AssistantFile }) {
   return <div className="hub-file-chip"><Paperclip aria-hidden /><span>{file.name}<small>{file.status} spreadsheet</small></span></div>;
 }
 const HIDDEN_PROPOSAL_FACTS = new Set(['Input', 'Runs', 'Expires', 'Browser', 'Captures', 'Configuration', 'Options', 'Mode']);
 const MODE_LABEL = { 'dry-run': 'Dry run', 'read-only': 'Read only', 'local-change': 'Local change' } as const;
-function proposalPeople(proposal: AssistantMockProposal): readonly { name: string; id?: string }[] {
-  if (proposal.startPlan) return [{ name: proposal.person?.name ?? proposal.startPlan.planned[0]?.title ?? '', ...(proposal.person?.employeeId ? { id: proposal.person.employeeId } : {}) }];
-  return proposal.subjects.map(subject => ({ name: subject.name, id: subject.id }));
+/** The served card's planned rows; the server derives each row's display from the planned input. */
+function proposalRows(proposal: AssistantMockProposal): readonly AssistantProposalRow[] {
+  const issued = proposal.issued;
+  return issued?.effect === 'workflow-start' ? issued.startPlan.planned : issued?.effect === 'run-action' ? [issued.row] : [];
+}
+function ProposalRows({ rows }: { rows: readonly AssistantProposalRow[] }) {
+  return <>
+    {rows.map((row, index) => <Fragment key={index}>{row.display.kind === 'person'
+      ? row.display.name === undefined ? <><dt>EID</dt><dd>{row.display.employeeId}</dd></>
+        : row.display.employeeId === undefined ? <><dt>Name</dt><dd>{row.display.name}</dd></>
+        : <><dt>Person</dt><dd className="hub-person"><span>{row.display.name}</span> <span>EID {row.display.employeeId}</span></dd></>
+      : row.display.kind === 'document' ? <><dt>Document</dt><dd>{row.display.documentNumber}</dd></>
+      : row.display.kind === 'file' ? <><dt>File</dt><dd>{row.display.fileName}</dd></>
+      : <><dt>Request</dt><dd>{row.title}</dd></>}</Fragment>)}
+    {rows.length > 1 && <><dt>Total</dt><dd>{rows.length}</dd></>}
+  </>;
 }
 export function ProposalCard({ proposal, disposition, refusal, onCancel, onConfirm }: { proposal: AssistantMockProposal; disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown'; refusal?: string; onCancel: () => void; onConfirm: () => void }) {
-  const people = proposalPeople(proposal);
-  const peopleLabel = people.length === 1 ? (people[0]?.name ?? '') : `${String(people.length)} people`;
+  const rows = proposalRows(proposal), only = rows.length === 1 ? rows[0] : undefined;
+  const target = only === undefined ? proposal.issued?.targetLabel : only.display.kind === 'person' ? only.display.name ?? only.display.employeeId ?? only.title : only.display.kind === 'document' ? only.display.documentNumber : only.display.kind === 'file' ? only.display.fileName : only.title;
+  // An unknown outcome is one plain line, carried by the transcript message.
+  if (disposition === 'unknown') return null;
   if (disposition === 'confirmed' || disposition === 'cancelled') {
-    const done = disposition === 'confirmed';
-    return <div className="hub-resolved" aria-label="Resolved proposal"><span>{done ? <Check aria-hidden /> : <X aria-hidden />}</span><span className="hub-resolved-title">{proposal.workflow.label}{people.length ? ` · ${peopleLabel}` : ''}</span><span className="hub-resolved-status" role="status">{done ? (proposal.startPlan ? 'Started' : 'Done') : 'Not started'}</span></div>;
+    const done = disposition === 'confirmed', start = proposal.issued?.effect === 'workflow-start', named = rows.length > 0 || proposal.issued?.effect === 'spreadsheet';
+    return <div className="hub-resolved" aria-label="Resolved proposal"><span>{done ? <Check aria-hidden /> : <X aria-hidden />}</span><span className="hub-resolved-title">{proposal.workflow.label}{named ? <> · {target}</> : null}</span><span className="hub-resolved-status" role="status">{done ? (start ? 'Started' : 'Done') : start ? 'Not started' : 'Not done'}</span></div>;
   }
   const options = [MODE_LABEL[proposal.mode], ...proposal.values.filter(value => !HIDDEN_PROPOSAL_FACTS.has(value.label)).map(value => value.value)];
-  const busy = disposition === 'confirming', unknown = disposition === 'unknown';
+  const busy = disposition === 'confirming';
   return <article className="hub-card hub-proposal" aria-label={`Proposed ${proposal.workflow.label}`}>
     <div className="hub-card-body"><h3>{proposal.workflow.label}</h3><dl className="hub-facts">
-      {proposal.person ? <><dt>Name</dt><dd>{proposal.person.name ?? 'Not provided'}</dd><dt>EID</dt><dd>{proposal.person.employeeId ?? 'Not provided'}</dd></>
-        : proposal.startPlan ? <><dt>Request</dt><dd>{proposal.startPlan.planned[0]?.title}</dd></>
-        : people.length > 0 && <><dt>Name</dt><dd>{people.map(person => <div key={`${person.name}:${person.id ?? ''}`}>{person.name}</div>)}</dd><dt>EID</dt><dd>{people.map(person => <div key={`${person.name}:${person.id ?? ''}`}>{person.id}</div>)}</dd></>}
-      <dt>Options</dt><dd>{options.join(' · ')}</dd>
+      {proposal.issued?.effect === 'spreadsheet' ? proposal.issued.facts.map(fact => <Fragment key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></Fragment>) : <>
+        <ProposalRows rows={rows} />
+        <dt>Options</dt><dd>{options.join(' · ')}</dd></>}
     </dl></div>
-    <footer className="hub-card-footer"><span className="hub-footer-status" role={unknown ? 'alert' : 'status'}>{busy ? <span className="hub-spinner" aria-hidden /> : null}{refusal ?? ''}</span><span className="hub-footer-actions">
+    <footer className="hub-card-footer"><span className="hub-footer-status" role="status">{busy ? <span className="hub-spinner" aria-hidden /> : null}{refusal ?? ''}</span><span className="hub-footer-actions">
       <Button size="sm" variant="ghost" disabled={disposition !== 'review'} onClick={onCancel}>Cancel</Button>
-      <Button size="sm" variant="primary" disabled={proposal.action === undefined || Boolean(refusal)} onClick={onConfirm}>Confirm</Button></span></footer>
+      <Button size="sm" variant="primary" disabled={proposal.action === undefined || busy || Boolean(refusal)} onClick={onConfirm}>Confirm</Button></span></footer>
   </article>;
 }
 export function AssistantPanel({ producer, accountClient, onAttachFile, onRegisterSpreadsheet, onRunWorkflow, onOpenSettings,
@@ -56,6 +70,10 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
   const conversation = model.conversation;
   const wasAtLatest = useRef(true);
   useLayoutEffect(() => { const element = model.transcript.current; if (element && wasAtLatest.current) element.scrollTop = element.scrollHeight; }, [conversation, served?.state, model.transcript]);
+  // The automatic title waits for the first settled reply: its receipt has advanced the cached chat revision, so the rename is not refused as stale.
+  const firstPrompt = served?.state.messages.find(message => message.role === 'operator')?.text;
+  const settled = served?.state.messages.some(message => message.role === 'assistant') === true;
+  useEffect(() => { if (title === 'New chat' && settled && firstPrompt !== undefined) onAutomaticTitle?.(firstPrompt.slice(0, 55)); }, [title, settled, firstPrompt, onAutomaticTitle]);
   // A new mock chat is always ready to compose; the served account decides for served chats.
   const accountReady = served ? served.accountAvailable : fresh || model.account?.state === 'connected';
   const canCompose = served?.canCompose ?? accountReady;
@@ -85,8 +103,8 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
         {frame || fresh ? null : !served && !model.account ? <p role="status" className="hub-caption">{model.error ? 'ChatGPT account unavailable.' : 'Loading ChatGPT account…'}</p> : !served && !accountReady ? <p role="status" className="hub-caption">ChatGPT is unavailable. Open Settings to review your account.</p> : null}
         </>
       </div>{model.showLatest ? <button type="button" className="hub-scroll-bottom" aria-label="Scroll to latest message" onClick={() => { wasAtLatest.current = true; model.latest(); }}><ArrowDown aria-hidden /></button> : null}</></div>
-      {served && !accountReady && <div className="hub-assistant-strip" role="status"><span>{served.accountNotice}</span>{onOpenSettings && served.accountAction && <Button size="sm" variant={served.accountAction === 'sign-in' ? 'primary' : 'secondary'} onClick={() => onOpenSettings(served.accountAction === 'preflight' ? 'preflight' : 'general')}>{served.accountAction === 'preflight' ? 'Open Preflight' : served.accountAction === 'sign-in' ? 'Sign in' : 'Open Settings'}</Button>}</div>}
-      <ComposerInput key={conversation.id} modelPreference={modelPreference} draft={frame ? undefined : draft} settlementKey={served?.state.messages.findLast(message => message.role === 'assistant')?.id} autoFocus={conversation.scene === 'new'} initialText={initialText} onEdit={served ? value => served.onAction({ type: 'edit', value }) : undefined} preview={!served} onSend={async value => { if (model.refuseAttachments(value)) return false;  onSendMessage?.(); const sent = await model.send(value); if (served && sent && title === 'New chat') onAutomaticTitle?.(value.text.slice(0, 55)); return served ? false : sent; }} onAttachFile={onAttachFile === undefined ? undefined : model.attachFile} disabled={!frame && (model.busy || turn?.state === 'waiting' || turn?.state === 'unknown' || turn?.state === 'proposal' && turn.disposition === 'unknown' || !canCompose)} />
+      {served && !accountReady && <div className="hub-assistant-strip" role="status"><span>{served.accountNotice}</span>{onOpenSettings && served.accountAction && <Button size="sm" variant={served.accountAction === 'sign-in' ? 'primary' : 'secondary'} onClick={() => onOpenSettings('general')}>{served.accountAction === 'sign-in' ? 'Sign in' : 'Open Settings'}</Button>}</div>}
+      <ComposerInput key={conversation.id} modelPreference={modelPreference} models={served?.models} onModelChoice={served?.chooseModel} draft={frame ? undefined : draft} settlementKey={served?.state.messages.findLast(message => message.role === 'assistant')?.id} autoFocus={conversation.scene === 'new'} initialText={initialText} onEdit={served ? value => served.onAction({ type: 'edit', value }) : undefined} preview={!served} onSend={async value => { if (model.refuseAttachments(value)) return false;  onSendMessage?.(); const sent = await model.send(value); return served ? false : sent; }} onAttachFile={onAttachFile === undefined ? undefined : model.attachFile} disabled={!frame && (model.busy || turn?.state === 'waiting' || turn?.state === 'unknown' || turn?.state === 'proposal' && turn.disposition === 'unknown' || !canCompose)} />
     </div>
   </section>;
 }

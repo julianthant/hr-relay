@@ -23,9 +23,11 @@ export const AuthorityTableNameSchema = z.enum([
   "commands",
   "command_audits",
   "settings",
-  "assistant_grants",
   "assistant_chats",
   "assistant_actions",
+  "assistant_conversations",
+  "assistant_messages",
+  "assistant_attachments",
   "run_batches",
   "deleted_runs",
   "runs",
@@ -68,7 +70,6 @@ export const AuthorityTableNameSchema = z.enum([
 export const ProjectionTableNameSchema = z.enum([]);
 
 export const TableNameSchema = z.union([AuthorityTableNameSchema, ProjectionTableNameSchema]);
-export const TableClassSchema = z.enum(["authority", "projection"]);
 const ALL_TABLE_NAMES = [...AuthorityTableNameSchema.options, ...ProjectionTableNameSchema.options];
 
 const AuthorityTableSpecSchema = z.strictObject({
@@ -156,7 +157,7 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25)]),
+  toSchemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(30)]),
 });
 
 const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
@@ -172,7 +173,7 @@ const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.ext
 });
 
 export const AuthorityEvidenceSchemaUpgradeRecordSchema = AuthorityForwardUpgradeRecordSchema.omit({ startupLogout: true }).extend({
-  phase: z.literal("settled"), fromSchemaVersion: z.union([z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25)]), toSchemaVersion: z.union([z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25)]),
+  phase: z.literal("settled"), fromSchemaVersion: z.union([z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(30)]), toSchemaVersion: z.union([z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(30)]),
   evidenceSchemas: EvidenceSchemaConversionSchema, evidenceSchemaMac: FingerprintSchema,
 });
 

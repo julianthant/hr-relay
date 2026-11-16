@@ -11,7 +11,7 @@ import { WorkbookOperationReceiptSchema, WorkbookCellValuesSchema } from "./work
 import { UcpathFindingsDetailSchema } from "./ucpath-findings.js";
 import { FailureDisplaySchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
-import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
+import { FailureResolutionCaptureSchema } from "../trust/failure-resolution.js";
 import { PublicTransactionKeyDigestSchema } from "../write-safety/protected-input.js";
 import { WriteParkCodeSchema } from "../../rules/write-safety/write-safety-primitives.js";
 import { z } from "zod";
@@ -639,7 +639,7 @@ export const FailureDetailWireSchema = z.strictObject({
     prefill: z.string().min(1).optional(),
     retry: ActionDescriptorWireSchema, confirm: ActionConfirmWireSchema, request: StartPlanRequestSchema,
   }).optional(),
-  resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),
+  resolution: z.strictObject({capture:FailureResolutionCaptureSchema}).optional(),
   decision: RunDecisionWireSchema.optional(),
   runId: RunIdSchema,
   failureId: FailureIdSchema,

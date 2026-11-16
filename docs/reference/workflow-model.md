@@ -374,6 +374,13 @@ graph, including its gates and nested delegation. It returns the normal typed ob
 and receipt for its parent to consume. A child with an unsupported transaction still refuses; child
 and parent dry-run flags must match. This exception does not offer standalone read-only previews.
 
+An awaited delegate may follow a transaction in node order without depending on it: a refused,
+UNKNOWN or parked write stops the run before the delegate, and in a dry run the delegate still runs
+and the run stores a delegated preview. The Emergency Contact member files this way. After its Save
+settles committed or already-present, `onbase-filing` starts one hidden OnBase child with the mapped
+Employee ID, the run's PDF and the record's first source page, so an Emergency Contact run needs an
+OnBase session. In a dry run the Save and the filing are both previewed and nothing is imported.
+
 ### 2.1 Preview terminal result
 
 For a transaction preview, `executeClaimedRun` traverses the declared graph and stores

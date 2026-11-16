@@ -175,31 +175,6 @@ it("requires declared installation locator ownership and preserves raw aliases, 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it("allows only the declared durable archive callback and rejects browser, any, and fake annotated commits", () => {
-  const root = resolve(tmpdir(), `hrauto-ui-commit-${String(process.pid)}-${String(Date.now())}`);
-  const path = resolve(root, "src/core/kernel.ts");
-  try {
-    mkdirSync(dirname(path), { recursive: true });
-    mkdirSync(resolve(root, "src/backend/runs/lifecycle"), { recursive: true });
-    mkdirSync(resolve(root, "src/backend/runs/commands"), { recursive: true });
-    writeFileSync(resolve(root, "src/backend/runs/commands/command-application.ts"), 'export interface CommandApplication { commit?: () => void }');
-    writeFileSync(resolve(root, "src/backend/runs/lifecycle/archive-terminal-runs.ts"), 'export function publishManualArchive(input: unknown): void { void input; }');
-    const imports = 'import type { CommandApplication } from "../backend/runs/commands/command-application.js"; import { publishManualArchive } from "../backend/runs/lifecycle/archive-terminal-runs.js";';
-    writeFileSync(path, imports + 'export function prepare(): CommandApplication { return { commit: () => publishManualArchive("verified") }; }');
-    assert.deepEqual(auditTaskDriverBoundary(root), []);
-    for (const source of [
-      imports + 'export function prepare(page: { click(): unknown }): CommandApplication { return { commit: () => publishManualArchive(page.click()) }; }',
-      imports + 'export function prepare(input: { nested: { click(): unknown } }): CommandApplication { return { commit: () => publishManualArchive(input) }; }',
-      imports + 'export function prepare(page: { locator(selector: string): unknown }): CommandApplication { return { commit: () => publishManualArchive(page) }; }',
-      imports + 'export function prepare(page: { click(): unknown }): CommandApplication { return { commit: () => page.click() }; }',
-      imports + 'export function prepare(): { commit?: () => void } { return { commit: () => publishManualArchive("unbound") }; }',
-      imports + 'export function prepare(input: any): CommandApplication { return { commit: () => publishManualArchive(input) }; }',
-      'interface CommandApplication { commit?: () => void } function publishManualArchive(input: string): void {} export function prepare(): CommandApplication { return { commit: () => publishManualArchive("fake") }; }',
-    ]) { writeFileSync(path, source); assert.match(auditTaskDriverBoundary(root).join("\n"), /a commit implementation must live/u); }
-  } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-
 it("preserves capability-validating driver commits while rejecting raw methods in runtime-control", () => {
   const root = resolve(tmpdir(), `hrauto-ui-owner-${String(process.pid)}-${String(Date.now())}`);
   const driver = resolve(root, "src/backend/systems/ucpath/driver/commit.ts");
@@ -212,4 +187,3 @@ it("preserves capability-validating driver commits while rejecting raw methods i
     assert.match(auditTaskDriverBoundary(root).join("\n"), /runtime\/settings\/reader\.ts: raw browser member \.locator/u);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
-

@@ -16,13 +16,12 @@ import { AssistantModelPreferenceCommandRequestSchema } from "../../../rules/com
 import { PreflightEvidenceExpiredError, PreflightAdmissionRefusal,type PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { ASSISTANT_INPUT_PROJECTION_VERSION,assistantKnowledgeArtifact } from "../../assistant/context.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateDescendantHome,captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
 import { readRunCheckpoint, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
-import { executeFailureResolution,failureResolutionCapability } from "../lifecycle/failure-resolution.js";
+import { executeFailureResolution } from "../lifecycle/failure-resolution.js";
 import { assertOcrReviewChildrenCurrent,readOcrReviewAuthority,readOcrSnapshotsAuthority,reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
 import { reviewedRunSettingsCurrent,selectNewRunIdentity,selectRunRuntime } from "../settings/run-settings.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
@@ -287,8 +286,10 @@ export interface CommandKernelDependencies {
   readonly prepareAssistantModelPreference?: (request: z.infer<typeof AssistantModelPreferenceCommandRequestSchema>) => Promise<() => true>;
   readonly assistantSurface?: () => readonly Readonly<{ method: string; path: string }>[];
   readonly workflowSources?: Readonly<Record<string, "mock" | "served" | "hidden">>;
+  /** The pinned assistant workflow facts; a change stales every outstanding assistant proposal. */
+  readonly assistantFactsSha256?: () => string;
   readonly assistantRevalidate?: (command: CommandRequest) => void;
-  readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
+  readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution}>;
   readonly commandNotices?: Pick<NotificationInbox, "record">;
 
 
@@ -2582,7 +2583,7 @@ function replay(
 
 /** The same settings command path is used by the BFF and stopped migration. */
 export function executeSettingsCommand(
-  dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "settings" | "authorityProfileId">,
+  dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "settings">,
   input: unknown,
 ): CommandResult {
   const request = CommandRequestSchema.parse(input);
@@ -2609,11 +2610,6 @@ export function executeSettingsCommand(
       // Replays use their existing journal and do not need a new read snapshot.
       const ordinarySnapshot = request.type === "apply-settings" && repositories.commands.get(request.commandId) === undefined
         ? readSettings(repositories) : undefined;
-      if (request.type === "apply-settings" && request.payload.assistantPermission !== undefined
-        && repositories.commands.get(request.commandId) === undefined) {
-        const actualRevision = repositories.assistantAuthorization.grant()?.policy.revision ?? 0;
-        if (actualRevision !== request.payload.assistantPermission.expectedPolicyRevision) conflict(request, actualRevision, "assistant policy revision conflict");
-      }
       if (request.type === "apply-protected-settings") {
         // BEGIN IMMEDIATE holds identity admission, private commit and audit; SQL rollback cannot undo the private commit.
         const protectedRefusal = executor.commitPrivate(request);
@@ -2633,16 +2629,6 @@ export function executeSettingsCommand(
       if (application.settingsCurrent !== undefined) repositories.settingsCurrent.advance({
         ...application.settingsCurrent, commandId: request.commandId, auditId, committedAt: now,
       });
-      if (request.type === "apply-settings" && application.result.state === "applied") {
-        const change = request.payload.assistantPermission;
-        if (change !== undefined) {
-          const profileId = dependencies.authorityProfileId;
-          if (profileId === undefined) throw new Error("assistant-grant-profile-owner-required");
-          const revision = change.expectedPolicyRevision + 1;
-          repositories.assistantAuthorization.grantBySettings({ id: "current", profileId, commandId: request.commandId, updatedAt: now,
-            policy: { revision, mode: change.mode, grant: { grantId: dependencies.ids.uuid(), profileId, policyRevision: revision, mode: change.mode, grantedAt: now } } });
-        }
-      }
       return application.result;
     });
     return result;
@@ -2669,7 +2655,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
   const availability = () => commandAssistantAvailability((family, action) => {
     if (family === "assistant-model-preference" || family === "application" || family === "run" && action === "recover-run") return false;
     if (family === "settings") return dependencies.settings !== undefined;
-    if (family === "failure-resolution") return dependencies.failureResolution?.capability().state === "available";
+    if (family === "failure-resolution") return dependencies.failureResolution !== undefined;
     if (family === "start" || family === "intake") return dependencies.workflowSources !== undefined
       && Object.entries(dependencies.workflowSources).some(([id, source]) => source === "served" && dependencies.descriptors.resolve(id) !== undefined
         && (family !== "intake" || dependencies.intakeProjections.resolve(id) !== undefined));
@@ -2834,13 +2820,11 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         || entry.family === "start" && dependencies.assistantRevalidate !== undefined
         || entry.family === "settings" && entry.action !== "apply-protected-settings"
         || entry.family === "worker-browser" && entry.action === "spawn-worker" && dependencies.assistantRevalidate !== undefined
+        || entry.family === "run" && (entry.action === "pause" || entry.action === "resume" || entry.action === "cancel") && dependencies.assistantRevalidate !== undefined
       )).map(entry => ({ family: entry.family, action: entry.action, classification: entry.classification, subject: entry.family === "start" ? "classified" as const : "none" as const }));
       const identity = { commands: availability(), schema: deriveSchemaHash(CommandRequestSchema, "input"),
         surface: dependencies.assistantSurface?.() ?? null,
-        projection: ASSISTANT_INPUT_PROJECTION_VERSION, knowledge: assistantKnowledgeArtifact(Object.entries(dependencies.workflowSources ?? {}).flatMap(([id, source]) => {
-          const descriptor = dependencies.descriptors.resolve(id);
-          return source === "served" && descriptor !== undefined ? [{ id, label: descriptor.label }] : [];
-        })).policy.exportSha256,
+        knowledge: dependencies.assistantFactsSha256?.() ?? null,
         workflows: dependencies.workflowSources === undefined ? null : Object.entries(dependencies.workflowSources).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0) };
       const revision = Number.parseInt(sha256Hex(canonicalJsonStringify(identity)).slice(0, 12), 16) + 1;
       return AssistantActionManifestSchema.parse({ revision, entries });
@@ -2853,9 +2837,6 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       }
       dependencies.assistantRevalidate?.(request);
   if (Buffer.byteLength(JSON.stringify(request)) > 256 * 1024) throw new Error("command-envelope-size-exceeded");
-      if (request.family === "failure-resolution" && (dependencies.failureResolution?.capability ?? failureResolutionCapability)().state === "unavailable") {
-        return {state:"rejected",commandId:request.commandId,code:"capability-unavailable",message:"Failure resolution is not available in this build."};
-      }
       return executeSync(request, parentCommandId);
     },
     async executeStart(input: unknown): Promise<CommandResult> {

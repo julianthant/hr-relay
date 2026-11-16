@@ -46,7 +46,8 @@ import {
   dsIcon,
   dsText,
 } from "../../ds/ui.js";
-import type { CommandResult, RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
+import type { CommandResult } from "../../../rules/commands/commands.js";
+import { commandAttemptView } from "../../app/commands/command-outcome.js";
 import { runStartRefusalToast, settleCommandResult } from "../../app/commands/command-result.js";
 import {
   type InputRunSurface,
@@ -275,7 +276,7 @@ export function RunStartDialog({
   panelWorkflowId: string;
   /** echoed from bootstrap; the server matches it against the request identity */
   actorId: string;
-  onApplied?: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
+  onApplied?: (workflowId: string, count?: number) => void;
   /** Hand intake the picker’s workflow, never the panel’s incidental scope. */
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
@@ -660,7 +661,8 @@ export function RunStartDialog({
       const outcome = await launchService.submit(command, binding, verificationPlan);
       if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance || commandBindingRef.current?.scope !== binding.scope) return;
       const reply = outcome.reply;
-      if (outcome.kind === "refused" && reply !== undefined && "state" in reply && reply.state === "rejected"
+      const view = commandAttemptView(outcome);
+      if (view.view === "rejected" && reply !== undefined && "state" in reply && reply.state === "rejected"
         && reply.code === "RUN_START_PLAN_EXPIRED" && expiryRequest !== undefined) {
         dismissLaunchRecovery(window.sessionStorage, command);
         finalRequest.current = null; setRecovery(null); setPlan(null); reviewedRequest.current = null; setExpiredPlan(false); setResult(null);
@@ -684,19 +686,17 @@ export function RunStartDialog({
       if (outcome.kind === "confirmed") {
         dismissLaunchRecovery(window.sessionStorage, command);
         finalRequest.current = null; setRecovery(null); setPlan(null); reviewedRequest.current = null; setExpiredPlan(false); setResult(null); setBusy(false);
-        const workerStartup = reply !== undefined && "state" in reply && (reply.state === "applied" || reply.state === "already-applied")
-          ? reply.workerStartup : undefined;
-        onApplied?.(command.target.workflowId, plan?.planned.length, workerStartup);
+        onApplied?.(command.target.workflowId, plan?.planned.length);
         onOpenChange(false);
         ++launchInstance.current;
-      } else if ((outcome.kind === "refused" || outcome.kind === "conflict") && reply !== undefined && "state" in reply
+      } else if ((view.view === "rejected" || view.view === "conflict") && reply !== undefined && "state" in reply
         && (reply.state === "rejected" || reply.state === "conflict")) {
         dismissLaunchRecovery(window.sessionStorage, command);
         finalRequest.current = null; setRecovery(null);
         closeAndReset(false);
       } else {
         setError(outcome.feedback.text);
-        if (outcome.kind !== "uncertain" && reply !== undefined && "state" in reply
+        if (view.view !== "unknown" && reply !== undefined && "state" in reply
           && (reply.state === "rejected" || reply.state === "conflict" || reply.state === "confirmation-required")) {
           setResult({ ...reply, message: outcome.feedback.text });
         }
@@ -1189,7 +1189,7 @@ export function RunStartSurfaces({
   catalog: readonly WorkflowCatalogEntry[];
   panelWorkflowId: string;
   actorId: string;
-  onApplied?: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
+  onApplied?: (workflowId: string, count?: number) => void;
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;

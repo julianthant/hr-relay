@@ -9,7 +9,7 @@
   "oath-signature": "mock",
   "oath-upload": "mock",
   "emergency-contact": "served",
-  "onbase": "mock",
+  "onbase": "hidden",
   "i9-check-start": "served",
   "crm-doc-download": "mock",
   "old-kronos-reports": "mock"

@@ -166,6 +166,8 @@ export interface RunQueueProjectionDeps {
     listWorkerRuns?(workerId: string): readonly RunRecord[];
     /** The profile runtime's worker pool members; absent where no pool runs (then no worker card is served). */
     workerMembers?(): readonly WorkerMemberView[];
+    /** Whether a capacity step for the workflow is still starting its members. */
+    workerStartupPending?(workflowId: string): boolean;
     heldDuoSystems?(workerId: string): readonly string[];
     /** Whether the run holds an `attempting` (fenced, unsettled) write intent. */
     writeInFlight?(runId: string): boolean;
@@ -848,7 +850,9 @@ export class RunQueueProjection {
     }
     const workers = this.#deps.authority.workerMembers?.().map(view => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version }));
     const writeInFlight = built.claimedIds.map((id) => [id, this.#deps.authority.writeInFlight?.(id)]);
-    const fingerprint = JSON.stringify({ members: this.#deps.authority.listWorkerSlots?.(), workers, writeInFlight }) + built.storeJson;
+    const members = this.#deps.authority.listWorkerSlots?.();
+    const startupPending = [...new Set(members?.map(member => member.workflow))].filter(workflowId => this.#deps.authority.workerStartupPending?.(workflowId) === true);
+    const fingerprint = JSON.stringify({ members, workers, writeInFlight, startupPending }) + built.storeJson;
     const batches = built.batches;
     this.#publishedBatchVersions = new Map(batches.map(({ sessionId, version }) => [sessionId, version]));
     return fingerprint;
@@ -1236,6 +1240,7 @@ export class RunQueueProjection {
       return view !== undefined && view.state !== "exited";
     });
     if (live.length === 0) {
+      if (this.#deps.authority.workerStartupPending?.(workflowId) === true) return undefined;
       const exited = active.some(slot => viewOf(slot.workerId)?.state === "exited");
       return exited ? QUEUE_NOT_STARTING_NO_WORKER : undefined;
     }
@@ -1521,6 +1526,7 @@ export class RunQueueProjection {
             || view.state === "running" && (view.activity === undefined || view.activity.state === "idle")) ? this.#workerLastRun(member.workerId) : undefined;
           const timelineRunId = runId ?? (lastRun?.state === "present" ? lastRun.runId : undefined);
           workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#workers.get(member.workerId)?.eventCount ?? 0,
+            startupPending: this.#deps.authority.workerStartupPending?.(member.workflow) === true,
             duoSystems: this.#deps.authority.heldDuoSystems?.(member.workerId),
             writeInFlight: runId => this.#deps.authority.writeInFlight?.(runId) === true,
             ...(lastRun === undefined ? {} : { lastRun }),

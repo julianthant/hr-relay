@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import { retainCleanShutdownBackups, resumeShutdownBackupRetirement } from "../../../../src/backend/storage/maintenance/clean-shutdown-backups.js";
-import { verifyBackupManifestAtPath, type VerifiedBackup } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { verifyBackupBytesAtPath, verifyBackupManifestAtPath, type VerifiedBackup } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { authoritySourceDatabaseIdentity } from "../../../../src/backend/storage/sqlite/database-identity.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
@@ -13,7 +13,10 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 
 vi.mock("../../../../src/backend/storage/admission/admission-identity.js", () => ({ requireRuntimeAdmission: (input: unknown) => input }));
 
-vi.mock("../../../../src/backend/storage/sqlite/backup-service.js", async actual => ({ ...await actual<typeof import("../../../../src/backend/storage/sqlite/backup-service.js")>(), verifyBackupManifestAtPath: vi.fn() }));
+vi.mock("../../../../src/backend/storage/sqlite/backup-service.js", async actual => {
+  const service = await actual<typeof import("../../../../src/backend/storage/sqlite/backup-service.js")>();
+  return { ...service, verifyBackupManifestAtPath: vi.fn(), verifyBackupBytesAtPath: vi.fn(service.verifyBackupBytesAtPath) };
+});
 
 const faults = vi.hoisted(() => ({ target: "" }));
 vi.mock("node:fs", async actual => {
@@ -28,12 +31,13 @@ function fixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "shutdown-backup-retention-"))), directory = join(root, "backups", "authority");
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const proofs = new Map<string, VerifiedBackup>();
-  const clock = manualClock(new Date("2026-11-02T12:00:00.000Z")), digest = "a".repeat(64), installationId = randomUUID(), profileId = randomUUID();
+  const clock = manualClock(new Date("2026-11-02T12:00:00.000Z")), digest = createHash("sha256").update("db").digest("hex"), installationId = randomUUID(), profileId = randomUUID();
   const admission = { stateRoot: root, profileBinding: { installationId, profileId },
     assertAuthorityBackupWrite: (path: string) => assert.equal(path, directory),
     authorityBackupExpectedSource: () => ({ kind: "profile" as const, binding: { installationId, profileId } }) };
   // @ts-expect-error This pure filesystem test replaces issued admission and native verification.
-  const retain = () => retainCleanShutdownBackups(admission, clock);
+  const retain = (fresh = newest()) => retainCleanShutdownBackups(admission, clock, fresh);
+  const newest = () => { const proof = [...proofs.values()].find(value => value.manifest.authorityGeneration === 4); assert.ok(proof); return proof; };
   // @ts-expect-error This pure filesystem test replaces issued admission and native verification.
   const resume = () => resumeShutdownBackupRetirement(admission, clock);
   const sourceIdentity = authoritySourceDatabaseIdentity({ kind: "profile", binding: { installationId, profileId } });
@@ -52,15 +56,16 @@ function fixture() {
     const proof = proofs.get(path.endsWith(".retiring") ? path.slice(0, -".retiring".length) : path); assert.ok(proof);
     return { ...proof, manifestPath: path };
   });
+  vi.mocked(verifyBackupBytesAtPath).mockClear();
   return { retain, resume, directory, clock, proofs, before, close() {
-    faults.target = ""; vi.restoreAllMocks(); vi.mocked(verifyBackupManifestAtPath).mockReset(); rmSync(root, { recursive: true });
+    faults.target = ""; vi.restoreAllMocks(); vi.mocked(verifyBackupManifestAtPath).mockReset(); vi.mocked(verifyBackupBytesAtPath).mockClear(); rmSync(root, { recursive: true });
   } };
 }
 
 for (const invalid of [false, true]) it(`retires only verified old shutdown pairs, preserving other backup classes (verification refusal: ${invalid})`, async () => {
   const f = fixture(), { directory, before, proofs } = f;
   const failure = new Error("mock native verification refused");
-  if (invalid) vi.mocked(verifyBackupManifestAtPath).mockRejectedValue(failure);
+  if (invalid) vi.mocked(verifyBackupBytesAtPath).mockRejectedValueOnce(failure);
   try {
     if (invalid) { await assert.rejects(f.retain(), error => error === failure); assert.deepEqual(new Map(readdirSync(directory).map(name => [name, readFileSync(join(directory, name))])), before); }
     else {
@@ -108,22 +113,55 @@ for (const mutation of ["foreign-person", "missing-newer"]) it(`refuses changed 
   } finally { f.close(); }
 });
 
-for (const mutation of ["record", "backup"] as const) it(`refuses ${mutation} mutation during native verification before deleting the backup`, async () => {
-  const f = fixture(), verify = vi.mocked(verifyBackupManifestAtPath).getMockImplementation(); assert.ok(verify);
-  let changed = false, backupPath: string | undefined;
-  vi.mocked(verifyBackupManifestAtPath).mockImplementation(async (...args) => {
-    const result = await verify(...args);
-    if (!changed && args[1].endsWith(".retiring")) {
-      changed = true; backupPath = result.backupPath;
-      const record = result.manifest;
-      if (mutation === "record") writeFileSync(args[1], JSON.stringify({ ...record, authorityGeneration: record.authorityGeneration + 1,
+for (const mutation of ["record", "backup"] as const) it(`refuses ${mutation} mutation after its byte check before deleting the backup`, async () => {
+  const f = fixture(), doomed = [...f.proofs.values()].find(value => value.manifest.authorityGeneration === 1); assert.ok(doomed);
+  const check = vi.mocked(verifyBackupBytesAtPath).getMockImplementation(); assert.ok(check);
+  let changed = false;
+  vi.mocked(verifyBackupBytesAtPath).mockImplementation(async (...args) => {
+    await check(...args);
+    if (!changed && args[0] === doomed.backupPath) {
+      changed = true;
+      const record = doomed.manifest;
+      if (mutation === "record") writeFileSync(doomed.manifestPath, JSON.stringify({ ...record, authorityGeneration: record.authorityGeneration + 1,
         verification: { ...record.verification, authorityGeneration: record.authorityGeneration + 1 } }), { mode: 0o600 });
-      else writeFileSync(backupPath, "changed backup bytes", { mode: 0o600 });
+      else writeFileSync(doomed.backupPath, "changed backup bytes", { mode: 0o600 });
     }
-    return result;
   });
   try {
     await assert.rejects(f.retain(), /retirement-changed/u);
-    assert.equal(changed, true); assert.ok(backupPath); assert.equal(readFileSync(backupPath, "utf8"), mutation === "record" ? "db" : "changed backup bytes");
+    assert.equal(changed, true); assert.equal(readFileSync(doomed.backupPath, "utf8"), mutation === "record" ? "db" : "changed backup bytes");
+  } finally { f.close(); }
+});
+
+it("checks each quit-time backup's bytes once per quit and inspects none of them", async () => {
+  const f = fixture(), fresh = [...f.proofs.values()].find(value => value.manifest.authorityGeneration === 4); assert.ok(fresh);
+  try {
+    await f.retain();
+    assert.equal(vi.mocked(verifyBackupManifestAtPath).mock.calls.length, 0);
+    const reads = new Map<number, number>();
+    for (const [path] of vi.mocked(verifyBackupBytesAtPath).mock.calls) {
+      const proof = [...f.proofs.values()].find(value => value.backupPath === path); assert.ok(proof);
+      reads.set(proof.manifest.authorityGeneration, (reads.get(proof.manifest.authorityGeneration) ?? 0) + 1);
+    }
+    assert.deepEqual(Object.fromEntries(reads), { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1 });
+    assert.equal(readdirSync(f.directory).length, 8);
+  } finally { f.close(); }
+});
+
+it("refuses retention without deletion when the fresh backup's bytes changed after its backup request verified them", async () => {
+  const f = fixture(), fresh = [...f.proofs.values()].find(value => value.manifest.authorityGeneration === 4); assert.ok(fresh);
+  try {
+    writeFileSync(fresh.backupPath, "dx", { mode: 0o600 });
+    const before = new Map(readdirSync(f.directory).map(name => [name, readFileSync(join(f.directory, name))]));
+    await assert.rejects(f.retain(fresh));
+    assert.deepEqual(new Map(readdirSync(f.directory).map(name => [name, readFileSync(join(f.directory, name))])), before);
+  } finally { f.close(); }
+});
+
+it("removes no older backup unless the newest one was verified in this quit", async () => {
+  const f = fixture(), older = [...f.proofs.values()].find(value => value.manifest.authorityGeneration === 3); assert.ok(older);
+  try {
+    await assert.rejects(f.retain(older), /retention-unproved/u);
+    assert.deepEqual(new Map(readdirSync(f.directory).map(name => [name, readFileSync(join(f.directory, name))])), f.before);
   } finally { f.close(); }
 });

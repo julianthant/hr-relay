@@ -8,7 +8,7 @@ import { DeletedRunRecordSchema,type DeletedRunRecord } from "../../../../src/mo
 import { RunLifecycleSchema,RunRecordSchema,type RunRecord } from "../../../../src/models/run/record.js";
 import type { RunResultRecord } from "../../../../src/models/run/result.js";
 import { FingerprintSchema,RunIdSchema } from "../../../../src/rules/identity/ids.js";
-import { activityPersonPseudonymResultRecord,CURRENT_SEPARATIONS_RESULT } from "../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { separationsRunResultRecord,CURRENT_SEPARATIONS_RESULT } from "../../../support/fixtures/integration/separations-run-fixtures.js";
 import { inMemoryRunReaderFake } from "../../../support/helpers/canonical-run-reader.js";
 
 import assert from "node:assert/strict";
@@ -136,7 +136,7 @@ function personResult(w: DashboardWorld, seed: number, identity: string) {
   const prior=w.authority.records.get(uuidOf(seed));
   if(prior===undefined)throw new Error("activity-fixture-run-missing");
   const run=runRecordOf({seed,workflow:"separations",lifecycle:{state:"terminal",outcome:"done",endedAt:instantOffsetOf(0,1000)}});
-  const result=activityPersonPseudonymResultRecord(run,{...CURRENT_SEPARATIONS_RESULT,
+  const result=separationsRunResultRecord(run,{...CURRENT_SEPARATIONS_RESULT,
     approved:{...CURRENT_SEPARATIONS_RESULT.approved,emplId:identity}});
   w.authority.put({...run,envelope:{...run.envelope,shape:prior.envelope.shape,...(prior.envelope.parent===undefined?{}:{parent:prior.envelope.parent})}});
   canonicalResults.get(w)?.set(run.envelope.runId,result);

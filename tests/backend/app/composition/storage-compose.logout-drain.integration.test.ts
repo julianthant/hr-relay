@@ -2,12 +2,20 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { it, vi } from "vitest";
 import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { ProfileSessionRefusedError } from "../../../../src/backend/profiles/profile-errors.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
+import { createBoundProfileFixture, finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { createChatGptCredentialRepository, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
@@ -192,4 +200,46 @@ it("signs out with a never-claimed run kept paused for the next sign-in", async 
     const run = f.runtime.selectedContext(again.token).database.authority.runs.get(QUEUED_RUN.envelope.runId);
     assert.deepEqual([run?.lifecycle.state, run?.pause?.state], ["queued", "paused"]);
   } finally { await f.close(); }
+});
+
+it("forgets the signing-out person's ChatGPT account and leaves another person's untouched", async () => {
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "logout-chatgpt-")));
+  const clock = manualClock(new Date("2026-11-04T12:00:00Z"));
+  const lifetime = await RuntimeLifetimeLock.acquire(0), machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
+  mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
+  const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null }, onboardingDuo: syntheticOnboardingDuo() });
+  const connected: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: "oaiapp_fixture",
+    registration: { subject: "synthetic-subject", name: "Synthetic", email: "synthetic@example.com" },
+    session: { accessToken: "synthetic-access", refreshToken: null, idToken: "synthetic-id", expiresAt: IsoInstantSchema.parse("2026-11-04T13:00:00.000Z"), earliestRefreshAt: null,
+      scopes: ["openid"], usePlan: false, usage: "available" } };
+  const repositoryFor = (token: string) => {
+    const admission = runtime.selectedContext(token).admission;
+    return createChatGptCredentialRepository({ admission, stateRoot: admission.stateRoot });
+  };
+  const connect = (repository: ReturnType<typeof repositoryFor>) => repository.withLock(async transaction => { transaction.replace(connected, null); });
+  const signUp = async (email: string) => {
+    const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp({ firstName: "Fixture", lastName: "Operator", email,
+      password: "disposable-fixture-password", createdAt: clock.now().toISOString() }));
+    if (active.state !== "active") throw new Error("actual signup required"); return active;
+  };
+  const logOut = async (token: string, profileId: string) => {
+    const pending = runtime.session.logOut(token, { at: clock.now().toISOString() });
+    if (pending.state !== "cancelling" || pending.operationId === undefined) throw new Error("actual logout required");
+    await runtime.awaitClosurePreparation(profileId);
+    assert.equal(runtime.session.resumeLogout(pending.operationId).state, "signed-out");
+  };
+  try {
+    const other = await signUp("other@ucsd.edu");
+    // A connected account kept from before sign-out forgot it: written after this person's drain.
+    const kept = repositoryFor(other.token);
+    await runtime.drainForLogout(other.token); await connect(kept); await logOut(other.token, other.profileId);
+    const otherFile = join(machine.stateRoot, "profiles", other.profileId, "credentials", "chatgpt-account.json"), otherBytes = readFileSync(otherFile);
+    const active = await signUp("fixture@ucsd.edu"), repository = repositoryFor(active.token); await connect(repository);
+    await runtime.drainForLogout(active.token);
+    const forgotten = repository.read(); assert.ok(forgotten);
+    assert.deepEqual({ ...forgotten, hostId: connected.hostId }, { ...connected, revision: 2, clientId: null, registration: null, session: null });
+    assert.notEqual(forgotten.hostId, connected.hostId);
+    await logOut(active.token, active.profileId);
+    assert.equal(readFileSync(otherFile).equals(otherBytes), true);
+  } finally { await runtime.close(); machine.release(); await lifetime.close(); rmSync(workspace, { recursive: true, force: true }); }
 });
