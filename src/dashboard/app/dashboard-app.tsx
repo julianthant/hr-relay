@@ -570,7 +570,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const recoveryEntries: readonly UncertainCommandEntry[] = executor.retainedAttempts().flatMap<UncertainCommandEntry>(attempt => {
     const request = attempt.request;
     if (attempt.state === "pending" && attempt.scope.client === commandScope.client && attempt.scope.authority === commandScope.authority && attempt.scope.dayRequest === commandScope.dayRequest) return [];
-    if (attempt.scope.actorId !== commandScope.actorId || (attempt.state !== "pending" && attempt.outcome?.kind !== "uncertain")) return [];
+    if (attempt.scope.actorId !== commandScope.actorId || !attemptUnresolved(attempt)) return [];
     if ("targets" in request && request.type === "bump") return [];
     if (!("targets" in request) && request.family === "application") return [{ request, inFlightKey: request.commandId,
       label: commandLabels.current.get(request.commandId) ?? request.type,
