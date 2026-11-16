@@ -44,7 +44,7 @@ it('binds catalogue changes and result lookups to the exact library and action',
   const entry = WorkbookLibraryEntrySchema.parse({ libraryId: record.libraryId, version: 1, name: record.workbook.name, updatedAt: NOW,
     rowCount: 0, worksheets: [{ id: 'sheet', name: 'Dates' }], metadata: { typeId: 'general', sharePoint: null },
     type: { id: 'general', name: 'General workbook', keyFieldId: null, fields: [], defaultWorkbookId: null },
-    state: { libraryId: record.libraryId, revision: 1, selectedVersionId: 'original', removed: false, origin: { kind: 'local' }, versions: [version] } });
+    state: { libraryId: record.libraryId, revision: 1, selectedVersionId: 'original', removed: false, pinned: false, tags: [], origin: { kind: 'local' }, versions: [version] } });
   assert.deepEqual(await harness([entry]).client.workbookCatalog(), [entry]);
   await assert.rejects(harness([entry, entry]).client.workbookCatalog(), schemaFailure);
   const action = WorkbookLibraryActionSchema.parse({ operationId: 'rename /one', expectedRevision: 1, expectedVersion: 1,
@@ -194,7 +194,7 @@ it('rejects merge requests before transport and refuses historical merge records
   const action = { operationId: 'retired-merge', expectedRevision: 1, expectedVersion: 1,
     change: { kind: 'merge', name: 'Merged.xlsx', duplicates: 'keep-both', sources: [{ libraryId: 'source', expectedVersion: 1, expectedRevision: 1 }] } };
   const result = WorkbookLibraryActionRecordSchema.parse({ libraryId: 'target', action, at: NOW,
-    result: { libraryId: 'target', revision: 2, selectedVersionId: 'original', origin: { kind: 'local' }, removed: false,
+    result: { libraryId: 'target', revision: 2, selectedVersionId: 'original', origin: { kind: 'local' }, removed: false, pinned: false, tags: [],
       versions: [{ id: 'original', snapshotId: '["target","original"]', name: 'Original', version: 1, savedAt: NOW, source: 'import' }] } });
   assert.equal(WorkbookLibraryActionSchema.safeParse(action).success, false);
   assert.equal(WorkbookLibraryActionResultSchema.safeParse(result).success, false);

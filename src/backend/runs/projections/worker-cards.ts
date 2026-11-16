@@ -80,6 +80,8 @@ export function workerCardOf(input: Readonly<{
   slot: WorkerSlotRecord;
   /** Absent when the slot has no process this boot (its start was refused or never attempted); the card then offers Retry. */
   view: WorkerMemberView | undefined;
+  /** A capacity step for this workflow has not settled, so a member with no live process is still starting, not failed. */
+  startupPending?: boolean;
   /** Span events folded for this worker; a patch cursor, never a CAS token. */
   foldRevision: number;
   resolveRun: (runId: string) => RunRecord | undefined;
@@ -97,6 +99,11 @@ export function workerCardOf(input: Readonly<{
     directive: view?.state === "stopping" ? "stop" : slot.paused ? "pause" : "run",
     ...(input.lastRun === undefined ? {} : { lastRun: input.lastRun }), ...(input.timeline === undefined ? {} : { timeline: input.timeline }),
     availability: { state: "available" } } as const;
+  if (input.startupPending === true && (view === undefined || view.state === "exited")) {
+    return WorkerCardWireSchema.parse({ ...base, state: "starting", startedAt: view?.startedAt ?? slot.createdAt,
+      controls: { basis: { state: "present", value: { lifetimeId: view?.lifetimeId ?? null, version: view?.version ?? 0 } } },
+      currentRun: { state: "absent", reason: "no current claimed run" }, browsers: [], revision: input.foldRevision + (view?.version ?? 0) + 1 });
+  }
   if (view === undefined) {
     return WorkerCardWireSchema.parse({ ...base, state: "failed", stopReason: "not-started", startedAt: slot.createdAt,
       controls: { basis: { state: "present", value: { lifetimeId: null, version: 0 } } },
