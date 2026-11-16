@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BodySection, DsBodyScope, Field, FormGroup, Panel, PanelBody, PanelHeader, ResultRow, SectionLabel, Skeleton, Table, TBody, TD, TH, THead, TR, dsText } from "../../../ds/ui.js";
+import { DsBodyScope, Field, FormGroup, Panel, PanelBody, PanelHeader, ResultRow, SectionLabel, Skeleton, Table, TBody, TD, TH, THead, TR, dsText } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 
 export function LoadingRegion({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
@@ -20,19 +20,6 @@ export function SettingsRowsSkeleton({ rows = 3, wide = false, presentation = "f
       <Skeleton className="h-[var(--ds-h-body-control)] w-full rounded-[var(--ds-radius-body-control)]" />
     </Field></div>;
   })}</>;
-}
-
-export function CatalogSkeleton() {
-  return <LoadingRegion label="Loading the UI catalog"><FormGroup label="UI catalog loading" className="settings-reference-catalog-browser">
-    <div className="settings-reference-catalog-rail-frame"><div className="settings-reference-catalog-rail">
-      {Array.from({ length: 5 }, (_, index) => <div key={index} className="flex flex-col gap-2 p-2"><SkeletonText className="w-3/4 text-body" /><SkeletonText className="w-1/2 text-caption" /></div>)}
-    </div></div>
-    <div className="settings-reference-catalog-detail"><div className="settings-reference-catalog-record">
-      <div className="settings-reference-record-heading"><div className="settings-reference-catalog-kind"><SkeletonText className="w-24" /></div><div className="settings-reference-catalog-title"><SkeletonText className="w-3/4" /></div><div className="settings-reference-record-id"><SkeletonText className="w-1/2" /></div></div>
-      {[{ title: "Properties", rows: 4 }, { title: "Verification & evidence", rows: 5 }].map(group => <BodySection key={group.title} as="h3" title={group.title}><FormGroup label={`${group.title} loading`}>{Array.from({ length: group.rows }, (_, index) => <ResultRow key={index} className="[&_.ds-result-row-value]:w-full" label={<SkeletonText className="w-3/4" />} value={<SkeletonText className="w-4/5" />} />)}</FormGroup></BodySection>)}
-      <BodySection as="h3" title="On the same screen"><div aria-hidden className="flex flex-wrap gap-[var(--ds-space-tight)]">{[0, 1, 2, 3, 4].map(index => <Skeleton key={index} className={cn("h-6 max-w-full", index === 0 ? "w-60" : index < 3 ? "w-72" : "w-48")} />)}</div></BodySection>
-    </div></div>
-  </FormGroup></LoadingRegion>;
 }
 
 export function QueueSkeleton({ label }: { label?: string }) {

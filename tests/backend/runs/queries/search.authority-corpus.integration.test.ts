@@ -50,6 +50,11 @@ const CursorAttackPayloadSchema = z.strictObject({
     enqueuedAt: z.string(),
     runId: z.string(),
   }),
+  served: z.strictObject({
+    generation: z.number().int().nonnegative(),
+    pages: z.number().int().positive(),
+    digest: z.string(),
+  }),
 });
 
 function forgeCursorWithDisclosedSource(

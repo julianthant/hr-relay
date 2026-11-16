@@ -6,6 +6,7 @@ import { claimEventOf, DAY, declareProjectionWorker, instantOffsetOf, uuidOf, wo
   type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { RunPauseSchema } from "../../../../src/models/run/record.js";
+import { pendingInterruptOf } from "../../../../src/rules/runs/run-interrupt.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -50,6 +51,19 @@ describe("served step interrupt", () => {
     const row = rowOf(w, 1);
     assert.deepEqual(row?.interrupt, { action: "pause", step: "cancel" });
     assert.deepEqual(row?.liveMessage, { state: "present", value: "Restarts this step on Resume" });
+  });
+
+  it("serves a pending pause the Resume command that withdraws it", async () => {
+    const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
+    claimed(w, 1, { pause: PAUSE_REQUESTED });
+    const run = w.authority.getRun(uuidOf(1));
+    assert.ok(run);
+    assert.deepEqual(rowOf(w, 1)?.pauseControl, { expectedVersion: run.version, state: "pause-pending", command: "resume" });
+    const resume = rowOf(w, 1)?.actions.find(action => action.key === "resume");
+    assert.ok(resume?.kind === "command");
+    assert.equal(resume.command, "resume");
+    assert.equal(resume.expectedVersion, run.version);
+    assert.equal(rowOf(w, 1)?.actions.some(action => action.key === "pause"), false);
   });
 
   it("serves a pending pause during an attempting write as finishing the save first", async () => {
@@ -98,6 +112,18 @@ describe("served step interrupt", () => {
     assert.equal(cardOf(w)?.interrupt?.step, "cancel");
     setWritesInFlight(w, [uuidOf(1)]);
     assert.deepEqual(cardOf(w)?.interrupt, { action: "stop", step: "finish-write" });
+  });
+
+  it("serves the card, the row and its pause control one stop for a run that is both pausing and stopping", async () => {
+    const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
+    busyWorker(w);
+    claimed(w, 1, { pause: PAUSE_REQUESTED, cancelRequested: true });
+    const run = w.authority.getRun(uuidOf(1));
+    assert.ok(run);
+    assert.equal(pendingInterruptOf(run), "stop-requested");
+    assert.deepEqual(cardOf(w)?.interrupt, { action: "stop", step: "cancel" });
+    assert.deepEqual(rowOf(w, 1)?.interrupt, { action: "stop", step: "cancel" });
+    assert.deepEqual(rowOf(w, 1)?.pauseControl, { expectedVersion: run.version, state: "unavailable" });
   });
 
   it("serves an idle worker card no interrupt", async () => {

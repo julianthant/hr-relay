@@ -18,12 +18,12 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   const browserRoot = join(directory, "browsers");
   const extensionDirectory = join(directory, "extension");
   mkdirSync(browserRoot, { mode: 0o700 }); mkdirSync(join(extensionDirectory, "src"), { recursive: true, mode: 0o700 });
-  writeFileSync(join(extensionDirectory, "relay-manifest.json"), "{}");
-  writeFileSync(join(extensionDirectory, "LICENSE"), "synthetic license fixture");
-  writeFileSync(join(extensionDirectory, "THIRD_PARTY_NOTICES.md"), "synthetic notices fixture");
+  writeFileSync(join(extensionDirectory, "relay-manifest.json"), "{}", { mode: 0o644 });
+  writeFileSync(join(extensionDirectory, "LICENSE"), "synthetic license fixture", { mode: 0o644 });
+  writeFileSync(join(extensionDirectory, "THIRD_PARTY_NOTICES.md"), "synthetic notices fixture", { mode: 0o644 });
   mkdirSync(join(extensionDirectory, "src", "icons"), { mode: 0o700 });
-  for (const name of ["options.html", "options.js", "popup.html", "popup.js", "relay-options.js", "styles.css", "icons/autopilot.svg", "icons/key-round.svg", "icons/plus.svg", "icons/shield-check.svg", "relay-background.js", "relay-content.js", "relay-inpage.js", "relay-native.js", "service.js", "crypto.js", "accounts.js", "duo-origin.js", "sign-count.js", "username.js"]) writeFileSync(join(extensionDirectory, "src", name), "");
-  writeFileSync(join(extensionDirectory, "unlisted.txt"), "synthetic unlisted source");
+  for (const name of ["options.html", "options.js", "popup.html", "popup.js", "relay-options.js", "styles.css", "icons/autopilot.svg", "icons/key-round.svg", "icons/plus.svg", "icons/shield-check.svg", "relay-background.js", "relay-content.js", "relay-inpage.js", "relay-native.js", "service.js", "crypto.js", "accounts.js", "duo-origin.js", "sign-count.js", "username.js"]) writeFileSync(join(extensionDirectory, "src", name), "", { mode: 0o644 });
+  writeFileSync(join(extensionDirectory, "unlisted.txt"), "synthetic unlisted source", { mode: 0o644 });
   const clock = manualClock(new Date("2026-10-01T00:00:00.000Z"));
   const attempt: DraftDuoAttempt = { operationId: randomUUID(), profileId: randomUUID(), accountId: randomUUID(), generation: 1,
     attemptId: randomUUID(), method, expiresAt: "2026-10-01T00:10:00.000Z" };
@@ -355,7 +355,7 @@ describe("draft Duo provider", () => {
     const w=world();
     const directory=pathKind==="random"?join(w.browserRoot,"onboarding-Abc123")
       :w.seedRoot({...w.owner,...(pathKind==="old-generation"?{generation:w.owner.generation+1}:{accountId:randomUUID()})});
-    mkdirSync(directory,{mode:0o700});const retained=join(directory,"retained.txt");writeFileSync(retained,"retained browser data");
+    mkdirSync(directory,{mode:0o700});const retained=join(directory,"retained.txt");writeFileSync(retained,"retained browser data",{mode:0o644});
     try{
       await assert.rejects(w.rawProvider.showBrowser(w.owner),error=>error instanceof ProfileOnboardingDuoProviderError&&error.kind==="unknown");
       assert.equal(readFileSync(retained,"utf8"),"retained browser data");assert.equal(w.launches(),0);assert.equal(w.nativeProbes(),0);assert.deepEqual(w.calls,[]);
@@ -363,7 +363,7 @@ describe("draft Duo provider", () => {
   });
   for(const failure of ["busy","unproved","owner-drift","owner-fields"] as const)it(`keeps the exact existing profile before ${failure} reuse refusal`,async()=>{
     const w=world(),directory=w.seedRoot();
-    mkdirSync(directory,{mode:0o700});const retained=join(directory,"retained.txt");writeFileSync(retained,"retained browser data");
+    mkdirSync(directory,{mode:0o700});const retained=join(directory,"retained.txt");writeFileSync(retained,"retained browser data",{mode:0o644});
     if(failure==="busy")w.refuseNative();
     if(failure==="unproved")w.withholdCloseEvent();
     if(failure==="owner-drift")w.revokeDuringProbe();
@@ -375,7 +375,7 @@ describe("draft Duo provider", () => {
   });
   it("replaces a registered root only after native closure and keeps retired handles absent",async()=>{
     const w=world(),directory=w.seedRoot();
-    mkdirSync(directory,{mode:0o700});writeFileSync(join(directory,"retained.txt"),"old browser data");
+    mkdirSync(directory,{mode:0o700});writeFileSync(join(directory,"retained.txt"),"old browser data",{mode:0o644});
     try{
       await w.rawProvider.showBrowser(w.owner);
       assert.notEqual(w.profile(),directory);assert.equal(existsSync(directory),false);assert.equal(w.nativeProbes(),1);assert.equal(w.launches(),1);assert.equal(existsSync(join(directory,"retained.txt")),false);

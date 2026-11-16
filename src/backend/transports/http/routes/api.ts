@@ -13,7 +13,7 @@ import { registerQueueRoutes } from "./queue.js";
 import { registerIntakeRoutes } from "./intake.js";
 import { registerOcrRoutes } from "./ocr.js";
 import { registerCommandsRoutes } from "./commands.js";
-import { resolveIdentityGateAnswer } from "../../../runs/queries/run-detail.js";
+import { resolveGateArmAnswer, resolveIdentityGateAnswer } from "../../../runs/queries/run-detail.js";
 import { registerRunDetailRoutes } from "./run-detail.js";
 import type { DashboardApp, DashboardAppDeps } from "./api-types.js";
 export type { DashboardApp, DashboardAppDeps } from "./api-types.js";
@@ -79,8 +79,6 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/settings/path-picker", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-in", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel", operatorMutationIngressGuard);
-  app.use("/api/v1/settings/chatgpt-account/sign-out", operatorMutationIngressGuard);
-  app.use("/api/v1/settings/chatgpt-account/forget-account", operatorMutationIngressGuard);
   app.use("/api/v1/exports/xlsx", operatorMutationIngressGuard);
   app.use("/api/v1/exports/search", operatorMutationIngressGuard);
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
@@ -151,6 +149,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, resolveWriteCommand: deps.resolveWriteCommand, commandJournal: deps.commandJournal,
     bulkCommandAcceptances: deps.bulkCommandAcceptances, protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
     intake: deps.intake, resolveIdentityGateAnswer: (answer, journaled) => resolveIdentityGateAnswer(deps.runDetail, answer, journaled),
+    resolveGateArmAnswer: (answer, journaled) => resolveGateArmAnswer(deps.runDetail, answer, journaled),
     ...(deps.workerCommandResult === undefined ? {} : { workerCommandResult: deps.workerCommandResult }) });
   if (deps.staticBundle !== undefined) app.use("*", staticBundleHandler(deps.staticBundle));
 

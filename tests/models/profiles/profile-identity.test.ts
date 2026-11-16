@@ -12,10 +12,11 @@ describe("derived profile identity", () => {
     assert.throws(() => profileInitials(" \t "));
   });
 
-  it("binds the full display name and session identity and refuses inconsistent initials", () => {
+  it("binds the full display name, session identity and the person's stored timekeeper initials", () => {
     const value = { profileId: "10000000-0000-4000-8000-000000000001", sessionEpoch: 2, displayName: "Sample Middle Operator", initials: "SMO" };
     assert.deepEqual(ProfileIdentitySchema.parse(value), value);
-    assert.equal(ProfileIdentitySchema.safeParse({ ...value, initials: "SO" }).success, false);
+    assert.deepEqual(ProfileIdentitySchema.parse({ ...value, initials: "SO" }), { ...value, initials: "SO" });
+    assert.equal(ProfileIdentitySchema.safeParse({ ...value, initials: "" }).success, false);
     assert.equal(ProfileIdentitySchema.safeParse({ ...value, sessionEpoch: 0 }).success, false);
     assert.equal(ProfileIdentitySchema.safeParse({ ...value, credential: "injected" }).success, false);
   });
@@ -23,7 +24,7 @@ describe("derived profile identity", () => {
     assert.equal(deriveProfileNames("André", "José").timekeeperName, "André José");
     const first = "A".repeat(64), last = "B".repeat(64);
     assert.deepEqual(deriveProfileNames(first, last), { firstName: first, lastName: last,
-      timekeeperName: `${first} ${last}`, initials: "AB" });
+      timekeeperName: `${first} ${last}`, initials: "AB", timekeeperInitials: "AB" });
     for (const name of ["Alpha\nBeta", "Alpha\0Beta", "Alpha\u2028Beta", "Alpha\u2029Beta"])
       assert.throws(() => deriveProfileNames(name, "Gamma"), ProfileNameValidationError);
   });

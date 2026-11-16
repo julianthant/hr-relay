@@ -76,7 +76,6 @@ export const AUTHORITY_DERIVED_TABLES = deepFreeze([CHANGE_LOG_TABLE, RUN_REFERE
 export const ProjectionTableNameSchema = z.enum([]);
 
 export const TableNameSchema = z.union([AuthorityTableNameSchema, ProjectionTableNameSchema]);
-export const TableClassSchema = z.enum(["authority", "projection"]);
 const ALL_TABLE_NAMES = [...AuthorityTableNameSchema.options, ...ProjectionTableNameSchema.options];
 
 const AuthorityTableSpecSchema = z.strictObject({

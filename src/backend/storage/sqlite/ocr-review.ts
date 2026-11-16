@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, OcrSourceUploadSchema } from "../../../models/ocr/review.js";
+import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, OcrSourceUploadSchema, type OcrApprovedSnapshot, type OcrReviewRevision } from "../../../models/ocr/review.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { z } from "zod";
 
@@ -48,6 +48,34 @@ export function ocrSnapshotFromRow(input: unknown) {
   return record;
 }
 
+export type OcrReviewState =
+  | { kind: "reading" }
+  | { kind: "in-review"; revision: number }
+  | { kind: "approved"; snapshot: OcrApprovedSnapshot };
+type OcrReviewEvent = "publish-checkpoint" | "operator-revise" | "approve";
+type OcrReviewRefusal = "ocr-review-not-published" | "ocr-review-approved";
+type OcrReviewStep = "in-review" | "approved" | OcrReviewRefusal;
+
+// Identical replays return before this table. A divergent replay of the latest revision
+// refuses before it. stateOf reads rows inside the same mutate.
+const OCR_REVIEW_TRANSITIONS: { readonly [State in OcrReviewState["kind"]]: { readonly [Event in OcrReviewEvent]: OcrReviewStep } } = Object.freeze({
+  reading: Object.freeze({ "publish-checkpoint": "in-review", "operator-revise": "ocr-review-not-published", approve: "ocr-review-not-published" }),
+  "in-review": Object.freeze({ "publish-checkpoint": "in-review", "operator-revise": "in-review", approve: "approved" }),
+  approved: Object.freeze({ "publish-checkpoint": "ocr-review-approved", "operator-revise": "ocr-review-approved", approve: "ocr-review-approved" }),
+});
+
+function stateOf(revision: OcrReviewRevision | undefined, snapshots: readonly OcrApprovedSnapshot[]): OcrReviewState {
+  const snapshot = snapshots[0];
+  if (snapshots.length > 1 || (snapshot !== undefined && snapshot.revision < (revision?.revision ?? 0))) throw new Error("ocr-review-snapshot-ambiguous");
+  if (snapshot !== undefined) return { kind: "approved", snapshot };
+  if (revision !== undefined) return { kind: "in-review", revision: revision.revision };
+  return { kind: "reading" };
+}
+function transitionRefusal(state: OcrReviewState, event: OcrReviewEvent): OcrReviewRefusal | undefined {
+  const step = OCR_REVIEW_TRANSITIONS[state.kind][event];
+  return step === "in-review" || step === "approved" ? undefined : step;
+}
+
 export function createOcrReviewRepository(ports: Ports) {
   const { database } = ports;
   const latest = (runId: string) => {
@@ -85,6 +113,10 @@ export function createOcrReviewRepository(ports: Ports) {
       return ports.mutate("ocr_review_revisions", () => {
         const current = latest(record.sourceRunId);
         if (current?.id === record.id && canonicalJsonStringify(current) === canonicalJsonStringify(record)) return { result: current, changes: 0 };
+        if (current?.id === record.id) throw new Error("ocr-review-revision-conflict");
+        const snapshots = database.prepare("SELECT * FROM ocr_approved_snapshots WHERE run_id=? ORDER BY created_at,id").all(record.sourceRunId).map(ocrSnapshotFromRow);
+        const refusal = transitionRefusal(stateOf(current, snapshots), record.origin.kind === "checkpoint" ? "publish-checkpoint" : "operator-revise");
+        if (refusal !== undefined) throw new Error(refusal);
         if ((current?.revision ?? 0) !== expectedRevision || record.revision !== expectedRevision + 1) throw new Error("ocr-review-revision-conflict");
         database.prepare("INSERT INTO ocr_review_revisions VALUES(?,?,?,?,?,?)").run(record.id, record.sourceRunId, record.revision,
           record.origin.kind === "command" ? record.origin.commandId : null, canonicalJsonStringify(record), record.createdAt);
@@ -99,6 +131,9 @@ export function createOcrReviewRepository(ports: Ports) {
           if (canonicalJsonStringify(ocrSnapshotFromRow(before)) !== canonicalJsonStringify(snapshot)) throw new Error("ocr-snapshot-replay-conflict");
           return { result: snapshot, changes: 0 };
         }
+        const snapshots = database.prepare("SELECT * FROM ocr_approved_snapshots WHERE run_id=? ORDER BY created_at,id").all(snapshot.sourceRunId).map(ocrSnapshotFromRow);
+        const refusal = transitionRefusal(stateOf(latest(snapshot.sourceRunId), snapshots), "approve");
+        if (refusal !== undefined) throw new Error(refusal);
         database.prepare("INSERT INTO ocr_approved_snapshots VALUES(?,?,?,?,?)").run(snapshot.snapshotId,
           snapshot.sourceRunId, snapshot.revision, canonicalJsonStringify(snapshot), snapshot.approvedAt);
         return { result: snapshot, changes: 1 };

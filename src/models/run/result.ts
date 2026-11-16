@@ -1,6 +1,6 @@
 import type { EvidenceSchemaReader } from "../storage/evidence-schema-admission.js";
 import { RunContinuationSchema } from "./continuation.js";
-import { DryRunCoverageSchema, DryRunStepSchema } from "../workflow/dry-run.js";
+import { DryRunCoverageSchema, DryRunStepSchema, PublicationPreviewStepSchema } from "../workflow/dry-run.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { DeclaredActionIdentitySchema, OperationInputLineageSchema } from "../workflow/operation-action-identity.js";
 import { valueFreeProtectedData } from "../write-safety/protected-input.js";
@@ -217,12 +217,22 @@ export const RunDelegatedDryRunPreviewResultSchema = z.strictObject({
   ]),
   steps: z.array(RunPreviewStepSchema).min(1),
 });
-export type RunPreviewResult = RunDryRunPreviewResult | z.infer<typeof RunDelegatedDryRunPreviewResultSchema>;
+export const RunPublicationDryRunPreviewResultSchema = z.strictObject({
+  kind: z.literal("publication-dry-run-preview"),
+  externalCommit: z.literal("none"),
+  coverage: z.strictObject({ state: z.literal("full") }),
+  steps: z.array(z.union([DryRunStepSchema, PublicationPreviewStepSchema])).min(1),
+});
+export type RunPreviewResult = RunDryRunPreviewResult | z.infer<typeof RunDelegatedDryRunPreviewResultSchema>
+  | z.infer<typeof RunPublicationDryRunPreviewResultSchema>;
 export type RunPreviewStep = RunPreviewResult["steps"][number];
+/** Every step any preview kind can carry; the result schema chosen at build time narrows it. */
+export const AnyRunPreviewStepSchema = z.union([RunPreviewStepSchema, PublicationPreviewStepSchema]);
 
 const previewResultSchemas = new Map<Fingerprint, z.ZodType<RunPreviewResult>>([
   [deriveSchemaHash(RunDryRunPreviewResultSchema, "output"), RunDryRunPreviewResultSchema],
   [deriveSchemaHash(RunDelegatedDryRunPreviewResultSchema, "output"), RunDelegatedDryRunPreviewResultSchema],
+  [deriveSchemaHash(RunPublicationDryRunPreviewResultSchema, "output"), RunPublicationDryRunPreviewResultSchema],
 ]);
 
 export function isRunPreviewSchemaHash(schemaHash: string): boolean {
@@ -469,6 +479,14 @@ export const DelegationPreviewOutputSchema = z.strictObject({
 export type DelegationEvidenceResolution = Readonly<{ kind: "ordinary"; output: unknown }>
   | Readonly<{ kind: "preview"; output: z.infer<typeof DelegationPreviewOutputSchema> }>;
 
+export class DelegationOutcomePolicyUnsatisfiedError extends Error {
+  readonly code = "DELEGATION_OUTCOME_POLICY_UNSATISFIED";
+  constructor() {
+    super("delegation-outcome-policy-unsatisfied");
+    this.name = "DelegationOutcomePolicyUnsatisfiedError";
+  }
+}
+
 export function resolveDelegationEvidenceOutput(evidence: Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>, schema: z.ZodType, schemaReader?: EvidenceSchemaReader): DelegationEvidenceResolution {
   const { manifest } = evidence;
   if (manifest.parentRunId !== evidence.parentRunId || manifest.edgeId !== evidence.edgeId) throw new Error("delegation-outcome-manifest-mismatch");
@@ -498,7 +516,7 @@ export function resolveDelegationEvidenceOutput(evidence: Extract<TerminalDepend
     if (run.lifecycle.outcome === "cancelled" && terminal?.kind === "lifecycle-evidence" && terminal.outcome === "cancelled" && cancellation !== undefined) return childRunOutcomeSchema(schema).parse({ state: "cancelled", ...identity, ...cancellation });
     throw new Error("delegation-outcome-terminal-proof-unavailable");
   });
-  if (delegationJoinDisposition(manifest, outcomes.map(outcome => outcome.state === "previewed" ? "done" : outcome.state)) !== "satisfied") throw new Error("delegation-outcome-policy-unsatisfied");
+  if (delegationJoinDisposition(manifest, outcomes.map(outcome => outcome.state === "previewed" ? "done" : outcome.state)) !== "satisfied") throw new DelegationOutcomePolicyUnsatisfiedError();
   if (outcomes.some(outcome => outcome.state === "previewed")) {
     if (evidence.children.some(child => !child.run.envelope.dryRun)) throw new Error("delegation-preview-dry-run-required");
     return { kind: "preview", output: DelegationPreviewOutputSchema.parse({ state: "delegation-preview", nodeId: evidence.nodeId,

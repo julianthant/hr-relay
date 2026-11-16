@@ -11,7 +11,7 @@ import { DuoCredentialRecordSchema } from "../../../models/config/duo-credential
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { assertFinishedProfileOnboarding,LogoutOperationSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,type LogoutOperation,type ProfileDatabaseBinding,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason,type SignUpOperation } from "../../../models/profiles/profile.js";
+import { assertFinishedProfileOnboarding,LogoutOperationSchema,ProfileOperationSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,type DuoReenrolOperation,type LogoutOperation,type ProfileDatabaseBinding,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason,type SignUpOperation } from "../../../models/profiles/profile.js";
 import { systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
@@ -612,19 +612,23 @@ export class RuntimeAdmission {
       return;
     }
     const operation = this.#browserRegistrySignup(profileId, signup);
-    if (operation.phase !== "applying" || operation.onboarding?.abort !== undefined) throw new Error("browser-registry-signup-unavailable");
+    if (operation.kind === "sign-up" ? operation.phase !== "applying" || operation.onboarding?.abort !== undefined
+      : operation.commit !== undefined || operation.abort !== undefined) throw new Error("browser-registry-signup-unavailable");
   }
   assertBrowserRegistryCleanup(profileId: string, signup: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): string {
     return canonicalJsonStringify(this.#browserRegistrySignup(profileId, signup));
   }
-  #browserRegistrySignup(profileId: string, signup: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): SignUpOperation {
+  /** The sign-up or Duo re-enrolment draft a setup browser root belongs to. */
+  #browserRegistrySignup(profileId: string, signup: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): SignUpOperation | DuoReenrolOperation {
     this.#assertMachineRuntime();
     const file = readPrivateFile(join(this.#stateRoot, "machine", "operations", `${z.uuid().parse(signup.operationId)}.json`), { label: "lock", maxBytes: 1_048_576 });
     if (file === undefined) throw new Error("browser-registry-signup-unavailable");
-    const operation = SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+    const operation = ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+    if (operation.kind === "logout") throw new Error("browser-registry-signup-unavailable");
+    const draft = operation.kind === "sign-up" ? operation.onboarding : operation.draft;
     if (operation.profileId !== profileId || operation.operationId !== signup.operationId
-      || !(operation.phase === "applying" || operation.phase === "publishing")
-      || operation.onboarding?.accountId !== signup.accountId || operation.onboarding.generation !== signup.providerGeneration) throw new Error("browser-registry-signup-unavailable");
+      || operation.kind === "sign-up" && !(operation.phase === "applying" || operation.phase === "publishing")
+      || draft?.accountId !== signup.accountId || draft.generation !== signup.providerGeneration) throw new Error("browser-registry-signup-unavailable");
     return operation;
   }
   hasCapturedAuthorityRestore(): boolean {
@@ -704,8 +708,21 @@ export class RuntimeAdmission {
     return readdirSync(directory).filter(name => name.endsWith(".json")).flatMap(name => {
       const file = readPrivateFile(join(directory, name), { label: "lock", maxBytes: 1_048_576 });
       if (file === undefined) throw new Error("profile-logout-operation-missing");
-      const operation = z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+      const operation = ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
       return operation.kind === "logout" && operation.phase !== "complete" ? [operation.profileId] : [];
+    });
+  }
+  /** Profiles whose Duo re-enrolment recorded a commit intent that boot must reconcile before any session. */
+  readDuoReenrolCommitProfileIds(): readonly string[] {
+    this.assertReadable();
+    if (this.#scope !== "installation") throw new Error("profile-duo-reenrol-machine-required");
+    const directory = join(this.#stateRoot, "machine", "operations");
+    if (!existsSync(directory)) return [];
+    return readdirSync(directory).filter(name => name.endsWith(".json")).flatMap(name => {
+      const file = readPrivateFile(join(directory, name), { label: "lock", maxBytes: 1_048_576 });
+      if (file === undefined) throw new Error("profile-duo-reenrol-operation-missing");
+      const operation = ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+      return operation.kind === "duo-reenrol" && operation.commit !== undefined ? [operation.profileId] : [];
     });
   }
   async captureStartupRegistrationProofs(): Promise<readonly StartupRegistrationProof[]> {
@@ -717,7 +734,7 @@ export class RuntimeAdmission {
     for (const name of readdirSync(directory).filter(name => name.endsWith(".json"))) {
       const file = readPrivateFile(join(directory, name), { label: "lock", maxBytes: 1_048_576 });
       if (file === undefined) throw new Error("profile-startup-registration-operation-missing");
-      const operation = z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+      const operation = ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
       if (operation.kind !== "sign-up" || operation.onboarding?.finish === undefined) continue;
       const captured = captureStoppedStartupCredentialPublication(this, operation), frame = captured.records.protected;
       if (frame === undefined) throw new Error("profile-startup-registration-credentials-missing");
@@ -751,7 +768,7 @@ export class RuntimeAdmission {
       const operations = existsSync(path) ? readdirSync(path).filter(name => name.endsWith(".json")).flatMap(name => {
         const file = readPrivateFile(join(path, name), { label: "lock", maxBytes: 1_048_576 });
         if (file === undefined) throw new Error("profile-operation-authority-unavailable");
-        const parsed = z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+        const parsed = ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
         return [parsed];
       }) : [];
       const pending = operations.filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === id);
@@ -765,7 +782,7 @@ export class RuntimeAdmission {
         credentials: { operationId: operation.credentials.operationId, keyId: operation.credentials.keyId, generation: operation.credentials.generation } });
       if (row === undefined && pendingOperation === undefined) throw new Error("profile-storage-claim-unregistered");
       const fingerprint = createHash("sha256").update(canonicalJsonStringify(phase === "setup" && pendingOperation !== undefined ? operationIdentity(pendingOperation) : {
-        profileId: row?.profileId, createdAt: row?.createdAt, firstName: row?.firstName, lastName: row?.lastName, registration: row?.registration,
+        profileId: row?.profileId, createdAt: row?.createdAt, registration: row?.registration,
       })).digest("hex");
       return { profileId: id, phase, verify: (purpose, publication) => {
         if (purpose === "repair" && phase !== "runtime") throw new Error("profile-storage-claim-unavailable");
@@ -787,7 +804,7 @@ export class RuntimeAdmission {
           authority = operationIdentity(operation);
         } else {
           if (registered === undefined) throw new Error("profile-storage-claim-changed");
-          authority = { profileId: registered.profileId, createdAt: registered.createdAt, firstName: registered.firstName, lastName: registered.lastName, registration: registered.registration };
+          authority = { profileId: registered.profileId, createdAt: registered.createdAt, registration: registered.registration };
         }
         if (purpose !== "custody") {
           if (current.sessionGeneration !== document.sessionGeneration) throw new Error("profile-storage-claim-generation-changed");
@@ -795,9 +812,11 @@ export class RuntimeAdmission {
           const currentOperations = existsSync(path) ? readdirSync(path).filter(name => name.endsWith(".json")).map(name => {
             const file = readPrivateFile(join(path, name), { label: "lock", maxBytes: 1_048_576 });
             if (file === undefined) throw new Error("profile-storage-claim-changed");
-            return z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+            return ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
           }) : [];
+          // An open Duo re-enrolment keeps its profile's storage usable; only a repair of that profile waits for a recorded commit.
           if (currentOperations.some(operation => operation.kind === "logout" ? operation.phase !== "complete"
+            : operation.kind === "duo-reenrol" ? purpose === "repair" && operation.profileId === id && operation.commit !== undefined
             : phase === "runtime" && (purpose !== "repair" || operation.profileId === id))
             || (phase === "setup" ? current.activeProfileId !== null && current.activeProfileId !== id
               : registered?.lifecycle !== "ready" || registered.credentialState !== "saved" || registered.registration.onboardingCompletion === undefined)) {

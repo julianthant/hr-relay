@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
 import { deriveCanonicalPerson } from "../../../src/rules/runs/summary-derivation.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { CURRENT_SEPARATIONS_RESULT,TERMINAL_SEPARATIONS_RUN } from "../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { CURRENT_SEPARATIONS_RESULT,TERMINAL_SEPARATIONS_RUN } from "../../support/fixtures/integration/separations-run-fixtures.js";
 
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { deriveRunResultDigest,deriveTerminalDependencyDigest,RunResultRecordSchema } from "../../../src/models/run/result.js";
@@ -15,9 +15,9 @@ import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-va
 
 import { SeparationsResultSchema } from "../../../src/workflows/separations/workflow.js";
 import {
-activityPersonPseudonymResultRecord,
+separationsRunResultRecord,
 seedTerminalSeparationsResult,
-} from "../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+} from "../../support/fixtures/integration/separations-run-fixtures.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import {
 COMPOSITION_NOW,
@@ -141,7 +141,7 @@ describe("canonical activity person", () => {
   it("uses approved identity even when later transaction and finalization identities differ",()=>{
     const base=CURRENT_SEPARATIONS_RESULT;
     const finalization=base.finalization;if(!("proof" in finalization))throw new Error("performed finalization required");
-    const result=activityPersonPseudonymResultRecord(TERMINAL_SEPARATIONS_RUN,{...base,termination:{...base.termination,emplId:"10800001"},finalization:{...finalization,proof:{...finalization.proof,observedEid:"10800002"}}});
+    const result=separationsRunResultRecord(TERMINAL_SEPARATIONS_RUN,{...base,termination:{...base.termination,emplId:"10800001"},finalization:{...finalization,proof:{...finalization.proof,observedEid:"10800002"}}});
     assert.deepEqual(deriveCanonicalPerson(TERMINAL_SEPARATIONS_RUN,result),{state:"available",identity:base.approved.emplId});
   });
 });

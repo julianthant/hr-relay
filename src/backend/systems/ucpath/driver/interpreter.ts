@@ -1,4 +1,6 @@
 import { createUcpathHireOperations } from "./hire-operation.js";
+import { createUcpathPayPathOperations } from "./paypath-operation.js";
+import { UCPATH_PAYPATH_DISPLAYED_NAME } from "../../../../models/ui/ucpath-paypath.js";
 import { UCPATH_HIRE_SUBJECT } from "../../../../models/ui/ucpath-hire.js";
 import { searchPersonMatchOnPage } from "./person-match-operation.js";
 import { createUcpathContactOperations } from "./contact-page.js";
@@ -80,8 +82,10 @@ export function createUcpathPersonOrgDriver(
 ): UcpathStoreDriver {
   let sweepSubjectEmplId: Eid | undefined;
   const hire = createUcpathHireOperations(assertCurrent, page, clock);
+  const paypath = createUcpathPayPathOperations(assertCurrent, page, clock);
   return {
     ...hire,
+    ...paypath,
     ...createUcpathContactOperations(assertCurrent, page, clock),
     system: "ucpath",
     searchPersonMatch: async (input) => {
@@ -168,6 +172,7 @@ export function createUcpathPersonOrgDriver(
     },
     async read(id) {
       if (id === UCPATH_HIRE_SUBJECT) return hire.readHireSubject();
+      if (id === UCPATH_PAYPATH_DISPLAYED_NAME) return paypath.readPayPathSubject();
       if (id === UCPATH_CONTACT_DISPLAYED_NAME) {
         assertCurrent();
         const name = (await page.locator(UCPATH_PENDING_CONTACT_RECIPES.displayedName).textContent())?.trim();
