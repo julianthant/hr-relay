@@ -50,7 +50,7 @@ const contact = approvedEmergencyContact(approved.record);
 const desired = contactEffect(contact);
 
 type FailurePoint = "pending" | "save-before" | "save-after" | "partial" | "primary-conflict" | "unreadable" | "mismatch" | "staged-readback" | "stale-readback" | "verifier" | "prepare" | "identity" | "drift" | "capture-before" | "capture-after" | "read" | "probe" | "capture-prepare" | "staged-page-drift" | "timeout" | "lost-page" | "unknown-response" | "foreign-eid" | "foreign-name" | "identity-before-click";
-async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]; failure?: FailurePoint; priorWrite?: "attempting" | "parked"; interrupt?: boolean; dryRun?: boolean; sourcePage?: number | null } = {}) {
+async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]; failure?: FailurePoint; priorWrite?: "attempting" | "parked"; interrupt?: boolean; dryRun?: boolean; sourcePage?: number | null; onbaseUnavailable?: true } = {}) {
   const browser = defineBrowserStore("ucpath", ucpathDriver, ucpathSession, { readContacts: readEmergencyContactsTask,
     stageContact: stageEmergencyContactTask, probeContact: probeEmergencyContactTask, verifyContact: verifyEmergencyContactTask, saveContact: saveEmergencyContactTask });
   const service = defineServiceStore("ocr", { readRecord: readApprovedOcrRecordTask });
@@ -66,7 +66,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
   const inFlight = new Promise<void>(resolve => { entered = resolve; });
   const maySettle = new Promise<void>(resolve => { release = resolve; });
   const filing = await onbaseFilingFixture();
-  const sessions = sessionFactoryHarness({ onbase: filing.session(() => h.authority.clock), ucpath: () => {
+  const sessions = sessionFactoryHarness({ onbase: options.onbaseUnavailable === true ? () => { throw new Error("fixture-onbase-unavailable"); } : filing.session(() => h.authority.clock), ucpath: () => {
     const session = persistence.session();
     const port: UcpathContactPagePort = { ...session.port, async snapshot() {
       const observed = await session.port.snapshot();
@@ -202,6 +202,17 @@ it("shared-page-save — a committed Save with no page to file admits no filing 
   assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state, "terminal");
   assert.equal(f.database.authority.writeIntents.listByRun(f.run.envelope.runId)[0]?.status, "committed");
   assert.deepEqual(f.children(), []);
+  assert.equal(f.filing.imports(), 0);
+});
+it("failed-filing-save — a failed OnBase filing after a committed Save fails the member and keeps its one Save", async () => {
+  const f = await memberFixture({ onbaseUnavailable: true });
+  const child = f.children()[0]; assert.ok(child);
+  assert.ok(child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed");
+  if (f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state !== "terminal") await f.execution.execute(f.run, new AbortController().signal);
+  const member = f.database.authority.runs.get(f.run.envelope.runId);
+  assert.ok(member?.lifecycle.state === "terminal" && member.lifecycle.outcome === "failed", `a failed filing must fail its member: ${JSON.stringify(member?.lifecycle)}`);
+  assert.equal(f.persistence.submissions.length, 1);
+  assert.equal(f.database.authority.writeIntents.listByRun(f.run.envelope.runId)[0]?.status, "committed");
   assert.equal(f.filing.imports(), 0);
 });
 for (const failure of ["identity-before-click", "timeout", "lost-page", "unknown-response", "foreign-eid", "foreign-name", "staged-page-drift", "pending", "save-before", "save-after", "partial", "primary-conflict", "unreadable", "mismatch", "staged-readback", "stale-readback", "verifier", "capture-after"] as const) it(`parks ${failure} after the fence without a forged output or retry`, async () => {
