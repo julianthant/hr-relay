@@ -99,12 +99,6 @@ export const OperatorReasonSchema = z.string().min(1).max(500).refine(
   "operator reason must already be trimmed",
 );
 
-
-export const SemverSchema = z.string().regex(
-  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
-  "version must be semantic version text",
-);
-
 const CommandEnvelopeFields = {
   commandId: CommandIdSchema,
   requestedAt: IsoInstantSchema,

@@ -27,11 +27,6 @@ export const UCPATH_SS_SMART_HR_TRANSACTION_RECEIPT =
 export const UCPATH_SS_SMART_HR_APPROVAL_STATUS =
   UcpathSsSmartHrApprovalStatusSchema.parse("ucpath.ss-smart-hr.approval-status");
 
-/** Use a keyed detail link; the bare component reloads to search. */
-export const UCPATH_SS_SMART_HR_TRANSACTION_URL =
-  "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS"
-  + "/c/UC_EXTENSIONS.UC_SS_TBH.GBL";
-
 /** `T` + at least six digits — PeopleSoft's Smart HR transaction number. */
 export const UcpathTransactionReceiptSchema = z.string().regex(
   /^T\d{6,}$/u,
@@ -49,8 +44,3 @@ export const UcpathApprovalStatusSchema = z.enum([
   "Pushed Back",
 ]);
 export type UcpathApprovalStatus = z.infer<typeof UcpathApprovalStatusSchema>;
-
-/** The only status that proves the external write landed; everything else is in flight or refused, and both still expose a `T…`. */
-export function isUcpathTransactionSettledSuccessfully(status: UcpathApprovalStatus): boolean {
-  return status === "Approved";
-}
