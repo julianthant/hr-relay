@@ -91,7 +91,7 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
       assert.equal(database.authority.assistantAuthorization.actionByCommand(command.commandId)?.state, "settled");
       assert.equal(database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "applied");
       if (capacityFailure !== undefined) throw new RunWorkerStartupError(capacityFailure);
-    } } });
+    }, detach: () => { throw new Error("a consumed action detaches no worker startup"); }, startupPending: () => false } });
   const proposals = createAssistantProposals({ database, authorization, kernel, ocrSources: () => { throw new Error("no OCR source in this harness"); }, workbooks: () => workbookOwner.library,
     attachment: (conversation, id) => { const file = files.get(id); return file?.conversationId === conversation ? file : undefined; }, plans: h.planner, runs: h.lifecycle, descriptors: { resolve: () => h.descriptor },
     rerunValues: request => data.rerunValues(request), served: () => true, actorId: "local-operator", clock, assertCurrent() {},

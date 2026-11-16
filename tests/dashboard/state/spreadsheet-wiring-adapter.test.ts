@@ -225,7 +225,7 @@ describe('named library actions', () => {
   const entry = () => WorkbookLibraryEntrySchema.parse({ libraryId: 'saved', version: 3, name: 'Roster.xlsx', updatedAt: '2026-11-01T00:00:00Z', rowCount: 0,
     worksheets: [{ id: 'sheet', name: 'People' }], metadata: { typeId: 'roster', sharePoint: null },
     type: { id: 'roster', name: 'Roster', fields: ['eid'], keyFieldId: 'eid', defaultWorkbookId: null },
-    state: { libraryId: 'saved', revision: 1, selectedVersionId: 'original', removed: false, origin: { kind: 'local' },
+    state: { libraryId: 'saved', revision: 1, selectedVersionId: 'original', removed: false, pinned: false, tags: [], origin: { kind: 'local' },
       versions: [{ id: 'original', name: 'Original', snapshotId: 'original', version: 3, savedAt: '2026-11-01T00:00:00Z', source: 'import' }] } });
   it('saves a dirty values-only draft once and confirms only its exact named snapshot after response loss', async () => {
     const { client, adapter } = setup(), file = entry(), document = spreadsheetValuesOnly(book());
@@ -350,5 +350,23 @@ describe('spreadsheet page writes', () => {
     assert.equal(await closeDraft(adapter, 'saved', false), false);
     assert.equal(await closeDraft(adapter, 'saved', true), true);
     assert.equal(adapter.draft('saved'), undefined);
+  });
+});
+describe('a confirmed save settles while the catalog refreshes', () => {
+  for (const edit of [false, true]) it(edit ? 'ends edited when the draft changes during the refresh' : 'holds the save, refuses Close and joins a second Save until the refresh ends', async () => {
+    const { client, adapter } = setup(); client.workbookCatalog.mockRejectedValueOnce(new Error('offline')); await adapter.refreshCatalog(); assert.equal(adapter.snapshot().catalogLoading, false);
+    await adapter.open('saved'); const draft = book(); adapter.change('saved', draft, true);
+    const refresh = Promise.withResolvers<Awaited<ReturnType<WorkbookLibraryQueries['workbookCatalog']>>>(); client.workbookCatalog.mockImplementationOnce(() => refresh.promise);
+    client.workbookOpen.mockResolvedValueOnce(saved(4, draft));
+    const save = adapter.save('saved', draft);
+    await vi.waitFor(() => assert.equal(client.workbookCatalog.mock.calls.length, 2));
+    const held = adapter.draft('saved'); assert.ok(held);
+    assert.equal(held.phase, 'settling'); assert.equal(held.intent, undefined); assert.equal(held.dirty, false); assert.ok(held.saving); assert.equal(held.opened?.version, 4);
+    adapter.close('saved'); assert.equal(adapter.draft('saved'), held);
+    assert.equal((await adapter.save('saved', draft)).state, 'confirmed'); assert.equal(client.workbookSave.mock.calls.length, 1);
+    if (edit) { adapter.change('saved', { ...draft, name: 'Later.xlsx' }, true); assert.equal(adapter.draft('saved')?.phase, 'settling'); assert.equal(adapter.draft('saved')?.dirty, true); }
+    refresh.resolve([]); assert.equal((await save).state, 'confirmed');
+    const after = adapter.draft('saved'); assert.ok(after);
+    assert.equal(after.saving, undefined); assert.equal(after.phase, edit ? 'edited' : 'saved'); assert.equal(after.dirty, edit);
   });
 });
