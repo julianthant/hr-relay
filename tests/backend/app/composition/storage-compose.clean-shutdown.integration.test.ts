@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import nativeFs, { mkdirSync,readFileSync,readdirSync,writeFileSync } from "node:fs";
+import nativeFs, { existsSync,mkdirSync,readFileSync,readdirSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import { composeDashboardApplication } from "../../../../src/backend/app/composition/dashboard/compose.js";
@@ -89,6 +89,10 @@ it("finishes an interrupted shutdown backup retirement at the next startup befor
   } finally { await f.close(); }
 });
 
+// A person with no backup yet has no backup directory either.
+const shutdownManifestCount = (directory: string) => existsSync(directory)
+  ? readdirSync(directory).filter(name => name.endsWith(".shutdown.sqlite.manifest.json")).length : 0;
+
 it("hands the quit-time backup of a stopping dashboard to one detached finisher and takes none itself", async () => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
   const profileId = f.admission.profileBinding.profileId, directory = join(f.stateRoot, "backups", "authority");
@@ -110,19 +114,18 @@ it("hands the quit-time backup of a stopping dashboard to one detached finisher 
     assert.deepEqual(spawned.map(value => ({ command: value.command, args: value.args, unref: value.unref })),
       [{ command: "/synthetic/node", args: ["bootstrap.ts", "cli", "storage", "finish-shutdown-backup", f.workspace, profileId], unref: 1 }]);
     assert.equal((spawned[0]?.options as { detached?: boolean }).detached, true);
-    assert.equal(readdirSync(directory).filter(name => name.endsWith(".shutdown.sqlite.manifest.json")).length, 0);
+    assert.equal(shutdownManifestCount(directory), 0);
   } finally { request.mockRestore(); await f.close(); }
 });
 
 it("backs up only the people handed to the finisher", async () => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
   const profileId = f.admission.profileBinding.profileId, directory = join(f.stateRoot, "backups", "authority");
-  const shutdownManifests = () => readdirSync(directory).filter(name => name.endsWith(".shutdown.sqlite.manifest.json")).length;
   f.admission.release(); f.machine.release();
   try {
     clock.advanceWall(1000); await backupRegisteredPeopleAtCleanShutdown(f.workspace, f.lifetime, clock, new Set([randomUUID()]));
-    assert.equal(shutdownManifests(), 0);
+    assert.equal(shutdownManifestCount(directory), 0);
     clock.advanceWall(1000); await backupRegisteredPeopleAtCleanShutdown(f.workspace, f.lifetime, clock, new Set([profileId]));
-    assert.equal(shutdownManifests(), 1);
+    assert.equal(shutdownManifestCount(directory), 1);
   } finally { await f.close(); }
 });

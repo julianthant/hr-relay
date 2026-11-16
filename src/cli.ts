@@ -44,7 +44,7 @@ export async function runCli(admission: RuntimeAdmission, acceptDashboardAdmissi
   registerDashboardComposer(async (runtimeIsolation, options) => {
     if (!(lifetime.lock instanceof RuntimeLifetimeLock)) throw new Error("dashboard-runtime-lifetime-lock-required");
     const application = await composeDashboardApplication({ admission, isolation: runtimeIsolation, repoRoot: REPOSITORY_ROOT, frontend: options.frontend,
-      lifetimeLock: lifetime.lock, shutdownBackup: detachedShutdownBackup(productionWorkerLaunch(REPOSITORY_ROOT, process.env, options.frontend === "vite-dev")) });
+      lifetimeLock: lifetime.lock, shutdownBackup: detachedShutdownBackup(productionWorkerLaunch(REPOSITORY_ROOT, undefined, options.frontend === "vite-dev")) });
     acceptDashboardAdmission?.();
     return application;
   });

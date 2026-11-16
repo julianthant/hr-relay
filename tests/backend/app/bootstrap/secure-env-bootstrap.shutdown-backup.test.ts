@@ -4,16 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { addPendingShutdownBackup, readPendingShutdownBackup, removePendingShutdownBackup, writePendingShutdownBackup } from "../../../../src/backend/app/composition/storage-compose.js";
+import { addPendingShutdownBackup, hasPendingShutdownBackup, readPendingShutdownBackup, removePendingShutdownBackup, writePendingShutdownBackup } from "../../../../src/backend/app/composition/storage-compose.js";
 import { acquireLifetimeLockAfterShutdownBackup, completePendingShutdownBackup, SHUTDOWN_BACKUP_WAIT_MS } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 import { RuntimeAlreadyRunningError, type RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 
-function waiting(busyAttempts: number, backendListening = false) {
+function waiting(busyAttempts: number, backendListening = false, backupPending = true) {
   const lock = {} as RuntimeLifetimeLock, calls = { acquire: 0, sleeps: [] as number[], waits: 0 };
   let now = 0;
   const wait = {
     acquire: (port: number) => { assert.equal(port, 3939); calls.acquire++; return calls.acquire > busyAttempts ? Promise.resolve(lock) : Promise.reject(new RuntimeAlreadyRunningError(undefined)); },
+    backupPending: () => backupPending,
     backendListening: () => Promise.resolve(backendListening),
     sleep: (ms: number) => { calls.sleeps.push(ms); now += ms; return Promise.resolve(); },
     nowMs: () => now,
@@ -38,6 +39,19 @@ it("refuses at once while a dashboard is serving", async () => {
   const f = waiting(Infinity, true);
   await assert.rejects(acquireLifetimeLockAfterShutdownBackup(3939, f.wait), RuntimeAlreadyRunningError);
   assert.deepEqual(f.calls, { acquire: 1, sleeps: [], waits: 0 });
+});
+
+it("refuses another lock holder at once when no quit-time backup is pending", async () => {
+  const f = waiting(Infinity, false, false);
+  await assert.rejects(acquireLifetimeLockAfterShutdownBackup(3939, f.wait), RuntimeAlreadyRunningError);
+  assert.deepEqual(f.calls, { acquire: 1, sleeps: [], waits: 0 });
+});
+
+it("refuses once the pending quit-time backup is gone but the lock stays held", async () => {
+  const f = waiting(Infinity);
+  let checks = 0;
+  await assert.rejects(acquireLifetimeLockAfterShutdownBackup(3939, { ...f.wait, backupPending: () => ++checks < 3 }), RuntimeAlreadyRunningError);
+  assert.deepEqual(f.calls, { acquire: 3, sleeps: [1000, 1000], waits: 1 });
 });
 
 it("refuses once the wait limit passes", async () => {
@@ -68,12 +82,12 @@ function pending(record: string[] | undefined, backupError?: Error, removeError?
 it("round-trips, removes and refuses a malformed pending shutdown-backup record", () => {
   const workspace = mkdtempSync(join(tmpdir(), "pending-backup-"));
   try {
-    assert.equal(readPendingShutdownBackup(workspace), undefined);
+    assert.equal(readPendingShutdownBackup(workspace), undefined); assert.equal(hasPendingShutdownBackup(workspace), false);
     writePendingShutdownBackup(workspace, [A, B]);
-    assert.deepEqual([...readPendingShutdownBackup(workspace) ?? []], [A, B]);
+    assert.deepEqual([...readPendingShutdownBackup(workspace) ?? []], [A, B]); assert.equal(hasPendingShutdownBackup(workspace), true);
     const file = join(workspace, rebuildRuntimeIsolation.stateRoot, "shutdown-backup.pending.json");
     removePendingShutdownBackup(workspace);
-    assert.equal(existsSync(file), false);
+    assert.equal(existsSync(file), false); assert.equal(hasPendingShutdownBackup(workspace), false);
     assert.deepEqual(readdirSync(join(workspace, rebuildRuntimeIsolation.stateRoot)), []);
     writeFileSync(file, '{"people":["not-a-uuid"]}');
     assert.throws(() => readPendingShutdownBackup(workspace));

@@ -320,6 +320,11 @@ export function addPendingShutdownBackup(workspace: string, people: readonly str
   writePendingShutdownBackup(workspace, [...new Set([...readPendingShutdownBackup(workspace) ?? [], ...people])]);
 }
 
+/** Whether a quit-time backup is unfinished: its finisher, or a start completing it, may hold the lifetime lock. */
+export function hasPendingShutdownBackup(workspace: string): boolean {
+  return existsSync(pendingShutdownBackupPath(workspace));
+}
+
 export function readPendingShutdownBackup(workspace: string): ReadonlySet<string> | undefined {
   const path = pendingShutdownBackupPath(workspace);
   if (!existsSync(path)) return undefined;

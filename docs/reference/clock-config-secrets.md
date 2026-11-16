@@ -529,7 +529,8 @@ drain, and restore paths retain their held custody after ordinary access is revo
 The kernel-held lifetime listener owns process exclusion. Bootstrap binds the dedicated configured
 loopback `lockPort` before installation admission and holds it through shutdown. A busy port refuses
 with `RUNTIME_ALREADY_RUNNING`, except that a starting dashboard and the quit-time backup finisher wait
-up to ten minutes while the port is busy and no dashboard serves on `backendPort`. Workers receive the listening handle over IPC before storage
+up to ten minutes while the port is busy, `.tracker/data/shutdown-backup.pending.json` exists and no
+dashboard serves on `backendPort`. Workers receive the listening handle over IPC before storage
 admission. Each worker retains its copy through parent disconnect and its write-safe drain. Controller
 close waits for each owned child process's actual `close` event before closing the listener. Standalone
 and offline commands acquire the same port. Existing source-byte, closure, credential, profile-creation,

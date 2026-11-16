@@ -14,7 +14,7 @@ import { acquireExclusiveRuntimeAdmission,RuntimeAdmission } from "../../storage
 import { acquireDashboardEntrypointAdmission,acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { FixedLayoutRefusedError } from "../../storage/maintenance/fixed-layout.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
-import { AutomaticPersonRepairRefusedError,FINISH_SHUTDOWN_BACKUP,readPendingShutdownBackup,RegisteredPersonUpgradeRefusedError,removePendingShutdownBackup,RuntimeCustodyUncertainError,writePendingShutdownBackup } from "../composition/storage-compose.js";
+import { AutomaticPersonRepairRefusedError,FINISH_SHUTDOWN_BACKUP,hasPendingShutdownBackup,readPendingShutdownBackup,RegisteredPersonUpgradeRefusedError,removePendingShutdownBackup,RuntimeCustodyUncertainError,writePendingShutdownBackup } from "../composition/storage-compose.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { probePrimaryDisplay } from "../host/primary-display.js";
 import { WORKER_GRACEFUL_STOP_TIMEOUT_MS, WorkerPoolError } from "../../runtime/workers/worker-pool.js";
@@ -64,6 +64,7 @@ export const SHUTDOWN_BACKUP_WAIT_MS = 600_000;
 
 export interface ShutdownBackupLockWait {
   readonly acquire: (port: number) => Promise<RuntimeLifetimeLock>;
+  readonly backupPending: () => boolean;
   readonly backendListening: () => Promise<boolean>;
   readonly sleep: (ms: number) => Promise<void>;
   readonly nowMs: () => number;
@@ -71,13 +72,14 @@ export interface ShutdownBackupLockWait {
 }
 
 // A quit hands its backup to a finisher that holds the lifetime lock while no dashboard serves; wait for it instead of refusing.
+// Any other holder, such as a booting dashboard or a storage command, is refused at once.
 export async function acquireLifetimeLockAfterShutdownBackup(port: number, wait: ShutdownBackupLockWait): Promise<RuntimeLifetimeLock> {
   const deadline = wait.nowMs() + SHUTDOWN_BACKUP_WAIT_MS;
   let announced = false;
   for (;;) {
     try { return await wait.acquire(port); }
     catch (error) {
-      if (!(error instanceof RuntimeAlreadyRunningError) || wait.nowMs() >= deadline || await wait.backendListening()) throw error;
+      if (!(error instanceof RuntimeAlreadyRunningError) || wait.nowMs() >= deadline || !wait.backupPending() || await wait.backendListening()) throw error;
     }
     if (!announced) { announced = true; wait.onWait(); }
     await wait.sleep(1000);
@@ -140,7 +142,8 @@ export async function runSecureEnvironmentBootstrap(
   const acquire = dependencies.acquireLifetimeLock ?? acquireRuntimeLifetimeLock;
   const dashboard = selector === "cli" && entrypointArgs[0] === "dashboard";
   const lock = dashboard || selector === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === FINISH_SHUTDOWN_BACKUP
-    ? await acquireLifetimeLockAfterShutdownBackup(rebuildRuntimeIsolation.lockPort, { acquire, backendListening: () => backendListening(rebuildRuntimeIsolation.backendPort),
+    ? await acquireLifetimeLockAfterShutdownBackup(rebuildRuntimeIsolation.lockPort, { acquire, backupPending: () => hasPendingShutdownBackup(applicationDataWorkspace()),
+      backendListening: () => backendListening(rebuildRuntimeIsolation.backendPort),
       sleep: ms => new Promise(done => setTimeout(done, ms)), nowMs: () => systemClock.nowMs(),
       onWait: () => { if (dashboard) process.stderr.write("[dashboard] finishing the last quit-time backup; starting when it is done.\n"); } })
     : await acquire(rebuildRuntimeIsolation.lockPort);
