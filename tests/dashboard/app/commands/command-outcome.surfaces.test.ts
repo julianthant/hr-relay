@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { commandSaveState } from "../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
-import type { CommandExecutionScope, CommandOutcome, RetainedCommandAttempt } from "../../../src/dashboard/app/commands/command-executor.js";
-import { attemptUnresolved } from "../../../src/dashboard/app/commands/command-outcome.js";
-import type { SharedCommands } from "../../../src/dashboard/client/commands/shared-commands.js";
-import { reviewAttemptState } from "../../../src/dashboard/state/review-wiring-adapter.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogCode } from "../../../src/models/failures/error-catalog.js";
-import { BulkRunCommandOutcomeSchema, CommandRequestSchema, CommandResultSchema } from "../../../src/rules/commands/commands.js";
+import { commandSaveState } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
+import type { CommandExecutionScope, CommandOutcome, RetainedCommandAttempt } from "../../../../src/dashboard/app/commands/command-executor.js";
+import { attemptUnresolved } from "../../../../src/dashboard/app/commands/command-outcome.js";
+import type { SharedCommands } from "../../../../src/dashboard/client/commands/shared-commands.js";
+import { reviewAttemptState } from "../../../../src/dashboard/state/review-wiring-adapter.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogCode } from "../../../../src/models/failures/error-catalog.js";
+import { BulkRunCommandOutcomeSchema, CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 
 const id = (n: number) => `${String(n).padStart(8, "0")}-1111-4111-8111-111111111111`;
 const COMMAND = id(10);
