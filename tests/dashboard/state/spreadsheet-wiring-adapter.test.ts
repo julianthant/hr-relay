@@ -352,3 +352,21 @@ describe('spreadsheet page writes', () => {
     assert.equal(adapter.draft('saved'), undefined);
   });
 });
+describe('a confirmed save settles while the catalog refreshes', () => {
+  for (const edit of [false, true]) it(edit ? 'ends edited when the draft changes during the refresh' : 'holds the save, refuses Close and joins a second Save until the refresh ends', async () => {
+    const { client, adapter } = setup(); client.workbookCatalog.mockRejectedValueOnce(new Error('offline')); await adapter.refreshCatalog(); assert.equal(adapter.snapshot().catalogLoading, false);
+    await adapter.open('saved'); const draft = book(); adapter.change('saved', draft, true);
+    const refresh = Promise.withResolvers<Awaited<ReturnType<WorkbookLibraryQueries['workbookCatalog']>>>(); client.workbookCatalog.mockImplementationOnce(() => refresh.promise);
+    client.workbookOpen.mockResolvedValueOnce(saved(4, draft));
+    const save = adapter.save('saved', draft);
+    await vi.waitFor(() => assert.equal(client.workbookCatalog.mock.calls.length, 2));
+    const held = adapter.draft('saved'); assert.ok(held);
+    assert.equal(held.phase, 'settling'); assert.equal(held.intent, undefined); assert.equal(held.dirty, false); assert.ok(held.saving); assert.equal(held.opened?.version, 4);
+    adapter.close('saved'); assert.equal(adapter.draft('saved'), held);
+    assert.equal((await adapter.save('saved', draft)).state, 'confirmed'); assert.equal(client.workbookSave.mock.calls.length, 1);
+    if (edit) { adapter.change('saved', { ...draft, name: 'Later.xlsx' }, true); assert.equal(adapter.draft('saved')?.phase, 'settling'); assert.equal(adapter.draft('saved')?.dirty, true); }
+    refresh.resolve([]); assert.equal((await save).state, 'confirmed');
+    const after = adapter.draft('saved'); assert.ok(after);
+    assert.equal(after.saving, undefined); assert.equal(after.phase, edit ? 'edited' : 'saved'); assert.equal(after.dirty, edit);
+  });
+});
