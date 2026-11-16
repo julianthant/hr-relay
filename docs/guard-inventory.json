@@ -4,7 +4,7 @@
   "architectureRoot": "tests/architecture",
   "testScript": "test:architecture",
   "coveragePolicy": {
-    "exclusionListSha256": "b2d1975f1c1cec98cbd3895a588c4bc662c92bd2fdec7919543f9a80377a2d48",
+    "exclusionListSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
     "minimumFloors": {
       "global": 60,
       "safetyCritical": 80

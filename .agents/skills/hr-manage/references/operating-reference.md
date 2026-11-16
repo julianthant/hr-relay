@@ -12,7 +12,7 @@ Read this reference for runtime commands and environment behavior. The
 | TypeScript | `npm run typecheck` |
 | Lint | `npm run lint` |
 | Unit, integration, architecture and perf | `npm run test` |
-| One Vitest project | `npm run test:unit`, `test:integration`, `test:architecture`, `test:local`, `test:perf` |
+| One Vitest project | `npm run test:unit`, `test:integration`, `test:architecture`, `test:perf` |
 | Coverage of unit, integration and architecture | `npm run test:coverage` |
 | Watch | `npm run test:watch` |
 | Runtime CLI | `npm run cli` |

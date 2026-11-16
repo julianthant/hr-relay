@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, it, vi } from "vitest";
+import { z } from "zod";
 
-const native = vi.hoisted(() => ({ version: "3.3.6", load: vi.fn(), move: vi.fn() }));
+const native = vi.hoisted(() => ({ version: "", load: vi.fn(), move: vi.fn() }));
+// The bridge must accept exactly the koffi release the package installs.
+native.version = z.looseObject({ dependencies: z.looseObject({ koffi: z.string().regex(/^\d+\.\d+\.\d+$/u) }) })
+  .parse(JSON.parse(readFileSync("package.json", "utf8"))).dependencies.koffi;
 vi.mock("node:module", async load => ({ ...await load<typeof import("node:module")>(),
   createRequire: () => (name: string) => { assert.equal(name, "koffi"); return native; },
 }));
