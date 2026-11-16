@@ -1,5 +1,4 @@
-import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
-import type { RunRecord } from "../../../../models/run/record.js";
+import type { RunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
 import { exportSearchMetadata } from "../../../runs/exports/search-metadata-export.js";
 import { createCalendarQuery } from "../../../runs/queries/calendar.js";
 import { randomBytes } from "node:crypto";
@@ -18,7 +17,7 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
   "appVersion" | "actorLabel" | "clock" | "timeZone" | "descriptorSetHash" | "preflightReport" | "workbookCompatibility">
   & Pick<OperatorXlsxExportServiceDependencies, "ids" | "artifacts">
   & DashboardStreamHubDeps
-  & { activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
+  & { projection: Pick<RunQueueProjection, "queueSurfaces">; activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
 ): ShellRouteDeps {
   const { database, projection, clock, ids, artifacts } = input;
   const catalogModules = READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module)
@@ -27,20 +26,6 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
     workflow: descriptor.id, version: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
     subjectProjection: descriptor.subjectProjection ?? null,
   })));
-  const displayTitle = (record: RunRecord): string => {
-    if (record.displayName !== undefined) return record.displayName;
-    const { records } = readTimelineRecords(database.authority.timelineEvents, 0, record.envelope.runId);
-    for (const event of records) {
-      if (event.payload.kind !== "span" || event.payload.event.t !== "run.queued") continue;
-      const queued = event.payload.event;
-      if (event.workflow !== record.envelope.workflow || queued.traceId !== record.envelope.traceId
-        || queued.runId !== record.envelope.runId || queued.attempt > record.envelope.attempt) {
-        throw new Error("search-display-title-owner-mismatch");
-      }
-      if (queued.title !== undefined) return queued.title;
-    }
-    return record.envelope.workflow;
-  };
   const search = createCrossDateSearchService({ clock,
     sourceIdentity: database.getSourceDatabaseIdentity(), cursorSigningKey: randomBytes(32),
     descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor },
@@ -48,7 +33,13 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
       authorityGeneration: database.getMeta().authorityGeneration,
       searchRuns: searchInput => {
         const page = database.authority.runs.search(searchInput);
-        return { ...page, rows: page.rows.map(row => ({ ...row, displayTitle: displayTitle(row.record) })) };
+        const surfaces = new Map(projection.queueSurfaces(page.rows.map(row => row.record.envelope.runId))
+          .map(surface => [surface.runId, surface]));
+        return { ...page, rows: page.rows.map(row => {
+          const surface = surfaces.get(row.record.envelope.runId);
+          if (surface === undefined) throw new Error(`search-queue-surface-unavailable: ${row.record.envelope.runId}`);
+          return { ...row, displayTitle: surface.displayName.state === "present" ? surface.displayName.value : surface.title };
+        }) };
       },
     })) },
   });

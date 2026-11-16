@@ -61,7 +61,7 @@ const RunSearchAuthorityPageSchema = z.strictObject({
   coverage: SearchCoverageSchema,
   rows: z.array(z.strictObject({
     record: RunRecordSchema,
-    displayTitle: z.string().min(1).optional(),
+    displayTitle: CrossDateSearchResultSchema.shape.displayTitle,
     metadata: SearchMetadataSchema,
     matchRank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
   })).max(CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
@@ -354,7 +354,7 @@ function resultOf(
   return CrossDateSearchResultSchema.parse({
     runId: record.envelope.runId,
     traceId: record.envelope.traceId,
-    ...((displayTitle ?? record.displayName) === undefined ? {} : { displayTitle: displayTitle ?? record.displayName }),
+    ...(displayTitle === undefined ? {} : { displayTitle }),
     workflowId: record.envelope.workflow,
     registration: descriptor === undefined
       ? {
