@@ -1,4 +1,4 @@
-import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
+import { BulkRunCommandResponseSchema, CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { singleAppliedRunId } from "../../../../support/fixtures/operator-command-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
 import { deriveBulkChildCommandId } from "../../../../../src/backend/runs/commands/command-service.js";
 import type { IntakeService } from "../../../../../src/backend/runs/commands/intake-service.js";
+import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
 import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
 import { UNWIRED_INTAKE_SERVICE } from "../../../../support/fixtures/intake-kernel-seams.js";
 import { UUID_4 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -474,18 +475,19 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const runE = await startRun("10873702", "1a000000-0000-4000-8000-000000000006");
     const runF = await startRun("10873703", "1a000000-0000-4000-8000-000000000007");
     const failureBody = { ...envelope, commandId: "1a000000-0000-4000-8000-00000000000e", bulkCommandId: "1a000000-0000-4000-8000-00000000000e", targets: [runD, runE, runF].map((runId) => ({ runId, expectedVersion: versionOf(runId) })) };
-    const failId = deriveBulkChildCommandId(failureBody.bulkCommandId, runE);
+    const children = failureBody.targets.map(({ runId }) => deriveBulkChildCommandId(failureBody.bulkCommandId, runId));
     const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
     try {
-      raw.exec(`CREATE TRIGGER synthetic_child_failure BEFORE INSERT ON command_audits WHEN NEW.command_id = '${failId}' BEGIN SELECT RAISE(ABORT, 'synthetic-child-audit-failure'); END`);
-      const failure = await postBulk(failureBody);
-      assert.equal(failure.payload.requestedCount, 3);
-      assert.deepEqual((failure.payload.results as Record<string, unknown>[]).map(({ outcome }) => outcome), ["applied", "errored"]);
-      // The trigger also blocks the errored-child audit, so the child stays admitted and the resumed bulk applies it.
-      assert.equal(h.database.authority.commands.get(failId)?.commandId, failId);
-      assert.equal(h.database.authority.commandAudits.findByCommand(failId), undefined);
-      assert.equal(h.database.authority.commands.get(deriveBulkChildCommandId(failureBody.bulkCommandId, runF)), undefined);
-      assert.equal(versionOf(runE), failureBody.targets[1].expectedVersion);
+      // Any schema object the store did not create refuses every read until the schema matches again. The first child's cancel
+      // commits before the read that follows it refuses, so the bulk stops there and reports that child errored.
+      raw.exec(`CREATE TRIGGER synthetic_child_failure BEFORE INSERT ON command_audits WHEN NEW.command_id = '${children[1]}' BEGIN SELECT RAISE(ABORT, 'synthetic-child-audit-failure'); END`);
+      const refused = await postBulk(failureBody);
+      assert.equal(refused.payload.requestedCount, 3);
+      assert.deepEqual((refused.payload.results as Record<string, unknown>[]).map(({ outcome, detail }) => ({ outcome, detail })),
+        [{ outcome: "errored", detail: "run-search-index-rebuild-required" }]);
+      assert.deepEqual(children.map(id => [h.database.authority.commands.get(id) !== undefined, h.database.authority.commandAudits.findByCommand(id) !== undefined]),
+        [[true, true], [false, false], [false, false]]);
+      assert.deepEqual(failureBody.targets.map(({ runId }) => versionOf(runId)), failureBody.targets.map(({ expectedVersion }, index) => expectedVersion + (index === 0 ? 1 : 0)));
       raw.exec("DROP TRIGGER synthetic_child_failure");
       const resumed = await postBulk(failureBody);
       const outcomes = resumed.payload.results as Record<string, unknown>[];
@@ -495,6 +497,102 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       assert.equal(outcomes[2].replayed, false);
     } finally { raw.close(); }
 
+  });
+
+  it("applies an admitted bulk-cancel child that left no audit when the same bulk is sent again", async () => {
+    const failures: string[] = [];
+    const fault = { commandId: "", armed: false, failures };
+    const h = await harness({ commandAuditInsertFault: fault });
+    const startRun = async (eid: string, commandId: string): Promise<string> => {
+      const planResponse = await h.app.request("/api/v1/start-plans", {
+        method: "POST",
+        headers: OPERATOR_JSON_HEADERS,
+        body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid, mode: "read-only" }], dryRun: false }),
+      });
+      assert.equal(planResponse.status, 200);
+      const plan = StartPlanWireSchema.parse(await json(planResponse));
+      const fingerprints = plan.fingerprints;
+      const started = await h.app.request("/api/v1/commands", {
+        method: "POST",
+        headers: OPERATOR_JSON_HEADERS,
+        body: JSON.stringify({
+          commandId,
+          requestedAt: h.clock.now().toISOString(),
+          requestedBy: "local-operator",
+          source: "start-run",
+          family: "start",
+          type: "start-run",
+          target: { workflowId: "fixture-graph", startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion },
+          payload: {
+            descriptorFingerprint: fingerprints.descriptorFingerprint,
+            configFingerprint: fingerprints.configFingerprint,
+            ingressSchemaHash: fingerprints.ingressSchemaHash,
+            canonicalInputSchemaHash: fingerprints.canonicalInputSchemaHash,
+            inputFingerprint: fingerprints.inputFingerprint,
+          },
+        }),
+      });
+      return singleAppliedRunId(CommandResultSchema.parse(await json(started)));
+    };
+    const runD = await startRun("10203372", "1b000000-0000-4000-8000-000000000001");
+    const runE = await startRun("10203373", "1b000000-0000-4000-8000-000000000002");
+    const runF = await startRun("10873700", "1b000000-0000-4000-8000-000000000003");
+    const versionOf = (runId: string): number => {
+      const run = h.database.authority.runs.get(runId);
+      assert.ok(run !== undefined, `run ${runId} exists in authority`);
+      return run.version;
+    };
+    const bulkCommandId = "1b000000-0000-4000-8000-00000000000e";
+    const failureBody = {
+      commandId: bulkCommandId,
+      requestedAt: "2020-01-01T00:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "hostile-page",
+      family: "run",
+      type: "cancel",
+      bulkCommandId,
+      mode: "best-effort",
+      targets: [runD, runE, runF].map((runId) => ({ runId, expectedVersion: versionOf(runId) })),
+    };
+    const children = failureBody.targets.map(({ runId }) => deriveBulkChildCommandId(bulkCommandId, runId));
+    fault.commandId = children[1];
+    fault.armed = true;
+    const postBulk = async (body: unknown) => {
+      const response = await h.app.request("/api/v1/commands/bulk", {
+        method: "POST",
+        headers: OPERATOR_JSON_HEADERS,
+        body: JSON.stringify(body),
+      });
+      return { status: response.status, payload: BulkRunCommandResponseSchema.parse(await json(response)) };
+    };
+    const armed = await postBulk(failureBody);
+    assert.equal(armed.status, 200);
+    assert.equal(armed.payload.state, "vector");
+    if (armed.payload.state !== "vector") throw new Error("armed bulk was refused");
+    assert.equal(armed.payload.requestedCount, 3);
+    const armedResults = armed.payload.results;
+    assert.deepEqual(armedResults.map(({ outcome }) => outcome), ["applied", "errored"]);
+    const erroredChild = armedResults[1];
+    if (erroredChild?.outcome !== "errored") throw new Error("middle child was not errored");
+    assert.equal(erroredChild.detail, `command ${children[1]} failed and its outcome could not be recorded`);
+    assert.deepEqual(fault.failures, [children[1], children[1]]);
+    assert.deepEqual(children.map(id => [h.database.authority.commands.get(id) !== undefined, h.database.authority.commandAudits.findByCommand(id) !== undefined]),
+      [[true, true], [true, false], [false, false]]);
+    assert.deepEqual(failureBody.targets.map(({ runId }) => versionOf(runId)), failureBody.targets.map(({ expectedVersion }, index) => expectedVersion + (index === 0 ? 1 : 0)));
+    fault.armed = false;
+    const resumed = await postBulk(failureBody);
+    if (resumed.payload.state !== "vector") throw new Error("resumed bulk was refused");
+    const outcomes = resumed.payload.results;
+    assert.deepEqual(outcomes.map(({ outcome }) => outcome), ["applied", "applied", "applied"]);
+    const [replayedChild, resumedMiddle, resumedLast] = outcomes;
+    if (replayedChild?.outcome !== "applied" || resumedMiddle?.outcome !== "applied" || resumedLast?.outcome !== "applied") {
+      throw new Error("resumed bulk was not three applied children");
+    }
+    assert.equal(replayedChild.replayed, true);
+    assert.equal(resumedMiddle.replayed, false);
+    assert.equal(resumedLast.replayed, false);
+    assert.deepEqual(fault.failures, [children[1], children[1]]);
+    assert.deepEqual(failureBody.targets.map(({ runId }) => versionOf(runId)), failureBody.targets.map(({ expectedVersion }) => expectedVersion + 1));
   });
 
 
