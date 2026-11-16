@@ -112,7 +112,7 @@ results. Role-derived scenario paths do not prove that a file exists.
 | `npm run test:integration -- <paths>` | `vitest run --project integration --passWithNoTests=false`. |
 | `npm run test:architecture -- <paths>` | `vitest run --project architecture --passWithNoTests=false`. |
 | `npm run test:local -- <paths>` | `vitest run --project local --passWithNoTests=true`. |
-| `npm run test:coverage` | `vitest run --coverage --project unit --project integration --project architecture`. |
+| `npm run test:coverage` | Local only: `vitest run --coverage --project unit --project integration --project architecture`. No workflow runs coverage; floors are unchanged. |
 | `npm run test:perf` | `vitest run --project perf --passWithNoTests=false`. |
 | `npm run test:watch` | Interactive `vitest` on unit, integration, architecture and perf. |
 | `npm run perf:dashboard` | `TZ=UTC tsx tests/perf/dashboard-benchmark.ts`. |
@@ -128,18 +128,25 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-`ci.yml` triggers only for staging pull requests and admits the portable-only `ci-checks.yml` call.
-Merge train runs after the five top summaries and
-outside admission. `release.yml` triggers only for main pull requests or operator manual releases
-and alone admits `release-checks.yml`, which owns the native and complete release pipeline.
-Staging never references or loads a release/native workflow call. Both callees use shared typed
+`staging.yml` (`Staging`) triggers for staging pull requests and pushes to `staging` and admits the `checks.yml`
+call with kind `portable`; its `staging` gate fails when `names` or `checks` failed or was cancelled.
+The merge train runs after that gate, on a push and on auto-merge, outside admission. `production.yml`
+(`Production`) triggers for main pull requests or an operator manual start with a required `title` input
+and admits `checks.yml` with kind `release`, which plans the native and complete release pipeline; its
+`production` gate fails when `checks` failed or was cancelled, and for a pull request head other than `staging` or `hotfix/*`.
+Both workflows call the same file, which uses shared typed
 selection/result/timing policy from `scripts/test/ci-plan.ts` and explicitly retain test budgets.
 The root check rules own platform placement and release authorization.
 `scripts/test/ci-files.ts` names the native
 files: `NATIVE_FILES` (storage closure, backup and restore proofs requiring native runners, unit and
 integration) and `SERIAL_FILES` (native browser process proofs that require file isolation). `scripts/test/ci-run.sh` lists a project through
 Vitest, selects the job's files with that script and passes the paths explicitly; Vitest 4.1.11's
-CLI exclusions do not reach these named projects. Selection refuses when a named file is no longer
+CLI exclusions do not reach these named projects. Local unit and integration projects exclude every
+`NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` entry unless `RELAY_TEST_NATIVE=1`.
+`ci-run.sh` sets that variable before it lists, so each slice still selects the same files. Naming
+an excluded file on the Vitest command line prints that the variable is required and does not run
+the file. `npm run test:pc` sets `RELAY_TEST_NATIVE=1` for its Vitest listing and for the remote
+Vitest run. Its native filter is unchanged. Selection refuses when a named file is no longer
 listed. Files are packed longest first onto the least-loaded job using
 the preceding successful run's `ci-timings` artifact, seeded by `scripts/test/ci-durations.json`
 when none is retained; unmeasured files count as the positive median, or one second.
@@ -151,13 +158,14 @@ Other native files count half because two workers share them.
 
 | Job | Runner | Jobs | Contents |
 | --- | --- | --- | --- |
-| unit | Ubuntu | 2 (3 without integration) | unit files except `NATIVE_FILES` |
+| unit | Ubuntu | 3 | unit files except `NATIVE_FILES`, plus `LINUX_NATIVE_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
-| integration | Ubuntu | 14 | integration files except `NATIVE_FILES` and `SERIAL_FILES` |
+| integration | Ubuntu | 30 | integration files except `NATIVE_FILES` and `SERIAL_FILES`, plus `LINUX_NATIVE_FILES` |
+| perf | Ubuntu | 1 | `npm run test:perf` on ready pull requests |
+| smoke | Ubuntu | 1 | `npm run test:smoke` on the built dashboard on ready pull requests |
 | native | macOS, operator-started full releases only | 5 | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
-| native | Windows, operator-started full releases only | 5 (1 for unit only) | The same native membership and isolated serial/storage groups |
 
-With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The job-level whole-pipeline FIFO
+Full staging runs also include `lint`, `static`, `privacy`, `perf` and `smoke`. The job-level whole-pipeline FIFO
 admission and draft policy are described in [repository governance](../repository-governance.md).
 Each shard downloads the same `ci-balancing` input and uploads Vitest JSON reports as `durations-*`.
 Report basenames include the runner OS and selection group, so merged artifacts preserve both platforms.
@@ -168,16 +176,22 @@ also refresh the committed seed from a successful run:
 `gh run download <run-id> -n ci-timings -D <dir>` then copy its generated `ci-durations.json` to
 `scripts/test/ci-durations.json`. Corrupt reports and download failures fail CI.
 A new test file requiring native platform proofs belongs in `NATIVE_FILES`, outside Ubuntu shards.
+`LINUX_NATIVE_FILES` names the `NATIVE_FILES` members that pass on Linux (28 files, never a serial or storage file; the READY-bound upgrade proof is four files that share `tests/support/helpers/storage/ready-bound-upgrade.ts`): Ubuntu shards run them because `ci-run.sh` sets `RELAY_TEST_NATIVE=1`, and the macOS native shards still run them. `npm run test:pc` sets that variable for its listing and remote run, so its unchanged filter still keeps them. `tests/scripts/test/ci-files.test.ts` pins the list.
 Both platforms select from this one list; platform refusals remain failures until their proof is implemented.
 
 ### Pre-push tests on the PC
 
-The optional PC runner executes affected portable files in WSL Ubuntu.
+The PC runner executes the whole portable architecture suite and the unit and integration tests
+affected by the diff against `origin/staging` in WSL Ubuntu. Before a push is cleared, the main Mac
+runs `npm run test:pc` without file arguments. A backend host runs
+`npx vitest run --project architecture`, then
+`npx vitest run --project unit --project integration --changed=origin/staging` in the ticket checkout
+under its assigned test slot.
 The [root check rules](../../AGENTS.md#checks) and assigned local operations note govern its use:
 
 ```sh
 export RELAY_TEST_HOST=user@your-wsl-tailnet-node
-npm run test:pc                            # affected by the diff against origin/staging
+npm run test:pc                            # all architecture + affected unit and integration
 npm run test:pc -- tests/scripts/test/pc.test.ts
 npm run test:pc -- 'tests/backend/runs/**/*.integration.test.ts'
 ```
@@ -187,8 +201,10 @@ satisfying `package.json`, Git, flock, and Chromium's libraries installed with
 `npx playwright install --with-deps chromium`. Keep its private host in local configuration.
 Normal SSH host verification applies.
 
-Vitest selects the files; the runner subtracts `NATIVE_FILES`, `SERIAL_FILES` and
-`SERIAL_STORAGE_FILES` with one skip note. Those files run in GitHub CI. Each leased slot fetches
+With no file arguments, Vitest lists the architecture project in full and lists unit and integration
+with `--changed=origin/staging`. With file arguments, it lists all three projects without a changed
+filter and selects only the requested paths or globs. The runner subtracts `NATIVE_FILES`,
+`SERIAL_FILES` and `SERIAL_STORAGE_FILES`, except `LINUX_NATIVE_FILES`, with one skip note. Those files run in GitHub CI. Each leased slot fetches
 `origin/staging`'s pinned commit directly from the public GitHub repository. The Mac verifies that
 base is advertised by origin before sending a binary Git patch of the allowed candidate tree.
 The patch includes committed-but-unpushed, staged, unstaged and untracked non-ignored files,
@@ -208,7 +224,7 @@ Three independent slots under `~/.cache/relay-test-pc/` retain separate `node_mo
 lockfile hash is unchanged. A kernel lock holds the slot through sync and execution; a run takes
 a free slot or waits. After measuring integration load,
 capacity can be set in `~/.config/relay-test-pc/slots` (1..16; change only while idle). Integration
-runs build the dashboard as CI does. Test environment values come from `ci-checks.yml`, temp files
+runs build the dashboard as CI does. Test environment values come from `checks.yml`, temp files
 use `/dev/shm`, and each run uses at most two Vitest workers.
 
 Output streams and is saved with a final `result.json` under the main checkout's ignored
@@ -243,63 +259,53 @@ A dropped connection can retain a slot's `lease` directory. Verify that its sync
 and tests have stopped before removing that exact empty directory with `rmdir`. Never remove a
 live lease. GitHub CI remains the merge gate.
 
-### Focused tests in GitHub Actions
-
-```sh
-scripts/ci/focused-tests.sh <lane> <ubuntu|macos|windows|both|all> <test file>...
-```
-
-Runs the named files on a scratch branch (`both` is Ubuntu and macOS, `all` adds Windows; Windows-native files run only here or on a Windows machine) without a PR, the Mac test slot or the PC. The script commits `HEAD`'s tree with
-`git commit-tree`, naming the files and runners in `Focused-tests:` and `Focused-os:` trailers, force-pushes it to
-`scratch/<lane>`, watches `.github/workflows/focused-tests.yml`, prints PASS/FAIL per file, job timings and the run URL,
-then deletes the branch. It refuses tracked uncommitted changes, since the run tests `HEAD`. The workflow refuses an
-empty list, a path outside `tests/` or a missing file, then runs `privacy:check`, then the files with the CI worker
-flags (`scripts/ci/focused-run.sh`). A scratch run is quick feedback, never merge evidence: the PR's CI is the gate.
-Lanes use distinct names; pushing the same lane again cancels its earlier run.
-
 ### CI scheduling
 
-Unit and integration use two workers. Ubuntu jobs put test temp on tmpfs and have 20-minute
+A full staging run uses three Ubuntu unit shards, two architecture shards and thirty integration shards, plus lint, static, privacy, perf and smoke. Ubuntu unit and integration use three workers. macOS native unit and integration use two. Serial and storage use one. Ubuntu jobs put test temp on tmpfs and have 20-minute
 budgets; macOS jobs use a RAM disk with Spotlight indexing off and have 30-minute budgets. Budgets are
 hang guards. CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
 Vitest test and hook limits, test wait helpers and the browser deadlines tests pass to product code by it.
 Local runs use 1. Product defaults are unchanged. Remaining steps run after a failed serial proof
 unless the workflow is cancelled, preserving failure visibility, and any shard failure fails its suite.
 
-PR filtering uses these rules. Static and privacy always run. Draft PRs select only affected unit files;
+PR filtering uses these rules. Lint, static and privacy always run, including on a draft pull request. Every ready pull request also runs
+perf and smoke in separate Ubuntu jobs, including Markdown-only changes. Both jobs install Chromium,
+build the dashboard and use tmpfs for test temp, like an Ubuntu integration shard. Drafts and
+manual releases select neither job. Draft PRs select only affected unit files;
 `ready_for_review` triggers all applicable suites. Only operator-started manual full-release
 dispatches bypass the draft limit.
 
 | Changed paths | Routine suites selected |
 | --- | --- |
 | Markdown only | None. |
-| Source, scripts, configuration, dependencies, shared test helpers or fixtures, unknown non-Markdown paths | All four. |
+| Source, scripts, configuration, dependencies, shared test helpers or fixtures, unknown non-Markdown paths | Unit, integration and architecture. |
 | Unit test files only | Unit and architecture. |
 | Integration test files only | Integration and architecture. |
 | Architecture test files only | Architecture. |
 | Mock scene files only | Architecture. |
 | Mock scene helpers, fixtures or entrypoints | Unit, integration and architecture; unit and integration also import these. |
-| Local or perf test files only | Architecture; local remains machine-only and perf remains release-only. |
+| Local or perf test files only | Architecture; local remains machine-only. Ready PRs also run perf and smoke. |
 
-Select the union for mixed changes. Staging PRs execute only the portable entry workflow. Valid
-`staging` → `main` releases select native work and the isolated coverage/performance batch.
-Other heads into main omit native/batch work and fail the required release source-head check.
-Markdown-only releases omit those expensive jobs but explicitly pass the required release summary
-after proof validation. Operator manual releases select all routine native suites; the
-coverage/performance batch remains PR-only. Machine-readable docs count as configuration. Release
-authorization belongs to the root check rules. Protected branch pushes do not repeat CI.
+Select the union for mixed changes. Staging PRs execute the portable plan plus perf and smoke.
+Valid `staging` or `hotfix/*` → `main` releases also select native work. Other heads into main omit
+native work and fail the required source-head check. Operator manual releases select all routine
+native suites. Machine-readable docs count as configuration. Release authorization belongs to the
+root check rules. Protected branch pushes do not repeat CI.
 
 Both event entries use per-PR/manual-branch workflow concurrency with cancellation enabled. New
 pushes supersede older runs for the same workflow/PR-or-ref key. Each entry admits one complete
-reusable check call through the shared job-level `ci-runners` FIFO, `queue: max` and
-`cancel-in-progress: false`. Every mandatory proof, selected batch and timing publisher remains
+reusable check call with `queue: max` and `cancel-in-progress: false`. Staging uses the `ci-runners`
+FIFO. Release runs in its own lane and neither waits behind nor blocks staging pull-request runs.
+Every mandatory proof, including perf and smoke, and timing publication remains
 inside that callee; no callee reacquires admission. Merge train follows the five top summaries
 outside the admitted call; the standalone staging-push train is unchanged.
 
-Each callee's final `unit` runs unless cancelled and checks all mandatory proofs and timing
-publication, rejecting failed or missing outcomes. Cancellation stops its checkout/install work.
-In releases it also checks the selected batch, after
-`unit-proofs` allows batch execution without a cycle. The required outer `unit` always validates
+`checks.yml` is the only file that defines test jobs and has no `timings` job. Its jobs are `changes`, `lint`, `static`,
+`privacy`, `ubuntu`, `macos`, `unit-proofs`, `integration`, `architecture`, `perf`, `smoke` and `unit`; the plan
+empties `macos` outside a full release, and `unit-proofs` runs only for the release kind. Its `unit` runs unless cancelled, with one checkout and one install.
+It checks proofs, merges durations, uploads `ci-timings` only when every proof passed, then runs
+final verification, rejecting failed, cancelled or missing outcomes. Cancellation stops its checkout/install work.
+It requires successful perf and smoke results on ready PRs, and exactly skipped results when omitted. The required outer `unit` always validates
 both the complete call result and inner unit output as success. Train is excluded from the inner
 fence because it runs downstream. Portable selected suites require Ubuntu success. Selected
 eligible full-release unit/integration require both native platforms to succeed, regardless of
@@ -320,7 +326,7 @@ proves the selections give each file to exactly one job, so selected paths need 
 selection/history adapters and actual summary-shell failures for staging, source/head, Markdown
 and manual cases. Source/API-list checks are not the Actions graph proof: the operator reviews
 the actual published staging graph to confirm no release workflow is loaded.
-Coverage, perf and local selection are unchanged.
+Coverage is local only through `npm run test:coverage`, with unchanged floors. Local project selection is unchanged.
 
 ## 3. Private test temporary directory
 
@@ -429,12 +435,11 @@ executable enforcement.
 `names-check` (`tests/architecture/tooling/names-check.test.ts`) runs the shipped `names:check`
 command over the shared table in `tests/support/helpers/names-check-cases.ts`. A wrong name was
 reaching CI and spending a full run. Allowed branches are `main`, `staging`, `dependabot/*`,
-`feature/<kebab>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `chore/<kebab>-<kebab>`, `design/<kebab>`, and
-`scratch/<kebab>-<digits>`. A staging pull request head must be `feature/*`, `fix/*` or `chore/*`, except
+`feature/<kebab>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `chore/<kebab>-<kebab>`, and `design/<kebab>`. A staging pull request head must be `feature/*`, `fix/*` or `chore/*`, except
 `dependabot/*`. A non-dependabot title must be `<Area>: <text>`; a conventional title such as
 `feat(ci): add names check` is rejected. An origin branch that already matches
 `task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is
-`.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. `.github/workflows/ci.yml` runs that
+`.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. `.github/workflows/staging.yml` runs that
 command as its first job, and every other job waits on it. `pull_request` includes `edited`, so a
 title change at the same head runs the check again. `--all` lists off-pattern local branches and
 worktrees, and a local branch or linked worktree whose Concord ticket is `complete` or `closed`,
