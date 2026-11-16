@@ -1263,7 +1263,7 @@ export class RuntimeAdmission {
     const parent = dirname(checked);
     if (parent === join(this.#stateRoot, "backups", "suspects") && /^suspect-\d{17}-[0-9a-f-]{36}\.sqlite$/u.test(checked.slice(parent.length + 1))) return;
     if (parent === join(this.#stateRoot, "backups", "authority")
-      && /^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite)$/u.test(checked.slice(parent.length + 1))) {
+      && /^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown|\.session)?\.sqlite)$/u.test(checked.slice(parent.length + 1))) {
       this.assertStateRoot(parent);
       return;
     }
