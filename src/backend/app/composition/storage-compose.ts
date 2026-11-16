@@ -1192,6 +1192,7 @@ export function composeProfileRuntime(input: Readonly<{
         const lifetime = machine.lifetime;
         if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("profile-logout-controller-required");
         await lifetime.awaitOwnedChildrenClosed();
+        await entry.context!.account.signOut();
         await entry.context!.account.close();
         entry.admission.assertProfileRuntime();
         const current = machine.readProfileRegistry();

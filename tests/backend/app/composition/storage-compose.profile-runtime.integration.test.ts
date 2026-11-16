@@ -127,13 +127,17 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
     assert.throws(() => context.protectedSecrets.read());
     await runtime.awaitClosurePreparation(active.profileId);
     assert.throws(() => context.database.getMeta(), /closed/u);
-    assert.deepEqual(credentialSnapshot(credentialPath), credentialBytes);
     assert.equal(runtime.session.resumeLogout(operation.operationId).state, "signed-out");
     assert.throws(() => context.database.getMeta(), /closed/u);
     assert.throws(() => context.admission.assertLive());
     const next = runtime.session.signIn({ email: fields.email, password: fields.password, at: clock.now().toISOString() });
     assert.equal(next.state, "active");
     if (next.state === "active") assert.ok(next.epoch > epoch);
+    const readback = machine.admitProfile(active.profileId);
+    try {
+      const record = createChatGptCredentialRepository({ admission: readback, stateRoot: readback.stateRoot }).read();
+      assert.equal(record?.registration, null); assert.equal(record?.session, null);
+    } finally { readback.release(); }
     assert.equal(transport.mock.calls.length, 0);
   } finally { await runtime.close(); machine.release(); transport.mockRestore(); rmSync(workspace, { recursive: true, force: true }); }
 });
