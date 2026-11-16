@@ -441,8 +441,6 @@ export const CommandRejectionCodeSchema = z.enum([
   "invalid-value",
   "cross-field-invalid",
   "document-too-large",
-  "authority-unjournaled",
-  "authority-uncertain",
   "directory-integrity",
   "lock-unavailable",
   "command-divergent",

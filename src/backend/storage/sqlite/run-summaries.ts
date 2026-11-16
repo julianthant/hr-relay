@@ -1,7 +1,7 @@
 import { CURRENT_RUN_SETTLEMENT_SQL } from "./run-settlement-row.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { timelineEventFromRow } from "./timeline-repository.js";
-import { FailureResolutionSchema } from "../../../models/trust/failure-resolution.js";
+import { failureResolutionFromRow } from "./failure-resolution.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { CalendarQuerySchema, CalendarWireSchema } from "../../../models/dashboard/calendar.js";
@@ -46,7 +46,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
         const row=z.object({run_id:z.string()}).parse(raw);
         if(grouped.has(row.run_id))throw new Error("summary-source-ambiguous");
         grouped.set(row.run_id,record);
-        if(table === "run_failures")resolutions.set(row.run_id,FailureResolutionSchema.parse(JSON.parse(z.object({resolution_json:z.string()}).parse(raw).resolution_json)));
+        if(table === "run_failures")resolutions.set(row.run_id,failureResolutionFromRow(raw).resolution);
       }
       return {grouped,resolutions};
     };

@@ -29,3 +29,7 @@ it("admits only the authorization origin/path and fixed registered error text", 
   assert.equal(ChatGptAccountStateSchema.safeParse({ state: "unavailable", code: "CHATGPT_AUTH_INVALID", message: "raw secret" }).success, false);
   assert.equal(ChatGptSignInCompletionSchema.safeParse({ state: "refused", attemptId, code: "CHATGPT_AUTH_INVALID", message: ERROR_CATALOG.CHATGPT_AUTH_INVALID.text }).success, true);
 });
+it("carries no identity on a signed-out account", () => {
+  assert.equal(ChatGptAccountStateSchema.safeParse({ state: "signed-out" }).success, true);
+  assert.equal(ChatGptAccountStateSchema.safeParse({ state: "signed-out", account: { email: "synthetic@example.com" } }).success, false);
+});

@@ -95,14 +95,14 @@ describe("independent protected Settings surface", () => {
     assert.equal(ProtectedSettingsCommandRequestSchema.parse(h.commands[1]).target.expectedRevision, credentialRevision + 1);
     assert.equal(h.controller().protectedEditor.save.state, "applied");
   });
-  for (const failure of ["lost-response", "failed-readback", "failed-audit", "intervening-writer", "foreign-result", "legacy-readback"] as const) {
+  for (const failure of ["lost-response", "failed-readback", "pending-reply", "intervening-writer", "foreign-result", "legacy-readback"] as const) {
     it(`keeps exact protected attempt and truthful uncertainty for ${failure}`, async () => {
       const h = await setup();
       h.ports.execute = input => {
         const result = h.authority.execute(input); const request = ProtectedSettingsCommandRequestSchema.parse(input);
         if (failure === "lost-response") throw new Error("raw-secret-server-sentinel");
         if (failure === "failed-readback") h.ports.read = () => { throw new Error("raw-secret-server-sentinel"); };
-        if (failure === "failed-audit") return { state: "rejected", commandId: request.commandId, code: "authority-unjournaled", message: "raw-secret-server-sentinel" };
+        if (failure === "pending-reply") return { state: "pending", commandId: request.commandId };
         if (failure === "intervening-writer") h.authority.protectedApply({ ucpathPassword: { set: "later-secret-sentinel" } });
         if (failure === "foreign-result") return { ...result, commandId: "00000000-0000-4000-8000-000000000099" };
         if (failure === "legacy-readback" && "entries" in result) return { ...result, entries: { ...result.entries, personLookupCanaryEid: { present: false }, separationsKualiFinalizationCanaryDocumentNumber: { present: false } } };

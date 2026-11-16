@@ -249,7 +249,7 @@ it("records a recovered continuation's later failure as after the source run's c
   const decision = failureDecision(FailureDetailWireSchema.parse({
     ...failureDetailWireFixture({ runId: next.envelope.runId, failureId: failure.failureId, traceId: failure.traceId, workflowId: descriptor.id }),
     writeState: failure.writeState,
-    resolution: { capability: { state: "available" }, capture: { failureId: failure.failureId, runId: next.envelope.runId, resolution: { status: "unresolved", version: 1 } } } }));
+    resolution: { capture: { failureId: failure.failureId, runId: next.envelope.runId, resolution: { status: "unresolved", version: 1 } } } }));
   assert.equal(decision.type, "failed-after-write");
   assert.deepEqual(decision.options.map(({ id }) => id), ["mark-as-failed", "add-note"]);
   assert.deepEqual(effects(h), before);

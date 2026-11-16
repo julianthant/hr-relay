@@ -104,7 +104,6 @@ describe("General ChatGPT account", () => {
       { state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "enabled" },
       { state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "disabled" },
       { state: "expired" },
-      { state: "signed-out", account: { email: "operator@example.com" } },
       { state: "signed-out" },
     ] as const satisfies readonly ChatGptAccountSnapshot[]) {
       await mount(controlledPort(snapshot));
