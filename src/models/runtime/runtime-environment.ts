@@ -196,7 +196,7 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
   ],
   KEEP_TEST_TMP: ["tests/support/private-temp-setup.ts"],
   TZ: [
-    "tests/backend/runs/projections/run-summary.derivation.integration.test.ts",
+    "tests/rules/runs/summary-derivation.derivation.integration.test.ts",
     "tests/perf/dashboard-fixture.integration.test.ts",
     "tests/backend/storage/admission/process-identity.integration.test.ts",
   ],

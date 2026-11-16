@@ -1,7 +1,7 @@
 import { OnboardingReadWritePlan } from "../../../src/models/workflows/onboarding/read-write-plan.js";
 import { ONBOARDING_ROSTER_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
 import { createOnboardingRunWorld } from "../../support/helpers/backend/onboarding-run-world.js";
-import { buildRunGate } from "../../../src/backend/runs/queries/run-trust.js";
+import { buildRunGate } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { buildRunDetail, resolveGateArmAnswer } from "../../../src/backend/runs/queries/run-detail.js";
 import { GateArmAnswerRequestSchema } from "../../../src/rules/commands/commands.js";
 import { randomUUID } from "node:crypto";

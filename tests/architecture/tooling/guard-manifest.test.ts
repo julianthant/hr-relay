@@ -455,7 +455,7 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runs/lifecycle/run-record-service.ts",
       "src/backend/runs/lifecycle/run-result.ts",
       "src/backend/runs/settings/run-settings.ts",
-      "src/backend/runs/projections/run-summary.ts",
+      "src/rules/runs/summary-derivation.ts",
       "src/backend/runs/provenance/task-provenance.ts",
       "src/backend/runs/lifecycle/terminal-authorization.ts",
       "src/backend/runs/provenance/test-data-usage.ts",
