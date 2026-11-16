@@ -1786,7 +1786,7 @@ function runSearchDefinitions(): readonly string[] {
   const expected = new DatabaseSync(":memory:");
   try {
     for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) execMigrationStatement(expected, statement);
-    return z.array(z.strictObject({ sql: z.string() })).parse(expected.prepare("SELECT sql FROM sqlite_schema WHERE tbl_name='run_search' AND sql IS NOT NULL ORDER BY type DESC,name").all()).map(row => row.sql);
+    return z.array(z.strictObject({ sql: z.string() })).parse(expected.prepare("SELECT sql FROM sqlite_schema WHERE tbl_name='run_search' AND sql IS NOT NULL ORDER BY type='table' DESC,type,name").all()).map(row => row.sql);
   } finally { expected.close(); }
 }
 
