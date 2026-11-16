@@ -1,9 +1,12 @@
+import { serializeErrorCauses } from "../../../models/failures/error-origins.js";
 import { fileURLToPath } from "node:url";
 import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
-import { acquireRuntimeLifetimeLock,receiveRuntimeLifetimeLock,RuntimeLifetimeLock,WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
+import { acquireRuntimeLifetimeLock,receiveRuntimeLifetimeLock,RuntimeAlreadyRunningError,RuntimeLifetimeLock,WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 
+import { connect } from "node:net";
 import { join,resolve } from "node:path";
+import { z } from "zod";
 import { hostConfigFacts } from "../../../models/config/host-display.js";
 import { assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment } from "../../../models/config/secrets.js";
 import { systemClock } from "../../../rules/time/clock.js";
@@ -11,7 +14,7 @@ import { acquireExclusiveRuntimeAdmission,RuntimeAdmission } from "../../storage
 import { acquireDashboardEntrypointAdmission,acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { FixedLayoutRefusedError } from "../../storage/maintenance/fixed-layout.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
-import { AutomaticPersonRepairRefusedError,RegisteredPersonUpgradeRefusedError,RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
+import { AutomaticPersonRepairRefusedError,FINISH_SHUTDOWN_BACKUP,hasPendingShutdownBackup,readPendingShutdownBackup,RegisteredPersonUpgradeRefusedError,removePendingShutdownBackup,RuntimeCustodyUncertainError,writePendingShutdownBackup } from "../composition/storage-compose.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { probePrimaryDisplay } from "../host/primary-display.js";
 import { WORKER_GRACEFUL_STOP_TIMEOUT_MS, WorkerPoolError } from "../../runtime/workers/worker-pool.js";
@@ -56,6 +59,58 @@ export function secureEnvironmentEntrypoint(
   );
 }
 
+/** How long a starting dashboard or a quit-time backup finisher waits for the lifetime lock while no dashboard serves. */
+export const SHUTDOWN_BACKUP_WAIT_MS = 600_000;
+
+export interface ShutdownBackupLockWait {
+  readonly acquire: (port: number) => Promise<RuntimeLifetimeLock>;
+  readonly backupPending: () => boolean;
+  readonly backendListening: () => Promise<boolean>;
+  readonly sleep: (ms: number) => Promise<void>;
+  readonly nowMs: () => number;
+  readonly onWait: () => void;
+}
+
+// A quit hands its backup to a finisher that holds the lifetime lock while no dashboard serves; wait for it instead of refusing.
+// Any other holder, such as a booting dashboard or a storage command, is refused at once.
+export async function acquireLifetimeLockAfterShutdownBackup(port: number, wait: ShutdownBackupLockWait): Promise<RuntimeLifetimeLock> {
+  const deadline = wait.nowMs() + SHUTDOWN_BACKUP_WAIT_MS;
+  let announced = false;
+  for (;;) {
+    try { return await wait.acquire(port); }
+    catch (error) {
+      if (!(error instanceof RuntimeAlreadyRunningError) || wait.nowMs() >= deadline || !wait.backupPending() || await wait.backendListening()) throw error;
+    }
+    if (!announced) { announced = true; wait.onWait(); }
+    await wait.sleep(1000);
+  }
+}
+
+/**
+ * Completes the recorded quit-time backup: the finisher passes `only` and lets errors propagate, a starting dashboard passes `warn` and keeps the record on failure.
+ * Only people backed up here leave the record, so a delayed finisher never drops people a later quit recorded.
+ */
+export async function completePendingShutdownBackup(deps: Readonly<{ read: () => ReadonlySet<string> | undefined; backup: (people: ReadonlySet<string>) => Promise<void>;
+  remove: () => void; write: (people: readonly string[]) => void; only?: ReadonlySet<string>; warn?: (error: unknown) => void }>): Promise<void> {
+  try {
+    const record = deps.read();
+    if (record === undefined) return;
+    const people = new Set([...record].filter(person => deps.only?.has(person) ?? true));
+    if (people.size === 0) return;
+    await deps.backup(people);
+    const remaining = [...record].filter(person => !people.has(person));
+    if (remaining.length === 0) deps.remove(); else deps.write(remaining);
+  } catch (error) { if (deps.warn === undefined || hasUnprovedSourceClosure(error)) throw error; deps.warn(error); }
+}
+
+function backendListening(port: number): Promise<boolean> {
+  return new Promise(resolve => {
+    const socket = connect({ port, host: "127.0.0.1" });
+    socket.once("connect", () => { socket.destroy(); resolve(true); });
+    socket.once("error", () => { resolve(false); });
+  });
+}
+
 export async function runSecureEnvironmentBootstrap(
   args: readonly string[] = process.argv.slice(2),
   dependencies: SecureEnvironmentBootstrapDependencies = {},
@@ -78,12 +133,20 @@ export async function runSecureEnvironmentBootstrap(
     // The child never closes its listener copy: the OS releases it at exit, after cleanup, so the port proves this process is gone.
     try { await runAdmittedEnvironmentBootstrap(args, dependencies, { lock, parentSignal: controller.signal }); }
     catch (error) {
-      process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+      // Class names and codes of the whole cause tree only: messages and stack paths can carry person data or the account name.
+      process.stderr.write(`${JSON.stringify({ code: "WORKER_EXIT_FAILED", causes: serializeErrorCauses(error).map(({ name, code }) => ({ name, code })) })}\n`);
       return exit(1);
     }
     return exit(typeof process.exitCode === "number" ? process.exitCode : 0);
   }
-  const lock = await (dependencies.acquireLifetimeLock ?? acquireRuntimeLifetimeLock)(rebuildRuntimeIsolation.lockPort);
+  const acquire = dependencies.acquireLifetimeLock ?? acquireRuntimeLifetimeLock;
+  const dashboard = selector === "cli" && entrypointArgs[0] === "dashboard";
+  const lock = dashboard || selector === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === FINISH_SHUTDOWN_BACKUP
+    ? await acquireLifetimeLockAfterShutdownBackup(rebuildRuntimeIsolation.lockPort, { acquire, backupPending: () => hasPendingShutdownBackup(applicationDataWorkspace()),
+      backendListening: () => backendListening(rebuildRuntimeIsolation.backendPort),
+      sleep: ms => new Promise(done => setTimeout(done, ms)), nowMs: () => systemClock.nowMs(),
+      onWait: () => { if (dashboard) process.stderr.write("[dashboard] finishing the last quit-time backup; starting when it is done.\n"); } })
+    : await acquire(rebuildRuntimeIsolation.lockPort);
   let retain = false;
   try { await runAdmittedEnvironmentBootstrap(args, dependencies, { lock, parentSignal: controller.signal }); }
   catch (error) {
@@ -118,6 +181,16 @@ async function runAdmittedEnvironmentBootstrap(
     lifetime.lock.assertHeld();
     return lifetime.lock;
   };
+  if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === FINISH_SHUTDOWN_BACKUP) {
+    const [target, ...people] = entrypointArgs.slice(2);
+    if (target !== workspace) throw new Error("shutdown-backup-workspace-mismatch");
+    const { backupRegisteredPeopleAtCleanShutdown } = await import("../composition/storage-compose.js");
+    const only = new Set(z.array(z.uuid()).min(1).parse(people));
+    await completePendingShutdownBackup({ read: () => readPendingShutdownBackup(workspace), only, remove: () => { removePendingShutdownBackup(workspace); },
+      write: remaining => { writePendingShutdownBackup(workspace, remaining); },
+      backup: done => backupRegisteredPeopleAtCleanShutdown(workspace, rootLifetime(), systemClock, done) });
+    return;
+  }
   if (repoRoot !== workspace && dependencies.acquireAdmission === undefined && !(lifetime.lock instanceof WorkerRuntimeLifetimeLock)) {
     const { sweepLeakedReadonlyAuthorityCopies } = await import("../../storage/sqlite/readonly-authority-snapshot.js");
     sweepLeakedReadonlyAuthorityCopies();
@@ -131,6 +204,11 @@ async function runAdmittedEnvironmentBootstrap(
   if (entrypoint === "cli" && entrypointArgs[0] === "dashboard" && dependencies.acquireAdmission === undefined) {
     const { initializeRegisteredPersonStores } = await import("../composition/storage-compose.js");
     await initializeRegisteredPersonStores(workspace, rootLifetime(), hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay)));
+    const { backupRegisteredPeopleAtCleanShutdown } = await import("../composition/storage-compose.js");
+    await completePendingShutdownBackup({ read: () => readPendingShutdownBackup(workspace), remove: () => { removePendingShutdownBackup(workspace); },
+      write: remaining => { writePendingShutdownBackup(workspace, remaining); },
+      backup: people => { process.stderr.write("[dashboard] finishing the last quit-time backup.\n"); return backupRegisteredPeopleAtCleanShutdown(workspace, rootLifetime(), systemClock, people); },
+      warn: error => { process.stderr.write(`[dashboard] the last quit-time backup is unfinished: ${error instanceof Error ? error.message : String(error)}\n`); } });
   }
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "cancel-queued-runs") {
     const { runOfflineQueuedRunCancellation } = await import("../../storage/maintenance/cancel-queued-runs.js");

@@ -3,8 +3,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
+import { z } from "zod";
 import { predecessorSeparationsRerun } from "../../../support/helpers/backend/predecessor-separations-rerun.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import type { EvidenceSchemaAdmission } from "../../../../src/models/storage/evidence-schema-admission.js";
 
 const tables = ["runs", "run_results", "run_checkpoints", "write_intents", "write_attempts", "gate_results", "run_delegations", "commands", "command_audits", "run_receipts", "timeline_events", "delegation_dependencies", "run_failures"] as const;
 async function assertConversionRefused(workspace: string, lifetime: RuntimeLifetimeLock) {
@@ -86,7 +88,8 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
         const document = createCanonicalCredentials(admission).readRecord("protected"); assert.ok(document);
         assert.equal(authenticateDocument(document.value).retiredLegacy.valueIds.includes(f.valueId), true);
         const service = createReceiptService({ database, runReader: testRunService(database, systemClock), descriptors: [descriptor] });
-        assert.deepEqual(service.ensureReceipt(f.run.envelope.runId), f.receipt);
+        // The pre-initials run input is retired history: its receipt is never re-derived under the current canonical input.
+        assert.throws(() => service.ensureReceipt(f.run.envelope.runId), /canonical-input/u);
         const { createOperatorProjection } = await import("../../../../src/backend/app/composition/dashboard/queue.js");
         const { createOperatorRunDetail } = await import("../../../../src/backend/app/composition/dashboard/run-detail.js");
         const { buildRunLogsSection } = await import("../../../../src/backend/runs/queries/run-logs.js");
@@ -102,17 +105,19 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
         assert.deepEqual(frozenRows(f.path), before);
         const owner = { kind: "run-input" as const, id: f.run.envelope.runId };
         const current = deriveSchemaHash(descriptor.canonicalInput, "output"), old = f.run.input.parsed.schemaHash;
-        assert.equal(database.evidenceSchemaHash(owner, f.run.input, old, current), current);
+        assert.notEqual(old, current); assert.equal(database.evidenceSchemaHash(owner, f.run.input, old, current), old);
         assert.throws(() => database.evidenceSchemaHash(owner, { ...f.run.input, parsed: { ...f.run.input.parsed, protectedBindings: [] } }, old, current), /source-changed/u);
-        assert.throws(() => database.evidenceSchemaHash(owner, f.run.input, old, "f".repeat(64)), /source-changed/u);
+        assert.equal(database.evidenceSchemaHash(owner, f.run.input, old, "f".repeat(64)), old);
         assert.throws(() => database.evidenceSchemaHash(owner, f.run.input, "e".repeat(64), current), /source-changed/u);
         const { AuthorityEvidenceSchemaUpgradeRecordSchema } = await import("../../../../src/models/config/authority.js");
         const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse(JSON.parse(String(journal[0]?.payload_json)));
         assert.throws(() => admission.assertEvidenceSchemaConversion({ ...record, evidenceSchemaMac: "0".repeat(64) }), /seal-invalid/u);
         assert.throws(() => admission.assertEvidenceSchemaConversion({ ...record, evidenceSchemas: { ...record.evidenceSchemas, profileId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }), /foreign/u);
+        const certified = record.evidenceSchemas;
+        if (certified.id !== "profile-name-domain") throw new Error("profile-name-domain-record-required");
         for (const intent of f.writes) {
           if (intent.status !== "committed") throw new Error("fixture-completion-proof-required");
-          const certificate = record.evidenceSchemas.admissions.find(entry => entry.owner.kind === "write-proof" && entry.owner.id === intent.writeIntentId);
+          const certificate: EvidenceSchemaAdmission | undefined = certified.admissions.find(entry => entry.owner.kind === "write-proof" && entry.owner.id === intent.writeIntentId);
           assert.ok(certificate);
           assert.throws(() => database.evidenceSchemaHash(certificate.owner, { ...intent, bindingProofDigest: "f".repeat(64) }, certificate.sourceSchemaHash, certificate.currentSchemaHash), /source-changed/u);
         }
@@ -135,6 +140,7 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
   const { separationsDescriptor: descriptor } = await import("../../../support/helpers/registered-workflows.js");
   const { sequentialIdFactory } = await import("../../../support/fixtures/phase1f-run-fixtures.js");
   const { repeatEvidenceDigest } = await import("../../../../src/models/run/rerun.js");
+  const { profileInitials } = await import("../../../../src/models/profiles/profile-identity.js");
   const before = frozenRows(f.path), lifetime = await RuntimeLifetimeLock.acquire(0);
   try {
     const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null });
@@ -152,6 +158,8 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
     try {
       const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
       assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("converted-rerun-sign-in-refused");
+      // The account enters initials of its own, so a plan that derived letters from the name would be caught.
+      assert.equal(runtime.session.changeDetails(active.token, { timekeeperInitials: "QZ" }).state, "changed");
       const admission = machine.admitProfile(active.profileId), credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot });
       const database = AuthorityDatabase.open(admission, { path: f.path, migrationOwner: "certified-rerun-readback", busyTimeoutMs: 250 }, systemClock,
         undefined, undefined, undefined, credentials);
@@ -178,6 +186,9 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
         const retained = database.authority.startPlans.get(plan.startPlanId); assert.ok(retained);
         assert.equal(Reflect.get(Object(retained.planned[0]?.input.value), "timekeeperName"), identity.displayName);
         assert.notEqual(identity.displayName, Reflect.get(Object(f.run.input.parsed.value), "timekeeperName"));
+        assert.equal(identity.initials, "QZ"); assert.notEqual(profileInitials(identity.displayName), identity.initials);
+        assert.equal(Reflect.get(Object(retained.planned[0]?.input.value), "timekeeperInitials"), identity.initials);
+        assert.equal(Object.hasOwn(z.record(z.string(), z.unknown()).parse(f.run.input.parsed.value), "timekeeperInitials"), false);
         assert.throws(() => planner.plan({ ...input, submissions: [{ ...input.submissions[0], timekeeperName: "Caller Override" }] }));
         for (const wire of [values, warning, plan]) {
           assert.equal(JSON.stringify(wire).includes("Deterministic Timekeeper"), false);

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { composeProfileRuntime, initializeRegisteredPersonStores, restoreNewestPersonBackup } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -47,7 +47,9 @@ it("boots a person restored from a schema-21 backup through the startup upgrade,
   children.cleanups.push(() => before.profile.close());
   const plan = StartPlanWireSchema.parse(await (await before.post("start-plans", START)).json());
   const queued = CommandResultSchema.parse(await (await before.post("commands", startCommand(plan, before.clock.now().toISOString()))).json());
-  assert.ok(queued.state === "applied" && queued.workerStartup?.state === "refused", JSON.stringify(queued));
+  assert.ok(queued.state === "applied" && queued.workerStartup === undefined, JSON.stringify(queued));
+  // The refusing spawner fails the start after the reply; let it settle before the dashboard stops.
+  await vi.waitFor(() => assert.equal(before.startupFaults().length, 1));
   const [stale] = before.context.database.authority.runs.listByWorkflow("person-lookup");
   assert.ok(stale?.lifecycle.state === "queued");
   await before.dashboard.stop(); await before.runtime.close(); await before.profile.closeController();
@@ -114,7 +116,6 @@ it("boots a person restored from a schema-21 backup through the startup upgrade,
   assert.deepEqual(fresh.refused, []);
   const started = CommandResultSchema.parse(await (await post("commands", startCommand(fresh))).json());
   assert.equal(started.state, "applied", JSON.stringify(started));
-  assert.equal(started.state === "applied" ? started.workerStartup : undefined, undefined, JSON.stringify(started));
   const runs = () => context.database.authority.runs.listByWorkflow("person-lookup");
   const output = () => JSON.stringify({ runs: runs().map(run => [run.envelope.runId, run.lifecycle]), spawns: records.map(record => record.argv.join(" ")), faults });
   await children.waitFor(() => runs().some(run => run.lifecycle.state === "terminal"), "the post-upgrade run to settle", output, 60_000);

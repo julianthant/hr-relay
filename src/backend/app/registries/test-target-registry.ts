@@ -373,17 +373,6 @@ export function testTargetRegistryMember(document: unknown): unknown {
   return Reflect.get(document, TEST_TARGET_REGISTRY_MEMBER);
 }
 
-/** Read the registry of an EXACT checkout root; no CWD default and no search. */
-export function readTestTargetRegistry(
-  repoRoot: string,
-  manifests: readonly TestTargetManifestView[] = [],
-): TestTargetRegistry {
-  const document: unknown = JSON.parse(
-    readFileSync(`${repoRoot}/${TEST_TARGET_REGISTRY_PATH}`, "utf8"),
-  );
-  return parseTestTargetRegistry(testTargetRegistryMember(document), manifests);
-}
-
 const committedRegistryInput: unknown = testTargetRegistryMember(
   JSON.parse(
     readFileSync(

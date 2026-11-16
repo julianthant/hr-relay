@@ -86,40 +86,6 @@ function installationLocator(checker: ts.TypeChecker, node: ts.PropertyAccessExp
   }) === true;
 }
 
-function durableArchiveCommit(checker: ts.TypeChecker, node: ts.Node): boolean {
-  if (!ts.isPropertyAssignment(node) || !ts.isArrowFunction(node.initializer)
-    || !ts.isCallExpression(node.initializer.body)) return false;
-  const call = node.initializer.body;
-  if (!declaredSymbol(checker, call.expression, "publishManualArchive", "src/backend/runs/lifecycle/archive-terminal-runs.ts")) return false;
-  const object = node.parent;
-  if (!ts.isObjectLiteralExpression(object)) return false;
-  const contextual = checker.getContextualType(object);
-  if (contextual === undefined || contextual.getSymbol()?.name !== "CommandApplication"
-    || contextual.getSymbol()?.declarations?.some(declaration => declaration.getSourceFile().fileName.replaceAll("\\", "/").endsWith("/src/backend/runs/commands/command-application.ts")) !== true) return false;
-  let enclosing: ts.Node = object;
-  while (!ts.isFunctionLike(enclosing) && enclosing.parent !== undefined) enclosing = enclosing.parent;
-  if (!ts.isFunctionDeclaration(enclosing) || enclosing.type === undefined || !ts.isTypeReferenceNode(enclosing.type)
-    || !declaredSymbol(checker, enclosing.type.typeName, "CommandApplication", "src/backend/runs/commands/command-application.ts")) return false;
-  const inspectedTypes = new Set<ts.Type>();
-  function browserDescendant(type: ts.Type, location: ts.Node): boolean {
-    if (inspectedTypes.has(type)) return false;
-    inspectedTypes.add(type);
-    if ((type.flags & ts.TypeFlags.Any) !== 0) return true;
-    if (type.isUnionOrIntersection()) return type.types.some(member => browserDescendant(member, location));
-    if ((type.flags & ts.TypeFlags.Object) === 0 || type.getCallSignatures().length > 0) return false;
-    return type.getProperties().some(property => RAW_BROWSER_MEMBERS.has(property.name) || property.name === "click"
-      || browserDescendant(checker.getTypeOfSymbolAtLocation(property, location), location));
-  }
-  let unsafe = false;
-  function inspect(child: ts.Node): void {
-    if (ts.isExpression(child) && browserDescendant(checker.getTypeAtLocation(child), child)) unsafe = true;
-    if (ts.isPropertyAccessExpression(child) && (RAW_BROWSER_MEMBERS.has(child.name.text) || child.name.text === "click")) unsafe = true;
-    ts.forEachChild(child, inspect);
-  }
-  for (const argument of call.arguments) inspect(argument);
-  return !unsafe;
-}
-
 function rawBrowserAstIssues(path: string, source: ts.SourceFile, checker: ts.TypeChecker): readonly string[] {
   const issues: string[] = [];
   const rawOwner = isRawBrowserOwner(path);
@@ -171,14 +137,13 @@ function rawBrowserAstIssues(path: string, source: ts.SourceFile, checker: ts.Ty
       && ts.isIdentifier(node) && node.text === "mintMutationCapability") {
       issues.push(`${path}: mintMutationCapability has exactly one permitted caller`);
     }
-    // Browser commits require a capability-validating driver owner; durable
-    // Archive callbacks require their exact command and publisher declarations.
+    // Browser commits require a capability-validating driver owner.
     const commitImplementation = (ts.isMethodDeclaration(node) && node.name.getText(source) === "commit"
       && node.body !== undefined)
       || (ts.isPropertyAssignment(node) && node.name.getText(source) === "commit"
         && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)))
       || (ts.isFunctionDeclaration(node) && node.name?.getText(source) === "commit" && node.body !== undefined);
-    if (commitImplementation && !durableArchiveCommit(checker, node)
+    if (commitImplementation
       && !(DRIVER_OWNER_PATTERN.test(path) && source.getFullText().includes("assertMintedMutationCapability"))) {
       issues.push(
         `${path}: a commit implementation must live in a store driver owner and validate its `
@@ -193,7 +158,7 @@ function rawBrowserAstIssues(path: string, source: ts.SourceFile, checker: ts.Ty
 
 const MUTATION_CAPABILITY_REGISTRY = "src/workflow-kit/mutation-capability.ts";
 const MUTATION_CAPABILITY_MINTER = "src/backend/runtime/writes/write-sequencer.ts";
-const DRIVER_OWNER_PATTERN = /^src\/(?:stores|backend\/systems)\/[a-z0-9-]+\/driver\//u;
+const DRIVER_OWNER_PATTERN = /^src\/backend\/systems\/[a-z0-9-]+\/driver\//u;
 
 export function auditTaskDriverBoundary(root: string): readonly string[] {
   const issues: string[] = [];

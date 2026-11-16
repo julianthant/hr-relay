@@ -7,8 +7,6 @@ import {
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
 
-/** The system-host section wire identity. */
-export const SETTINGS_SYSTEM_HOSTS_SECTION_ID = "system-hosts";
 export const SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID = "workflow-capabilities";
 
 /** Explicit test-host availability states. */
@@ -31,6 +29,7 @@ export type SystemHostWire = z.infer<typeof SystemHostWireSchema>;
 export const DryRunPostureWireSchema = z.union([
   z.strictObject({ state: z.literal("supported"), firstTransactionNodeId: NodeIdSchema }),
   z.strictObject({ state: z.literal("supported"), firstDelegationNodeId: NodeIdSchema }),
+  z.strictObject({ state: z.literal("supported"), firstPublicationNodeId: NodeIdSchema }),
   z.strictObject({ state: z.literal("unsupported"), reason: z.literal("no-transaction-node") }),
   z.strictObject({
     state: z.literal("unsupported"),

@@ -34,7 +34,6 @@ export function createFixtureSettingsRoutesSetup({ FIXTURE_EDITABLE_SETTINGS, FI
     });
     app.get("/api/v1/settings/chatgpt-account/sign-in/:attemptId", c => c.json({ state: "completed", attemptId, account }));
     app.post("/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel", c => c.json({ state: "cancelled", attemptId }));
-    app.post("/api/v1/settings/chatgpt-account/sign-out", c => { account = { state: "signed-out" }; return c.json({ state: "signed-out", remoteRevocation: "not-needed" }); });
 
 
 

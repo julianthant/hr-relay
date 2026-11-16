@@ -1,6 +1,7 @@
 import { encodeEditableWorkbook } from '../../../models/dashboard/workbooks.js';
 import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
 import type { createSpreadsheetWiringAdapter } from '../../state/spreadsheet-wiring-adapter.js';
+import { draftHasUnsavedWork } from '../../state/spreadsheet-draft.js';
 import { exportSheetInWorker, exportSpreadsheetInWorker } from './spreadsheet-import-client.js';
 import { spreadsheetSaveMatches, type SpreadsheetSaveResult } from './spreadsheet-editor-model.js';
 import { type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
@@ -38,7 +39,7 @@ export function createSpreadsheetChatRegistrationPort(adapter: Adapter) {
           if (request.base) {
             await adapter.open(request.base.libraryId);
             const draft = adapter.draft(request.base.libraryId);
-            if (!draft?.opened || draft.opened.version !== request.base.version || draft.dirty || draft.intent) return { state: 'conflict', reason: 'The workbook changed or has an unsaved draft. Review it in Spreadsheets before registering this file.' };
+            if (!draft?.opened || draft.opened.version !== request.base.version || draftHasUnsavedWork(draft)) return { state: 'conflict', reason: 'The workbook changed or has an unsaved draft. Review it in Spreadsheets before registering this file.' };
             if (request.status === 'Attached') {
               if (!spreadsheetSaveMatches(request.workbook, { state: 'confirmed', version: draft.opened.version, readback: draft.opened.workbook })) return { state: 'refused', reason: 'The attachment does not match that saved workbook version.' };
               const file = { ...request.base, name: draft.opened.workbook.name, status: request.status };
@@ -51,10 +52,10 @@ export function createSpreadsheetChatRegistrationPort(adapter: Adapter) {
         }
         const draft = adapter.draft(held.key);
         if (!draft) return { state: 'refused', reason: 'The registration draft is no longer available. Review the library before continuing.' };
-        const version = (request.base?.version ?? 0) + 1;
-        if (!draft.intent && !spreadsheetSaveMatches(request.workbook, { state: 'confirmed', version, readback: draft.document })) return { state: 'conflict', reason: 'The registration draft changed. Review it in Spreadsheets before continuing.' };
-        if (!draft.intent && draft.opened && draft.opened.version > version) return { state: 'conflict', reason: 'A newer workbook version is already open. Review it before continuing.' };
-        const result: SpreadsheetSaveResult = !draft.intent && draft.opened?.version === version
+        const version = (request.base?.version ?? 0) + 1, saveHeld = draft.phase === 'saving' || draft.phase === 'unconfirmed';
+        if (!saveHeld && !spreadsheetSaveMatches(request.workbook, { state: 'confirmed', version, readback: draft.document })) return { state: 'conflict', reason: 'The registration draft changed. Review it in Spreadsheets before continuing.' };
+        if (!saveHeld && draft.opened && draft.opened.version > version) return { state: 'conflict', reason: 'A newer workbook version is already open. Review it before continuing.' };
+        const result: SpreadsheetSaveResult = !saveHeld && draft.opened?.version === version
           ? { state: 'confirmed', version, readback: draft.opened.workbook }
           : await adapter.save(held.key, draft.document);
         if (result.state !== 'confirmed') return result;

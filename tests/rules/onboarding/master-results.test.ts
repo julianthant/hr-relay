@@ -13,8 +13,7 @@ describe("verified onboarding master cells", () => {
     const input = { ...plan, roster: { ...plan.roster, rowKey: { email: "work@example.test" } } };
     const result = onboardingMasterResults(input, hire, remote);
     assert.equal(result.kind, "patch-reference"); assert.equal(result.key, "work@example.test");
-    assert.deepEqual(Object.fromEntries(result.values.map(cell => [cell.fieldId, cell.value])), {
-      i9ProfileId: "900001", transactionNumber: hire.transactionId, transactionApprovalStatus: "Pending" });
+    assert.deepEqual(result.values, [{ fieldId: "transactionNumber", value: hire.transactionId }]);
     assert.equal(result.typeId, "onboarding-roster"); assert.equal(result.writeId, "onboarding-results");
   });
   it("includes an assigned EID only when present in the verified UCPath detail", () => {
@@ -22,7 +21,7 @@ describe("verified onboarding master cells", () => {
     assert.equal(result.values.find(cell => cell.fieldId === "eid")?.value, "10800000");
     const existing = { ...plan, hire: { ...plan.hire, mode: "rehire" as const, emplId: EidSchema.parse("10800000") }, i9: null };
     const concurrent = onboardingMasterResults(existing, { ...hire, emplId: EidSchema.parse("10800000"), profileId: null }, null);
-    assert.equal(concurrent.values.some(cell => cell.fieldId === "i9ProfileId"), false);
+    assert.deepEqual(Object.fromEntries(concurrent.values.map(cell => [cell.fieldId, cell.value])), { transactionNumber: hire.transactionId, eid: "10800000" });
     assert.throws(() => onboardingMasterResults(existing, { ...hire, emplId: EidSchema.parse("10800000"), profileId: null }, remote));
     assert.throws(() => onboardingMasterResults(existing, { ...hire, emplId: EidSchema.parse("10800000") }, null));
   });

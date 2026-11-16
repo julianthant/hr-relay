@@ -6,12 +6,12 @@ Package ID / linked brief or issue:
 
 ## Verification
 
-- [ ] Focused tests
+- [ ] `npm run test:pc`
 - [ ] Typecheck and lint
 - [ ] Manifest, store catalog and roadmap checks
 - [ ] Unit, integration and architecture CI checks
 - [ ] Privacy check: no real employee data, rosters, private PDFs, .env or credentials
-- [ ] Release only: coverage and performance
+- [ ] Ready pull requests: performance and smoke; release checks: selected native proofs
 
 UI changes: attach synthetic screenshots.
 

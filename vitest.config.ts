@@ -1,4 +1,5 @@
 import { prepareWindowsObserverPolicy } from "./scripts/build/windows-observer-policy.js";
+import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./scripts/test/ci-files.js";
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 import { availableParallelism } from "node:os";
@@ -8,35 +9,44 @@ prepareWindowsObserverPolicy(import.meta.dirname);
 
 export const REBUILD_COVERAGE_INCLUDE = ["src/**/*.ts", "src/**/*.tsx"] as const;
 export const REBUILD_UNIT_TEST_INCLUDE = ["tests/**/*.test.ts"] as const;
-export const REBUILD_UNIT_TEST_EXCLUDE = [
+const UNIT_EXCLUDE_GLOBS = [
   "tests/**/*.integration.test.ts",
-  "tests/**/*.local.test.ts",
   "tests/architecture/**",
   "tests/mocks/**",
   "tests/perf/**",
 ] as const;
 export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/**/*.integration.test.ts"] as const;
-export const REBUILD_INTEGRATION_TEST_EXCLUDE = [
-  "tests/**/*.local.integration.test.ts",
+const INTEGRATION_EXCLUDE_GLOBS = [
   "tests/perf/**",
 ] as const;
+
+export function nativeRunExcludes(optIn: string | undefined): readonly string[] {
+  if (optIn === "1") return [];
+  return [...new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])].sort();
+}
+
+export function namedNativeRefusal(argv: readonly string[], optIn: string | undefined, cwd = process.cwd()): string | undefined {
+  if (optIn === "1") return undefined;
+  const optedOut = new Set(nativeRunExcludes(undefined));
+  const base = cwd.replaceAll("\\", "/").replace(/\/$/u, "");
+  const named = argv.map(arg => {
+    const normalized = arg.replaceAll("\\", "/");
+    if (normalized.startsWith(`${base}/`)) return normalized.slice(base.length + 1);
+    return normalized.replace(/^\.\//u, "");
+  }).filter(file => optedOut.has(file));
+  if (named.length === 0) return undefined;
+  return `Set RELAY_TEST_NATIVE=1 to run native, serial, and serial-storage tests. Not run: ${named.join(", ")}`;
+}
+
+const nativeExcludes = nativeRunExcludes(process.env.RELAY_TEST_NATIVE);
+export const REBUILD_UNIT_TEST_EXCLUDE = [...UNIT_EXCLUDE_GLOBS, ...nativeExcludes];
+export const REBUILD_INTEGRATION_TEST_EXCLUDE = [...INTEGRATION_EXCLUDE_GLOBS, ...nativeExcludes];
 export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
   "tests/architecture/**/*.test.ts",
 ] as const;
-export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [
-  "tests/**/*.local.test.ts",
-  "tests/**/*.local.integration.test.ts",
-] as const;
+export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [] as const;
 export const REBUILD_PERF_TEST_INCLUDE = ["tests/perf/**/*.test.ts"] as const;
-export const REBUILD_PERF_TEST_EXCLUDE = [
-  "tests/**/*.local.test.ts",
-  "tests/**/*.local.integration.test.ts",
-] as const;
-export const REBUILD_LOCAL_TEST_INCLUDE = [
-  "tests/**/*.local.test.ts",
-  "tests/**/*.local.integration.test.ts",
-] as const;
-export const REBUILD_LOCAL_TEST_EXCLUDE = ["tests/mocks/**"] as const;
+export const REBUILD_PERF_TEST_EXCLUDE = [] as const;
 export const REBUILD_TEST_PROJECTS = [
   { name: "unit", include: REBUILD_UNIT_TEST_INCLUDE, exclude: REBUILD_UNIT_TEST_EXCLUDE },
   { name: "integration", include: REBUILD_INTEGRATION_TEST_INCLUDE, exclude: REBUILD_INTEGRATION_TEST_EXCLUDE },
@@ -46,17 +56,17 @@ export const REBUILD_TEST_PROJECTS = [
     exclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
   },
   { name: "perf", include: REBUILD_PERF_TEST_INCLUDE, exclude: REBUILD_PERF_TEST_EXCLUDE },
-  { name: "local", include: REBUILD_LOCAL_TEST_INCLUDE, exclude: REBUILD_LOCAL_TEST_EXCLUDE },
 ] as const;
 export const REBUILD_TEST_EXEC_ARGV = ["--no-experimental-webstorage"] as const;
 export const REBUILD_TEST_REPORTERS = ["verbose"] as const;
-export const REBUILD_COVERAGE_EXCLUSIONS = [
-  {
-    pattern: "src/generated/**/*.ts",
-    activation: { ownerRoot: "src/generated", status: "planned" },
-    reason: "Generated projections are verified by determinism guards.",
-  },
-] as const;
+export const REBUILD_COVERAGE_EXCLUSIONS: readonly {
+  readonly pattern: string;
+  readonly activation: {
+    readonly ownerRoot: string;
+    readonly status: "planned" | "active";
+  };
+  readonly reason: string;
+}[] = [];
 
 export const REBUILD_COVERAGE_FLOORS = {
   global: { lines: 60, statements: 60, functions: 60 },
@@ -73,8 +83,6 @@ const sharedConfig = defineConfig({
   test: {
     env: { TZ: "America/Los_Angeles" },
     setupFiles: ["tests/support/duo-ceremony-setup.ts"],
-    // Cloud and perf projects fail when a selected run collects nothing. The
-    // local project may be empty; test:local passes --passWithNoTests=true.
     passWithNoTests: false,
     // One human stream for every Vitest entry point: project, file, suite and
     // full behavior/refusal title. Commands do not layer a second reporter on
@@ -100,7 +108,6 @@ const sharedConfig = defineConfig({
         lines: REBUILD_COVERAGE_FLOORS.global.lines,
         statements: REBUILD_COVERAGE_FLOORS.global.statements,
         functions: REBUILD_COVERAGE_FLOORS.global.functions,
-        "src/backend/logs/generated-artifact-projection.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/logs/observed-data.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/logs/span-emitter.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/commands/command-application.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
@@ -114,13 +121,8 @@ const sharedConfig = defineConfig({
         "src/backend/runs/lifecycle/run-record-service.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/lifecycle/run-result.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/settings/run-settings.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/projections/run-summary.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/rules/runs/summary-derivation.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/provenance/task-provenance.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/archive/archive-runtime-version-changes.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/lifecycle/archive-terminal-runs.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/archive/archive-version-changes.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/storage/sqlite/run-lifecycle-storage.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/storage/maintenance/storage-relocation-plans.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/lifecycle/terminal-authorization.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/provenance/test-data-usage.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/app/composition/runtime-composition.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
@@ -138,12 +140,9 @@ const sharedConfig = defineConfig({
         "src/backend/runtime/execution/run-failure.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/workers/worker-loop.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/workers/worker-sessions.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/writes/write-recovery.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/writes/write-resolution-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/writes/write-sequencer.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/workflow-kit/mutation-capability.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/**/*write-sequencer*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/**/write-sequencer.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/storage/sqlite/authority-database.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/**/*recovery*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/**/*projection*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
@@ -171,3 +170,9 @@ export default defineConfig({
     })),
   },
 });
+
+const nativeRefusal = namedNativeRefusal(process.argv, process.env.RELAY_TEST_NATIVE);
+if (nativeRefusal !== undefined) {
+  process.stderr.write(`${nativeRefusal}\n`);
+  process.exit(1);
+}

@@ -4,7 +4,8 @@ import type { NativeRunEventWire } from "../../../models/dashboard/run-detail.js
 import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js";
 import type { RunDecisionWire } from "../../../models/dashboard/run-decision.js";
 import { projectDecision, rowActionOption } from "../decisions/project-decision.js";
-import { availableSections, buildRunGate } from "./run-trust.js";
+import { availableSections } from "./run-detail/availability.js";
+import { buildRunGate } from "./run-detail/gate-park.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
 import { ocrChildRetryAvailable,readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
 import { aggregateMemberRetryAvailable } from "./run-retry.js";
@@ -35,9 +36,9 @@ import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-t
 import { requireCanonicalRun } from "./run-read.js";
 import { assertRunTimelineCompatible } from "./run-timeline-compatibility.js";
 
-export { availableSections } from "./run-trust.js";
+export { availableSections } from "./run-detail/availability.js";
 export { buildRunSection, readRunSection } from "./run-sections.js";
-export { resolveIdentityGateAnswer } from "./run-detail/gate-park.js";
+export { resolveGateArmAnswer, resolveIdentityGateAnswer } from "./run-detail/gate-park.js";
 export { createRunNoteScanCache } from "./run-logs.js";
 export type { RunLogScanEntry, RunNoteScanEntry, RunNoteScanCache } from "./run-logs.js";
 export type {
@@ -414,9 +415,10 @@ export function buildRunDetail(
     gate,
     outcome,
     context: {
-      // Every done task recorded provenance-validated data (1f mandate); the
-      // evidence service is 2g, so its count is genuinely zero today.
-      dataFacts: row?.taskSpans.filter((span) => span.outcome === "done").length ?? 0,
+      // Every done task recorded provenance-validated data (1f mandate); a settled delegation join records no checkpoint and observed nothing.
+      // The evidence service is 2g, so its count is genuinely zero today.
+      dataFacts: row?.taskSpans.filter((span) => span.outcome === "done"
+        && readCheckpoints().some(checkpoint => checkpoint.runId === authority.envelope.runId && checkpoint.nodeId === nodeIdOfTaskSpanPath(span.spanPath))).length ?? 0,
       evidenceFacts: 0,
       attempts: authority.envelope.attempt,
     },

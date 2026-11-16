@@ -97,7 +97,7 @@ const ROW_REJECTION: Readonly<Record<z.infer<typeof CommandRejectionCodeSchema>,
   "policy-refused": "ASSISTANT_ROW_POLICY_REFUSED", "capability-unavailable": "ASSISTANT_ROW_UNAVAILABLE",
   "replan-required": "ASSISTANT_PROPOSAL_CHANGED", "schema-mismatch": "ASSISTANT_PROPOSAL_CHANGED", "patch-fingerprint-mismatch": "ASSISTANT_PROPOSAL_CHANGED",
   "envelope-fingerprint-mismatch": "ASSISTANT_PROPOSAL_CHANGED", "command-divergent": "ASSISTANT_PROPOSAL_CHANGED", "write-id-reused": "ASSISTANT_PROPOSAL_CHANGED",
-  "authority-unavailable": "ASSISTANT_ROW_STORAGE_UNAVAILABLE", "authority-unjournaled": "ASSISTANT_ROW_STORAGE_UNAVAILABLE", "authority-uncertain": "ASSISTANT_ROW_STORAGE_UNAVAILABLE",
+  "authority-unavailable": "ASSISTANT_ROW_STORAGE_UNAVAILABLE",
   "directory-integrity": "ASSISTANT_ROW_STORAGE_UNAVAILABLE", "lock-unavailable": "ASSISTANT_ROW_STORAGE_UNAVAILABLE",
   // Edit, workbook and bulk-child categories; a row's own start or run command does not produce them.
   "not-editable": "ASSISTANT_PROPOSAL_REFUSED", "invalid-value": "ASSISTANT_PROPOSAL_REFUSED", "cross-field-invalid": "ASSISTANT_PROPOSAL_REFUSED",

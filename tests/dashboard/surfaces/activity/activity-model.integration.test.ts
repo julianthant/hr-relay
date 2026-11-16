@@ -2,9 +2,6 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import {
 activityPeopleEvidenceItems,
-activityPeriodOf,
-activityPeriodRange,
-activityRangeLabel,
 activityRangeValue,
 parseActivityRange,
 resolveActivityWho,
@@ -120,15 +117,12 @@ describe("Activity consumes the served summary boundary", () => {
     });
   });
 
-  it("keeps a valid URL range explicit and refuses invalid explicit selections without substituting month-to-date", () => {
+  it("keeps a valid URL range explicit and refuses invalid explicit selections; an empty selection opens on the last 7 days", () => {
     const valid = parseActivityRange("2026-09-08..2026-09-09", "2026-09-10");
     assert.deepEqual(valid, { from: "2026-09-08", to: "2026-09-09" });
     assert.equal(activityRangeValue(valid), "2026-09-08..2026-09-09");
-    assert.equal(activityRangeLabel(valid.from, valid.to), "09/08/2026 – 09/09/2026");
-    assert.deepEqual(activityPeriodRange("week", "2026-09-10"), { from: "2026-09-06", to: "2026-09-10" });
-    assert.equal(activityPeriodOf({ from: "2026-09-06", to: "2026-09-10" }, "2026-09-10"), "week");
     assert.deepEqual(parseActivityRange("", "2026-09-10"), {
-      from: "2026-09-01",
+      from: "2026-09-04",
       to: "2026-09-10",
     });
     for (const input of ["2026-09-10..2026-09-08", "2026-02-30..2026-03-01", "2026-09-08..", "2026-09-08..2026-09-09..extra"]) {

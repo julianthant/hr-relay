@@ -7,6 +7,7 @@ import ts from "typescript";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 
 const SCAN_ROOT = "src/dashboard";
+const OUTCOME_FIXTURES = "tests/architecture/runs/fixtures/command-result";
 const FIXTURE = "tests/architecture/runs/fixtures/command-result-unhandled-conflict.ts";
 const FIXTURE_UNFOLDED = "tests/architecture/runs/fixtures/command-result-unfolded-dispatch.ts";
 const FIXTURE_PARTIAL_FOLD = "tests/architecture/runs/fixtures/command-result-partial-fold.ts";
@@ -84,17 +85,20 @@ const COMMAND_PROOFS = {
   separate: 'import type { CommandResult } from "../../rules/commands/commands.js"; export function bad(first: CommandResult, second: CommandResult) { return first.state === "rejected" || second.state === "conflict"; }',
   clean: 'import type { CommandResult } from "../../rules/commands/commands.js"; export function view(result: CommandResult) { return result.state === "rejected" || result.state === "conflict"; }',
 } as const;
-let commandAudit: { program: ts.Program; checker: ts.TypeChecker; canonical: ts.Type } | undefined;
+let commandAudit: { program: ts.Program; checker: ts.TypeChecker; canonical: ts.Type; outcome: ts.Type } | undefined;
 function commandContext() {
   if (commandAudit !== undefined) return commandAudit;
   const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.ReactJSX, strict: true, skipLibCheck: true };
   const virtual = new Map(Object.entries(COMMAND_PROOFS).map(([name, text]) => [resolve(REPO_ROOT, `src/dashboard/guard-proofs/${name}.tsx`), text]));
-  const program = createGuardProgram([...sourceFiles(SCAN_ROOT), ...virtual.keys()], options, virtual);
+  const program = createGuardProgram([...sourceFiles(SCAN_ROOT), ...sourceFiles(OUTCOME_FIXTURES), ...virtual.keys()], options, virtual);
   const checker = program.getTypeChecker();
   const declaration = program.getSourceFile(resolve(REPO_ROOT, "src/rules/commands/commands.ts"))?.statements.find((node) => ts.isTypeAliasDeclaration(node) && node.name.text === "CommandResult");
   expect(declaration).toBeDefined();
   const canonical = checker.getTypeAtLocation(declaration!);
-  commandAudit = { program, checker, canonical };
+  const outcomeDeclaration = program.getSourceFile(resolve(REPO_ROOT, COMMAND_EXECUTOR))?.statements.find((node) => ts.isTypeAliasDeclaration(node) && node.name.text === "CommandOutcome");
+  expect(outcomeDeclaration).toBeDefined();
+  const outcome = checker.getTypeAtLocation(outcomeDeclaration!);
+  commandAudit = { program, checker, canonical, outcome };
   return commandAudit;
 }
 function canonicalDecision(path: string): boolean {
@@ -102,6 +106,27 @@ function canonicalDecision(path: string): boolean {
   const source = program.getSourceFile(resolve(REPO_ROOT, path));
   expect(source).toBeDefined();
   return decidesSettlementAlone(source!.text, source, checker, canonical);
+}
+
+
+function canonicalOutcomeDecision(path: string): boolean {
+  const { program, checker, outcome } = commandContext();
+  const source = program.getSourceFile(resolve(REPO_ROOT, path));
+  expect(source).toBeDefined();
+  return decidesOutcomeAlone(source!, checker, outcome);
+}
+
+function decidesOutcomeAlone(source: ts.SourceFile, checker: ts.TypeChecker, canonical: ts.Type): boolean {
+  return findNodes(source, (node): node is ts.BinaryExpression => ts.isBinaryExpression(node)).some((node) => {
+    if (![ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken,
+      ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken].includes(node.operatorToken.kind)) return false;
+    const access = ts.isPropertyAccessExpression(node.left) ? node.left : ts.isPropertyAccessExpression(node.right) ? node.right : undefined;
+    const literal = ts.isStringLiteralLike(node.right) ? node.right : ts.isStringLiteralLike(node.left) ? node.left : undefined;
+    if (access?.name.text !== "kind" || literal?.text !== "uncertain") return false;
+    const receiver = checker.getNonNullableType(checker.getTypeAtLocation(access.expression));
+    return !(receiver.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never))
+      && checker.isTypeAssignableTo(receiver, canonical);
+  });
 }
 
 
@@ -348,6 +373,22 @@ function parseSource(path: string, text = readFileSync(join(REPO_ROOT, path), "u
 }
 
 describe("command-result-exhaustive", () => {
+  it("binds private outcome checks to canonical outcomes, including aliases and retained attempts", () => {
+    for (const name of ["private-copy", "aliased-copy", "retained-copy"] as const) {
+      expect(canonicalOutcomeDecision(`${OUTCOME_FIXTURES}/${name}.ts`), name).toBe(true);
+    }
+    expect(canonicalOutcomeDecision(`${OUTCOME_FIXTURES}/shared-outcome.ts`)).toBe(false);
+  });
+
+  it("dashboard surfaces read uncertainty through the shared outcome", () => {
+    const owners = new Set([COMMAND_EXECUTOR, "src/dashboard/app/commands/command-outcome.ts"]);
+    const offenders = sourceFiles(SCAN_ROOT)
+      .map((path) => relative(REPO_ROOT, path).replaceAll("\\", "/"))
+      .filter((path) => !owners.has(path))
+      .filter(canonicalOutcomeDecision);
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
   it("no dashboard module tests ONE refusal arm and lets the other fall through", () => {
     const offenders = sourceFiles(SCAN_ROOT)
       .map((path) => relative(REPO_ROOT, path))

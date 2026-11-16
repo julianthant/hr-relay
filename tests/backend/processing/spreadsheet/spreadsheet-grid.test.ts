@@ -6,6 +6,7 @@ import { Buffer } from "node:buffer";
 import { describe,it } from "vitest";
 import writeXlsxFile from "write-excel-file/node";
 import { parseSpreadsheetGrid } from "../../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
+import { xlsxWithInflatedWorkbookXml } from "../../../support/helpers/spreadsheets/inflated-workbook.js";
 
 const CSV = "text/csv";
 
@@ -148,4 +149,16 @@ it("keeps prefixed workbook elements, nonsequential sheet IDs and absolute works
   archive.file("xl/_rels/workbook.xml.rels", (await relationships.async("string")).replace(/Target="(?:\/xl\/)?worksheets\/sheet1.xml"/u, 'Target="/xl/worksheets/sheet1.xml"'));
   assert.deepEqual(await parseSpreadsheetGrid({ bytes: await archive.generateAsync({ type: "nodebuffer" }), artifactId: "valid-variant", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
     { state: "parsed", sheets: ["Roster"], sheet: "Roster", grid: [["Employee ID#"], ["10800000"]] });
+});
+it("refuses an xlsx whose compressed part inflates past the limit before reading it as a sheet", async () => {
+  const bytes = Buffer.from(await xlsxWithInflatedWorkbookXml(232 * 1024 * 1024, 232 * 1024 * 1024, 'xl/bomb.bin'));
+  await assert.rejects(() => parseSpreadsheetGrid({
+    bytes,
+    artifactId: "inflated",
+    mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  }), (error: unknown) => {
+    assert.ok(error instanceof InvalidSpreadsheetError);
+    assert.equal(error.message, "The XLSX archive is malformed.");
+    return true;
+  });
 });
