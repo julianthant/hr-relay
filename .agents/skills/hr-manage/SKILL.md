@@ -30,7 +30,7 @@ Every command runs from the checkout that owns the store and ports. `npm run cli
 | Explain a run from authority | `npm run cli -- explain run <traceId\|runId> [--json]` |
 | Persisted diagnostics | `npm run cli -- explain diagnostics [--run <runId>] [--json]` |
 | Subject readiness by label | `npm run cli -- test-data check --json --subject <label> [--workflow <id>]` |
-| Transaction history | `npm run cli -- storage transactions --from YYYY-MM-DD --to YYYY-MM-DD [--system SYSTEM] --output PATH` |
+| Transaction history, one report per ready person at `NAME.<profile-id>.EXT` beside `PATH` | `npm run cli -- storage transactions --from YYYY-MM-DD --to YYYY-MM-DD [--system SYSTEM] --output PATH` |
 
 `dashboard`, `backend` and `cli` prepare the ignored workflow manifest first. Ports, state roots and the session namespace come from `config/runtime-isolation.json` (backend 3938, Vite 5174, namespace `hrauto-rebuild`); never use legacy's.
 
