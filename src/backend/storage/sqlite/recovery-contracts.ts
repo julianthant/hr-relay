@@ -7,7 +7,8 @@ import {
   RunPrioritySchema,
   RunShapeSchema,
 } from "../../../models/run/envelope.js";
-import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS, WORKER_CUSTODY_DROPPED_TABLES } from "./migrations.js";
+import { RETIRED_ASSISTANT_GRANT_TABLE } from "./assistant-grant-retirement.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
@@ -41,6 +42,17 @@ export const AuthorityCopyInspectionSchema = z.strictObject({
     classification: z.enum(["authority", "projection"]),
   })),
   counts: AuthorityPendingCountsSchema,
+});
+
+/** The inspection as plain data, for a reader that receives it across a thread boundary. */
+export const BackupCopyInspectionSchema = AuthorityCopyInspectionSchema.extend({
+  schemaVersion: z.union([z.literal(SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  installationId: z.uuid().optional(),
+  profileId: z.uuid().optional(),
+  tables: z.array(z.union([AuthorityCopyInspectionSchema.shape.tables.element,
+    z.strictObject({ name: z.enum(["explorer_overrides", RETIRED_ASSISTANT_GRANT_TABLE, ...WORKER_CUSTODY_DROPPED_TABLES]), classification: z.literal("authority") })])),
+  invariantViolations: z.array(z.never()).max(0),
+  exactTableRegistry: z.literal(true),
 });
 
 export const BackupVerificationSchema = z.strictObject({

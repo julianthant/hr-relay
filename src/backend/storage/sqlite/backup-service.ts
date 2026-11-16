@@ -25,7 +25,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { type Clock, systemClock } from "../../../rules/time/clock.js";
-import { inspectAuthorityBackupReadOnly, type AuthorityBackupSourceReadOnly } from "./backup-inspection.js";
+import { inspectAuthorityBackupReadOnly, type AuthorityBackupSourceReadOnly, type BackupCopyInspection } from "./backup-inspection.js";
+import { inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import {
@@ -116,9 +117,22 @@ export function parseBackupManifestFile(manifestPath: string): AuthorityBackupMa
   return parseCurrentBackupManifest(JSON.parse(readFileSync(manifestPath, "utf8")));
 }
 
-export async function verifyBackupManifestAtPath(
+type BackupCopyInspector = (copyAdmission: RuntimeAdmission, backupPath: string, schemaVersion: number) => BackupCopyInspection | Promise<BackupCopyInspection>;
+
+export function verifyBackupManifestAtPath(admissionInput: RuntimeAdmission, manifestPathInput: string): Promise<VerifiedBackup> {
+  return verifyManifest(admissionInput, manifestPathInput, (copy, backupPath, schemaVersion) => inspectAuthorityBackupReadOnly(copy, backupPath, schemaVersion));
+}
+
+/** verifyBackupManifestAtPath with the full inspection on a worker thread, for a caller that must keep the event loop running. */
+export function verifyBackupManifestOffThread(admissionInput: RuntimeAdmission, manifestPathInput: string,
+  options: Readonly<{ signal?: AbortSignal }>): Promise<VerifiedBackup> {
+  return verifyManifest(admissionInput, manifestPathInput, (copy, backupPath, schemaVersion) => inspectAuthorityBackupOffThread(copy, backupPath, schemaVersion, options));
+}
+
+async function verifyManifest(
   admissionInput: RuntimeAdmission,
   manifestPathInput: string,
+  inspect: BackupCopyInspector,
 ): Promise<VerifiedBackup> {
   const admission = requireRuntimeAdmission(admissionInput);
   const manifestPath = resolve(z.string().min(1).parse(manifestPathInput));
@@ -133,8 +147,12 @@ export async function verifyBackupManifestAtPath(
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);
   await verifyBackupBytesAtPath(backupPath, manifest);
   const copyAdmission = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
-  let inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>;
-  try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, backupPath, manifest.schemaVersion); }
+  let inspection: BackupCopyInspection;
+  try {
+    // A synchronous inspection and its release run in one turn.
+    const inspected = inspect(copyAdmission, backupPath, manifest.schemaVersion);
+    inspection = inspected instanceof Promise ? await inspected : inspected;
+  }
   finally { copyAdmission.release(); }
   removeReadOnlyInspectionCompanions(backupPath);
   assertBackupInspection(manifest, inspection, expected);
