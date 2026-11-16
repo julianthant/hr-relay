@@ -11,7 +11,7 @@ import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboa
 import { CrossDateSearchPageSchema } from "../../../../../src/models/dashboard/search.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import { RunRecordSchema, type RunRecord } from "../../../../../src/models/run/record.js";
-import { seedSeparationsRunAuthority } from "../../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { seedSeparationsRunAuthority } from "../../../../support/fixtures/integration/separations-run-fixtures.js";
 import { insertMeasuredSearchRun } from "../../../../support/helpers/backend/cross-date-search-harness.js";
 import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";

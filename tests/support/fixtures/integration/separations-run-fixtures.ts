@@ -32,8 +32,6 @@ import {
 } from "../../helpers/separations-composition-fixtures.js";
 import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 
-export const ACTIVITY_PERSON_PSEUDONYM_KEY_HEX =
-  "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
 
 export const CURRENT_SEPARATIONS_RESULT = SeparationsResultSchema.parse({
@@ -107,7 +105,7 @@ export const TERMINAL_SEPARATIONS_RUN = RunRecordSchema.parse({
   updatedAt: COMPOSITION_NOW,
 });
 
-export function activityPersonPseudonymResultRecord(
+export function separationsRunResultRecord(
   run: RunRecord = TERMINAL_SEPARATIONS_RUN,
   value: unknown = CURRENT_SEPARATIONS_RESULT,
 ): RunResultRecord {
@@ -129,7 +127,7 @@ export function activityPersonPseudonymResultRecord(
   });
 }
 
-export const TERMINAL_SEPARATIONS_RESULT = activityPersonPseudonymResultRecord();
+export const TERMINAL_SEPARATIONS_RESULT = separationsRunResultRecord();
 
 export function seedSeparationsRunAuthority(
   database: AuthorityDatabase,
@@ -184,7 +182,7 @@ export function seedTerminalSeparationsResult(
   database: AuthorityDatabase,
   path: string,
   run: RunRecord = TERMINAL_SEPARATIONS_RUN,
-  result: RunResultRecord = activityPersonPseudonymResultRecord(run),
+  result: RunResultRecord = separationsRunResultRecord(run),
 ): void {
   seedSeparationsRunAuthority(database, path, run, result);
 }

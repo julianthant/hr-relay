@@ -10,7 +10,6 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
-import { AtomicOutboxRecordSchema } from "../../../src/models/notifications/outbox.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../../src/models/dashboard/storage.js";
 import { ClearRunHistoryRequestSchema, RunHistoryStatusSchema, ClearRunHistoryResultSchema } from "../../../src/models/dashboard/run-history.js";
 import { redactDiagnosticFields, redactValue } from "../../../src/rules/redaction/redaction.js";
@@ -845,15 +844,7 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
   });
 
   it("keeps an undeclared value out of the durable ledger line", () => {
-    const outbox = AtomicOutboxRecordSchema.parse({
-      outboxId: UUID_6,
-      aggregate: { kind: "write-intent", writeIntentId: UUID_1, generation: 1 },
-      payload: LEDGER_OUTBOX_PAYLOAD,
-      projection: { state: "pending" },
-      createdAt: NOW,
-    });
-    assert.equal(outbox.payload.kind, "ledger-entry");
-    const line = canonicalJsonStringify(LedgerEntrySchema.parse({ outboxId: outbox.outboxId, seq: 1, payload: LEDGER_OUTBOX_PAYLOAD.entry }));
+    const line = canonicalJsonStringify(LedgerEntrySchema.parse({ outboxId: UUID_6, seq: 1, payload: LEDGER_OUTBOX_PAYLOAD.entry }));
     assert.deepEqual(
       canariesIn(line, UNIVERSAL_CANARY_NAMES),
       [],
@@ -861,15 +852,9 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
     );
 
 
-    const smuggled = {
-      ...outbox,
-      payload: {
-        ...outbox.payload,
-        entry: { ...LEDGER_OUTBOX_PAYLOAD.entry, operatorNote: REDACTION_CANARIES.ssn },
-      },
-    };
+    const smuggled = { ...LEDGER_OUTBOX_PAYLOAD.entry, operatorNote: REDACTION_CANARIES.ssn };
     assert.throws(
-      () => LedgerEntrySchema.parse({ outboxId: smuggled.outboxId, seq: 2, payload: smuggled.payload.entry }),
+      () => LedgerEntrySchema.parse({ outboxId: UUID_6, seq: 2, payload: smuggled }),
       "an undeclared ledger field must be refused, not serialized",
     );
   });
