@@ -23,15 +23,15 @@ import {
 } from "../../../src/models/config/authority-schema-versions.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 
-const stopped = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] as const;
-const upgradeable = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] as const;
-const openable = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] as const;
-const recognized = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] as const;
-const baselineFrom = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] as const;
-const bound = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] as const;
+const stopped = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] as const;
+const upgradeable = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] as const;
+const openable = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] as const;
+const recognized = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] as const;
+const baselineFrom = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] as const;
+const bound = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] as const;
 const unbound = [1, 2, 3, 4, 5, 6] as const;
-const maintenance = [6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] as const;
-const evidence = [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] as const;
+const maintenance = [6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] as const;
+const evidence = [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] as const;
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type Expect<T extends true> = T;
@@ -57,15 +57,15 @@ const lists = [
   ["evidence", EVIDENCE_SCHEMA_UPGRADE_VERSIONS, evidence, undefined],
 ] as const;
 
-const probe = [-1, 6.5, 7.5, 30.5, ...Array.from({ length: 33 }, (_, index) => index)];
+const probe = [-1, 6.5, 7.5, 31.5, ...Array.from({ length: 34 }, (_, index) => index)];
 
 describe("authority schema version lists", () => {
-  it("keeps one application id and the current schema at 31", () => {
+  it("keeps one application id and the current schema at 32", () => {
     assert.equal(AUTHORITY_APPLICATION_ID, 1_217_249_861);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 31);
-    assert.equal(isCurrentAuthoritySchemaVersion(31), true);
-    assert.equal(isCurrentAuthoritySchemaVersion(30), false);
-    assert.equal(isCurrentAuthoritySchemaVersion(32), false);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 32);
+    assert.equal(isCurrentAuthoritySchemaVersion(32), true);
+    assert.equal(isCurrentAuthoritySchemaVersion(31), false);
+    assert.equal(isCurrentAuthoritySchemaVersion(33), false);
   });
 
   it("matches the accepted version of every list, and refuses every other probe", () => {
@@ -95,13 +95,13 @@ describe("authority schema version lists", () => {
       recordedAt: "2026-11-02T00:00:00.000Z",
     };
     assert.equal(AuthorityUpgradeRecordSchema.safeParse(baseline).success, true);
-    assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 31 }).success, true);
+    assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 32 }).success, true);
     assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 0 }).success, false);
-    assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 32 }).success, false);
-    const report = { state: "planned" as const, fromSchemaVersion: 0, toSchemaVersion: 31, credentials: "unchanged" as const };
+    assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 33 }).success, false);
+    const report = { state: "planned" as const, fromSchemaVersion: 0, toSchemaVersion: 32, credentials: "unchanged" as const };
     assert.equal(StorageUpgradeReportSchema.safeParse(report).success, true);
-    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, fromSchemaVersion: 31 }).success, true);
-    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, fromSchemaVersion: 32 }).success, false);
-    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, toSchemaVersion: 30 }).success, false);
+    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, fromSchemaVersion: 32 }).success, true);
+    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, fromSchemaVersion: 33 }).success, false);
+    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, toSchemaVersion: 31 }).success, false);
   });
 });
