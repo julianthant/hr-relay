@@ -470,13 +470,9 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runtime/execution/run-failure.ts",
       "src/backend/runtime/workers/worker-loop.ts",
       "src/backend/runtime/workers/worker-sessions.ts",
-      "src/backend/runtime/writes/write-recovery.ts",
+      "src/**/*recovery*.ts",
       "src/backend/runtime/writes/write-resolution-binding.ts",
       "src/backend/runtime/writes/write-sequencer.ts",
-      "src/backend/runs/archive/archive-runtime-version-changes.ts",
-      "src/backend/runs/lifecycle/archive-terminal-runs.ts",
-      "src/backend/runs/archive/archive-version-changes.ts",
-      "src/backend/storage/sqlite/run-lifecycle-storage.ts",
     ];
     const thresholds = vitestConfig.test?.coverage?.thresholds as Record<string, unknown> | undefined;
     assert.ok(thresholds);
