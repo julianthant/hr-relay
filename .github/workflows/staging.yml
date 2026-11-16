@@ -1,0 +1,68 @@
+name: Staging
+
+run-name: ${{ github.event.pull_request.title || github.event.head_commit.message }}
+
+on:
+  pull_request:
+    branches: [staging]
+    types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft, auto_merge_enabled]
+  push:
+    branches: [staging]
+    paths-ignore: ['docs/roadmap/**']
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  names:
+    name: names
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - name: Check the pull request name
+        env:
+          NAMES_BASE: ${{ github.base_ref }}
+          NAMES_HEAD: ${{ github.head_ref }}
+          NAMES_TITLE: ${{ github.event.pull_request.title }}
+        run: npm run names:check -- --branch "$NAMES_HEAD" --base "$NAMES_BASE" --title "$NAMES_TITLE"
+
+  checks:
+    needs: names
+    concurrency:
+      group: ci-runners
+      queue: max
+      cancel-in-progress: false
+    uses: ./.github/workflows/checks.yml
+    with:
+      kind: portable
+
+  staging:
+    name: staging
+    needs: [names, checks]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: test "$FAILED" = false
+
+  train:
+    name: merge train
+    needs: staging
+    if: ${{ !cancelled() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    uses: ./.github/workflows/merge-train.yml
+    with:
+      pr: ${{ needs.staging.result != 'skipped' && github.event.pull_request.number || '' }}
+      conclusion: ${{ needs.staging.result != 'skipped' && needs.staging.result || '' }}
+    secrets:
+      TRAIN_TOKEN: ${{ secrets.TRAIN_TOKEN }}
