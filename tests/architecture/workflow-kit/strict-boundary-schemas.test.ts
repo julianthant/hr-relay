@@ -33,9 +33,8 @@ import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../sr
 import { DashboardStreamEnvelopeSchema } from "../../../src/models/dashboard/subscription.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../src/rules/workflow/dependencies.js";
 import { GateResultRecordSchema } from "../../../src/models/workflow/gates.js";
-import { LedgerEntryPayloadSchema, LedgerEntrySchema, LedgerOutboxPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../src/rules/runs/ledger.js";
+import { LedgerEntryPayloadSchema, LedgerEntrySchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../src/rules/runs/ledger.js";
 import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
-import { AtomicOutboxPayloadSchema, AtomicOutboxRecordSchema } from "../../../src/models/notifications/outbox.js";
 import { ProviderAdapterOutcomeSchema, ProviderUnavailableReasonSchema, ProviderExecutionIdentitySchema, ProviderEvidenceSchema, ProviderRequestEnvelopeSchema, ProviderResponseEnvelopeSchema } from "../../../src/models/providers/providers.js";
 import { buildPreflightReport, PreflightObservationSchema, PreflightReportSchema, PreflightResultSchema, requiredPreflightChecks } from "../../../src/models/preflight/preflight.js";
 import { ClassifiedDiagnosticValueSchema, RedactionResultSchema } from "../../../src/rules/redaction/redaction.js";
@@ -56,7 +55,6 @@ import { FreshnessPolicySchema, ProvenancePolicySchema, SubjectBindingSpecSchema
 import { UiVerificationEvidenceManifestSchema, UiVerificationScenarioSchema } from "../../../src/models/ui/contracts.js";
 import { CRM_ONBOARDING_DISPLAYED_EID, CrmOnboardingDatesReadSchema, CrmOnboardingRecordReadSchema, CrmSubjectBindingSchema } from "../../../src/models/ui/crm-onboarding.js";
 import { SECRET_SPECS, ProtectedSecretSourceSchema, SecretAvailabilitySchema, SecretSpecSchema } from "../../../src/models/config/secrets.js";
-import { ActivityPersonPseudonymEvidenceSchema, ActivityPersonPseudonymGenerationBindingSchema } from "../../../src/models/trust/activity-person-pseudonym.js";
 import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
 import { ActionEvidenceSchema, DecisionEvidenceSchema, EvidenceFactSchema, ReuseEvidenceSchema, RunEvidenceReceiptSchema, UncertaintyEvidenceSchema, VerificationEvidenceSchema } from "../../../src/models/trust/evidence.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
@@ -68,7 +66,7 @@ import { ArtifactOutboxStorageRecordSchema, AtomicWriteCommitInputSchema, Atomic
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { CRM_UI_REGISTRY } from "../../../src/backend/systems/crm/driver/ui-registry.js";
 import { UCPATH_UI_REGISTRY } from "../../../src/backend/systems/ucpath/driver/ui-registry.js";
-import { ABSENCE_1, ABSENCE_2, ATOMIC_WRITE_COMMIT, COMMAND_FIXTURES, COMMITTED_OUTCOME, CONFIG_SNAPSHOT, DELEGATION_MANIFEST, DEPENDENCY_RECORD, GATE_RESULT, IDEMPOTENCY_KEY, IDEMPOTENCY_KEY_DIGEST, LEDGER_OUTBOX_RECORD, LEDGER_OUTBOX_PAYLOAD, LEDGER_PAYLOAD, NOTIFICATION, SPAN_OUTBOX_PAYLOAD, SPAN_OUTBOX_RECORD, SUBJECT_EVIDENCE, SUBJECT_PROOF, UNSCOPED_PROOF, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { ABSENCE_1, ABSENCE_2, ATOMIC_WRITE_COMMIT, COMMAND_FIXTURES, COMMITTED_OUTCOME, CONFIG_SNAPSHOT, DELEGATION_MANIFEST, DEPENDENCY_RECORD, GATE_RESULT, IDEMPOTENCY_KEY, IDEMPOTENCY_KEY_DIGEST, LEDGER_OUTBOX_RECORD, LEDGER_PAYLOAD, NOTIFICATION, SPAN_OUTBOX_PAYLOAD, SPAN_OUTBOX_RECORD, SUBJECT_EVIDENCE, SUBJECT_PROOF, UNSCOPED_PROOF, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
@@ -397,13 +395,6 @@ const WRITE_ATTEMPT_FIXTURES = [
   { ...WRITE_ATTEMPT, outcome: { state: "parked", code: "operator-required", message: "Manual confirmation required", authorityReason: deriveWriteAuthorityReason("manual-confirmation-required", "proof", "Synthetic verifier requires manual confirmation") } },
 ];
 const LEDGER_ENTRY = { outboxId: UUID_1, seq: 0, payload: LEDGER_PAYLOAD };
-const atomicOutbox = (payload: unknown) => ({
-  outboxId: UUID_1,
-  aggregate: { kind: "write-intent", writeIntentId: UUID_1, generation: 1 },
-  payload,
-  projection: { state: "pending" },
-  createdAt: NOW,
-});
 const SQLITE_SCHEMA_INSPECTION = {
   applicationId: 1_217_249_861,
   schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
@@ -550,22 +541,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "AuthorityDatabaseOptions", schema: AuthorityDatabaseOptionsSchema, fixtures: [{ path: "/tmp/authority.sqlite", busyTimeoutMs: 250, migrationOwner: "unit-test" }] },
   { name: "AuthorityMeta", schema: AuthorityMetaSchema, fixtures: [{ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, installationId: UUID_1, profileId: UUID_2, authorityGeneration: 0, updatedAt: NOW }] },
   { name: "AuthoritySchemaInspection", schema: AuthoritySchemaInspectionSchema, fixtures: [SQLITE_SCHEMA_INSPECTION] },
-  { name: "ActivityPersonPseudonymEvidence", schema: ActivityPersonPseudonymEvidenceSchema, fixtures: [{
-    runId: UUID_2,
-    workflowId: "separations",
-    keyGeneration: "activity-person-g1",
-    pseudonym: HASH_A,
-    derivation: "hmac-sha-256/activity-person/v1",
-  }] },
-  {
-    name: "ActivityPersonPseudonymGenerationBinding",
-    schema: ActivityPersonPseudonymGenerationBindingSchema,
-    fixtures: [{
-      keyGeneration: "activity-person-g1",
-      keyCommitment: HASH_A,
-      derivation: "hmac-sha-256/activity-person-key-commitment/v1",
-    }],
-  },
 
 
 
@@ -854,13 +829,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     { ...LEDGER_PAYLOAD, subject: { state: "absent" }, externalOccurredAt: { state: "present", value: ABSENCE_1.observedAt } },
   ] },
   { name: "LedgerEntry", schema: LedgerEntrySchema, fixtures: [LEDGER_ENTRY] },
-  { name: "LedgerOutboxPayload", schema: LedgerOutboxPayloadSchema, fixtures: [LEDGER_OUTBOX_PAYLOAD] },
   { name: "WriteCommittedSpanOutboxPayload", schema: WriteCommittedSpanOutboxPayloadSchema, fixtures: [SPAN_OUTBOX_PAYLOAD], openFixturePaths: ["outcome.output.value"] },
-  { name: "AtomicOutboxPayload", schema: AtomicOutboxPayloadSchema, fixtures: [LEDGER_OUTBOX_PAYLOAD, SPAN_OUTBOX_PAYLOAD], openFixturePaths: ["outcome.output.value"] },
-  { name: "AtomicOutboxRecord", schema: AtomicOutboxRecordSchema, fixtures: [
-    atomicOutbox(LEDGER_OUTBOX_PAYLOAD),
-    { ...atomicOutbox(SPAN_OUTBOX_PAYLOAD), projection: { state: "projected", projectedAt: ABSENCE_1.observedAt, projectionFingerprint: HASH_A } },
-  ], openFixturePaths: ["payload.outcome.output.value"] },
   { name: "WriteFenceInput", schema: WriteFenceInputSchema, fixtures: [{ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT, claim: { workerId: "fixture-worker", claimGeneration: 1 } }] },
   { name: "PermanentWriteResolution", schema: PermanentWriteResolutionSchema, fixtures: [
     { state: "refused", refusal: { reason: "lost" } },
@@ -1187,8 +1156,6 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/intake/enqueue.ts:IntakeEnqueueSessionView",
   "src/models/intake/enqueue.ts:IntakeEnqueuePlan",
   "src/models/intake/enqueue.ts:IntakeEnqueuePlanInput",
-  // The identity domain retains a secret in a closure; only its schema-bound derivation crosses boundaries.
-  "src/models/trust/activity-person-pseudonym.ts:ActivityPersonPseudonymDomain",
   // Omission declarations carry producer functions and plans use Maps; crossing values have strict schemas.
   "src/models/workflow/step-omission.ts:StepOmissionProduceContext",
   "src/models/workflow/step-omission.ts:StepOmissionDeclaration",

@@ -133,7 +133,6 @@ export type RunLifecycle = z.infer<typeof RunLifecycleSchema>;
 /** The lifecycle states in which exactly one worker owns the row. */
 export const ClaimedRunStateSchema = z.enum(["claimed", "validating", "running"]);
 export type ClaimedRunState = z.infer<typeof ClaimedRunStateSchema>;
-export const CLAIMED_RUN_STATES = Object.freeze(ClaimedRunStateSchema.options);
 
 export function isClaimedRunState(state: RunState): state is ClaimedRunState {
   return ClaimedRunStateSchema.safeParse(state).success;
