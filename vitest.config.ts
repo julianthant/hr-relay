@@ -121,7 +121,7 @@ const sharedConfig = defineConfig({
         "src/backend/runs/lifecycle/run-record-service.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/lifecycle/run-result.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/settings/run-settings.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/projections/run-summary.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/rules/runs/summary-derivation.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/provenance/task-provenance.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/lifecycle/terminal-authorization.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/provenance/test-data-usage.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,

@@ -10,7 +10,11 @@ import {
   auditCrmUiEvidenceBindings,
   auditCrmUiRegistry,
 } from "../../../src/backend/systems/crm/driver/ui-registry.js";
-import { KUALI_UI_REGISTRY } from "../../../src/backend/systems/kuali/driver/ui-registry.js";
+import {
+  KUALI_UI_REGISTRY,
+  auditKualiUiEvidenceBindings,
+  auditKualiUiRegistry,
+} from "../../../src/backend/systems/kuali/driver/ui-registry.js";
 import { buildUiTaskLinks } from "../../../src/backend/systems/ui-task-links.js";
 import {
   NEW_KRONOS_UI_REGISTRY,
@@ -94,6 +98,34 @@ function crmEvidenceBindingInput(): unknown {
   };
 }
 
+function kualiEvidenceBindingInput(): unknown {
+  const portMap = bindings;
+  return {
+    evidenceByRef: {
+      "tests/support/fixtures/ui/kuali/rrss-document.fixture.json": readJson("tests/support/fixtures/ui/kuali/rrss-document.fixture.json"),
+      "tests/support/fixtures/ui/kuali/rrss-document.live.json": readJson("tests/support/fixtures/ui/kuali/rrss-document.live.json"),
+      "tests/support/fixtures/ui/kuali/separation-document.fixture.json": readJson("tests/support/fixtures/ui/kuali/separation-document.fixture.json"),
+      "tests/support/fixtures/ui/kuali/separation-document.live.json": readJson("tests/support/fixtures/ui/kuali/separation-document.live.json"),
+      "tests/support/fixtures/ui/kuali/action-list.fixture.json": readJson("tests/support/fixtures/ui/kuali/action-list.fixture.json"),
+      "tests/support/fixtures/ui/kuali/action-list.live.json": readJson("tests/support/fixtures/ui/kuali/action-list.live.json"),
+    },
+    portBindings: portMap.entries.flatMap((entry) => {
+      if (entry.system !== "kuali"
+        || entry.disposition !== "ported"
+        || entry.semanticKind !== "element"
+        || !("canonicalId" in entry)) return [];
+      return [{
+        system: entry.system,
+        legacyKey: entry.legacyKey,
+        disposition: entry.disposition,
+        semanticKind: entry.semanticKind,
+        canonicalId: entry.canonicalId,
+        evidence: entry.evidence,
+      }];
+    }),
+  };
+}
+
 function newKronosEvidenceBindingInput(): unknown {
   const portMap = bindings;
   return {
@@ -122,6 +154,7 @@ describe("semantic UI registry architecture", () => {
   it("keeps the registry closed, dependency-complete, collision-free, and scenario-backed", () => {
     assert.deepEqual(auditUcpathUiRegistry(), []);
     assert.deepEqual(auditCrmUiRegistry(), []);
+    assert.deepEqual(auditKualiUiRegistry(), []);
     assert.deepEqual(auditNewKronosUiRegistry(), []);
     assert.equal(UCPATH_UI_REGISTRY.screens.length > 0, true);
     assert.equal(UCPATH_UI_REGISTRY.elements.length > 0, true);
@@ -202,6 +235,7 @@ describe("semantic UI registry architecture", () => {
   it("binds every published fact to exact evidence and exact selector bindings", () => {
     assert.deepEqual(auditUcpathUiEvidenceBindings(evidenceBindingInput()), []);
     assert.deepEqual(auditCrmUiEvidenceBindings(crmEvidenceBindingInput()), []);
+    assert.deepEqual(auditKualiUiEvidenceBindings(kualiEvidenceBindingInput()), []);
     assert.deepEqual(auditNewKronosUiEvidenceBindings(newKronosEvidenceBindingInput()), []);
 
     const wrongScreen = structuredClone(evidenceBindingInput()) as {
