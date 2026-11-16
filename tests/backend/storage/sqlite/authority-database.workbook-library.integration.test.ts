@@ -97,7 +97,7 @@ it.each(["head", "creation-value", "creation-missing"])("refuses corrupt workboo
       raw.exec("DROP TRIGGER workbook_creations_immutable; DROP TRIGGER workbook_creations_retained");
       if (corruption === "creation-value") raw.prepare("UPDATE workbook_creations SET payload_json='{}' WHERE id=?").run(first.libraryId);
       else raw.prepare("DELETE FROM workbook_creations WHERE id=?").run(first.libraryId);
-      for (const trigger of triggers) if (typeof trigger.sql === 'string' && !trigger.sql.includes('BEFORE INSERT')) raw.exec(trigger.sql);
+      for (const trigger of triggers) if (typeof trigger.sql === 'string' && /^CREATE TRIGGER workbook_creations_(?:immutable|retained)\b/u.test(trigger.sql)) raw.exec(trigger.sql);
 
     }
   } finally { raw.close(); }
