@@ -104,8 +104,6 @@ export const StepOmissionsSchema = z.array(StepOmissionEntrySchema).min(1).super
 const RequestedOmissionsSchema = z.array(StepOmissionEntrySchema).superRefine(uniqueSteps);
 export type StepOmissions = z.infer<typeof StepOmissionsSchema>;
 
-export const StepOmissionNotRunReasonSchema = z.enum(["operator-asserted", "step-omitted"]);
-
 /** The arm a workflow RESULT carries where an omitted write step's proof would be: no disposition is invented, the step is named. */
 export const OmittedStepResultArmSchema = z.strictObject({
   state: z.literal("omitted"),

@@ -107,8 +107,6 @@ export const SourceSurfaceIdSchema = slugText<"SourceSurfaceId">("source surface
 export const WorkerIdSchema = slugText<"WorkerId">("worker id must be kebab-case");
 export const GateIdSchema = slugText<"GateId">("gate id must be kebab-case");
 export const DelegationEdgeIdSchema = slugText<"DelegationEdgeId">("delegation edge id must be kebab-case");
-/** The identity that holds a ledger partition's projection lease (ref write-safety ). */
-export const LedgerProjectorIdSchema = slugText<"LedgerProjectorId">("ledger projector id must be kebab-case");
 
 /** `<code>-<HHMMSS>-<runId4>`; the code segment is deliberately wider than the writer's current rule because this schema is a READER of durable stored ids. */
 export const TraceIdSchema = brandedText<"TraceId">(
@@ -136,7 +134,6 @@ export const EID_PATTERN = /^10\d{6}$/;
 export const EidSchema = brandedText<"Eid">(EID_PATTERN, "EID must be eight digits beginning with 10");
 export const PositiveIntSchema = z.number().int().positive().brand<"PositiveInt">();
 export const NonNegativeIntSchema = z.number().int().nonnegative().brand<"NonNegativeInt">();
-export const MoneyMinorUnitsSchema = z.number().int().brand<"MoneyMinorUnits">();
 export const ProjectionCursorSchema = brandedText<"ProjectionCursor">(
   /^pc:[1-9]\d*$/,
   "projection cursor must be pc:<positive integer>",

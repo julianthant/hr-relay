@@ -70,7 +70,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/image-geometry.ts` | image geometry |
 | `fixtures/intake-kernel-seams.ts` | intake kernel seams |
 | `fixtures/intake-workflow-fixture.ts` | intake workflow fixture |
-| `fixtures/integration/activity-person-pseudonym-fixtures.ts` | activity person pseudonym fixtures |
+| `fixtures/integration/separations-run-fixtures.ts` | canonical Separations run fixtures |
 | `fixtures/integration/settings-runtime-corruption-fixtures.ts` | settings runtime corruption fixtures |
 | `fixtures/integration/source-bound-fixtures.ts` | source bound fixtures |
 | `fixtures/ledger-projection-fixtures.ts` | ledger projection fixtures |
