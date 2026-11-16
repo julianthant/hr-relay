@@ -65,7 +65,7 @@ function ServedDecision({ decision, served, onAnswer, onCancel }: { decision: Lo
   return <div className="flex min-w-0 flex-col gap-3" data-decision-state={decision.state}>
     {decision.screenshots && <LogScreenshots screenshots={decision.screenshots} />}
     <DecisionCard title={decision.title} context={context} tone={decision.state === "failed" ? "danger" : undefined} inline={pick}
-      confirmLabel={named ? option.label : "Confirm"} confirmDisabled={disabled || option === undefined || !decisionAnswerValid(option, answer)}
+      noConfirm={option === undefined && decision.state === "failed"} confirmLabel={named ? option.label : "Confirm"} confirmDisabled={disabled || option === undefined || !decisionAnswerValid(option, answer)}
       onConfirm={() => { if (option !== undefined && decisionAnswerValid(option, answer)) onAnswer?.(option, answer); }} onCancel={onCancel}>
       <DecisionBody decision={decision} />
       {choices.length > 1 && option !== undefined && served.choiceLabel !== undefined && <DecisionChoice label={served.choiceLabel} value={option.id} disabled={disabled} onChange={setSelected}

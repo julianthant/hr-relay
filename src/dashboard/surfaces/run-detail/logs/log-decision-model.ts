@@ -1,5 +1,9 @@
 import type { CandidateTableWire, DecisionAnswerWire, DecisionOptionWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
+import type { FailureDisplaySchema } from "../../../../models/dashboard/failure-display.js";
 import type { LogScreenshot } from "./log-feed-model.js";
+import type { z } from "zod";
+
+type FailureDisplayWire = z.infer<typeof FailureDisplaySchema>;
 
 /** What the operator entered for one served option: a picked row, a typed value, a date or text. */
 export type LogDecisionAnswer = Readonly<{ candidate?: string; typed?: string; date?: string; text?: string }>;
@@ -90,4 +94,14 @@ export function answeredOutcome(decision: Pick<LogDecision, "answered" | "answer
   if (id.startsWith("reject")) return { outcome: `${noun} rejected`, kind: "rejected" };
   if (/^(retry|check-again$|reopen-browser$|sign-in-again$|recover$|resume$)/u.test(id)) return { outcome: "Retried", kind: "retry" };
   return { outcome: "Resolved", kind: "done" };
+}
+
+/** The failure card's served facts: the action it was attempting, the last completed step and the value row. A fact the backend did not serve stays absent. */
+export function failureCardFacts(display: FailureDisplayWire | undefined): Pick<LogDecision, "attemptedAction" | "lastCompleted" | "field"> {
+  if (display === undefined) return {};
+  return {
+    ...(display.attemptedAction === undefined ? {} : { attemptedAction: display.attemptedAction }),
+    ...(display.lastCompleted === undefined ? {} : { lastCompleted: display.lastCompleted }),
+    ...(display.field === undefined ? {} : { field: display.field }),
+  };
 }
