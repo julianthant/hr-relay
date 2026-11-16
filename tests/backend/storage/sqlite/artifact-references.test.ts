@@ -25,8 +25,8 @@ it("finds the references the schema walk finds: full refs, attachments, nested p
     extraKey: { ...ref("7"), note: "strict schemas refuse extra keys" }, wrongType: { sha256: 7, digest: null } })) as Record<string, unknown>;
   Object.defineProperty(value, "__proto__", { value: { file: hidden }, enumerable: true, configurable: true, writable: true });
   value.holder = holder;
-  assert.deepEqual(artifactReferencesIn(value).map(found => found.sha256).sort(),
-    [direct, inArray, nested, nullPrototype].map(found => found.sha256).concat("6".repeat(64)).sort());
+  assert.deepEqual(artifactReferencesIn(value).map((found): string => found.sha256).sort(),
+    [direct, inArray, nested, nullPrototype].map((found): string => found.sha256).concat("6".repeat(64)).sort());
   assert.throws(() => artifactReferencesIn({ file: direct, at: new Date(0) }));
   assert.throws(() => artifactReferencesIn([direct, { ...direct, bytes: 2 }]), /artifact-reference-identity-mismatch/u);
 });
