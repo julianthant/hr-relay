@@ -13,7 +13,7 @@ import { readGateParks } from "../../../../src/backend/app/composition/dashboard
 import { explainRunFrom } from "../../../../src/backend/app/composition/explain-compose.js";
 import { SectionUnavailableError } from "../../../../src/backend/runs/commands/refusals.js";
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
-import { buildRunGate } from "../../../../src/backend/runs/queries/run-trust.js";
+import { buildRunGate } from "../../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { EXIT_TERMINAL_AT, seedPersonLookupExitRun } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";

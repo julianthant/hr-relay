@@ -211,4 +211,3 @@ export function createCommandBrowserManager(options: Readonly<{
       if (entry !== undefined) { await entry.completion; if (entry.failure !== undefined) throw entry.failure; } },
   });
 }
-export type CommandBrowserManager = ReturnType<typeof createCommandBrowserManager>;

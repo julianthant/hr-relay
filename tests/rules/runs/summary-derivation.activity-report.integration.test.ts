@@ -1,23 +1,23 @@
-import { operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
-import { isQueueMember, isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
-import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
-import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
+import { operatorFailureSentence } from "../../../src/models/failures/error-catalog.js";
+import { isQueueMember, isQueueTopLevel } from "../../../src/models/dashboard/queue-parent.js";
+import { createProfileFixtureSet } from "../../support/helpers/admission-fixture.js";
+import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { join } from "node:path";
-import { deriveCanonicalPerson } from "../../../../src/backend/runs/projections/run-summary.js";
-import { DeletedRunRecordSchema,type DeletedRunRecord } from "../../../../src/models/run/deleted-run.js";
-import { RunLifecycleSchema,RunRecordSchema,type RunRecord } from "../../../../src/models/run/record.js";
-import type { RunResultRecord } from "../../../../src/models/run/result.js";
-import { FingerprintSchema,RunIdSchema } from "../../../../src/rules/identity/ids.js";
-import { separationsRunResultRecord,CURRENT_SEPARATIONS_RESULT } from "../../../support/fixtures/integration/separations-run-fixtures.js";
-import { inMemoryRunReaderFake } from "../../../support/helpers/canonical-run-reader.js";
+import { deriveCanonicalPerson } from "../../../src/rules/runs/summary-derivation.js";
+import { DeletedRunRecordSchema,type DeletedRunRecord } from "../../../src/models/run/deleted-run.js";
+import { RunLifecycleSchema,RunRecordSchema,type RunRecord } from "../../../src/models/run/record.js";
+import type { RunResultRecord } from "../../../src/models/run/result.js";
+import { FingerprintSchema,RunIdSchema } from "../../../src/rules/identity/ids.js";
+import { separationsRunResultRecord,CURRENT_SEPARATIONS_RESULT } from "../../support/fixtures/integration/separations-run-fixtures.js";
+import { inMemoryRunReaderFake } from "../../support/helpers/canonical-run-reader.js";
 
 import assert from "node:assert/strict";
 import { afterAll,afterEach,describe,it } from "vitest";
-import { ActivityReportWireSchema,type ActivityReportWire } from "../../../../src/models/dashboard/activity.js";
-import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
-import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
-import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
-import { fixtureUuid,ledgerCommitFixture } from "../../../support/fixtures/ledger-projection-fixtures.js";
+import { ActivityReportWireSchema,type ActivityReportWire } from "../../../src/models/dashboard/activity.js";
+import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../src/models/trust/evidence.js";
+import type { AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
+import { fixtureDescriptor } from "../../support/fixtures/descriptor-fixtures.js";
+import { fixtureUuid,ledgerCommitFixture } from "../../support/fixtures/ledger-projection-fixtures.js";
 import {
 atDayOffset,
 claimEventOf,
@@ -32,9 +32,9 @@ runEndedEventOf,
 runRecordOf as runRecordBase,
 uuidOf,
 type DashboardWorld,
-} from "../../../support/helpers/backend/dashboard-harness.js";
-import { personLookupDescriptor,separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { atomicWriteCheckpoint,seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
+} from "../../support/helpers/backend/dashboard-harness.js";
+import { personLookupDescriptor,separationsKualiFinalizationDescriptor } from "../../support/helpers/registered-workflows.js";
+import { atomicWriteCheckpoint,seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 
 /** C completion contract: projection fixtures still carry a valid terminal settlement. */
 function runRecordOf(input: Parameters<typeof runRecordBase>[0]) {

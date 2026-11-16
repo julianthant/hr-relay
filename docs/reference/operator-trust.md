@@ -429,7 +429,7 @@ and observation recipes. Verification records name both fixture and read-only li
 `exactly-one-editable` state different observations; neither claims an external write.
 
 `src/models/ui/driver.ts` defines the typed driver boundary, and
-`src/backend/systems/browser-shared/semantic-ui-effect.ts` adapts registered effects and sensitivity.
+each system's semantic UI registry declares effects and sensitivity.
 Tasks use registered driver operations instead of inventing selectors. The system driver owns raw
 browser access. [Task contract](task-contract.md) and [write safety](write-safety.md) own the task
 context and commit capability.
