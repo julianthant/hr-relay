@@ -1,5 +1,5 @@
 import type { CommandExecutionOptions, CommandExecutionScope, CommandOutcome } from "../../../app/commands/command-executor.js";
-import { attemptUnresolved } from "../../../app/commands/command-outcome.js";
+import { attemptUnresolved, commandAttemptView } from "../../../app/commands/command-outcome.js";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
@@ -89,7 +89,8 @@ export function useProtectedSettings(input: {
         binding.feedback(outcome);
         if (document !== undefined) input.acceptReadback(document);
         if (outcome.kind === "conflict") void input.refresh().catch(() => undefined);
-        if (outcome.kind !== "uncertain" && !(outcome.kind === "refused" && outcome.reason === "locked")) pending.current = undefined;
+        const view = commandAttemptView(outcome);
+        if (view.view !== "unknown" && !(view.view === "call-refused" && view.reason === "locked")) pending.current = undefined;
         const next = outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome); setSave(next);
         if (outcome.kind === "confirmed" && document?.protectedSettings.state === "available") {
           setDraft({}); setErrors({});

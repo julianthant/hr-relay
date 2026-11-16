@@ -1,5 +1,5 @@
 import { useCallback,useEffect,useEffectEvent,useMemo,useRef,useState,useSyncExternalStore } from "react";
-import { attemptUnresolved } from "../../../app/commands/command-outcome.js";
+import { attemptUnresolved, commandAttemptView } from "../../../app/commands/command-outcome.js";
 import { deriveSettingsPatchFingerprint } from "../../../../models/config/settings.js";
 import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
 import { createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
@@ -152,7 +152,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
           acceptedRequest.current = request; resource.accept(readDocument); setEditor({ state: "loaded", document: readDocument }); setReadProblem(undefined);
         }
         if (outcome.kind === "conflict") void refresh().catch(() => undefined);
-        if (outcome.kind !== "uncertain" && !(outcome.kind === "refused" && outcome.reason === "locked")) pending.current = undefined;
+        const view = commandAttemptView(outcome);
+        if (view.view !== "unknown" && !(view.view === "call-refused" && view.reason === "locked")) pending.current = undefined;
         const next = outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome);
         setSave(next);
         if (outcome.kind === "confirmed") {
