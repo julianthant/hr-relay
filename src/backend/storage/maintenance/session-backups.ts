@@ -6,8 +6,9 @@ import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { fsyncPath } from "../private-path.js";
 import type { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { AuthorityBackupService, parseBackupManifestFile, type AuthorityBackupSource } from "../sqlite/backup-service.js";
+import { AuthorityBackupService, parseBackupManifestFile, verifyBackupBytesAtPath, type AuthorityBackupSource } from "../sqlite/backup-service.js";
 import { backupThreadIdle, copyAuthorityOffThread } from "../sqlite/backup-inspection-worker.js";
+import { hasUnprovedSourceClosure } from "../source-closure.js";
 import { StorageMaintenanceCustodyUnavailableError } from "./custody-availability.js";
 
 export const SESSION_BACKUP_INTERVAL_MS = 60 * 60_000;
@@ -26,28 +27,23 @@ export type SessionBackups = Readonly<{
   check(): Promise<SessionBackupCheck>;
   /** Starts the one-minute timer and sets where failures are reported. */
   start(debugEvents: DebugEvents): void;
-  /** A backup is in flight or its worker thread has not exited. */
+  /** A backup is in flight, its worker thread has not exited, or a source closure is unproved. */
   hasUnquiescedWork(): boolean;
   /** Stops the timer and aborts the in-flight backup; later checks answer "stopped". */
   requestCancellation(): void;
-  /** Settles once the in-flight backup settled and every worker thread exited. */
+  /** Settles once the in-flight backup settled and every worker thread exited; rejects with an unproved source closure. */
   awaitCancellation(): Promise<void>;
 }>;
 
-/** Verified backups of any kind that belong to this profile, newest first by creation time. */
-function newestBackupCreatedAt(admission: RuntimeAdmission, directory: string, nowMs: number): Readonly<{ createdAt: string; authorityGeneration: number }> | undefined {
-  if (!existsSync(directory)) return undefined;
-  const binding = admission.profileBinding;
-  let newest: { createdAt: string; authorityGeneration: number } | undefined;
-  for (const name of readdirSync(directory).filter(entry => entry.endsWith(ManifestSuffix))) {
-    let manifest: ReturnType<typeof parseBackupManifestFile>;
-    try { manifest = parseBackupManifestFile(join(directory, name)); } catch { continue; }
-    if (manifest.installationId !== binding.installationId || manifest.profileId !== binding.profileId) continue;
-    const createdMs = Date.parse(manifest.createdAt);
-    if (createdMs > nowMs || newest !== undefined && createdMs <= Date.parse(newest.createdAt)) continue;
-    newest = { createdAt: manifest.createdAt, authorityGeneration: manifest.authorityGeneration };
-  }
-  return newest;
+type VerifiedManifest = Readonly<{ name: string; createdAt: string; authorityGeneration: number }>;
+
+function readManifest(path: string) {
+  try { return parseBackupManifestFile(path); } catch { return undefined; }
+}
+
+function fileIdentity(path: string): string {
+  const stats = statSync(path, { bigint: true, throwIfNoEntry: false });
+  return stats === undefined ? "missing" : `${String(stats.dev)}:${String(stats.ino)}:${String(stats.size)}:${String(stats.mtimeNs)}:${String(stats.ctimeNs)}`;
 }
 
 function isCustodyUnavailable(error: unknown): boolean {
@@ -59,7 +55,7 @@ function removeBackupFiles(path: string): void {
   for (const candidate of [path, `${path}-wal`, `${path}-shm`, `${path}-journal`]) rmSync(candidate, { force: true });
 }
 
-/** Removes every other in-session backup, manifest first so a backup never stands without its proof. */
+/** Removes every in-session backup but the kept one, manifest first so a backup never stands without its proof. */
 function retainOnlyNewestSessionBackup(admission: RuntimeAdmission, directory: string, keepFileName: string): void {
   const names = readdirSync(directory), keepManifest = `${keepFileName}${ManifestSuffix}`;
   const withManifest = new Set<string>();
@@ -84,7 +80,29 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
   const controller = new AbortController();
   let stopped = false, timer: NodeJS.Timeout | undefined, debugEvents: DebugEvents | undefined;
   let inFlight: Promise<SessionBackupCheck> | undefined, lingeringThread = false;
-  let lastFailureMonotonicMs: number | undefined;
+  let lastFailureMonotonicMs: number | undefined, closureFailure: { error: unknown } | undefined;
+  const passed = new Map<string, string>();
+
+  /** Manifests of this profile whose backup bytes verify, newest first; a passed verdict stands while both files keep their identity. */
+  const newestVerified = async (only?: RegExp): Promise<VerifiedManifest | undefined> => {
+    if (!existsSync(directory)) return undefined;
+    const binding = admission.profileBinding, nowMs = clock.nowMs(), candidates: Array<VerifiedManifest & { manifestPath: string; backup: NonNullable<ReturnType<typeof readManifest>> }> = [];
+    for (const name of readdirSync(directory).filter(entry => entry.endsWith(ManifestSuffix) && (only === undefined || only.test(entry)))) {
+      const manifestPath = join(directory, name), manifest = readManifest(manifestPath);
+      if (manifest === undefined || manifest.installationId !== binding.installationId || manifest.profileId !== binding.profileId || Date.parse(manifest.createdAt) > nowMs) continue;
+      candidates.push({ name, createdAt: manifest.createdAt, authorityGeneration: manifest.authorityGeneration, manifestPath, backup: manifest });
+    }
+    candidates.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt) || right.name.localeCompare(left.name));
+    for (const candidate of candidates) {
+      const backupPath = join(directory, candidate.backup.backupFileName), identity = `${fileIdentity(candidate.manifestPath)}|${fileIdentity(backupPath)}`;
+      if (passed.get(candidate.manifestPath) !== identity) {
+        try { await verifyBackupBytesAtPath(backupPath, candidate.backup); } catch { passed.delete(candidate.manifestPath); continue; }
+        passed.set(candidate.manifestPath, identity);
+      }
+      return { name: candidate.name, createdAt: candidate.createdAt, authorityGeneration: candidate.authorityGeneration };
+    }
+    return undefined;
+  };
 
   const stopScheduler = (): void => {
     stopped = true;
@@ -120,12 +138,6 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
       if (fresh === undefined) throw new Error("session-backup-result-missing");
       retainOnlyNewestSessionBackup(admission, directory, fresh.backupFileName);
       return "taken";
-    } catch (error) {
-      if (controller.signal.aborted) return "stopped";
-      if (isCustodyUnavailable(error)) { stopScheduler(); return "unavailable"; }
-      lastFailureMonotonicMs = clock.monotonicMs();
-      report();
-      return "failed";
     } finally {
       // An aborted worker may still create its file after the request's own cleanup ran.
       lingeringThread = true;
@@ -137,9 +149,13 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
     }
   };
 
-  const decide = (): Promise<SessionBackupCheck> | SessionBackupCheck => {
+  const decide = async (): Promise<SessionBackupCheck> => {
+    if (closureFailure !== undefined) return "failed";
     if (stopped) return "stopped";
-    const newest = newestBackupCreatedAt(admission, directory, clock.nowMs());
+    // An interrupted replacement leaves two verified pairs; only the newest stays.
+    const session = await newestVerified(SessionManifest);
+    if (session !== undefined) retainOnlyNewestSessionBackup(admission, directory, session.name.slice(0, -ManifestSuffix.length));
+    const newest = await newestVerified();
     if (newest !== undefined) {
       if (clock.nowMs() - Date.parse(newest.createdAt) <= SESSION_BACKUP_INTERVAL_MS) return "recent";
       if (newest.authorityGeneration === database.getMeta().authorityGeneration) return "unchanged";
@@ -148,13 +164,23 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
     return take();
   };
 
+  const settleFailure = (error: unknown): SessionBackupCheck => {
+    if (hasUnprovedSourceClosure(error)) {
+      closureFailure ??= { error };
+      stopScheduler();
+      try { admission.retainSourceClosure(error); } catch { /* The remembered error keeps this profile's closure unproved. */ }
+      return "failed";
+    }
+    if (controller.signal.aborted) return "stopped";
+    if (isCustodyUnavailable(error)) { stopScheduler(); return "unavailable"; }
+    lastFailureMonotonicMs = clock.monotonicMs();
+    report();
+    return "failed";
+  };
+
   const check = (): Promise<SessionBackupCheck> => {
     if (inFlight !== undefined) return inFlight;
-    let outcome: Promise<SessionBackupCheck> | SessionBackupCheck;
-    try { outcome = decide(); }
-    catch { lastFailureMonotonicMs = clock.monotonicMs(); report(); return Promise.resolve("failed"); }
-    if (typeof outcome === "string") return Promise.resolve(outcome);
-    const tracked = outcome.finally(() => { inFlight = undefined; });
+    const tracked = decide().catch(settleFailure).finally(() => { inFlight = undefined; });
     inFlight = tracked;
     return tracked;
   };
@@ -167,7 +193,7 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
       timer = setInterval(() => void check(), CHECK_INTERVAL_MS);
       timer.unref();
     },
-    hasUnquiescedWork: () => inFlight !== undefined || lingeringThread,
+    hasUnquiescedWork: () => closureFailure !== undefined || inFlight !== undefined || lingeringThread,
     requestCancellation(): void {
       stopScheduler();
       controller.abort(new DOMException("session backup stopped", "AbortError"));
@@ -175,6 +201,7 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
     async awaitCancellation(): Promise<void> {
       await inFlight?.catch(() => undefined);
       await backupThreadIdle().catch(() => undefined);
+      if (closureFailure !== undefined) throw closureFailure.error;
     },
   });
 }
