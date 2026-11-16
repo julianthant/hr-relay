@@ -13,8 +13,6 @@ type EditableSettingsOverride,
 
 /** The exact settings-patch schema this build accepts at the command boundary. */
 export const SETTINGS_SCHEMA_HASH = deriveSchemaHash(EditableSettingsOverrideSchema, "input");
-/** Existing editor consumers share the same closed command schema identity. */
-export const CURRENT_SETTINGS_SCHEMA_HASH = SETTINGS_SCHEMA_HASH;
 
 export const SettingsLeafOperationSchema = z.union([
   z.strictObject({ set: z.unknown() }),

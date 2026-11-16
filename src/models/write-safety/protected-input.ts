@@ -151,24 +151,6 @@ export function hasProtectedTransactionInput(run: Readonly<{
   return ProtectedInputBindingsSchema.parse(bindings).some(({ inputPath }) => inputPath !== "timekeeperName");
 }
 
-/** Remove protected-source evidence leaves after their declared classification was checked. */
-export function valueFreeProtectedEvidence(value: unknown, protectedPaths: readonly string[]): JsonValue {
-  const walk = (node: JsonValue): JsonValue => {
-    if (node === null || typeof node !== "object") return node;
-    if (Array.isArray(node)) return node.map((entry) => walk(JsonValueSchema.parse(entry)));
-    const name: unknown = Reflect.get(node, "key");
-    if (typeof name === "string" && typeof Reflect.get(node, "classification") === "string" && typeof Reflect.get(node, "transform") === "string") {
-      if (name.includes("timekeeper") || name.endsWith("dateChangeComments") || name.endsWith("observedExistingComments")
-        || (protectedPaths.some((path) => name === path || name.endsWith(`.${path}`))
-          || (protectedPaths.includes("emplId") && /(?:observedEid|eid|emplId|Eid|Eids)$/u.test(name))
-          || (protectedPaths.length > 0 && /(?:idempotencyKeyDigest|businessKeyDigest|occurrenceKeyDigest)$/u.test(name))))
-        return { key: name, state: "redacted", classification: "direct-identifier", transform: "drop" };
-    }
-    return Object.fromEntries(Object.entries(node).map(([key, entry]) => [key, walk(entry)]));
-  };
-  return walk(JsonValueSchema.parse(value));
-}
-
 export function retainedRunProtectedBindings(run: Readonly<{
   envelope: Readonly<{ workflow: string }>;
   input: Readonly<{ parsed: Readonly<{ value: unknown; protectedBindings?: readonly ProtectedInputBinding[] }> }>;

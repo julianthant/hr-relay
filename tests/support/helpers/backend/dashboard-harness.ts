@@ -24,10 +24,6 @@ import { RunLifecycleSchema, RunRecordSchema, type RunRecord } from "../../../..
 import { WorkerPoolRecordSchema, type WorkerPoolRecord } from "../../../../src/models/run/worker-pool.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import {
-  ActivityPersonPseudonymEvidenceSchema,
-  type ActivityPersonPseudonymEvidence,
-} from "../../../../src/models/trust/activity-person-pseudonym.js";
-import {
   CURRENT_DIAGNOSTIC_SAFETY_VERSION,
   FailureRecordSchema,
   type FailureRecord,
@@ -99,9 +95,6 @@ export interface AuthorityFake {
 
   readonly receipts: Map<string, RunEvidenceReceipt>;
   getReceipt(runId: string): RunEvidenceReceipt | undefined;
-  readonly activityPersonPseudonyms: ActivityPersonPseudonymEvidence[];
-  listActivityPersonPseudonyms(runIds: readonly string[]): readonly ActivityPersonPseudonymEvidence[];
-  putActivityPersonPseudonym(record: unknown): void;
   /** Ref write-safety: the durable write-safety rows the parked-write section reads. */
   readonly writeIntents: Map<string, WriteIntentRecord>;
   getWriteIntent(writeIntentId: string): WriteIntentRecord | undefined;
@@ -133,7 +126,6 @@ export function authorityFake(): AuthorityFake {
   const checkpoints = new Map<string, RunCheckpointRecord>();
   const failures = new Map<string, FailureRecord>();
   const receipts = new Map<string, RunEvidenceReceipt>();
-  const activityPersonPseudonyms: ActivityPersonPseudonymEvidence[] = [];
   const writeIntents = new Map<string, WriteIntentRecord>();
   const gateResults: GateResultRecord[] = [];
   const workerSlots = new Map<string, WorkerSlotRecord>();
@@ -170,12 +162,6 @@ export function authorityFake(): AuthorityFake {
     getFailure: (failureId) => failures.get(failureId),
     receipts,
     getReceipt: (runId) => receipts.get(runId),
-    activityPersonPseudonyms,
-    // Return foreign evidence from the broad fake to prove the projector rejects incorrect repository scope.
-    listActivityPersonPseudonyms: () => activityPersonPseudonyms,
-    putActivityPersonPseudonym: (record) => {
-      activityPersonPseudonyms.push(ActivityPersonPseudonymEvidenceSchema.parse(record));
-    },
     writeIntents,
     getWriteIntent: (writeIntentId) => writeIntents.get(writeIntentId),
     putWriteIntent: (record) => writeIntents.set(record.writeIntentId, record),

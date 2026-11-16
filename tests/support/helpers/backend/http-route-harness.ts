@@ -57,7 +57,7 @@ import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-strea
 import { fixtureDescriptor } from "../../fixtures/descriptor-fixtures.js";
 import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 import { NO_INTAKE_PROJECTIONS,UNSTORED_CONFIG_IDENTITY,UNWIRED_INTAKE_PARSER,UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
-import { activityPersonPseudonymResultRecord,CURRENT_SEPARATIONS_RESULT,seedSeparationsRunAuthority,TERMINAL_SEPARATIONS_RUN } from "../../fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { separationsRunResultRecord,CURRENT_SEPARATIONS_RESULT,seedSeparationsRunAuthority,TERMINAL_SEPARATIONS_RUN } from "../../fixtures/integration/separations-run-fixtures.js";
 import { CONFIG_SNAPSHOT,UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID,sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
@@ -605,7 +605,7 @@ export function seedCurrentSeparationsRun(
   run: RunRecord,
   canonicalSubject = "10800000",
 ): void {
-  const result = activityPersonPseudonymResultRecord(run, {
+  const result = separationsRunResultRecord(run, {
     ...CURRENT_SEPARATIONS_RESULT,
     approved: { ...CURRENT_SEPARATIONS_RESULT.approved, emplId: canonicalSubject },
   });
