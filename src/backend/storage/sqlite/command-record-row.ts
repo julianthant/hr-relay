@@ -7,6 +7,8 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
+import type { CommandRowCurrent } from "../../../rules/commands/command-lifecycle.js";
+import { CommandRowStateSchema, UNKNOWN_EFFECT_CODES, commandRowStateOf, commandRowTransition, nativeAuditEffect } from "../../../rules/commands/command-lifecycle.js";
 import type { AuthorityRepositories } from "./authority-database.js";
 
 let activeRunCommand: Readonly<{ repositories: AuthorityRepositories; request: string }> | undefined;
@@ -45,7 +47,7 @@ export function settledRunDeletionIds(audit: z.infer<typeof NativeCommandAuditSc
 }
 const RowSchema = z.strictObject({
   id: z.string(), family: z.string(), actor_id: z.string(), parent_id: z.string().nullable(), target_id: z.string().nullable(),
-  request_digest: z.string(), request_json: z.string(), state: z.enum(["admitted", "executing", "succeeded", "refused", "uncertain"]),
+  request_digest: z.string(), request_json: z.string(), state: CommandRowStateSchema,
   outcome_json: z.string().nullable(), created_at: z.string(), updated_at: z.string(),
 });
 function isRunLifecycleCommand(input: unknown): boolean {
@@ -82,27 +84,30 @@ export function commandFromRow(input: unknown, validateLifecycle?: (command: unk
       ? RunLifecycleCommandAuditRecordSchema.parse(outcome)
       : NativeCommandAuditSchema.parse(outcome);
     if (canonicalJsonStringify(audit.request) !== identity.json || audit.completedAt !== row.updated_at
-      || commandAuditState(audit) !== row.state) throw new Error("command-row-outcome-mismatch");
-  } else if (row.state === "succeeded" || row.state === "refused" || row.state === "uncertain") {
+      || commandRowStateOf(nativeAuditEffect(audit)) !== row.state) throw new Error("command-row-outcome-mismatch");
+  } else if (row.state !== "admitted") {
     if (!("kind" in identity.request && identity.request.kind === "bulk-parent" && row.state === "succeeded")) throw new Error("command-row-outcome-missing");
   }
   return identity.request;
 }
-function commandAuditState(input: z.infer<typeof NativeCommandAuditSchema>) {
-  if (!("state" in input.result)) return "succeeded" as const;
-  if (["applied", "already-applied", "initialized"].includes(input.result.state)) return "succeeded" as const;
-  return "refused" as const;
-}
 export function insertNativeCommand(database: DatabaseSync, input: unknown, parentId?: string): number {
   const identity = commandIdentity(input);
   const existing = database.prepare("SELECT * FROM commands WHERE id=?").get(identity.request.commandId);
-  if (existing !== undefined) {
-    if (canonicalJsonStringify(commandFromRow(existing)) !== identity.json || RowSchema.parse(existing).parent_id !== (parentId ?? null)) throw new CommandIdentityConflictError();
-    return 0;
+  const sameRequest = existing !== undefined
+    && canonicalJsonStringify(commandFromRow(existing)) === identity.json && RowSchema.parse(existing).parent_id === (parentId ?? null);
+  const step = commandRowTransition(existing === undefined ? { kind: "absent" } : currentOf(RowSchema.parse(existing)),
+    { type: "admit", bulkParent: identity.family === "bulk-parent", sameRequest });
+  if ("refused" in step) {
+    if (step.refused === "command-identity-conflict") throw new CommandIdentityConflictError();
+    throw new Error(step.refused);
   }
+  if (step.write !== "insert") return 0;
   return Number(database.prepare("INSERT INTO commands(id,family,actor_id,parent_id,target_id,request_digest,request_json,state,outcome_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?, ?,NULL,?,?)")
     .run(identity.request.commandId, identity.family, identity.actor, parentId ?? null, identity.targetId, sha256Hex(identity.json), identity.json,
-      identity.family === "bulk-parent" ? "succeeded" : "admitted", identity.createdAt, identity.createdAt).changes);
+      step.state, identity.createdAt, identity.createdAt).changes);
+}
+function currentOf(row: z.infer<typeof RowSchema>): CommandRowCurrent {
+  return { kind: "present", state: row.state, settled: row.outcome_json !== null, bulkParent: row.family === "bulk-parent" };
 }
 export function settleNativeCommand(database: DatabaseSync, input: unknown): void {
   const audit = isRunLifecycleCommand(input)
@@ -110,14 +115,31 @@ export function settleNativeCommand(database: DatabaseSync, input: unknown): voi
     : NativeCommandAuditSchema.parse(input);
   const row = database.prepare("SELECT * FROM commands WHERE id=?").get(audit.request.commandId);
   if (row === undefined || canonicalJsonStringify(commandFromRow(row)) !== canonicalJsonStringify(audit.request)) throw new Error("command-audit-request-mismatch");
-  const existing = RowSchema.parse(row).outcome_json, json = canonicalJsonStringify(audit);
-  if (existing !== null) {
-    if (existing !== json) throw new Error("command-audit-outcome-conflict");
-    return;
-  }
+  const stored = RowSchema.parse(row), json = canonicalJsonStringify(audit);
+  const step = commandRowTransition(currentOf(stored), { type: "settle", effect: nativeAuditEffect(audit), sameOutcome: stored.outcome_json === json });
+  if ("refused" in step) throw new Error(step.refused);
+  if (step.write === "none") return;
   const changes = Number(database.prepare("UPDATE commands SET state=?,outcome_json=?,updated_at=? WHERE id=? AND outcome_json IS NULL")
-    .run(commandAuditState(audit), json, audit.completedAt, audit.request.commandId).changes);
+    .run(step.state, json, audit.completedAt, audit.request.commandId).changes);
   if (changes !== 1) throw new Error("command-audit-state-conflict");
+}
+
+const PredecessorCommandRowSchema = z.looseObject({ state: z.string(), outcome_json: z.string().nullable() });
+const PredecessorErroredOutcomeSchema = z.looseObject({ result: z.looseObject({ state: z.literal("rejected"), code: z.enum(UNKNOWN_EFFECT_CODES) }) });
+/** The image migration 32 gives a stored command row: an errored bulk child, stored `refused` below schema 32, is `uncertain`. */
+export function convertPredecessorCommandRowState(table: string, input: unknown): unknown {
+  if (table !== "commands") return input;
+  const row = PredecessorCommandRowSchema.safeParse(input);
+  if (!row.success || row.data.state !== "refused" || row.data.outcome_json === null) return input;
+  const outcome = z.string().transform((text, context) => {
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      context.addIssue({ code: "custom", message: "invalid-json" });
+      return z.NEVER;
+    }
+  }).pipe(PredecessorErroredOutcomeSchema).safeParse(row.data.outcome_json);
+  return outcome.success ? { ...row.data, state: "uncertain" } : input;
 }
 
 // Unregistered source contracts; current native readers and writers remain unchanged.

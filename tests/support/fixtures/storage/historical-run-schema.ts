@@ -1,5 +1,5 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { COMMAND_ROW_STATE_MIGRATION, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -8,8 +8,25 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
+/** Steps a current authority back to schema 31: `commands` allowed `executing`, did not tie state to outcome, and held an errored bulk child as `refused`. */
+export function restoreSchema31CommandRows(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 32);
+  const table = /CREATE TABLE commands \([^;]+?\) STRICT/u.exec(SQLITE_MIGRATIONS[0].statements.join("\n"))?.[0];
+  assert.ok(table);
+  const owned = COMMAND_ROW_STATE_MIGRATION.statements.filter(statement => /^CREATE (?:INDEX|TRIGGER) /u.test(statement));
+  const nested = database.isTransaction;
+  if (!nested) database.exec("BEGIN");
+  database.exec(`PRAGMA defer_foreign_keys=ON; CREATE TEMP TABLE commands_capture AS SELECT * FROM commands; DROP TABLE commands; ${table};
+    INSERT INTO commands SELECT * FROM commands_capture; DROP TABLE commands_capture;
+    UPDATE commands SET state='refused' WHERE state='uncertain' AND json_extract(outcome_json,'$.result.code')='bulk-child-errored'`);
+  for (const statement of owned) database.exec(statement);
+  database.exec("UPDATE database_states SET schema_version=31; PRAGMA user_version=31");
+  if (!nested) database.exec("COMMIT");
+}
+
 /** Steps a current authority back to schema 30: the change log, its run references, its triggers and indexes did not exist. */
 export function removeSchema31ChangeLog(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 32) restoreSchema31CommandRows(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 31);
   const objects = z.array(z.object({ type: z.string(), name: z.string() })).parse(database.prepare("SELECT type,name FROM sqlite_schema").all())
     .filter(({ name }) => CHANGE_LOG_OBJECTS.includes(name));
@@ -30,7 +47,7 @@ function removeSchema30WorkbookPinTags(database: DatabaseSync): void {
 
 /** Steps a current authority back to schema 29: library states and recorded actions carried no pin or tags. */
 export function restoreSchema29WorkbookPinTags(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 31) removeSchema31ChangeLog(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 31) removeSchema31ChangeLog(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 30);
   removeSchema30WorkbookPinTags(database);
   database.exec("UPDATE database_states SET schema_version=29; PRAGMA user_version=29");

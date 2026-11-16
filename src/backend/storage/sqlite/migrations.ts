@@ -86,6 +86,52 @@ BEGIN SELECT RAISE(ABORT,'worker-slot-identity-conflict'); END`,
   `SELECT '${WORKER_CUSTODY_SCAN_ID}'`,
 ];
 
+/** Migration 32 drops the never-written command row state `executing` and ties every row's state to its outcome. */
+export const COMMAND_ROW_STATE_SCHEMA_VERSION = 32;
+/** The change-log, run-reference and lookup objects migration 31 put on `commands`; dropping the table drops them. */
+const COMMANDS_CHANGE_LOG_OBJECTS = CHANGE_LOG_MIGRATION.statements
+  .filter(statement => /^CREATE (?:TRIGGER commands_(?:change|run_references)_|INDEX commands_request_family_idx )/u.test(statement));
+/**
+ * SQLite cannot change a CHECK in place, so the table is captured, dropped and refilled under deferred foreign keys;
+ * the commit-time check proves every referenced command came back. The errored bulk children are rewritten first,
+ * while the change-log triggers still record them.
+ */
+export const COMMAND_ROW_STATE_MIGRATION = deepFreeze({ version: COMMAND_ROW_STATE_SCHEMA_VERSION, statements: [
+  "PRAGMA defer_foreign_keys=ON",
+  `UPDATE commands SET state='uncertain' WHERE state='refused'
+    AND json_extract(outcome_json,'$.result.state')='rejected' AND json_extract(outcome_json,'$.result.code')='bulk-child-errored'`,
+  "CREATE TEMP TABLE commands_capture AS SELECT * FROM commands",
+  "DROP TABLE commands",
+  `CREATE TABLE commands (
+ id TEXT PRIMARY KEY, family TEXT NOT NULL, actor_id TEXT NOT NULL, parent_id TEXT REFERENCES commands(id),
+ target_id TEXT, request_digest TEXT NOT NULL, request_json TEXT NOT NULL CHECK(json_valid(request_json)),
+ state TEXT NOT NULL CHECK(state IN ('admitted','succeeded','refused','uncertain')),
+ outcome_json TEXT CHECK(outcome_json IS NULL OR json_valid(outcome_json)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+ CHECK((state='admitted')=(outcome_json IS NULL) OR (family='bulk-parent' AND state='succeeded' AND outcome_json IS NULL))
+) STRICT`,
+  "INSERT INTO commands SELECT * FROM commands_capture",
+  "DROP TABLE commands_capture",
+  "CREATE INDEX commands_parent_idx ON commands(parent_id)",
+  `CREATE TRIGGER commands_bulk_immutable
+        BEFORE UPDATE ON commands WHEN OLD.family = 'bulk-parent'
+        BEGIN SELECT RAISE(ABORT,'commands-bulk-immutable'); END`,
+  `CREATE TRIGGER commands_bulk_retained
+        BEFORE DELETE ON commands WHEN OLD.family = 'bulk-parent'
+        BEGIN SELECT RAISE(ABORT,'commands-bulk-retained'); END`,
+  `CREATE TRIGGER commands_parent_immutable
+        BEFORE UPDATE OF parent_id ON commands
+        WHEN NEW.parent_id IS NOT OLD.parent_id
+        BEGIN SELECT RAISE(ABORT,'commands-parent-immutable'); END`,
+  `CREATE TRIGGER commands_parent_kind
+        BEFORE INSERT ON commands
+        WHEN NEW.parent_id IS NOT NULL AND
+          (NEW.id = NEW.parent_id OR NEW.family <> 'run' OR
+           NOT EXISTS (SELECT 1 FROM commands WHERE id = NEW.parent_id
+             AND family = 'bulk-parent' AND parent_id IS NULL))
+        BEGIN SELECT RAISE(ABORT,'commands-parent-kind'); END`,
+  ...COMMANDS_CHANGE_LOG_OBJECTS,
+] });
+
 export const SQLITE_MIGRATIONS = deepFreeze([
   { version: 1, statements: [`CREATE TABLE database_states (
  id INTEGER PRIMARY KEY CHECK(id=1), schema_version INTEGER NOT NULL CHECK(schema_version>0),
@@ -1028,6 +1074,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   ASSISTANT_GRANT_RETIREMENT_MIGRATION,
   WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION,
   CHANGE_LOG_MIGRATION,
+  COMMAND_ROW_STATE_MIGRATION,
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,

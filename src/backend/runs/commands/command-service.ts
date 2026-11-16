@@ -1,4 +1,5 @@
 import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
+import { bulkChildClass } from "../../../rules/commands/command-lifecycle.js";
 
 import { z } from "zod";
 import {
@@ -200,12 +201,12 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
           results.push({ outcome: "errored", runId: target.runId, commandId, detail: errorText(error) });
           break;
         }
-        if (result.state === "rejected" && result.code === "bulk-child-errored") {
-          results.push({ outcome: "errored", runId: target.runId, commandId, detail: result.message });
-          break;
-        }
         if (result.state === "pending" || result.state === "confirmation-required") {
           results.push({ outcome: "errored", runId: target.runId, commandId, detail: "Command has no terminal outcome; retain its original identity." });
+          break;
+        }
+        if (result.state === "rejected" && bulkChildClass(result) === "errored") {
+          results.push({ outcome: "errored", runId: target.runId, commandId, detail: result.message });
           break;
         }
         results.push(
