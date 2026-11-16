@@ -70,7 +70,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/image-geometry.ts` | image geometry |
 | `fixtures/intake-kernel-seams.ts` | intake kernel seams |
 | `fixtures/intake-workflow-fixture.ts` | intake workflow fixture |
-| `fixtures/integration/activity-person-pseudonym-fixtures.ts` | activity person pseudonym fixtures |
+| `fixtures/integration/separations-run-fixtures.ts` | canonical Separations run fixtures |
 | `fixtures/integration/settings-runtime-corruption-fixtures.ts` | settings runtime corruption fixtures |
 | `fixtures/integration/source-bound-fixtures.ts` | source bound fixtures |
 | `fixtures/ledger-projection-fixtures.ts` | ledger projection fixtures |
@@ -205,7 +205,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/trust/trust-wire-fixtures.ts` | trust wire fixtures |
 | `processes/run-record-race-worker.ts` | run record race worker |
 | `processes/worker-composition-child.ts` | real worker composition concurrency fixture |
-| `processes/verification-reservation-owner.ts` | standalone verification reservation crash fixture |
 | `processes/worker-stub-cli.ts` | worker stub cli |
 | `helpers/browser/session-factory-fixtures.ts` | fresh browser factory and worker session runtime |
 | `helpers/workflow/flow-task-fixtures.ts` | flow, graph and scenario task contracts |

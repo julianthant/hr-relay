@@ -69,22 +69,6 @@ export function gateResultRecordSchema<ResultSchema extends z.ZodType>(
   });
 }
 
-export function sourceGateResultRecordSchema<ResultSchema extends z.ZodType>(
-  resultSchema: ResultSchema,
-  schemaHash: z.infer<typeof FingerprintSchema>,
-) {
-  return z.strictObject({
-    runId: RunIdSchema,
-  nodeId: NodeIdSchema,
-    gateId: GateIdSchema,
-    expectedVersion: PositiveIntSchema,
-    resolvedAt: IsoInstantSchema,
-    checkpointFingerprint: FingerprintSchema,
-    source: SourceGateResultRecordSchema.shape.source,
-    result: z.strictObject({ schemaHash: z.literal(schemaHash), value: resultSchema }),
-  });
-}
-
 export type OperatorGateResultRecord = z.infer<typeof OperatorGateResultRecordSchema>;
 export type SourceGateResultRecord = z.infer<typeof SourceGateResultRecordSchema>;
 export type GateResultRecord = z.infer<typeof AnyGateResultRecordSchema>;
