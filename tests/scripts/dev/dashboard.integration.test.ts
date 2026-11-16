@@ -19,9 +19,9 @@ setTimeout(() => { console.log('backend-ready'); process.send({type:'hrauto-dash
 setInterval(() => {}, 1000);
 `;
 const FRONTEND = `
-console.log('frontend-started');
 process.on('SIGINT', () => setTimeout(() => { console.log('frontend-drained'); process.exit(0); }, 150));
 process.on('SIGTERM', () => process.exit(0));
+console.log('frontend-started');
 setInterval(() => {}, 1000);
 `;
 
