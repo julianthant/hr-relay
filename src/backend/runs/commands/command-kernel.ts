@@ -70,7 +70,7 @@ import { activeRunsForItem,fanOutQueuedRuns,requireApplied,runTarget,type Target
 import { lifecycleCommandId,type RelatedRunChange,type RunMutationOutcome,type RunRecordService } from "../lifecycle/run-record-service.js";
 import { dryRunRefusalMessage,resolveInstances,supportsDryRun } from "../start/plan.js";
 import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
-import { bindRunWorkbookReference, parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
+import { bindRunWorkbookReference, parseRunWorkbookReference, runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 import { createWorkbookReferenceCapture } from "../../workbooks/workbook-library-service.js";
 import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
@@ -1919,7 +1919,7 @@ function gateEvidenceScope(
     return outputs[nodeId]!;
   };
   for (const dependency of gate.dependsOn) buildOutput(String(dependency));
-  return { input, outputs, checkpoints };
+  return { input, outputs, checkpoints, references: runWorkbookReferenceTypeIds(run.input.workbookReferences) };
 }
 
 function valueAtPath(value: unknown, path: string): unknown {

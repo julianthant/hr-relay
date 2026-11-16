@@ -817,7 +817,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
 
   /* person-lookup ingress */
   ...[PERSON_LOOKUP_INPUT,
-    ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates"].map(workflowInput),
+    ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-reference-check", "person-lookup-crm-dates"].map(workflowInput),
   ].flatMap(scope => [
     ...person(scope, "name", "emplId", "lastName", "firstName", "dob"),
     { scope, path: "ssn", classification: "direct-identifier", transform: "digest" },
@@ -851,6 +851,9 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(workflowResult("person-lookup-cross-verify"), "verifiedCrm.state", "verifiedCrm.code", "verifiedCrm.reason"),
   ...activeStatusLeaves(workflowResult("person-lookup-active-status"), ""),
   ...personLookupResultLeaves(workflowResult("person-lookup-crm-dates")),
+  /* The reference check names the picked spreadsheet, its sheet, the outcome and the row number; it carries no value from a row. */
+  ...open(taskOutput("workbooks/verify-person"), "state", "result", "checks"),
+  ...open(workflowResult("person-lookup-reference-check"), "check", "check.state", "check.result", "check.checks"),
 
         /* These describe the READ, not about the person, so they are open. */
   ...person(KRONOS_TIMECARD_INPUT, "emplId", "expectedName"),

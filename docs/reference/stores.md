@@ -247,12 +247,13 @@ _No tasks registered — this store is a declaration-only placeholder._
 
 ### `workbooks`
 
-**Kind:** service store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 2 (2 read · 0 prepare · 0 commit)
+**Kind:** service store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 3 (3 read · 0 prepare · 0 commit)
 
 | Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
 |---|---|---|---|---|---|---|---|---|---|
 | `workbooks/read-result` | Save workflow workbook | read | read | — (sessionless) | `workbooks.library` | [`name`, `table`] / [`kind`, `writeId`, `typeId`, `key`, `values`] | `state="saved"` + `operationId`, `libraryId`, `version` / `state="recorded"` + `operationId`, `libraryId`, `version`, `receiptState` / `state="refused"` + `code`, `message` | ∞ | bound |
 | `workbooks/read-reference` | Read retained workbook reference | read | read | — (sessionless) | `workbooks.library` | `typeId`, `keys` | `state`, `referenceDigest`, `reference` | ∞ | bound |
+| `workbooks/verify-person` | Check person in reference spreadsheets | read | verify | — (sessionless) | `workbooks.library` | `typeId`, `eid`, `name` | `state`, `result`, `checks` | ∞ | bound |
 
 ### `workflow:crm-doc-download`
 
@@ -430,7 +431,7 @@ Their store lists are derived from compiled contract namespaces, not maintained 
 
 | Workflow | Stores used | Composition |
 | --- | --- | --- |
-| `person-lookup` | `ucpath`, `crm`, `workflow:person-lookup` | UCPath search, CRM cross-verification, active-status fold, and conditional CRM dates. The active-status fold uses `always-rerun`; page reads use checkpoints. |
+| `person-lookup` | `ucpath`, `crm`, `workbooks`, `workflow:person-lookup` | UCPath search, CRM cross-verification, active-status fold, the optional reference spreadsheet check, and conditional CRM dates. The active-status fold uses `always-rerun`; page reads use checkpoints. |
 | `separations` | `kuali`, `ucpath`, `new-kronos`, `workflow:separations` | Kuali document facts, subject and employment resolution, timecard reads, date reconciliation, identity authority, pending termination sweep, termination filing, receipt validation, and Kuali field save. |
 
 Browser task reuse does not bypass the workflow's gates, write policy, freshness, or evidence

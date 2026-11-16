@@ -220,7 +220,7 @@ The local `ocr.approved-snapshot` and `ocr.review` capabilities are issued by
 Its pure contracts live in `src/models/workflows/i9-check/read-match-outcome.ts` and
 `read-retention-row.ts`; `check.ts` owns their shared identity/retention schemas and policy.
 `src/workflows/i9-check-start/` is the public PDF parent, with document review, roster-reference and retention step definitions and proofs. It delegates original PDFs to admitted OCR, authenticates corrected approved selections, retains each source coordinate, and runs the existing person child once per approved EID. It publishes one results workbook and the configured tracker through the shared workbook and xlsx services. Pure batch derivations live in `src/rules/i9-check/batch.ts`; canonical document/person/result shapes live in `src/models/workflows/i9-check/`, and parent task contracts mirror their IDs in `src/models/workflows/i9-check-start/`.
-Shared workbook publication and captured-version reads use `src/models/processing/workbooks/{read-result,read-reference}.ts` and the processing workbook store. `src/backend/runs/workbooks.ts` authenticates the run's retained reference before late-discovered keys can be read; callers cannot select another library or version. Captured-reference writes require an explicit planning declaration. Onboarding declares its roster for name binding, row choice and verified result patches through the captured reference. SharePoint imports remain unexposed. The public I-9 parent selects served data. I-9 Lookup is hidden and the person child has no source entry; both remain admitted through declared parent edges. I-9 Check supports a dry run: `save-workbook` declares `stop-before-publish`, so a dry run previews the results workbook without saving it and leaves the tracker untouched.
+Shared workbook publication, captured-version reads and the optional reference check use `src/models/processing/workbooks/{read-result,read-reference,verify-person}.ts` and the processing workbook store. `src/rules/matching/reference-check.ts` owns the check's outcomes, name comparison and Logs line. `src/backend/runs/workbooks.ts` authenticates the run's retained reference before late-discovered keys can be read; callers cannot select another library or version. Captured-reference writes require an explicit planning declaration. Onboarding declares its roster for name binding, row choice and verified result patches through the captured reference. SharePoint imports remain unexposed. The public I-9 parent selects served data. I-9 Lookup is hidden and the person child has no source entry; both remain admitted through declared parent edges. I-9 Check supports a dry run: `save-workbook` declares `stop-before-publish`, so a dry run previews the results workbook without saving it and leaves the tracker untouched.
 `src/workflows/i9-lookup/workflow.ts` is child-only; Onboarding declares its parent edge in the registered workflow definition. It uses
 the I-9 system store, then retains its typed result through `tasks/read-result.ts` in the workflow
 store. Its one `lookup` timeline checkpoint groups both tasks. The registered harness at
@@ -231,8 +231,8 @@ Its `index.ts` declares the store and the retained proof. `src/workflows/registr
 declare its delegation edge to resolve a child.
 
 
-Person Lookup has four chunk harnesses at `src/workflows/person-lookup/steps/<step>/step.ts`:
-`searching`, `cross-verify`, `active-status`, and `crm-dates`.
+Person Lookup has five chunk harnesses at `src/workflows/person-lookup/steps/<step>/step.ts`:
+`searching`, `cross-verify`, `active-status`, `reference-check`, and `crm-dates`.
 Separations has five chunk harnesses at `src/workflows/separations/steps/<role>/step.ts`:
 `identity-check`, `kronos-timecard`, `kuali-extraction`, `kuali-finalization`, and `ucpath-transaction`.
 `src/workflow-kit/validation/source-layout.ts` derives definition and scenario paths from workflow roles.

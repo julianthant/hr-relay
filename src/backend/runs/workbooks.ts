@@ -26,6 +26,8 @@ import { WorkbookLibraryError } from "../workbooks/workbook-library-error.js";
 import { snapshotRetainedWorkbookReference, writeRecordedRunWorkbook, readRetainedWorkbookReference, verifyRetainedNamedWorkbookReference } from "../workbooks/workbook-library-service.js";
 import type { AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
 import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema } from "../../models/processing/workbooks/read-reference.js";
+import { WorkbookPersonCheckRequestSchema, WorkbookPersonCheckSchema } from "../../models/processing/workbooks/verify-person.js";
+import { checkReferenceRows, referenceCheckLine, referenceCheckResult } from "../../rules/matching/reference-check.js";
 import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema, OnboardingInput } from "../../models/workflows/onboarding/input.js";
 import { ONBOARDING_ROSTER_GATE_ID, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterChoiceSchema } from "../../models/workflows/onboarding/roster.js";
 import { bindOnboardingRosterSources, onboardingRosterRow } from "../../rules/onboarding/roster.js";
@@ -724,17 +726,40 @@ export function buildRunWorkbookSection(repositories: AuthorityRepositories, run
   }) });
 }
 
+/** The run as the worker claimed it: still running, same claim, same envelope and input. */
+function claimedRun(repositories: AuthorityRepositories, captured: RunRecord): RunRecord {
+  const run = repositories.runs.get(captured.envelope.runId);
+  if (run?.lifecycle.state !== "running" || run.cancelRequested === true || repositories.deletedRuns.get(captured.envelope.runId) !== undefined
+    || Number(run.claimGeneration) !== Number(captured.claimGeneration)
+    || canonicalJsonStringify(run.envelope) !== canonicalJsonStringify(captured.envelope)
+    || canonicalJsonStringify(run.input) !== canonicalJsonStringify(captured.input)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+  return run;
+}
+
+/** Looks one Employee ID up in the sheet a check pick pinned; the row's name is compared here and never returned. */
+function checkReferencePerson(repository: AuthorityRepositories["workbooks"], reference: Reference, eid: string, name: string | null) {
+  const { selected } = verifyRetainedNamedWorkbookReference(repository, reference);
+  const worksheet = reference.snapshot.worksheets[0], keyFieldId = reference.snapshot.type.keyFieldId;
+  const sheet = selected.workbook.sheets.find(candidate => candidate.id === worksheet?.sheetId);
+  if (reference.snapshot.worksheets.length !== 1 || worksheet === undefined || sheet === undefined || keyFieldId === null) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  const nameColumns = sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === "fullName" && binding.basis !== "unmapped" ? [index] : []) ?? [];
+  const nameColumn = nameColumns.length === 1 ? nameColumns[0] : undefined;
+  const rows = workbookMatches({ ...selected.workbook, sheets: [sheet] }, keyFieldId, eid).map(match => {
+    const cell = nameColumn === undefined ? undefined : match.row.cells[nameColumn]?.value;
+    return { row: sheet.rows.findIndex(row => row.id === match.rowId) + 1, name: typeof cell === "string" ? cell : null };
+  });
+  const check = checkReferenceRows(name, rows);
+  return { spreadsheet: reference.snapshot.type.name, sheet: worksheet.name, ...check,
+    line: referenceCheckLine(reference.snapshot.type.name, worksheet.name, check) };
+}
+
 export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDatabase; clock: Clock;
   resolveDescriptor?: (workflowId: string) => AnyWorkflowDescriptor | undefined }>) {
   return Object.freeze({
     read(captured: RunRecord, value: z.input<typeof WorkbookReferenceReadRequestSchema>) {
       const command = WorkbookReferenceReadRequestSchema.parse(value);
       return deps.database.withAuthorityReadSnapshot(() => {
-        const repositories = deps.database.authority, run = repositories.runs.get(captured.envelope.runId);
-        if (run?.lifecycle.state !== "running" || run.cancelRequested === true || repositories.deletedRuns.get(captured.envelope.runId) !== undefined
-          || Number(run.claimGeneration) !== Number(captured.claimGeneration)
-          || canonicalJsonStringify(run.envelope) !== canonicalJsonStringify(captured.envelope)
-          || canonicalJsonStringify(run.input) !== canonicalJsonStringify(captured.input)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const repositories = deps.database.authority, run = claimedRun(repositories, captured);
         const sources = referencesFor(run, command.typeId).map(reference => {
           const read = readRetainedWorkbookReference(repositories.workbooks, reference.bound, command);
           return { referenceDigest: read.referenceDigest, reference: read.reference };
@@ -742,6 +767,16 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
         const first = sources[0];
         if (first === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
         return WorkbookReferenceReadSchema.parse({ state: "read", ...first, sources });
+      });
+    },
+    verifyPerson(captured: RunRecord, value: z.input<typeof WorkbookPersonCheckRequestSchema>) {
+      const command = WorkbookPersonCheckRequestSchema.parse(value);
+      return deps.database.withAuthorityReadSnapshot(() => {
+        const repositories = deps.database.authority, sources = referencesFor(claimedRun(repositories, captured), command.typeId);
+        const eid = command.eid;
+        const checks = eid === null ? [] : sources.map(reference => checkReferencePerson(repositories.workbooks, reference.value, eid, command.name));
+        return WorkbookPersonCheckSchema.parse({ state: "checked",
+          result: eid === null ? "no-person" : referenceCheckResult(checks.map(check => check.outcome)), checks });
       });
     },
     resolveReference(repositories: AuthorityRepositories, command: ReferenceCommand, capturedAt: string) {

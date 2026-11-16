@@ -1137,6 +1137,12 @@ export function defineWorkflowDescriptor<
       else assertSchemaOwnsPath(spec.flow.input, String(condition.of.path), `${id}: ${owner}`);
       continue;
     }
+    if (condition.of.from === "reference") {
+      if (condition.of.typeId !== workbookReference?.id && condition.of.typeId !== workbookCheck?.id) {
+        throw new Error(`${id}: ${owner} reads picked spreadsheets for undeclared reference ${condition.of.typeId}`);
+      }
+      continue;
+    }
     const upstream = String(condition.of.nodeId);
     if (!node.dependsOn.map(String).includes(upstream)) {
       throw new Error(
