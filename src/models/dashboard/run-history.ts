@@ -22,11 +22,3 @@ export const ClearRunHistoryResultSchema = z.discriminatedUnion("state", [
     reason: z.enum(["active-runs", "shared-checkpoint", "unresolved-write", "replay-divergent", "unavailable"]) }),
 ]);
 export type ClearRunHistoryResult = z.infer<typeof ClearRunHistoryResultSchema>;
-
-export const RUN_HISTORY_REFUSALS: Record<Extract<ClearRunHistoryResult, { state: "refused" }>["reason"], string> = {
-  "active-runs": "Finish or cancel all active runs before clearing run history.",
-  "shared-checkpoint": "Run evidence is still referenced by retained records. History could not be cleared.",
-  "unresolved-write": "A change still has an unresolved outcome. Resolve it before clearing run history.",
-  "replay-divergent": "This action’s identity was already used for another request. Refresh Storage before continuing.",
-  unavailable: "Run history is unavailable. Reconnect to Relay and refresh Storage.",
-};

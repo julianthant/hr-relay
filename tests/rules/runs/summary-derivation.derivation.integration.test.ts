@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { deriveCanonicalPerson,deriveRunSummary } from "../../../../src/backend/runs/projections/run-summary.js";
-import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { RunResultRecordSchema } from "../../../../src/models/run/result.js";
-import { TERMINAL_SEPARATIONS_RESULT,TERMINAL_SEPARATIONS_RUN } from "../../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
-import { foundationFixture } from "../../../support/helpers/database-foundation/fixtures.js";
+import { deriveCanonicalPerson,deriveRunSummary } from "../../../src/rules/runs/summary-derivation.js";
+import { RunRecordSchema } from "../../../src/models/run/record.js";
+import { RunResultRecordSchema } from "../../../src/models/run/result.js";
+import { TERMINAL_SEPARATIONS_RESULT,TERMINAL_SEPARATIONS_RUN } from "../../support/fixtures/integration/separations-run-fixtures.js";
+import { foundationFixture } from "../../support/helpers/database-foundation/fixtures.js";
 
 it("measures enqueue-to-end duration and keeps unknown warnings explicit", () => {
   const run=TERMINAL_SEPARATIONS_RUN;
@@ -37,7 +37,7 @@ it("uses the local enqueue day across a UTC boundary without changing the instan
   }finally{if(prior===undefined)delete process.env.TZ;else process.env.TZ=prior;await f.dispose();}
 });
 
-import { cleanReceiptOf,receiptWithWarningsOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { cleanReceiptOf,receiptWithWarningsOf } from "../../support/helpers/backend/dashboard-harness.js";
 it("serves retained receipt warnings and distinguishes clean from warned modern receipts",()=>{
   const run=TERMINAL_SEPARATIONS_RUN;
   const source={run,result:TERMINAL_SEPARATIONS_RESULT,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[],delegationWait:null,parent:null};

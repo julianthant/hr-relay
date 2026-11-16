@@ -66,9 +66,6 @@ export const UCPATH_SMART_HR_INITIATOR_COMMENTS_FIELD =
   ElementIdSchema.parse("ucpath.smart-hr.initiator-comments-field");
 export const UCPATH_SMART_HR_TRANSACTION_COMMENTS_FIELD =
   ElementIdSchema.parse("ucpath.smart-hr.transaction-comments-field");
-export const UCPATH_SMART_HR_CONFIRMATION_OK_BUTTON =
-  ElementIdSchema.parse("ucpath.smart-hr.confirmation-ok-button");
-export const UCPATH_SMART_HR_ERROR_BANNER = ElementIdSchema.parse("ucpath.smart-hr.error-banner");
 export const UCPATH_SMART_HR_DELETE_SELECTED_BUTTON =
   ElementIdSchema.parse("ucpath.smart-hr.delete-selected-button");
 export const UCPATH_SS_SMART_HR_SEARCH_EID_INPUT =

@@ -36,7 +36,7 @@
 - the `explain run` output mentions: the effective date, JRL, pool F; no Save attempt
 
 ## Current verification and gate status
-- Dashboard: `tests/dashboard/surfaces/workflows/work-study-served.test.ts` and the run-start, catalog, category and picker model tests; typecheck and lint clean on the dashboard ticket.
+- Dashboard test owners: `tests/dashboard/surfaces/run-start/run-start.work-study.test.ts` and `tests/dashboard/surfaces/workflows/workflow-catalog-model.work-study.test.ts`, alongside the category and picker model tests. Test presence does not establish a current pass.
 - Phase-exit gates: not run here; the live dry run with operator sign-off is ticket 04.
 - Do not infer test execution from declared scenario ids.
 

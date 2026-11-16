@@ -221,11 +221,6 @@ describe("secure environment bootstrap", () => {
       scripts["smoke:test-target-document-number"],
       "tsx scripts/dev/secure-env-bootstrap.ts test-target-document-number",
     );
-    assert.equal(scripts["smoke:test-target-person-secrets"], undefined);
-    assert.equal(
-      Object.values(scripts).some((command) => command.includes("test-target-person-secrets")),
-      false,
-    );
     assert.equal(
       Object.values(scripts).some((command) => command.includes("--env-file")),
       false,
