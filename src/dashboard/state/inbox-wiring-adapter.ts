@@ -9,7 +9,7 @@ import type { NotificationCollectionTarget } from "../../models/notifications/no
 import type { NotificationTarget } from "../../models/notifications/notification-target.js";
 import type { NotificationTriggerEvent } from "../../rules/notifications/notification-triggers.js";
 import { NotificationCommandRequestSchema } from "../../rules/commands/commands.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import type { NotificationControl, NotificationDestination, NotificationItem, NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
@@ -64,7 +64,8 @@ export function notificationDay(occurredAt: string, nowIso: string): string {
 function notificationDetail(row: Exclude<NotificationWire, { kind: "backfill-gap" }>): string | undefined {
   if (row.kind === "command") return row.summary;
   const source = row.sourceEvent;
-  if (row.summary !== undefined && (source?.state === "available" ? source.kind === "run-failed" : row.trigger === "failed")) return row.summary;
+  if (row.summary !== undefined && (source?.state === "available" ? source.kind === "run-failed"
+    : row.trigger === "failed" && Object.values(ERROR_CATALOG).some(entry => entry.text === row.summary))) return row.summary;
   return notificationPolicy(row)?.detail;
 }
 
