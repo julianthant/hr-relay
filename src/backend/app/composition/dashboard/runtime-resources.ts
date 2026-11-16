@@ -179,6 +179,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
 
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: appVersion, development: frontend === "vite-dev" });
+  context.attachSlowOperations(debugEvents);
   const loopDelayMonitor = composeLoopDelayMonitor(input.loopDelay, { clock, debugEvents: ownedDiagnostics(database, debugEvents) });
   startupCleanups.push(() => loopDelayMonitor.stop());
   chatGptAccount.setDebugEvents(debugEvents);

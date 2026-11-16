@@ -1,3 +1,4 @@
+import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -194,7 +195,7 @@ function read(path: string) {
   };
   const tables = query(raw => raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => String(row.name)));
   return {
-    kept: query(raw => Object.fromEntries(tables.filter(table => !CHANGED_TABLES.has(table) && !isWorkerCustodyDroppedTable(table))
+    kept: query(raw => Object.fromEntries(tables.filter(table => !CHANGED_TABLES.has(table) && !isWorkerCustodyDroppedTable(table) && !CHANGE_LOG_OBJECTS.includes(table))
       .map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]))),
     triggers: query(raw => raw.prepare("SELECT name, sql FROM sqlite_schema WHERE type='trigger' AND name NOT LIKE 'worker_%' AND name NOT LIKE 'browser_%' ORDER BY name").all()),
     run: (runId: string) => query(raw => ["runs", "run_results", "run_receipts"].map(table => raw.prepare(`SELECT * FROM ${table} WHERE ${table === "runs" ? "id" : "run_id"}=? ORDER BY rowid`).all(runId))),
@@ -246,7 +247,9 @@ it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-
   // Migration 21 rewrites this trigger; every other trigger comes through verbatim.
   // The assistant migrations add the history and attachment triggers and retire the grant trigger.
   const ASSISTANT_TRIGGERS = new Set(["assistant_messages_settle_only", "assistant_attachments_accept_only", "assistant_grants_revision"]);
-  const unchanged = (rows: readonly Record<string, unknown>[]) => rows.filter(row => (version > 20 || row.name !== "runs_completion_immutable") && !ASSISTANT_TRIGGERS.has(String(row.name)));
+  // Migration 31 adds the change log's capture and reference triggers.
+  const unchanged = (rows: readonly Record<string, unknown>[]) => rows.filter(row => (version > 20 || row.name !== "runs_completion_immutable") && !ASSISTANT_TRIGGERS.has(String(row.name))
+    && !CHANGE_LOG_OBJECTS.includes(String(row.name)));
   assert.deepEqual(unchanged(after.triggers), unchanged(before.triggers));
   assert.ok(after.triggers.some(row => row.name === "runs_completion_immutable"));
   assert.deepEqual(after.foreignKeys, []);
