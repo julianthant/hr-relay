@@ -16,7 +16,8 @@ import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../source
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
 import { AuthorityBackupService,verifyBackupManifestAtPath,verifyStoppedBackupManifestAtPath,type VerifiedBackup } from "../sqlite/backup-service.js";
-import { BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,deriveAuthorityUpgradePlanDigest,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,WORKER_CUSTODY_SCHEMA_VERSION } from "../sqlite/migrations.js";
+import { BASELINE_FROM_AUTHORITY_SCHEMA_VERSIONS, isUpgradeableAuthoritySchemaVersion } from "../../../models/config/authority-schema-versions.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,deriveAuthorityUpgradePlanDigest,WORKER_CUSTODY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
 import { assertStoppedBackupClosure,prepareStoppedBackupClosure,readStoppedProfileUpgradeInventory,StorageBackupClosureUnprovedError,type ProfileBrowserClosure,type StoppedBackupClosure } from "./profile-inventory.js";
 
@@ -24,7 +25,7 @@ import { assertStoppedBackupClosure,prepareStoppedBackupClosure,readStoppedProfi
 
 export const StorageUpgradeReportSchema = z.strictObject({
   state: z.enum(["planned", "initialized", "upgraded", "already-upgraded"]),
-  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(30), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  fromSchemaVersion: z.literal(BASELINE_FROM_AUTHORITY_SCHEMA_VERSIONS),
   toSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   credentials: z.literal("unchanged"),
   diagnostics: z.strictObject({ reclaimedStages: z.number().int().nonnegative(), retainedStages: z.number().int().nonnegative(), capacityWarning: z.boolean() }).optional(),
@@ -228,7 +229,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
   const inspect = () => AuthorityDatabase.inspectStoppedUpgrade(owner, path, processLockRoot, clock);
   const inspectInventory = () => readStoppedProfileUpgradeInventory({ machine, admission: owner, hostFacts: input.hostFacts, clock, browserClosure });
   const initial = inspect();
-  const closure = !input.plan && UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(initial.schemaVersion)
+  const closure = !input.plan && isUpgradeableAuthoritySchemaVersion(initial.schemaVersion)
     ? await prepareStoppedBackupClosure(browserClosure, owner, restore, clock, processLockRoot) : undefined;
   let inventory = inspectInventory();
   const revalidate = (backup?: VerifiedBackup) => {
@@ -248,7 +249,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
     await owner.completeStartupUpgradeLogout();
     return report("already-upgraded");
   }
-  if (!UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(initial.schemaVersion)) throw new Error("profile-stopped-upgrade-version-refused");
+  if (!isUpgradeableAuthoritySchemaVersion(initial.schemaVersion)) throw new Error("profile-stopped-upgrade-version-refused");
   if (closure === undefined) throw new StorageBackupClosureUnprovedError();
   const backed = await backupStoppedAuthority(closure, owner, owner.stateRoot, clock, processLockRoot, restore, "schema-migration");
   if (backed.manifests.length !== 1) throw new Error("profile-stopped-upgrade-single-backup-required");
