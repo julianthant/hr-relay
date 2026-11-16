@@ -106,7 +106,7 @@ async function installation(holders: ReadonlyArray<"first" | "second">, signedOu
     return stateRoot === people.first.stateRoot ? "first" : stateRoot === people.second.stateRoot ? "second" : stateRoot;
   });
   return {
-    machine: second.machine, person: second.admission, ...people,
+    person: second.admission, ...people,
     /** Both people's store files, to show a refusal wrote nothing. */
     stores: () => [readFileSync(first.path), readFileSync(second.path)],
     /** The machine is back to an ordinary stopped state: no maintenance operation is left held. */

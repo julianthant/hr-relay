@@ -31,7 +31,7 @@ Every command runs from the checkout that owns the store and ports. `npm run cli
 | Persisted diagnostics | `npm run cli -- explain diagnostics [--run <runId>] [--json]` |
 | Subject readiness by label | `npm run cli -- test-data check --json --subject <label> [--workflow <id>]` |
 | Transaction history, one report per ready person at `NAME.<profile-id>.EXT` beside `PATH` | `npm run cli -- storage transactions --from YYYY-MM-DD --to YYYY-MM-DD [--system SYSTEM] --output PATH` |
-| Missing `run.queued` root, repaired in the signed-in person's store with the runtime stopped | `npm run cli -- storage repair-span-root --run <run-id> [--person <profile-id>] [--json]` |
+| Missing `run.queued` root, repaired in the signed-in person's store with the runtime stopped; refused when nobody is signed in or that store does not hold the run (sign in as the person who holds it, stop the runtime, repeat) | `npm run cli -- storage repair-span-root --run <run-id> [--person <profile-id>] [--json]` |
 
 `dashboard`, `backend` and `cli` prepare the ignored workflow manifest first. Ports, state roots and the session namespace come from `config/runtime-isolation.json` (backend 3938, Vite 5174, namespace `hrauto-rebuild`); never use legacy's.
 
