@@ -61,6 +61,13 @@ export function notificationDay(occurredAt: string, nowIso: string): string {
   return ago <= 0 ? "Today" : ago === 1 ? "Yesterday" : ago < 7 ? WEEKDAY.format(when) : MONTH_DAY.format(when);
 }
 
+function notificationDetail(row: Exclude<NotificationWire, { kind: "backfill-gap" }>): string | undefined {
+  if (row.kind === "command") return row.summary;
+  const source = row.sourceEvent;
+  if (row.summary !== undefined && (source?.state === "available" ? source.kind === "run-failed" : row.trigger === "failed")) return row.summary;
+  return notificationPolicy(row)?.detail;
+}
+
 function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" }>, nowIso: string): NotificationItem {
   const policy = notificationPolicy(row);
   const elapsed = Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(row.occurredAt)) / 60000));
@@ -71,11 +78,9 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
       kind: command ? "command" as const : row.link?.kind === "storage" ? "storage" as const : "run" as const,
       // Notices the server marks as commands carry their own priority; error and warning notices still need the operator.
       priority: command ? row.priority : tone === "danger" || tone === "warning",
-      subject: context.state === "available" ? context.subject : inboxMessage("NOTIFICATION_CONTEXT_UNAVAILABLE"),
+      subject: context.state === "available" ? context.subject : context.state === "unavailable" ? inboxMessage("NOTIFICATION_CONTEXT_UNAVAILABLE") : "",
       workflow: context.state === "available" || context.state === "workflow-only" ? context.workflow : "",
-      detail: command ? row.summary : row.sourceEvent?.state === "available" && row.sourceEvent.kind === "run-failed" && row.summary !== undefined
-        ? row.summary
-        : policy?.detail ?? inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"),
+      detail: notificationDetail(row) ?? inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"),
       age: elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed} min ago` : elapsed < 1440 ? `${Math.floor(elapsed / 60)} hr ago` : `${Math.floor(elapsed / 1440)} days ago`,
       day: notificationDay(row.occurredAt, nowIso),
       read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
@@ -88,8 +93,9 @@ export function inboxProjection(rows: readonly NotificationWire[], nowIso: strin
   const items: NotificationItem[] = [];
   for (const row of rows) {
     if (row.kind === "backfill-gap") { notices.add(inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE")); continue; }
-    const policy = notificationPolicy(row);
-    if (policy === undefined) notices.add(inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"));
+    const run = row.kind === "notification" && row.link?.kind !== "storage";
+    const unavailable = run ? row.context.state === "unavailable" || notificationDetail(row) === undefined : notificationPolicy(row) === undefined;
+    if (unavailable) notices.add(inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"));
     items.push(notificationItem(row, nowIso));
   }
   const needsYou = items.filter(item => !item.read && (item.tone === "danger" || item.tone === "warning")).length;

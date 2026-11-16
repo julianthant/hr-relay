@@ -93,6 +93,24 @@ it("defines all eight source policies with exact target kinds and honest gap/mis
   assert(notificationTargetMatches(row(), { kind: "storage" }));
   assert.equal(notificationTargetMatches(row(), { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: "2026-08-03" }), false);
 });
+it("shows retained failed-run workflow and reason without unavailable text or an inferred source policy", () => {
+  const summary = "UCPath could not be reached. Check the connection and review the run evidence.";
+  const retained = row("run-failed", { title: "Run failed", summary,
+    context: { state: "workflow-only", workflow: "Onboarding" }, sourceEvent: { state: "unavailable" } });
+  const projection = inboxProjection([retained], now);
+  assert(projection.state.state === "ready");
+  const item = projection.state.items[0];
+  assert.equal(item.workflow, "Onboarding");
+  assert.equal(item.subject, "");
+  assert.equal(item.detail, summary);
+  assert.equal(projection.notice, "");
+  assert.equal(notificationPolicy(retained), undefined);
+
+  const unavailable = inboxProjection([retained, row("run-failed", { notificationId: failureId, summary, context: { state: "unavailable" } })], now);
+  assert(unavailable.state.state === "ready");
+  assert.equal(unavailable.state.items[1].subject, "Notification context unavailable");
+  assert.match(unavailable.notice, /source evidence is unavailable/);
+});
 it("confirms read, unread, snooze and unsnooze only through matching shared readback", async () => {
   const h = await harness();
   for (const action of ["read", "unread", "snooze", "unsnooze"] as const) { await act(async () => { assert(await h.value.control(id, action)); }); }
