@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { chatGptFixture } from "../../support/helpers/chatgpt-account-fixtures.js";
 
 it("forgets an expired connection on the next account read", async () => {
@@ -96,4 +96,22 @@ for (const leftover of ["client", "client and identity"] as const)
       assert.equal(url.searchParams.get("client_id"), "dynamic_agent_client"); assert.equal(url.searchParams.has("login_hint"), false);
       assert.notEqual(url.searchParams.get("ext_agent_host_id"), connected.hostId);
     } finally { await f.cleanup(); }
+  });
+for (const ending of ["refused", "cancelled"] as const)
+  it(`sign-out forgets the client a ${ending} connect stored after its callback`, async () => {
+    const f = await chatGptFixture();
+    const exchange = Promise.withResolvers<void>();
+    try {
+      if (ending === "refused") f.setTokenStatus(400);
+      else f.setTokenHook(() => exchange.promise);
+      const stopped = await f.service.signIn({ usePlan: true }); await f.callback(stopped);
+      if (ending === "refused") await assert.rejects(stopped.completion, { code: "CHATGPT_ACCOUNT_EXPIRED" });
+      else await vi.waitFor(() => { assert.equal(f.repository.read()?.clientId, "oaiapp_fixture"); });
+      const leftover = f.repository.read(); assert.ok(leftover); assert.equal(leftover.clientId, "oaiapp_fixture"); assert.equal(leftover.session, null);
+      assert.deepEqual(await f.service.signOut(), { state: "signed-out", remoteRevocation: "not-needed" });
+      exchange.resolve(); await stopped.completion.catch(() => undefined);
+      const after = f.repository.read(); assert.ok(after);
+      assert.deepEqual(after, { schemaVersion: 1, revision: after.revision, hostId: after.hostId, clientId: null, registration: null, session: null });
+      assert.ok(after.revision > leftover.revision); assert.notEqual(after.hostId, leftover.hostId);
+    } finally { exchange.resolve(); await f.cleanup(); }
   });

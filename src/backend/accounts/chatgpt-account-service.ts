@@ -530,7 +530,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       await Promise.all([...inferenceLifetimes]); assertCurrent(); assertResourceClosure();
       return repository.withLock(async transaction => {
         assertCurrent();
-        const current = transaction.read(); if (current === undefined || current.registration === null) return { state: "signed-out", remoteRevocation: "not-needed" };
+        const current = transaction.read(); if (current === undefined || current.registration === null && current.clientId === null) return { state: "signed-out", remoteRevocation: "not-needed" };
         let remoteRevocation: "confirmed" | "unconfirmed" | "not-needed" = current.session?.refreshToken == null ? "not-needed" : "unconfirmed";
         try { if (current.session?.refreshToken != null && current.clientId !== null) {
           const discovered = await discovery(); assertCurrent();
