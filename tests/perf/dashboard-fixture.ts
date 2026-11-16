@@ -3,9 +3,10 @@ import { CONFIG_SNAPSHOT } from "../support/fixtures/phase1c-contract-fixtures.j
 import { testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import { sqliteRunReader } from "../support/helpers/canonical-run-reader.js";
 
-import { join } from "node:path";
-import { currentBuildId } from "../../src/backend/runtime/build-id.js";
+import { createBoundProfileFixture } from "../support/helpers/admission-fixture.js";
+import { releaseSeededWriteOwners } from "../support/helpers/timeline-write-fixture.js";
 import { buildRunResult } from "../../src/backend/runs/lifecycle/run-result.js";
+import { currentBuildId } from "../../src/backend/runtime/build-id.js";
 import { manualClock, type TestClock } from "../../src/rules/time/clock.js";
 import { ReadActiveStatus } from "../../src/models/workflows/person-lookup/read-active-status.js";
 import { deriveSchemaHash } from "../../src/models/validation/schema-bound-value.js";
@@ -15,8 +16,6 @@ import { createNoteTimelineWriter } from "../../src/backend/storage/events/note-
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../src/backend/storage/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
-import { createBoundProfileFixture } from "../support/helpers/admission-fixture.js";
-import { releaseSeededWriteOwners } from "../support/helpers/timeline-write-fixture.js";
 import { assertFakeKeychain } from "./fake-keychain-entry.js";
 import { descriptorSetHash } from "../../src/backend/app/registries/workflow-registry.js";
 import {
@@ -154,7 +153,7 @@ function instantOf(day: string, seed: number): Date {
 
 export function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
   const descriptor = spec.separations === true ? separationsDescriptor : personLookupDescriptor;
-  const rawInput = spec.separations === true ? { documentNumber: String(4510 + spec.seed), timekeeperName: "Synthetic Timekeeper" } : { emplId: "10873698" };
+  const rawInput = spec.separations === true ? { documentNumber: String(4510 + spec.seed), timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST" } : { emplId: "10873698" };
   const parsedInput = spec.separations === true ? SeparationsInput.parse(rawInput) : { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false };
   const resolvedInstance = spec.separations === true ? { kuali: "prod", ucpath: "prod", "new-kronos": "prod" } : { ucpath: "prod", crm: "prod" };
   const runId = uuidOf(ID_SPACE.run + spec.seed);
@@ -659,8 +658,8 @@ function seedNotes(context: SeedContext, tally: SeedTally): number {
 export async function seedDashboardPerfFixture(): Promise<PerfFixture> {
   await assertFakeKeychain();
   const profile = await createBoundProfileFixture();
-  const root = profile.stateRoot;
-  const stateRoot = join(root, "state");
+  const root = profile.workspace;
+  const stateRoot = profile.stateRoot;
   const clock = manualClock(new Date(`${PERF_FIXTURE_PROFILE.day}T09:00:00.000-07:00`));
   const database = AuthorityDatabase.open(
     { path: profile.path, busyTimeoutMs: 1000, migrationOwner: "dashboard-perf-fixture" },
@@ -762,10 +761,10 @@ export async function seedDashboardPerfFixture(): Promise<PerfFixture> {
       noteLines,
       receiptCount: Math.min(tally.doneRunIds.length, PERF_FIXTURE_PROFILE.receiptRunCount),
     }),
-    close: (): Promise<void> => {
+    close: async (): Promise<void> => {
       releaseSeededWriteOwners(database, clock.now().toISOString());
       database.close();
-      return profile.close();
+      await profile.close();
     },
   });
 }

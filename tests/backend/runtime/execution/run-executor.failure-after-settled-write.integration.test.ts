@@ -70,7 +70,7 @@ it("records the run's committed write on a later node failure and serves it as a
   const wire = FailureDetailWireSchema.parse({
     ...failureDetailWireFixture({ runId: run.envelope.runId, failureId: failure.failureId, traceId: failure.traceId, workflowId: compiled.descriptor.id }),
     writeState: failure.writeState,
-    resolution: { capability: { state: "available" }, capture: { failureId: failure.failureId, runId: run.envelope.runId, resolution: { status: "unresolved", version: 1 } } } });
+    resolution: { capture: { failureId: failure.failureId, runId: run.envelope.runId, resolution: { status: "unresolved", version: 1 } } } });
   const decision = failureDecision(wire);
   assert.equal(decision.type, "failed-after-write");
   assert.deepEqual(decision.options.map(({ id }) => id), ["mark-as-failed", "add-note"]);

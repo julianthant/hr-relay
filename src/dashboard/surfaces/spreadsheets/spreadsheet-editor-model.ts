@@ -3,20 +3,6 @@ import { displayExtractedDate, formatInstantDate } from "../../lib/date-format.j
 import { SPREADSHEET_FIELDS, spreadsheetField } from '../../../models/fields/workbook-fields.js';
 import { CustomRosterFieldIdSchema } from '../../../models/dashboard/workbooks.js';
 import { spreadsheetEditorField, spreadsheetValueMatches } from './spreadsheet-fields-model.js';
-import { populatedSpreadsheetValue, workbookSizeIssue } from '../../../rules/spreadsheets/workbook-size.js';
-
-export function spreadsheetInsertionAvailability(document: EditableWorkbook, sheet: EditableSheet | undefined) {
-  if (!sheet) return { row: false, column: false };
-  let populatedCells = 0, gridCells = 0;
-  for (const entry of document.sheets) {
-    gridCells += entry.width * entry.rows.length;
-    for (const row of entry.rows) for (const cell of row.cells) if (populatedSpreadsheetValue(cell.value)) populatedCells++;
-  }
-  return {
-    row: workbookSizeIssue(populatedCells, gridCells + sheet.width) === undefined,
-    column: workbookSizeIssue(populatedCells + 1, gridCells + sheet.rows.length) === undefined,
-  };
-}
 
 export function spreadsheetForeground(background: string | undefined): string | undefined {
   const hex = background?.match(/#[0-9a-f]{6}/i)?.[0];
@@ -89,14 +75,6 @@ export function sortSpreadsheet(sheet: EditableSheet, column: number, direction:
     return (direction === 'asc' ? order : -order) || a.index - b.index;
   }).map(entry => entry.row)] };
 }
-export function downloadSpreadsheet(data: ArrayBuffer | string, name: string, format: 'csv' | 'xlsx'): void {
-  const blob = new Blob([data], { type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const url = URL.createObjectURL(blob), link = document.createElement('a');
-  link.href = url; link.download = `${name.replace(/\.(xlsx|csv)$/i, '')}-edited.${format}`;
-  document.body.append(link); link.click(); link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 /** A canonical field issue; original library values remain editable. */
 export function spreadsheetCellProblem(sheet: EditableSheet, column: number, value: string): string | undefined {
   const fieldId = sheet.columnBindings?.[column]?.fieldId;

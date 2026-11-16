@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { sha256Hex } from "../../rules/validation/sha256.js";
+import { isHireNameForm } from "../../rules/ucpath/hire-name.js";
 import { HireEmployeeSchema } from "../people/hire-employee.js";
 import { I9RecordIdsSchema } from "../systems/i9/read-section2-signer.js";
 import { UcpathApprovalStatusSchema, UcpathTransactionReceiptSchema } from "./ucpath-ss-smart-hr.js";
@@ -14,13 +15,7 @@ export const UcpathHireIdentitySchema = z.strictObject({ employee: HireEmployeeS
 export type UcpathHireIdentity = z.infer<typeof UcpathHireIdentitySchema>;
 export const UcpathHireQuerySchema = UcpathHireIdentitySchema.extend({
   mode: z.enum(["new-hire", "rehire"]), emplId: EidSchema.nullable(),
-}).refine(value => {
-  const { firstName, lastName, middleName } = value.employee;
-  const names = [`${firstName} ${lastName}`, `${lastName}, ${firstName}`,
-    `${firstName} ${middleName} ${lastName}`, `${lastName}, ${firstName} ${middleName}`];
-  const normalize = (name: string) => name.trim().replace(/\s+/gu, " ").toLowerCase();
-  return names.some(name => normalize(name) === normalize(value.expectedName));
-})
+}).refine(value => isHireNameForm(value.employee, value.expectedName))
   .refine(value => value.mode === "rehire" ? value.emplId !== null : value.emplId === null);
 export const UcpathHireTargetSchema = UcpathHireQuerySchema.safeExtend({
   profileId: I9RecordIdsSchema.shape.profileId.nullable(), comments: z.string().min(1),

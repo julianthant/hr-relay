@@ -91,7 +91,7 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
       assert.equal(database.authority.assistantAuthorization.actionByCommand(command.commandId)?.state, "settled");
       assert.equal(database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "applied");
       if (capacityFailure !== undefined) throw new RunWorkerStartupError(capacityFailure);
-    } } });
+    }, detach: () => { throw new Error("a consumed action detaches no worker startup"); }, startupPending: () => false } });
   const proposals = createAssistantProposals({ database, authorization, kernel, ocrSources: () => { throw new Error("no OCR source in this harness"); }, workbooks: () => workbookOwner.library,
     attachment: (conversation, id) => { const file = files.get(id); return file?.conversationId === conversation ? file : undefined; }, plans: h.planner, runs: h.lifecycle, descriptors: { resolve: () => h.descriptor },
     rerunValues: request => data.rerunValues(request), served: () => true, actorId: "local-operator", clock, assertCurrent() {},
@@ -273,7 +273,7 @@ it("shows Separations document identities from the real planned canonical inputs
   const descriptor = DESCRIPTORS.find(candidate => candidate.id === "separations"); assert.ok(descriptor?.surfaces.inputRun);
   const planning = workflowPlanning(descriptor), schemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
   const rows = parseInputRunText(descriptor.surfaces.inputRun.parser, "4502; 4510").map(entry => {
-    const submission = { ...(toRawSubmission(entry) as Record<string, unknown>), timekeeperName: "Synthetic Timekeeper" };
+    const submission = { ...(toRawSubmission(entry) as Record<string, unknown>), timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST" };
     return plannedRowDisplay("separations", { schemaHash, value: planning.parseCanonicalInput(planning.parseInput(submission).input) });
   });
   assert.deepEqual(rows, [{ kind: "document", documentNumber: "4502" }, { kind: "document", documentNumber: "4510" }]);

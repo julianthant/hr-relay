@@ -1,4 +1,4 @@
-import { ASSISTANT_HISTORY_TABLES, faultAuthoritySnapshot, assertHttpFaultOnly, assertOnlyLoopStallWrites } from "../../../../support/helpers/backend/http-route-harness.js";
+import { ASSISTANT_HISTORY_TABLES, faultAuthoritySnapshot, assertHttpFaultOnly, assertOnlyLoopStallWrites, exactHttpFaultLoopDelay } from "../../../../support/helpers/backend/http-route-harness.js";
 import { AssistantHistoryResultSchema, AssistantModelPreferenceViewSchema, AssistantRespondEnvelopeSchema, type AssistantHistoryOperation, type AssistantRequest } from '../../../../../src/models/dashboard/assistant.js';
 import { withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import configuredSources from "../../../../../config/dashboard-workflow-sources.json";
@@ -25,6 +25,7 @@ import { createBoundProfileFixture } from "../../../../support/helpers/admission
 import { chatGptFixture } from "../../../../support/helpers/chatgpt-account-fixtures.js";
 import { completedResponseStream } from "../../../../support/helpers/chatgpt-response-stream.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
+import type { RuntimePreflightRunnerFactory } from "../../../../../src/backend/app/preflight/runtime-runners.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { ScriptedWorkerChild } from "../../../../support/helpers/backend/fake-worker-port.js";
 import { EXECUTOR_EID, personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
@@ -82,7 +83,8 @@ type ServedAssistantOwner = {
 };
 let servedAssistantOwner: ServedAssistantOwner | undefined;
 async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Promise<void>,
-  workerProcess?: Parameters<typeof composeDashboardRuntime>[0]["workerProcess"]) {
+  workerProcess?: Parameters<typeof composeDashboardRuntime>[0]["workerProcess"],
+  preflightRunnerFactory: Parameters<typeof composeDashboardRuntime>[0]["preflightRunnerFactory"] = healthyRuntimePreflightRunners) {
   if (servedAssistantOwner !== undefined) {
     const error = servedAssistantOwner.primary === undefined ? servedAssistantOwner.unsettled : servedAssistantOwner.primary.error;
     if (error instanceof Error) throw error;
@@ -117,7 +119,7 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     const context = runtime.selectedContext(active.token);
     const authorization = await context.account.signIn({ usePlan: true }); await transport.callback(authorization); await authorization.completion;
     const dashboard = await composeDashboardRuntime({ lifetimeLock: f.lifetime, admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace,
-      clock, isolation: rebuildRuntimeIsolation, env: {}, backendPortOverride: 0, frontendPortOverride: 0, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      clock, isolation: rebuildRuntimeIsolation, env: {}, backendPortOverride: 0, frontendPortOverride: 0, preflightRunnerFactory, loopDelay: exactHttpFaultLoopDelay,
       ...(workerProcess === undefined ? {} : { workerProcess }) });
     owner.dashboard = dashboard;
     const origin = `http://127.0.0.1:${String(dashboard.port)}`;
@@ -417,8 +419,21 @@ it.each([
 });
 
 
-it.each(["current", "deleted"] as const)("rechecks the %s selected source after the real same-workflow capacity wait", async change => {
+it.each(["current", "deleted"] as const)("rechecks the %s selected source after the real same-workflow Start wait, without waiting for worker startup", async change => {
   const birth = Promise.withResolvers<ScriptedWorkerChild>(), children: ScriptedWorkerChild[] = [];
+  // The next Start's run preflight (a workflow scope, not the worker's executor.run-only scope) holds until released.
+  let holdNextStartPreflight = false;
+  const heldStartPreflights: PromiseWithResolvers<void>[] = [];
+  const preflightRunners: RuntimePreflightRunnerFactory = input => healthyRuntimePreflightRunners(input).map(runner =>
+    runner.check !== "authority.health" || input.scope.requestedCapabilities.length === 1 ? runner : { ...runner, run: async check => {
+      if (holdNextStartPreflight) {
+        holdNextStartPreflight = false;
+        const hold = Promise.withResolvers<void>(); heldStartPreflights.push(hold); await hold.promise;
+      }
+      return runner.run(check);
+    } });
+  const blockerEmplId = "10873691";
+  const withoutBlocker = <Run extends { input: { raw: unknown } }>(runs: readonly Run[]) => runs.filter(run => z.object({ emplId: z.string() }).parse(run.input.raw).emplId !== blockerEmplId);
   await withServedAssistant(async ({ context, transport, clock, origin }) => {
     const database = context.database, client = createDashboardClient({ baseUrl: origin });
     const pending: Promise<{ result: unknown } | { error: unknown }>[] = [], failures: unknown[] = [];
@@ -427,17 +442,14 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
         submissions: [{ emplId: "10873690" }, { emplId: "10873698" }], browserMode: "headless", captureBrowserScreenshots: true });
       assert.deepEqual(plan.refused, []); assert.equal(plan.planned.length, 2);
       const firstCommandId = randomUUID();
-      let firstSettled = false;
-      const first = client.executeCommand({ commandId: firstCommandId, requestedAt: clock.now().toISOString(),
+      const firstResult = await client.executeCommand({ commandId: firstCommandId, requestedAt: clock.now().toISOString(),
         requestedBy: "local-operator", source: "run-start", family: "start", type: "start-run",
-        target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints })
-        .then(result => { firstSettled = true; return { result }; }, (error: unknown) => { firstSettled = true; return { error }; });
-      pending.push(first);
-      const owned = await Promise.race([birth.promise, first.then(outcome => {
-        if ("error" in outcome) throw outcome.error;
-        throw new Error(`first start settled before worker birth: ${outcome.result.state}`);
-      })]);
-      assert.equal(firstSettled, false);
+        target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
+      assert.equal(firstResult.state, "applied");
+      if (firstResult.state !== "applied") throw new Error("first start must commit");
+      assert.equal(firstResult.workerStartup, undefined, "Start replies before its worker starts");
+      // The worker pool owns the startup after the reply; its member is born and stays not ready until released.
+      const owned = await birth.promise;
       assert.equal(children.length, 1);
       const firstAudit = database.authority.commandAudits.findByCommand(firstCommandId);
       assert.equal(firstAudit?.result.state, "applied");
@@ -482,6 +494,19 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       assert.equal(proposed.proposal.effect, "workflow-start"); if (proposed.proposal.effect !== "workflow-start") throw new Error("start card required");
       assert.equal(proposed.proposal.source, "run");
       assert.deepEqual(proposed.proposal.startPlan.planned.map(row => row.display), [{ kind: "person", employeeId: "10873698" }]);
+      const blockerPlan = await client.submitStartPlan({ workflowId: "person-lookup", dryRun: false,
+        submissions: [{ emplId: blockerEmplId }], browserMode: "headless", captureBrowserScreenshots: true });
+      assert.deepEqual(blockerPlan.refused, []); assert.equal(blockerPlan.planned.length, 1);
+      holdNextStartPreflight = true;
+      let blockerSettled = false;
+      const blocker = client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(),
+        requestedBy: "local-operator", source: "run-start", family: "start", type: "start-run",
+        target: { workflowId: blockerPlan.workflowId, startPlanId: blockerPlan.startPlanId, expectedVersion: blockerPlan.expectedVersion }, payload: blockerPlan.fingerprints })
+        .then(result => { blockerSettled = true; return { result }; }, (error: unknown) => { blockerSettled = true; return { error }; });
+      pending.push(blocker);
+      await vi.waitFor(() => assert.equal(heldStartPreflights.length, 1), { timeout: 5_000, interval: 25 });
+      assert.equal(blockerSettled, false);
+      assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), beforeRuns);
       const decision = AssistantActionDecisionSchema.parse({ chatId: proposed.proposal.chatId, actionId: proposed.proposal.actionId, revision: proposed.proposal.revision, decision: "confirm",
         reviewedDigest: await assistantProposalDigest(proposed.proposal) });
       assert.ok(typeof client.assistantDecide === "function");
@@ -490,7 +515,8 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
         (error: unknown) => { assistantSettled = true; return { error }; });
       pending.push(confirmation);
       await vi.waitFor(() => assert.equal(database.authority.assistantAuthorization.action(record.id)?.state, "claimed"), { timeout: 5_000, interval: 25 });
-      assert.equal(firstSettled, false); assert.equal(assistantSettled, false);
+      assert.equal(blockerSettled, false); assert.equal(assistantSettled, false);
+      assert.equal(heldStartPreflights.length, 1);
       assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), beforeRuns);
       assert.equal(database.authority.commands.get(record.command.commandId), undefined);
       assert.equal(database.authority.commandAudits.findByCommand(record.command.commandId), undefined);
@@ -511,14 +537,16 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       }
       const afterChangeRuns = database.authority.runs.listByWorkflow("person-lookup");
       const tombstone = database.authority.deletedRuns.get(source.envelope.runId);
-      assert.equal(firstSettled, false); assert.equal(assistantSettled, false);
+      assert.equal(blockerSettled, false); assert.equal(assistantSettled, false);
       assert.equal(database.authority.assistantAuthorization.action(record.id)?.state, "claimed");
       assert.equal(database.authority.commandAudits.findByCommand(record.command.commandId), undefined);
       assert.equal(database.authority.workerSlots.get(owned.workerId)?.workflow, "person-lookup");
-      owned.ready();
-      const firstOutcome = await first;
-      if ("error" in firstOutcome) throw firstOutcome.error;
-      assert.equal(firstOutcome.result.state, "applied");
+      heldStartPreflights[0]?.resolve();
+      const blockerOutcome = await blocker;
+      if ("error" in blockerOutcome) throw blockerOutcome.error;
+      assert.equal(blockerOutcome.result.state, "applied");
+      const blockerRuns = database.authority.runs.listByWorkflow("person-lookup").filter(run => withoutBlocker([run]).length === 0);
+      assert.equal(blockerRuns.length, 1); assert.equal(blockerRuns[0]?.lifecycle.state, "queued");
       const outcome = await confirmation;
       if ("error" in outcome) throw outcome.error;
       assert.equal(outcome.result.state, change === "current" ? "applied" : "unknown");
@@ -529,19 +557,21 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
         assert.ok(audit);
         assert.deepEqual(audit.request, record.command); assert.equal(audit.result.state, "applied");
         assert.equal(audit.request.source, "assistant");
-        const newRuns = database.authority.runs.listByWorkflow("person-lookup").filter(run => !beforeRuns.some(before => before.envelope.runId === run.envelope.runId));
+        const newRuns = withoutBlocker(database.authority.runs.listByWorkflow("person-lookup")).filter(run => !beforeRuns.some(before => before.envelope.runId === run.envelope.runId));
         assert.equal(newRuns.length, 1);
         assert.deepEqual(newRuns[0]?.input.parsed, source.input.parsed);
       } else {
         assert.equal(audit, undefined);
         assert.equal(database.authority.commands.get(record.command.commandId), undefined);
-        assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), afterChangeRuns);
+        assert.deepEqual(withoutBlocker(database.authority.runs.listByWorkflow("person-lookup")), afterChangeRuns);
         assert.deepEqual(database.authority.deletedRuns.get(source.envelope.runId), tombstone);
       }
       assert.deepEqual(database.authority.runs.get(sibling.envelope.runId), sibling);
       assert.deepEqual(database.authority.commandAudits.findByCommand(firstCommandId), firstAudit);
       assert.equal(database.authority.commandAudits.findByCommand(cancelCommandId)?.result.state, "applied");
       assert.equal(children.length, 1);
+      // Both Starts committed while the worker was still not ready; releasing it starts no second member.
+      owned.ready();
       const finishedRuns = database.authority.runs.listByWorkflow("person-lookup");
       const beforeRefusal = faultAuthoritySnapshot({ database, stateRoot: context.admission.stateRoot });
       assert.equal((await client.assistantDecide(decision)).state, "refused");
@@ -549,6 +579,9 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), finishedRuns);
       assert.equal(children.length, 1);
     } catch (error) { failures.push(error); }
+    // A failure before the release would leave the blocker Start held forever; the injected runner ignores abort.
+    holdNextStartPreflight = false;
+    for (const hold of heldStartPreflights) hold.resolve();
     for (const execution of pending) {
       const outcome = await execution;
       if ("error" in outcome) failures.push(outcome.error);
@@ -558,7 +591,7 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
     const child = new ScriptedWorkerChild(7001, request, { ready: false, exitOnStop: true, reply: () => ({ state: "done", result: null }) });
     children.push(child); birth.resolve(child);
     return child;
-  } });
+  } }, preflightRunners);
 });
 
 it.each(["ready", "refused", "unknown"] as const)('confirms run actions with %s capacity, retaining warnings and refusing stale cards', async capacityState => {
@@ -702,7 +735,7 @@ it.each(["ready", "refused", "unknown"] as const)('confirms run actions with %s 
   }); } finally { factory.mockRestore(); }
 });
 
-it('refuses a PDF start while Emergency Contact is not served and confirms an attached spreadsheet as a library import', async () => {
+it('refuses a CRM document download while it is not served and confirms an attached spreadsheet as a library import', async () => {
   await withServedAssistant(async fixture => {
     const { context, transport, origin, clock } = fixture, client = createDashboardClient({ baseUrl: origin }), database = context.database;
     const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
@@ -738,11 +771,14 @@ it('refuses a PDF start while Emergency Contact is not served and confirms an at
         ...(decision === 'confirm' ? { reviewedDigest: digest } : {}) }));
     });
 
-    assert.equal(configuredSources['emergency-contact'], 'mock');
-    const pdf = await respond('Run this PDF for Emergency Contact', { name: 'contact.pdf', mediaType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4\n% synthetic\n') },
-      file => ['propose_workflow_start', { workflow: 'emergency-contact', entries: [file] }]);
-    assert.equal(pdf.kind === 'result' ? pdf.result.state === 'refused' && pdf.result.code : pdf.kind, 'ASSISTANT_PROPOSAL_REFUSED', 'a workflow that is not served is never proposed');
-    assert.equal(database.authority.runs.listByWorkflow('emergency-contact').length, 0);
+    const plans = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), raw => raw.prepare('SELECT id FROM run_requests').all().length);
+    const plansBefore = plans();
+    assert.equal(configuredSources['crm-doc-download'], 'mock');
+    const refusedStart = await respond('Download CRM documents for fixture@example.test', { name: 'note.txt', mediaType: 'text/plain', bytes: new TextEncoder().encode('fixture@example.test\n') },
+      () => ['propose_workflow_start', { workflow: 'crm-doc-download', entries: ['fixture@example.test'] }]);
+    assert.equal(refusedStart.kind === 'result' ? refusedStart.result.state === 'refused' && refusedStart.result.code : refusedStart.kind, 'ASSISTANT_PROPOSAL_REFUSED', 'a workflow that is not served is never proposed');
+    assert.equal(database.authority.runs.listByWorkflow('crm-doc-download').length, 0);
+    assert.equal(plans(), plansBefore, 'an unserved workflow is refused before a start plan is written');
 
     const sheets = () => library.catalog().filter(entry => entry.name === 'Q3 roster').length;
     const imported = await turn('Import this as Q3 roster', { name: 'roster.csv', mediaType: 'text/csv', bytes: new TextEncoder().encode('Name,Dept\nAda,HR\n') },

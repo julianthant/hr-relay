@@ -1,4 +1,5 @@
 import type { DashboardCommandBinding } from '../../app/dashboard-app-model.js';
+import { commandAttemptView } from '../../app/commands/command-outcome.js';
 import { AssistantModelPreferenceCommandRequestSchema } from '../../../rules/commands/commands.js';
 import { LOCAL_OPERATOR_ACTOR_ID } from '../../../rules/identity/ids.js';
 import { systemClock } from '../../../rules/time/clock.js';
@@ -104,7 +105,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         return { state: actual.revision === view.revision + 1 && actual.preference.slug === preference.slug
           && actual.preference.effort === preference.effort ? "matched" : "mismatch", evidence: actual };
       } });
-    if (outcome.kind === "uncertain") return { kind: "uncertain" };
+    if (commandAttemptView(outcome).view === "unknown") return { kind: "uncertain" };
     if (outcome.kind !== "confirmed") return { kind: "refused", text: outcome.feedback.text };
     const actual = AssistantModelPreferenceViewSchema.parse(outcome.readback);
     if (current()) owner.preferenceChanged?.(actual, true);

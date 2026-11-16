@@ -70,7 +70,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/image-geometry.ts` | image geometry |
 | `fixtures/intake-kernel-seams.ts` | intake kernel seams |
 | `fixtures/intake-workflow-fixture.ts` | intake workflow fixture |
-| `fixtures/integration/activity-person-pseudonym-fixtures.ts` | activity person pseudonym fixtures |
+| `fixtures/integration/separations-run-fixtures.ts` | canonical Separations run fixtures |
 | `fixtures/integration/settings-runtime-corruption-fixtures.ts` | settings runtime corruption fixtures |
 | `fixtures/integration/source-bound-fixtures.ts` | source bound fixtures |
 | `fixtures/ledger-projection-fixtures.ts` | ledger projection fixtures |
@@ -91,6 +91,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/run-lifecycle-fixtures.ts` | run lifecycle fixtures |
 | `fixtures/run-operations.ts` | run operations |
 | `fixtures/settings-operation-fixtures.ts` | settings operation fixtures |
+| `fixtures/sign-in-refusal-probes.ts` | observed sign-in text that proves a refusal record copies none of it |
 | `fixtures/source-bound-read-fixtures.ts` | source bound read fixtures |
 | `fixtures/start-step-omission-fixtures.ts` | start step omission fixtures |
 | `fixtures/workflow/step-omission-terminal-fixtures.ts` | step omission terminal fixtures |
@@ -182,7 +183,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/geocode/nominatim-client.ts` | nominatim client |
 | `processes/onboarding-native-orphan-owner.ts` | canonical Chromium orphan after owner SIGKILL; child PID from owned IPC is a bounded test-only exit observation; unproved exit retains the contained run |
 | `helpers/geocode/nominatim-parent.ts` | parent-owned geocode queue and IPC disconnect |
-| `helpers/integration/journaled-protected-settings.ts` | journaled protected settings |
 | `helpers/integration/storage-recovery-fixture.ts` | storage recovery fixture |
 | `helpers/kuali-finalization-fixtures.ts` | kuali finalization fixtures |
 | `helpers/native-path-picker-driver.ts` | owned native picker dialog driver and process readiness |
@@ -196,8 +196,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/separation-task-fixtures.ts` | separation task inputs, context and refusal fixtures |
 | `helpers/separations-composition-fixtures.ts` | separations composition fixtures |
 | `helpers/settings-storage-doctor-fixtures.ts` | settings storage reports and resize observer fixture |
-| `helpers/storage/native-authority/retained-database-fixture.ts` | retained database fixture |
-| `helpers/storage/synchronous-mutex-deadline.ts` | scoped 5,000 ms manual-clock mutex polling |
 | `helpers/storage/transaction-history-fixture.ts` | transaction history fixture |
 | `helpers/synthetic-database-admission.ts` | synthetic database admission |
 | `helpers/synthetic-storage-admission.ts` | synthetic storage admission |
@@ -207,7 +205,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/trust/trust-wire-fixtures.ts` | trust wire fixtures |
 | `processes/run-record-race-worker.ts` | run record race worker |
 | `processes/worker-composition-child.ts` | real worker composition concurrency fixture |
-| `processes/verification-reservation-owner.ts` | standalone verification reservation crash fixture |
 | `processes/worker-stub-cli.ts` | worker stub cli |
 | `helpers/browser/session-factory-fixtures.ts` | fresh browser factory and worker session runtime |
 | `helpers/workflow/flow-task-fixtures.ts` | flow, graph and scenario task contracts |
@@ -250,16 +247,8 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 ## File fixtures
 
 - `fixtures/documents/synthetic-sample.pdf`
-- `fixtures/integration/run-completion/schema40-success.json`
 - `fixtures/preflight/environment-doctor.json`
 - `fixtures/spreadsheet/color-filtered-roster.xlsx`
-- `fixtures/storage/native-authority/migrated-database-renames.json`
-- `fixtures/storage/native-authority/migrated-operations.json`
-- `fixtures/storage/native-authority/migrated-provider.json`
-- `fixtures/storage/native-authority/migrated-settlement.json`
-- `fixtures/storage/native-authority/migrated-timeline.json`
-- `fixtures/storage/native-authority/migrated-tombstones.json`
-- `fixtures/storage/native-authority/schema40-failure.json`
 | `helpers/backend/kernel-stub-command-fixtures.ts` | createKernelStubCommandFixtures shared fixtures |
 | `helpers/backend/kernel-reject-member-run.ts` | kernelRejectMemberRecord shared fixtures |
 | `helpers/backend/person-lookup-start-fixtures.ts` | createPersonLookupStartFixtures shared fixtures |

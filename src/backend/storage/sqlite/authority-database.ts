@@ -1,7 +1,7 @@
 import { createWorkerSlotRepository, workerSlotFromRow } from "./worker-slots.js";
 import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
 import { collectEvidenceSchemaAdmissions } from "./evidence-schema-upgrade.js";
-import { evidenceSchemaSourceDigest, type EvidenceSchemaOwner } from "../../../models/storage/evidence-schema-admission.js";
+import { evidenceSchemaSourceDigest, type EvidenceSchemaConversion, type EvidenceSchemaOwner } from "../../../models/storage/evidence-schema-admission.js";
 import { artifactReferencesIn, deletionArtifactReferenceMatcher } from "./artifact-references.js";
 import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
@@ -54,6 +54,7 @@ import { deriveBulkChildCommand,deriveBulkChildCommandId } from "../../../rules/
 import { AuthorityCommandAuditRecordSchema,AuthorityCommandRecordSchema,BulkParentCommandRecordSchema,BulkRunCommandAcceptanceRecordSchema,CommandAuditRecordSchema,CommandIdentityConflictError,CommandRequestSchema,RunLifecycleCommandAuditRecordSchema,RunLifecycleCommandRecordSchema,StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
+import { interruptTransition } from "../../../rules/runs/run-interrupt.js";
 import { capturedInstantClock } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { DelegationManifestSchema,DependencyRecordSchema,delegationJoinDisposition,type DelegationManifest,type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
@@ -95,7 +96,7 @@ import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessor
 import { predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitionRunRecord,transitionStoredRun,updateRunRecord } from "./run-record-row.js";
 import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
-import { ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,} from "./run-store-contracts.js";
+import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings, migratePersonPreferences } from "./settings-storage.js";
@@ -399,9 +400,22 @@ type DeletedRunRepository = Readonly<{
 
 type CanonicalRunClaimOutcome = RunClaimOutcome | Readonly<{ state: "refused"; refusal: RunRecordRefusal }>;
 
+/** A confirmed Pause all and quit of the bound runtime generation (`held`) that no application-admission release names; binds the generation twice. */
+const UNRELEASED_QUIT_HOLD_SQL = `held.family='application'
+  AND json_extract(held.request_json,'$.type')='pause-all-and-quit'
+  AND json_extract(held.request_json,'$.payload.confirmed')=1
+  AND json_extract(held.request_json,'$.target.runtimeGeneration')=?
+  AND NOT EXISTS(SELECT 1 FROM commands release WHERE release.state IN ('executing','succeeded') AND release.family='run-lifecycle'
+    AND json_extract(release.request_json,'$.operation')='application-admission'
+    AND json_extract(release.request_json,'$.request.runtimeGeneration')=?
+    AND json_extract(release.request_json,'$.request.releases')=held.id)`;
+
 type RunRepository = Readonly<{
   holdAdmission(input: unknown): void;
-  admission(): Readonly<{ state: "open" } | { state: "draining"; commandId: string }>;
+  releaseQuitAdmission(input: unknown): void;
+  admission(): RunAdmission;
+  /** The current runtime's unreleased Pause all and quit, whether or not an earlier hold also closes admission. */
+  quitAdmission(): string | undefined;
 
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
 
@@ -1901,6 +1915,29 @@ function readAuthorityUpgradeRecords(database: DatabaseSync) {
     .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
 }
 
+type AuthorityEvidenceSchemaUpgradeRecord = z.infer<typeof AuthorityEvidenceSchemaUpgradeRecordSchema>;
+
+function evidenceSchemaPlanDigest(upgradeId: string, conversion: EvidenceSchemaConversion): string {
+  return sha256Hex(`relay:evidence-schema-conversion:v1\0${upgradeId}\0${canonicalJsonStringify(conversion)}`);
+}
+
+/** Each conversion id is recorded at most once, sealed for this profile, settled at the current schema version. */
+function verifiedEvidenceSchemaRecords(database: DatabaseSync, admission: RuntimeAdmission,
+  binding: Readonly<{ installationId?: string; profileId?: string }>): ReadonlyMap<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord> {
+  const records = new Map<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord>();
+  for (const stored of readAuthorityUpgradeRecords(database)) {
+    if (!("evidenceSchemas" in stored) || stored.evidenceSchemas === undefined) continue;
+    admission.assertEvidenceSchemaConversion(stored);
+    const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse(stored), conversion = record.evidenceSchemas;
+    if (records.has(conversion.id)) throw new Error("evidence-schema-conversion-duplicate");
+    if (record.phase !== "settled" || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+      || record.planDigest !== evidenceSchemaPlanDigest(record.upgradeId, conversion)) throw new Error("evidence-schema-conversion-unproved");
+    if (conversion.installationId !== binding.installationId || conversion.profileId !== binding.profileId) throw new Error("evidence-schema-conversion-foreign");
+    records.set(conversion.id, record);
+  }
+  return records;
+}
+
 const startupLogoutConversionBrand: unique symbol = Symbol("startup-logout-conversion");
 export type StartupLogoutConversion = Readonly<{ [startupLogoutConversionBrand]: true }>;
 const startupLogoutConversions = new WeakMap<StartupLogoutConversion, {
@@ -2669,8 +2706,9 @@ export class AuthorityDatabase implements Disposable {
           const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", commandId, operation: "transition", request,
             requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0transition\0${canonicalJsonStringify(request)}`),
             fence: { kind: "version", expectedVersion: current.version }, recordedAt: now });
+          // The terminal transition drops pause, so the paused-run refusal reads the current record.
+          if (Object.hasOwn(current, "pause")) throw new Error("queued-run-cancellation-pause-refused");
           const updated = transitionStoredRun(current, PredecessorRunRecordSchema.parse({ ...current, lifecycle }), now, PredecessorRunRecordSchema);
-          if (Object.hasOwn(updated, "pause")) throw new Error("queued-run-cancellation-pause-refused");
           const entries = Object.entries(runRecordColumns(updated, PredecessorRunRecordSchema)).filter(([key]) => key !== "id" && key !== "pause_state");
           const changes = Number(database.prepare(`UPDATE runs SET ${entries.map(([key]) => `${key} = ?`).join(",")} WHERE id = ? AND version = ?`)
             .run(...entries.map(([, value]) => value), updated.envelope.runId, current.version).changes);
@@ -3008,26 +3046,28 @@ export class AuthorityDatabase implements Disposable {
     admission.assertStoppedProtectedSettingsUpgrade();
     return withAuthorityDatabaseReadOnly(admission, join(admission.stateRoot, "state.db"), database => {
       const inspection = inspectNativeAuthority(database);
-      const admissions = collectEvidenceSchemaAdmissions({ descriptors,
+      const plan = collectEvidenceSchemaAdmissions({ descriptors,
         runs: database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow),
         writes: database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row))),
         results: database.prepare("SELECT * FROM run_results ORDER BY run_id").all().map(row => RunResultRecordSchema.parse(nativeOrdinaryRecordFromRow("run_results", row))),
         gates: database.prepare("SELECT * FROM gate_results ORDER BY run_id,node_id").all().map(row => GateResultRecordSchema.parse(nativeOrdinaryRecordFromRow("gate_results", row))),
         delegations: database.prepare("SELECT * FROM run_delegations ORDER BY id").all().map(row => DelegationManifestSchema.parse(nativeOrdinaryRecordFromRow("run_delegations", row))),
         checkpoints: database.prepare("SELECT * FROM run_checkpoints ORDER BY run_id,node_id").all().map(row => RunCheckpointRecordSchema.parse(nativeOrdinaryRecordFromRow("run_checkpoints", row))) });
-      const records = readAuthorityUpgradeRecords(database).filter(record => "evidenceSchemas" in record && record.evidenceSchemas !== undefined);
-      if (records.length > 1) throw new Error("evidence-schema-conversion-duplicate");
-      const record = records[0];
-      if (record !== undefined && "evidenceSchemas" in record) {
-        admission.assertEvidenceSchemaConversion(record);
-        const conversion = record.evidenceSchemas;
-        if (conversion === undefined || record.phase !== "settled" || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
-          || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || conversion.installationId !== inspection.installationId
-          || conversion.profileId !== inspection.profileId || record.planDigest !== sha256Hex(`relay:evidence-schema-conversion:v1\0${record.upgradeId}\0${canonicalJsonStringify(conversion)}`)
-          || admissions.some(admission => !conversion.admissions.some(existing => canonicalJsonStringify(existing) === canonicalJsonStringify(admission))))
-          throw new Error("evidence-schema-conversion-source-changed");
-      }
-      return { inspection, admissions, record };
+      const records = verifiedEvidenceSchemaRecords(database, admission, { installationId: inspection.installationId, profileId: inspection.profileId });
+      const pending: EvidenceSchemaConversion[] = [];
+      const recorded = (id: EvidenceSchemaConversion["id"], fresh: readonly unknown[], entries: (conversion: EvidenceSchemaConversion) => readonly unknown[]) => {
+        const record = records.get(id);
+        if (record === undefined) return fresh.length === 0;
+        const existing = entries(record.evidenceSchemas).map(entry => canonicalJsonStringify(entry));
+        if (fresh.some(entry => !existing.includes(canonicalJsonStringify(entry)))) throw new Error("evidence-schema-conversion-source-changed");
+        return true;
+      };
+      const binding = { installationId: admission.profileBinding.installationId, profileId: admission.profileBinding.profileId };
+      if (!recorded("profile-name-domain", plan.admissions, conversion => conversion.id === "profile-name-domain" ? conversion.admissions : []))
+        pending.push({ id: "profile-name-domain", ...binding, admissions: [...plan.admissions] });
+      if (!recorded("retired-input-generation", plan.retirements, conversion => conversion.id === "retired-input-generation" ? conversion.retirements : []))
+        pending.push({ id: "retired-input-generation", ...binding, retirements: [...plan.retirements] });
+      return { inspection, admissions: plan.admissions, retirements: plan.retirements, records: [...records.values()], pending };
     });
   }
 
@@ -3037,17 +3077,18 @@ export class AuthorityDatabase implements Disposable {
     const path = join(admission.stateRoot, "state.db");
     requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
     const plan = AuthorityDatabase.inspectEvidenceSchemaUpgrade(admission, descriptors);
-    if (plan.record !== undefined || plan.admissions.length === 0 || plan.inspection.authorityContentFingerprint !== expectedFingerprint)
+    // One record per backed source: the journal keys a settled upgrade by its source fingerprint.
+    const conversion = plan.pending[0];
+    if (conversion === undefined || plan.inspection.authorityContentFingerprint !== expectedFingerprint)
       throw new Error("evidence-schema-conversion-source-changed");
     const verified = verifyBackup(admission, backup.manifestPath), binding = admission.profileBinding;
     if (canonicalJsonStringify(verified) !== canonicalJsonStringify(backup) || verified.manifest.installationId !== binding.installationId
       || verified.manifest.profileId !== binding.profileId || verified.manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
       || verified.manifest.authorityContentFingerprint !== expectedFingerprint || verified.manifest.authorityGeneration !== plan.inspection.authorityGeneration)
       throw new Error("evidence-schema-conversion-backup-changed");
-    const conversion = { id: "profile-name-domain", ...binding, admissions: plan.admissions };
     const statement = AuthorityEvidenceSchemaUpgradeRecordSchema.omit({ evidenceSchemaMac: true }).parse({ recordKey: randomUUID(), upgradeId: expectedFingerprint, phase: "settled",
       fromSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
-      planDigest: sha256Hex(`relay:evidence-schema-conversion:v1\0${expectedFingerprint}\0${canonicalJsonStringify(conversion)}`),
+      planDigest: evidenceSchemaPlanDigest(expectedFingerprint, conversion),
       evidenceSchemas: conversion, backup: { manifestPath: backup.manifestPath, sha256: backup.manifest.sha256, authorityGeneration: plan.inspection.authorityGeneration },
       by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() });
     const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse({ ...statement, evidenceSchemaMac: admission.sealStoppedEvidenceSchemaConversion(statement) });
@@ -3077,17 +3118,18 @@ export class AuthorityDatabase implements Disposable {
     this.#assertOpen();
     if (sourceSchemaHash === currentSchemaHash) return sourceSchemaHash;
     return this.#withReadSnapshot(() => {
-      const records = readAuthorityUpgradeRecords(this.#database).filter(record => "evidenceSchemas" in record && record.evidenceSchemas !== undefined);
-      if (records.length > 1) throw new Error("evidence-schema-conversion-duplicate");
-      const record = records[0], conversion = record !== undefined && "evidenceSchemas" in record ? record.evidenceSchemas : undefined;
-      if (conversion === undefined) return sourceSchemaHash;
-      this.#admission.assertEvidenceSchemaConversion(record);
-      if (record === undefined || !("planDigest" in record) || record.phase !== "settled"
-        || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
-        || record.planDigest !== sha256Hex(`relay:evidence-schema-conversion:v1\0${record.upgradeId}\0${canonicalJsonStringify(conversion)}`)) throw new Error("evidence-schema-conversion-unproved");
-      if (conversion.installationId !== this.#admission.profileBinding.installationId || conversion.profileId !== this.#admission.profileBinding.profileId)
-        throw new Error("evidence-schema-conversion-foreign");
-      const certificate = conversion.admissions.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner));
+      const records = verifiedEvidenceSchemaRecords(this.#database, this.#admission, this.#admission.profileBinding);
+      const retired = records.get("retired-input-generation")?.evidenceSchemas;
+      const retirement = retired?.id === "retired-input-generation"
+        ? retired.retirements.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner)) : undefined;
+      if (retirement !== undefined) {
+        if (retirement.sourceSchemaHash !== sourceSchemaHash || retirement.sourceDigest !== evidenceSchemaSourceDigest(owner, source))
+          throw new Error("evidence-schema-admission-source-changed");
+        return sourceSchemaHash;
+      }
+      const conversion = records.get("profile-name-domain")?.evidenceSchemas;
+      const certificate = conversion?.id === "profile-name-domain"
+        ? conversion.admissions.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner)) : undefined;
       if (certificate === undefined) return sourceSchemaHash;
       if (certificate.sourceSchemaHash !== sourceSchemaHash || certificate.currentSchemaHash !== currentSchemaHash
         || certificate.sourceDigest !== evidenceSchemaSourceDigest(owner, source)) throw new Error("evidence-schema-admission-source-changed");
@@ -3949,7 +3991,8 @@ export class AuthorityDatabase implements Disposable {
         contractFingerprint: current.envelope.contractFingerprint, expectedVersion: current.version, claim: request.claim,
         authorizedAt: request.now, failureId: failure.failureId });
       this.#assertTerminalAuthorizationMatchesRun(authorization, current);
-      const terminal = RunRecordSchema.parse({ ...current, version: current.version + 1, updatedAt: request.now, completion: completionFromAuthorization(authorization),
+      const { pause: _pause, ...settled } = current;
+      const terminal = RunRecordSchema.parse({ ...settled, version: current.version + 1, updatedAt: request.now, completion: completionFromAuthorization(authorization),
         lifecycle: { state: "terminal", outcome: "failed", endedAt: request.now, failureId: failure.failureId,
           errorSummary: summary, diagnosticSafetyVersion: 1 } });
       const violation = runTransitionViolation(current.lifecycle, terminal.lifecycle);
@@ -4019,8 +4062,9 @@ export class AuthorityDatabase implements Disposable {
         request.authorization.claim,
       );
 
+      const { pause: _pause, ...settled } = current;
       const terminal = RunRecordSchema.parse({
-        ...current,
+        ...settled,
         completion: completionFromAuthorization(request.authorization),
         lifecycle: {
           state: "terminal",
@@ -4124,8 +4168,9 @@ export class AuthorityDatabase implements Disposable {
         request.authorization.expectedVersion,
         request.authorization.claim,
       );
+      const { pause: _pause, ...settled } = current;
       const terminal = RunRecordSchema.parse({
-        ...current,
+        ...settled,
         completion: completionFromAuthorization(request.authorization),
         lifecycle: {
           state: "terminal",
@@ -4752,7 +4797,9 @@ export class AuthorityDatabase implements Disposable {
       : (value: typeof search) => { validateAuthorityChanges(database, entries, singletonChangeKeys(reader.singleton, singleton), value); };
     try { check(search); }
     catch (error) {
-      reader.failed = search !== "none" && (() => { try { check("none"); return true; } catch { return false; } })() ? "projection-only" : "authority";
+      // The refusal is rethrown either way; this only names which half failed.
+      reader.failed = "authority";
+      if (search !== "none") { try { check("none"); reader.failed = "projection-only"; } catch { /* the authority rows fail on their own */ } }
       throw error;
     }
     if (schemaMoved) {
@@ -6424,7 +6471,13 @@ export class AuthorityDatabase implements Disposable {
     return highest + 1;
   }
 
+  /** The one run-row write; an update is refused unless the run transition table allows it from the stored row. */
   #writeRunRow(record: RunRecord, mode: "insert" | "update"): void {
+    if (mode === "update") {
+      const current = this.#readRunRow(record.envelope.runId);
+      const violation = current === undefined ? undefined : runTransitionViolation(current.lifecycle, record.lifecycle, record);
+      if (violation !== undefined) throw new Error(`run ${record.envelope.runId}: ${violation}`);
+    }
     const columns = runRecordColumns(record);
     const entries = Object.entries(columns).filter(([key]) => mode === "insert" || key !== "id");
     const keys = entries.map(([key]) => key);
@@ -6563,7 +6616,8 @@ export class AuthorityDatabase implements Disposable {
       if (canonical) this.#lifecycleHooks?.afterClaimSelection?.();
       admit?.(current);
       const selected = this.#readRunRow(current.envelope.runId);
-      if (this.#runAdmission().state !== "open" || selected?.pause !== undefined || selected?.version !== current.version) {
+      if (this.#runAdmission().state !== "open" || selected?.version !== current.version
+        || interruptTransition(selected, { kind: "lifecycle", to: "claimed" }).state === "refused") {
         return canonical ? { state: "refused", refusal: { reason: "none-eligible" } } : { state: "idle" };
       }
       const claimed = RunRecordSchema.parse({
@@ -6583,34 +6637,51 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #runAdmission(): Readonly<{ state: "open" } | { state: "draining"; commandId: string }> {
-    const generation = this.authority.runtimeConfig.get()?.generation;
-    const row = z.strictObject({ commandId: z.uuid() }).optional().parse(this.#database.prepare(`SELECT id AS commandId FROM commands
-      WHERE state IN ('executing','succeeded') AND ((family='application'
-      AND json_extract(request_json,'$.type')='pause-all-and-quit'
-      AND json_extract(request_json,'$.payload.confirmed')=1
-      AND json_extract(request_json,'$.target.runtimeGeneration')=?) OR (family='run-lifecycle'
+  #runAdmission(): RunAdmission {
+    const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
+    const row = z.strictObject({ commandId: z.uuid(), hold: z.enum(["quit", "update", "shutdown", "logout"]) }).optional().parse(this.#database.prepare(`SELECT id AS commandId,
+      CASE family WHEN 'application' THEN 'quit' ELSE json_extract(request_json,'$.request.reason') END AS hold FROM commands held
+      WHERE state IN ('executing','succeeded') AND ((${UNRELEASED_QUIT_HOLD_SQL}) OR (family='run-lifecycle'
       AND json_extract(request_json,'$.operation')='application-admission'
-      AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation ?? 0, generation ?? 0));
-    return row === undefined ? { state: "open" } : { state: "draining", commandId: row.commandId };
+      AND json_type(request_json,'$.request.reason')='text'
+      AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation, generation, generation));
+    return row === undefined ? { state: "open" } : { state: "draining", commandId: row.commandId, hold: row.hold };
+  }
+
+  #quitAdmission(): string | undefined {
+    const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
+    return z.strictObject({ commandId: z.uuid() }).optional().parse(this.#database.prepare(`SELECT id AS commandId FROM commands held
+      WHERE state IN ('executing','succeeded') AND ${UNRELEASED_QUIT_HOLD_SQL} ORDER BY created_at,id LIMIT 1`).get(generation, generation))?.commandId;
+  }
+
+  #insertAdmissionCommand(repositories: AuthorityRepositories, request: z.infer<typeof ApplicationAdmissionRequestSchema>): void {
+    const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", operation: "application-admission",
+      commandId: request.commandId, request,
+      requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0application-admission\0${canonicalJsonStringify(request)}`),
+      fence: { kind: "none" }, recordedAt: this.#clock.now().toISOString() });
+    repositories.lifecycleJournal.insertCommand(command);
+    repositories.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId: request.commandId, request: command,
+      result: { kind: "application", runtimeGeneration: request.runtimeGeneration }, completedAt: command.recordedAt });
   }
 
   #buildRunRepository(): RunRepository {
     return Object.freeze({
       holdAdmission: (input: unknown) => this.withAuthorityTransaction(repositories => {
-        const request = ApplicationAdmissionRequestSchema.parse(input);
+        const request = ApplicationAdmissionHoldSchema.parse(input);
         if (repositories.runtimeConfig.get()?.generation !== request.runtimeGeneration) throw new Error("application-runtime-stale");
         const current = this.#runAdmission();
         if (current.state !== "open" && current.commandId !== request.commandId) throw new Error("application-admission-held");
-        const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", operation: "application-admission",
-          commandId: request.commandId, request,
-          requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0application-admission\0${canonicalJsonStringify(request)}`),
-          fence: { kind: "none" }, recordedAt: this.#clock.now().toISOString() });
-        repositories.lifecycleJournal.insertCommand(command);
-        repositories.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId: request.commandId, request: command,
-          result: { kind: "application", runtimeGeneration: request.runtimeGeneration }, completedAt: command.recordedAt });
+        this.#insertAdmissionCommand(repositories, request);
+      }),
+      releaseQuitAdmission: (input: unknown) => this.withAuthorityTransaction(repositories => {
+        const request = ApplicationAdmissionReleaseSchema.parse(input);
+        if (repositories.runtimeConfig.get()?.generation !== request.runtimeGeneration) throw new Error("application-runtime-stale");
+        const current = this.#runAdmission();
+        if (current.state !== "draining" || current.hold !== "quit" || current.commandId !== request.releases) throw new Error("application-quit-admission-not-held");
+        this.#insertAdmissionCommand(repositories, request);
       }),
       admission: () => this.#runAdmission(),
+      quitAdmission: () => this.#quitAdmission(),
       enqueue: (input: unknown) => {
         const record = RunRecordSchema.parse(input);
         if (record.lifecycle.state !== "queued") {
@@ -6911,9 +6982,10 @@ export class AuthorityDatabase implements Disposable {
           if (accountingAuthorization !== undefined && (workflowDelegationAccounting(accountingAuthorization, current) === undefined
             || request.continuation !== undefined || request.pause !== undefined || current.pause?.state !== "paused"))
             throw new Error("delegation-accounting-resume-envelope-change-refused");
-          if (current.lifecycle.state === "terminal" || current.lifecycle.state === "parked-write") throw new Error("run-pause-invalid-state");
-          if (request.acknowledge && (request.claim === undefined || current.pause?.state !== "requested")) throw new Error("run-pause-claim-required");
-          if (request.pause?.state === "paused" && runClaim(current) !== undefined && !request.acknowledge) throw new Error("run-pause-acknowledgment-required");
+          if (request.acknowledge === true && request.claim === undefined) throw new Error("run-pause-claim-required");
+          const next = interruptTransition(current, { kind: request.acknowledge === true ? "acknowledge-pause" : request.pause === undefined ? "resume" : "pause" });
+          if (next.state === "refused") throw new Error(`run-pause-refused: ${next.reason}`);
+          if (next.interrupt !== (request.pause === undefined ? "none" : request.pause.state === "requested" ? "pause-requested" : "paused")) throw new Error(`run-pause-transition-mismatch: ${next.interrupt}`);
           const { pause: _pause, ...withoutPause } = current;
           return RunRecordSchema.parse({ ...withoutPause, ...(request.pause === undefined ? {} : { pause: request.pause }),
             ...(request.continuation === undefined ? {} : { envelope: { ...current.envelope, continuation: request.continuation } }),

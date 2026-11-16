@@ -25,7 +25,6 @@ FIXTURE_DIAGNOSTIC_BUNDLE: typeof FixtureDiagnosticTypes.FIXTURE_DIAGNOSTIC_BUND
       failureId,
       native: { eventId: uuidOf(seed * 100 + 9900), order: 50, runId, attempt: 1, traceId: traceOf(seed), nodeId: "cross-verify" },
       resolution: {
-        capability: { state: "available" },
         capture: { runId, failureId, resolution: { status: "unresolved", version: 1 } },
       },
       traceId: traceOf(seed),

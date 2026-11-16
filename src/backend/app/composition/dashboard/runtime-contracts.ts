@@ -14,7 +14,7 @@ import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/dea
 import { type WorkerCliLaunchSpec,type WorkerProcessSpawner } from "./worker-process.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
-import { composeProfileAssistantAuthorization,composeProfileRuntime } from "../storage-compose.js";
+import { composeProfileAssistantAuthorization,composeProfileRuntime,type ShutdownBackup } from "../storage-compose.js";
 import { startDashboardHttpServer,type DashboardHttpListener,type DashboardHttpServer } from "../../../transports/http/http-server.js";
 
 export interface DashboardRuntime {
@@ -35,12 +35,16 @@ export interface DashboardComposeInput {
   readonly requestApplicationQuit?: () => void;
   readonly updateHost?: ApplicationUpdateHost;
   readonly lifetimeLock: RuntimeLifetimeLock;
+  /** Omit to take the quit-time backup inside this process before stop resolves. */
+  readonly shutdownBackup?: ShutdownBackup;
   readonly onboardingDuo?: ProfileOnboardingDuoProvider;
   readonly admission?: RuntimeAdmission;
   readonly profile?: Readonly<{ runtime: ReturnType<typeof composeProfileRuntime>; token: string }>;
   readonly isolation: RuntimeIsolation;
   readonly env?: NodeJS.ProcessEnv;
   readonly clock?: Clock;
+  /** Omit to run the production event-loop stall monitor. `false` leaves it off. A monitor is installed as given and stopped on shutdown. */
+  readonly loopDelay?: false | Readonly<{ stop(): void }>;
   readonly ids?: IdFactory;
   /** Package and frontend source root; storage roots come from installation admission. */
   readonly repoRoot?: string;

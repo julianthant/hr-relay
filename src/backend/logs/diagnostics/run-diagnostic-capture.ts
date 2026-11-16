@@ -62,6 +62,19 @@ export function classifiedFailureFields(failure: FailureRecord): readonly unknow
     ...(failure.subject?.observed === undefined
       ? []
       : [{ key: "subjectObservedDigest", classification: "safe-diagnostic", transform: "allow", value: failure.subject.observed.digest }]),
+    ...(failure.debug?.signInRefusal === undefined
+      ? []
+      : [
+        { key: "signInSystem", classification: "safe-diagnostic", transform: "allow", value: failure.debug.signInRefusal.system },
+        { key: "signInStep", classification: "safe-diagnostic", transform: "allow", value: failure.debug.signInRefusal.step },
+        ...(failure.debug.signInRefusal.check === undefined ? [] : [
+          { key: "signInCheck", classification: "safe-diagnostic", transform: "allow", value: failure.debug.signInRefusal.check },
+        ]),
+        { key: "signInPageOrigin", classification: "safe-diagnostic", transform: "allow", value: failure.debug.signInRefusal.pageOrigin },
+        ...(failure.debug.signInRefusal.pagePath === undefined ? [] : [
+          { key: "signInPagePath", classification: "safe-diagnostic", transform: "allow", value: failure.debug.signInRefusal.pagePath },
+        ]),
+      ]),
   ]);
 }
 
