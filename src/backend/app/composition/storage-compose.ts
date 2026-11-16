@@ -739,7 +739,7 @@ export function composeProfileActivity(input: Readonly<{
             if (runtime === undefined) throw new Error("application-runtime-unavailable");
             repositories.runs.holdAdmission({ commandId: randomUUID(), runtimeGeneration: runtime.generation, reason: "shutdown" });
           }
-          for (const run of input.database.readProfileResourceCustody().runs) {
+          for (const run of input.database.readApplicationActivity().runs) {
             if (run.lifecycle.state === "terminal" || run.lifecycle.state === "parked-write") continue;
             requireLifecycleApplied(input.lifecycle.pause({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version }));
           }
@@ -1192,6 +1192,7 @@ export function composeProfileRuntime(input: Readonly<{
         const lifetime = machine.lifetime;
         if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("profile-logout-controller-required");
         await lifetime.awaitOwnedChildrenClosed();
+        await entry.context!.account.signOut();
         await entry.context!.account.close();
         entry.admission.assertProfileRuntime();
         const current = machine.readProfileRegistry();
