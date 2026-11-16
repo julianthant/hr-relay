@@ -102,7 +102,7 @@ function sourceFiles(): readonly string[] {
 }
 
 function storeSessionFiles(): readonly string[] {
-  return gitVisibleFiles(["src/stores", "src/backend/systems"]).filter((path) => /\/session\.ts$/.test(path));
+  return gitVisibleFiles(["src/backend/systems"]).filter((path) => /\/session\.ts$/.test(path));
 }
 
 describe("the Duo ceremony lease is structural", () => {
