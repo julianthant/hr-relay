@@ -16,11 +16,13 @@ vi.mock("node:worker_threads", async () => {
   return { Worker, isMainThread: true, parentPort: null, workerData: null };
 });
 
-const { inspectBackupFileOffThread, workerExecArgv } = await import("../../../../src/backend/storage/sqlite/backup-inspection-worker.js");
+const { answerInspectionRequest, inspectBackupFileOffThread, workerExecArgv } = await import("../../../../src/backend/storage/sqlite/backup-inspection-worker.js");
 type StubWorker = import("node:events").EventEmitter & { terminated: boolean; options: { execArgv: string[]; workerData: { path: string; scratchDirectory: string } } };
 const StubWorker = (await import("node:worker_threads")).Worker as unknown as { started: StubWorker[] };
 
-const verdict = { applicationId: 1, pageCount: 3, nested: { quickCheck: "ok" } };
+const verdict = { applicationId: 1_217_249_861, schemaVersion: 30, pageCount: 3, authorityGeneration: 7, authorityContentFingerprint: "a".repeat(64), quickCheck: "ok",
+  foreignKeyViolations: 0, invariants: { state: "valid", violations: [] }, tables: [{ name: "runs", classification: "authority" }, { name: "worker_leases", classification: "authority" }],
+  counts: { pendingCommands: 0, unresolvedWriteIntents: 0, providerReservations: 0, artifactOutbox: 0 }, invariantViolations: [], exactTableRegistry: true };
 const started = async (count: number) => { await vi.waitFor(() => expect(StubWorker.started).toHaveLength(count)); return StubWorker.started[count - 1]; };
 const outcome = (promise: Promise<unknown>) => promise.then(value => ({ value }),
   (error: Error & { code?: unknown }) => ({ error: { name: error.name, message: error.message, code: error.code } }));
@@ -36,7 +38,7 @@ describe("backup inspection worker", () => {
     worker.emit("message", { kind: "inspected", inspection: verdict });
     const inspection = await first;
     expect(inspection).toEqual(verdict);
-    expect(Object.isFrozen((inspection as unknown as typeof verdict).nested)).toBe(true);
+    expect(Object.isFrozen(inspection.invariants)).toBe(true);
     await new Promise(resolve => setTimeout(resolve, 5));
     expect(StubWorker.started).toHaveLength(1);
     worker.emit("exit", 0);
@@ -59,6 +61,36 @@ describe("backup inspection worker", () => {
     const three = await started(3);
     three.emit("exit", 1);
     expect(await died).toEqual({ error: { name: "Error", message: "backup-inspection-worker-exited: 1" } });
+  });
+
+  it("never passes a reply that is malformed, incomplete or carries an unknown field, and ends that worker", async () => {
+    reset();
+    const { quickCheck: _quickCheck, ...incomplete } = verdict;
+    const replies: unknown[] = [null, "inspected", { kind: "inspected", inspection: {} }, { kind: "inspected", inspection: incomplete },
+      { kind: "inspected", inspection: { ...verdict, extra: 1 } }, { kind: "inspected", inspection: { ...verdict, quickCheck: "failed" } },
+      { kind: "inspected", inspection: verdict, extra: 1 }, { kind: "failed", message: 5 }, { kind: "other" }];
+    for (const [index, reply] of replies.entries()) {
+      const result = outcome(inspectBackupFileOffThread("/backups/a.sqlite", 22));
+      const worker = await started(index + 1);
+      const scratch = worker.options.workerData.scratchDirectory;
+      worker.emit("message", reply);
+      expect(await result).toEqual({ error: { name: "Error", message: "backup-inspection-reply-invalid" } });
+      expect(worker.terminated).toBe(true);
+      worker.emit("exit", 1);
+      await vi.waitFor(() => expect(existsSync(scratch)).toBe(false));
+    }
+  });
+
+  it("the thread answers a malformed request with a failure, never an inspection, and ignores another module's start data", () => {
+    const request = { protocol: "relay.backup-inspection.v1", path: "/backups/a.sqlite", busyTimeoutMs: 250, scratchDirectory: "/scratch" };
+    const invalid = { kind: "failed", name: "Error", message: "backup-inspection-request-invalid" };
+    expect(answerInspectionRequest({ protocol: "relay.backup-inspection.v1" })).toEqual(invalid);
+    expect(answerInspectionRequest({ ...request, path: 5 })).toEqual(invalid);
+    expect(answerInspectionRequest({ ...request, scratchDirectory: "" })).toEqual(invalid);
+    expect(answerInspectionRequest({ ...request, expectedSchemaVersion: "22" })).toEqual(invalid);
+    expect(answerInspectionRequest({ ...request, extra: true })).toEqual(invalid);
+    expect(answerInspectionRequest(null)).toBeUndefined();
+    expect(answerInspectionRequest({ protocol: "another-worker" })).toBeUndefined();
   });
 
   it("a stop terminates the running worker without waiting for it, never starts a queued one and leaves no scratch folder", async () => {

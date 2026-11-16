@@ -8,7 +8,9 @@ import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { inspectNativeAuthority, inspectNormalAuthority } from "./authority-database.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS, WORKER_CUSTODY_DROPPED_TABLES } from "./migrations.js";
+import { RETIRED_ASSISTANT_GRANT_TABLE } from "./assistant-grant-retirement.js";
+import { AuthorityCopyInspectionSchema } from "./recovery-contracts.js";
 
 export type BackupCopyInspection = ReturnType<typeof inspectOpenDatabase>;
 export type AuthorityBackupSourceReadOnly = Readonly<{
@@ -18,6 +20,17 @@ export type AuthorityBackupSourceReadOnly = Readonly<{
  close():void;
 }>;
 
+
+/** The inspection as plain data, for a reader that receives it across a thread boundary. */
+export const BackupCopyInspectionSchema = AuthorityCopyInspectionSchema.extend({
+ schemaVersion: z.union([z.literal(SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+ installationId: z.uuid().optional(),
+ profileId: z.uuid().optional(),
+ tables: z.array(z.union([AuthorityCopyInspectionSchema.shape.tables.element,
+  z.strictObject({ name: z.enum(["explorer_overrides", RETIRED_ASSISTANT_GRANT_TABLE, ...WORKER_CUSTODY_DROPPED_TABLES]), classification: z.literal("authority") })])),
+ invariantViolations: z.array(z.never()).max(0),
+ exactTableRegistry: z.literal(true),
+});
 
 export function inspectOpenDatabase(database:DatabaseSync,expectedSchemaVersion?:number) {
  const inspection=expectedSchemaVersion===undefined?inspectNormalAuthority(database):inspectNativeAuthority(database,expectedSchemaVersion);

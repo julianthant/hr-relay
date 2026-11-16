@@ -3,15 +3,22 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { isMainThread, parentPort, Worker, workerData } from "node:worker_threads";
+import { z } from "zod";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { createPrivateDirectory } from "../private-path.js";
-import { inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
+import { BackupCopyInspectionSchema, inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
 import { withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 
 const PROTOCOL = "relay.backup-inspection.v1";
-type InspectionRequest = Readonly<{ protocol: typeof PROTOCOL; path: string; expectedSchemaVersion?: number; busyTimeoutMs: number; scratchDirectory: string }>;
-type InspectionReply = { kind: "inspected"; inspection: BackupCopyInspection } | { kind: "failed"; name: string; message: string; code?: string };
+const InspectionRequestSchema = z.strictObject({ protocol: z.literal(PROTOCOL), path: z.string().min(1), expectedSchemaVersion: z.number().int().positive().optional(),
+  busyTimeoutMs: z.number().int().nonnegative(), scratchDirectory: z.string().min(1) });
+const InspectionReplySchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("inspected"), inspection: BackupCopyInspectionSchema }),
+  z.strictObject({ kind: z.literal("failed"), name: z.string(), message: z.string(), code: z.string().optional() }),
+]);
+type InspectionRequest = z.infer<typeof InspectionRequestSchema>;
+type InspectionReply = z.infer<typeof InspectionReplySchema>;
 
 /** Each queued inspection waits for the previous worker thread to exit, so at most one runs in this process. */
 let previousThread: Promise<void> = Promise.resolve();
@@ -42,14 +49,16 @@ export function inspectBackupFileOffThread(path: string, expectedSchemaVersion: 
       } catch (error) { releaseTurn(); fail(new Error("backup-inspection-scratch-failed", { cause: error })); return; }
       try {
         worker = new Worker(new URL("./backup-inspection-worker.js", import.meta.url), { name: "relay-backup-inspection", execArgv: workerExecArgv(),
-          workerData: { protocol: PROTOCOL, path, ...(expectedSchemaVersion === undefined ? {} : { expectedSchemaVersion }), busyTimeoutMs, scratchDirectory } satisfies InspectionRequest });
+          workerData: InspectionRequestSchema.parse({ protocol: PROTOCOL, path, ...(expectedSchemaVersion === undefined ? {} : { expectedSchemaVersion }), busyTimeoutMs, scratchDirectory }) });
       } catch (error) { removeScratchDirectory(scratchDirectory); releaseTurn(); fail(new Error("backup-inspection-worker-failed", { cause: error })); return; }
       const stop = () => { fail(abortReason(signal)); void worker.terminate(); };
       signal?.addEventListener("abort", stop, { once: true });
-      worker.once("message", (reply: InspectionReply) => {
+      worker.once("message", (message: unknown) => {
         if (settled) return;
-        if (reply.kind === "inspected") { settled = true; resolve(deepFreeze(reply.inspection)); return; }
-        fail(Object.assign(new Error(reply.message), reply.code === undefined ? {} : { code: reply.code }));
+        const reply = InspectionReplySchema.safeParse(message);
+        if (!reply.success) { fail(new Error("backup-inspection-reply-invalid")); void worker.terminate(); return; }
+        if (reply.data.kind === "inspected") { settled = true; resolve(deepFreeze(reply.data.inspection)); return; }
+        fail(Object.assign(new Error(reply.data.message), reply.data.code === undefined ? {} : { code: reply.data.code }));
       });
       worker.once("error", error => fail(new Error("backup-inspection-worker-failed", { cause: error })));
       worker.once("messageerror", error => fail(new Error("backup-inspection-worker-failed", { cause: error })));
@@ -109,15 +118,18 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-function isInspectionRequest(value: unknown): value is InspectionRequest {
-  return typeof value === "object" && value !== null && (value as { protocol?: unknown }).protocol === PROTOCOL;
+/** The thread's answer to its start data: nothing for another module's worker, a failure for a request that does not parse. */
+export function answerInspectionRequest(data: unknown): InspectionReply | undefined {
+  if (!z.looseObject({ protocol: z.literal(PROTOCOL) }).safeParse(data).success) return undefined;
+  const request = InspectionRequestSchema.safeParse(data);
+  return request.success ? runInspection(request.data) : { kind: "failed", name: "Error", message: "backup-inspection-request-invalid" };
 }
 
 function runInspection(request: InspectionRequest): InspectionReply {
   // os.tmpdir() reads this thread's own environment, so the snapshot copy lands in the folder the parent removes.
   for (const key of ["TMPDIR", "TMP", "TEMP"]) process.env[key] = request.scratchDirectory;
   try {
-    return { kind: "inspected", inspection: withReadonlyAuthoritySnapshot(request.path, database => inspectOpenDatabase(database, request.expectedSchemaVersion), request.busyTimeoutMs) };
+    return { kind: "inspected", inspection: BackupCopyInspectionSchema.parse(withReadonlyAuthoritySnapshot(request.path, database => inspectOpenDatabase(database, request.expectedSchemaVersion), request.busyTimeoutMs)) };
   } catch (error) {
     const failure = error instanceof Error ? error : new Error(String(error));
     const code = (failure as { code?: unknown }).code;
@@ -125,4 +137,7 @@ function runInspection(request: InspectionRequest): InspectionReply {
   }
 }
 
-if (!isMainThread && parentPort !== null && isInspectionRequest(workerData)) parentPort.postMessage(runInspection(workerData));
+if (!isMainThread && parentPort !== null) {
+  const reply = answerInspectionRequest(workerData);
+  if (reply !== undefined) parentPort.postMessage(reply);
+}
