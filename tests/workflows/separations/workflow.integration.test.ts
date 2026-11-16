@@ -6,7 +6,7 @@ import { VerifyTerminationReceiptOutputSchema } from "../../../src/models/workfl
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { SeparationPlanSchema } from "../../../src/rules/separations/separation-dates.js";
 import { KRONOS_TIMECARD_OMISSION, SeparationsResultSchema, UCPATH_TRANSACTION_OMISSION } from "../../../src/workflows/separations/workflow.js";
-import { CURRENT_SEPARATIONS_RESULT } from "../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { CURRENT_SEPARATIONS_RESULT } from "../../support/fixtures/integration/separations-run-fixtures.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { COMPOSITION_SCOPE_OUTPUTS } from "../../support/helpers/separations-composition-fixtures.js";
 
@@ -39,12 +39,12 @@ describe("separations omittable write steps", () => {
 
     const dates = ReadSeparationDatesOutputSchema.parse(datesProducer({
       facts: { lastDayWorked: "06/18/2026", separationDate: "06/18/2026" },
-      scope: { input: { documentNumber: "4444", timekeeperName: "Julian Zaw" }, outputs: { plan: PLAN } },
+      scope: { input: { documentNumber: "4444", timekeeperInitials: "JZ" }, outputs: { plan: PLAN } },
       assertedAt: ASSERTED_AT,
     }));
     assert.equal(dates.terminationEffectiveDate, "06/19/2026");
     assert.throws(
-      () => datesProducer({ facts: { lastDayWorked: "06/18/2026", separationDate: "06/18/2026" }, scope: { input: { timekeeperName: "Julian Zaw" }, outputs: {} }, assertedAt: ASSERTED_AT }),
+      () => datesProducer({ facts: { lastDayWorked: "06/18/2026", separationDate: "06/18/2026" }, scope: { input: { timekeeperInitials: "JZ" }, outputs: {} }, assertedAt: ASSERTED_AT }),
       /invalid input|expected object|Required|undefined/iu,
     );
 

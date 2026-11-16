@@ -6,7 +6,7 @@ import { ConfigSchema } from "../../../../models/config/schema.js";
 import { DEVELOPMENT_DEBUG_MIRROR_ENV, workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
 import { WorkerControlRefusal } from "../../../../models/run/worker-control.js";
 import { workerPoolMember } from "../../../../models/run/worker-slot.js";
-import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
+import { PreflightAdmissionRefusal, type PreflightAdmission, type PreflightAdmissionScope } from "../../../../rules/preflight/preflight-admission.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { BrowserSessionIdSchema } from "../../../../rules/identity/ids.js";
 import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
@@ -24,7 +24,6 @@ import { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { assertPrivateProfilePath, createBrowserRoots } from "../../../storage/browser-roots.js";
 import { AuthorityDatabase } from "../../../storage/sqlite/index.js";
-import { type RuntimePreflight } from "../../preflight/runtime-admission.js";
 
 /** Refresh, reopen, parked-write checks and close-for-removal each get this long to reply. */
 export const WORKER_REQUEST_DEADLINE_MS = 120_000;
@@ -67,9 +66,11 @@ export interface WorkerPoolCompositionInput {
   readonly spawn: WorkerProcessSpawner;
   readonly settleExit: (member: WorkerPoolMember) => void | Promise<void>;
   readonly onChange?: (view: WorkerMemberView) => void;
-  readonly onFault: (error: Error) => void;
+  readonly onFault: (error: Error, origin?: Readonly<{ workerId: string; pid?: number }>) => void;
   readonly onStopChannelClosed?: (error: Error) => void;
-  readonly preflight?: RuntimePreflight;
+  /** A member start's readiness gate: a fresh preflight of the profile's current scope, aborted when the pool stops. */
+  readonly preflight?: Readonly<{ admission: Pick<PreflightAdmission, "assertReady"> & { prepare(scope: PreflightAdmissionScope, signal: AbortSignal): Promise<unknown> };
+    currentScope(): PreflightAdmissionScope }>;
   readonly assertAssistantEffect?: (commandId: string) => void;
   readonly platform?: NodeJS.Platform;
 }
@@ -83,6 +84,8 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
   ensureRunning(workflowId: string): Promise<void>;
   /** Boot: starts every active member of every pool; each failure shows on its card. */
   startActive(): Promise<void>;
+  /** Takes startup work no caller waits for; `pool.stopAll` waits for it, so it never outlives the pool. */
+  own(work: Promise<void>): void;
 }> {
   const profileId = input.admission.profileBinding.profileId;
   const children = new Map<string, ChildProcess>();
@@ -90,6 +93,10 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
   const respawned = new Set<string>();
   let respawnOpen = true;
   const poolRef: { current?: WorkerPool } = {};
+  // Stopping the pool closes starts: a pending preflight aborts and no member starts after it.
+  const starts = new AbortController();
+  const owned = new Set<Promise<void>>(), ownedFailures: unknown[] = [];
+  const assertStartsOpen = (): void => { if (starts.signal.aborted) throw new WorkerControlRefusal("worker-starts-closed"); };
   const releaseRespawn = (workerId: string): void => { respawned.delete(workerId); };
   const queuedWork = (workflowId: string): boolean => input.database.authority.runs.listByWorkflow(workflowId)
     .some(run => run.lifecycle.state === "queued" && run.pause === undefined);
@@ -100,7 +107,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
     if (respawned.has(view.member.workerId) || !queuedWork(view.member.workflowId)) return;
     respawned.add(view.member.workerId);
     // onChange runs only after settleExit, so the replacement starts against a settled crash.
-    void current.start(view.member).catch((error: unknown) => { input.onFault(fault(error)); });
+    void current.start(view.member).catch((error: unknown) => { input.onFault(fault(error), { workerId: view.member.workerId }); });
   };
   const pool = createWorkerPool({
     profileId, sessionGeneration: input.sessionGeneration, clock: input.clock, scheduler: input.scheduler, ids: input.ids,
@@ -118,7 +125,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
     // A crashed child can leave a root open; it is probed closed before the exit settles, so the replacement can launch.
     settleExit: async member => { await settleProfiles(member, "recover"); await input.settleExit(member); },
     onChange: onMemberChange,
-    onFault: (_member, error) => { input.onFault(fault(error)); },
+    onFault: (member, error, pid) => { input.onFault(fault(error), { workerId: member.workerId, ...(pid === undefined ? {} : { pid }) }); },
     onStopChannelClosed: (_member, error) => { input.onStopChannelClosed?.(fault(error)); },
   });
   poolRef.current = pool;
@@ -128,6 +135,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
 
   const ensure = async (member: WorkerPoolMember): Promise<void> => {
     if (live(viewOf(member.workerId))) return;
+    assertStartsOpen();
     releaseRespawn(member.workerId);
     await pool.start(member);
   };
@@ -164,7 +172,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
   const preflight = async (): Promise<void> => {
     if (input.preflight === undefined) return;
     try {
-      await input.preflight.admission.prepare(input.preflight.currentScope(), new AbortController().signal);
+      await input.preflight.admission.prepare(input.preflight.currentScope(), starts.signal);
       input.preflight.admission.assertReady(input.preflight.currentScope());
     } catch (error) {
       if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message, { cause: error });
@@ -188,9 +196,9 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
       }
       return view?.state ?? "absent";
     },
-    async start(member) { releaseRespawn(member.workerId); await pool.start(member); },
+    async start(member) { assertStartsOpen(); releaseRespawn(member.workerId); await pool.start(member); },
     // A failed member start shows on its card and as a worker fault, whichever command asked for it.
-    ensure: member => ensure(member).catch((error: unknown) => { input.onFault(fault(error)); throw error; }),
+    ensure: member => ensure(member).catch((error: unknown) => { input.onFault(fault(error), { workerId: member.workerId }); throw error; }),
     stop,
     async remove(member) {
       const view = viewOf(member.workerId);
@@ -203,7 +211,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
       if (view?.state !== "running") return;
       // The slot already holds the directive; a lost message only delays the card's activity.
       try { await (directive === "pause" ? pool.pause(targetOf(view)) : pool.resume(targetOf(view))); }
-      catch (error) { input.onFault(fault(error)); }
+      catch (error) { input.onFault(fault(error), { workerId }); }
     },
     async browser(target, type) {
       await pool.request(target, { type, browserSessionId: BrowserSessionIdSchema.parse(target.browserSessionId) }, WORKER_REQUEST_DEADLINE_MS);
@@ -217,14 +225,19 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
   const activeMembers = (workflowId?: string): readonly WorkerPoolMember[] => input.database.authority.workerSlots.list(workflowId)
     .filter(slot => slot.retiredAt === null).map(workerPoolMember);
   const startAll = async (members: readonly WorkerPoolMember[]): Promise<void> => {
-    await Promise.all(members.map(member => ensure(member).catch((error: unknown) => { input.onFault(fault(error)); })));
+    await Promise.all(members.map(member => ensure(member).catch((error: unknown) => { input.onFault(fault(error), { workerId: member.workerId }); })));
   };
   return Object.freeze({
     pool: Object.freeze({
       ...pool,
       stopAll: async (reason: Parameters<WorkerPool["stopAll"]>[0]) => {
         respawnOpen = false;
-        return pool.stopAll(reason);
+        starts.abort(new WorkerControlRefusal("worker-starts-closed"));
+        const views = await pool.stopAll(reason);
+        // Owned startup work settles once starts are closed and its members stopped; work owned meanwhile is swept too.
+        while (owned.size > 0) await Promise.allSettled([...owned]);
+        if (ownedFailures.length > 0) throw new AggregateError(ownedFailures, "worker-startup-work-failed");
+        return views;
       },
     }),
     seam: Object.freeze(seam),
@@ -238,6 +251,10 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
       if (!members.some(member => live(viewOf(member.workerId)))) throw new WorkerControlRefusal("worker-start-failed");
     },
     startActive: () => startAll(activeMembers()),
+    own: (work: Promise<void>) => {
+      owned.add(work);
+      void work.then(() => { owned.delete(work); }, (error: unknown) => { owned.delete(work); ownedFailures.push(error); });
+    },
   });
 }
 

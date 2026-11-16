@@ -229,7 +229,7 @@ it('binds selected-run workflow proposals to the current selection and confirms 
   }, assistantDecide: async input => { confirms++; return { state: 'applied', actionId: input.actionId }; } }),
   { authority: 'current', subjectRef: 'run_selected_1' });
   c.action({ type: 'edit', value: 'start selected workflow' }); c.action({ type: 'send' });
-  await new Promise(resolve => setTimeout(resolve, 0));
+  await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'proposal'));
   assert.equal(confirms, 0);
   const turn = c.snapshot().turn; assert.equal(turn.state, 'proposal');
   if (turn.state === 'proposal') {
@@ -241,7 +241,11 @@ it('binds selected-run workflow proposals to the current selection and confirms 
     ]);
     assert.deepEqual(turn.proposal.issued, proposal);
   }
-  c.action({ type: 'confirm' }); await new Promise(resolve => setTimeout(resolve, 0));
+  c.action({ type: 'confirm' });
+  await vi.waitFor(() => {
+    const turn = c.snapshot().turn;
+    assert.ok(turn.state === 'proposal' && turn.disposition === 'confirmed');
+  });
   assert.equal(confirms, 1);
   c.action({ type: 'confirm' }); assert.equal(confirms, 1);
 });

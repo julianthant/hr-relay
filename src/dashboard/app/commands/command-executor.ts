@@ -1,9 +1,10 @@
 import { createErrorCatalogFailure,ERROR_CATALOG,ErrorCatalogCodeSchema,formatErrorCatalogFailure,type ErrorCatalogMessage } from "../../../models/failures/error-catalog.js";
 import { deriveBulkChildCommand } from "../../../rules/commands/command-groups.js";
+import { bulkChildEffect,commandResultEffect } from "../../../rules/commands/command-lifecycle.js";
 import { BulkRunCommandRequestSchema,DashboardCommandRequestSchema,type BulkRunCommandOutcome,type BulkRunCommandRequest,type BulkRunCommandResponse,type DashboardCommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { checkedBulkCommandResult,checkedCommandResult,type SharedCommands } from "../../client/commands/shared-commands.js";
-import { DashboardClientError } from "../../client/errors.js";
+import { attemptTransition,commandAttemptView,CommandOutcomeInvalidError,uncertainOutcome,type AttemptMove,type AttemptPhase,type AttemptSettlement } from "./command-outcome.js";
 import { beforeEffectRefusal } from "./command-result.js";
 
 export interface CommandExecutionScope {
@@ -54,7 +55,8 @@ interface Attempt {
   readonly request: RetainedCommandRequest;
   readonly body: string;
   readonly scope: CommandExecutionScope;
-  state: "pending" | "settled";
+  /** `absent` until the dispatch guards pass and the attempt is registered. */
+  state: AttemptPhase;
   outcome?: CommandOutcome;
   /** Resolves when the current pending dispatch or check settles. */
   settling?: Promise<void>;
@@ -94,10 +96,17 @@ function children(request: RetainedCommandRequest): readonly DashboardCommandReq
   return "targets" in request ? request.targets.map(target => deriveBulkChildCommand(request, target)) : [request];
 }
 
-function uncertain(commandId: string, cause: unknown, reply?: CommandExecutionReply): CommandOutcome {
-  const code = cause instanceof DashboardClientError && cause.code === "COMMAND_RESULT_IDENTITY_MISMATCH"
-    ? "COMMAND_RESULT_IDENTITY_MISMATCH" : "COMMAND_OUTCOME_UNCERTAIN";
-  return { kind: "uncertain", commandId, feedback: feedback(code), cause, ...(reply === undefined ? {} : { reply }) };
+/** Writes one transition's phase and outcome onto the attempt. */
+function enter(attempt: Attempt, step: AttemptMove): void {
+  attempt.state = step.phase;
+  if (step.phase === "pending") attempt.settling = new Promise(resolve => { attempt.release = resolve; });
+  else attempt.release?.();
+  if (step.phase === "settled") attempt.outcome = Object.freeze(step.outcome);
+}
+
+/** Whether a settled step frees the reservation held for this outcome or bulk child. */
+function releases(step: AttemptSettlement, outcome: CommandOutcome): boolean {
+  return step.release === "all" || (step.release === "settled-children" && commandAttemptView(outcome).view !== "unknown");
 }
 
 export class CommandExecutor {
@@ -107,7 +116,8 @@ export class CommandExecutor {
   constructor(private readonly currentScope: () => CommandExecutionScope | undefined) {}
 
   retainedAttempts(): readonly RetainedCommandAttempt[] {
-    return Object.freeze([...new Set(this.attempts.values())].map(({ request, body, scope, state, outcome }) => Object.freeze({ request, body, scope, state, ...(outcome === undefined ? {} : { outcome }) })));
+    return Object.freeze([...new Set(this.attempts.values())].flatMap(({ request, body, scope, state, outcome }) => state === "absent" ? []
+      : [Object.freeze({ request, body, scope, state, ...(outcome === undefined ? {} : { outcome }) })]));
   }
 
   /** Resolves once the attempt's in-flight dispatch or check has settled; at once when none is in flight. */
@@ -129,8 +139,9 @@ export class CommandExecutor {
     const commands = children(request);
     const identities = [request.commandId, ...("targets" in request ? [request.bulkCommandId, ...commands.map(command => command.commandId)] : [])];
     if (identities.some(id => this.attempts.has(id))) return this.publish(this.refuse(request.commandId, "identity-reused"), options);
-    const attempt: Attempt = { request, body: JSON.stringify(request), scope: Object.freeze({ ...options.scope }), state: "settled" };
-    return this.dispatch(attempt, options);
+    const attempt: Attempt = { request, body: JSON.stringify(request), scope: Object.freeze({ ...options.scope }), state: "absent" };
+    enter(attempt, attemptTransition(attempt.state, { type: "create" }));
+    return this.dispatch(attempt, options, "execute");
   }
 
   async check(commandId: string, options: CommandExecutionOptions & {
@@ -140,29 +151,27 @@ export class CommandExecutor {
     if (attempt === undefined || "targets" in attempt.request) return this.publish(this.refuse(commandId, "attempt-unavailable"), options);
     if (!sameScope(this.currentScope(), options.scope) || attempt.scope.actorId !== options.scope.actorId || attempt.scope.client !== options.scope.client
       || attempt.scope.authority !== options.scope.authority) return this.publish(this.refuse(commandId, "scope-replaced"), options);
-    if (attempt.state !== "settled" || attempt.outcome?.kind !== "uncertain") return this.publish(this.refuse(commandId, "locked"), options);
+    const opened = attemptTransition(attempt.state, { type: "check", retained: commandAttemptView(attempt) });
+    if ("refused" in opened) return this.publish(this.refuse(commandId, opened.refused), options);
     const request = attempt.request;
     const key = lockKey(request);
     const held = this.reservations.get(key);
     if (held?.attempt !== attempt) return this.publish(this.refuse(commandId, "attempt-unavailable"), options);
-    attempt.state = "pending"; attempt.settling = new Promise(resolve => { attempt.release = resolve; });
+    enter(attempt, opened);
     let outcome: CommandOutcome;
     try {
       const observed = await options.observe(request);
-      if (!sameScope(this.currentScope(), options.scope)) outcome = uncertain(commandId, "scope-replaced");
-      else outcome = observed === undefined ? uncertain(commandId, "readback-unavailable")
+      if (!sameScope(this.currentScope(), options.scope)) outcome = uncertainOutcome(commandId, "scope-replaced");
+      else outcome = observed === undefined ? uncertainOutcome(commandId, "readback-unavailable")
         : await this.settle(request, checkedCommandResult(request, observed), options);
-    } catch (cause) { outcome = uncertain(commandId, cause); }
-    if (!sameScope(this.currentScope(), options.scope)) outcome = uncertain(commandId, "scope-replaced");
+    } catch (cause) { outcome = uncertainOutcome(commandId, cause); }
     if (request.type === "remove-worker" && outcome.kind === "conflict" && outcome.feedback.code === "WORKER_TARGET_STALE") {
       outcome = { ...outcome, kind: "refused" };
     }
-    // A recorded refusal proves no effect; anything else short of confirmation stays checkable.
-    if (outcome.kind !== "confirmed" && outcome.kind !== "refused") outcome = uncertain(commandId, outcome, outcome.reply);
-    attempt.state = "settled"; attempt.release?.();
-    attempt.outcome = Object.freeze(outcome);
-    if ((outcome.kind === "confirmed" || outcome.kind === "refused") && this.reservations.get(key) === held) this.reservations.delete(key);
-    return this.publish(outcome, options);
+    const settled = attemptTransition(attempt.state, { type: "reply", via: "check", outcome, scopeCurrent: sameScope(this.currentScope(), options.scope) });
+    enter(attempt, settled);
+    if (releases(settled, settled.outcome) && this.reservations.get(key) === held) this.reservations.delete(key);
+    return this.publish(settled.outcome, options);
   }
 
   async replay(commandId: string, options: CommandExecutionOptions): Promise<CommandOutcome> {
@@ -171,7 +180,7 @@ export class CommandExecutor {
     if (!sameScope(this.currentScope(), options.scope)) return this.publish(this.refuse(commandId, "scope-replaced"), options);
     if (attempt.scope.actorId !== options.scope.actorId) return this.publish(this.refuse(commandId, "actor-mismatch"), options);
     if (attempt.state === "pending") return this.publish(this.refuse(commandId, "locked"), options);
-    return this.dispatch(attempt, options);
+    return this.dispatch(attempt, options, "replay");
   }
 
   private refuse(commandId: string, reason: Extract<CommandOutcome, { kind: "refused" }>["reason"]): CommandOutcome {
@@ -181,12 +190,11 @@ export class CommandExecutor {
   private async settle(request: DashboardCommandRequest, reply: CommandResult | BulkRunCommandOutcome, options: CommandExecutionOptions): Promise<CommandOutcome> {
     const commandId = request.commandId;
     if ("outcome" in reply) {
-      switch (reply.outcome) {
-        case "errored": return uncertain(commandId, reply, reply);
-        case "conflict": return { kind: "conflict", commandId, reply, feedback: feedback("COMMAND_CONFLICT") };
-        case "refused": return reply.code === "authority-unjournaled" || reply.code === "authority-uncertain"
-          ? uncertain(commandId, reply, reply) : { kind: "refused", commandId, reply, feedback: feedback("COMMAND_REFUSED") };
-        case "applied": break;
+      switch (bulkChildEffect(reply.outcome)) {
+        case "unknown": return uncertainOutcome(commandId, reply, reply);
+        case "none": return reply.outcome === "conflict" ? { kind: "conflict", commandId, reply, feedback: feedback("COMMAND_CONFLICT") }
+          : { kind: "refused", commandId, reply, feedback: feedback("COMMAND_REFUSED") };
+        case "landed": break;
       }
     } else {
       const startCode = request.family === "start" && reply.state === "rejected"
@@ -197,13 +205,13 @@ export class CommandExecutor {
         ? ErrorCatalogCodeSchema.safeParse(reply.message).data : undefined);
       const refusal = code !== undefined && ERROR_CATALOG[code].parameters.safeParse({}).success
         ? formatErrorCatalogFailure(createErrorCatalogFailure(code, {})) : undefined;
-      switch (reply.state) {
-        case "pending": return uncertain(commandId, reply, reply);
+      const effect = commandResultEffect(reply);
+      if (effect === "unknown") return uncertainOutcome(commandId, reply, reply);
+      if (effect === "none") switch (reply.state) {
         case "conflict": return { kind: "conflict", commandId, reply, feedback: refusal ?? feedback("COMMAND_CONFLICT") };
         case "confirmation-required": return { kind: "confirmation-required", commandId, reply, warningDigest: reply.warningDigest, feedback: feedback("COMMAND_CONFIRMATION_REQUIRED") };
-        case "rejected": return reply.code === "authority-unjournaled" || reply.code === "authority-uncertain"
-          ? uncertain(commandId, reply, reply) : { kind: "refused", commandId, reply, feedback: refusal ?? feedback("COMMAND_REFUSED") };
-        case "applied": case "already-applied": break;
+        case "rejected": return { kind: "refused", commandId, reply, feedback: refusal ?? feedback("COMMAND_REFUSED") };
+        case "applied": case "already-applied": case "pending": throw new CommandOutcomeInvalidError(commandId, "effect-contradicts-reply");
       }
     }
     try {
@@ -211,10 +219,10 @@ export class CommandExecutor {
       if (readback.state === "matched") return { kind: "confirmed", commandId, reply, readback: readback.evidence };
       if (readback.state === "conflict") return { kind: "conflict", commandId, reply, readback: readback.evidence, feedback: feedback("COMMAND_CONFLICT") };
       return { kind: "uncertain", commandId, reply, cause: readback, feedback: feedback("COMMAND_READBACK_MISMATCH") };
-    } catch (cause) { return uncertain(commandId, cause, reply); }
+    } catch (cause) { return uncertainOutcome(commandId, cause, reply); }
   }
 
-  private async dispatch(attempt: Attempt, options: CommandExecutionOptions): Promise<CommandOutcome> {
+  private async dispatch(attempt: Attempt, options: CommandExecutionOptions, origin: "execute" | "replay"): Promise<CommandOutcome> {
     options = { ...options, scope: Object.freeze({ ...options.scope }) };
     const request = attempt.request;
     if (typeof options.readback !== "function") return this.publish({ kind: "failed", commandId: request.commandId, feedback: feedback("COMMAND_DISPATCH_FAILED") }, options);
@@ -224,6 +232,9 @@ export class CommandExecutor {
       const held = this.reservations.get(key);
       return held !== undefined && held.attempt !== attempt;
     })) return this.publish(this.refuse(request.commandId, "locked"), options);
+    const started = attemptTransition(attempt.state, { type: "dispatch", origin });
+    if ("refused" in started) return this.publish(this.refuse(request.commandId, started.refused), options);
+    enter(attempt, started);
     const token = Object.freeze({});
     for (const key of keys) this.reservations.set(key, { attempt, token });
     this.attempts.set(request.commandId, attempt);
@@ -231,13 +242,11 @@ export class CommandExecutor {
       this.attempts.set(request.bulkCommandId, attempt);
       for (const command of commands) this.attempts.set(command.commandId, attempt);
     }
-    attempt.state = "pending"; attempt.settling = new Promise(resolve => { attempt.release = resolve; });
     let outcome: CommandOutcome;
     try {
       if ("targets" in request) {
         const reply = checkedBulkCommandResult(request, await options.scope.client.executeBulkCommand(request));
-        if (reply.state === "refused") outcome = reply.code === "authority-unjournaled" || reply.code === "authority-uncertain"
-          ? uncertain(request.commandId, reply, reply) : { kind: "refused", commandId: request.commandId, reply, feedback: feedback("COMMAND_REFUSED") };
+        if (reply.state === "refused") outcome = { kind: "refused", commandId: request.commandId, reply, feedback: feedback("COMMAND_REFUSED") };
         else {
           const outcomes: CommandOutcome[] = [];
           for (const [index, command] of commands.entries()) {
@@ -255,16 +264,15 @@ export class CommandExecutor {
     } catch (cause) {
       outcome = beforeEffectRefusal(cause)
         ? { kind: "refused", commandId: request.commandId, feedback: feedback("COMMAND_REFUSED"), cause }
-        : uncertain(request.commandId, cause);
+        : uncertainOutcome(request.commandId, cause);
     }
-    attempt.state = "settled"; attempt.release?.();
-    attempt.outcome = Object.freeze(outcome);
+    const settled = attemptTransition(attempt.state, { type: "reply", via: "dispatch", outcome, scopeCurrent: sameScope(this.currentScope(), options.scope) });
+    enter(attempt, settled);
     for (const [index, key] of keys.entries()) {
       const held = this.reservations.get(key);
-      const child = outcome.children?.[index] ?? outcome;
-      if (child.kind !== "uncertain" && held?.attempt === attempt && held.token === token) this.reservations.delete(key);
+      if (releases(settled, settled.outcome.children?.[index] ?? settled.outcome) && held?.attempt === attempt && held.token === token) this.reservations.delete(key);
     }
-    attempt.outcome = this.publish(attempt.outcome, options);
+    attempt.outcome = this.publish(settled.outcome, options);
     return attempt.outcome;
   }
 

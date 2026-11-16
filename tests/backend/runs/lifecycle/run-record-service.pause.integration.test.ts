@@ -39,7 +39,6 @@ it("requests running pause and accepts only the real kebab-case worker claim at 
   const paused = requireLifecycleApplied(f.service.pause({ commandId: randomUUID(), runId: running.envelope.runId, expectedVersion: running.version }));
   assert.equal(paused.pause?.state, "requested");
   assert.deepEqual(runClaim(paused), claim);
-  assert.equal(f.service.resumePaused({ commandId: randomUUID(), runId: paused.envelope.runId, expectedVersion: paused.version }).state, "refused");
   const token = { workerId: claim.workerId, claimGeneration: claim.claimGeneration };
   assert.throws(() => f.service.acknowledgePause({ commandId: randomUUID(), runId: paused.envelope.runId,
     claim: { ...token, claimGeneration: token.claimGeneration + 1 } }));
@@ -50,6 +49,53 @@ it("requests running pause and accepts only the real kebab-case worker claim at 
   assert.equal(acknowledged.lifecycle.state, "queued");
   assert.equal(runClaim(acknowledged), undefined);
   assert.deepEqual(requireLifecycleApplied(f.service.acknowledgePause(request)), acknowledged);
+});
+
+it("withdraws a requested pause on Resume and keeps the claim and envelope of the running step", async () => {
+  const f = await world.fixture();
+  const running = world.runningRun(f.service, f.request, f.runtimeConfig);
+  const pausing = requireLifecycleApplied(f.service.pause({ commandId: randomUUID(), runId: running.envelope.runId, expectedVersion: running.version }));
+  assert.equal(pausing.pause?.state, "requested");
+  const withdrawal = { commandId: randomUUID(), runId: pausing.envelope.runId, expectedVersion: pausing.version };
+  const resumed = requireLifecycleApplied(f.service.resumePaused(withdrawal));
+  assert.equal(Object.hasOwn(resumed, "pause"), false);
+  assert.deepEqual(resumed.lifecycle, pausing.lifecycle);
+  assert.deepEqual(resumed.envelope, pausing.envelope);
+  assert.equal(resumed.version, pausing.version + 1);
+  assert.deepEqual(f.database.authority.runs.get(resumed.envelope.runId), resumed);
+  // The journal records the withdrawal as a pause change, never as a Resume, and a replay reads it back as stored.
+  const journaled = f.database.authority.lifecycleJournal.getCommand(withdrawal.commandId);
+  assert.ok(journaled !== undefined && "kind" in journaled && journaled.kind === "run-lifecycle");
+  assert.equal(journaled.operation, "pause");
+  assert.equal(f.database.authority.lifecycleJournal.findRunResume(resumed.envelope.runId), undefined);
+  assert.deepEqual(requireLifecycleApplied(f.service.resumePaused(withdrawal)), resumed);
+  assert.deepEqual(f.database.authority.runs.get(resumed.envelope.runId), resumed);
+});
+
+it("releases a run unpaused when its worker stops for a pause that Resume has since withdrawn", async () => {
+  const f = await world.fixture();
+  const running = world.runningRun(f.service, f.request, f.runtimeConfig);
+  const claim = runClaim(running); assert.ok(claim);
+  const pausing = requireLifecycleApplied(f.service.pause({ commandId: randomUUID(), runId: running.envelope.runId, expectedVersion: running.version }));
+  const resumed = requireLifecycleApplied(f.service.resumePaused({ commandId: randomUUID(), runId: pausing.envelope.runId, expectedVersion: pausing.version }));
+  const request = { commandId: randomUUID(), runId: resumed.envelope.runId, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration } };
+  const released = requireLifecycleApplied(f.service.acknowledgePause(request));
+  assert.deepEqual(released.lifecycle, { state: "queued", requeuedFrom: "recovery" });
+  assert.equal(Object.hasOwn(released, "pause"), false);
+  assert.equal(runClaim(released), undefined);
+  assert.deepEqual(requireLifecycleApplied(f.service.acknowledgePause(request)), released);
+  assert.equal(f.service.acknowledgePause({ ...request, commandId: randomUUID() }).state, "refused");
+});
+
+it("keeps a stop over a requested pause: Resume is refused and nothing changes", async () => {
+  const f = await world.fixture();
+  const running = world.runningRun(f.service, f.request, f.runtimeConfig);
+  const pausing = requireLifecycleApplied(f.service.pause({ commandId: randomUUID(), runId: running.envelope.runId, expectedVersion: running.version }));
+  const stopping = requireLifecycleApplied(f.service.transition({ commandId: randomUUID(), runId: pausing.envelope.runId, expectedVersion: pausing.version,
+    lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }));
+  assert.deepEqual([stopping.cancelRequested, stopping.pause?.state], [true, "requested"]);
+  assert.equal(f.service.resumePaused({ commandId: randomUUID(), runId: stopping.envelope.runId, expectedVersion: stopping.version }).state, "refused");
+  assert.deepEqual(f.database.authority.runs.get(stopping.envelope.runId), stopping);
 });
 
 for (const state of ["queued", "parked-gate"] as const) it(`acknowledges requested pause atomically when active work releases to ${state}`, async () => {

@@ -3,7 +3,7 @@
 The dashboard is a browser app for one local operator. `src/dashboard/app/main.tsx` mounts
 `DashboardApp`; `app/dashboard-app.tsx` composes the workspace, Queue, Logs, launcher, Settings,
 and Sessions. `app/dashboard-takeovers.tsx` mounts Settings, Analytics, Explorer, and intake.
-The workflow policy serves Person Lookup and uses local mocks for the other configured workflows. Bootstrap, Settings,
+The workflow policy serves Person Lookup, Separations, Onboarding, Work-Study and the public I-9 Check PDF parent. OCR and I-9 Lookup are hidden children; the other configured workflows use mocks. Bootstrap, Settings,
 Preflight, storage, and the served intake workspace use the typed client. Retained backend
 capabilities do not imply that the corresponding product producer is mounted.
 
@@ -63,16 +63,18 @@ It keeps stable ID, label, category, start capability, availability, and source 
 Preview capability does not establish executable registration. An unknown workflow source throws
 rather than picking a default.
 
-`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations and OCR are `served` and the other configured values
-are `mock`. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
+`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and I-9 Check are `served`. OCR and I-9 Lookup are `hidden`; the other configured values are `mock`. The I-9 Check person child has no source entry. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
 selection determines Queue heading, visible rows, launcher target, and Logs context. Exact run
 selection may identify its own workflow. Counts come from the producer corresponding to the
 rows rather than a second browser status authority.
 
-The preview catalog contains Separations, Onboarding, Person Lookup, I-9 Lookup, Work-Study,
-Kronos Pay Rule, OCR, Oath Signature, Oath Upload, Emergency Contact, OnBase, I-9 Check,
-CRM Doc Download, SharePoint Download, and Old Kronos Reports. I-9 Lookup and SharePoint Download
-are parent-only. The other entries have their declared preview launch methods and options.
+The public catalog contains Separations, Onboarding, Person Lookup, Work-Study,
+Kronos Pay Rule, Oath Signature, Oath Upload, Emergency Contact, OnBase, I-9 Check,
+CRM Doc Download, SharePoint Download, and Old Kronos Reports. SharePoint Download is parent-only.
+Hidden children have no public catalog choice. Explicit fixtures retain their mock definitions.
+I-9 Check launches through its served PDF input and awaits operator acceptance. Its read-only graph
+does not support transaction dry runs; ordinary execution publishes local results and a tracker.
+The remaining preview entries have their declared launch methods and options.
 A catalog label is presentation; backend admission still requires registered capability.
 
 ## Search, dates, and navigation
@@ -812,11 +814,14 @@ trace and other actions. A recorded pause uses the outline Queued style with a P
 remain Pausing until recorded. Logs marks the corresponding timeline boundary. The queue toolbar
 pauses every run in the application lifecycle snapshot, including runs outside the selected day.
 When every target is paused it offers Resume all, retaining each command outcome. A single Resume,
-Retry or Recover shows Start's worker warning instead of the confirmed toast when that result
+Retry or Recover shows the queued-run worker warning instead of the confirmed toast when that result
 carries worker startup. Resume all keeps the confirmed toast and adds one warning naming how many
 runs have no worker, including when another run keeps the batch from confirming. While a workflow
 has unpaused queued runs and every one of its workers has stopped, a sticky warning names how the
-worker stopped and points to Retry in Sessions. Queue rows serve `cancelledBy` for a cancelled run:
+worker stopped and points to Retry in Sessions. When served membership shows the workflow has no
+worker and a run other than a preview waits, the warning says so and points to Add workers in Sessions.
+This notice is how a Start learns its worker failed to start, since Start replies before startup; while
+that startup is still pending the worker card reads Starting and no notice shows. Queue rows serve `cancelledBy` for a cancelled run:
 the Cancelled pill credits the operator only for their own cancel and otherwise shows Relay's reason
 (the profile logged out, or a never-claimed run from a previous day was cancelled at startup). Command-Q opens
 “Pause all and quit?” with Keep working and confirmation, without a run list. A pending quit shows a

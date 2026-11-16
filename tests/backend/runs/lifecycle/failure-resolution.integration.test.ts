@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
-import { failureResolutionCapability } from "../../../../src/backend/runs/lifecycle/failure-resolution.js";
 import { readTimelineRecords } from "../../../../src/backend/storage/events/timeline-reader.js";
 import { NOW,failure,id,terminalizeFixtureFailure } from "../../../support/helpers/database-foundation/fixtures.js";
 import { resolutionCommand,resolutionFixture,resolutionKernel } from "../../../support/helpers/failure-resolution/fixtures.js";
@@ -20,7 +19,6 @@ describe("D resolution command authority", () => {
   it("resolves/reopens only its annotation and preserves immutable failure/run/completion evidence", async () => {
     const f = await resolutionFixture();
     try {
-      assert.equal(failureResolutionCapability().state, "available");
       const beforeRun = JSON.stringify(f.db.authority.runs.get(f.record.runId));
       const beforeFailure = JSON.stringify(f.db.authority.failures.get(f.record.failureId));
       const command = resolutionCommand();

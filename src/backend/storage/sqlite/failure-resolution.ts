@@ -1,21 +1,24 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { FailureResolutionSchema, FailureResolutionCaptureSchema } from "../../../models/trust/failure-resolution.js";
+import { FailureResolutionSchema, FailureResolutionCaptureSchema, type FailureResolutionCapture } from "../../../models/trust/failure-resolution.js";
 interface FailureResolutionPorts {
  database: DatabaseSync;
  mutate<T>(work:()=>Readonly<{result:T;changes:number}>):T;
 }
-const RowSchema=z.strictObject({id:z.string(),run_id:z.string(),resolution_json:z.string(),resolution_version:z.number().int().positive()});
+const RowSchema=z.object({id:z.string(),run_id:z.string(),resolution_json:z.string(),resolution_version:z.number().int().positive()});
+/** The one parse of a stored failure resolution: the `run_failures` row's JSON, checked against its version column. */
+export function failureResolutionFromRow(raw:unknown):FailureResolutionCapture {
+ const row=RowSchema.parse(raw);
+ let resolution;
+ try { resolution=FailureResolutionSchema.parse(JSON.parse(row.resolution_json)); }
+ catch { throw new Error("failure-resolution-annotation-invalid"); }
+ if(resolution.version!==row.resolution_version)throw new Error("failure-resolution-version-mismatch");
+ return FailureResolutionCaptureSchema.parse({failureId:row.id,runId:row.run_id,resolution});
+}
 export function createFailureResolutionRepository(ports:FailureResolutionPorts) {
  const read=(runId:string,failureId:string)=>{
   const raw=ports.database.prepare("SELECT id,run_id,resolution_json,resolution_version FROM run_failures WHERE id=? AND run_id=?").get(failureId,runId);
-  if(raw===undefined)return undefined;
-  const row=RowSchema.parse(raw);
-  let resolution;
-  try { resolution=FailureResolutionSchema.parse(JSON.parse(row.resolution_json)); }
-  catch { throw new Error("failure-resolution-annotation-invalid"); }
-  if(resolution.version!==row.resolution_version)throw new Error("failure-resolution-version-mismatch");
-  return FailureResolutionCaptureSchema.parse({failureId:row.id,runId:row.run_id,resolution});
+  return raw===undefined?undefined:failureResolutionFromRow(raw);
  };
  return Object.freeze({read,
   update(input:unknown){

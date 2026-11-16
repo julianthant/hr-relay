@@ -11,7 +11,7 @@ import { WorkbookOperationReceiptSchema, WorkbookCellValuesSchema } from "./work
 import { UcpathFindingsDetailSchema } from "./ucpath-findings.js";
 import { FailureDisplaySchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
-import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
+import { FailureResolutionCaptureSchema } from "../trust/failure-resolution.js";
 import { PublicTransactionKeyDigestSchema } from "../write-safety/protected-input.js";
 import { WriteParkCodeSchema } from "../../rules/write-safety/write-safety-primitives.js";
 import { z } from "zod";
@@ -639,7 +639,7 @@ export const FailureDetailWireSchema = z.strictObject({
     prefill: z.string().min(1).optional(),
     retry: ActionDescriptorWireSchema, confirm: ActionConfirmWireSchema, request: StartPlanRequestSchema,
   }).optional(),
-  resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),
+  resolution: z.strictObject({capture:FailureResolutionCaptureSchema}).optional(),
   decision: RunDecisionWireSchema.optional(),
   runId: RunIdSchema,
   failureId: FailureIdSchema,
@@ -944,6 +944,11 @@ export const IdentityGateDetailWireSchema = z.strictObject({
   /** Ref frontend-backend-integration: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
   decision: RunDecisionWireSchema.optional(),
+  /** The fill row's lookup: a typed value starts this one-field rerun, which replaces the parked run; it never answers the gate. */
+  correction: z.strictObject({
+    inputField: z.string().min(1), label: z.string().min(1), placeholder: z.string().min(1), pattern: z.string().min(1),
+    expectedVersion: z.number().int().positive(), confirm: ActionConfirmWireSchema, request: StartPlanRequestSchema,
+  }).optional(),
 }).superRefine((gate, context) => {
   refineDecisionActions(gate.decision, gate.actions, context, ["decision"]);
   if (gate.approvalShape !== (gate.options.length > 1 ? "choose-a-candidate" : "one-click")) {

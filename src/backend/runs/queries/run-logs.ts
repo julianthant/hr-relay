@@ -15,6 +15,7 @@ import {
   type RunDetailSectionResponse,
 } from "../../../models/dashboard/run-detail.js";
 import type { RunRecord } from "../../../models/run/record.js";
+import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
 import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import {
   NoteWireSchema as NoteAtRestSchema,
@@ -436,7 +437,7 @@ function logRowOf(
 function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord) {
   if (!authority.envelope.dryRun) return undefined;
   if (deps.canonical === undefined) return DryRunPreviewWireSchema.parse({ state: "unavailable", reason: "preview-authority-unavailable" });
-  const result = deps.canonical.database.authority.runResults.get(authority.envelope.runId);
+  const result = runResultCurrent(authority) ? deps.canonical.database.authority.runResults.get(authority.envelope.runId) : undefined;
   const preview = result === undefined ? undefined : readRunPreviewResult(result);
   const descriptor = deps.canonical.descriptors.resolve(authority.envelope.workflow);
   if (result === undefined || preview === undefined) {
@@ -450,7 +451,8 @@ function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord) {
     const label = node?.kind === "task" ? node.label ?? node.uses.title : node?.kind === "transaction" ? node.label ?? node.prepare.uses.title : String(step.nodeId);
     const state = step.state === "not-run" ? "skipped" : step.state === "unavailable" || step.state === "transaction-preview" && step.preview.outcome.state !== "would-prepare" ? "unavailable" : "exercised";
     const samples = step.state === "transaction-preview" ? step.samples : [];
-    const detail = step.state === "delegation-preview" ? "Previewed child changes without saving." : step.state === "not-run" ? step.reason : step.state === "unavailable" ? "Requires an unsubmitted result; this stage was not exercised."
+    const detail = step.state === "delegation-preview" ? "Previewed child changes without saving."
+      : step.state === "publication-preview" ? "Prepared and checked without saving." : step.state === "not-run" ? step.reason : step.state === "unavailable" ? "Requires an unsubmitted result; this stage was not exercised."
         : step.state === "transaction-preview" ? step.preview.outcome.state === "would-prepare" ? "Filled, verified and captured without submitting."
         : "Existing completion observed; the form was not staged." : "Completed from recorded workflow evidence.";
     return { id: step.nodeId, label, state,

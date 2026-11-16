@@ -14,7 +14,7 @@ afterEach(async () => { await act(async () => root?.unmount()); document.body.re
 const data = activitySample(ACTIVITY_SAMPLE_RANGE, 'normal');
 async function render(report: ActivityViewState = data, onExport?: (format: 'csv' | 'xlsx') => void | Promise<void>) {
   if (!root) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); }
-  await act(async () => root?.render(createElement(ActivityView, { data: report, range: ACTIVITY_SAMPLE_RANGE, today: ACTIVITY_SAMPLE_TODAY, period: 'custom', onPreset() {}, onRange() {}, onExport })));
+  await act(async () => root?.render(createElement(ActivityView, { data: report, range: ACTIVITY_SAMPLE_RANGE, today: ACTIVITY_SAMPLE_TODAY, onRange() {}, onExport })));
 }
 const button = () => { const found = [...document.querySelectorAll('button')].find(button => button.textContent === 'Export'); assert(found); return found; };
 it('exports CSV exactly once while pending and retains refusal feedback', async () => {
