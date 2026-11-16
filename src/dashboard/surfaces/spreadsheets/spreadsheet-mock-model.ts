@@ -1,7 +1,5 @@
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
-import { type SpreadsheetSaveResult } from './spreadsheet-editor-model.js';
 import { cellText, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
-import { useSyncExternalStore } from "react";
 import { MOCK_ROSTER_ROWS, ROSTER_FIELDS, ROSTER_SHEETS } from "./spreadsheet-mock-data.js";
 import { fieldForSpreadsheetHeader, spreadsheetHeaderKey } from '../../../models/fields/workbook-fields.js';
 import { spreadsheetEditorField } from './spreadsheet-fields-model.js';
@@ -33,11 +31,7 @@ function initialState(): SpreadsheetMockState {
   ] };
 }
 let state = initialState();
-const listeners = new Set<() => void>();
-const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
-const snapshot = () => state;
-function publish(next: SpreadsheetMockState) { state = next; for (const listener of listeners) listener(); }
-export function useSpreadsheetMocks(): SpreadsheetMockState { return useSyncExternalStore(subscribe, snapshot, snapshot); }
+function publish(next: SpreadsheetMockState) { state = next; }
 export function spreadsheetFields(file: RegisteredSpreadsheet): string[] {
   return [...new Set(file.sheets.flatMap(sheet => sheet.mapping.filter(field => field !== NOT_MAPPED && field !== WORKBOOK_ONLY)))];
 }
@@ -101,7 +95,7 @@ export function searchMockSpreadsheet(file: RegisteredSpreadsheet, sheetName: st
     binding.sourceHeader || cellText(local.rows[(local.headerRow ?? 1) - 1].cells[column])).label, cellText(row.cells[column])]] : []) ?? [])).filter(row => !needle || Object.values(row).some(value => value.toLowerCase().includes(needle)));
   return MOCK_ROSTER_ROWS.filter(row => !needle || fields.some(field => (row[field] ?? "").toLowerCase().includes(needle)));
 }
-export function resetSpreadsheetMocks(): void { mockSavedVersions.clear(); localWorkbooks.clear(); publish(initialState()); }
+export function resetSpreadsheetMocks(): void { localWorkbooks.clear(); publish(initialState()); }
 
 const localWorkbooks = new Map<string, EditableWorkbook>();
 export function registeredSpreadsheetWorkbook(file: RegisteredSpreadsheet): EditableWorkbook {
@@ -139,16 +133,4 @@ export function retainSpreadsheetCopy(id: string, document: EditableWorkbook): v
   document = withColumnBindings(document);
   localWorkbooks.set(id, structuredClone(document));
   publish({ ...state, files: state.files.map(file => file.id === id ? { ...file, name: document.name, sheets: localSpreadsheetSheets(document) } : file) });
-}
-
-const mockSavedVersions = new Map<string, number>();
-export async function saveMockSpreadsheet(draft: EditableWorkbook): Promise<SpreadsheetSaveResult> {
-  await new Promise(resolve => window.setTimeout(resolve, 250));
-  if (!draft.libraryId) return { state: 'refused', reason: 'Open a registered workbook before saving.' };
-  retainSpreadsheetCopy(draft.libraryId, draft);
-  const version = (mockSavedVersions.get(draft.libraryId) ?? 0) + 1;
-  mockSavedVersions.set(draft.libraryId, version);
-  const file = state.files.find(file => file.id === draft.libraryId);
-  if (!file) return { state: 'uncertain', reason: 'The saved workbook could not be read back.' };
-  return { state: 'confirmed', version, readback: registeredSpreadsheetWorkbook(file) };
 }

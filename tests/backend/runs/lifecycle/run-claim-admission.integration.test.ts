@@ -42,14 +42,10 @@ const flows={
   const run=f.createRun(id(81));const record={...failure(),runId:run.envelope.runId,traceId:run.envelope.traceId};const writer=artifacts(f);await writer.ready;const capture=bindFailureCapture(createRunDiagnosticCapture({service:createDiagnosticCaptureService({artifacts:writer,authority:f.db.authority,clock:f.clock,ids:sequentialIdFactory("d")})}));
   const bundle=await capture.captureForFailure({failure:record,configFingerprint:f.snapshot.fingerprint,descriptorFingerprint:HASH});
   f.db.withAuthorityTransaction(()=>{terminalizeFixtureFailure(f,run,{...record,diagnosticBundleId:bundle.bundleId});capture.persist(bundle);});
-  const api=composeFailureResolution(f.db.authority);assert.equal(api.query.getFailure(record.failureId)?.writeState,"unknown");assert.deepEqual(api.query.read(record.runId,record.failureId)?.resolution,{status:"unresolved",version:1});assert.equal(api.commands.capability().state,"available");
+  const api=composeFailureResolution(f.db.authority);assert.equal(api.query.getFailure(record.failureId)?.writeState,"unknown");assert.deepEqual(api.query.read(record.runId,record.failureId)?.resolution,{status:"unresolved",version:1});
   const kernel=resolutionKernel(f.db,f.clock);
   assert.equal(kernel.execute(resolutionCommand({target:{runId:record.runId,failureId:record.failureId,expectedVersion:1}})).state,"applied");
   assert.equal(api.query.read(record.runId,record.failureId)?.resolution.status,"resolved");
-  const unavailable=resolutionKernel(f.db,f.clock,{failureResolution:{capability:()=>({state:"unavailable",reason:"resolution-not-implemented"}),execute:()=>{throw new Error("unavailable executor reached");}}});
-  const blocked=resolutionCommand({target:{runId:record.runId,failureId:record.failureId,expectedVersion:2},payload:{action:"reopen"}});
-  const generation=f.db.getMeta().authorityGeneration;
-  assert.equal(unavailable.execute(blocked).state,"rejected");assert.equal(f.db.getMeta().authorityGeneration,generation);assert.equal(f.db.authority.commands.get(blocked.commandId),undefined);
   assert.deepEqual(f.db.authority.diagnosticBundles.get(bundle.bundleId),bundle);
  },
  async G(f:Fixture){

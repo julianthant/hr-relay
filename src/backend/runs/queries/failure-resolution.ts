@@ -1,9 +1,7 @@
 import { FailureResolutionCaptureSchema, type FailureResolutionCapture } from "../../../models/trust/failure-resolution.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { failureResolutionCapability } from "../../../models/trust/failure-resolution.js";
 export function createFailureResolutionQuery(authority:Pick<AuthorityRepositories,"failures"|"failureResolution">){
  return Object.freeze({
-  capability:failureResolutionCapability,
   getFailure(failureId:string){
    const failure=authority.failures.get(failureId);
    if(failure!==undefined&&authority.failureResolution.read(failure.runId,failure.failureId)===undefined)throw new Error("failure-resolution-annotation-missing");

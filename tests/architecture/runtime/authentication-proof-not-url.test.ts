@@ -65,7 +65,7 @@ export function auditResetVerification(path: string, content: string): readonly 
 }
 
 function storeSessionFiles(): readonly string[] {
-  return gitVisibleFiles(["src/stores", "src/backend/systems"]).filter((path) => /\/session\.ts$/.test(path));
+  return gitVisibleFiles(["src/backend/systems"]).filter((path) => /\/session\.ts$/.test(path));
 }
 
 describe("authentication is never concluded from a URL", () => {

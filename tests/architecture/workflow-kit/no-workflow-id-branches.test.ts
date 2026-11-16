@@ -9,13 +9,13 @@ import { gitVisibleFilesIn, REPO_ROOT } from "../support/helpers/guard-files.js"
 
 /** Generic code: a branch on a workflow id here means adding a workflow touches more than its folder. */
 const GENERIC_ROOTS = [
-  "src/dashboard/", "src/backend/app/", "src/backend/transports/", "src/backend/runtime/", "src/backend/logs/", "src/services/",
+  "src/dashboard/", "src/backend/app/", "src/backend/transports/", "src/backend/runtime/", "src/backend/logs/",
   "src/backend/runs/commands/", "src/backend/runs/projections/", "src/backend/runs/queries/",
   "src/backend/runs/exports/", "src/backend/runs/trust/", "src/backend/runs/start/",
-  "src/backend/runs/archive/", "src/backend/runs/notifications/", "src/backend/runs/explain/",
+  "src/backend/runs/notifications/", "src/backend/runs/explain/",
 ] as const;
 const GENERIC_RUN_FILES = new Set([
-  "src/backend/runs/lifecycle/run-status.ts", "src/backend/runs/lifecycle/support.ts",
+  "src/backend/runs/lifecycle/support.ts",
 ]);
 
 export interface WorkflowIdSite {

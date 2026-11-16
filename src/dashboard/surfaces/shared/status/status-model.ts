@@ -54,19 +54,6 @@ export function dsStatusOf(status: QueueStatus): DsStatus {
   return displayStatusOf(status);
 }
 
-/** The fixed terminal-outcome→ds mapping (ref dashboard-surfaces: verified-done renders as Done). */
-const OUTCOME_DS_STATUS: Record<TerminalOutcomeResult, DsStatus> = {
-  "verified-done": "verifiedDone",
-  "done-with-warnings": "doneWarnings",
-  failed: "failed",
-  cancelled: "cancelled",
-  partial: "doneWarnings",
-};
-
-export function outcomeDsStatusOf(result: TerminalOutcomeResult): DsStatus {
-  return OUTCOME_DS_STATUS[result];
-}
-
 /** A collapsed row must say how OLD the decision is, not just that there is one.
  * "Waiting on you" is a state */
 export function statusText(status: ProposedStatus, age?: string): string {

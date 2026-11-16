@@ -1,4 +1,5 @@
 // Conflicts and rejections are refusals; settle every result arm before reporting success.
+import { commandResultEffect } from "../../../rules/commands/command-lifecycle.js";
 import type { CommandResult } from "../../../rules/commands/commands.js";
 import { DashboardClientError } from "../../client/errors.js";
 
@@ -32,8 +33,17 @@ export type CommandSettlement =
     readonly code: CommandRejectionCode;
   };
 
+/** The reply may have landed: it is neither applied nor a refusal, so the original attempt stays retained. */
+export class CommandResultUnknownEffectError extends Error {
+  constructor(readonly result: CommandResult) {
+    super(`command-result-unknown-effect: ${result.state === "rejected" ? `rejected ${result.code}` : result.state}; retain the original attempt until served readback`);
+    this.name = "CommandResultUnknownEffectError";
+  }
+}
+
 export function settleCommandResult(result: CommandResult): CommandSettlement {
-  if (result.state === "pending") throw new Error("command-result-pending: retain the original attempt until served readback");
+  // `pending` is always unknown; naming it narrows the switch below.
+  if (result.state === "pending" || commandResultEffect(result) === "unknown") throw new CommandResultUnknownEffectError(result);
   switch (result.state) {
     case "applied":
       return { kind: "applied", replayed: false };

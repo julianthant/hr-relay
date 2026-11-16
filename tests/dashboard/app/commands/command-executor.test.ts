@@ -126,9 +126,10 @@ it.each(["mismatch", "throw", "descendant-outside-admission"])("keeps %s readbac
   assert.equal((await h.executor.execute(command(11), h.options())).kind, "refused");
 });
 
-it.each(["authority-unjournaled", "authority-uncertain"])("treats %s as uncertain and replays only the retained bytes", async code => {
+it.each(["pending", "bulk-child-errored"])("treats a %s reply as uncertain and replays only the retained bytes", async reply => {
   const h = harness();
-  h.setReply(request => ({ state: "rejected", commandId: request.commandId, code, message: "private kernel prose" }));
+  h.setReply(request => reply === "pending" ? { state: "pending", commandId: request.commandId }
+    : { state: "rejected", commandId: request.commandId, code: reply, message: "private kernel prose" });
   assert.equal((await h.executor.execute(command(), h.options())).kind, "uncertain");
   assert.equal(h.sent.length, 1);
   assert.equal((await h.executor.execute(command(11), h.options())).kind, "refused");
@@ -207,7 +208,7 @@ it("preserves mixed child outcomes, keeps only uncertain locks, and replays the 
     h.state.set(RUN, { version: 2, cancelled: true });
     return { ...result, results: [result.results[0], { ...result.results[1], outcome: "conflict", replayed: undefined, currentVersion: 3 },
       { outcome: "refused", runId: id(3), commandId: result.results[2].commandId, code: "policy-refused", detail: "private" },
-      { outcome: "refused", runId: id(4), commandId: result.results[3].commandId, code: "authority-uncertain", detail: "private" }] };
+      { outcome: "errored", runId: id(4), commandId: result.results[3].commandId, detail: "private" }] };
   });
   const result = await h.executor.execute(request, h.options());
   assert.equal(result.kind, "uncertain");
@@ -324,7 +325,7 @@ it("a pending bulk blocks single children and reserves the child command identit
 
 it("retains schema-transformed payload bytes through mutation and explicit replay", async () => {
   const h = harness();
-  h.setReply(request => ({ state: "rejected", commandId: request.commandId, code: "authority-uncertain", message: "private" }));
+  h.setReply(request => ({ state: "pending", commandId: request.commandId }));
   const input = { ...command(), family: "failure-resolution", type: "annotate-failure", target: { runId: RUN, failureId: id(90), expectedVersion: 1 },
     payload: { action: "resolve", note: "  Reviewed evidence  " } };
   assert.equal((await h.executor.execute(input, h.options())).kind, "uncertain");
@@ -413,12 +414,12 @@ it("checks an uncertain original without POST and releases only exact confirmed 
   assert.equal(h.sent.length, 2);
 });
 
-it("settles an exact recorded rejection as refused without POST and releases its lock; an authority-uncertain rejection stays checkable", async () => {
+it("settles an exact recorded rejection as refused without POST and releases its lock; an errored rejection stays checkable", async () => {
   const h = harness(); const request = command();
   h.setReply(() => ({ state: "pending", commandId: request.commandId }));
   assert.equal((await h.executor.execute(request, h.options())).kind, "uncertain");
   const rejected = (code: string) => ({ ...h.options(), observe: async () => CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code, message: "diagnostic" }) });
-  assert.equal((await h.executor.check(request.commandId, rejected("authority-uncertain"))).kind, "uncertain");
+  assert.equal((await h.executor.check(request.commandId, rejected("bulk-child-errored"))).kind, "uncertain");
   assert.equal((await h.executor.execute(command(11), h.options())).kind, "refused");
   const outcome = await h.executor.check(request.commandId, rejected("invalid-state"));
   assert.equal(outcome.kind, "refused");

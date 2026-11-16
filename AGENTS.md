@@ -104,9 +104,9 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
   retaining release coverage. Local unit and integration runs skip those files unless
   `RELAY_TEST_NATIVE=1`. Add new native proofs to `scripts/test/ci-files.ts`.
 - Only the operator starts full-release CI; agents never dispatch or rerun CI workflows.
-- Native proofs run in CI only for operator-started releases. Release checks build the
-  web bundle, run coverage alone, then perf; coverage already selects unit, integration and
-  architecture, so do not rerun those full suites for unchanged inputs.
+- Native proofs run in CI only for operator-started releases. Release checks run the selected
+  unit, integration and architecture suites, including native proofs; ready pull requests also
+  build the web bundle for perf and smoke, while manual releases skip those jobs.
 - Keep the published head's PR CI as the merge proof. Never run macOS-native proofs
   on the PC. Keep machine slot details in `.work/operations.md`.
 - Refresh `scripts/test/ci-durations.json` when job end times spread more than a minute. Generate
