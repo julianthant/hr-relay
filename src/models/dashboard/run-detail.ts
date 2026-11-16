@@ -9,7 +9,7 @@ import { FailureCorrectionSchema } from "../workflow/failure-correction.js";
 import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema, OcrReviewCommandRequestSchema, GateCommandRequestSchema, CommandResultSchema, WorkbookRowChoiceTargetSchema, WorkbookReferenceRowChoiceTargetSchema } from "../../rules/commands/commands.js";
 import { WorkbookOperationReceiptSchema, WorkbookCellValuesSchema } from "./workbooks.js";
 import { UcpathFindingsDetailSchema } from "./ucpath-findings.js";
-import { FailureDisplaySchema } from "./failure-display.js";
+import { FailureDisplaySchema, FailureRetryWireSchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
 import { FailureResolutionCaptureSchema } from "../trust/failure-resolution.js";
 import { PublicTransactionKeyDigestSchema } from "../write-safety/protected-input.js";
@@ -633,6 +633,7 @@ const ReceiptSectionSchema = RunEvidenceReceiptSchema;
 export const FailureDetailWireSchema = z.strictObject({
   native: NativeRunEventWireSchema.optional(),
   display: FailureDisplaySchema.optional(),
+  retry: FailureRetryWireSchema.optional(),
   recovery: z.strictObject({
     correction: FailureCorrectionSchema, expectedVersion: z.number().int().positive(),
     /* The rejected value; served only when the correction is declared display-safe. */
@@ -692,7 +693,11 @@ export const FailureDetailWireSchema = z.strictObject({
       || source.failureCorrection?.failureId !== failure.failureId || source.failureCorrection.inputField !== recovery.correction.inputField
       || recovery.request.workflowId !== failure.workflowId) context.addIssue({ code: "custom", path: ["recovery"], message: "Failure recovery must target this exact failure and revision" });
   }
-  refineDecisionActions(failure.decision, failure.recovery === undefined ? [] : [failure.recovery.retry], context, ["decision"]);
+  if (failure.retry !== undefined && (failure.writeState !== "not-attempted" || recovery !== undefined)) {
+    context.addIssue({ code: "custom", path: ["retry"], message: "Failure retry requires an unwritten failure without a correction" });
+  }
+  refineDecisionActions(failure.decision, [...(failure.retry === undefined ? [] : [failure.retry]),
+    ...(recovery === undefined ? [] : [recovery.retry])], context, ["decision"]);
   if (failure.sameFingerprintSeen < 1) {
     context.addIssue({
       code: "custom",

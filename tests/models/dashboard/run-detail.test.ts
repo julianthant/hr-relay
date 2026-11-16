@@ -3,12 +3,32 @@ import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { DashboardDayWireSchema,QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
-import { NativeRunEventWireSchema, GateDecisionWireSchema,CaptureListSchema,RunCaptureArtifactWireSchema,RunDetailSectionResponseSchema,RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
+import { NativeRunEventWireSchema, GateDecisionWireSchema,CaptureListSchema,RunCaptureArtifactWireSchema,RunDetailSectionResponseSchema,RunDetailWireSchema,FailureDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { failureDetailWireFixture,receiptWireFixture } from "../../support/helpers/trust/trust-wire-fixtures.js";
 
 const { BOOTSTRAP, RUN_1, RUN_2, NOTE_1, RECORD_1, HASH_A, HASH_B, NOW, QUEUE, DAY, DETAIL, NOTE_PAGE, REVIEW_PAGE, PEOPLE_PAGE, ARTIFACT } = createDashboardModelFixtures();
 
 const FAILURE_1 = "99999999-9999-4999-8999-999999999999";
+
+it("binds a failure decision to its closed unwritten retry descriptor", () => {
+  const failure = failureDetailWireFixture({ runId: RUN_1, failureId: FAILURE_1, traceId: "on-120000-1111", workflowId: "onboarding" });
+  const retry = { key: "retry-failed-step", label: "Retry step", kind: "command", command: "retry", expectedVersion: 3,
+    intent: "neutral", icon: "retry", placement: ["banner"] };
+  const candidate = { ...failure, writeState: "not-attempted", retry,
+    decision: { type: "failed-retryable", title: "A step failed", options: [{ id: "retry", label: "Retry step", hint: "Nothing was written.",
+      send: { via: "action", actionKey: retry.key } }] } };
+  assert.equal(FailureDetailWireSchema.safeParse(candidate).success, true);
+  for (const writeState of ["prepared", "attempting", "unknown", "committed", "verified"]) {
+    assert.equal(FailureDetailWireSchema.safeParse({ ...candidate, writeState }).success, false);
+  }
+  for (const changed of [
+    { ...candidate, retry: undefined },
+    { ...candidate, retry: { ...retry, command: "restart" } },
+    { ...candidate, retry: { ...retry, expectedVersion: 0 } },
+    { ...candidate, retry: { ...retry, key: "another-action" } },
+    { ...candidate, retry: { ...retry, label: "Unreviewed text" } },
+  ]) assert.equal(FailureDetailWireSchema.safeParse(changed).success, false);
+});
 
 it("binds the child retry action to a failed child and its exact served revision", () => {
   const candidate = { ...DETAIL, header: { ...DETAIL.header, status: "failed", parentRunId: RUN_2 },
