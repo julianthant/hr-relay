@@ -3,7 +3,13 @@ import { StartPlanRequestSchema, type StartPlanRequest } from "../../../../model
 import { RerunRefusedError, previewRerunWarnings } from "../../start/rerun.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
 import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
-import { projectFailureDisplay } from "../../../../models/dashboard/failure-display.js";
+import { FailureRetryWireSchema, projectFailureDisplay } from "../../../../models/dashboard/failure-display.js";
+import type { FailureDisplaySchema } from "../../../../models/dashboard/failure-display.js";
+import type { TimelineEventRecord } from "../../../../models/events/timeline.js";
+import { buildUiTaskLinks } from "../../../systems/ui-task-links.js";
+import { nodeIdOfTaskSpanPath } from "../../lifecycle/support.js";
+import { aggregateMemberRetryAvailable } from "../run-retry.js";
+import { ocrChildRetryAvailable } from "../../lifecycle/ocr-review-authority.js";
 import { projectFailureResolution } from "../failure-resolution.js";
 import { retainedRunProtectedBindings } from "../../../../models/write-safety/protected-input.js";
 import { z } from "zod";
@@ -30,6 +36,7 @@ import { DiagnosticBundleCorruptError } from "../../commands/refusals.js";
 import { availableSections } from "./availability.js";
 
 export type ReceiptFailureSection = "receipt" | "failure";
+const UI_LABELS = new Map(buildUiTaskLinks().map(entry => [entry.id, entry.label]));
 
 export function buildReceiptFailureSection(
   deps: RunDetailQueryDeps,
@@ -83,7 +90,8 @@ export function buildReceiptFailureSection(
   }
   assertTrustEvidenceIdentity(authority, failure, "failure");
   if (failure.failureId !== failureId) throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: failure ${failureId}`);
-  const events = readTimelineRecords(deps.timeline, 0, runId).records.filter(record =>
+  const records = readTimelineRecords(deps.timeline, 0, runId).records;
+  const events = records.filter(record =>
     record.payload.kind === "span" && record.payload.event.t === "span.ended"
     && record.payload.event.kind === "run" && record.payload.event.failureId === failureId);
   if (events.length > 1) throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_DUPLICATE");
@@ -97,26 +105,27 @@ export function buildReceiptFailureSection(
     traceId: failure.traceId, spanPath: source.spanPath,
     ...(failure.nodeId === undefined ? {} : { nodeId: failure.nodeId }),
   } };
+  const recovery = failureRecovery(deps, authority, failure);
   const value = FailureDetailWireSchema.parse({ ...native,
-    ...failureRecovery(deps, authority, failure), ...failureDetailWire(
+    ...recovery, ...failureDetailWire(
       runId,
       failure,
       trust,
       retainedRunProtectedBindings(authority).length > 0,
       deps.captures,
-    ) });
+    ), display: failureDisplayFacts(deps, authority, failure, event === undefined ? records : records.filter(record => record.cursor < event.cursor)),
+    retry: "recovery" in recovery ? undefined : failureRetry(deps, authority, failure),
+  });
   return RunDetailSectionResponseSchema.parse({
     section: "failure",
     payload: { state: "available", value: { ...value, decision: failureDecision(value) } },
   });
 }
 
-/** One decision per failure: a served correction is D10, a failure after a committed or verified write is D8 (Mark as failed or a note), anything else D7. */
+/** Corrections retain their own retry; an ordinary retry is offered only through its served descriptor. */
 export function failureDecision(failure: FailureDetailWire): RunDecisionWire {
-  // Both close the failure through annotate-failure; neither runs, retries or files anything.
   const annotate = { via: "command" as const, family: "failure-resolution", type: "annotate-failure" };
   const resolvable = failure.resolution?.capture.resolution.status === "unresolved";
-  const addNote = resolvable ? [{ id: "add-note", send: annotate, input: { kind: "text" as const, label: "Note" } }] : [];
   const recovery = failure.recovery;
   if (recovery !== undefined) {
     // The run's typed input never crosses this wire, except a rejected value the correction declares display-safe.
@@ -128,9 +137,80 @@ export function failureDecision(failure: FailureDetailWire): RunDecisionWire {
     ]);
   }
   if (failure.writeState === "committed" || failure.writeState === "verified") {
-    return projectDecision("failed-after-write", [...(resolvable ? [{ id: "mark-as-failed", send: annotate }] : []), ...addNote]);
+    return projectDecision("failed-after-write", resolvable ? [{ id: "mark-as-failed", send: annotate }] : []);
   }
-  return projectDecision("failed-retryable", addNote);
+  return projectDecision("failed-retryable", failure.retry === undefined ? []
+    : [{ id: "retry", send: { via: "action", actionKey: failure.retry.key } }]);
+}
+
+function failureRetry(deps: RunDetailQueryDeps, run: RunRecord, failure: FailureRecord): FailureDetailWire["retry"] {
+  const canonical = deps.canonical;
+  if (canonical === undefined || failure.writeState !== "not-attempted") return undefined;
+  return canonical.database.withAuthorityReadSnapshot(() => {
+    const descriptor = canonical.descriptors.resolve(run.envelope.workflow);
+    const source = canonical.reader.read(run.envelope.runId);
+    const repositories = canonical.database.authority;
+    if (descriptor === undefined || descriptor.version !== run.envelope.descriptorVersion
+      || descriptor.contractFingerprint !== run.envelope.contractFingerprint
+      || source.state !== "present" || source.disposition !== "live"
+      || run.input.parsed?.value === undefined || repositories.runs.admission().state !== "open"
+      || repositories.writeIntents.listByRun(run.envelope.runId).length > 0) return undefined;
+    if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({ workflow: run.envelope.workflow, itemId: run.envelope.itemId })
+      .some(attempt => attempt.envelope.runId !== run.envelope.runId && attempt.lifecycle.state !== "terminal")) return undefined;
+    if (run.envelope.parent !== undefined && !ocrChildRetryAvailable(repositories, canonical.reader, run,
+      workflowId => canonical.descriptors.resolve(workflowId)) && !aggregateMemberRetryAvailable(repositories, canonical.reader, run,
+      workflowId => canonical.descriptors.resolve(workflowId))) return undefined;
+    return FailureRetryWireSchema.parse({ key: "retry-failed-step", label: "Retry step", kind: "command", command: "retry",
+      expectedVersion: run.version, intent: "neutral", icon: "retry", placement: ["banner"] });
+  });
+}
+
+function failureDisplayFacts(deps: RunDetailQueryDeps, run: RunRecord, failure: FailureRecord,
+  records: readonly TimelineEventRecord[]): z.infer<typeof FailureDisplaySchema> {
+  const labels = new Map(deps.descriptors.resolve(run.envelope.workflow)?.timeline?.flatMap(step => step.nodes.map(node => [node.id, node.label] as const)));
+  const title = failure.nodeId === undefined ? undefined : labels.get(failure.nodeId);
+  const projected = projectFailureForOperator(failure, retainedRunProtectedBindings(run).length > 0);
+  const display = { ...projectFailureDisplay(projected), ...(title === undefined ? {} : { title }), observation: projected.summary };
+  const target = failure.action?.elementId === undefined ? undefined : UI_LABELS.get(failure.action.elementId);
+  const operation = failure.action?.operation;
+  const verbs = { goto: "Open", wait: "Wait for", read: "Read", fill: "Enter", click: "Click", choose: "Select", commit: "Submit" };
+  const attemptedAction = target !== undefined && operation !== undefined ? `${verbs[operation]} ${target}` : title;
+  let lastCompleted: string | undefined;
+  let field: z.infer<typeof FailureDisplaySchema>["field"];
+  const outcomes: Readonly<Partial<Record<string, NonNullable<z.infer<typeof FailureDisplaySchema>["field"]>["outcome"]>>> = {
+    typed: "Entered", selected: "Selected", read: "Read", checked: "Checked", verified: "Verified", set: "Set", cleared: "Cleared",
+  };
+  for (const record of records) {
+    if (Date.parse(record.occurredAt) > Date.parse(failure.occurredAt)) continue;
+    const payload = record.payload;
+    if (payload.kind === "span") {
+      const event = payload.event;
+      if (event.t !== "span.ended" || event.kind !== "task" || event.outcome !== "done" || event.attempt !== failure.attempt) continue;
+      if (event.traceId !== failure.traceId) throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_MISMATCH");
+      const nodeId = nodeIdOfTaskSpanPath(event.spanPath);
+      const label = nodeId === undefined ? undefined : labels.get(nodeId);
+      if (label !== undefined) lastCompleted = label;
+    } else if (payload.kind === "note") {
+      const note = payload.note;
+      if (!("runId" in note) || note.attempt !== failure.attempt) continue;
+      if (note.traceId !== failure.traceId) throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_MISMATCH");
+      const action = note.action;
+      const occurrence = action?.operation;
+      if (action === undefined || occurrence === undefined || !["completed", "confirmed"].includes(occurrence.state ?? "")) continue;
+      if (occurrence.runId !== run.envelope.runId || occurrence.attempt !== failure.attempt
+        || occurrence.nodeId !== nodeIdOfTaskSpanPath(note.spanPath)) throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_MISMATCH");
+      const label = UI_LABELS.get(action.targetId);
+      const outcome = outcomes[action.kind];
+      if (label === undefined || outcome === undefined) continue;
+      lastCompleted = `${outcome} ${label}`;
+      const consumed = occurrence.value?.consumed;
+      if (retainedRunProtectedBindings(run).length === 0 && consumed?.state === "observed"
+        && (typeof consumed.value === "string" || typeof consumed.value === "number" || typeof consumed.value === "boolean")
+        && String(consumed.value) !== "") field = { label, value: String(consumed.value), outcome };
+    }
+  }
+  return { ...display, ...(attemptedAction === undefined ? {} : { attemptedAction }),
+    ...(lastCompleted === undefined ? {} : { lastCompleted }), ...(field === undefined ? {} : { field }) };
 }
 
 export function failureRecovery(deps: RunDetailQueryDeps, run: RunRecord, failure: FailureRecord): object {
