@@ -500,7 +500,7 @@ describe("reviewed architecture guard manifest", () => {
       try {
         const fixture = rebuildRatchetFixture(name);
         for (const [path, content] of Object.entries(fixture.files)) writeFixture(root, path, content);
-        const result = auditRebuildRatchetArm(name, root);
+        const result = auditRebuildRatchetArm(name, root, []);
         assert.equal(result.state, "active", `${name} fixture did not activate its scanner`);
         assert.ok(result.files.length > 0, `${name} fixture resolved no files`);
         assert.match(result.violations.join("\n"), fixture.expected, `${name} fixture bypassed its executable arm`);
@@ -637,6 +637,18 @@ describe("reviewed architecture guard manifest", () => {
     } finally {rmSync(root,{recursive:true,force:true});}
   });
 
+  it("rejects source files without a classified root", () => {
+    const root = join(tmpdir(), `hrauto-unclassified-layers-${process.pid}-${Date.now()}`);
+    try {
+      writeFixture(root, "src/unclassified/value.ts", "export const value = true;\n");
+      writeFixture(root, "src/unclassified.ts", "export const value = true;\n");
+      assert.deepEqual([...auditRebuildRatchetArm("control-layering", root, []).violations].sort(), [
+        "unclassified.ts: unclassified source root",
+        "unclassified/value.ts: unclassified source root",
+      ]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("classifies backend responsibilities and refuses lower-to-higher imports",()=>{
     const root=join(tmpdir(),`hrauto-backend-layers-${process.pid}-${Date.now()}`);
     try {
@@ -646,32 +658,85 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root,"src/backend/workbooks/library.ts","export const library = true;\n");
       writeFixture(root,"src/backend/systems/browser-shared/adapter.ts","export const adapter = true;\n");
       writeFixture(root,"src/backend/app/worker/compose.ts","export const compose = true;\n");
-      writeFixture(root,"src/base/pure.ts","export const pure = true;\n");
-      writeFixture(root,"src/domain/value.ts","export const value = true;\n");
-      writeFixture(root,"src/validation/pure.ts","export const pure = true;\n");
-      assert.deepEqual(auditRebuildRatchetArm("control-layering",root).violations,[]);
+      writeFixture(root,"src/models/value.ts","export const value = true;\n");
+      writeFixture(root,"src/rules/pure.ts","export const pure = true;\n");
+      writeFixture(root,"src/workflow-kit/task.ts","export const task = true;\n");
+      writeFixture(root,"src/workflows/workflow.ts","export const workflow = true;\n");
+      writeFixture(root,"src/dashboard/view.tsx","export const view = true;\n");
+      writeFixture(root,"src/cli.ts","export const cli = true;\n");
+      assert.deepEqual(auditRebuildRatchetArm("control-layering",root,[]).violations,[]);
       writeFixture(root,"src/backend/storage/repository.ts",'import { boot } from "../app/boot.js"; export const repository = boot;\n');
       writeFixture(root,"src/backend/systems/browser-shared/adapter.ts",'import { engine } from "../../runtime/engine.js"; export const adapter = engine;\n');
       writeFixture(root,"src/backend/runtime/engine.ts",'import type { compose } from "../app/worker/compose.js"; export type Engine = typeof compose;\n');
       writeFixture(root,"src/backend/workbooks/library.ts",'import { engine } from "../runtime/engine.js"; import { compose } from "../app/worker/compose.js"; export const library = [engine, compose];\n');
-      writeFixture(root,"src/base/pure.ts",'import { boot } from "../backend/app/boot.js"; export const pure = boot;\n');
-      writeFixture(root,"src/domain/value.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Value = typeof engine;\n');
-      writeFixture(root,"src/validation/pure.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Pure = typeof engine;\n');
+      writeFixture(root,"src/models/value.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Value = typeof engine;\n');
+      writeFixture(root,"src/rules/pure.ts",'import { boot } from "../backend/app/boot.js"; export const pure = boot;\n');
+      writeFixture(root,"src/workflow-kit/task.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Task = typeof engine;\n');
       writeFixture(root,"src/backend/accounts/account-service.ts",'import { boot } from "../app/boot.js"; import { engine } from "../runtime/engine.js"; export const service = { boot, engine };\n');
       writeFixture(root,"src/backend/misc/helper.ts","export const helper = true;\n");
-      const issues=auditRebuildRatchetArm("control-layering",root).violations.join("\n");
+      const issues=auditRebuildRatchetArm("control-layering",root,[]).violations.join("\n");
       assert.match(issues,/backend\/storage\/repository\.ts: layer inversion imports backend\/app\/boot\.ts/u);
       assert.match(issues,/backend\/systems\/browser-shared\/adapter\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/runtime\/engine\.ts: layer inversion imports backend\/app\/worker\/compose\.ts/u);
       assert.match(issues,/backend\/workbooks\/library\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/workbooks\/library\.ts: layer inversion imports backend\/app\/worker\/compose\.ts/u);
-      assert.match(issues,/base\/pure\.ts: layer inversion imports backend\/app\/boot\.ts/u);
-      assert.match(issues,/domain\/value\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
-      assert.match(issues,/validation\/pure\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/models\/value\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/rules\/pure\.ts: layer inversion imports backend\/app\/boot\.ts/u);
+      assert.match(issues,/workflow-kit\/task\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/accounts\/account-service\.ts: layer inversion imports backend\/app\/boot\.ts/u);
       assert.match(issues,/backend\/accounts\/account-service\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/misc\/helper\.ts: unclassified backend responsibility/u);
     } finally {rmSync(root,{recursive:true,force:true});}
+  });
+
+  it("ratchets exact layering import pairs and rejects stale entries", () => {
+    const root = join(tmpdir(), `hrauto-layering-ratchet-${process.pid}-${Date.now()}`);
+    const source = "models/value.ts";
+    const target = "workflow-kit/task.ts";
+    const ratchet = [[source, target]] as const;
+    const importTask = 'import type { Task } from "../workflow-kit/task.js"; export type Value = Task;\n';
+    try {
+      writeFixture(root, `src/${source}`, importTask);
+      writeFixture(root, `src/${target}`, "export type Task = string;\n");
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, []);
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, []).violations, [
+        "models/value.ts: layer inversion imports workflow-kit/task.ts",
+      ]);
+      writeFixture(root, "src/models/other.ts", importTask);
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, [
+        "models/other.ts: layer inversion imports workflow-kit/task.ts",
+      ]);
+      rmSync(join(root, "src/models/other.ts"));
+      writeFixture(root, "src/workflow-kit/other.ts", "export type Task = string;\n");
+      writeFixture(root, `src/${source}`, importTask.replace("task.js", "other.js"));
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, [
+        "models/value.ts: layer inversion imports workflow-kit/other.ts",
+        "stale layering ratchet: models/value.ts -> workflow-kit/task.ts",
+      ]);
+      writeFixture(root, `src/${source}`, "export type Value = string;\n");
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, [
+        "stale layering ratchet: models/value.ts -> workflow-kit/task.ts",
+      ]);
+      rmSync(join(root, `src/${source}`));
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, [
+        "stale layering ratchet: models/value.ts -> workflow-kit/task.ts",
+      ]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("checks workflow, dashboard and CLI layers as dependency targets", () => {
+    for (const target of ["workflows/workflow.ts", "dashboard/view.tsx", "cli.ts"]) {
+      const root = join(tmpdir(), `hrauto-layer-target-${process.pid}-${Date.now()}`);
+      try {
+        writeFixture(root, `src/${target}`, "export type Value = string;\n");
+        writeFixture(root, "src/models/value.ts", "export type Value = string;\n");
+        assert.deepEqual(auditRebuildRatchetArm("control-layering", root, []).violations, []);
+        writeFixture(root, "src/models/value.ts", `export type { Value } from "../${target.replace(/\.tsx?$/u, ".js")}";\n`);
+        assert.deepEqual(auditRebuildRatchetArm("control-layering", root, []).violations, [
+          `models/value.ts: layer inversion imports ${target}`,
+        ]);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    }
   });
 
   it("keeps fail-loud catch scanning semantic across multi-statement and nested handlers", () => {
