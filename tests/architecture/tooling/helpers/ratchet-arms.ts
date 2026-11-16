@@ -98,8 +98,8 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
     roots: ["src"],
     fixture: {
       files: {
-        "src/domain/bad.ts": "import { core } from \"../core/core.js\"; export const bad = core;\n",
-        "src/core/core.ts": "export const core = true;\n",
+        "src/models/bad.ts": "import { task } from \"../workflow-kit/task.js\"; export const bad = task;\n",
+        "src/workflow-kit/task.ts": "export const task = true;\n",
       },
       expected: /layer inversion/,
     },
@@ -394,11 +394,17 @@ function auditCycles(files: readonly string[]): string[] {
 }
 
 const LAYERS = new Map([
-  ["base", 0], ["domain", 0], ["validation", 0],
-  ["infra", 1], ["services", 1], ["systems", 1], ["stores", 1],
-  ["core", 2],
-  ["control", 3], ["workflows", 3], ["server", 3],
+  ["models", 0], ["rules", 0],
+  ["workflow-kit", 1],
+  ["workflows", 3], ["dashboard", 3], ["cli.ts", 3],
 ]);
+
+type LayeringImport = readonly [source: string, target: string];
+
+const LAYERING_RATCHET: readonly LayeringImport[] = [
+  ["models/dashboard/bootstrap.ts", "workflow-kit/validation/module-role.ts"],
+  ["models/dashboard/explorer.ts", "workflow-kit/validation/module-role.ts"],
+];
 
 function layer(path: string): number | undefined {
   const parts = normalize(path).split("/");
@@ -407,28 +413,39 @@ function layer(path: string): number | undefined {
     if (parts[1] === "app") return parts[2] === "config" || parts[2] === "host" ? 1 : 3;
     if (parts[1] === "transports") return 3;
     if (["assistant", "profiles", "runs", "runtime", "logs"].includes(parts[1] ?? "")) return 2;
-    if (["accounts", "systems", "processing", "workflow-tasks", "storage", "workbooks"].includes(parts[1] ?? "")) return 1;
+    if (["accounts", "systems", "processing", "storage", "workbooks"].includes(parts[1] ?? "")) return 1;
     return undefined;
   }
   return first ? LAYERS.get(first) : undefined;
 }
 
-function auditLayering(files: readonly string[], root: string): string[] {
+function auditLayering(files: readonly string[], root: string, ratchet: readonly LayeringImport[]): string[] {
   const violations: string[] = [];
+  const allowed = new Set(ratchet.map(([source, target]) => `${source}: layer inversion imports ${target}`));
+  const remaining = new Set(allowed);
   for (const file of files) {
     const sourceRelative = normalize(relative(root, file));
     const sourceLayer = layer(sourceRelative);
-    if (sourceRelative.startsWith("backend/") && sourceLayer === undefined) {
-      violations.push(`${sourceRelative}: unclassified backend responsibility`);
+    if (sourceLayer === undefined) {
+      violations.push(`${sourceRelative}: ${sourceRelative.startsWith("backend/")
+        ? "unclassified backend responsibility" : "unclassified source root"}`);
+      continue;
     }
-    if (sourceLayer === undefined) continue;
     for (const specifier of moduleSpecifiers(file)) {
       const target = resolveModule(file, specifier);
       if (!target) continue;
-      const targetLayer = layer(normalize(relative(root, target)));
+      const targetRelative = normalize(relative(root, target));
+      const targetLayer = layer(targetRelative);
       if (targetLayer !== undefined && sourceLayer < targetLayer) {
-        violations.push(`${sourceRelative}: layer inversion imports ${normalize(relative(root, target))}`);
+        const finding = `${sourceRelative}: layer inversion imports ${targetRelative}`;
+        if (allowed.has(finding)) remaining.delete(finding);
+        else violations.push(finding);
       }
+    }
+  }
+  for (const [source, target] of ratchet) {
+    if (remaining.has(`${source}: layer inversion imports ${target}`)) {
+      violations.push(`stale layering ratchet: ${source} -> ${target}`);
     }
   }
   return violations;
@@ -534,7 +551,9 @@ function resolveFiles(name: RebuildRatchetName, repoRoot: string): RebuildRatche
   return { state: "active", files, violations: [] };
 }
 
-export function auditRebuildRatchetArm(name: RebuildRatchetName, repoRoot: string): RebuildRatchetAudit {
+export function auditRebuildRatchetArm(
+  name: RebuildRatchetName, repoRoot: string, layeringRatchet: readonly LayeringImport[] = LAYERING_RATCHET,
+): RebuildRatchetAudit {
   const resolved = resolveFiles(name, repoRoot);
   if (resolved.state === "planned-absent") return resolved;
   const tempRoot = resolve(repoRoot, "src");
@@ -546,7 +565,7 @@ export function auditRebuildRatchetArm(name: RebuildRatchetName, repoRoot: strin
     case "inline-selectors-workflows": violations = auditInlineSelectors(resolved.files); break;
     case "evaluate-named-fn": violations = auditEvaluate(resolved.files); break;
     case "import-cycles": violations = auditCycles(resolved.files); break;
-    case "control-layering": violations = auditLayering(resolved.files, tempRoot); break;
+    case "control-layering": violations = auditLayering(resolved.files, tempRoot, layeringRatchet); break;
     case "code-conventions": violations = auditConventions(resolved.files, repoRoot); break;
     case "frontend-tailwind-compliance": violations = auditFrontend(resolved.files); break;
   }
