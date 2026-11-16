@@ -107,7 +107,8 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
   };
 
   const report = (): void => {
-    debugEvents?.emit({ category: "worker", phase: "failed", correlationId: randomUUID(), area: "session-backup", reason: "session-backup-failed" });
+    try { debugEvents?.emit({ category: "worker", phase: "failed", correlationId: randomUUID(), area: "session-backup", reason: "session-backup-failed" }); }
+    catch { /* A failed diagnostic append must not turn a kept backup into a rejected check. */ }
   };
 
   const take = async (): Promise<SessionBackupCheck> => {
