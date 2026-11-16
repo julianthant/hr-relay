@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { attemptUnresolved } from "../app/commands/command-outcome.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { DashboardClient } from "../client/index.js";
 import type { DsToast } from "../ds/ui.js";
@@ -163,8 +164,8 @@ export function useInboxWiring({ client, enabled, binding, toast }: { client: Da
     const owner = current.current.binding;
     const retained = owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
       && ("members" in attempt.request.target ? attempt.request.target.members.some(member => member.notificationId === id) : attempt.request.target.notificationId === id) && attempt.request.target.actorId === request.scope.actorId
-      && (attempt.state === "pending" || attempt.outcome?.kind === "uncertain"));
-    if (retained !== undefined) { setCommandNotice({ request, text: retained.outcome?.kind === "uncertain" ? retained.outcome.feedback.text : inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
+      && attemptUnresolved(attempt));
+    if (retained !== undefined) { setCommandNotice({ request, text: retained.outcome !== undefined && "feedback" in retained.outcome ? retained.outcome.feedback.text : inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
     const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.nowIso, requestedBy: request.scope.actorId,
       source: "dashboard", family: "notification", type: `notification-${action}`, target: { notificationId: id, actorId: request.scope.actorId, expectedVersion: row.revision } });
     setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") });
@@ -197,7 +198,7 @@ export function useInboxWiring({ client, enabled, binding, toast }: { client: Da
       if (!enabled || current.current.request !== request || !current.current.fresh || client.notificationCollection === undefined) return;
       const owner = current.current.binding;
       const held = () => owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
-        && attempt.request.target.actorId === request.scope.actorId && (attempt.state === "pending" || attempt.outcome?.kind === "uncertain"));
+        && attempt.request.target.actorId === request.scope.actorId && attemptUnresolved(attempt));
       if (held() !== undefined) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return; }
       let target: NotificationCollectionTarget;
       try { target = await client.notificationCollection("read"); }
