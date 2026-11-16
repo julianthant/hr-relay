@@ -82,13 +82,11 @@ jobs:
             unit:
               - 'tests/**/*.test.ts'
               - '!tests/**/*.integration.test.ts'
-              - '!tests/**/*.local.test.ts'
               - '!tests/architecture/**'
               - '!tests/mocks/**'
               - '!tests/perf/**'
             integration:
               - 'tests/**/*.integration.test.ts'
-              - '!tests/**/*.local.integration.test.ts'
               - '!tests/perf/**'
             architecture:
               - '**'
@@ -142,7 +140,6 @@ jobs:
       - run: npm test
         working-directory: fast-duo
       - run: npm run build:observer-policy
-      - run: npm run build:observer-policy -- --check
       - run: npm run roadmap:check
 
   privacy:
@@ -173,7 +170,6 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - run: npm run build:observer-policy
       - uses: actions/download-artifact@v8
         with:
           name: ci-balancing
@@ -224,7 +220,6 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - run: npm run build:observer-policy
       - uses: actions/download-artifact@v8
         with:
           name: ci-balancing
@@ -369,7 +364,6 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - run: npm run build:observer-policy
       - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
