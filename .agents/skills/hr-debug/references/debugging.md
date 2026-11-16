@@ -62,7 +62,7 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 - Adding or moving a workflow changes its line in `src/workflows/registry.ts`.
 - New guard = file + `docs/guard-inventory.json` entry, same commit; retire only with a `retired` entry.
 - A browser-reachable module importing `node:*` crashes dev and only warns in prod — never alias/stub; move the Node half to a server module (`dashboard-wire-boundary` prints the chain).
-- `npm run typecheck && npm run lint && npm run test:coverage` is the gate; `--max-warnings 0`, no debt manifest.
+- CI runs typecheck and lint (`--max-warnings 0`, no debt manifest), static and privacy checks, and selected unit, integration and architecture suites; ready pull requests also run perf and smoke, and release checks add selected native proofs. No workflow runs coverage.
 
 ## 8 · Visual evidence
 Dashboard visual evidence comes from `/verify` browser runs; [the mock scene runner](../../../../src/dashboard/MOCKS.md)
