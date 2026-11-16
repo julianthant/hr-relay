@@ -1,6 +1,7 @@
 import { acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { createCredentialSecretSource, readAdmittedProfileIdentity } from "../../runtime/settings/settings-runtime.js";
 import { assertMaintenanceCustodyAvailable, StorageMaintenanceCustodyUnavailableError } from "../../storage/maintenance/custody-availability.js";
+import { createSessionBackups } from "../../storage/maintenance/session-backups.js";
 import { hasPendingShutdownBackupRetirement, resumeShutdownBackupRetirement } from "../../storage/maintenance/clean-shutdown-backups.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
@@ -886,6 +887,7 @@ export function composeSelectedProfileStorage(input: Readonly<{
     path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "selected-profile-runtime",
   }, input.clock, undefined, undefined, undefined, input.credentials, slowOperations.hook);
   attachStorageSlowOperations(slowOperations, database, input.clock, stateRoot);
+  const sessionBackups = createSessionBackups({ admission, database, clock: input.clock, directory: join(stateRoot, "backups", "authority") });
   try {
     database.withAuthorityTransaction(repositories => {
       assertCurrent();
@@ -922,9 +924,10 @@ export function composeSelectedProfileStorage(input: Readonly<{
         return account.revalidateAuthority(captured, admission);
       },
     });
-    return Object.freeze({ admission, profileEpoch: selected.epoch, credentials: input.credentials, database, account, accountAuthority, settings, protectedSecrets, assertCurrent, resolveSettings,
+    return Object.freeze({ admission, profileEpoch: selected.epoch, credentials: input.credentials, database, account, accountAuthority, settings, protectedSecrets, assertCurrent, resolveSettings, sessionBackups,
       attachSlowOperations: (debugEvents: { emit(input: unknown): unknown }) => { slowOperations.attach(debugEvents); } });
   } catch (error) {
+    sessionBackups.requestCancellation();
     try { database.close(); }
     catch (closeError) { throw new RuntimeCustodyUncertainError([error, closeError]); }
     throw error;
@@ -958,10 +961,15 @@ export function composeProfileRuntime(input: Readonly<{
     const selected = captureSelectedProfileStorage(machine), entry = resources.get(selected.profileId)?.ordinary;
     if (entry === undefined || expected !== undefined && expected !== entry.admission) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     if (entry.state !== "open" || entry.preparation !== undefined || session.duoReenrolCommitHeld(selected.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
-    entry.context ??= composeSelectedProfileStorage({ machineAdmission: machine, admission: entry.admission, credentials: entry.credentials,
-      hostFacts: input.hostFacts, clock: input.clock, assertOrdinaryOwner: () => {
-        if (entry.state !== "open" || session.duoReenrolCommitHeld(selected.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
-      } });
+    if (entry.context === undefined) {
+      const created = composeSelectedProfileStorage({ machineAdmission: machine, admission: entry.admission, credentials: entry.credentials,
+        hostFacts: input.hostFacts, clock: input.clock, assertOrdinaryOwner: () => {
+          if (entry.state !== "open" || session.duoReenrolCommitHeld(selected.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+        } });
+      entry.context = created;
+      (entry.commandActivities ??= new Set()).add({ hasUnquiescedWork: () => created.sessionBackups.hasUnquiescedWork(),
+        requestCancellation: () => { created.sessionBackups.requestCancellation(); }, awaitCancellation: () => created.sessionBackups.awaitCancellation() });
+    }
     return entry.context;
   };
   const initializeOwners = (profileId: string, expected: RuntimeAdmission): Owned => {
