@@ -17,7 +17,8 @@ import { UcpathCandidateSchema } from "../../../../src/models/systems/ucpath/sea
 import { EmergencyContactMemberInputSchema } from "../../../../src/models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactMemberResultSchema } from "../../../../src/models/workflows/emergency-contact/result.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
-import { RunDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
+import { RunDelegatedDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
+import { onbaseFilingFixture } from "../../../support/helpers/backend/onbase-filing-fixture.js";
 import { isQueueTopLevel, isQueueMember } from "../../../../src/models/dashboard/queue-parent.js";
 import type { QueueRecordMember, QueueSurfaceWire } from "../../../../src/models/dashboard/projection.js";
 import { correctedOcrRecord } from "../../../../src/dashboard/surfaces/run-detail/review/review-model.js";
@@ -37,7 +38,7 @@ type Fixture = Awaited<ReturnType<typeof world.fixture>>;
 function authorityState(f: Fixture, database = f.database) {
   return database.withAuthorityReadSnapshot(() => {
     const repositories = database.authority;
-    const runs = ["emergency-contact", "ocr", "emergency-contact-member", "ocr-page", "person-lookup", "i9-lookup"]
+    const runs = ["emergency-contact", "ocr", "emergency-contact-member", "onbase", "ocr-page", "person-lookup", "i9-lookup"]
       .flatMap(workflow => repositories.runs.listByWorkflow(workflow));
     const review = repositories.ocrReviews.latest(f.run.envelope.runId); assert.ok(review);
     return { generation: database.getMeta().authorityGeneration, runs,
@@ -106,13 +107,14 @@ for (const dryRun of [true, false]) {
     let ticks = Date.parse(contactPage.page.observedAt);
     const persistence = createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
       displayedEid: employee.emplId, displayedName: employee.name }), () => new Date(++ticks).toISOString());
-    const sessions = sessionFactoryHarness({ ucpath: () => {
+    const filing = await onbaseFilingFixture(3);
+    const sessions = sessionFactoryHarness({ onbase: filing.session(() => f.clock), ucpath: () => {
       const session = persistence.session();
       return createDeterministicUcpathPersonOrgDriver({ results: [employee],
         selection: { status: "resolved", selected: employee, candidateEids: [employee.emplId] } }, undefined, session.port, session.save);
     }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
     const f = await world.fixture({ coordinator: true, member: childWorkflowModuleOf("emergency-contact", "emergency-contact-member"),
-      record: true, pageCount: 3, dryRun, sessions, operatorEvidence: true,
+      record: true, pageCount: 3, dryRun, sessions, operatorEvidence: true, documentBytes: filing.bytes,
       reviewedPages: Array.from({ length: 3 }, () => ({ employeeName: employee.name,
         contactName: "Original Contact", correctedContactName: "Released Contact" })),
       screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
@@ -254,7 +256,11 @@ for (const dryRun of [true, false]) {
     for (const member of members) {
       const result = repositories.runResults.get(member.child.envelope.runId); assert.ok(result);
       if (dryRun) {
-        assert.equal(RunDryRunPreviewResultSchema.parse(result.result.value).externalCommit, "none");
+        // The member previews its Save and then its OnBase filing.
+        const preview = RunDelegatedDryRunPreviewResultSchema.parse(result.result.value);
+        assert.equal(preview.externalCommit, "none");
+        assert.equal(preview.steps.find(step => step.nodeId === "contact-preview")?.state, "transaction-preview");
+        assert.equal(preview.steps.find(step => step.nodeId === "onbase-filing")?.state, "delegation-preview");
         assert.deepEqual(repositories.writeIntents.listByRun(member.child.envelope.runId), []);
       } else {
         const output = EmergencyContactMemberResultSchema.parse(result.result.value);
@@ -262,6 +268,11 @@ for (const dryRun of [true, false]) {
         assert.equal(output.proof.effect.name, "Released Contact");
       }
     }
+    const filings = members.flatMap(member => repositories.runs.listChildren(member.child.envelope.runId));
+    assert.ok(filings.length > 0 && filings.every(run => run.envelope.workflow === "onbase" && run.envelope.dryRun === dryRun
+      && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done"));
+    for (const run of filings) if (dryRun) assert.deepEqual(repositories.writeIntents.listByRun(run.envelope.runId), []);
+    assert.equal(filing.imports(), dryRun ? 0 : filings.length, "each live filing clicks Import once; a dry run never does");
     assert.deepEqual(repositories.ocrExtractions.findBySource(f.reading.input.image.sha256), extractions);
     const mismatch = (id: string) => {
       const descriptor = f.resolve(id);
