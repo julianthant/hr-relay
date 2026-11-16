@@ -50,20 +50,6 @@ export const intentPill = (intent: ActionIntent, size: "sm" | "md"): string =>
     INTENT_PILL[intent],
   );
 
-const PARK_COMMANDS: ReadonlySet<string> = new Set(["recheck-write", "resolve-write-absent"]);
-
-function isParkCommand(action: ActionDescriptorWire): boolean {
-  return action.kind === "command" && PARK_COMMANDS.has(action.command);
-}
-
-export function bannerPills(actions: readonly ActionDescriptorWire[]): readonly ActionDescriptorWire[] {
-  return actionsAt(actions, "banner").filter((a) => !isParkCommand(a));
-}
-
-export function parkResolutions(actions: readonly ActionDescriptorWire[]): readonly ActionDescriptorWire[] {
-  return actionsAt(actions, "banner").filter(isParkCommand);
-}
-
 export function outcomeAction(actions: readonly ActionDescriptorWire[]): ActionDescriptorWire | undefined {
   return actionsAt(actions, "outcome")[0];
 }

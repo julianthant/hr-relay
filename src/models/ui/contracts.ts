@@ -23,7 +23,6 @@ export type {
   ScreenId,
 } from "../../rules/identity/ids.js";
 
-export const UiSemanticKindSchema = z.enum(["screen", "element", "page-state", "observation"]);
 export const UiSensitivitySchema = z.enum(["public", "hr", "restricted"]);
 export const UiRoleSchema = z.enum([
   "button", "field", "grid", "row", "dialog", "heading", "link", "status", "display",
@@ -32,9 +31,6 @@ export const UiEffectSchema = z.enum(["observe", "navigate", "prepare", "externa
 export const UiEvidenceReferenceSchema = z.string().regex(
   /^tests\/support\/fixtures\/ui\/[a-z0-9/_.-]+\.json$/,
   "UI evidence refs must be checked-in sanitized JSON manifests",
-);
-export const UiSourceLinkSchema = z.string().regex(
-  /^src\/(?:stores|backend\/systems)\/[a-z0-9-]+\/driver\/[a-z0-9-]+\.ts#[A-Z0-9_]+$/,
 );
 export const UiPortMapRowReferenceSchema = z.strictObject({
   system: BrowserSystemIdSchema,

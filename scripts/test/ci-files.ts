@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { z } from "zod";
 import { isDirectExecution } from "./scope-files.js";
@@ -169,7 +169,9 @@ if (isDirectExecution(import.meta.url)) {
     const reports = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter(file => file.endsWith(".json"))
       .map(file => JSON.parse(readFileSync(join(dir, file), "utf8")) as unknown);
     const merged = { ...ciDurationsSchema.parse(JSON.parse(readFileSync(DURATIONS_PATH, "utf8"))), ...durationsFromReports(reports) };
-    writeFileSync(DURATIONS_PATH, JSON.stringify(Object.fromEntries(Object.entries(merged).sort(([a], [b]) => a.localeCompare(b))), null, 2) + "\n");
+    writeFileSync(DURATIONS_PATH, JSON.stringify(Object.fromEntries(Object.entries(merged)
+      .filter(([file]) => statSync(file, { throwIfNoEntry: false })?.isFile())
+      .sort(([a], [b]) => a.localeCompare(b))), null, 2) + "\n");
   } else {
     const [project, runner, listing, slice] = args as [CiProject, CiRunner, string, string];
     const [job, jobs] = slice.split("/").map(Number) as [number, number];

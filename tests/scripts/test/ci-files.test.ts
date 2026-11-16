@@ -127,6 +127,34 @@ describe("CI file selection", () => {
     expect(shards.flat().sort()).toEqual(ubuntuIntegration);
   });
 
+  it.each([false, true])("prunes missing files while merging timings (new reports: %s)", hasReports => {
+    const root = mkdtempSync(join(tmpdir(), "relay-ci-timings-"));
+    try {
+      mkdirSync(join(root, "scripts/test"), { recursive: true });
+      mkdirSync(join(root, "reports"));
+      mkdirSync(join(root, "tests"));
+      writeFileSync(join(root, "tests/kept.test.ts"), "");
+      writeFileSync(join(root, "tests/updated.test.ts"), "");
+      const path = join(root, "scripts/test/ci-durations.json");
+      writeFileSync(path, JSON.stringify({ "tests/kept.test.ts": 4.2, "tests/updated.test.ts": 0.7, "tests/deleted.test.ts": 9 }));
+      if (hasReports) {
+        writeFileSync(join(root, "reports/run.json"), JSON.stringify({ testResults: [
+          { name: join(root, "tests/updated.test.ts"), startTime: 0, endTime: 2_500 },
+          { name: join(root, "tests/missing.test.ts"), startTime: 0, endTime: 3_000 },
+        ] }));
+      }
+      const result = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"),
+        fileURLToPath(new URL("../../../scripts/test/ci-files.ts", import.meta.url)), "durations", "reports"],
+      { cwd: root, encoding: "utf8" });
+      expect(result.error).toBeUndefined();
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+      expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({ "tests/kept.test.ts": 4.2, "tests/updated.test.ts": hasReports ? 2.5 : 0.7 });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("refuses corrupt downloaded weights before changing the timing map", () => {
     const root = mkdtempSync(join(tmpdir(), "relay-ci-timings-"));
     try {
