@@ -188,7 +188,7 @@ describe("settings catalog", () => {
     assert.deepEqual(Object.fromEntries([
       "ordinary-settings", "protected-store", "derived-host", "runtime-isolation",
     ].map((sourceClass) => [sourceClass, SETTINGS_CATALOG.filter((row) => row.sourceClass === sourceClass).length])), {
-      "ordinary-settings": 65,
+      "ordinary-settings": 71,
       "protected-store": 3,
       "derived-host": 1,
       "runtime-isolation": 3,
