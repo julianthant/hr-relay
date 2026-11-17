@@ -1286,14 +1286,29 @@ export function compileWorkflow<
         }
       }
     }
+    assertUnique((review.starts ?? []).map(start => start.nodeId), "started workflow");
+    for (const start of review.starts ?? []) {
+      assertOwnNode(start.nodeId);
+      if (ownNodes.find(node => node.id === start.nodeId)?.kind !== "child-run") {
+        throw new Error(`workflow ${definition.id} review starts requires a child-run source ${start.nodeId}`);
+      }
+    }
+    assertUnique((review.outcomes ?? []).map(outcome => `${outcome.nodeId}/${outcome.value}`), "review outcome");
+    for (const outcome of review.outcomes ?? []) assertOwnNode(outcome.nodeId);
+    for (const source of review.optionsFrom ?? []) for (const field of source.fields) {
+      assertSchemaOffersCollectionPath(definition.input, field, `workflow ${definition.id} inherited review option`);
+    }
     const decisions = review.decisions ?? [];
     assertUnique(decisions.map(decision => decision.id), "decision id");
     for (const decision of decisions) {
       const owner = `workflow ${definition.id} review decision ${decision.id}`;
       [decision.reads.nodeId, ...decision.nodeIds].forEach(assertOwnNode);
       const node = ownNodes.find(candidate => candidate.id === decision.reads.nodeId);
-      if (node?.kind !== "task") throw new Error(`${owner} requires a task source ${decision.reads.nodeId}`);
-      const values = contractCollectionFieldOptions(node.uses.output, decision.reads.fieldPath, owner);
+      if (node?.kind !== "task" && !(node?.kind === "gate" && node.resolvedBy === "operator")) {
+        throw new Error(`${owner} requires a task or operator gate source ${decision.reads.nodeId}`);
+      }
+      if (decision.cancellation !== undefined && node.kind !== "gate") throw new Error(`${owner} cancellation requires an operator gate`);
+      const values = contractCollectionFieldOptions(node.kind === "task" ? node.uses.output : node.result, decision.reads.fieldPath, owner);
       if (values === undefined) throw new Error(`${owner} reads ${decision.reads.fieldPath}, which holds no closed set of values`);
       assertUnique(decision.outcomes.map(outcome => outcome.value), `decision ${decision.id} outcome`);
       for (const outcome of decision.outcomes) {

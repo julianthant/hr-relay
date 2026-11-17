@@ -33,7 +33,7 @@ it("authors every registered step and retains every visible operator field exact
 
 /** Rows that serve no sample value; each workflow's count may only shrink, and Person Lookup has none. */
 const ROWS_WITHOUT_SAMPLE: Readonly<Record<string, number>> = {
-  onboarding: 40, "crm-doc-download": 3, "emergency-contact-member": 12, onbase: 3,
+  onboarding: 40, "crm-doc-download": 3,
 };
 const deps = () => explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("d".repeat(64)));
 const explorer = () => buildWorkflowExplorer(deps());

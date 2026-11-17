@@ -31,11 +31,12 @@ it("serves every readable definition with its ordered steps and every declared t
     assert.equal(review.unlistedFailure, "Anything not listed stops the run with a failure card.");
     assert.deepEqual(review.steps.map(step => [step.id, step.title]), entry.timeline.map(group => [group.key, group.label]));
     for (const [index, group] of entry.timeline.entries()) for (const node of entry.nodes.filter(candidate => group.nodes.includes(candidate.id))) {
+      const declaration = READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === entry.id)?.definition.steps.find(([step]) => step.key === group.key)?.[0];
       for (const task of node.tasks) for (const code of task.errorCodes) {
         const outcomes = review.steps[index]?.blocks.flatMap(block => block.kind === "decision" ? block.outcomes : []).filter(outcome => outcome.value === code) ?? [];
         assert.ok(outcomes.length > 0, `${entry.id}/${node.id}/${code}`);
         for (const outcome of outcomes) assert.deepEqual([outcome.label, outcome.then, outcome.stops],
-          [operatorFailureSentence(failureCodeFromTaskCode(code)), "The run stops with a failure card.", true], `${entry.id}/${node.id}/${code}`);
+          [operatorFailureSentence(failureCodeFromTaskCode(code)), declaration?.review?.outcomes?.find(outcome => outcome.value === code)?.then ?? "The run stops with a failure card.", true], `${entry.id}/${node.id}/${code}`);
       }
     }
     assert.ok(decisions(review).every(block => block.outcomes.every(outcome => outcome.label !== "Anything else")), entry.id);
@@ -66,10 +67,10 @@ it("serves session chips for delegated runs from the delegating step", () => {
 
 it("lists only outcomes that change the flow, ask the operator or stop the run", () => {
   const ocr = workflow("ocr").reviewSpec;
-  assert.deepEqual(decision(ocr, "approve-records").outcomes.map(outcome => [outcome.value, outcome.stops]), [["waits", false]]);
+  assert.deepEqual(decision(ocr, "approve-records").outcomes.map(outcome => [outcome.value, outcome.stops]), [["waits", false], ["cancelled", true]]);
   const emergency = workflow("emergency-contact").reviewSpec;
   assert.deepEqual(decision(emergency, "read-document").outcomes.map(outcome => [outcome.value, outcome.stops]), [["succeeded", false], ["child-failed", true]]);
-  assert.equal(decisions(emergency).some(block => block.id === "members"), false);
+  assert.deepEqual(decision(emergency, "members").outcomes.map(outcome => [outcome.value, outcome.stops]), [["succeeded", false], ["child-failed", false]]);
   const onbase = workflow("onbase").reviewSpec;
   const save = decision(onbase, "import-document");
   assert.deepEqual(save.initial, { by: "dry-run", values: { true: "dry-run" }, otherwise: "saved" });
