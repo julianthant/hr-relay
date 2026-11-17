@@ -44,7 +44,7 @@ describe("the Run dialog has no Confirm stage", () => {
     assert.ok(!dialog.text().includes("ready to queue"));
     assert.equal(document.body.querySelector('[aria-label="Run outputs"]'), null);
     assert.deepEqual(h.closed, []);
-    await dialog.press("Start 1 run");
+    await dialog.press("Start run");
     assert.deepEqual(h.closed, [false], "the second Start submits the shown plan");
   });
 });

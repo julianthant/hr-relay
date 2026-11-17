@@ -268,7 +268,8 @@ export interface StartRequestShape {
   dryRun: boolean;
   browserMode: BrowserMode;
   captureBrowserScreenshots: boolean;
-  priority: StartPriority;
+  /** Undefined until the operator picks; the text already fixes the default it implies. */
+  priority: StartPriority | undefined;
   selectedStepKeys: readonly string[];
   /** Raw omission drafts identify the request; partially typed edits must invalidate plans before parsing succeeds. */
   stepOmissionDrafts: readonly Readonly<{ step: string; draft: StepOmissionDraft }>[];
