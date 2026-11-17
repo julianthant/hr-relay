@@ -37,7 +37,7 @@ type Page = BrowserScreenshotEvidence["state"] | "throws" | "deadline";
 
 type Refusal = Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"];
 
-function sessionsShowing(page: Page, reachDeadline: () => void, refusal: Refusal = "page-closed"): SessionFactoryHarness {
+function sessionsShowing(page: Page, reachDeadline: () => void, refusal: Refusal = "page-closed", detail?: string): SessionFactoryHarness {
   const base = happySessionHarness();
   return { ...base, factory: { ...base.factory, async open(input) {
     const resource = await base.factory.open(input);
@@ -47,15 +47,15 @@ function sessionsShowing(page: Page, reachDeadline: () => void, refusal: Refusal
       const evidence = { pageVersion: 1, sessionId: resource.sessionId, observedAt: "2026-08-29T08:00:00.000Z" } as const;
       return page === "available"
         ? { ...evidence, state: "available", bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720 }
-        : { ...evidence, state: "unavailable", reason: refusal };
+        : { ...evidence, state: "unavailable", reason: refusal, ...(detail === undefined ? {} : { detail }) };
     } };
   } } };
 }
 
-async function runThrownStep(page: Page, options: Readonly<{ notes?: "saved" | "screenshot-refused"; thrown?: Thrown; refusal?: Refusal }> = {}) {
+async function runThrownStep(page: Page, options: Readonly<{ notes?: "saved" | "screenshot-refused"; thrown?: Thrown; refusal?: Refusal; detail?: string }> = {}) {
   const services: ReturnType<typeof createDiagnosticCaptureService>[] = [];
   const deadlines: (() => void)[] = [];
-  const h = await executorHarness({ sessions: sessionsShowing(page, () => deadlines.shift()?.(), options.refusal),
+  const h = await executorHarness({ sessions: sessionsShowing(page, () => deadlines.shift()?.(), options.refusal, options.detail),
     stores: registryWithUcpathSearch(thrownTask(options.thrown ?? "timeout")),
     screenshotCapture: { capture: context => {
       const service = services[0];
@@ -177,5 +177,15 @@ describe("a step whose required screenshot is refused", () => {
     assert.deepEqual(failure.causeChain.slice(1).map(({ code, summary }) => [code, summary]),
       [["BROWSER_SCREENSHOT_CAPTURE_FAILED", "Failure screenshot not taken: horizontal-overflow"]]);
     assert.deepEqual(stepCaptures, []);
+  });
+
+  it("names the capture stage and browser call when the page could not be checked", async () => {
+    const { outcome, failure } = await runThrownStep("unavailable", { thrown: "nothing", refusal: "verification-failed", detail: "page-capture-page-screenshot-timeouterror" });
+    assert.equal(outcome.state, "failed");
+    assert.equal(failure?.code, "BROWSER_SCREENSHOT_CAPTURE_FAILED");
+    assert.deepEqual(failure?.causeChain.slice(1).map(({ code, summary }) => [code, summary]), [
+      ["BROWSER_SCREENSHOT_CAPTURE_FAILED", "Failure screenshot not taken: verification-failed"],
+      ["BROWSER_SCREENSHOT_CAPTURE_FAILED", "Screenshot capture stopped at page-capture-page-screenshot-timeouterror"],
+    ]);
   });
 });

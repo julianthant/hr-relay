@@ -1335,18 +1335,22 @@ export async function executeClaimedRun(
               `run ${runId} resolved no ${need.system} instance at enqueue, and ${contract.id} needs one`,
             );
           }
-          const captureRefusals: string[] = [];
+          const captureRefusals: Readonly<{ reason: string; detail?: string }>[] = [];
           const screenshotLog: Pick<TaskLogger, "warn"> = { warn: (message, fields) => {
-            if (fields?.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED" && typeof fields.reason === "string") captureRefusals.push(fields.reason);
+            if (fields?.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED" && typeof fields.reason === "string") {
+              const detail = fields.captureFailure;
+              captureRefusals.push(typeof detail === "string" && detail !== fields.reason ? { reason: fields.reason, detail } : { reason: fields.reason });
+            }
             taskLogger.warn(message, fields);
           } };
           let operationFailure: Readonly<{ error: unknown }> | undefined;
           let stopped: Readonly<{ error: unknown }> | undefined;
           const failureCapture: { state: "pending" | "settled" } = { state: "pending" };
-          const failureCaptureRefused = (reason: string): void => {
+          const failureCaptureRefused = (refusal: Readonly<{ reason: string; detail?: string }>): void => {
             if (failureCapture.state === "settled") return;
             failureCapture.state = "settled";
-            failureCauses.push({ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: `Failure screenshot not taken: ${reason}` });
+            failureCauses.push({ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: `Failure screenshot not taken: ${refusal.reason}` });
+            if (refusal.detail !== undefined) failureCauses.push({ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: `Screenshot capture stopped at ${refusal.detail}` });
           };
           try {
             raw = await withBrowserActionNotes(clock,
@@ -1378,7 +1382,7 @@ export async function executeClaimedRun(
                         if (captureFailure === undefined || captureFailure.error !== taskFailure) {
                           const earlierRefusals = captureRefusals.length;
                           try { await captureScreenshot(); }
-                          catch { failureCaptureRefused(captureRefusals.slice(earlierRefusals).at(-1) ?? (controller.signal.aborted ? "task-deadline" : "lease-ended")); }
+                          catch { failureCaptureRefused(captureRefusals.slice(earlierRefusals).at(-1) ?? { reason: controller.signal.aborted ? "task-deadline" : "lease-ended" }); }
                         }
                         failureCapture.state = "settled";
                         throw taskFailure;

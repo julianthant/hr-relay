@@ -387,7 +387,7 @@ describe("whole-page factory screenshots", () => {
       };
       const evidence = await resource.screenshot?.();
       assert.ok(evidence?.state === "unavailable");
-      assert.equal(evidence.reason, "verification-failed");
+      assert.deepEqual([evidence.reason, evidence.detail], ["verification-failed", "page-capture-error"]);
       assert.deepEqual(page.viewportSize(), { width: 800, height: 600 });
       assert.equal(await page.evaluate(() => window.scrollY), 220);
       assert.equal(await page.locator("header").evaluate(el => el.style.display), "");
@@ -411,6 +411,21 @@ describe("whole-page factory screenshots", () => {
       const evidence = await resource.screenshot?.();
       assert.ok(evidence?.state === "unavailable");
       assert.equal(evidence.reason, "content-bottom-unreached");
+    });
+  });
+  it("names an unpainted gap when scroll snapping moves a band past the covered content", async () => {
+    const sections = Array.from({ length: 6 }, () => '<section style="height:700px;scroll-snap-align:start;background:rgb(20,30,210)"></section>').join("");
+    await withPage(`<main style="height:600px;overflow:auto;scroll-snap-type:y mandatory">${sections}</main>`, async (_page, resource) => {
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "unpainted-gap");
+    });
+  });
+  it("names the band limit for a page too long to capture", async () => {
+    await withPage('<div style="height:48000px;background:rgb(20,30,210)"></div>', async (_page, resource) => {
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "band-limit");
     });
   });
   it("preserves an undefined capture failure and skips final authentication", async () => {

@@ -247,6 +247,7 @@ describe("worker browser session factory", () => {
           assert.deepEqual(screenshot, {
             state: "unavailable", reason: refusal, pageVersion: 2,
             sessionId: SESSION_ID, observedAt: CLOCK.now().toISOString(),
+            ...(refusal === "verification-failed" ? { detail: "sign-in-check-error" } : {}),
           });
           assert.equal(imageReads, refusal === "page-changed" ? 1 : 0);
         } finally { await resource.close({ reason: "worker-stop" }); }
