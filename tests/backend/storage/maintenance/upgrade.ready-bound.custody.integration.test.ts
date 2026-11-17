@@ -165,13 +165,13 @@ it("automatically upgrades schema 25 with queued work intact", async () => {
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
     assert.deepEqual(tables(), [...migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION), ...AUTHORITY_DERIVED_TABLES].sort());
     const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "assistant_attachments", "assistant_conversations", "assistant_messages"].sort());
+    assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "assistant_attachments", "assistant_conversations", "assistant_messages", "workbook_payloads"].sort());
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") { assert.deepEqual(after[table].slice(0, rows.length), rows); assert.equal(after[table].length, rows.length + 1); }
       else assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row })), table);
     }
-    assert.deepEqual([after.assistant_conversations, after.assistant_messages], [[], []]);
+    assert.deepEqual([after.assistant_conversations, after.assistant_messages, after.workbook_payloads], [[], [], []]);
   } finally { await f.close(); }
 });
 
@@ -183,12 +183,13 @@ it("automatically upgrades schema 28 at startup, dropping only the empty grant t
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
     assertGrantTableRetired(f.path);
     const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    assert.deepEqual(Object.keys(after).sort(), Object.keys(before).sort());
+    assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "workbook_payloads"].sort());
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") { assert.deepEqual(after[table].slice(0, rows.length), rows); assert.equal(after[table].length, rows.length + 1); }
       else assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row })), table);
     }
+    assert.deepEqual(after.workbook_payloads, []);
   } finally { await f.close(); }
 });
 
