@@ -806,11 +806,23 @@ function deriveSteps(nodes: readonly RuntimeFlowNode[]): readonly StepProjection
   return Object.freeze(steps);
 }
 
-// Manual producers cannot mint gate or transaction authority, and typed values stand for exactly the leaves they replace.
+// The Start run projection's inferred switch: every member a task under one boolean condition on a top-level input field.
+function selectedByOneInputCondition(id: string, nodes: readonly RuntimeFlowNode[], members: readonly string[], owner: string): boolean {
+  const memberNodes = members.map((member) => nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), owner));
+  const condition = memberNodes[0]?.kind === "task" ? memberNodes[0].when : undefined;
+  return condition !== undefined
+    && (condition.kind === "is-true" || condition.kind === "is-false")
+    && condition.of.from === "input"
+    && !String(condition.of.path).includes(".")
+    && memberNodes.every((node) => node.kind === "task" && JSON.stringify(node.when) === JSON.stringify(condition));
+}
+
+// Manual producers cannot mint gate or transaction authority, typed values stand for exactly the leaves they replace,
+// and a step whose publishing task or transaction keeps running cannot also be switched off.
 function deriveStepOmissions(
   id: string,
   nodes: readonly RuntimeFlowNode[],
-  declared: readonly Readonly<{ key: string; nodes: readonly string[]; manual?: StepManualDeclaration }>[] | undefined,
+  declared: readonly Readonly<{ key: string; nodes: readonly string[]; selection?: Readonly<{ inputField: string; selectedWhen: boolean }>; manual?: StepManualDeclaration }>[] | undefined,
 ): readonly StepOmissionSpec[] {
   const specs: StepOmissionSpec[] = [];
   for (const category of declared ?? []) {
@@ -848,11 +860,15 @@ function deriveStepOmissions(
       }
     }
     const skipped = new Set(skips);
+    const switchable = category.selection !== undefined || selectedByOneInputCondition(id, nodes, category.nodes, owner);
     for (const member of category.nodes) {
       if (skipped.has(member) || Object.hasOwn(manual.produces, member)) continue;
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), owner);
       const read = node.dependsOn.find((dependency) => skipped.has(String(dependency)));
       if (read !== undefined) throw new Error(`${id}: ${owner} runs node "${member}", which reads skipped node "${String(read)}"`);
+      if (switchable && isPreviewBoundary(node)) {
+        throw new Error(`${id}: ${owner} keeps ${node.kind} node "${member}" running, so the step cannot also be switched off`);
+      }
     }
     for (const field of form.fields) {
       if (field.replaces === undefined) continue;

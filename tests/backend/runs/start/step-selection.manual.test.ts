@@ -40,6 +40,8 @@ interface Options {
   readonly rerunValues?: readonly RerunValueMappingSpec[];
   /** check publishes instead of reading */
   readonly publishCheck?: boolean;
+  /** reading gains a switch on `extra`: declared, or inferred from one input condition on each of its tasks */
+  readonly readingSwitch?: "declared" | "inferred";
   /** read's output gains an optional `odd` value under this schema */
   readonly oddLeaf?: z.ZodType<string | number | undefined>;
 }
@@ -58,25 +60,27 @@ function fixture(options: Options = {}) {
     ...(options.rows === undefined ? {} : { rows: options.rows }),
     ...(options.rerunValues === undefined ? {} : { rerunValues: options.rerunValues }),
     steps: ({ task, transaction, group, result }) => {
-      const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }));
+      const when = options.readingSwitch === "inferred" ? { when: { kind: "is-true" as const, of: { from: "input" as const, path: "extra" } } } : {};
+      const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint", ...when }, [], ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }));
       const readContract = options.oddLeaf === undefined ? plan1Contract : defineTaskContract({ ...plan1Definition,
         output: z.strictObject({ ...Plan1Output.shape, odd: options.oddLeaf.optional() }), example: { ...plan1Definition.example, odd: "XXXXX" } });
-      const read = task({ id: "read", contract: readContract, replay: "checkpoint" }, [search], ({ input }) => input);
+      const read = task({ id: "read", contract: readContract, replay: "checkpoint", ...when }, [search], ({ input }) => input);
       const check = options.publishCheck === true
-        ? task({ id: "check", contract: publishContract, replay: "checkpoint", dryRun: "stop-before-publish" }, [read], ({ input }) => input)
-        : task({ id: "check", contract: plan1Contract, replay: "checkpoint" }, [read], ({ input }) => input);
+        ? task({ id: "check", contract: publishContract, replay: "checkpoint", dryRun: "stop-before-publish", ...when }, [read], ({ input }) => input)
+        : task({ id: "check", contract: plan1Contract, replay: "checkpoint", ...when }, [read], ({ input }) => input);
       const save = transaction({ id: "save", label: "Save", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
         dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 }, [read], {
         prepareBind: ({ input }) => ({ eid: input.emplId }), commitBind: ({ input }) => ({ eid: input.emplId }),
       });
       const receipt = task({ id: "receipt", contract: plan1Contract, replay: "checkpoint" }, [save], ({ input }) => input);
       const more = task({ id: "more", contract: plan1Contract, replay: "checkpoint" }, [], ({ input }) => input);
-      const reading = { key: "reading", label: "Reading" };
+      const reading = { key: "reading", label: "Reading",
+        ...(options.readingSwitch === "declared" ? { selection: { inputField: "extra", selectedWhen: true } } : {}) };
       const saving = { key: "saving", label: "Saving" };
       const extra = { key: "extra", label: "Extra", selection: { inputField: "extra", selectedWhen: true } };
       return {
         steps: [
-          [options.reading === undefined && options.locked === undefined ? reading : group(reading, {
+          [options.reading === undefined && options.locked === undefined && options.readingSwitch === undefined ? reading : group(reading, {
             ...(options.reading === undefined ? {} : { manual: options.reading }), ...(options.locked === undefined ? {} : { locked: options.locked }),
           }), [search, read, check]],
           [options.saving === undefined ? saving : group(saving, { manual: options.saving }), [save, receipt]],
@@ -236,6 +240,16 @@ describe("start row kinds and lock reasons", () => {
       /skips publishing task "check"; a publishing task always runs/u);
     const [reading] = projectStartRows(fixture({ publishCheck: true, reading: READ_TYPED }));
     assert.deepEqual([reading?.kind, reading?.lockReason], ["locked-manual", "form-action"]);
+  });
+
+  it("refuses a switch on a step whose publishing task keeps running beside typed values, and keeps it on a reading step", () => {
+    for (const readingSwitch of ["declared", "inferred"] as const) {
+      assert.throws(() => fixture({ publishCheck: true, readingSwitch, reading: READ_TYPED }),
+        /step "reading" omission keeps task node "check" running, so the step cannot also be switched off/u);
+      const [reading] = projectStartRows(fixture({ readingSwitch, reading: READ_TYPED }));
+      assert.deepEqual([reading?.kind, reading?.lockReason], ["switch", undefined]);
+    }
+    assert.deepEqual(projectStartRows(fixture({ publishCheck: true, readingSwitch: "declared" }))[0]?.kind, "switch");
   });
 
   it("serves a step whose other nodes still run as locked with Enter manually", () => {
