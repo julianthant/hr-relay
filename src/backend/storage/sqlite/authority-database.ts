@@ -1382,7 +1382,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
 function validateAuthorityFamilies(context: StoredRowContext, workbookPayloads = true, families: ReadonlySet<AuthorityFamily> = ALL_AUTHORITY_FAMILIES): number {
   const { database, expectedSchemaVersion, convertPreferences } = context;
   let validated = 0;
-  // Below schema 36 each stored workbook is parsed strictly by the upgrade's conversion; the upgraded copy is inspected again at the current version.
+  // Below schema 37 each stored workbook is parsed strictly by the upgrade's conversion; the upgraded copy is inspected again at the current version.
   if (families.has("workbook") && workbookPayloads && expectedSchemaVersion >= WORKBOOK_PAYLOAD_MIGRATION.version) validated += validateWorkbookLibrary(database);
   // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
   if (families.has("assistant-preference") && expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();

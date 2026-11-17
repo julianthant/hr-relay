@@ -1,4 +1,4 @@
-import { PERSON_PREFERENCES_CONVERSION_MARKER, RUNS_NOTIFICATIONS_CONVERSION_MARKER, SETTINGS_RECORD_CONVERSION_VERSION } from "./settings-record-conversion.js";
+import { PERSON_PREFERENCES_CONVERSION_MARKER, RUNS_NOTIFICATIONS_CONVERSION_MARKER, SEND_SHORTCUT_CONVERSION_MARKER, SETTINGS_RECORD_CONVERSION_VERSION } from "./settings-record-conversion.js";
 import { createHash } from "node:crypto";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { EXCLUSIVE_SESSION_LEASE_MIGRATION } from "./exclusive-session-leases.js";
@@ -134,7 +134,7 @@ export const COMMAND_ROW_STATE_MIGRATION = deepFreeze({ version: COMMAND_ROW_STA
 ] });
 
 /** Migration 35 indexes the dashboard and worker statements that scanned a table growing with runs. */
-export const QUERY_INDEX_SCHEMA_VERSION = 35;
+export const QUERY_INDEX_SCHEMA_VERSION = 36;
 /** Each index the migration adds, with the statements it serves; the store query plan test proves every one is used. */
 export const QUERY_INDEXES = deepFreeze({
   checkpoints_run_idx: { on: "run_checkpoints(run_id,node_id,attempt,claim_generation)",
@@ -1111,7 +1111,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   ASSISTANT_GRANT_RETIREMENT_MIGRATION,
   WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION,
   CHANGE_LOG_MIGRATION,
-  { version: SETTINGS_RECORD_CONVERSION_VERSION, statements: [
+  { version: 32, statements: [
     "DROP TRIGGER settings_snapshots_immutable",
     "DROP TRIGGER command_audits_immutable",
     RUNS_NOTIFICATIONS_CONVERSION_MARKER,
@@ -1122,6 +1122,15 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   ] },
   COMMAND_ROW_STATE_MIGRATION,
   FAILURE_NOTE_REMOVAL_MIGRATION,
+  { version: SETTINGS_RECORD_CONVERSION_VERSION, statements: [
+    "DROP TRIGGER settings_snapshots_immutable",
+    "DROP TRIGGER command_audits_immutable",
+    SEND_SHORTCUT_CONVERSION_MARKER,
+    `CREATE TRIGGER settings_snapshots_immutable BEFORE UPDATE ON settings_snapshots
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+    `CREATE TRIGGER command_audits_immutable BEFORE UPDATE ON command_audits
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+  ] },
   QUERY_INDEX_MIGRATION,
   WORKBOOK_PAYLOAD_MIGRATION,
 ]);

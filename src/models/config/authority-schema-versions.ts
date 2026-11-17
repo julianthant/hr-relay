@@ -4,10 +4,10 @@
  * UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS. The other lists are derived here.
  */
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 36;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 37;
 
 /** Stopped versions a database may be upgraded from. */
-export const UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35] as const;
+export const UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36] as const;
 /** Stopped schemas: those too old to upgrade (1 through 7) and every upgradeable schema. */
 export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, ...UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS] as const;
 /** Versions startup, restore and admission open: every upgradeable version plus the current one. */

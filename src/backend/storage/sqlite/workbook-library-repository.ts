@@ -122,14 +122,14 @@ export const WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION = Object.freeze({ version: 30, 
   ACTION_UPDATE_GUARD,
 ]) });
 
-/** The tables whose payload names a stored workbook by digest, with the strict schema each stored before schema 36. */
+/** The tables whose payload names a stored workbook by digest, with the strict schema each stored before schema 37. */
 const PAYLOAD_TABLES = Object.freeze([
   { table: 'workbook_library', schema: SavedWorkbookWireSchema },
   { table: 'workbook_creations', schema: SavedWorkbookWireSchema },
   { table: 'workbook_library_history', schema: SavedWorkbookWireSchema },
   { table: 'workbook_library_snapshots', schema: WorkbookLibrarySnapshotSchema },
 ] as const);
-/** The guards that refuse rewriting retained evidence; migration 36 drops them while it moves each workbook out and recreates them unchanged. */
+/** The guards that refuse rewriting retained evidence; migration 37 drops them while it moves each workbook out and recreates them unchanged. */
 const RETAINED_UPDATE_GUARDS = ['workbook_creations_immutable', 'workbook_library_history_immutable', 'workbook_library_snapshots_update'].map(name => {
   const statement = [...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements].find(candidate => candidate.startsWith(`CREATE TRIGGER ${name} `));
   if (statement === undefined) throw new Error(`workbook-retained-guard-missing:${name}`);
@@ -137,7 +137,7 @@ const RETAINED_UPDATE_GUARDS = ['workbook_creations_immutable', 'workbook_librar
 });
 export const WORKBOOK_PAYLOAD_CONVERSION_ID = 'workbook-payload-forward-conversion:v1';
 /**
- * Schema 36: each distinct workbook is stored once in workbook_payloads as canonical JSON addressed by its sha256. The library,
+ * Schema 37: each distinct workbook is stored once in workbook_payloads as canonical JSON addressed by its sha256. The library,
  * its creation record, its named versions and its snapshots keep their payload without the workbook and name it by `workbookDigest`.
  */
 /** The payload table with its guards: a payload is never rewritten, and never removed while a row still names it. */
@@ -147,14 +147,14 @@ export const WORKBOOK_PAYLOAD_TABLE = deepFreeze({ statements: [
   `CREATE TRIGGER workbook_payloads_retained BEFORE DELETE ON workbook_payloads WHEN ${PAYLOAD_TABLES.map(({ table }) =>
     `EXISTS(SELECT 1 FROM ${table} WHERE json_extract(payload_json,'$.workbookDigest')=OLD.digest)`).join(' OR ')} BEGIN SELECT RAISE(ABORT,'workbook-payload-referenced'); END`,
 ] });
-export const WORKBOOK_PAYLOAD_MIGRATION = deepFreeze({ version: 36, statements: [
+export const WORKBOOK_PAYLOAD_MIGRATION = deepFreeze({ version: 37, statements: [
   ...WORKBOOK_PAYLOAD_TABLE.statements,
   ...changeLogTriggers('workbook_payloads'),
   ...RETAINED_UPDATE_GUARDS.map(({ name }) => `DROP TRIGGER ${name}`),
   `SELECT '${WORKBOOK_PAYLOAD_CONVERSION_ID}'`,
   ...RETAINED_UPDATE_GUARDS.map(({ statement }) => statement),
 ] });
-/** The forward conversion inside migration 36: every stored workbook row is parsed strictly, its workbook stored once, and its payload rewritten. */
+/** The forward conversion inside migration 37: every stored workbook row is parsed strictly, its workbook stored once, and its payload rewritten. */
 export function migrateWorkbookPayloads(database: DatabaseSync): void {
   for (const { table, schema } of PAYLOAD_TABLES) {
     for (const raw of database.prepare(`SELECT rowid AS row_id,payload_json FROM ${table} ORDER BY rowid`).all()) {
