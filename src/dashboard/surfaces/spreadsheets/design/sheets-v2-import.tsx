@@ -44,6 +44,7 @@ export function ImportDialog({ fields, onClose, onAdd, onAddSharePoint }: { fiel
         : file ? <div className="flex items-center gap-2.5 rounded-md border border-ui-stroke px-3 py-2"><FileSpreadsheet size={18} aria-hidden className="shrink-0 text-ui-muted" /><div className="min-w-0 flex-1"><div className="truncate text-[13px]">{file.name}</div><div className="text-[12px] text-ui-muted">{fileSize(file.size)}</div></div>
           <V2Icon label="Remove file" onClick={() => { setFile(undefined); setName(''); }}><X size={14} aria-hidden /></V2Icon></div>
         : <Grey>Choose an .xlsx or .csv file.</Grey>}
+      {error && <Grey className="text-ui-danger">{error}</Grey>}
       <Labeled label="Name"><Input aria-label="Name" className={field} value={name} onChange={event => setName(event.target.value)} /></Labeled>
       <Labeled label="Tags"><TagEditor tags={tags} onChange={setTags} /></Labeled>
     </div> : <MappingGrid key={sheet.id} fields={fields} dataset={datasetOf(sheet)} mapping={mappingOf(sheet, fields)} maxHeight="max-h-[260px]" columnsOpen
