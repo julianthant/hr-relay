@@ -17,7 +17,7 @@ test.beforeAll(async () => { await mkdir(out, { recursive: true }); });
 const day = DashboardDayWireSchema.parse({ ...FIXTURE_START_PICKER_DAY_WIRE, queueSurfaces: [], attemptHistory: [], monthCounts: [], workflowCounts: [], statusCounts: [], notifications: [] });
 const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_START_PICKER_BOOTSTRAP, workflows: FIXTURE_START_PICKER_BOOTSTRAP.workflows.map(flow =>
   flow.id === "emergency-contact" ? { ...flow, start: { ...flow.start, workbookCheck: { id: "reference-check", keyFieldId: "eid" } } } : flow) });
-const MISSING = "Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.";
+const MISSING = "Add a reference spreadsheet first.";
 
 /** The real workbook routes over a synthetic library holding a roster and a check-only tracker, with a stub PDF upload. */
 async function startServer() {

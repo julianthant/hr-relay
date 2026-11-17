@@ -515,7 +515,7 @@ export function RunReferenceRows({ checkRows, requiredLabel, sheets, chosenLibra
         })}
       </DropdownMenuContent>
     </DropdownMenu></div>}
-    {!catalogError && checkRows !== undefined && <RunList title="Also check" description="Optional. Spreadsheets this run also looks the person up in. Needs Employee ID.">{checkRows}</RunList>}
+    {!catalogError && checkRows !== undefined && <RunList title="Also check" description="Optional. Extra spreadsheets to check each person against. They do not replace the reference spreadsheet above.">{checkRows}</RunList>}
   </div>;
 }
 

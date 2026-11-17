@@ -125,11 +125,11 @@ it("holds Continue until the required reference spreadsheet is chosen and shows 
   submitStartPlan: async request => { plans.push(request); throw new Error("a missing reference must not reach planning"); } }), { workflows: [workflow], panelWorkflowId: workflow.workflowId });
   await attach([pdf("first.pdf", "%PDF first")]);
   expect(dialog.disabled("Continue")).toBe(true);
-  expect(dialog.text()).toContain("Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.");
+  expect(dialog.text()).toContain("Add a reference spreadsheet first.");
   expect(dialog.text()).not.toContain("malformed");
   await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
   expect(dialog.disabled("Continue")).toBe(false);
-  expect(dialog.text()).not.toContain("Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.");
+  expect(dialog.text()).not.toContain("Add a reference spreadsheet first.");
   await dialog.press("Continue"); await dialog.press("Continue");
   expect(dialog.text()).toContain("Reference spreadsheet");
   expect(dialog.text()).toContain("Action History.xlsx");
@@ -145,7 +145,7 @@ it("keeps Continue held when only a reference check is picked and no roster is c
   const use = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.getAttribute("aria-label") === `Use ${reference.name}`); assert.ok(use, "the check row offers Use");
   await act(async () => use.click()); await h.settle();
   expect(dialog.disabled("Continue")).toBe(true);
-  expect(dialog.text()).toContain("A spreadsheet picked only as a check does not count.");
+  expect(dialog.text()).toContain("Add a reference spreadsheet first.");
   expect(dialog.text()).toContain("Also check");
 });
 
