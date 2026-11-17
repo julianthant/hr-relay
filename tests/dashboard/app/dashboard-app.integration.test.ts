@@ -529,6 +529,15 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     assert_m1.equal(composition.logsSources?.["generic-served-workflow"], "served");
   } finally { await _afterEachFixture0(); }
 });
+it_m1("offers a Skip to run logs link that moves focus to the selected run logs", async () => {
+  try {
+    await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&run=${FIXTURE_IDS_m1.openGateRun}&section=logs`);
+    const skip = [...document.querySelectorAll("a")].find(link => link.textContent?.trim() === "Skip to run logs");
+    assert_m1.ok(skip, "a run is selected, so the skip link is present");
+    await act_m1(async () => { skip.click(); });
+    assert_m1.equal(document.activeElement?.getAttribute("aria-label"), "Selected run logs");
+  } finally { await _afterEachFixture0(); }
+});
 it_m1("passes the app client to a served Explorer read while mocks explicitly retains mock Explorer", async () => {
   try {
     const explorer = structuredClone(FIXTURE_EXPLORER_WIRE);

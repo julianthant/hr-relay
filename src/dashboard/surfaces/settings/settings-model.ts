@@ -111,6 +111,7 @@ export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer
 export const SETTINGS_GEAR_ID = "settings-gear";
 
 export const DASHBOARD_MAIN_REGION_ID = "dashboard-main-region";
+export const DASHBOARD_LOGS_REGION_ID = "dashboard-logs-region";
 
 
 /** Which id to focus when the takeover closes: the gear it was opened from, or

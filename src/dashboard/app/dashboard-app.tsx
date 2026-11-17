@@ -95,7 +95,7 @@ import { RenameRunDialog,type PendingRename } from "../surfaces/run-detail/ident
 import { RunStartButton } from "../surfaces/run-start/run-start.js";
 import { SessionPanel } from "../surfaces/sessions/session-panel.js";
 import {
-DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
+DASHBOARD_MAIN_REGION_ID, DASHBOARD_LOGS_REGION_ID, buildSettingsNav, resolveSettingsSection
 } from "../surfaces/settings/settings-model.js";
 import {parseWorkflows,useSelectedWorkflow,workflowStatusCounts,type StatusBucket } from "../surfaces/shell/shell-model.js";
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflows/mocks/workflow-mock-queue.js";
@@ -1252,6 +1252,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         if (!target) throw new Error("DASHBOARD_SKIP_TARGET_UNAVAILABLE");
         target.focus({ preventScroll: true });
       }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to content</a>
+      {takeover === "none" && !previewFlow && route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? <a href={`#${DASHBOARD_LOGS_REGION_ID}`} onClick={event => {
+        event.preventDefault();
+        const target = document.getElementById(DASHBOARD_LOGS_REGION_ID);
+        if (!target) throw new Error("DASHBOARD_SKIP_TARGET_UNAVAILABLE");
+        target.focus({ preventScroll: true });
+      }} className={`${dsLayer.skipFocus} sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info`}>Skip to run logs</a> : null}
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={authority.catalog} counts={servedWorkflowCounts} countsLoading={dayWire === undefined && dayResource.state === "loading"} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
         onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={railNotifications} reads={notificationReads} setReads={setNotificationReads} inbox={railInbox} onOpenNotification={onInboxNotification} searchData={searchData} onSearch={onSearch} onSearchAction={onSearchAction} />
