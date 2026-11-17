@@ -17,7 +17,7 @@ export type SettingsSaveState =
   | { readonly state: "saving" }
   | { readonly state: "applied"; readonly replayed: boolean }
   | { readonly state: "refused" | "conflict" | "unconfirmed"; readonly message: string; readonly code?: ErrorCatalogCode };
-export type SettingsSaveNotice = Readonly<{ title: string; description?: string }>;
+export type SettingsSaveNotice = Readonly<{ title: string; description?: string; key?: string }>;
 export type SettingsSaveListener = (notice: SettingsSaveNotice) => void;
 export type SettingsSaveProblem = SettingsSaveNotice & Readonly<{ tone: "danger" | "warning" }>;
 export type SettingsSaveProblemListener = (notice: SettingsSaveProblem) => void;
@@ -49,8 +49,13 @@ export function settingsSaveProblem(save: SettingsSaveState, protectedStore = fa
   if (save.state === "refused") return { tone: "danger", title: `${name} weren't saved`, description: "Your draft is retained. Review the save details before retrying." };
   return undefined;
 }
+/** One toast key so a later success replaces an earlier failure. */
+const SETTINGS_TOAST_KEY = "settings-save";
+export function settingsSaveFailure(): SettingsSaveProblem {
+  return { tone: "danger", title: "Settings weren't saved", description: "The previous value is back.", key: SETTINGS_TOAST_KEY };
+}
 export function settingsSaveNotice(labels: readonly string[], replayed: boolean, restartRequired = false): SettingsSaveNotice {
-  return { title: `${replayed ? "Already saved" : "Saved"} ${labels.length === 1 ? labels[0] : "settings"}`,
+  return { key: SETTINGS_TOAST_KEY, title: `${replayed ? "Already saved" : "Saved"} ${labels.length === 1 ? labels[0] : "settings"}`,
     ...(restartRequired ? { description: "Restart required to use these changes." } : {}) };
 }
 export function checkedSettingsResult(command: SettingsAttempt, input: unknown): CommandResult {
