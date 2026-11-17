@@ -25,6 +25,8 @@ export async function assistantProposalDigest(proposal: AssistantActionProposal)
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJsonStringify(proposal)));
   return [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
+const ACCOUNT_NOT_CONNECTED = 'Connect ChatGPT to use the assistant.';
+const ACCOUNT_READ_FAILED = 'Relay could not check your ChatGPT account.';
 /** A run start or run action whose answer was lost is unknown, shown as one line and never retried. */
 const lostDecision = (proposal: AssistantMockProposal): AssistantAction =>
   ({ type: 'action-state', id: proposal.id, disposition: 'unknown', message: { id: `action-${proposal.id}`, role: 'assistant', text: ASSISTANT_UNKNOWN_NOTICE } });
@@ -163,7 +165,8 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       publish(assistantReducer(state, { type: "settle", requestId, ...presented }));
     } catch {
       if (current()) {
-        await readBack({ type: "uncertain", requestId });
+        // A chat turn only reads and proposes, so a lost reply is a retryable failure; a model-preference save may have written, so it stays unknown.
+        await readBack(assistantSetupCommand(prompt) === undefined ? { type: "fail", requestId } : { type: "uncertain", requestId });
       }
     } finally {
       if (outstanding === request) outstanding = undefined;
@@ -293,7 +296,8 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   // An unreadable usage meter is not a sign-in failure; a turn that gets no reply is the failure signal.
   const usageUnread = resource !== undefined && 'code' in resource && resource.code === 'CHATGPT_USAGE_UNAVAILABLE';
   const accountAvailable = accountPort.mode === 'live' && (account.state === 'connected' && account.planUsage === 'enabled' || usageUnread);
-  const accountFailure = resource !== undefined && 'code' in resource ? ERROR_CATALOG[resource.code].text : undefined;
+  const accountFailure = resource !== undefined && 'code' in resource ? resource.code === 'CHATGPT_AUTH_UNAVAILABLE' ? ACCOUNT_READ_FAILED : ERROR_CATALOG[resource.code].text : undefined;
+  const accountReadFailed = account.state === 'unavailable' && accountPort.refresh !== undefined;
   const [models, setModels] = useState<AssistantModelCatalog['models']>();
   useEffect(() => {
     const client = sessions.client;
@@ -304,8 +308,9 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   }, [accountAvailable, sessions.client]);
   return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => { void controller.choose(preference); }, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
-    accountAction: (account.state === 'loading' ? undefined : account.state === 'connected' || account.state === 'unavailable' ? 'settings' : 'sign-in'),
+    accountAction: (account.state === 'loading' ? undefined : accountReadFailed ? 'retry' : account.state === 'connected' || account.state === 'unavailable' || account.state === 'signing-in' ? 'settings' : 'sign-in') as 'retry' | 'settings' | 'sign-in' | undefined,
+    accountRetry: () => { void accountPort.refresh?.(); },
     accountHeading: account.state === 'connected' ? 'ChatGPT plan usage unavailable' : 'ChatGPT connection unavailable',
-    accountNotice: accountFailure ?? (account.state === 'loading' ? 'Loading ChatGPT account…' : account.state === 'signing-in' ? 'Finish ChatGPT sign-in in Settings.' : account.state === 'connected' ? account.planUsage === 'limit-reached' ? ASSISTANT_FAILURES.ASSISTANT_USAGE_LIMIT : ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED : ASSISTANT_FAILURES.ASSISTANT_ACCOUNT_EXPIRED), confirmRefusal: state.turn.state === 'proposal' && state.turn.proposal.action !== undefined && client.assistantDecide !== undefined ? undefined : ASSISTANT_CONFIRM_HOLD,
+    accountNotice: accountFailure ?? (account.state === 'loading' ? 'Loading ChatGPT account…' : account.state === 'signing-in' ? 'Finish signing in to ChatGPT in your browser.' : account.state === 'connected' ? account.planUsage === 'limit-reached' ? ASSISTANT_FAILURES.ASSISTANT_USAGE_LIMIT : ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED : account.state === 'signed-out' ? ACCOUNT_NOT_CONNECTED : account.state === 'unavailable' ? ACCOUNT_READ_FAILED : ASSISTANT_FAILURES.ASSISTANT_ACCOUNT_EXPIRED), confirmRefusal: state.turn.state === 'proposal' && state.turn.proposal.action !== undefined && client.assistantDecide !== undefined ? undefined : ASSISTANT_CONFIRM_HOLD,
     statusText: 'Read and propose', footnote: 'Review the exact action before confirming. Workflow starts require a confirmed plan.' };
 }
