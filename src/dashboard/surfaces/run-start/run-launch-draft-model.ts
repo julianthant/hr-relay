@@ -32,6 +32,8 @@ export type LaunchDraft = Readonly<{
   browserMode: BrowserMode;
   referenceSelections: Readonly<Record<string, ReferenceSelection>>;
   referenceDrafts: Readonly<Record<string, ReferenceDraft>>;
+  /** The optional check's picked spreadsheets: library id to the worksheet chosen in it. */
+  checkPicks: Readonly<Record<string, string>>;
   selectedWorkbookRows?: Readonly<{ source: string; choices: readonly WorkbookRowChoice[] }>;
   /** Declared launch fields by key; a field is absent until the operator picks it. */
   launchFields: Readonly<Record<string, string>>;
@@ -57,7 +59,7 @@ export function freshLaunchDraft(workflow: RunStartWorkflow | undefined): Launch
     text: "", typed: { workflowId: workflow?.workflowId ?? "", draft: typedDefaultsOf(workflow) }, sourceInputUnchanged: false,
     stepSelection: undefined, stepDrafts: {}, touchedFacts: new Set(), factsAttempted: false,
     priority: "interactive", dryRunRequested: false, browserMode: "headed",
-    referenceSelections: {}, referenceDrafts: {}, selectedWorkbookRows: undefined, launchFields: {},
+    referenceSelections: {}, referenceDrafts: {}, checkPicks: {}, selectedWorkbookRows: undefined, launchFields: {},
     valueDrafts: {}, copiedOmissions: {},
   };
 }
@@ -163,6 +165,14 @@ export function pickWorksheet(draft: LaunchDraft, typeId: string, selection: Ref
 
 export function removeReference(draft: LaunchDraft, typeId: string): LaunchDraft {
   return { ...draft, referenceDrafts: omit(draft.referenceDrafts, typeId), referenceSelections: omit(draft.referenceSelections, typeId) };
+}
+
+export function pickCheck(draft: LaunchDraft, libraryId: string, sheetId: string): LaunchDraft {
+  return { ...draft, checkPicks: { ...draft.checkPicks, [libraryId]: sheetId } };
+}
+
+export function removeCheck(draft: LaunchDraft, libraryId: string): LaunchDraft {
+  return { ...draft, checkPicks: omit(draft.checkPicks, libraryId) };
 }
 
 export function selectWorkbookRows(draft: LaunchDraft, source: string, choices: readonly WorkbookRowChoice[]): LaunchDraft {
