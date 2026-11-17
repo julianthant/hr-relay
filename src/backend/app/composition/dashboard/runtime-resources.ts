@@ -15,7 +15,7 @@ import { importLocalDebugLog } from "../../../storage/events/local-debug-log.js"
 import { runQueuedSpanEvent } from "../../../runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
-import { activeSettingsRuntimeIdentity,readBootSettings } from "../../../runtime/settings/settings-runtime.js";
+import { activeSettingsRuntimeIdentity,readBootSettings,startSettingsKeepAwake } from "../../../runtime/settings/settings-runtime.js";
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
@@ -208,6 +208,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     if (error instanceof AuthoritySourceClosureUnprovedError) custody.failedClosures.push(error);
     throw error;
   }
+  profile.runtime.registerCommandActivity(profile.token, startSettingsKeepAwake({ database, reader: lifecycle, debugEvents: ownedDiagnostics(database, debugEvents) }));
   const { backfillGapNotifier, inbox: notificationInbox, observer: notificationObserver } = createTrustNotifications({
     admission, database, clock, ids, reader: lifecycle, stateRoot,
   });
