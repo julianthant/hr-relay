@@ -5,7 +5,7 @@ import { RunLifecycleCommandRecordSchema } from "../../../rules/commands/command
 import { CommandIdSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { commandFromRow } from "./command-record-row.js";
+import { commandFromRow, convertPredecessorCommandRowState } from "./command-record-row.js";
 import { runLifecycleRequestFingerprint, validateNativeLifecycleRequest } from "./native-lifecycle-request.js";
 import { predecessorRunRecordFromRow } from "./run-record-row.js";
 import { workerSlotFromRow } from "./worker-slots.js";
@@ -93,9 +93,9 @@ function validatePredecessorLifecycleCommand(input: unknown): void {
   validateNativeLifecycleRequest({ ...command, request, requestFingerprint: runLifecycleRequestFingerprint(command.operation, request) });
 }
 
-/** A predecessor command row, returned exactly as stored. */
+/** A predecessor command row, read as the image migration 33 gives it; the request is returned exactly as stored. */
 export function predecessorCommandFromRow(input: unknown): ReturnType<typeof commandFromRow> {
-  return commandFromRow(input, validatePredecessorLifecycleCommand);
+  return commandFromRow(convertPredecessorCommandRowState("commands", input), validatePredecessorLifecycleCommand);
 }
 
 const HistoryRowSchema = z.object({ id: CommandIdSchema, family: z.string(), request_digest: z.string(), request_json: z.string(), outcome_json: z.string().nullable() });

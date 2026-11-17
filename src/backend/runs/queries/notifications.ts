@@ -1,5 +1,6 @@
 import { ActorIdSchema, NotificationIdSchema } from "../../../rules/identity/ids.js";
 import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
+import { bulkChildClass, type CommandRowState } from "../../../rules/commands/command-lifecycle.js";
 import type { BulkRunCommandAcceptanceRecord, BulkRunCommandOutcome, CommandRequest, CommandResult } from "../../../rules/commands/commands.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import type { RunExistence } from "../../../models/config/authority.js";
@@ -11,7 +12,7 @@ import { publicWriteCommand } from "../commands/write-command-target.js";
 
 type CommandNotice = Readonly<{
   request: CommandRequest;
-  state: "admitted" | "executing" | "succeeded" | "refused" | "uncertain";
+  state: CommandRowState;
   result?: CommandResult;
 }>;
 
@@ -105,9 +106,11 @@ function bulkTarget(bulkCommandId: string, bulk: { acceptance: BulkRunCommandAcc
 function bulkChildOutcome(type: BulkRunCommandAcceptanceRecord["request"]["type"], request: CommandRequest, result: CommandResult): BulkRunCommandOutcome | undefined {
   if (request.family !== "run" || !("runId" in request.target) || result.commandId !== request.commandId) return undefined;
   const runId = request.target.runId, commandId = request.commandId;
-  if (result.state === "rejected" && result.code === "bulk-child-errored") return { outcome: "errored", runId, commandId, detail: result.message };
-  if (result.state === "conflict") return { outcome: "conflict", runId, commandId, currentVersion: result.currentVersion, detail: result.message };
-  if (result.state === "rejected") return { outcome: "refused", runId, commandId, code: result.code, detail: result.message };
-  if (result.state === "applied" || result.state === "already-applied") return { outcome: "applied", runId, commandId, replayed: false, detail: `${type} recorded` };
-  return undefined;
+  if (result.state === "pending" || result.state === "confirmation-required") return undefined;
+  switch (bulkChildClass(result)) {
+    case "applied": return { outcome: "applied", runId, commandId, replayed: false, detail: `${type} recorded` };
+    case "conflict": return result.state === "conflict" ? { outcome: "conflict", runId, commandId, currentVersion: result.currentVersion, detail: result.message } : undefined;
+    case "refused": return result.state === "rejected" ? { outcome: "refused", runId, commandId, code: result.code, detail: result.message } : undefined;
+    case "errored": return result.state === "rejected" ? { outcome: "errored", runId, commandId, detail: result.message } : undefined;
+  }
 }
