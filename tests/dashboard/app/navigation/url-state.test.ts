@@ -480,7 +480,7 @@ describe_m8("view navigation", () => {
 afterEach_m8(_afterEachFixture0);
 
   it_m8("round-trips only bounded navigation metadata and refuses corrupt/private payloads", () => {
-    const route = { start: true, settings: "spreadsheets", view: ViewRouteSchema_m8.parse({ spreadsheetTab: "types", launchStage: "Confirm", notifications: true, reviewPages: { "record-1": 1 }, launchRerun: { runId: "00000000-0000-4000-8000-000000000001", expectedVersion: 1 }, queueOpen: ["batch-1"] }) };
+    const route = { start: true, settings: "spreadsheets", view: ViewRouteSchema_m8.parse({ spreadsheetTab: "types", launchStage: "Options", notifications: true, reviewPages: { "record-1": 1 }, launchRerun: { runId: "00000000-0000-4000-8000-000000000001", expectedVersion: 1 }, queueOpen: ["batch-1"] }) };
     assert_m8.deepEqual(parseRoute_m8(routeToSearch_m8(route)), route);
     for (const raw of ['{"draft":"secret"}', '{"launchStage":"Unknown"}', '{"spreadsheetPage":-1}', "{", "x".repeat(16001)]) assert_m8.equal(parseViewRoute_m8(raw), null);
     assert_m8.equal(parseRoute_m8("?view=%7B").viewInvalid, true);

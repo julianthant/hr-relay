@@ -45,7 +45,7 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 `src/backend/runs/queries/activity-timing.ts` owns successful-root timing shared by the Analytics summary and population producers. `src/backend/runs/queries/activity-analytics.ts` owns the outcome split, failure-step counts and median duration those producers add to the same report.
 
-`src/backend/runs/queries/storage.ts` owns the composition-scoped verified backup observation and compact bootstrap projection; `src/backend/storage/sqlite/storage-doctor.ts` owns backup verification.
+`src/backend/runs/queries/storage.ts` owns the composition-scoped verified backup observation and compact bootstrap projection; `src/backend/storage/sqlite/storage-doctor.ts` owns backup verification and the ordered storage health-cause classification.
 
 `src/models/dashboard/workbook-library.ts` owns catalogue/version/action wire shapes.
 `src/models/dashboard/run-outputs.ts` owns intended workbook and worksheet ZIP output facts shared by retained plans and Confirm.
@@ -68,7 +68,7 @@ src/
 │           ui,validation,workflow,workflows,write-safety}/
 ├── rules/{commands,crm-doc-download,i9-check,identity,intake,kronos,matching,normalization,
 │          notifications,onboarding,preflight,redaction,runs,separations,sessions,spreadsheets,
-│          time,ucpath,validation,work-study,workflow,write-safety}/
+│          storage,time,ucpath,validation,work-study,workflow,write-safety}/
 ├── workflow-kit/validation/
 ├── workflows/{crm-doc-download,emergency-contact,emergency-contact-member,i9-check,
 │              i9-check-start,i9-lookup,ocr,ocr-page,onbase,onboarding,person-lookup,
@@ -134,6 +134,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/dashboard/surfaces/` | Feature components, sibling `*-model.ts` view models, styles and mock producers. `surfaces/shared/` holds cross-feature components. Workflow mocks live under `workflows/mocks/`. Run-detail Logs presentation lives under `run-detail/logs/`. Notification producers live in `notifications/notifications-preview-model.ts` and `notification-rail-model.ts`; workspace search projection lives in `shell/search/search-wiring-model.ts`. Intake session resources live in `state/intake-wiring-adapter.ts`; command verification lives in `intake/intake-command-model.ts`. |
 | `src/dashboard/assets/` and `src/dashboard/public/` | Bundled assets and static public files. The Logs preview lives under `public/logs-preview/`. |
 | `src/models/` | Browser-safe schemas, contracts, and API shapes. System and workflow task contracts live under `systems/` and `workflows/`; canonical fields and the shared spreadsheet field catalog live under `fields/`. `failures/error-origins.ts` owns the closed constructor-bound cause vocabulary and its value-free serializer shared by backend events and browser reports. `failures/error-catalog.ts` owns task-code normalization for durable failures and their served recovery declarations. |
+| `src/models/storage/storage-status.ts` | The one storage status definition: health causes, recovery inspection, restore candidates and eligibility, backup health and backup service state, span reconciliation, protected-settings and upgrade-journal inspections, doctor counts and authority, and the bootstrap storage summary. The backend doctor report (`backend/storage/sqlite/recovery-contracts.ts`) and the dashboard wire (`models/dashboard/storage.ts`, `models/dashboard/bootstrap.ts`) are built from these same schema objects. |
 | `src/models/storage/file-identity.ts` | Exact JSON file-identity values shared by credential, installation and logout witnesses: safe numbers or canonical decimal strings. |
 | `src/models/people/hire-employee.ts` | Validated hire employee facts shared by Onboarding planning and system write targets. |
 | `src/models/ui/ucpath-hire.ts` | Hire targets, complete findings, staged wizard states, permanent keys and independently verified filing proofs. Each hire task contract lives in its canonical `models/systems/ucpath/<task>.ts` file; `hire-contract.ts` shares read/subject metadata. `backend/systems/ucpath/driver/hire-operation.ts` and `hire-ui-registry.ts` own the hire browser family; `rules/ucpath/hire-verdict.ts` refuses incomplete or uncertain discovery. |
@@ -152,6 +153,11 @@ Paths in this table are relative to `src/backend/`.
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |
 | `src/rules/identity/stable-uuid.ts` | Browser-safe deterministic UUID derivation shared with the runtime `identifiers.ts` entry; native and browser callers use the same digest and UUID bits. |
 | `src/rules/runs/run-status.ts` | Shared run status and task/category state derivation for Queue, Logs, Activity and native summary filtering. |
+| `src/rules/storage/backup-health.ts` | Backup health derived from the doctor's candidate inspection: `current`, `stale`, `missing` or `invalid`, with the newest candidate deciding an invalid verdict. `backend/storage/sqlite/storage-doctor.ts` reports it; nothing stores it. |
+| `src/rules/storage/credential-head.ts` | Canonical credential head state derived from the head and credential operation files, and its frozen transition table with the store's refusal codes. `backend/storage/configuration/canonical-credential-store.ts` and the installation and account-deletion readers ask it instead of reading the head's `state` field. |
+| `src/rules/storage/person-startup-standing.ts` | One person's startup standing for a runtime lifetime and its transition table. `backend/app/composition/storage-compose.ts` writes it at each startup step and reads it for sign-in refusal, shutdown backup, logout resume and the layout move. |
+| `src/rules/storage/restore-eligibility.ts` | Whether one verified backup is restorable: its schema must be one automatic restore opens, the current authority must be inspectable and the backup must prove the current person. `backend/storage/sqlite/storage-doctor.ts` asks it per candidate. |
+| `src/rules/storage/upgrade-journal.ts` | Authority schema upgrade journal: the state derived from the `database_upgrades` rows and the transition table each writer checks before it appends `baseline` or `settled`. |
 | `src/rules/` | Pure decisions and validation, including identity, clocks, normalization, ledger derivation, redaction, and write safety. |
 | `src/workflow-kit/` | Root-level TypeScript modules for task and workflow declaration, flow construction, compilation, sessions, providers, artifacts, and capabilities. |
 | `src/workflow-kit/workflow-definition.ts` | `defineWorkflow` and `compileWorkflow`. |

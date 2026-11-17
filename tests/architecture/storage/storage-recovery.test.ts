@@ -9,10 +9,11 @@ import * as readonlySnapshots from "../../../src/backend/storage/sqlite/readonly
 import { createBoundProfileFixture, boundProfileCredentials } from "../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase as FixtureAuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../../support/helpers/run-integration-world.js";
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { readAuthorityRestoreJournal } from "../../../src/backend/storage/admission/installation.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { initialSettingsFileRecord } from "../../../src/models/config/settings.js";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
@@ -41,7 +42,9 @@ import { SpanEventWireSchema } from "../../../src/models/events/types.js";
 import { TimelineEventRecordSchema } from "../../../src/models/events/timeline.js";
 import { RUN_RECORD_JSON_SQL } from "../../../src/backend/storage/sqlite/run-record-row.js";
 import { AuthorityDatabase as RealAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { AuthorityBackupService, AuthorityBootStore, AuthorityDatabase, AuthorityHealthPreflightRunner, AuthorityMutationUnavailableError, OfflineAuthorityRestoreService, OfflineRestoreFailure, SpanAuthorityRunRootSchema, doctorAuthorityStorage, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/index.js";
+import { storageHealthCauseOf } from "../../../src/backend/storage/sqlite/storage-doctor.js";
+import type { StorageHealthCause } from "../../../src/models/storage/storage-status.js";
+import { AuthorityBackupService, AuthorityDatabase, AuthorityHealthPreflightRunner, OfflineAuthorityRestoreService, OfflineRestoreFailure, SpanAuthorityRunRootSchema, doctorAuthorityStorage, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/index.js";
 import { plantOldBuildArtifact } from "../../support/helpers/storage/old-build-artifact.js";
 import {
   QUEUED_RUN,
@@ -59,7 +62,6 @@ const roots: string[] = [];
 const profiles = new Map<string, Awaited<ReturnType<typeof createBoundProfileFixture>>>();
 const initialGenerations = new Map<string, number>();
 const databases: AuthorityDatabase[] = [];
-const bootStores: AuthorityBootStore[] = [];
 const CLOCK = manualClock(new Date(NOW));
 const PASSIVE_DEADLINE_SCHEDULER: MonotonicDeadlineScheduler = Object.freeze({
   schedule: () => Object.freeze({ cancel: () => undefined }),
@@ -423,10 +425,12 @@ function restoreMissingTriggers(raw: DatabaseSync, triggers: ReturnType<ReturnTy
   }
 }
 
-function openBootStore(path: string): AuthorityBootStore {
-  const store = AuthorityBootStore.open(admissionFor(path), databaseOptions(path), CLOCK);
-  bootStores.push(store);
-  return store;
+/** The health cause the classifier gives the error a read-only inspection of the file throws. */
+function inspectionCause(path: string): StorageHealthCause {
+  let failure: { error: unknown } | undefined;
+  try { AuthorityDatabase.inspectExistingReadOnly(admissionFor(path), path); } catch (error) { failure = { error }; }
+  if (failure === undefined) throw new Error(`expected ${path} to fail read-only inspection`);
+  return storageHealthCauseOf(failure.error);
 }
 
 function backupDirectory(root: string): string {
@@ -539,7 +543,7 @@ function maintenanceOperation(root: string) {
 async function createBackup(database: AuthorityDatabase, directory: string) {
   const service = new AuthorityBackupService(admissionFor(directory), database, { directory }, CLOCK);
   const report = await service.request({
-    trigger: "operator",
+    trigger: "schema-migration",
     requiredGeneration: database.getMeta().authorityGeneration,
   });
   const paths = manifestPaths(directory);
@@ -550,7 +554,6 @@ async function createBackup(database: AuthorityDatabase, directory: string) {
 afterEach(async () => {
   timelineFixturePaths.clear();
   timelineFixtureOwners.clear();
-  for (const store of bootStores.splice(0)) store.close();
   for (const database of databases.splice(0)) {
     try { releaseSeededWriteOwners(database, CLOCK.now().toISOString()); }
     catch (error) { if (!(error instanceof Error) || error.message !== "database is not open") throw error; }
@@ -626,7 +629,7 @@ describe("verified native online backups", () => {
     };
     const service = new AuthorityBackupService(admissionFor(directory), source, { directory }, CLOCK);
     const first = service.request({ trigger: "interval", requiredGeneration: 1 });
-    const second = service.request({ trigger: "external-write", requiredGeneration: 1 });
+    const second = service.request({ trigger: "schema-migration", requiredGeneration: 1 });
     assert.equal(first, second);
     const report = await first;
     assert.equal(report.coalescedRequests, 2);
@@ -653,7 +656,7 @@ describe("verified native online backups", () => {
     };
     const service = new AuthorityBackupService(admissionFor(directory), failingSource, { directory }, CLOCK);
     await assert.rejects(
-      service.request({ trigger: "operator", requiredGeneration: 0 }),
+      service.request({ trigger: "schema-migration", requiredGeneration: 0 }),
       /injected native backup failure/,
     );
     assert.deepEqual(readdirSync(directory), []);
@@ -718,7 +721,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       authorityGeneration: authority.authorityGeneration,
       authorityContentFingerprint: authority.authorityContentFingerprint,
       liveRunCount: 1,
-      archivedRunCount: 0,
       missingSpanRunIds: [],
       malformedRecords: [],
       resolutions: [{ state: "live", runId: QUEUED_RUN.envelope.runId }],
@@ -768,7 +770,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.deepEqual(snapshot.resolutions.map(({ state }) => state), ["live", "live"]);
   });
 
-  it("resolves a span root whose run carries a tombstone as deleted", async () => {
+  it.each(["queue", "storage"] as const)("resolves a span root whose run carries a %s tombstone as deleted", async (origin) => {
     const root = await testRoot();
     const authorityPath = join(root, "state.db");
     const database = openDatabase(authorityPath);
@@ -780,16 +782,19 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       now: NOW,
     });
     if (terminal.state !== "applied") throw new Error("delete fixture could not terminalize its run");
-    database.authority.commands.insert({commandId:UUID_7,requestedAt:NOW,requestedBy:"local-operator",source:"queue",
-      family:"run",type:"delete",target:{runId:QUEUED_RUN.envelope.runId,expectedVersion:terminal.run.version}});
-    database.authority.runs.delete({
-      runId: QUEUED_RUN.envelope.runId, origin: "queue", commandId: UUID_7, cascadeRunIds: [QUEUED_RUN.envelope.runId], now: NOW,
-    });
+    if (origin === "queue") {
+      database.authority.commands.insert({commandId:UUID_7,requestedAt:NOW,requestedBy:"local-operator",source:"queue",
+        family:"run",type:"delete",target:{runId:QUEUED_RUN.envelope.runId,expectedVersion:terminal.run.version}});
+      database.authority.runs.delete({
+        runId: QUEUED_RUN.envelope.runId, origin, commandId: UUID_7, cascadeRunIds: [QUEUED_RUN.envelope.runId], now: NOW,
+      });
+    } else {
+      assert.equal(testRunService(database, CLOCK).clearHistory({ commandId: UUID_7 }).state, "cleared");
+    }
 
     const snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(admissionFor(authorityPath), authorityPath, [spanAuthorityRoot()]);
 
     assert.equal(snapshot.liveRunCount, 0);
-    assert.equal(snapshot.archivedRunCount, 0);
     assert.deepEqual(snapshot.missingSpanRunIds, []);
     assert.deepEqual(snapshot.malformedRecords, []);
     assert.deepEqual(snapshot.resolutions, [{
@@ -797,7 +802,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       runId: QUEUED_RUN.envelope.runId,
       workflow: QUEUED_RUN.envelope.workflow,
       traceId: QUEUED_RUN.envelope.traceId,
-      origin: "queue",
+      origin,
       commandId: UUID_7,
       deletedAt: NOW,
     }]);
@@ -889,12 +894,11 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
 
     assert.deepEqual(report.spanAuthority, {
-      state: "degraded", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [],
+      state: "degraded", streamRunCount: 0, liveRunCount: 0, deleted: [],
       problems: [{ state: "missing-span", runId: QUEUED_RUN.envelope.runId }],
     });
   });
@@ -909,7 +913,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
 
@@ -917,7 +920,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       state: "reconciled",
       streamRunCount: 0,
       liveRunCount: 0,
-      archived: [],
       deleted: [],
     });
   });
@@ -967,7 +969,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
     database.authority.notifications.create(NOTIFICATION);
@@ -994,7 +995,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
         stateRoot: root,
         authorityPath,
         backupDirectory: backupDirectory(root),
-        maxBackupAgeMs: 60_000,
         busyTimeoutMs: 100,
       }, CLOCK);
       assert.equal(report.authority.state, "healthy");
@@ -1052,7 +1052,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
         stateRoot: root,
         authorityPath,
         backupDirectory: directory,
-        maxBackupAgeMs: 60_000,
         busyTimeoutMs: 100,
       }, CLOCK);
       copyFileSync(replacementPath, authorityPath);
@@ -1084,7 +1083,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
     copyFileSync(healthyPath, authorityPath);
@@ -1110,7 +1108,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
           stateRoot: root,
           authorityPath,
           backupDirectory: backupDirectory(root),
-          maxBackupAgeMs: 60_000,
           busyTimeoutMs: 100,
         }, CLOCK),
         (error: unknown) => {
@@ -1154,7 +1151,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
           stateRoot: root,
           authorityPath,
           backupDirectory: backupDirectory(root),
-          maxBackupAgeMs: 60_000,
           busyTimeoutMs: 100,
         }, CLOCK),
         (error: unknown) => {
@@ -1192,7 +1188,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
 
@@ -1200,7 +1195,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       state: "degraded",
       streamRunCount: 1,
       liveRunCount: 0,
-      archived: [],
       deleted: [],
       problems: [{ state: "missing", runId: QUEUED_RUN.envelope.runId }],
     });
@@ -1221,7 +1215,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
 
@@ -1254,7 +1247,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
 
@@ -1303,7 +1295,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
 
@@ -1340,7 +1331,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
 
@@ -1368,7 +1358,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
 
@@ -1413,7 +1402,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
 
@@ -1450,11 +1438,10 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
 
-    assert.deepEqual(report.spanAuthority,{state:"reconciled",streamRunCount:1,liveRunCount:1,archived:[],deleted:[]});
+    assert.deepEqual(report.spanAuthority,{state:"reconciled",streamRunCount:1,liveRunCount: 1, deleted:[]});
   });
 
   it("names malformed exact task authority instead of selecting another row", async () => {
@@ -1473,7 +1460,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
 
@@ -1481,7 +1467,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     if (report.spanAuthority.state !== "degraded") throw new Error("malformed task authority must degrade reconciliation");
     assert.equal(report.spanAuthority.streamRunCount, 1);
     assert.equal(report.spanAuthority.liveRunCount, 0);
-    assert.deepEqual(report.spanAuthority.archived, []);
     assert.equal(report.spanAuthority.problems.length, 1);
     const problem = report.spanAuthority.problems[0];
     assert.equal(problem?.state, "malformed");
@@ -1654,14 +1639,9 @@ describe("fail-closed degraded boot and read-only doctor", () => {
           /completion|strict|schema|native record validation/,
           `${arm.name}/${name}`,
         );
-        const store = openBootStore(path);
-        const report = store.report();
-        assert.equal(report.state, "degraded-read-only", `${arm.name}/${name}`);
-        if (report.state !== "degraded-read-only") throw new Error("expected degraded terminal authority");
-        assert.ok(["authority-invariant", "authority-record-invalid"].includes(report.cause.code), `${arm.name}/${name}: ${report.cause.code}`);
-        assert.match(report.cause.summary, /completion|strict|schema|native record validation/);
-        store.close();
-        bootStores.splice(bootStores.indexOf(store), 1);
+        const cause = inspectionCause(path);
+        assert.ok(["authority-invariant", "authority-record-invalid"].includes(cause.code), `${arm.name}/${name}: ${cause.code}`);
+        assert.match(cause.summary, /completion|strict|schema|native record validation/);
         corruptTerminalRun(path, arm.runId, originalRun);
         assertBaseline();
       }
@@ -1693,8 +1673,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
         }
       } finally { restoreMissingTriggers(raw,triggers); raw.close(); }
       assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(admissionFor(path), path), /run-completion|native record validation|strict|schema/);
-      const report = openBootStore(path).report();
-      assert.equal(report.state, "degraded-read-only");
     }
     const path = join(await testRoot(), "state.db"); const database = openDatabase(path); database.close();
     const raw = new DatabaseSync(path);
@@ -1702,7 +1680,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     finally { raw.close(); }
   });
 
-  it("opens corrupt, truncated, newer, foreign-key-invalid, invariant-invalid, and record-invalid files degraded", async () => {
+  it("classifies corrupt, truncated, newer, foreign-key-invalid, invariant-invalid, and record-invalid files without modifying them", async () => {
     const root = await testRoot(), path = join(root, "state.db");
     openDatabase(path).close();
     const baseline = readFileSync(path);
@@ -1754,22 +1732,9 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       assert.deepEqual(readFileSync(path), baseline);
       corrupt();
       assertClosedCompanions();
-      const before = readFileSync(path), store = openBootStore(path);
-      try {
-        const report = store.report();
-        assert.equal(report.state, "degraded-read-only", path);
-        if (report.state !== "degraded-read-only") throw new Error("expected degraded report");
-        assert.equal(report.cause.code, expectedCode, path);
-        for (const operation of ["enqueue", "claim", "commit", "control"] as const) {
-          assert.throws(
-            () => store.requireWritable(operation),
-            (error: unknown) => error instanceof AuthorityMutationUnavailableError
-              && error.operation === operation
-              && error.health.code === expectedCode,
-          );
-        }
-        assert.deepEqual(readFileSync(path), before, `${path} was modified during degraded boot`);
-      } finally { store.close(); }
+      const before = readFileSync(path);
+      assert.equal(inspectionCause(path).code, expectedCode, path);
+      assert.deepEqual(readFileSync(path), before, `${path} was modified during inspection`);
       assertClosedCompanions();
     }
     const doctorPath = path;
@@ -1779,7 +1744,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath: doctorPath,
       backupDirectory: backupDirectory(root),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
     assert.equal(doctor.authority.state, "degraded");
@@ -1805,7 +1769,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
     assert.equal(report.mode, "read-only");
@@ -1831,7 +1794,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
     assert.equal(badReport.backup.state, "invalid");
@@ -1852,7 +1814,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
     assert.equal(report.authority.state, "degraded");
@@ -2162,23 +2123,25 @@ describe("offline exact-backup restore", () => {
     );
   });
 
-  it("reports cleanup-only failure after authority replacement and names the staged path", async () => {
+  it("leaves settlement unproved and retains the named staged path when a staged file remains after authority replacement", async () => {
     const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
-    let cleanupPath = "";
+    const context = admissionFor(root).readInstallationContext(); assert.ok(context);
+    let stagedPath = "";
+    const removed: string[] = [];
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: (source, destination) => {
           renameSync(source, destination);
-          cleanupPath = source;
-          copyFileSync(destination, cleanupPath);
+          stagedPath = source;
+          copyFileSync(destination, stagedPath);
         },
         removePath: (path) => {
-          if (path === cleanupPath) throw new Error("injected staged cleanup failure");
+          removed.push(path);
           rmSync(path);
         },
       }, boundProfileCredentials(admissionFor(root)));
@@ -2192,9 +2155,10 @@ describe("offline exact-backup restore", () => {
 
     assert.ok(failure instanceof OfflineRestoreFailure);
     assert.equal(failure.authorityState, "replaced");
-    assert.match(failure.message, /injected staged cleanup failure/u);
-    assert.match(failure.message, new RegExp(cleanupPath, "u"));
-    assert.equal(existsSync(cleanupPath), true);
+    assert.match(failure.message, /restore settlement is unproved; durable operation and staging evidence retained/u);
+    assert.equal(existsSync(stagedPath), true);
+    assert.deepEqual(removed.filter(path => path.startsWith(stagedPath)), []);
+    assert.equal(readAuthorityRestoreJournal(context.workspace)?.restore.stagedPath, stagedPath);
   });
 
   it("preserves primary failure before staged cleanup failure", async () => {
@@ -2504,7 +2468,6 @@ describe("authority.health preflight and static recovery boundary", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
 
@@ -2525,7 +2488,6 @@ describe("authority.health preflight and static recovery boundary", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK, boundProfileCredentials(admissionFor(authorityPath)));
     const healthy = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);

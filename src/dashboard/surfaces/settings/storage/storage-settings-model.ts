@@ -6,14 +6,11 @@ import type { StorageDoctorLatestWire } from "../../../../models/dashboard/stora
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { useStorageClient } from "./storage-client.js";
-import { z } from "zod";
-import type {
-StorageHealthSummaryWireSchema
-} from "../../../../models/dashboard/bootstrap.js";
 import type { StorageDoctorWire } from "../../../../models/dashboard/storage.js";
+import type { StorageAuthoritySummary } from "../../../../models/storage/storage-status.js";
 
 
-export type StorageHealthSummary = z.infer<typeof StorageHealthSummaryWireSchema>;
+export type StorageHealthSummary = StorageAuthoritySummary;
 
 
 type DegradedSpanAuthority = Extract<StorageDoctorWire["spanAuthority"], { state: "degraded" }>;
