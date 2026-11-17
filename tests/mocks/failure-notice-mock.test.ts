@@ -40,12 +40,12 @@ for (const theme of THEMES) for (const width of WIDTHS) test(`failure notice fra
   for (const scene of NOTICE_SCENES) for (const copy of NOTICE_COPY) {
     await page.goto(`${baseUrl}/?scene=${scene}&copy=${copy}&theme=${theme}`);
     const notice = page.locator(".fn-sentence");
-    const action = page.getByRole("button", { name: /^(Retry|Check again|Try again|Start again|Open existing run)/ }).first();
+    const action = page.getByRole("button", { name: /^(Retry|Reload|Start again|Open existing run)/ }).first();
     await expect(notice).toBeVisible();
     await expect(action).toBeVisible();
     // The action keeps a gap from the sentence and the notice says what still works.
     const gap = await page.evaluate(() => {
-      const button = [...document.querySelectorAll("button")].find(b => /^(Retry|Check again|Try again|Start again|Open existing run)/.test(b.textContent ?? ""))!.getBoundingClientRect();
+      const button = [...document.querySelectorAll("button")].find(b => /^(Retry|Reload|Start again|Open existing run)/.test(b.textContent ?? ""))!.getBoundingClientRect();
       const still = document.querySelector(".fn-still")!.getBoundingClientRect();
       const sentence = document.querySelector(".fn-sentence")!.getBoundingClientRect();
       const overlap = !(button.right <= sentence.left || button.left >= sentence.right || button.bottom <= sentence.top || button.top >= sentence.bottom);
@@ -57,7 +57,7 @@ for (const theme of THEMES) for (const width of WIDTHS) test(`failure notice fra
     await expect(page.getByText("Copy details")).toHaveCount(0);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
     expect(overflow, `${scene}/${copy} horizontal overflow`).toBe(false);
-    await page.screenshot({ path: join(OUT, `${scene}-${copy}-${theme}-${width}.png`) });
+    await page.screenshot({ path: join(OUT, `${scene}-beneath1-${copy}-${theme}-${width}.png`) });
   }
   expect(errors).toEqual([]);
 });

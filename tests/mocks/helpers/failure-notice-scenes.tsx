@@ -14,23 +14,23 @@ interface NoticeContent { sentence: string; stillWorks: string; action: string }
 const CONTENT: Record<NoticeScene, Record<NoticeCopy, NoticeContent>> = {
   "run-panel": {
     short: { sentence: "Logs could not load.", stillWorks: "The queue still works.", action: "Retry" },
-    long: { sentence: "Relay could not read the logs for this run because the log store did not answer in time, so no steps are shown yet.", stillWorks: "The queue and the other runs still work, and nothing was changed.", action: "Retry reading logs" },
+    long: { sentence: "Relay could not read the logs for this run because the log store did not answer in time, so no steps are shown yet.", stillWorks: "The queue and the other runs still work, and nothing was changed.", action: "Retry" },
   },
   settings: {
     short: { sentence: "Settings could not load.", stillWorks: "Your runs are not affected.", action: "Retry" },
-    long: { sentence: "Relay could not read your General settings, so the values below may not be the ones you saved.", stillWorks: "Runs and the queue are not affected, and nothing was saved over your settings.", action: "Retry reading settings" },
+    long: { sentence: "Relay could not read your General settings, so the values below may not be the ones you saved.", stillWorks: "Runs and the queue are not affected, and nothing was saved over your settings.", action: "Retry" },
   },
   "dialog-checks": {
-    short: { sentence: "Checks are unavailable.", stillWorks: "You can still review Input and Options.", action: "Check again" },
-    long: { sentence: "Relay could not read this workflow's readiness checks, so it cannot tell whether a run would start.", stillWorks: "You can still review Input, Options and Steps; Start stays off until the checks are read.", action: "Check again" },
+    short: { sentence: "Checks are unavailable.", stillWorks: "You can still review Input and Options.", action: "Retry" },
+    long: { sentence: "Relay could not read this workflow's readiness checks, so it cannot tell whether a run would start.", stillWorks: "You can still review Input, Options and Steps; Start stays off until the checks are read.", action: "Retry" },
   },
   "dialog-refusal": {
     short: { sentence: "Run not started.", stillWorks: "Your input and options are kept.", action: "Start again" },
     long: { sentence: "Run not started because T00042871 is already pending in UCPath, filed today at 09:33.", stillWorks: "Your input and options are kept; remove that person or open the existing run.", action: "Open existing run" },
   },
   "app-start": {
-    short: { sentence: "Relay could not start.", stillWorks: "Nothing was changed.", action: "Try again" },
-    long: { sentence: "Relay could not reach its backend, so the queue, Logs and Settings cannot load yet.", stillWorks: "Nothing was changed, and runs already filed are not affected.", action: "Try again" },
+    short: { sentence: "Relay could not start.", stillWorks: "Nothing was changed.", action: "Reload" },
+    long: { sentence: "Relay could not reach its backend, so the queue, Logs and Settings cannot load yet.", stillWorks: "Nothing was changed, and runs already filed are not affected.", action: "Reload" },
   },
 };
 
@@ -51,7 +51,8 @@ const SCENE_CSS = `
 .fn-still{color:var(--ds-fg-secondary)}
 .fn-backdrop{display:flex;align-items:center;justify-content:center;height:100%;background:color-mix(in srgb,var(--ds-surface-0, #000) 70%,transparent)}
 .fn-dialog{width:min(720px,100%);height:min(600px,100%)}
-.fn-slot{padding:12px 12px 0}.fn-slot:has(.fn-footer{display:flex;align-items:center;gap:12px;padding:8px 12px;width:100%}.fn-hint{flex:1;font-size:12px;color:var(--ds-fg-muted)}
+.fn-slot{padding:12px 12px 0}
+.fn-footer{display:flex;align-items:center;gap:12px;padding:8px 12px;width:100%}.fn-hint{flex:1;min-width:0;font-size:12px;color:var(--ds-fg-muted)}
 .fn-fullpage{display:flex;align-items:center;justify-content:center;height:100%}.fn-fullpage-card{width:min(560px,100%);display:flex;flex-direction:column;gap:16px}
 .fn-brand{display:flex;align-items:center;gap:8px;margin:0;font-size:18px;font-weight:600}
 `;
