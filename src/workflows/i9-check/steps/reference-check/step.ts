@@ -27,10 +27,12 @@ export const REFERENCE_CHECK_STEP = Object.freeze({
         source: { origin: "Picked reference spreadsheets", detail: "Reports whether the found Employee ID and name agree with the captured worksheets; the read-only check always continues.", chain: [] } }],
     }],
     branchLabels: [],
-    decisions: [{ id: "reference-result", label: "Reference check", reads: { nodeId: REFERENCE_CHECK_NODE, fieldPath: "result" }, nodeIds: [REFERENCE_CHECK_NODE], initial: "confirmed", outcomes: [
-      { value: "confirmed", label: "Person confirmed", then: "Finishes with the reference results; no HR record is changed." },
-      { value: "unconfirmed", label: "Reference needs review", then: "Shows the missing or differing reference result and finishes; this read-only workflow does not wait for approval." },
-      { value: "no-person", label: "No person found", then: "Shows that UCPath supplied no Employee ID and finishes." },
+    decisions: [{ id: "reference-result", label: "Reference check", reads: { nodeId: REFERENCE_CHECK_NODE, fieldPath: "result" }, nodeIds: [REFERENCE_CHECK_NODE],
+      initial: { by: "retention-identity", values: { "not-found": "no-person", ambiguous: "no-person" }, otherwise: "confirmed" }, outcomes: [
+      { value: "confirmed", label: "Person confirmed", then: "Finishes with the reference results; no HR record is changed.", when: [{ "retention-identity": ["found"] }] },
+      { value: "unconfirmed", label: "Reference needs review", then: "Shows the missing or differing reference result and finishes; this read-only workflow does not wait for approval.",
+        when: [{ "retention-identity": ["found"] }] },
+      { value: "no-person", label: "No person found", then: "Shows that UCPath supplied no Employee ID and finishes.", when: [{ "retention-identity": ["not-found", "ambiguous"] }] },
     ] }],
   } as const,
 });

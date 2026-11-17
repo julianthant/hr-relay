@@ -46,11 +46,27 @@ export const personMatch = Object.freeze({
           source: { origin: "Approved PDF record", detail: "The approved full name used when no matching identifiers are available.", chain: [] } }]
       },
       {
+        id: "name-results",
+        title: "Person Organizational Summary results",
+        mode: "Read only",
+        nodeIds: ["initial-name-search"],
+        when: [{ "identifier-result": ["not-found"], "hire-date-needed": ["false"] }],
+        lines: [
+          { id: "read-candidates", kind: "read", text: "Read every candidate's Employee ID and hire date; the retention check compares them with the approved hire date.", nodeIds: ["initial-name-search"] },
+        ],
+        fields: [
+          { id: "hire-date", label: "Hire date", taskFields: [{ nodeId: "initial-name-search", kind: "output", fieldPath: "results.startDate" }], example: "2020-06-15",
+            source: { origin: "UCPath", detail: "Each candidate's start date, or effective date when start date is absent.", chain: [] } },
+          { id: "candidate-id", label: "Employee ID", taskFields: [{ nodeId: "initial-name-search", kind: "output", fieldPath: "results.emplId" }], example: "10000001",
+            source: { origin: "UCPath", detail: "The Employee ID on a candidate's Person Organizational Summary record; not yet confirmed as this person.", chain: [] } },
+        ]
+      },
+      {
         id: "person-details",
         title: "Person Organizational Summary detail",
         mode: "Read only",
         nodeIds: ["identifier-match", "match-outcome"],
-        when: [{ "hire-date-needed": ["false"] }],
+        when: [{ "identifier-result": ["found"] }],
         lines: [
           {
             id: "confirm",
@@ -68,11 +84,21 @@ export const personMatch = Object.freeze({
       }
     ],
     branchLabels: [],
-    decisions: [{ id: "hire-date-needed", label: "Further hire-date lookup", reads: { nodeId: "match-outcome", fieldPath: "shouldLookup" },
-      nodeIds: ["identifier-match", "initial-name-search", "match-outcome"], initial: "false", outcomes: [
-        { value: "false", label: "No further name search", then: "Continues with the unique identifier match or the name search already read." },
-        { value: "true", label: "Identifier match unresolved", then: "Searches all departments by name to corroborate the approved hire date." },
-      ] }],
+    decisions: [
+      { id: "identifier-result", label: "Identifier match", reads: { nodeId: "match-outcome", fieldPath: "identity.status" },
+        nodeIds: ["identifier-match", "initial-name-search", "match-outcome"], initial: "found", outcomes: [
+          { value: "found", label: "One person confirmed", then: "Continues with the confirmed Employee ID." },
+          { value: "ambiguous", label: "Several people match", then: "Searches all departments by name to pick the person whose hire date matches." },
+          { value: "not-found", label: "No confirmed match", then: "Continues with a name search: the one already read when no matching identifiers were supplied, otherwise a further search." },
+        ] },
+      { id: "hire-date-needed", label: "Further hire-date lookup", reads: { nodeId: "match-outcome", fieldPath: "shouldLookup" },
+        nodeIds: ["match-outcome"], initial: { by: "identifier-result", values: { ambiguous: "true" }, otherwise: "false" }, outcomes: [
+          { value: "false", label: "No further name search", then: "Continues with the confirmed match, or with the name search already read.",
+            when: [{ "identifier-result": ["found", "not-found"] }] },
+          { value: "true", label: "Identifier match unresolved", then: "Searches all departments by name to corroborate the approved hire date.",
+            when: [{ "identifier-result": ["ambiguous", "not-found"] }] },
+        ] },
+    ],
   } as const
 });
 type I9Author = WorkflowAuthor<typeof I9CheckInput>;

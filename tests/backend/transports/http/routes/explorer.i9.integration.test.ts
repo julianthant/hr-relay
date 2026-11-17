@@ -92,10 +92,15 @@ it("follows the person's identifier result through the conditional hire-date sea
   assert.deepEqual(spec.options, []);
   assert.deepEqual(spec.sessions, [{ system: "ucpath" }]);
   assert.deepEqual(walk(spec).steps.map(entry => entry.id), ["person-match", "roster-match", "reference-check"]);
-  const lookup = walk(spec, {}, { "hire-date-needed": "true" });
-  assert.deepEqual(lookup.steps.map(entry => entry.id), ["person-match", "person-lookup", "roster-match", "reference-check"]);
+  for (const identity of ["ambiguous", "not-found"]) {
+    const lookup = walk(spec, {}, { "identifier-result": identity, "hire-date-needed": "true" });
+    assert.deepEqual(lookup.steps.map(entry => entry.id), ["person-match", "person-lookup", "roster-match", "reference-check"]);
+  }
+  assert.equal(walk(spec, {}, { "hire-date-needed": "true" }).values["hire-date-needed"], "false");
+  assert.equal(walk(spec, {}, { "identifier-result": "ambiguous" }).values["hire-date-needed"], "true");
   assert.deepEqual(blocks(spec, "person-match", "card").map(card => [card.title, card.mode]), [
-    ["Smart HR person search", "fill"], ["Person Organizational Summary search", "fill"], ["Person Organizational Summary detail", "read"],
+    ["Smart HR person search", "fill"], ["Person Organizational Summary search", "fill"], ["Person Organizational Summary results", "read"],
+    ["Person Organizational Summary detail", "read"],
   ]);
   assert.deepEqual(blocks(spec, "person-lookup", "click").map(click => click.target), ["Search"]);
   const retention = blocks(spec, "roster-match", "decision");
@@ -115,6 +120,43 @@ it("follows the person's identifier result through the conditional hire-date sea
   const checks = blocks(spec, "reference-check", "decision")[0]; assert.ok(checks);
   assert.deepEqual(checks.outcomes.filter(outcome => ["confirmed", "unconfirmed"].includes(outcome.value)).map(outcome => [outcome.value, outcome.stops]),
     [["confirmed", false], ["unconfirmed", false]]);
+});
+
+it("shows confirmed identity rows only for an identifier match and the name search's own results on the name-only path", async () => {
+  const spec = await review("i9-check");
+  const shownCards = (values: Values) => visible(blocks(spec, "person-match", "card"), values).map(card => [card.title, visible(card.rows, values).map(row => row.label)]);
+  const found = walk(spec);
+  assert.equal(found.values["identifier-result"], "found");
+  assert.deepEqual(shownCards(found.values).at(-1), ["Person Organizational Summary detail", ["Employee ID", "Confirmed name"]]);
+  const nameOnly = walk(spec, {}, { "identifier-result": "not-found" });
+  assert.equal(nameOnly.values["hire-date-needed"], "false");
+  assert.deepEqual(nameOnly.steps.map(entry => entry.id), ["person-match", "roster-match", "reference-check"]);
+  assert.deepEqual(shownCards(nameOnly.values).at(-1), ["Person Organizational Summary results", ["Hire date", "Employee ID"]]);
+  assert.ok(!shownCards(nameOnly.values).some(([title]) => title === "Person Organizational Summary detail"));
+  const ambiguous = walk(spec, {}, { "identifier-result": "ambiguous" });
+  assert.ok(!shownCards(ambiguous.values).some(([title]) => title === "Person Organizational Summary detail" || title === "Person Organizational Summary results"));
+  const decision = blocks(spec, "person-match", "decision").find(candidate => candidate.id === "hire-date-needed"); assert.ok(decision);
+  assert.deepEqual(visible(decision.outcomes, found.values).map(outcome => outcome.value), ["false"]);
+  assert.deepEqual(visible(decision.outcomes, ambiguous.values).map(outcome => outcome.value), ["true"]);
+  assert.deepEqual(visible(decision.outcomes, nameOnly.values).map(outcome => outcome.value), ["false", "true"]);
+});
+
+it("reports no person in the reference check, never a confirmation, when retention found no unique identity", async () => {
+  const spec = await review("i9-check");
+  const card = blocks(spec, "reference-check", "card")[0]; assert.ok(card);
+  const row = card.rows.find(candidate => candidate.label === "Reference result"); assert.ok(row?.value);
+  const decision = blocks(spec, "reference-check", "decision").find(candidate => candidate.id === "reference-result"); assert.ok(decision);
+  for (const identity of ["not-found", "ambiguous"]) {
+    const selected = walk(spec, {}, { "retention-identity": identity, "reference-result": "confirmed" });
+    assert.equal(selected.values["reference-result"], "no-person", identity);
+    assert.equal(valueOf(row.value, selected.values), "No person found");
+    assert.deepEqual(visible(decision.outcomes, selected.values).filter(outcome => !outcome.stops).map(outcome => outcome.value), ["no-person"]);
+  }
+  const found = walk(spec);
+  assert.equal(found.values["reference-result"], "confirmed");
+  assert.equal(valueOf(row.value, found.values), "Confirmed");
+  assert.deepEqual(visible(decision.outcomes, found.values).filter(outcome => !outcome.stops).map(outcome => outcome.value), ["confirmed", "unconfirmed"]);
+  assert.equal(walk(spec, {}, { "reference-result": "unconfirmed" }).values["reference-result"], "unconfirmed");
 });
 
 it("defaults the retention recommendation to Shred for nobody found and manual review for an ambiguous identity", async () => {
@@ -161,7 +203,7 @@ it("serves the I-9 Lookup search and every Section 2 status without inventing a 
 
 it("shows the extra name as Fill and hire-date evidence as Read, hiding identifier confirmation when another lookup is needed", async () => {
   const spec = await review("i9-check");
-  const selected = walk(spec, {}, { "hire-date-needed": "true" });
+  const selected = walk(spec, {}, { "identifier-result": "ambiguous", "hire-date-needed": "true" });
   assert.deepEqual(blocks(spec, "person-lookup", "card").map(card => [card.title, card.mode, card.rows.map(row => row.label)]), [
     ["Person Organizational Summary search", "fill", ["Name"]],
     ["Person Organizational Summary detail", "read", ["Hire date", "Employee ID"]],
@@ -204,7 +246,7 @@ it("lists every declared task failure explicitly; only undeclared failures delib
         const decision = decisions.find(candidate => candidate.outcomes.some(outcome => outcome.value === code)); assert.ok(decision, `${group.label}: ${code}`);
         const outcome = decision.outcomes.find(candidate => candidate.value === code); assert.ok(outcome);
         assert.deepEqual([outcome.label, outcome.then, outcome.stops], [operatorFailureSentence(failureCodeFromTaskCode(code)), "The run stops with a failure card.", true]);
-        const stopped = walk(spec, {}, { "hire-date-needed": "true", [decision.id]: code });
+        const stopped = walk(spec, {}, { "identifier-result": "ambiguous", "hire-date-needed": "true", [decision.id]: code });
         assert.equal(stopped.stop?.value, code); assert.equal(stopped.steps.at(-1)?.id, group.key);
       }
       for (const decision of decisions) for (const outcome of decision.outcomes) {
