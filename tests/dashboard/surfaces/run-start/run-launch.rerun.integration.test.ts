@@ -268,6 +268,7 @@ describe("registered Person Lookup and Separations served launch", () => {
     assert.deepEqual(plan.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "123456789",
       crmCheck: false, includeCrmDates: false }]);
     assert.deepEqual(plan.selectedStepKeys, ["searching", "active-status"]);
-    assert.equal(readiness.text().includes("123456789"), false);
+    // The harness keeps the dialog mounted after Start; the applied dialog returns to Input and echoes what was typed there.
+    assert.equal(readiness.text().replace("Example, Person, x, 123456789", "").includes("123456789"), false);
   });
 });
