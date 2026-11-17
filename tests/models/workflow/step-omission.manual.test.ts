@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { z } from "zod";
+import { EidSchema } from "../../../src/rules/identity/ids.js";
 import {
   planStepOmissions,
+  stepManualFieldFitsLeaf,
   stepOmissionFactsSchema,
+  UsDateFactSchema,
   StepOmissionsSchema,
   type StepOmissionGraphView,
 } from "../../../src/models/workflow/step-omission.js";
@@ -85,5 +89,34 @@ describe("manual entries", () => {
     ];
     assert.deepEqual(StepOmissionsSchema.parse(entries), entries);
     assert.equal(StepOmissionsSchema.safeParse([entries[0], entries[0]]).success, false);
+  });
+});
+
+describe("representation check", () => {
+  const text = { key: "value", label: "Value", kind: "text" } as const;
+  const usDate = { key: "day", label: "Day", kind: "us-date" } as const;
+  const isoDate = { key: "day", label: "Day", kind: "iso-date" } as const;
+  const eid = { key: "eid", label: "EID", kind: "eid" } as const;
+  const integer = { key: "count", label: "Count", kind: "integer", min: 3 } as const;
+  const list = { key: "codes", label: "Codes", kind: "text-list" } as const;
+
+  it("accepts a leaf whose every check the field's own constraints imply", () => {
+    for (const [field, leaf] of [
+      [text, z.string()], [text, z.string().min(1)], [text, z.string().optional()], [text, z.union([z.number(), z.string()])],
+      [usDate, z.string().regex(/^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/u)], [usDate, UsDateFactSchema], [usDate, z.string().length(10)],
+      [isoDate, z.iso.date()], [isoDate, z.string().max(10)], [eid, EidSchema], [eid, z.string().min(8).max(8)],
+      [integer, z.number()], [integer, z.number().int()], [integer, z.number().int().min(3)], [integer, z.number().int().positive()],
+      [list, z.array(z.string())], [list, z.array(z.string().min(1))],
+    ] as const) assert.equal(stepManualFieldFitsLeaf(field, leaf), true, `${field.kind} ${JSON.stringify(leaf._zod.def.type)}`);
+  });
+
+  it("refuses a narrower same-kind leaf, a transform, a refinement or anything it cannot establish", () => {
+    for (const [field, leaf] of [
+      [text, z.literal("Typed value")], [text, z.string().min(5)], [text, z.string().max(20)], [text, z.string().refine(() => true)],
+      [text, z.string().trim()], [text, z.string().transform((value) => value)], [text, z.string().catch("x")], [text, z.email()], [text, EidSchema],
+      [usDate, z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/u)], [usDate, z.iso.date()], [isoDate, UsDateFactSchema], [eid, z.string().regex(/^108\d{5}$/u)],
+      [integer, z.number().int().max(10)], [integer, z.number().int().min(4)], [{ ...integer, min: undefined }, z.number().int().min(0)], [integer, z.string()],
+      [list, z.array(z.string()).min(1)], [list, z.array(z.string().min(2))], [list, z.string()],
+    ] as const) assert.equal(stepManualFieldFitsLeaf(field, leaf), false, `${field.kind} ${JSON.stringify(leaf._zod.def.type)}`);
   });
 });

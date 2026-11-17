@@ -16,11 +16,15 @@ import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { Plan1Output, plan1Contract } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { defineTaskContract } from "../../../../src/models/task/task-contract.js";
 import { WriteFixtureCommit, WriteFixturePrepare } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
 const Input = z.strictObject({ emplId: EidSchema, text: z.string(), mode: z.enum(["ok", "fail", "repeat", "confirmed"]), extra: z.boolean() });
 const CanonicalInput = defineCanonicalInput(Input, Input, [{ emplId: "10800000", text: "same", mode: "ok", extra: true }]);
 const Result = z.strictObject({ eid: EidSchema });
+
+const { __sealed: _sealed, ...plan1Definition } = plan1Contract;
+const publishContract = defineTaskContract({ ...plan1Definition, providers: ["geocode.census"] as const });
 
 const SEARCH_RESULT = {
   emplId: "10800000", name: "Person, Example", department: "Dept", jobTitle: "Title", employeeStatus: "active", hdh: true,
@@ -34,9 +38,11 @@ interface Options {
   readonly locked?: "bound-read" | "guard-read";
   readonly rows?: readonly StartRowDeclaration[];
   readonly rerunValues?: readonly RerunValueMappingSpec[];
+  /** check publishes instead of reading */
+  readonly publishCheck?: boolean;
 }
 
-/** reading: search -> read -> check; saving: save (a transaction) -> receipt; extra: a selection step with one read. */
+/** reading: search -> read -> check (or a publishing check); saving: save (a transaction) -> receipt; extra: a selection step with one read. */
 function fixture(options: Options = {}) {
   return compileWorkflow(defineWorkflow({
     id: "step-manual-fixture", version: 1, code: "smf", label: "Manual entry fixture", icon: "Search", category: "operations",
@@ -52,7 +58,9 @@ function fixture(options: Options = {}) {
     steps: ({ task, transaction, group, result }) => {
       const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }));
       const read = task({ id: "read", contract: plan1Contract, replay: "checkpoint" }, [search], ({ input }) => input);
-      const check = task({ id: "check", contract: plan1Contract, replay: "checkpoint" }, [read], ({ input }) => input);
+      const check = options.publishCheck === true
+        ? task({ id: "check", contract: publishContract, replay: "checkpoint", dryRun: "stop-before-publish" }, [read], ({ input }) => input)
+        : task({ id: "check", contract: plan1Contract, replay: "checkpoint" }, [read], ({ input }) => input);
       const save = transaction({ id: "save", label: "Save", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
         dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 }, [read], {
         prepareBind: ({ input }) => ({ eid: input.emplId }), commitBind: ({ input }) => ({ eid: input.emplId }),
@@ -120,7 +128,9 @@ describe("manual entry definition checks", () => {
 
   it("refuses a field whose stored facts the replaced leaf would not accept unchanged", () => {
     assert.throws(() => fixture({ reading: { ...READ_TYPED, form: { fields: [{ key: "eid", label: "EID", kind: "iso-date", replaces: { nodeId: "read", path: "eid" } }] } } }),
-      /field "eid" stores "2000-01-02", which "read\.eid" does not accept unchanged/u);
+      /field "eid" stores iso-date facts, which "read\.eid" does not provably accept unchanged/u);
+    assert.throws(() => fixture({ reading: { ...READ_TYPED, form: { fields: [{ key: "eid", label: "EID", kind: "text", replaces: { nodeId: "read", path: "eid" } }] } } }),
+      /field "eid" stores text facts, which "read\.eid" does not provably accept unchanged/u);
     assert.throws(() => fixture({ reading: { ...READ_TYPED, form: { fields: [{ ...VALUE, optional: true }] } } }),
       /field "disposition" is optional, but "read\.disposition" accepts neither null nor absence/u);
   });
@@ -201,6 +211,15 @@ describe("start row kinds and lock reasons", () => {
     ]);
     const switched = projectStartRows(fixture({ reading: { ...READ_TYPED, skips: ["search"], produces: { ...READ_TYPED.produces, check: () => ({ eid: "10800000", disposition: "x", providerState: "typed" }) } } }));
     assert.equal(switched[0]?.kind, "switch");
+  });
+
+  it("never produces or skips a publishing task, and keeps its step locked with Enter manually while its reading is typed", () => {
+    assert.throws(() => fixture({ publishCheck: true, reading: { ...READ_TYPED, produces: { ...READ_TYPED.produces, check: () => ({ eid: "10800000", disposition: "x", providerState: "typed" }) } } }),
+      /produces publishing task "check"; a publishing task always runs/u);
+    assert.throws(() => fixture({ publishCheck: true, reading: { form: { fields: [] }, produces: {}, skips: ["check"] } }),
+      /skips publishing task "check"; a publishing task always runs/u);
+    const [reading] = projectStartRows(fixture({ publishCheck: true, reading: READ_TYPED }));
+    assert.deepEqual([reading?.kind, reading?.lockReason], ["locked-manual", "form-action"]);
   });
 
   it("serves a step whose other nodes still run as locked with Enter manually", () => {

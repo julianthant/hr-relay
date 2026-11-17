@@ -26,7 +26,7 @@ export const StepOmissionFieldSchema = z.discriminatedUnion("kind", [
   z.strictObject({ ...FieldBase, kind: z.literal("us-date") }),
   /** Shown and typed as MM/DD/YYYY; the server accepts and stores YYYY-MM-DD only. */
   z.strictObject({ ...FieldBase, kind: z.literal("iso-date") }),
-  /** A UCPath employee id: eight digits, exactly. */
+  /** A UCPath employee id: eight digits beginning with 10. */
   z.strictObject({ ...FieldBase, kind: z.literal("eid") }),
   z.strictObject({ ...FieldBase, kind: z.literal("integer"), min: z.number().int().optional() }),
   z.strictObject({ ...FieldBase, kind: z.literal("boolean") }),
@@ -46,10 +46,8 @@ export const StepOmissionFormSchema = z.strictObject({
 });
 export type StepOmissionForm = z.infer<typeof StepOmissionFormSchema>;
 
-export const UsDateFactSchema = z.string().regex(
-  /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/u,
-  "a date fact must be MM/DD/YYYY",
-);
+const US_DATE_PATTERN = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/u;
+export const UsDateFactSchema = z.string().regex(US_DATE_PATTERN, "a date fact must be MM/DD/YYYY");
 export const IsoDateFactSchema = z.iso.date();
 export const EidFactSchema = z.string().regex(EID_PATTERN, "an employee id fact must be eight digits beginning with 10");
 
@@ -78,18 +76,81 @@ export function stepOmissionFactsSchema(form: StepOmissionForm): z.ZodObject<Rec
   return z.strictObject(shape);
 }
 
-/** Values that stand for everything a field accepts, for the definition's representation check. */
-export function stepManualFieldSamples(field: StepOmissionField): readonly JsonValue[] {
+/** The finite set a field accepts, when it has one; the representation check parses each value. */
+export function stepManualFiniteFacts(field: StepOmissionField): readonly JsonValue[] | undefined {
+  if (field.kind === "boolean") return [true, false];
+  if (field.kind === "enum") return field.values;
+  return undefined;
+}
+
+type TextFacts = Readonly<{ min: number; max?: number; pattern?: RegExp; format?: "date" }>;
+
+function textFacts(field: StepOmissionField): TextFacts | undefined {
   switch (field.kind) {
-    case "text": return ["Typed value"];
-    case "us-date": return ["01/02/2000", "12/31/1999"];
-    case "iso-date": return ["2000-01-02", "1999-12-31"];
-    case "eid": return ["10000000", "10999999"];
-    case "integer": return [field.min ?? 0, (field.min ?? 0) + 1];
-    case "boolean": return [true, false];
-    case "enum": return field.values;
-    case "text-list": return [[], ["Typed value"]];
+    case "text": return { min: 1 };
+    case "us-date": return { min: 10, max: 10, pattern: US_DATE_PATTERN };
+    case "iso-date": return { min: 10, max: 10, format: "date" };
+    case "eid": return { min: 8, max: 8, pattern: EID_PATTERN };
+    default: return undefined;
   }
+}
+
+function impliedStringFormat(facts: TextFacts, format: string, pattern: RegExp | undefined): boolean {
+  if (format === "regex") return pattern !== undefined && facts.pattern !== undefined
+    && pattern.source === facts.pattern.source && pattern.flags === facts.pattern.flags;
+  return format === facts.format;
+}
+
+function impliedStringCheck(facts: TextFacts, check: z.core.$ZodCheckDef): boolean {
+  switch (check.check) {
+    case "min_length": return (check as z.core.$ZodCheckMinLengthDef).minimum <= facts.min;
+    case "max_length": return facts.max !== undefined && (check as z.core.$ZodCheckMaxLengthDef).maximum >= facts.max;
+    case "length_equals": return facts.max === facts.min && (check as z.core.$ZodCheckLengthEqualsDef).length === facts.min;
+    case "string_format": {
+      const format = check as z.core.$ZodCheckStringFormatDef;
+      return impliedStringFormat(facts, format.format, format.pattern);
+    }
+    default: return false;
+  }
+}
+
+function stringLeafTakes(facts: TextFacts, leaf: z.core.$ZodString): boolean {
+  const def: z.core.$ZodStringDef & Partial<z.core.$ZodCheckStringFormatDef> = leaf._zod.def;
+  if (def.check === "string_format" && def.format !== undefined && !impliedStringFormat(facts, def.format, def.pattern)) return false;
+  return (def.checks ?? []).every((check) => impliedStringCheck(facts, check._zod.def));
+}
+
+function integerLeafTakes(min: number | undefined, leaf: z.core.$ZodNumber): boolean {
+  const def: z.core.$ZodNumberDef & Partial<z.core.$ZodCheckNumberFormatDef> = leaf._zod.def;
+  if (def.check === "number_format" && def.format !== "safeint") return false;
+  return (def.checks ?? []).every(({ _zod: { def: check } }) => {
+    if (check.check === "number_format") return (check as z.core.$ZodCheckNumberFormatDef).format === "safeint";
+    if (check.check !== "greater_than") return false;
+    const bound = check as z.core.$ZodCheckGreaterThanDef;
+    return min !== undefined && typeof bound.value === "number" && (bound.inclusive ? min >= bound.value : min > bound.value);
+  });
+}
+
+/**
+ * True when the leaf provably takes every non-null fact an infinite-kind field accepts, unchanged: a plain
+ * string, number or array whose every check the field's own constraints imply. Anything not established
+ * (a transform, a refinement, a catch, a narrower bound or another format) is refused.
+ */
+export function stepManualFieldFitsLeaf(field: StepOmissionField, leaf: z.core.$ZodType): boolean {
+  if (leaf instanceof z.core.$ZodOptional || leaf instanceof z.core.$ZodNullable || leaf instanceof z.core.$ZodReadonly
+    || leaf instanceof z.core.$ZodNonOptional || leaf instanceof z.core.$ZodDefault) {
+    return stepManualFieldFitsLeaf(field, leaf._zod.def.innerType);
+  }
+  if (leaf instanceof z.core.$ZodUnion) return leaf._zod.def.options.some((option) => stepManualFieldFitsLeaf(field, option));
+  if (leaf instanceof z.core.$ZodUnknown || leaf instanceof z.core.$ZodAny) return true;
+  if (field.kind === "integer") return leaf instanceof z.core.$ZodNumber && integerLeafTakes(field.min, leaf);
+  if (field.kind === "text-list") {
+    return leaf instanceof z.core.$ZodArray
+      && (leaf._zod.def.checks ?? []).every(({ _zod: { def: check } }) => check.check === "min_length" && (check as z.core.$ZodCheckMinLengthDef).minimum === 0)
+      && stepManualFieldFitsLeaf({ key: field.key, label: field.label, kind: "text" }, leaf._zod.def.element);
+  }
+  const facts = textFacts(field);
+  return facts !== undefined && leaf instanceof z.core.$ZodString && stringLeafTakes(facts, leaf);
 }
 
 /** What a per-node producer sees: the parsed facts, the node's own dependency scope, and the instant of assertion. */

@@ -38,7 +38,7 @@ import {
   type RunResultRecord,
   type TerminalDependencyRecord,
 } from "../models/run/result.js";
-import { StartRowDeclarationSchema, StepLockReasonSchema, StepOmissionFormSchema, stepManualFieldSamples } from "../models/workflow/step-omission.js";
+import { StartRowDeclarationSchema, StepLockReasonSchema, StepOmissionFormSchema, stepManualFieldFitsLeaf, stepManualFiniteFacts } from "../models/workflow/step-omission.js";
 import type { StartRowDeclaration, StepLockReason, StepManualDeclaration, StepOmissionSpec } from "../models/workflow/step-omission.js";
 import { valueLeafSchemas, valuePathAccepts } from "../models/workflow/rerun-values.js";
 import { SecretNameSchema } from "../models/config/secret-names.js";
@@ -827,6 +827,9 @@ function deriveStepOmissions(
       if (node.kind !== "task") {
         throw new Error(`${id}: ${owner} produces ${node.kind} node "${produced}"; only task nodes are ever asserted`);
       }
+      if (node.dryRun === "stop-before-publish") {
+        throw new Error(`${id}: ${owner} produces publishing task "${produced}"; a publishing task always runs`);
+      }
       if (typeof manual.produces[produced] !== "function") {
         throw new Error(`${id}: ${owner} producer for "${produced}" is not a function`);
       }
@@ -839,6 +842,9 @@ function deriveStepOmissions(
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(skipped), owner);
       if (node.kind !== "task" && manual.skipsGatesAndTransactions !== true) {
         throw new Error(`${id}: ${owner} skips ${node.kind} node "${skipped}"; a gate or transaction always runs`);
+      }
+      if (node.kind === "task" && node.dryRun === "stop-before-publish") {
+        throw new Error(`${id}: ${owner} skips publishing task "${skipped}"; a publishing task always runs`);
       }
     }
     const skipped = new Set(skips);
@@ -858,9 +864,13 @@ function deriveStepOmissions(
       if (node.kind !== "task") throw new Error(`${fieldOwner} replaces a value of ${node.kind} node "${field.replaces.nodeId}"`);
       const leaves = valueLeafSchemas(node.uses.output, field.replaces.path.split("."));
       if (leaves.length === 0) throw new Error(`${fieldOwner} replaces "${field.replaces.path}", which node "${field.replaces.nodeId}"'s output does not offer`);
-      const refused = stepManualFieldSamples(field).find((sample) => !valuePathAccepts(node.uses.output, field.replaces?.path ?? "", sample));
+      const finite = stepManualFiniteFacts(field);
+      const refused = finite?.find((fact) => !valuePathAccepts(node.uses.output, field.replaces?.path ?? "", fact));
       if (refused !== undefined) {
         throw new Error(`${fieldOwner} stores ${JSON.stringify(refused)}, which "${field.replaces.nodeId}.${field.replaces.path}" does not accept unchanged`);
+      }
+      if (finite === undefined && !leaves.some((leaf) => stepManualFieldFitsLeaf(field, leaf))) {
+        throw new Error(`${fieldOwner} stores ${field.kind} facts, which "${field.replaces.nodeId}.${field.replaces.path}" does not provably accept unchanged`);
       }
       if (field.optional === true && !leaves.some((leaf) => z.core.safeParse(leaf, null).success || z.core.safeParse(leaf, undefined).success)) {
         throw new Error(`${fieldOwner} is optional, but "${field.replaces.nodeId}.${field.replaces.path}" accepts neither null nor absence`);
