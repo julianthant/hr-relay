@@ -130,7 +130,7 @@ it("retains the original issued envelope after an unknown result and later mode 
   }), { workflows: [workflow], panelWorkflowId: descriptor.id });
   await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire"); await dialog.press("Continue"); await dialog.press("Start live run");
   const retained = window.sessionStorage.getItem(window.sessionStorage.key(0) ?? ""); assert.ok(retained);
-  await dialog.press("Back"); await mode("rehire");
+  await dialog.press("Back"); await dialog.press("Back"); await mode("rehire");
   assert.equal(window.sessionStorage.getItem(window.sessionStorage.key(0) ?? ""), retained);
   assert.equal(commands.length, 1); assert.equal(dialog.disabled("Continue"), true);
 });

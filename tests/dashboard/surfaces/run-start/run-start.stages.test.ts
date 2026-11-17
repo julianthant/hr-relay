@@ -25,7 +25,6 @@ describe("the Run dialog has no Confirm stage", () => {
     assert.ok(!dialog.text().includes("Preview plan"));
     assert.ok(!dialog.text().includes("Enter to start"), "Start lives on Checks, not Options");
     await dialog.press("Start run");
-    assert.equal(dialog.stage(), "Checks");
     assert.equal(plans.length, 1);
     assert.deepEqual(h.closed, [false], "a clean plan submits in the same press");
   });

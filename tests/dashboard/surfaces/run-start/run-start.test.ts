@@ -525,6 +525,7 @@ describe("the request carries the operator's omissions", () => {
       "an omitted step was still selected",
     );
 
+    await dialog.press("Back");
     assert.ok(dialog.text().includes("5 / 7 included"));
   });
 
