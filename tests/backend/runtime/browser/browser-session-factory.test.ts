@@ -219,7 +219,7 @@ describe("browser current-owner fence", () => {
 
   it("refuses the label screenshot after the safety check settles stale and still removes its owned banner", async () => {
     const page = fixtures.fakePage(), owner = epoch(), evaluate = page.evaluate;
-    let bannerOwned = false, captures = 0, removals = 0, published = false;
+    let bannerOwned = false, captures = 0, removals = 0, revocations = 0, published = false;
     page.evaluate = async (callback, arg) => {
       if (callback.toString().includes('document.createElement("div")')) {
         bannerOwned = true;
@@ -230,7 +230,10 @@ describe("browser current-owner fence", () => {
     const frame = page.mainFrame(), evaluateFrame = frame.evaluate;
     frame.evaluate = async (callback, arg) => {
       const result = await evaluateFrame(callback, arg);
-      if (bannerOwned && callback.toString().includes("return state.seen")) queueMicrotask(() => queueMicrotask(owner.revoke));
+      if (bannerOwned && revocations === 0 && /__relayCaptureSecrets[\s\S]*["']unavailable["']/u.test(callback.toString())) {
+        revocations++;
+        queueMicrotask(() => queueMicrotask(owner.revoke));
+      }
       return result;
     };
     page.locator = () => ({ count: async () => 0,
@@ -245,6 +248,7 @@ describe("browser current-owner fence", () => {
       });
       published = true;
     }, ProfileCustodyUnavailableError);
+    assert.equal(revocations, 1);
     assert.equal(captures, 0);
     assert.equal(removals, 1);
     assert.equal(bannerOwned, false);
