@@ -9,7 +9,7 @@ export const FailureDisplaySchema = z.strictObject({
   field: z.strictObject({
     label: z.string().min(1),
     value: z.string().min(1),
-    outcome: z.enum(["Entered", "Selected", "Read", "Checked", "Verified", "Set", "Cleared"]),
+    outcome: z.enum(["Entered", "Selected", "Read", "Checked", "Verified", "Set", "Cleared", "Provided"]),
   }).optional(),
 });
 

@@ -12,6 +12,11 @@ describe("failure display", () => {
     assert.equal(FailureDisplaySchema.safeParse({ ...display, field: { ...display.field, outcome: "Unknown" } }).success, false);
     assert.equal(FailureDisplaySchema.safeParse({ ...display, field: { ...display.field, raw: "Unclassified" } }).success, false);
   });
+  it("distinguishes an operator-provided value from a completed read", () => {
+    const display = { title: "Read employee", observation: "The page was unavailable.",
+      lastCompleted: "Provided Employee ID", field: { label: "Employee ID", value: "10000001", outcome: "Provided" } };
+    assert.deepEqual(FailureDisplaySchema.parse(display), display);
+  });
   it("describes an approved employment-record mismatch under the declared task code", () => {
     assert.deepEqual(projectFailureDisplay({ code: ErrorCodeSchema.parse(failureCodeFromTaskCode("employment-record-mismatch")) }), {
       title: "Employment record mismatch",
