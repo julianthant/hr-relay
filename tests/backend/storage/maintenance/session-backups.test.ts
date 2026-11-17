@@ -51,7 +51,7 @@ async function fixture() {
     database.withAuthorityTransaction(repositories => repositories.notificationHealth.put({ concern: "disk-space", active: true, occurrence: ++occurrence, samples: [], observedAt: at, createdAt: at }));
   };
   const otherBackup = (purpose: "clean-shutdown" | undefined) => new AuthorityBackupService(bound.admission, database, { directory, ...(purpose === undefined ? {} : { purpose }) }, clock)
-    .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+    .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
   const names = (suffix: string) => readdirSync(directory).filter(name => name.endsWith(suffix)).sort();
   const sessionBackup = () => new AuthorityBackupService(bound.admission, database, { directory, purpose: "in-session" }, clock)
     .request({ trigger: "interval", requiredGeneration: database.getMeta().authorityGeneration });

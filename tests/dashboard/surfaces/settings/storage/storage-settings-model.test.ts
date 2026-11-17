@@ -12,7 +12,7 @@ import { createSettingsStorageDoctorFixtures } from "../../../../support/helpers
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const report = StorageDoctorWireSchema.parse({ ...createSettingsStorageDoctorFixtures().REPORT_BASE,
-  spanAuthority: { state: "unavailable", cause: { code: "span-unavailable", summary: "Synthetic unavailable history" } } });
+  spanAuthority: { state: "unavailable", cause: { code: "span-authority-unavailable", summary: "Synthetic unavailable history" } } });
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(Date.parse(report.checkedAt) + 60_000); });
 afterEach(() => { vi.useRealTimers(); });

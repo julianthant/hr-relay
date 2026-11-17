@@ -24,7 +24,7 @@ describe("canonical notification producers", () => {
       expect((await read()).backupFailed).toBe(false); expect((await read()).integrityFailed).toBe(false);
       const directory = join(f.root, "backups", "authority"); mkdirSync(directory, { recursive: true });
       const backup = new AuthorityBackupService(f.db, { directory }, f.clock);
-      await backup.request({ trigger: "operator", requiredGeneration: f.db.getMeta().authorityGeneration });
+      await backup.request({ trigger: "schema-migration", requiredGeneration: f.db.getMeta().authorityGeneration });
       const files = readdirSync(directory);
       f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: false, occurrence: 0, observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), samples: [] }));
       expect((await read()).backupFailed).toBe(false); expect(readdirSync(directory)).toEqual(files);
@@ -195,7 +195,7 @@ function holdBackupInspections() {
 }
 async function withOneBackup(f: Awaited<ReturnType<typeof fixture>>) {
   const directory = join(f.root, "backups", "authority"); mkdirSync(directory, { recursive: true });
-  await new AuthorityBackupService(f.db, { directory }, f.clock).request({ trigger: "operator", requiredGeneration: f.db.getMeta().authorityGeneration });
+  await new AuthorityBackupService(f.db, { directory }, f.clock).request({ trigger: "schema-migration", requiredGeneration: f.db.getMeta().authorityGeneration });
 }
 const settledYet = (promise: Promise<unknown>) => { let settled = false; void promise.then(() => { settled = true; }, () => { settled = true; }); return () => settled; };
 

@@ -30,7 +30,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       state: "reconciled",
       liveRunCount: 0,
       streamRunCount: 0,
-      archived: [],
       deleted: [],
     });
     assert.deepEqual(report.restoreCandidates, []);

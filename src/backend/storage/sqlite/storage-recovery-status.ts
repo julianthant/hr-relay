@@ -10,7 +10,7 @@ import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { StorageRecoveryInspectionSchema, type RestoreCandidate } from "./recovery-contracts.js";
+import { StorageRecoveryInspectionSchema, type RestoreCandidate } from "../../../models/storage/storage-status.js";
 
 function fileIdentity(stat: Stats | BigIntStats) {
   const identity = fileIdentityObservation({ device: stat.dev, inode: stat.ino });

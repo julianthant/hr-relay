@@ -60,7 +60,7 @@ export async function capturePredecessorRestoreFixture(replaced: boolean) {
       claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, lifecycle: { state: "parked-write", writeIntentId: WRITE_INTENT_ATTEMPTING.writeIntentId,
         intentGeneration: 1, parkedAt: now, code: "unknown", message: "synthetic-unresolved-submit" }, now }).state, "applied");
     manifest = (await new AuthorityBackupService(f.admission, database, { directory: join(f.stateRoot, "backups", "authority") })
-      .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration })).manifests[0];
+      .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration })).manifests[0];
     assert.ok(manifest);
   } finally { database.close(); }
   const operation = f.admission.acquireOfflineMaintenance(), stopped = f.admission.forStoppedMaintenance(operation);

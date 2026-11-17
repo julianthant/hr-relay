@@ -34,15 +34,11 @@ export {
   AuthorityBootReportSchema,
   AuthorityCopyInspectionSchema,
   AuthorityInvariantResultSchema,
-  AuthorityPendingCountsSchema,
-  BackupHealthSchema,
   BackupVerificationSchema,
   OfflineRestoreReportSchema,
   OfflineRestoreRequestSchema,
-  RestoreCandidateSchema,
   SpanAuthorityRunRootSchema,
   StorageDoctorReportSchema,
-  StorageHealthCauseSchema,
 } from "./recovery-contracts.js";
 export {
   doctorAuthorityStorage,

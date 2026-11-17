@@ -2302,7 +2302,7 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
         : {state:"malformed",runId:root.runId,table:"runs",summary:mismatches.join("; ")});
     });
     const snapshot = SpanAuthorityReadSnapshotSchema.parse({authorityGeneration:meta.authority_generation,authorityContentFingerprint:authorityContentFingerprint(database),
-      liveRunCount:runs.size,archivedRunCount:0,tombstoneOrdinalFindings:[],malformedRecords,resolutions,
+      liveRunCount:runs.size,tombstoneOrdinalFindings:[],malformedRecords,resolutions,
       missingSpanRunIds:malformedRecords.length === 0 ? [...runs.keys()].filter(id=>!queuedRunIds.has(RunIdSchema.parse(id))).map(id=>RunIdSchema.parse(id)) : []});
     database.exec("COMMIT");transactionOpen = false;
     return Object.freeze(snapshot);

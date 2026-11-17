@@ -62,7 +62,8 @@ import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../src/models/trust/prefligh
 import { ScenarioManifestSchema } from "../../../src/models/trust/scenario.js";
 import { DryRunScenarioResultSchema } from "../../../src/models/trust/dry-run-scenario-result.js";
 import { AbsentEvidenceSchema, IdempotencyKeySchema, NegativeSettlementDecisionSchema, NegativeSettlementEvaluationInputSchema, NegativeSettlementPolicySchema, PresentProofReferenceSchema, RecoveryProbeVerdictSchema, SubjectEvidenceSchema, SubjectProofSchema, TransactionOutcomeSchema, UNSCOPED_COMMIT_REASON_REGISTRY, UnscopedBindingProofSchema, UnscopedCommitReasonSpecSchema, WriteAttemptRecordSchema, WriteBindingProofSchema, WriteIntentRecordSchema } from "../../../src/rules/write-safety/write-safety.js";
-import { ArtifactOutboxStorageRecordSchema, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, AtomicWriteCommitStorageStepSchema, AuthorityBackupManifestSchema, AuthorityBackupRequestSchema, AuthorityBackupRunReportSchema, AuthorityBackupServiceOptionsSchema, AuthorityBootReportSchema, AuthorityCopyInspectionSchema, AuthorityDatabaseOptionsSchema, AuthorityInvariantResultSchema, AuthorityMetaSchema, AuthorityPendingCountsSchema, AuthoritySchemaInspectionSchema, BackupHealthSchema, BackupVerificationSchema, ImmutableInsertDispositionSchema, OfflineRestoreOptionsSchema, OfflineRestoreReportSchema, OfflineRestoreRequestSchema, PermanentWriteResolutionSchema, RestoreCandidateSchema, StorageDoctorOptionsSchema, StorageDoctorReportSchema, StorageHealthCauseSchema, WriteFenceInputSchema, FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, FailureTerminalizationStorageStepSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, SuccessTerminalizationStorageStepSchema } from "../../../src/backend/storage/sqlite/index.js";
+import { ArtifactOutboxStorageRecordSchema, AtomicWriteCommitInputSchema, AtomicWriteCommitReportSchema, AtomicWriteCommitStorageStepSchema, AuthorityBackupManifestSchema, AuthorityBackupRequestSchema, AuthorityBackupRunReportSchema, AuthorityBackupServiceOptionsSchema, AuthorityBootReportSchema, AuthorityCopyInspectionSchema, AuthorityDatabaseOptionsSchema, AuthorityInvariantResultSchema, AuthorityMetaSchema, AuthoritySchemaInspectionSchema, BackupVerificationSchema, ImmutableInsertDispositionSchema, OfflineRestoreOptionsSchema, OfflineRestoreReportSchema, OfflineRestoreRequestSchema, PermanentWriteResolutionSchema, StorageDoctorOptionsSchema, StorageDoctorReportSchema, WriteFenceInputSchema, FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, FailureTerminalizationStorageStepSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, SuccessTerminalizationStorageStepSchema } from "../../../src/backend/storage/sqlite/index.js";
+import { AuthorityPendingCountsSchema, BackupHealthSchema, RestoreCandidateSchema, StorageHealthCauseSchema } from "../../../src/models/storage/storage-status.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { CRM_UI_REGISTRY } from "../../../src/backend/systems/crm/driver/ui-registry.js";
 import { UCPATH_UI_REGISTRY } from "../../../src/backend/systems/ucpath/driver/ui-registry.js";
@@ -497,7 +498,7 @@ const STORAGE_DOCTOR_REPORT = {
   sourceDatabaseIdentity: HASH_B,
   authority: { state: "healthy", inspection: AUTHORITY_COPY_INSPECTION },
   counts: { state: "available", values: AUTHORITY_PENDING_COUNTS },
-  spanAuthority: { state: "reconciled", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [] },
+  spanAuthority: { state: "reconciled", streamRunCount: 0, liveRunCount: 0, deleted: [] },
   backup: { state: "current", latest: RESTORE_CANDIDATE },
   restoreCandidates: [RESTORE_CANDIDATE],
 };
@@ -559,7 +560,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ArtifactOutboxStorageRecord", schema: ArtifactOutboxStorageRecordSchema, fixtures: [SQLITE_ARTIFACT_OUTBOX], openFixturePaths: ["payload.value"] },
 
   { name: "AuthorityBackupServiceOptions", schema: AuthorityBackupServiceOptionsSchema, fixtures: [{ directory: "/tmp/backups" }] },
-  { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ stateRootTrustAnchor: "/tmp", stateRoot: "/tmp/state", authorityPath: "/tmp/state.sqlite", backupDirectory: "/tmp/backups", maxBackupAgeMs: 60_000, busyTimeoutMs: 250 }] },
+  { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ stateRootTrustAnchor: "/tmp", stateRoot: "/tmp/state", authorityPath: "/tmp/state.sqlite", backupDirectory: "/tmp/backups", busyTimeoutMs: 250 }] },
   { name: "OfflineRestoreOptions", schema: OfflineRestoreOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", suspectDirectory: "/tmp/suspects", busyTimeoutMs: 250, processLockRoot: "/tmp/rebuild-locks"}] },
   { name: "AuthorityPendingCounts", schema: AuthorityPendingCountsSchema, fixtures: [AUTHORITY_PENDING_COUNTS] },
   { name: "AuthorityInvariantResult", schema: AuthorityInvariantResultSchema, fixtures: [{ state: "valid", violations: [] }] },
@@ -568,7 +569,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "CredentialStoreApplyOutcome", schema: CredentialStoreApplyOutcomeSchema, fixtures: [{ state: "applied", record: initialProtectedStoreRecord() }] },
   { name: "SettingsRecord", schema: SettingsRecordSchema, fixtures: [initialSettingsFileRecord()] },
   { name: "AuthorityBackupManifest", schema: AuthorityBackupManifestSchema, fixtures: [BACKUP_MANIFEST] },
-  { name: "AuthorityBackupRequest", schema: AuthorityBackupRequestSchema, fixtures: [{ trigger: "operator", requiredGeneration: 4 }] },
+  { name: "AuthorityBackupRequest", schema: AuthorityBackupRequestSchema, fixtures: [{ trigger: "schema-migration", requiredGeneration: 4 }] },
   { name: "AuthorityBackupRunReport", schema: AuthorityBackupRunReportSchema, fixtures: [{ state: "verified", requestedGeneration: 4, finalGeneration: 4, coalescedRequests: 1, followUpPerformed: false, manifests: [BACKUP_MANIFEST] }] },
   { name: "StorageHealthCause", schema: StorageHealthCauseSchema, fixtures: [HEALTH_CAUSE] },
   { name: "AuthorityBootReport", schema: AuthorityBootReportSchema, fixtures: [

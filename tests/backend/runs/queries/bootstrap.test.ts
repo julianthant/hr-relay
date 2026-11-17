@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { describe, it, vi } from "vitest";
 import { buildBootstrap, type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
-import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { StorageAuthoritySummarySchema } from "../../../../src/models/storage/storage-status.js";
 import { projectWorkbookCompatibility } from "../../../../src/models/dashboard/workbook-library.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -15,14 +15,14 @@ vi.mock("node:fs", async importOriginal => ({
 
 describe("bootstrap storage authority contract", () => {
   it("requires authority and rejects removed status and restore fields", () => {
-    assert.equal(StorageHealthSummaryWireSchema.safeParse({}).success, false);
-    assert.equal(StorageHealthSummaryWireSchema.safeParse({ authority: "unknown" }).success, false);
+    assert.equal(StorageAuthoritySummarySchema.safeParse({}).success, false);
+    assert.equal(StorageAuthoritySummarySchema.safeParse({ authority: "unknown" }).success, false);
     for (const authority of ["healthy", "unavailable"]) {
-      assert.deepEqual(StorageHealthSummaryWireSchema.parse({ authority }), { authority });
+      assert.deepEqual(StorageAuthoritySummarySchema.parse({ authority }), { authority });
       for (const [field, value] of Object.entries({
         backup: "current", checkedAt: "2026-11-06T12:00:00.000Z",
         lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "available" },
-      })) assert.equal(StorageHealthSummaryWireSchema.safeParse({ authority, [field]: value }).success, false, field);
+      })) assert.equal(StorageAuthoritySummarySchema.safeParse({ authority, [field]: value }).success, false, field);
     }
   });
 

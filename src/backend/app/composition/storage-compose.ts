@@ -1402,7 +1402,6 @@ function formatReport(report: StorageDoctorReport): string {
   if (report.spanAuthority.state === "reconciled") {
     lines.push(
       `span authority: reconciled (${String(report.spanAuthority.streamRunCount)} stream runs; `
-      + `${String(report.spanAuthority.archived.length)} archived; `
       + `${String(report.spanAuthority.deleted.length)} deleted)`,
     );
   } else if (report.spanAuthority.state === "degraded") {
@@ -1440,10 +1439,6 @@ function formatReport(report: StorageDoctorReport): string {
   const reconciliation = summarizeSpanAuthorityReconciliation(report.spanAuthority);
   lines.push(`span/authority: ${reconciliation.state === "healthy" ? "healthy" : "DEGRADED"} — ${reconciliation.summary}`);
   if (report.spanAuthority.state !== "unavailable") {
-    for (const archived of report.spanAuthority.archived) {
-      lines.push(`  archived: ${archived.runId}`);
-    }
-
     for (const deleted of report.spanAuthority.deleted) {
       lines.push(
         `  deleted: ${deleted.runId} — ${deleted.workflow} · trace ${deleted.traceId} `

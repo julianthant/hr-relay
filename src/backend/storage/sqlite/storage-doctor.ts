@@ -30,11 +30,14 @@ import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import {
 BackupHealthSchema,ProtectedSettingsInspectionSchema,RestoreCandidateSchema,
 SpanAuthorityReconciliationSchema,
+StorageHealthCauseSchema,
+type RestoreCandidate,
+} from "../../../models/storage/storage-status.js";
+import {
 SpanAuthorityRunRootSchema,
 StorageDoctorReportSchema,
-StorageHealthCauseSchema,
 type AuthorityCopyInspection,
-type RestoreCandidate,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot,type StorageDoctorReport
+type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot,type StorageDoctorReport
 } from "./recovery-contracts.js";
 import { validateSamePersonRestoreCandidate } from "./same-person-restore-candidate.js";
 import { inspectRestoreEligibility,inspectStorageRecovery } from "./storage-recovery-status.js";
@@ -47,7 +50,6 @@ export const StorageDoctorOptionsSchema = z.strictObject({
   stateRoot: z.string().min(1),
   authorityPath: z.string().min(1),
   backupDirectory: z.string().min(1),
-  maxBackupAgeMs: z.number().int().positive().optional(),
   busyTimeoutMs: z.number().int().positive(),
 });
 
@@ -537,14 +539,14 @@ function reconcileSpanAuthority(
     }) };
   }
   if (corpus.state === "missing" && snapshot.malformedRecords.length === 0
-    && (snapshot.liveRunCount > 0 || snapshot.archivedRunCount > 0)) {
+    && snapshot.liveRunCount > 0) {
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
         cause: {
           code: "span-stream-invalid",
           summary: "span corpus directory spans is missing while authority holds "
-            + `${String(snapshot.liveRunCount)} live and ${String(snapshot.archivedRunCount)} archived run(s)`,
+            + `${String(snapshot.liveRunCount)} live run(s)`,
         },
       }),
       authorityIdentity: {
@@ -555,10 +557,6 @@ function reconcileSpanAuthority(
   }
   const resolutions = snapshot.resolutions;
   const liveRunCount = resolutions.filter(({ state }) => state === "live").length;
-  const archived = resolutions.flatMap((resolution) => resolution.state === "archived"
-    ? [{ runId: resolution.runId, archivedAt: resolution.archivedAt }]
-    : []);
-
   const deleted = resolutions.flatMap((resolution) => resolution.state === "deleted"
     ? [{
       runId: resolution.runId,
@@ -585,8 +583,8 @@ function reconcileSpanAuthority(
   return {
     tombstoneOrdinalFindings: snapshot.tombstoneOrdinalFindings,
     reconciliation: SpanAuthorityReconciliationSchema.parse(problems.length === 0
-      ? { state: "reconciled", streamRunCount: corpus.roots.length, liveRunCount, archived, deleted }
-      : { state: "degraded", streamRunCount: corpus.roots.length, liveRunCount, archived, deleted, problems }),
+      ? { state: "reconciled", streamRunCount: corpus.roots.length, liveRunCount, deleted }
+      : { state: "degraded", streamRunCount: corpus.roots.length, liveRunCount, deleted, problems }),
     authorityIdentity: {
       authorityGeneration: snapshot.authorityGeneration,
       authorityContentFingerprint: snapshot.authorityContentFingerprint,
@@ -670,14 +668,14 @@ export const SpanAuthorityHealthSummarySchema = z.strictObject({
 });
 export type SpanAuthorityHealthSummary = z.infer<typeof SpanAuthorityHealthSummarySchema>;
 
-/** One health judgment consumed by preflight and the CLI; archived evidence is accounted evidence. */
+/** One health judgment consumed by preflight and the CLI; deleted evidence is accounted evidence. */
 export function summarizeSpanAuthorityReconciliation(input: unknown): SpanAuthorityHealthSummary {
   const reconciliation = SpanAuthorityReconciliationSchema.parse(input);
   if (reconciliation.state === "reconciled") {
     return SpanAuthorityHealthSummarySchema.parse({
       state: "healthy",
       summary: `span/authority identities reconcile (${String(reconciliation.liveRunCount)} current, `
-        + `${String(reconciliation.archived.length)} archived, ${String(reconciliation.deleted.length)} deleted)`,
+        + `${String(reconciliation.deleted.length)} deleted)`,
     });
   }
   if (reconciliation.state === "degraded") {
@@ -863,8 +861,7 @@ async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unkno
       });
     } else {
       const generationGap = latestVerified.candidate.generationGap;
-      const stale = (options.maxBackupAgeMs !== undefined && latestVerified.candidate.ageMs > options.maxBackupAgeMs)
-        || generationGap.state === "known" && generationGap.value > 0;
+      const stale = generationGap.state === "known" && generationGap.value > 0;
       const gapSummary = generationGap.state === "known"
         ? String(generationGap.value)
         : generationGap.reason;

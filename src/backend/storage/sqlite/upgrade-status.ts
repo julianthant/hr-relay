@@ -3,7 +3,7 @@ import { isAuthoritySourceChanged, withAuthorityDatabaseReadOnly } from "./reado
 import { AuthorityUpgradeRecordSchema } from "../../../models/config/authority.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { AuthorityUpgradeInspectionSchema } from "./recovery-contracts.js";
+import { AuthorityUpgradeInspectionSchema } from "../../../models/storage/storage-status.js";
 
 /** A doctor observation, with no journal identity, private path, digest or settings payload. */
 export function inspectAuthorityUpgradeStatus(admission: RuntimeAdmission, path: string, busyTimeoutMs: number, _clock: Clock) {

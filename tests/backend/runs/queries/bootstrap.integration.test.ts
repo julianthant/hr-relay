@@ -20,7 +20,7 @@ import { AUDITING_FORM,FOLDING_FORM,omissionCascadingDescriptor,READING_FORM } f
 import { AT,makeWorld,type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
-import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { StorageAuthoritySummarySchema } from "../../../../src/models/storage/storage-status.js";
 import { PreflightReportSchema } from "../../../../src/models/preflight/preflight.js";
 
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
@@ -243,7 +243,7 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
 
 /** The wire's own vocabulary, read off the schema — never retyped. */
 function armsOf(key: "authority"): readonly string[] {
-  const field = StorageHealthSummaryWireSchema.shape[key];
+  const field = StorageAuthoritySummarySchema.shape[key];
   assert.ok(field instanceof z.ZodEnum, `${key} is expected to be a closed enum`);
   return Object.values(field.enum).map(String);
 }
