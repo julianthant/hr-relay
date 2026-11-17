@@ -30,12 +30,9 @@ export function executeFailureResolution(
     rejectCommandRequest(request, "invalid-state", "The failure already has this resolution status. Refresh before trying again.");
   }
   const resolution = FailureResolutionSchema.parse(status === "resolved" && request.payload.action === "resolve"
-    ? { status, version: expectedVersion + 1, by: request.requestedBy, at: now,
-        ...(request.payload.note === undefined ? {} : { note: request.payload.note }) }
+    ? { status, version: expectedVersion + 1, by: request.requestedBy, at: now }
     : { status, version: expectedVersion + 1 });
   repositories.failureResolution.update({ runId, failureId, expectedVersion, resolution });
-  // History carries identity and action, never free text. The raw note belongs to
-  // the annotation/command evidence; the served projection protects it separately.
   repositories.timelineEvents.append({
     schemaVersion: 1,
     eventId: lifecycleCommandId("failure-resolution", { commandId: request.commandId }),

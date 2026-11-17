@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { convertPersonPreferencesRow, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH } from "../../../../src/backend/storage/sqlite/person-preferences-migration.js";
+import { convertSettingsRecordRow, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH } from "../../../../src/backend/storage/sqlite/settings-record-conversion.js";
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
@@ -62,7 +62,7 @@ it("converts accepted snapshots and exact initialization links without changing 
     const before = rows(database);
     assert.throws(() => readAppSettings(database));
     assert.equal(inspectNativeAuthority(database, 15).schemaVersion, 15);
-    assert.equal(readAppSettings(database, convertPersonPreferencesRow)?.initialization.configSnapshotId, CONFIG_SNAPSHOT.configSnapshotId);
+    assert.equal(readAppSettings(database, convertSettingsRecordRow)?.initialization.configSnapshotId, CONFIG_SNAPSHOT.configSnapshotId);
     database.exec("BEGIN EXCLUSIVE"); convert(database); database.exec("ROLLBACK");
     assert.deepEqual(rows(database), before);
     database.exec("BEGIN EXCLUSIVE"); convert(database); database.exec("COMMIT");

@@ -5,7 +5,7 @@ import { ownedDiagnostics } from "../../../../../src/backend/app/composition/das
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import { GATE_PARK_WATCH_MS } from "../../../../../src/backend/app/composition/dashboard/timeline.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
-import * as backupInspection from "../../../../../src/backend/storage/sqlite/backup-inspection.js";
+import * as backupInspectionWorker from "../../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import * as canonicalRuns from "../../../../../src/backend/runs/queries/canonical-runs.js";
 import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -32,7 +32,7 @@ async function idleReads(backups: number, stalls = false): Promise<ReturnType<ty
       f.clock.advanceWall(1_000);
     }
     const stores = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
-    const backupCopies = vi.spyOn(backupInspection, "inspectAuthorityBackupReadOnly");
+    const backupCopies = vi.spyOn(backupInspectionWorker, "inspectAuthorityBackupOffThread");
     const liveRunLists = vi.spyOn(canonicalRuns, "listCanonicalRuns");
     try {
       const { observer } = createTrustNotifications({ admission: syntheticStateRoot(f.root), database: f.db, clock: f.clock,

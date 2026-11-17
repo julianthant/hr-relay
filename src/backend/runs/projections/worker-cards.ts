@@ -11,13 +11,6 @@ import type { RunFoldRecord } from "./run-queue-projection.js";
 
 export type WorkerCardWire = z.infer<typeof WorkerCardWireSchema>;
 
-/** ONE open browser session as the span fold observed it. */
-export interface WorkerBrowserFold {
-  readonly sessionId: string;
-  readonly system: string;
-  readonly openedAt: string;
-}
-
 function workerCardState(view: WorkerMemberView): WorkerCardWire["state"] {
   if (view.state === "exited") return "failed";
   if (view.state === "starting") return "starting";

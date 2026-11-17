@@ -13,7 +13,7 @@ import { readGateParks } from "../../../../src/backend/app/composition/dashboard
 import { explainRunFrom } from "../../../../src/backend/app/composition/explain-compose.js";
 import { SectionUnavailableError } from "../../../../src/backend/runs/commands/refusals.js";
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
-import { buildRunGate } from "../../../../src/backend/runs/queries/run-trust.js";
+import { buildRunGate } from "../../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { EXIT_TERMINAL_AT, seedPersonLookupExitRun } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -38,7 +38,8 @@ describe("D capture identity and served resolution", () => {
           receipts:sql.prepare("SELECT * FROM run_receipts ORDER BY id").all()});
         const before = immutable();
         const note = "SYNTHETIC_PROTECTED_TEXT_10999999";
-        assert.equal(f.kernel.execute(resolutionCommand({ payload: { action: "resolve", note } })).state, "applied");
+        f.db.authority.failureResolution.update({ runId: f.record.runId, failureId: f.record.failureId, expectedVersion: 1,
+          resolution: { status: "resolved", version: 2, by: "local-operator", at: f.clock.now().toISOString(), note } });
         assert.equal(immutable(), before);
         assert.deepEqual(deps.trust.ensureReceipt(f.record.runId), receipt);
         const raw = deps.trust.failureResolution?.read(f.record.runId, f.record.failureId); assert.ok(raw);

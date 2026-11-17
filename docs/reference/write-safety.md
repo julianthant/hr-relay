@@ -262,22 +262,9 @@ matches a complete digit token, so an ordinary longer identifier containing the 
 
 ## 4. Crash recovery and UNKNOWN refusal
 
-`createWriteRecoveryService` handles unfinished `attempting` intents. Production worker startup parks unfinished attempts for operator action; the standalone recovery service is not composed into that startup path. Worker and expired-claim recovery must reconcile these intents before ordinary queue admission. [Execution and sessions](execution-and-sessions.md) describes that scheduling boundary.
+Production worker startup parks unfinished `attempting` intents for operator action before ordinary queue admission. [Execution and sessions](execution-and-sessions.md) describes that scheduling boundary.
 
-The recovery service rebuilds the exact commit input and binds the retained run configuration fingerprint around its read lease. Missing authority or incompatible semantic identity refuses before probing. A failed probe is not absence.
-
-| Recovery evidence | Result |
-| --- | --- |
-| `present` with valid proof and reconstructed output | Atomic backfill settlement, `proofSource: "recovery-probe"`, no second commit |
-| `present` with invalid proof or an old repeat receipt | Park with `present-proof-invalid` or `unknown` |
-| `ambiguous`, `unknown`, or a throwing probe | Park with a typed authority reason |
-| `absent` under `operator-only` | Park `operator-required` |
-| Qualifying stabilized absences, but not enough observations yet | Return `wait { notBefore, observationsNeeded }` |
-| Complete stabilized negative proof | Mark the same intent `retryable` and resume the run for a fresh generation |
-
-`evaluateNegativeSettlement` validates every counted absence against the fenced key, query, authoritative source, and source state. Each observation must fall after the propagation window and meet spacing constraints. Future, early, malformed, contradictory, or foreign-key observations cannot grant retry authority. Earlier observations are diagnostic only. Prior observations are held within the recovery episode and recollected after process loss.
-
-`wait` returns a scheduling instant rather than sleeping a worker. Inline same-owner recovery accepts valid positive proof but parks negative uncertainty; stabilized settlement belongs to the standalone recovery service.
+Inline same-owner recovery accepts valid positive proof but parks negative uncertainty. Parked-write checks retain read evidence without granting retry or settlement; typed operator resolution controls the held generation.
 
 Worker Remove and Retry do not reconcile a write. Before profile release or replacement, native
 authority refuses held Duo, a current owned claim or an unattributable attempting write. Another

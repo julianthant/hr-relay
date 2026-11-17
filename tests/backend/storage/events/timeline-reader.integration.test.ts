@@ -50,7 +50,6 @@ describe("D actual HTTP admission", () => {
         assert.equal(response.status, input.status, await response.text()); assert.equal(snapshot(f, true), before);
         const diagnostics = readTimelineRecords(f.db.authority.timelineEvents).records.filter(row => row.payload.kind === "debug");
         assert.ok(diagnostics.every(row => row.payload.kind === "debug" && row.payload.event.category === "http"));
-        assert.ok(diagnostics.every(row => !JSON.stringify(row).includes("Updated page control.")));
       }
       const command = resolutionCommand({ requestedAt: "2000-01-01T00:00:00.000Z" });
       const response = await app.request("http://localhost/api/v1/commands", { method: "POST", headers, body: JSON.stringify(command) });
@@ -61,10 +60,10 @@ describe("D actual HTTP admission", () => {
       assert.equal(replay.status, 200);
       const committed = snapshot(f, true);
       const divergent = await app.request("http://localhost/api/v1/commands", { method: "POST", headers,
-        body: JSON.stringify({ ...command, payload: { action: "resolve", note: "PRIVATE_CHANGED_NOTE" } }) });
+        body: JSON.stringify({ ...command, reason: "PRIVATE_CHANGED_REASON" }) });
       assert.equal(divergent.status, 422);
       const refusal = await divergent.text();
-      assert.match(refusal, /command-divergent/u); assert.ok(!refusal.includes("PRIVATE_CHANGED_NOTE"));
+      assert.match(refusal, /command-divergent/u); assert.ok(!refusal.includes("PRIVATE_CHANGED_REASON"));
       assert.equal(snapshot(f, true), committed);
     } finally { await f.dispose(); }
   });

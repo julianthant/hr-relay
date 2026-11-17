@@ -824,11 +824,10 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         const resolution = served.resolution;
         if (option.send.family !== "failure-resolution" || option.send.type !== "annotate-failure" || resolution === undefined
           || !decisionAnswerValid(option, answer)) return;
-        const note = option.input?.kind === "text" ? answer.text?.trim() : undefined;
         dispatchIfDecisionCurrent.current(DashboardCommandRequestSchema.parse({ family: "failure-resolution", type: "annotate-failure", commandId: crypto.randomUUID(),
           requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "run-detail",
           target: { runId: row.runId, failureId: served.failureId, expectedVersion: resolution.capture.resolution.version },
-          payload: { action: "resolve", ...(note === undefined ? {} : { note }) } }));
+          payload: { action: "resolve" } }));
         return;
       }
       if (recovery === undefined || option === undefined || !decisionAnswerValid(option, answer)
