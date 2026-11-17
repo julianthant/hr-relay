@@ -65,6 +65,22 @@ it("acquires scoped selected-day metadata through the production batch summary p
   } finally { await f.dispose(); }
 });
 
+it("serves a near-midnight run on its Pacific day when the machine zone is not Pacific", async () => {
+  const f = await summaryFixture(), prior = process.env.TZ;
+  try {
+    process.env.TZ = "UTC";
+    const at = "2026-09-09T03:00:00.000Z";
+    f.db.authority.runs.enqueue(RunRecordSchema.parse({ ...f.run,
+      envelope: { ...f.run.envelope, runId: uuidOf(5700), itemId: uuidOf(5701), enqueuedAt: at },
+      lifecycle: { state: "queued" }, claimGeneration: 0, version: 1, createdAt: at, updatedAt: at,
+    }));
+    const day = f.projection.buildDashboardDayWire("2026-09-08");
+    assert.deepEqual(day.queueSurfaces.map(row => row.runId), [uuidOf(5700)]);
+    assert.deepEqual(day.attemptHistory?.map(entry => entry.runId), [uuidOf(5700)]);
+    assert.deepEqual(f.projection.buildDashboardDayWire("2026-09-09").queueSurfaces, []);
+  } finally { if (prior === undefined) delete process.env.TZ; else process.env.TZ = prior; await f.dispose(); }
+});
+
 it("keeps later-day metadata isolated after an earlier attempt changes without changing selected-day counts", async () => {
   const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
   const first = seedPersonLookupPresentation(w, { seed: 611, itemId: uuidOf(5600), enqueuedAt: "2026-07-31T17:00:00.000Z" });

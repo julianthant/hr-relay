@@ -5,7 +5,7 @@ import { deriveSchemaHash } from "../../models/validation/schema-bound-value.js"
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { sha256Hex } from "../validation/sha256.js";
 import { projectReceiptForOperator } from "../../models/trust/evidence.js";
-import { localDatePart } from "../time/clock.js";
+import { searchPartitionDay } from "../../models/dashboard/search-calendar.js";
 
 /** One derivation for initial publication, affected-run maintenance and explicit rebuild. */
 export function deriveRunSummary(source: RunSummarySource, sourceGeneration: number): RunSummary {
@@ -17,7 +17,7 @@ export function deriveRunSummary(source: RunSummarySource, sourceGeneration: num
   const summary = RunSummarySchema.parse({
     runId: run.envelope.runId, workflow: run.envelope.workflow, itemId: run.envelope.itemId,
     descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint,
-    title: run.displayName ?? source.queueTitle ?? run.envelope.workflow, localDay: localDatePart(new Date(run.envelope.enqueuedAt)),
+    title: run.displayName ?? source.queueTitle ?? run.envelope.workflow, localDay: searchPartitionDay(new Date(run.envelope.enqueuedAt)),
     enqueuedAt:run.envelope.enqueuedAt,startedAt,
     endedAt:run.lifecycle.state === "terminal" ? run.lifecycle.endedAt : null,
     durationMs:run.lifecycle.state === "terminal" && Date.parse(run.lifecycle.endedAt)>=Date.parse(startedAt)
