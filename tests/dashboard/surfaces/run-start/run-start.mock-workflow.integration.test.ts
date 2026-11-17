@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, describe, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
-import type { MockDraft, MockWorkflowId } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import type { MockDraft } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import type { MockWorkflowId } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
@@ -11,7 +12,8 @@ afterEach(h.cleanup);
 async function typeIds(text: string): Promise<void> {
   const box = document.body.querySelector<HTMLTextAreaElement>('textarea[aria-label="Employee IDs"]');
   assert.ok(box);
-  const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+  const descriptor: { set?: (this: unknown, value: string) => void } | undefined = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
+  const set = descriptor?.set;
   assert.ok(set);
   await act(async () => { set.call(box, text); box.dispatchEvent(new Event("input", { bubbles: true })); });
 }

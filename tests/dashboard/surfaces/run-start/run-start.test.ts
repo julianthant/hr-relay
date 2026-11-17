@@ -560,7 +560,7 @@ describe("a plan that omits a different set cannot be started", () => {
     assert.ok(dialog.text().includes("This plan does not describe the steps you omitted"));
     assert.ok(dialog.text().includes("kronos-timecard"));
     assert.ok(dialog.text().includes("kuali-finalization"));
-    assert.equal(dialog.disabled("Start 1 run"), true, "a plan for a different run was startable");
+    assert.equal(dialog.disabled("Start live run"), true, "a plan for a different run was startable");
   });
 
   it("starts when the plan names exactly the set the dialog sent", async () => {
