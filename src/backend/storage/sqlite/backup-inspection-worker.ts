@@ -9,7 +9,7 @@ import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { createPrivateDirectory, fsyncPath } from "../private-path.js";
 import { inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
-import { openReadOnlyDatabase, withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
+import { backupReadOnlyDatabase, withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { BackupCopyInspectionSchema } from "./recovery-contracts.js";
 
 const PROTOCOL = "relay.backup-inspection.v1";
@@ -168,7 +168,7 @@ function deepFreeze<T>(value: T): T {
 }
 
 /** The thread's answer to its start data: nothing for another module's worker, a failure for a request that does not parse. */
-export function answerInspectionRequest(data: unknown): WorkerReply | undefined {
+export function answerInspectionRequest(data: unknown): WorkerReply | Promise<WorkerReply> | undefined {
   const protocol = z.looseObject({ protocol: z.string() }).safeParse(data);
   if (!protocol.success) return undefined;
   if (protocol.data.protocol === PROTOCOL) {
@@ -194,18 +194,17 @@ function runInspection(request: InspectionRequest): WorkerReply {
   } catch (error) { return failedReply(error); }
 }
 
-function runCopy(request: CopyRequest): WorkerReply {
+async function runCopy(request: CopyRequest): Promise<WorkerReply> {
   try {
     if (existsSync(request.destination)) throw new Error("backup-copy-destination-exists");
-    const database = openReadOnlyDatabase(request.source, request.busyTimeoutMs);
-    try { database.prepare("VACUUM INTO ?").run(request.destination); }
-    finally { database.close(); }
+    await backupReadOnlyDatabase(request.source, request.destination, request.busyTimeoutMs);
     fsyncPath(request.destination);
     return { kind: "copied" };
   } catch (error) { return failedReply(error); }
 }
 
 if (!isMainThread && parentPort !== null) {
+  const port = parentPort;
   const reply = answerInspectionRequest(workerData);
-  if (reply !== undefined) parentPort.postMessage(reply);
+  if (reply !== undefined) void Promise.resolve(reply).then(answer => { port.postMessage(answer); });
 }
