@@ -13,6 +13,7 @@ import { testRunService, testWorkerPorts } from "../../support/fixtures/run-life
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../../support/helpers/run-integration-world.js";
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { readAuthorityRestoreJournal } from "../../../src/backend/storage/admission/installation.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { initialSettingsFileRecord } from "../../../src/models/config/settings.js";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
@@ -2122,23 +2123,24 @@ describe("offline exact-backup restore", () => {
     );
   });
 
-  it("reports cleanup-only failure after authority replacement and names the staged path", async () => {
+  it("leaves settlement unproved and retains the named staged path when a staged file remains after authority replacement", async () => {
     const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
-    let cleanupPath = "";
+    let stagedPath = "";
+    const removed: string[] = [];
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: (source, destination) => {
           renameSync(source, destination);
-          cleanupPath = source;
-          copyFileSync(destination, cleanupPath);
+          stagedPath = source;
+          copyFileSync(destination, stagedPath);
         },
         removePath: (path) => {
-          if (path === cleanupPath) throw new Error("injected staged cleanup failure");
+          removed.push(path);
           rmSync(path);
         },
       }, boundProfileCredentials(admissionFor(root)));
@@ -2152,9 +2154,11 @@ describe("offline exact-backup restore", () => {
 
     assert.ok(failure instanceof OfflineRestoreFailure);
     assert.equal(failure.authorityState, "replaced");
-    assert.match(failure.message, /injected staged cleanup failure/u);
-    assert.match(failure.message, new RegExp(cleanupPath, "u"));
-    assert.equal(existsSync(cleanupPath), true);
+    assert.match(failure.message, /restore settlement is unproved; durable operation and staging evidence retained/u);
+    assert.equal(existsSync(stagedPath), true);
+    assert.deepEqual(removed.filter(path => path.startsWith(stagedPath)), []);
+    const context = admissionFor(root).readInstallationContext(); assert.ok(context);
+    assert.equal(readAuthorityRestoreJournal(context.workspace)?.restore.stagedPath, stagedPath);
   });
 
   it("preserves primary failure before staged cleanup failure", async () => {
@@ -2544,6 +2548,7 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/backend/storage/sqlite/backup-inspection.ts",
       "src/backend/storage/sqlite/command-record-row.ts",
       "src/backend/storage/sqlite/exclusive-session-leases.ts",
+      "src/backend/storage/sqlite/failure-note-removal-migration.ts",
       "src/backend/storage/sqlite/failure-resolution.ts",
       "src/backend/storage/sqlite/generated-artifacts.ts",
       "src/backend/storage/sqlite/imported-artifacts.ts",
