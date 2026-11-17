@@ -885,9 +885,9 @@ function deriveStartRows(
   declared: readonly StartRowDeclaration[] | undefined,
 ): readonly StartRowDeclaration[] {
   if (declared === undefined) {
-    return Object.freeze(timeline.map((step) => Object.freeze({
-      key: step.key, label: step.label, members: Object.freeze([Object.freeze({ step: step.key })]),
-      ...(switchable.has(step.key) ? { target: Object.freeze({ step: step.key }) } : {}),
+    return Object.freeze(timeline.map((step): StartRowDeclaration => deepFreeze({
+      key: step.key, label: step.label, members: [{ step: step.key }],
+      ...(switchable.has(step.key) ? { target: { step: step.key } } : {}),
     })));
   }
   const rows = declared.map((row) => StartRowDeclarationSchema.parse(row));

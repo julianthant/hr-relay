@@ -2,7 +2,7 @@
 import { z } from "zod";
 import type { JsonObject, JsonValue } from "../../rules/validation/canonical-json.js";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
-import type { IsoInstant } from "../../rules/identity/ids.js";
+import { EID_PATTERN, type IsoInstant } from "../../rules/identity/ids.js";
 import type { RuntimeScope } from "./graph.js";
 import { TimelineCategoryKeySchema } from "./presentation.js";
 import { ValueFieldPathSchema } from "./rerun-values.js";
@@ -51,7 +51,7 @@ export const UsDateFactSchema = z.string().regex(
   "a date fact must be MM/DD/YYYY",
 );
 export const IsoDateFactSchema = z.iso.date();
-export const EidFactSchema = z.string().regex(/^\d{8}$/u, "an employee id fact must be exactly eight digits");
+export const EidFactSchema = z.string().regex(EID_PATTERN, "an employee id fact must be eight digits beginning with 10");
 
 function fieldSchema(field: StepOmissionField): z.ZodType {
   switch (field.kind) {
@@ -84,7 +84,7 @@ export function stepManualFieldSamples(field: StepOmissionField): readonly JsonV
     case "text": return ["Typed value"];
     case "us-date": return ["01/02/2000", "12/31/1999"];
     case "iso-date": return ["2000-01-02", "1999-12-31"];
-    case "eid": return ["00000000", "12345678"];
+    case "eid": return ["10000000", "10999999"];
     case "integer": return [field.min ?? 0, (field.min ?? 0) + 1];
     case "boolean": return [true, false];
     case "enum": return field.values;
@@ -290,7 +290,7 @@ export function stepOmissionPlaceholderFacts(form: StepOmissionForm): JsonObject
       case "enum": return field.values[0] ?? "";
       case "us-date": return "01/01/2000";
       case "iso-date": return "2000-01-01";
-      case "eid": return "00000000";
+      case "eid": return "10000000";
       case "text": return "cascade";
     }
   };

@@ -1,6 +1,6 @@
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { InputRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
-import { StepOmissionFormSchema } from "../../../src/models/workflow/step-omission.js";
+import { StepOmissionFormSchema, type StepOmissionProduceContext } from "../../../src/models/workflow/step-omission.js";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
@@ -64,12 +64,12 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", curre
     identity: { matchKey: (input: { eid: string }) => input.eid }, presentation: { title: (input: { eid: string }) => input.eid }, scenarios: ["launch-proof/happy"],
     timeline: [
       { key: `${prefix}reading`, label: "Read employee", nodes: ["read"] },
-      { key: `${prefix}checking`, label: "Check employee", nodes: ["check"], manual: { skips: ["check"], form: StepOmissionFormSchema.parse({ fields: [{ key: "eid", label: "Checked employee ID", kind: "eid" }] }), produces: {} } },
+      { key: `${prefix}checking`, label: "Check employee", nodes: ["check"], manual: { form: StepOmissionFormSchema.parse({ fields: [{ key: "eid", label: "Checked employee ID", kind: "eid", replaces: { nodeId: "check", path: "eid" } }] }),
+        produces: { check: ({ facts }: StepOmissionProduceContext) => z.strictObject({ eid: EidSchema }).parse(facts) } } },
       { key: `${prefix}filing`, label: "File transaction", nodes: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"], manual: { form: StepOmissionFormSchema.parse({ fields: [] }), produces: {}, skips: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"], skipsGatesAndTransactions: true } },
     ],
     rerunValues: [
       { nodeId: "read", fieldPath: "eid", targetFieldPath: "eid", label: "Employee ID" },
-      { nodeId: "check", fieldPath: "eid", targetFieldPath: "eid", targetStepKey: `${prefix}checking`, label: "Checked employee ID" },
       { nodeId: "submit-write", fieldPath: "output.value.transactionId", targetFieldPath: "memo", label: "Previous transaction" },
     ],
   } as const;

@@ -37,6 +37,12 @@ describe("manual field kinds", () => {
     assert.equal(schema.safeParse({ name: "Ada" }).success, false);
   });
 
+  it("accepts an employee id only in the EID form, eight digits beginning with 10", () => {
+    const schema = stepOmissionFactsSchema({ fields: [{ key: "eid", label: "Employee ID", kind: "eid" }] });
+    assert.deepEqual(schema.parse({ eid: "10812345" }), { eid: "10812345" });
+    for (const eid of ["12345678", "00000000", "1081234", "108123456"]) assert.equal(schema.safeParse({ eid }).success, false, eid);
+  });
+
   it("stores an iso-date as YYYY-MM-DD only", () => {
     const schema = stepOmissionFactsSchema({ fields: [{ key: "oathDate", label: "Oath date", kind: "iso-date" }] });
     assert.deepEqual(schema.parse({ oathDate: "2026-06-18" }), { oathDate: "2026-06-18" });
@@ -56,7 +62,7 @@ describe("manual planning", () => {
   it("refuses a running node that reads a skipped one", () => {
     const plan = planStepOmissions({
       ...GRAPH,
-      stepOmissions: [{ ...GRAPH.stepOmissions[0]!, produces: {}, skips: ["search", "read"] }],
+      stepOmissions: [{ ...GRAPH.stepOmissions[0], produces: {}, skips: ["search", "read"] }],
     }, [{ step: "reading", facts: { value: "x" } }]);
     assert.deepEqual(plan.refusals.map(({ code, step }) => [code, step]), [
       ["dependency-omitted", "reading"],

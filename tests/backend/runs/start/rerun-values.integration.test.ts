@@ -783,3 +783,35 @@ describe("source-bound Rerun value read", () => {
   });
 
 });
+
+describe("Rerun values of a typed step", () => {
+  it("offers a step's completed reading through the field's replaces", async () => {
+    const h = await launchHarness(); disposers.push(h.dispose);
+    const source = await h.completeSource();
+    const result = readRerunValues({ reader: h.lifecycle, database: h.database, descriptors: { resolve: () => h.descriptor } }, request(source));
+    assert.ok(result.state === "available");
+    const checked = result.snapshot.values.find((value) => value.nodeId === "check");
+    assert.ok(checked?.state === "available");
+    assert.deepEqual([checked.value, checked.fieldPath, checked.label, checked.targetStepKey, checked.targetFieldPath],
+      ["10812345", "eid", "Checked employee ID", "checking", "eid"]);
+    assert.equal(result.snapshot.typed, undefined);
+  });
+
+  it("refills the source's own typed facts and never offers an operator-asserted reading as completed", async () => {
+    const h = await launchHarness(); disposers.push(h.dispose);
+    const start = { workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false, selectedStepKeys: ["reading"],
+      stepOmissions: [{ step: "checking", facts: { eid: "10812346" } }, { step: "filing", facts: {} }] };
+    await h.planner.prepare?.(start, new AbortController().signal);
+    const run = h.start(h.planner.plan(start));
+    assert.equal((await h.execute(run)).state, "done");
+    const result = readRerunValues({ reader: h.lifecycle, database: h.database, descriptors: { resolve: () => h.descriptor } }, request(h.fresh(run)));
+    assert.ok(result.state === "available");
+    assert.deepEqual(result.snapshot.values.find((value) => value.nodeId === "check"), {
+      nodeId: "check", fieldPath: "eid", label: "Checked employee ID", targetFieldPath: "eid", targetStepKey: "checking", sourceStepKey: "checking",
+      state: "unavailable", reason: "not-completed" });
+    assert.deepEqual(result.snapshot.typed, [
+      { step: "checking", facts: { eid: "10812346" }, labels: { eid: "Checked employee ID" } },
+      { step: "filing", facts: {}, labels: {} },
+    ]);
+  });
+});
