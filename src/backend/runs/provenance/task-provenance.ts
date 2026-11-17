@@ -54,6 +54,8 @@ export type TaskProvenanceCollectorInput = Readonly<{
   readonly upstreamEvidence: z.input<typeof TaskUpstreamCheckpointEvidenceSchema>;
   readonly clock: Clock;
   readonly canonicalInput?: JsonValue;
+  /** Declared reference ids the run picked a spreadsheet for, so a skip on that condition can be verified. */
+  readonly references?: readonly string[];
   readonly continuation?: AuthenticatedRunContinuation;
   readonly observationSpanPath?: string;
 
@@ -267,7 +269,7 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     if (input.canonicalInput === undefined) throw new Error(`skipped node ${id} requires the validated canonical input`);
     const dependency = nodeConditionDependency(skipped.when);
     if (dependency !== undefined && outputs[dependency] === undefined && !skippedIds.has(dependency)) throw new Error(`skipped node ${id} has no condition dependency evidence for ${dependency}`);
-    if (evaluateNodeCondition(skipped.when, { input: input.canonicalInput, outputs })) throw new Error(`task ${execution.taskId} cannot skip required ${skipped.kind === "gate" ? "gate" : "task"} ${id}`);
+    if (evaluateNodeCondition(skipped.when, { input: input.canonicalInput, outputs, ...(input.references === undefined ? {} : { references: input.references }) })) throw new Error(`task ${execution.taskId} cannot skip required ${skipped.kind === "gate" ? "gate" : "task"} ${id}`);
   }
   const childFacts = (evidence.children ?? []).flatMap((child) => {
     const declared = nodes.find((candidate) => candidate.id === child.evidence.nodeId);

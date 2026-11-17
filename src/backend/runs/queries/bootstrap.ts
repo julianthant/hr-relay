@@ -146,6 +146,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         spreadsheetIntake: intake !== undefined,
         requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
         ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
+        ...(descriptor.workbookCheck === undefined ? {} : { workbookCheck: descriptor.workbookCheck }),
       },
     })),
     systemInstances: [...systems.values()].sort().map((system) => ({

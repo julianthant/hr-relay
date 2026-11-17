@@ -9,6 +9,7 @@ import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backen
 import { UcpathContactPageSnapshotSchema } from "../../../../src/models/ui/ucpath-emergency-contact.js";
 import { sessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { createOcrReviewWorld } from "./ocr-review-world.js";
+import { onbaseFilingFixture } from "./onbase-filing-fixture.js";
 import contactPage from "../../fixtures/ui/ucpath/emergency-contact.fixture.json";
 
 import type { BoundProfileStorageFixture } from "../admission-fixture.js";
@@ -23,11 +24,17 @@ export async function verifyRetainedDelegatedPreviewEvidence(
   const world = createOcrReviewWorld();
   let reopened: AuthorityDatabase | undefined;
   try {
-    const port = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
-      displayedEid: "10800000", displayedName: "Example, Avery" }) });
-    const sessions = sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver(undefined, undefined, port) });
-    const f = await world.fixture({ coordinator: true, record: true, dryRun: true, sessions,
-      screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); await port.snapshot(); } } });
+    // Every UCPath session opens the persisted contact page afresh; a dry run never saves, so it stays the original.
+    const pages: ReturnType<typeof createDeterministicUcpathContactPage>[] = [];
+    const filing = await onbaseFilingFixture(1);
+    const sessions = sessionFactoryHarness({ onbase: filing.session(() => f.clock), ucpath: () => {
+      const page = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
+        displayedEid: "10800000", displayedName: "Example, Avery" }) });
+      pages.push(page);
+      return createDeterministicUcpathPersonOrgDriver(undefined, undefined, page);
+    } });
+    const f = await world.fixture({ coordinator: true, record: true, dryRun: true, sessions, documentBytes: filing.bytes,
+      screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); const page = pages.at(-1); assert.ok(page); await page.snapshot(); } } });
     assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
     assert.equal(f.canonical.kernel.execute(f.approval()).state, "applied");
     const completed = await f.canonical.execute(f.parentRun, new AbortController().signal);
@@ -37,9 +44,8 @@ export async function verifyRetainedDelegatedPreviewEvidence(
     assert.equal(member.lifecycle.state === "terminal" ? member.lifecycle.outcome : member.lifecycle.state, "done");
     const previews = [completed.run, member].map(run => {
       const result = f.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
-      const hash = run.envelope.workflow === "emergency-contact"
-        ? "06bdc474498e86c00a7982fce5a5b223704504ccd91f8c4ed2f9fb5384c6984f"
-        : "56c14ccc71d195b045352f4a0c198b9fa0b87245ff4e399ff6f9ad4fe1589a1c";
+      // The parent and the member (which now delegates its OnBase filing) both store a delegated dry-run preview.
+      const hash = "06bdc474498e86c00a7982fce5a5b223704504ccd91f8c4ed2f9fb5384c6984f";
       assert.equal(result.resultSchemaHash, hash);
       assert.equal(result.result.schemaHash, hash);
       assert.ok(readRunPreviewResult(result));
@@ -100,7 +106,8 @@ export async function verifyRetainedDelegatedPreviewEvidence(
         assert.ok(preview.stages.some(stage => /without (saving|submitting)/u.test(stage.detail)));
       }
     }
-    assert.equal(port.actions.some(action => action.startsWith("save")), false);
+    assert.ok(pages.length > 0 && pages.every(page => !page.actions.some(action => action.startsWith("save"))));
+    assert.equal(filing.imports(), 0, "a dry run never clicks Import");
 
   } finally { reopened?.close(); await world.cleanup(); }
 }

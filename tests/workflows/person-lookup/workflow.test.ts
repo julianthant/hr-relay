@@ -89,7 +89,7 @@ describe("workflow definition public equivalence characterization", () => {
     }).toEqual({
   "descriptor": {
     "id": "person-lookup",
-    "version": 3,
+    "version": 4,
     "code": "pl",
     "label": "Person Lookup",
     "summary": "Searches or matches one person in UCPath, cross-checks CRM, and reads employment status and selected CRM dates.",
@@ -320,6 +320,16 @@ describe("workflow definition public equivalence characterization", () => {
             "label": "CRM Dates"
           }
         ]
+      },
+      {
+        "key": "reference-check",
+        "label": "Check reference spreadsheets",
+        "nodes": [
+          {
+            "id": "reference-check",
+            "label": "Check reference spreadsheets"
+          }
+        ]
       }
     ],
     "stepOmissions": []
@@ -340,6 +350,10 @@ describe("workflow definition public equivalence characterization", () => {
       {
         "kind": "headless",
         "namespace": "workflow:person-lookup"
+      },
+      {
+        "kind": "headless",
+        "namespace": "workbooks"
       }
     ],
     "intakeTargets": [
@@ -553,6 +567,25 @@ describe("workflow definition public equivalence characterization", () => {
           "path": "datesEid"
         }
       }
+    },
+    {
+      "id": "reference-check",
+      "kind": "task",
+      "dependsOn": [
+        "search-identity",
+        "crm-identity",
+        "matching",
+        "crm-selected-record",
+        "crm-results",
+        "active-status"
+      ],
+      "when": {
+        "kind": "is-present",
+        "of": {
+          "from": "reference",
+          "typeId": "reference-check"
+        }
+      }
     }
   ],
   "steps": [
@@ -635,6 +668,14 @@ describe("workflow definition public equivalence characterization", () => {
       "kind": "task",
       "taskId": "crm/read-onboarding-dates",
       "conditional": true
+    },
+    {
+      "key": "reference-check",
+      "nodeId": "reference-check",
+      "label": "Check reference spreadsheets",
+      "kind": "task",
+      "taskId": "workbooks/verify-person",
+      "conditional": true
     }
   ],
   "gates": [],
@@ -653,7 +694,8 @@ describe("workflow definition public equivalence characterization", () => {
     "crm/read-onboarding-results",
     "ucpath/search-person-org",
     "workflow:person-lookup/read-active-status",
-    "crm/read-onboarding-dates"
+    "crm/read-onboarding-dates",
+    "workbooks/verify-person"
   ],
   "dryRun": {
     "state": "unsupported",

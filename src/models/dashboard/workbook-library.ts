@@ -23,10 +23,16 @@ export const WorkbookFieldRequirementSchema = z.strictObject({
   id: WorkbookIdSchema, keyFieldId: KnownWorkbookFieldSchema, mode: z.enum(["keys", "all"]),
   writableFields: z.array(KnownWorkbookFieldSchema).refine(fields => new Set(fields).size === fields.length),
 });
+/** An optional second check: any library sheet whose key field is bound fits, and a run may pick none. */
+export const WorkbookCheckRequirementSchema = z.strictObject({ id: WorkbookIdSchema, keyFieldId: KnownWorkbookFieldSchema });
 export const WorkbookRequirementDeclarationSchema = z.strictObject({
   requiredWorkbookFields: z.array(KnownWorkbookFieldSchema).refine(fields => new Set(fields).size === fields.length),
   workbookReference: WorkbookFieldRequirementSchema.optional(),
+  workbookCheck: WorkbookCheckRequirementSchema.optional(),
 }).superRefine((workflow, context) => {
+  if (workflow.workbookCheck !== undefined && workflow.workbookCheck.id === workflow.workbookReference?.id) {
+    context.addIssue({ code: "custom", message: "workbook check and workbook reference need distinct ids" });
+  }
   const reference = workflow.workbookReference;
   if (workflow.requiredWorkbookFields.length === 0 ? reference !== undefined : reference === undefined
     || reference !== undefined && (!workflow.requiredWorkbookFields.includes(reference.keyFieldId)
@@ -126,6 +132,8 @@ export const WorkbookCompatibilitySchema = z.strictObject({
 export type WorkbookCompatibility = z.infer<typeof WorkbookCompatibilitySchema>;
 
 export const WorkbookActiveSelectionSchema = z.strictObject({
+  /** Which declaration the pick answers; absent means the workflow's required reference. */
+  typeId: WorkbookIdSchema.optional(),
   entry: z.number().int().positive(), libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema,
   sheetId: WorkbookIdSchema, expectedVersion: WorkbookRevisionSchema,
   selectedRow: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema }).optional(),

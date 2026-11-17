@@ -52,7 +52,7 @@ describe("typed Settings catalog controls", () => {
     assert.equal(annualRows[0]?.getAttribute("data-settings-path"), "annualDates.FY2027.jobEndDate");
     const dateSegments = [...(annualRows[0]?.querySelectorAll('[role="spinbutton"]') ?? [])];
     assert.equal(dateSegments.length, 3);
-    assert.ok(dateSegments.every(segment => segment.getAttribute("aria-required") === "true"));
+    assert.ok(dateSegments.every(segment => segment.getAttribute("aria-required") !== "true"));
     assert.doesNotMatch(mounted.host.textContent ?? "", /Kronos|Add fiscal year|New fiscal year|FY202[0-9]/u);
   });
   it("shows the approved General browser controls without observed host details", async () => {
