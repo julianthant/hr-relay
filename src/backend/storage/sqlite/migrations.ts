@@ -933,7 +933,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
       WHEN OLD.kind IN ('generated','extracted') OR (OLD.kind='imported' AND json_type(OLD.payload_json,'$.submittedJson')='text')
       BEGIN SELECT RAISE(ABORT,'artifact-evidence-retained'); END`,
   ] },
-  { version: 13, statements: WORKBOOK_MASTER_MIGRATION.statements },
+  WORKBOOK_MASTER_MIGRATION,
   EXCLUSIVE_SESSION_LEASE_MIGRATION,
   { version: 15, statements: [
     "ALTER TABLE runs ADD COLUMN pause_state TEXT CHECK(pause_state IS NULL OR pause_state IN ('requested','paused'))",

@@ -105,7 +105,7 @@ import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } fro
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
-import { createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,migrateWorkbookPayloads,validateWorkbookLibrary,WORKBOOK_PAYLOAD_CONVERSION_ID,WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
+import { assertPreMasterWorkbookHistory,createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,migrateWorkbookPayloads,validateWorkbookLibrary,WORKBOOK_MASTER_MIGRATION,WORKBOOK_PAYLOAD_CONVERSION_ID,WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
 
 import { DryRunScenarioResultSchema,type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
@@ -1904,6 +1904,7 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
       if (migration.version === BUILD_ID_ENVELOPE_SCHEMA_VERSION && index === 0) deletePreBuildRuns(database, input.now, input.captureFile, settleEvidence);
       if (statement === `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`) convertWorkerCustody(database, input.now, input.captureFile, settleEvidence);
       if (migration.version === ASSISTANT_GRANT_RETIREMENT_VERSION && index === 0) assertNoAssistantGrantHistory(database);
+      if (migration.version === WORKBOOK_MASTER_MIGRATION.version && index === 0) assertPreMasterWorkbookHistory(database);
       execMigrationStatement(database, statement);
       if (isSettingsRecordConversionMarker(statement)) migrateSettingsRecords(database);
       if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);

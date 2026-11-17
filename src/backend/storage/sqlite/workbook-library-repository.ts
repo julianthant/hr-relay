@@ -65,7 +65,7 @@ export function hasOnlyInitialWorkbookType(database: DatabaseSync): boolean {
   return row.id === INITIAL_WORKBOOK_TYPE.id && canonicalJsonStringify(value) === canonicalJsonStringify(INITIAL_WORKBOOK_TYPE);
 }
 
-export const WORKBOOK_MASTER_MIGRATION = Object.freeze({ statements: [
+export const WORKBOOK_MASTER_MIGRATION = Object.freeze({ version: 13, statements: [
   `ALTER TABLE workbook_library ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{"typeId":"general","sharePoint":null}' CHECK(json_valid(metadata_json))`,
   `ALTER TABLE workbook_library ADD COLUMN ownership_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(ownership_json))`,
   `CREATE TABLE workbook_creations (id TEXT PRIMARY KEY REFERENCES workbook_library(id), payload_json TEXT NOT NULL CHECK(json_valid(payload_json))) STRICT`,
@@ -121,6 +121,27 @@ export const WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION = Object.freeze({ version: 30, 
   `UPDATE workbook_library_actions SET payload_json=json_set(payload_json,'$.result.pinned',json('false'),'$.result.tags',json('[]'))`,
   ACTION_UPDATE_GUARD,
 ]) });
+
+/**
+ * Before schema 13 each library row has one history row for every version 1 to its own, and the latest is the live record.
+ * Migration 13 builds the creation record and named versions from that history, so a gap or a differing latest record refuses the upgrade first.
+ */
+export function assertPreMasterWorkbookHistory(database: DatabaseSync): void {
+  const saved = (value: unknown) => stored(() => {
+    const row = RowSchema.parse(value), record = decodeSavedWorkbook(SavedWorkbookWireSchema.parse(JSON.parse(row.payload_json)));
+    if (record.libraryId !== row.id || record.version !== row.version || record.createdAt !== row.created_at || record.savedAt !== row.saved_at) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    return record;
+  });
+  const serialized = (record: SavedWorkbook) => JSON.stringify(encodeSavedWorkbook(record));
+  for (const raw of database.prepare('SELECT id,version,created_at,saved_at,payload_json FROM workbook_library ORDER BY id').all()) {
+    const record = saved(raw);
+    const history = database.prepare('SELECT workbook_id AS id,version,created_at,saved_at,payload_json FROM workbook_library_history WHERE workbook_id=? ORDER BY version').all(record.libraryId).map(saved);
+    const latest = history.at(-1);
+    if (latest === undefined || history.length !== record.version || history.some((entry, index) => entry.version !== index + 1) || serialized(latest) !== serialized(record)) {
+      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    }
+  }
+}
 
 /** The tables whose payload names a stored workbook by digest, with the strict schema each stored before schema 37. */
 const PAYLOAD_TABLES = Object.freeze([
