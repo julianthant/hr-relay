@@ -24,7 +24,6 @@ export function preflightPortRunner(root: string, frontendPort: number, OWNER_NO
             stateRoot,
             authorityPath: join(stateRoot, "state.db"),
             backupDirectory: join(stateRoot, "backups", "authority"),
-            maxBackupAgeMs: 60_000,
             busyTimeoutMs: 100,
           },
           clock: CLOCK,

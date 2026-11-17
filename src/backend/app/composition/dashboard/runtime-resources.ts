@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
 import { assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment } from "../../../../models/config/secrets.js";
 import { ASSISTANT_DEFAULT_EFFORT,ASSISTANT_DEFAULT_MODEL,AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
-import { BackupServiceStateWireSchema,type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
+import { BackupServiceStateSchema,type BackupServiceState } from "../../../../models/storage/storage-status.js";
 import { systemIdFactory } from "../../../../rules/identity/identifiers.js";
 import { ActorIdSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import { systemClock } from "../../../../rules/time/clock.js";
@@ -171,7 +171,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
 
 
   const backupDirectory = join(stateRoot, "backups", "authority");
-  const backupServiceState: BackupServiceStateWire = BackupServiceStateWireSchema.parse({
+  const backupServiceState: BackupServiceState = BackupServiceStateSchema.parse({
     state: "never-run",
     reason: "verified backups run hourly while the dashboard is open and after clean shutdown; one in-session backup and the last three shutdown backups are retained",
   });

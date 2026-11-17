@@ -31,6 +31,7 @@ export const PersonPreferencesSchema = z.strictObject({
   preventSleepWhileRunning: z.boolean(),
   confirmCloseDuringRun: z.enum(["active-run", "always", "never"]),
   notifications: NotificationPreferencesSchema,
+  sendShortcut: z.enum(["enter", "mod-enter"]),
 });
 export type PersonPreferences = z.infer<typeof PersonPreferencesSchema>;
 export const NEUTRAL_PERSON_PREFERENCES = deepFreeze(PersonPreferencesSchema.parse({
@@ -38,6 +39,7 @@ export const NEUTRAL_PERSON_PREFERENCES = deepFreeze(PersonPreferencesSchema.par
   shortcuts: { numberMode: "runs", bindings: { search: ["/"], start: ["r"], next: ["j", "ArrowDown"], previous: ["k", "ArrowUp"], attention: ["n"] } },
   preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run",
   notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" },
+  sendShortcut: "enter",
 }));
 export function derivePersonPreferencesFingerprint(input: unknown): string {
   return sha256Hex(canonicalJsonStringify(PersonPreferencesSchema.parse(input)));

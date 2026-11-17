@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterAll,afterEach,describe,it,vi } from "vitest";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase as ProductionAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { SpanAuthorityReconciliationWireSchema } from "../../../../src/models/dashboard/storage.js";
+import { SpanAuthorityReconciliationSchema } from "../../../../src/models/storage/storage-status.js";
 import { RunRecordSchema,type RunRecord } from "../../../../src/models/run/record.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT,NOW,UUID_1,UUID_2,UUID_3,UUID_4,UUID_5,UUID_6,UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -63,7 +63,7 @@ async function fixture(
     },
     read: async () => (await doctorAuthorityStorage({
       stateRootTrustAnchor: root, stateRoot: root, authorityPath,
-      backupDirectory: join(root, "backups", "authority"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,
+      backupDirectory: join(root, "backups", "authority"), busyTimeoutMs: 500,
     }, clock)).spanAuthority,
   };
 }
@@ -105,7 +105,7 @@ describe("storage doctor span/authority reconciliation", () => {
     assert.throws(() => f.emit(rootEvent(currentRun(UUID_3, UUID_6, "pl-120002-0000"))), /timeline-event-owner-missing/u);
     const report = await f.read();
     assert.deepEqual(report, {
-      state: "degraded", streamRunCount: 1, liveRunCount: 1, archived: [], deleted: [],
+      state: "degraded", streamRunCount: 1, liveRunCount: 1, deleted: [],
       problems: [{ state: "missing-span", runId: UUID_2 }],
     });
     assert.equal(summarizeSpanAuthorityReconciliation(report).state, "degraded");
@@ -167,7 +167,7 @@ describe("storage doctor span/authority reconciliation", () => {
     const f = await fixture();
     mkdirSync(join(f.root, "spans"));
     assert.deepEqual(await f.read(), {
-      state: "degraded", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [],
+      state: "degraded", streamRunCount: 0, liveRunCount: 0, deleted: [],
       problems: [{ state: "missing-span", runId: UUID_1 }],
     });
   });
@@ -239,7 +239,7 @@ describe("storage doctor span/authority reconciliation", () => {
     const f = await fixture([run]);
     f.emit({ ...rootEvent(run), resolvedInstance: { ucpath: "test", crm: "prod" } });
     assert.deepEqual(await f.read(), {
-      state: "reconciled", streamRunCount: 1, liveRunCount: 1, archived: [], deleted: [],
+      state: "reconciled", streamRunCount: 1, liveRunCount: 1, deleted: [],
     });
   });
 
@@ -333,7 +333,7 @@ describe("storage doctor span/authority reconciliation", () => {
     f.emit(taskStartedBeforeRoot());
     f.emit({ ...rootEvent(), repair: AUTHORITY_RECONSTRUCTION });
     assert.deepEqual(await f.read(), {
-      state: "reconciled", streamRunCount: 1, liveRunCount: 1, archived: [], deleted: [],
+      state: "reconciled", streamRunCount: 1, liveRunCount: 1, deleted: [],
     });
   });
 
@@ -412,9 +412,9 @@ describe("storage doctor span/authority reconciliation", () => {
     try { deleteRun(run)(database); } finally { database.close(); }
     f.retiredFile(rootEvent(run));
     const report = await f.read();
-    assert.deepEqual(report, { state: "reconciled", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [] });
+    assert.deepEqual(report, { state: "reconciled", streamRunCount: 0, liveRunCount: 0, deleted: [] });
     assert.equal(summarizeSpanAuthorityReconciliation(report).state, "healthy");
-    assert.deepEqual(SpanAuthorityReconciliationWireSchema.parse(report), report);
+    assert.deepEqual(SpanAuthorityReconciliationSchema.parse(report), report);
   });
 
   it.each([

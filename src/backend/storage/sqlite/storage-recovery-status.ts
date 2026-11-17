@@ -8,20 +8,35 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { AuthorityRestoreJournalSchema,RUNTIME_ROOT_AUTHORITY_ENTRY_NAMES } from "../admission/installation.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { AuthorityDatabase } from "./authority-database.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { StorageRecoveryInspectionSchema, type RestoreCandidate } from "./recovery-contracts.js";
+import { StorageRecoveryInspectionSchema } from "../../../models/storage/storage-status.js";
+import type { z } from "zod";
 
 function fileIdentity(stat: Stats | BigIntStats) {
   const identity = fileIdentityObservation({ device: stat.dev, inode: stat.ino });
   return canonicalJsonStringify({dev:identity.device,ino:identity.inode,size:privateFileNumber(stat.size),mode:privateFileNumber(stat.mode),uid:privateFileNumber(stat.uid),nlink:privateFileNumber(stat.nlink),mtimeMs:"mtimeNs" in stat ? stat.mtimeNs.toString() : stat.mtimeMs,ctimeMs:"ctimeNs" in stat ? stat.ctimeNs.toString() : stat.ctimeMs});
 }
 
+export type StorageRecoveryInspection = z.infer<typeof StorageRecoveryInspectionSchema>;
+type RecoveryFinding = Readonly<{ marker: "authority-restore" | "unowned-recovery-entry"; state: "interrupted" | "unavailable" }>;
+
+/**
+ * The doctor's recovery view. Any unavailable finding, a failed inspection, or evidence that changed between the doctor's two
+ * inspections leaves recovery unavailable; any other finding is an interrupted operation.
+ */
+export function recoveryInspectionOf(facts: Readonly<{ inspection: "inspected" | "failed" | "changed"; findings: readonly RecoveryFinding[] }>): StorageRecoveryInspection {
+  const unavailable = (summary: string) => StorageRecoveryInspectionSchema.parse({ state: "unavailable", findings: facts.findings, cause: { code: "authority-unavailable", summary } });
+  if (facts.inspection === "failed") return unavailable("Recovery evidence could not be inspected safely. Preserve it before recovery.");
+  if (facts.inspection === "changed") return unavailable("Recovery evidence changed during inspection. Run the doctor again before deciding recovery.");
+  if (facts.findings.some(row => row.state === "unavailable")) return unavailable("Recovery evidence is unsafe or has no current owner. Preserve it before recovery.");
+  return StorageRecoveryInspectionSchema.parse(facts.findings.length > 0 ? { state: "interrupted", findings: facts.findings } : { state: "clear" });
+}
+
 /** Stable evidence identity fences the doctor's awaited backup inspection. */
 export function inspectStorageRecovery(admission: Readonly<Pick<RuntimeAdmission, "stateRoot" | "assertLive" | "authorityBackupExpectedSource"> & Partial<Pick<RuntimeAdmission, "readInstallationContext">>>, sourceIdentity: string) {
   admission.assertLive();
   const stateRoot=admission.stateRoot;
-  const findings: {marker:"authority-restore" | "unowned-recovery-entry";state:"interrupted" | "unavailable"}[]=[];
+  const findings: RecoveryFinding[]=[];
   const identities:string[]=[sourceIdentity];
   try {
     requireDatabaseSourcePath(join(stateRoot,"state.db"));
@@ -71,19 +86,7 @@ export function inspectStorageRecovery(admission: Readonly<Pick<RuntimeAdmission
     if(fileIdentity(fileStatus(stateRoot)) !== fileIdentity(root)
       || canonicalJsonStringify(readdirSync(stateRoot).sort()) !== canonicalJsonStringify(entries))throw new Error("recovery-inventory-changed");
   } catch {
-    return {identity:"recovery-inventory-unavailable",report:StorageRecoveryInspectionSchema.parse({state:"unavailable",findings,
-      cause:{code:"authority-unavailable",summary:"Recovery evidence could not be inspected safely. Preserve it before recovery."}})};
+    return {identity:"recovery-inventory-unavailable",report:recoveryInspectionOf({inspection:"failed",findings})};
   }
-  const report=findings.some(row=>row.state === "unavailable")
-    ? {state:"unavailable",findings,cause:{code:"authority-unavailable",summary:"Recovery evidence is unsafe or has no current owner. Preserve it before recovery."}}
-    : findings.length > 0 ? {state:"interrupted",findings} : {state:"clear"};
-  return {identity:createHash("sha256").update(canonicalJsonStringify(identities)).digest("hex"),report:StorageRecoveryInspectionSchema.parse(report)};
-}
-
-type Eligibility = Extract<RestoreCandidate, {state: "verified-compatible"}>["restoreEligibility"];
-export function inspectRestoreEligibility(admission: RuntimeAdmission,input: {schemaVersion:number; backupPath:string; backupSha256:string;stateRoot:string;authorityAvailable:boolean}):Eligibility {
- admission.assertLive();
- if(![8,9,10,11,12,13,14,15,16,17,18,19,CURRENT_AUTHORITY_SCHEMA_VERSION].includes(input.schemaVersion))return {state:"unsupported",reason:"The backup uses an unsupported authority schema. Preserve it and use its compatible release."};
- if(!input.authorityAvailable)return {state:"unavailable",reason:"Current authority could not be inspected safely. Preserve it before recovery."};
- return {state:"eligible"};
+  return {identity:createHash("sha256").update(canonicalJsonStringify(identities)).digest("hex"),report:recoveryInspectionOf({inspection:"inspected",findings})};
 }

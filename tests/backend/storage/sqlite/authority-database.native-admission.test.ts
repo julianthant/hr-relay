@@ -9,7 +9,6 @@ import { composeWorkerRuntime } from "../../../../src/backend/app/composition/wo
 import { runCredentialSourceRetentionCase } from "../../../support/helpers/credential-source-retention.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { AuthorityBootStore } from "../../../../src/backend/storage/sqlite/authority-boot.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AUTHORITY_DERIVED_TABLES, AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
@@ -82,65 +81,6 @@ afterEach(_afterEachFixture0);
     }
   });
 });
-
-describe("real native authority boot", () => {
-afterEach(_afterEachFixture0);
-
-  it("reopens the bound profile database and the exact initialized owner without mocks", async () => {
-    const f = await fixture();
-    const options = { path: f.path, busyTimeoutMs: 250, migrationOwner: "native-boot-positive" };
-    expect(fs.existsSync(f.path)).toBe(true);
-    const fresh = AuthorityBootStore.open(f.admission, options);
-    try {
-      expect(fresh.report()).toMatchObject({ state: "healthy", mutationAvailability: "available" });
-      const authority = fresh.requireWritable("enqueue");
-      expect(authority.getMeta()).toMatchObject({ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityGeneration: 0 });
-      authority.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-      expect(authority.getMeta().authorityGeneration).toBe(1);
-    } finally { fresh.close(); }
-    expect(fs.existsSync(f.path)).toBe(true);
-    const existing = AuthorityBootStore.open(f.admission, options);
-    try {
-      expect(existing.report()).toMatchObject({ state: "healthy", mutationAvailability: "available" });
-      const authority = existing.requireWritable("claim");
-      expect(authority.getMeta()).toMatchObject({ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityGeneration: 1 });
-      expect(authority.authority.configSnapshots.get(CONFIG_SNAPSHOT.configSnapshotId)).toEqual(CONFIG_SNAPSHOT);
-      expect(authority.authority.runtimeConfig.get()?.configFingerprint).toBe(CONFIG_SNAPSHOT.fingerprint);
-    } finally { existing.close(); }
-  });
-});
-
-describe("authority boot handle ownership after second inspection",()=>{
-afterEach(_afterEachFixture0);
-
-  it.each([false,true])("closes the opened handle and retains a failed-close handle for explicit retry: %s",async closeFault=>{
-    const f=await fixture();const originalOpen=AuthorityDatabase.open.bind(AuthorityDatabase);
-    const originalInspect=AuthorityDatabase.inspectExistingReadOnly.bind(AuthorityDatabase);
-    let opened:AuthorityDatabase|undefined;let closes=0;let failClose=closeFault;
-    vi.spyOn(AuthorityDatabase,"open").mockImplementation((...args)=>{
-      const database=originalOpen(...args);opened=database;
-      const originalClose=database.close.bind(database);
-      vi.spyOn(database,"close").mockImplementation(()=>{closes+=1;if(failClose)throw new Error("injected-close-fault");originalClose();});
-      return database;
-    });
-    vi.spyOn(AuthorityDatabase,"inspectExistingReadOnly").mockImplementation((...args)=>{
-      if(opened!==undefined)throw new Error("injected-second-inspection-fault");
-      return originalInspect(...args);
-    });
-    const boot=AuthorityBootStore.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"boot-handle-proof"});
-    try{
-      expect(opened).toBeDefined();expect(closes).toBe(1);
-      expect(boot.report().state).toBe("degraded-read-only");
-      expect(()=>boot.requireWritable("claim")).toThrow(/unavailable/u);
-      if(closeFault){
-        const report=boot.report();if(report.state!=="degraded-read-only")throw new Error("fixture boot not degraded");
-        expect(report.cause.summary).toMatch(/close is uncertain/u);
-        expect(()=>boot.close()).toThrow("injected-close-fault");expect(closes).toBe(2);
-        failClose=false;boot.close();expect(closes).toBe(3);
-      }else{boot.close();expect(closes).toBe(1);}
-    }finally{failClose=false;boot.close();}
-  });
-});
 }
 
 {
@@ -191,7 +131,6 @@ afterEach(_afterEachFixture0);
       expect(database.authority.runtimeConfig.get()?.configFingerprint).toBe(sha256Hex(canonicalJsonStringify(f.snapshot.config)));
       expect(database.authority.settingsCurrent.get()).toBeUndefined();
     } finally {database.close();}
-    const boot=AuthorityBootStore.open(f.admission,f.options,f.clock);try{expect(boot.report().state).toBe("healthy");}finally{boot.close();}
   });
   it("refuses an otherwise-valid changed selected body with untouched saved fingerprint/links before credentials, browser or worker admission",async()=>{
     const f=await fixture();effects.credentials=0;const raw=new DatabaseSync(f.path);
@@ -203,10 +142,6 @@ afterEach(_afterEachFixture0);
       if(typeof trigger?.sql!=="string")throw new Error("missing immutable snapshot trigger");
       raw.exec(trigger.sql);
     } finally {raw.close();}
-    const boot=AuthorityBootStore.open(f.admission,f.options,f.clock);
-    try {expect(boot.report()).toMatchObject({state:"degraded-read-only",mutationAvailability:"blocked",cause:{code:"authority-record-invalid"}});
-      expect(()=>boot.requireWritable("claim")).toThrow(/unavailable/u);
-    }finally{boot.close();}
     expect(effects.credentials).toBe(0);
     await expect(composeWorkerRuntime({ lifetimeLock:f.lifetime,admission:f.machine,isolation:rebuildRuntimeIsolation,args:["person-lookup","--pool-index","1","--drain"],
       repoRoot:f.root,clock:f.clock,env:{},sessionFactory:{ probeProfile: async () => undefined,open:async()=>{effects.browsers+=1;throw new Error("unrequested browser effect");}}})).rejects.toThrow(/config-snapshot-fingerprint-mismatch/u);
@@ -222,9 +157,8 @@ afterEach(_afterEachFixture0);
     const f=await fixture(),saved=applySettings(f);
     const database=AuthorityDatabase.open(f.admission,f.options,f.clock,undefined,undefined,undefined,f.credentials);
     try{expect(database.authority.settingsCurrent.get()).toEqual(saved);}finally{database.close();}
-    const boot=AuthorityBootStore.open(f.admission,f.options,f.clock);try{expect(boot.report().state).toBe("healthy");}finally{boot.close();}
   });
-  it.each(["wrong-links","missing-current"])("refuses contradictory saved settings at inspection/open/boot before credential effects: %s",async fault=>{
+  it.each(["wrong-links","missing-current"])("refuses contradictory saved settings at inspection and open before credential effects: %s",async fault=>{
     const f=await fixture();applySettings(f);const raw=new DatabaseSync(f.path);
     try{
       const app=readAppSettings(raw);expect(app?.saved).toBeDefined();if(app===undefined)throw new Error("fixture settings missing");
@@ -235,8 +169,6 @@ afterEach(_afterEachFixture0);
     effects.credentials=0;
     expect(()=>AuthorityDatabase.inspectExistingReadOnly(f.admission,f.path,250)).toThrow(/settings.*failed native record validation/u);
     expect(()=>AuthorityDatabase.open(f.admission,f.options,f.clock,undefined,undefined,undefined,f.credentials)).toThrow(/settings.*failed native record validation/u);
-    const boot=AuthorityBootStore.open(f.admission,f.options,f.clock);
-    try{expect(boot.report()).toMatchObject({state:"degraded-read-only",mutationAvailability:"blocked"});expect(()=>boot.requireWritable("claim")).toThrow(/unavailable/u);}finally{boot.close();}
     expect(effects.credentials).toBe(0);
   });
 

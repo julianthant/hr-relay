@@ -114,7 +114,7 @@ try {
       });
     const path = join(state, "state.db"), directory = join(state, "backups", "authority"), processLockRoot = join(root, ${JSON.stringify(rebuildRuntimeIsolation.processLockRoot)});
     const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-crash-test" }, undefined, undefined, undefined, undefined, credentials);
-    const report = await new AuthorityBackupService(admission, db, { directory }).request({ trigger: "operator", requiredGeneration: db.getMeta().authorityGeneration });
+    const report = await new AuthorityBackupService(admission, db, { directory }).request({ trigger: "schema-migration", requiredGeneration: db.getMeta().authorityGeneration });
     db.close();
     const manifestPath = join(directory, report.manifests[0].backupFileName + ".manifest.json");
 
@@ -201,7 +201,7 @@ it("supported single-authority restore re-checks healthy without inventing repai
   try {
     copyFileSync(join(process.cwd(),"package.json"),join(workspace,"package.json"));
     AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"preflight-restore"},clock,undefined,undefined,undefined,boundProfileCredentials(admission)).close();
-    const backup=await withOfflineMaintenance(admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, admission, operation, clock, join(workspace,rebuildRuntimeIsolation.processLockRoot)).then(closure => backupStoppedAuthority(closure, admission, stateRoot, clock, join(workspace,rebuildRuntimeIsolation.processLockRoot), operation)));
+    const backup=await withOfflineMaintenance(admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, admission, operation, clock, join(workspace,rebuildRuntimeIsolation.processLockRoot)).then(closure => backupStoppedAuthority(closure, admission, stateRoot, clock, join(workspace,rebuildRuntimeIsolation.processLockRoot), operation, "schema-migration")));
     const manifest=backup.manifests.at(-1);assert.ok(manifest);
     const restored=await restoreNewestPersonBackup(admission,admission.acquireOfflineMaintenance(),clock);
     assert.equal(restored.state,"restored");
