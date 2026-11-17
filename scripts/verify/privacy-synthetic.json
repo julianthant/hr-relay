@@ -56,6 +56,7 @@
     "src/models/systems/ucpath/verify-termination-filing-present.ts",
     "src/models/systems/ucpath/verify-termination.ts",
     "src/models/workflow/step-omission.ts",
+    "src/models/workflows/i9-check/read-employment-candidates.ts",
     "src/models/workflows/person-lookup/input.ts",
     "src/models/workflows/separations/match-identity.ts",
     "src/models/workflows/separations/match-separation-subject.ts",
