@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { lstatSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
 import { z } from "zod";
 import { advanceProfileRegistryDocument, ProfileRegistryDocumentSchema, ProfileVerifierDocumentSchema } from "../../../models/profiles/profile.js";
+import { credentialHeadStateOf } from "../../../rules/storage/credential-head.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { BrowserRootsSchema, StoppedBrowserRootsV1Schema, StoppedBrowserRootsV2Schema } from "../browser-root-contract.js";
 import { CanonicalCredentialHeadSchema } from "../configuration/canonical-credential-store.js";
@@ -93,7 +94,7 @@ export function captureAccountDeletion(location: Location, document: z.infer<typ
   if (priorBrowsers.installationId !== location.installationId || priorBrowsers.roots.some(root => root.profileId === profileId && (root.launch.state !== "closed" || root.native !== undefined))) throw new Error("account-deletion-browser-closure-unproved");
   if (priorVerifiers.profiles.filter(row => row.profileId === profileId).length !== 1) throw new Error("account-deletion-verifier-missing");
   const head = CanonicalCredentialHeadSchema.parse(json(files.head));
-  if (head.state !== "active" || head.installationId !== location.installationId || head.profileId !== profileId || head.key.installationId !== location.installationId || head.key.profileId !== profileId) throw new Error("account-deletion-credentials-changed");
+  if (credentialHeadStateOf(head, "unread") !== "active" || head.installationId !== location.installationId || head.profileId !== profileId || head.key.installationId !== location.installationId || head.key.profileId !== profileId) throw new Error("account-deletion-credentials-changed");
   credentialKeyCustody.read(head.key);
   const roots = [`profiles/${profileId}`, ...priorBrowsers.roots.filter(root => root.profileId === profileId && root.owner.kind === "signup")
     .map(root => root.directory).filter(path => lstatSync(join(location.stateRoot, path), { throwIfNoEntry: false }) !== undefined)];
@@ -121,7 +122,7 @@ export function resumeAccountDeletion(location: Location, journal: string, asser
   const files = paths(location, plan.profileId), profileRoot = `profiles/${plan.profileId}`;
   const expectedRoots = [profileRoot, ...plan.priorBrowsers.roots.filter(root => root.profileId === plan.profileId && root.owner.kind === "signup").map(root => root.directory)];
   if (plan.installationId !== location.installationId || plan.priorDocument.installationId !== location.installationId || plan.priorDocument.activeProfileId !== null
-    || plan.head.installationId !== location.installationId || plan.head.profileId !== plan.profileId || plan.head.key.installationId !== location.installationId || plan.head.key.profileId !== plan.profileId || plan.head.state !== "active"
+    || plan.head.installationId !== location.installationId || plan.head.profileId !== plan.profileId || plan.head.key.installationId !== location.installationId || plan.head.key.profileId !== plan.profileId || credentialHeadStateOf(plan.head, "unread") !== "active"
     || !same(plan.document, advanceProfileRegistryDocument(plan.priorDocument, { profiles: plan.priorDocument.profiles.filter(row => row.profileId !== plan.profileId), sessionGeneration: plan.priorDocument.sessionGeneration + 1 }))
     || !same(plan.verifiers, { ...plan.priorVerifiers, profiles: plan.priorVerifiers.profiles.filter(row => row.profileId !== plan.profileId) })
     || !same(plan.browsers, { ...plan.priorBrowsers, revision: plan.priorBrowsers.revision + 1, roots: plan.priorBrowsers.roots.filter(row => row.profileId !== plan.profileId) })
