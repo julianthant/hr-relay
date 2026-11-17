@@ -8,7 +8,7 @@ import { COMMAND_ROW_STATE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION, SQL
 import { deriveBulkChildCommand } from "../../../../src/rules/commands/command-groups.js";
 import { BulkRunCommandRequestSchema, deriveBulkRunCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { restoreSchema31CommandRows } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreSchema32CommandRows } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { LATER, NOW, UUID_1, UUID_2, UUID_3 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -21,17 +21,17 @@ const states = (database: DatabaseSync) => Object.fromEntries(z.array(z.object({
   .parse(database.prepare("SELECT id,state FROM commands ORDER BY id").all()).map(row => [row.id, row.state]));
 const changes = (database: DatabaseSync) => database.prepare("SELECT table_name,row_key,op FROM authority_changes ORDER BY seq").all().map(row => ({ ...row }));
 
-/** A store at schema 31, the command row migration's predecessor. */
-function schema31(): DatabaseSync {
+/** A store at schema 32, the command row migration's predecessor. */
+function schema32(): DatabaseSync {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys=ON");
-  for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= 31)) for (const statement of migration.statements) database.exec(statement);
+  for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= 32)) for (const statement of migration.statements) database.exec(statement);
   return database;
 }
 
-function migrateTo32(database: DatabaseSync): void {
+function migrateTo33(database: DatabaseSync): void {
   database.exec("BEGIN");
-  applyAuthorityMigrationsAfter(database, 31, { now: AT, captureFile: () => { throw new Error("no capture expected"); } });
+  applyAuthorityMigrationsAfter(database, 32, { now: AT, captureFile: () => { throw new Error("no capture expected"); } });
   database.exec("COMMIT");
 }
 
@@ -51,29 +51,29 @@ function seed(database: DatabaseSync): void {
   database.prepare("INSERT INTO command_audits(id,command_id,code,payload_json,created_at) VALUES('audit','errored','bulk-child-errored',?,?)").run(JSON.stringify(ERRORED), AT);
 }
 
-describe("command row state migration 32", () => {
-  it("is schema version 32, the current schema", () => {
-    assert.equal(COMMAND_ROW_STATE_SCHEMA_VERSION, 32);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 32);
-    assert.deepEqual(migrationTableNames(32), migrationTableNames(31));
+describe("command row state migration 33", () => {
+  it("is schema version 33, the current schema", () => {
+    assert.equal(COMMAND_ROW_STATE_SCHEMA_VERSION, 33);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 33);
+    assert.deepEqual(migrationTableNames(33), migrationTableNames(32));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });
 
   it("stores an errored bulk child as uncertain, records that change and keeps every other row and schema object", () => {
-    const database = schema31();
+    const database = schema32();
     try {
       seed(database);
       database.exec("DELETE FROM authority_changes");
       const prior = schemaObjects(database);
-      const rows = migrationTableNames(31).filter(table => table !== "commands").map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() }));
+      const rows = migrationTableNames(32).filter(table => table !== "commands").map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() }));
       const commands = database.prepare("SELECT * FROM commands WHERE id<>'errored' ORDER BY id").all();
       const references = database.prepare("SELECT * FROM run_references ORDER BY run_id,table_name,row_key").all();
-      migrateTo32(database);
+      migrateTo33(database);
       assert.deepEqual(states(database), { errored: "uncertain", parent: "succeeded", refused: "refused", single: "admitted" });
       assert.deepEqual(changes(database), [{ table_name: "commands", row_key: '["errored"]', op: "update" }]);
       assert.deepEqual(database.prepare("SELECT * FROM commands WHERE id<>'errored' ORDER BY id").all(), commands);
       assert.deepEqual(database.prepare("SELECT * FROM run_references ORDER BY run_id,table_name,row_key").all(), references);
-      assert.deepEqual(migrationTableNames(31).filter(table => table !== "commands").map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), rows);
+      assert.deepEqual(migrationTableNames(32).filter(table => table !== "commands").map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), rows);
       const after = schemaObjects(database);
       assert.deepEqual(after.map(object => `${String(object.type)}:${String(object.name)}`), prior.map(object => `${String(object.type)}:${String(object.name)}`));
       assert.deepEqual(after.filter(object => object.name !== "commands"), prior.filter(object => object.name !== "commands"));
@@ -84,10 +84,10 @@ describe("command row state migration 32", () => {
   });
 
   it("refuses a row state that is never written and a state that disagrees with the outcome", () => {
-    const database = schema31();
+    const database = schema32();
     try {
       seed(database);
-      migrateTo32(database);
+      migrateTo33(database);
       assert.throws(() => insertCommand(database, "executing", { state: "executing" }), /CHECK constraint failed/u);
       assert.throws(() => insertCommand(database, "admitted-settled", { state: "admitted", outcome: REFUSED }), /CHECK constraint failed/u);
       for (const state of ["succeeded", "refused", "uncertain"]) assert.throws(() => insertCommand(database, `${state}-unsettled`, { state }), /CHECK constraint failed/u);
@@ -98,10 +98,10 @@ describe("command row state migration 32", () => {
   });
 
   it("keeps the command guards, foreign keys, change capture and run references on the rebuilt table", () => {
-    const database = schema31();
+    const database = schema32();
     try {
       seed(database);
-      migrateTo32(database);
+      migrateTo33(database);
       assert.throws(() => database.exec("UPDATE commands SET updated_at='later' WHERE id='parent'"), /commands-bulk-immutable/u);
       assert.throws(() => database.exec("DELETE FROM commands WHERE id='parent'"), /commands-bulk-retained/u);
       assert.throws(() => database.exec("UPDATE commands SET parent_id=NULL WHERE id='refused'"), /commands-parent-immutable/u);
@@ -115,7 +115,7 @@ describe("command row state migration 32", () => {
         store.exec("UPDATE commands SET target_id='moved' WHERE id='later'; DELETE FROM commands WHERE id='later'");
         return changes(store);
       };
-      const predecessor = schema31();
+      const predecessor = schema32();
       try {
         const entries = captured(database);
         assert.deepEqual(entries, captured(predecessor));
@@ -125,21 +125,21 @@ describe("command row state migration 32", () => {
     } finally { database.close(); }
   });
 
-  it("stops on a stored row the new table refuses and leaves the schema-31 store unchanged", () => {
-    const database = schema31();
+  it("stops on a stored row the new table refuses and leaves the schema-32 store unchanged", () => {
+    const database = schema32();
     try {
       seed(database);
       insertCommand(database, "executing", { state: "executing" });
       const prior = schemaObjects(database), rows = database.prepare("SELECT * FROM commands ORDER BY id").all();
       database.exec("BEGIN");
-      assert.throws(() => applyAuthorityMigrationsAfter(database, 31, { now: AT, captureFile: () => { throw new Error("no capture expected"); } }), /CHECK constraint failed/u);
+      assert.throws(() => applyAuthorityMigrationsAfter(database, 32, { now: AT, captureFile: () => { throw new Error("no capture expected"); } }), /CHECK constraint failed/u);
       database.exec("ROLLBACK");
       assert.deepEqual(schemaObjects(database), prior);
       assert.deepEqual(database.prepare("SELECT * FROM commands ORDER BY id").all(), rows);
     } finally { database.close(); }
   });
 
-  it("validates and upgrades a schema-31 store whose errored bulk child is stored as refused", async () => {
+  it("validates and upgrades a schema-32 store whose errored bulk child is stored as refused", async () => {
     const f = await storageRecoveryFixture(7);
     try {
       const request = BulkRunCommandRequestSchema.parse({ commandId: UUID_1, bulkCommandId: UUID_1, requestedBy: "local-operator", requestedAt: NOW,
@@ -162,10 +162,10 @@ describe("command row state migration 32", () => {
           .run(UUID_3, child.commandId, "bulk-child-errored", canonicalJsonStringify(audit), LATER);
         assert.equal(stored(database)?.state, "uncertain");
         assert.equal(inspectNativeAuthority(database).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
-        restoreSchema31CommandRows(database);
+        restoreSchema32CommandRows(database);
         assert.equal(stored(database)?.state, "refused");
         assert.throws(() => commandFromRow(stored(database)), /command-row-outcome-mismatch/u);
-        assert.equal(inspectNativeAuthority(database, 31).schemaVersion, 31);
+        assert.equal(inspectNativeAuthority(database, 32).schemaVersion, 32);
       } finally { database.close(); }
       assert.equal((await f.run()).state, "upgraded");
       const upgraded = new DatabaseSync(f.path, { readOnly: true });
@@ -178,20 +178,20 @@ describe("command row state migration 32", () => {
     } finally { await f.dispose(); }
   });
 
-  it("steps a current store back to schema 31 and forward again without changing a row", () => {
-    const database = schema31();
+  it("steps a current store back to schema 32 and forward again without changing a row", () => {
+    const database = schema32();
     try {
       seed(database);
-      const at31 = schemaObjects(database);
-      migrateTo32(database);
-      database.exec("PRAGMA user_version=32");
-      const at32 = schemaObjects(database), rows = database.prepare("SELECT * FROM commands ORDER BY id").all();
-      restoreSchema31CommandRows(database);
-      assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 31);
-      assert.deepEqual(schemaObjects(database), at31);
-      assert.deepEqual(states(database), { errored: "refused", parent: "succeeded", refused: "refused", single: "admitted" });
-      migrateTo32(database);
+      const at32 = schemaObjects(database);
+      migrateTo33(database);
+      database.exec("PRAGMA user_version=33");
+      const at33 = schemaObjects(database), rows = database.prepare("SELECT * FROM commands ORDER BY id").all();
+      restoreSchema32CommandRows(database);
+      assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 32);
       assert.deepEqual(schemaObjects(database), at32);
+      assert.deepEqual(states(database), { errored: "refused", parent: "succeeded", refused: "refused", single: "admitted" });
+      migrateTo33(database);
+      assert.deepEqual(schemaObjects(database), at33);
       assert.deepEqual(database.prepare("SELECT * FROM commands ORDER BY id").all(), rows);
     } finally { database.close(); }
   });

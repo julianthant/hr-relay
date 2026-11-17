@@ -8,8 +8,8 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
-/** Returns `commands` to its schema-31 table, keeping every row: `executing` allowed, state not tied to outcome, an errored bulk child held as `refused`. The schema version is left to the caller. */
-function restoreSchema31CommandTable(database: DatabaseSync): void {
+/** Returns `commands` to its schema-32 table, keeping every row: `executing` allowed, state not tied to outcome, an errored bulk child held as `refused`. The schema version is left to the caller. */
+function restoreSchema32CommandTable(database: DatabaseSync): void {
   const table = /CREATE TABLE commands \([^;]+?\) STRICT/u.exec(SQLITE_MIGRATIONS[0].statements.join("\n"))?.[0];
   assert.ok(table);
   const owned = COMMAND_ROW_STATE_MIGRATION.statements.filter(statement => /^CREATE (?:INDEX|TRIGGER) /u.test(statement));
@@ -19,19 +19,20 @@ function restoreSchema31CommandTable(database: DatabaseSync): void {
   for (const statement of owned) database.exec(statement);
 }
 
-/** Steps a current authority back to schema 31. */
-export function restoreSchema31CommandRows(database: DatabaseSync): void {
-  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 32);
+/** Steps a current authority back to schema 32. */
+export function restoreSchema32CommandRows(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 33);
   const nested = database.isTransaction;
   if (!nested) database.exec("BEGIN");
-  restoreSchema31CommandTable(database);
-  database.exec("UPDATE database_states SET schema_version=31; PRAGMA user_version=31");
+  restoreSchema32CommandTable(database);
+  database.exec("UPDATE database_states SET schema_version=32; PRAGMA user_version=32");
   if (!nested) database.exec("COMMIT");
 }
 
-/** Steps a current authority back to schema 30: the change log, its run references, its triggers and indexes did not exist. */
+/** Steps a current authority back to schema 30: the change log, its run references, its triggers and indexes did not exist. Schema 32 changed no table, index or trigger. */
 export function removeSchema31ChangeLog(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 32) restoreSchema31CommandRows(database);
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 33) restoreSchema32CommandRows(database);
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 32) database.exec("UPDATE database_states SET schema_version=31; PRAGMA user_version=31");
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 31);
   const objects = z.array(z.object({ type: z.string(), name: z.string() })).parse(database.prepare("SELECT type,name FROM sqlite_schema").all())
     .filter(({ name }) => CHANGE_LOG_OBJECTS.includes(name));
@@ -99,7 +100,7 @@ export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): voi
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
   removeSchema30WorkbookPinTags(database);
   // The schema comparison below drops every changed table; `commands` goes back first so its rows stay.
-  restoreSchema31CommandTable(database);
+  restoreSchema32CommandTable(database);
   // Rebuilding worker_slots briefly orphans the Duo and exclusive-session leases that reference it; the caller's transaction checks them at commit.
   database.exec("PRAGMA defer_foreign_keys=ON");
   const slots = z.array(z.object({ id: z.string(), workflow: z.string(), ordinal: z.number(), pool_index: z.number(), retired_at: z.string().nullable(),

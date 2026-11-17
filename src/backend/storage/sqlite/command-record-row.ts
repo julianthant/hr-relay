@@ -126,7 +126,7 @@ export function settleNativeCommand(database: DatabaseSync, input: unknown): voi
 
 const PredecessorCommandRowSchema = z.looseObject({ state: z.string(), outcome_json: z.string().nullable() });
 const PredecessorErroredOutcomeSchema = z.looseObject({ result: z.looseObject({ state: z.literal("rejected"), code: z.enum(UNKNOWN_EFFECT_CODES) }) });
-/** The image migration 32 gives a stored command row: an errored bulk child, stored `refused` below schema 32, is `uncertain`. */
+/** The image migration 33 gives a stored command row: an errored bulk child, stored `refused` below schema 33, is `uncertain`. */
 export function convertPredecessorCommandRowState(table: string, input: unknown): unknown {
   if (table !== "commands") return input;
   const row = PredecessorCommandRowSchema.safeParse(input);

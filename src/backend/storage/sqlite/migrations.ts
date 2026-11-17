@@ -1,4 +1,4 @@
-import { PERSON_PREFERENCES_CONVERSION_ID } from "./person-preferences-migration.js";
+import { PERSON_PREFERENCES_CONVERSION_MARKER, RUNS_NOTIFICATIONS_CONVERSION_MARKER, SETTINGS_RECORD_CONVERSION_VERSION } from "./settings-record-conversion.js";
 import { createHash } from "node:crypto";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { EXCLUSIVE_SESSION_LEASE_MIGRATION } from "./exclusive-session-leases.js";
@@ -86,8 +86,8 @@ BEGIN SELECT RAISE(ABORT,'worker-slot-identity-conflict'); END`,
   `SELECT '${WORKER_CUSTODY_SCAN_ID}'`,
 ];
 
-/** Migration 32 drops the never-written command row state `executing` and ties every row's state to its outcome. */
-export const COMMAND_ROW_STATE_SCHEMA_VERSION = 32;
+/** Migration 33 drops the never-written command row state `executing` and ties every row's state to its outcome. */
+export const COMMAND_ROW_STATE_SCHEMA_VERSION = 33;
 /** The change-log, run-reference and lookup objects migration 31 put on `commands`; dropping the table drops them. */
 const COMMANDS_CHANGE_LOG_OBJECTS = CHANGE_LOG_MIGRATION.statements
   .filter(statement => /^CREATE (?:TRIGGER commands_(?:change|run_references)_|INDEX commands_request_family_idx )/u.test(statement));
@@ -910,7 +910,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   { version: 16, statements: [
     "DROP TRIGGER settings_snapshots_immutable",
     "DROP TRIGGER command_audits_immutable",
-    `SELECT 'person-preferences-forward-conversion:${PERSON_PREFERENCES_CONVERSION_ID}'`,
+    PERSON_PREFERENCES_CONVERSION_MARKER,
     `CREATE TRIGGER settings_snapshots_immutable BEFORE UPDATE ON settings_snapshots
       BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
     `CREATE TRIGGER command_audits_immutable BEFORE UPDATE ON command_audits
@@ -1074,6 +1074,15 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   ASSISTANT_GRANT_RETIREMENT_MIGRATION,
   WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION,
   CHANGE_LOG_MIGRATION,
+  { version: SETTINGS_RECORD_CONVERSION_VERSION, statements: [
+    "DROP TRIGGER settings_snapshots_immutable",
+    "DROP TRIGGER command_audits_immutable",
+    RUNS_NOTIFICATIONS_CONVERSION_MARKER,
+    `CREATE TRIGGER settings_snapshots_immutable BEFORE UPDATE ON settings_snapshots
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+    `CREATE TRIGGER command_audits_immutable BEFORE UPDATE ON command_audits
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+  ] },
   COMMAND_ROW_STATE_MIGRATION,
 ]);
 

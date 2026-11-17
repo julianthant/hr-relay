@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { z } from "zod";
@@ -12,16 +13,23 @@ import { createStartPlanService } from "../../../../src/backend/runs/commands/st
 import { RunRecordService, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { StorageDoctorReportSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
+import { composeTransactionExportCommand } from "../../../../src/backend/transports/cli/transactions.js";
+import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { appliedRunIds } from "../../../support/fixtures/operator-command-fixtures.js";
+import { ledgerCommitFixture } from "../../../support/fixtures/ledger-projection-fixtures.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
+import { AuthorityDatabase as FixtureDatabase } from "../../../support/helpers/synthetic-database-admission.js";
+import { atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 
 /** Admissions are frozen, so the store reads and the repair service record which admission the command handed them. */
 const admitted = vi.hoisted((): { reads: Array<{ owner: RuntimeAdmission; stateRoot: string }>; repairs: Array<{ owner: RuntimeAdmission; stateRoot: string }>; failRead: boolean; failRepair: boolean } => ({ reads: [], repairs: [], failRead: false, failRepair: false }));
@@ -53,6 +61,21 @@ afterEach(async () => {
   admitted.reads.length = 0; admitted.repairs.length = 0; admitted.failRead = false; admitted.failRepair = false;
   for (const close of cleanups.splice(0).reverse()) await close();
 });
+
+function seedTransaction(person: RuntimeAdmission, path: string) {
+  const database = FixtureDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "person-transactions-test" }, clock);
+  try {
+    const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, { primaryDisplay: null }, clock, person);
+    const snapshot = ConfigSnapshotRecordSchema.parse({ ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint,
+      provenance: resolved.provenance, capturedAt: NOW });
+    const fixture = ledgerCommitFixture(901, { configFingerprint: snapshot.fingerprint });
+    seedAtomicWriteOwner(database, fixture.commit, path, undefined, snapshot);
+    fenceWriteFixture(database, { intent: fixture.intent, attempt: fixture.attempt });
+    database.commitWriteAttempt(fixture.commit, atomicWriteCheckpoint(fixture.commit));
+    releaseSeededWriteOwners(database, NOW);
+    return fixture.commit.transaction.writeIntentId;
+  } finally { database.close(); }
+}
 
 /** One claimed run with its settled start command and no `run.queued` root; the ids are fixed, so two seeded stores hold the same run id. */
 function seedRunWithoutRoot(person: RuntimeAdmission, path: string): string {
@@ -87,7 +110,7 @@ function seedRunWithoutRoot(person: RuntimeAdmission, path: string): string {
 }
 
 /** An installation with two ready people, the second signed in unless `signedOut`; `holders` names whose stores get the run. */
-async function installation(holders: ReadonlyArray<"first" | "second">, signedOut = false) {
+async function installation(holders: ReadonlyArray<"first" | "second">, signedOut = false, transaction = false) {
   const first = await createBoundProfileFixture();
   cleanups.push(() => first.close());
   const firstId = first.admission.profileBinding.profileId;
@@ -97,6 +120,7 @@ async function installation(holders: ReadonlyArray<"first" | "second">, signedOu
   const second = await createBoundProfileFixture({ workspace: first.workspace, lifetime: first.lifetime, email: "second@ucsd.edu" });
   cleanups.push(() => second.closeController());
   const secondRun = holders.includes("second") ? seedRunWithoutRoot(second.admission, second.path) : undefined;
+  const transactionId = transaction ? seedTransaction(second.admission, second.path) : undefined;
   if (firstRun !== undefined && secondRun !== undefined) assert.equal(firstRun, secondRun);
   if (signedOut) createProfileRegistry(second.machine).advanceSession(null);
   const people = { first: { profileId: firstId, path: first.path, stateRoot: first.stateRoot },
@@ -106,7 +130,7 @@ async function installation(holders: ReadonlyArray<"first" | "second">, signedOu
     return stateRoot === people.first.stateRoot ? "first" : stateRoot === people.second.stateRoot ? "second" : stateRoot;
   });
   return {
-    person: second.admission, ...people,
+    person: second.admission, machine: second.machine, workspace: first.workspace, transactionId, ...people,
     /** Both people's store files, to show a refusal wrote nothing. */
     stores: () => [readFileSync(first.path), readFileSync(second.path)],
     /** The machine is back to an ordinary stopped state: no maintenance operation is left held. */
@@ -218,6 +242,116 @@ describe("storage repair-span-root on an installation", () => {
     assert.match(outcome.output, /\n {7}storage repair-span-root --run <run-id> \[--person <profile-id>\] \[--json\]\n/u);
     assert.match(outcome.output, /on an installation the repair runs in the store\n\s+of the signed-in person, which must hold the run, and --person must name them$/u);
     assert.deepEqual(world.released(), { reads: [], repairs: [] });
+  });
+});
+
+describe("signed-in person storage reports", () => {
+  it("exports the signed-in person's transaction and lists the signed-out person without opening their store", async () => {
+    const world = await installation([], false, true);
+    const before = world.stores();
+    const output = join(world.workspace, "transactions.json");
+    const report = z.strictObject({ profiles: z.array(z.strictObject({ profileId: z.string(), output: z.string(),
+      sourceDigest: z.string(), transactions: z.number() })),
+      notChecked: z.array(z.strictObject({ profileId: z.string(), reason: z.literal("signed-out") })) })
+      .parse(JSON.parse(composeTransactionExportCommand(world.machine,
+        ["--from", "2026-07-01", "--to", "2026-09-09", "--output", output])));
+    assert.deepEqual(report.notChecked, [{ profileId: world.first.profileId, reason: "signed-out" }]);
+    assert.deepEqual(report.profiles.map(({ profileId, transactions }) => ({ profileId, transactions })),
+      [{ profileId: world.second.profileId, transactions: 1 }]);
+    const [exported] = report.profiles;
+    assert.ok(exported);
+    const file = z.object({ rows: z.array(z.object({ operationId: z.string() })) }).parse(JSON.parse(readFileSync(exported.output, "utf8")));
+    assert.deepEqual(file.rows.map(row => row.operationId), [world.transactionId]);
+    assert.equal(existsSync(join(world.workspace, `transactions.${world.first.profileId}.json`)), false);
+    assert.deepEqual(world.stores(), before);
+  });
+
+  for (const degraded of [false, true]) {
+    it(`reports only the signed-in person's health and exits ${degraded ? "1" : "0"} for their store`, async () => {
+      const world = await installation(degraded ? ["first", "second"] : ["first"]);
+      const before = world.stores();
+      const result = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, world.workspace, world.machine);
+      assert.equal(result.exitCode, degraded ? 1 : 0, result.output);
+      const report = z.strictObject({ profiles: z.array(z.strictObject({ profileId: z.string(), report: StorageDoctorReportSchema })),
+        notChecked: z.array(z.strictObject({ profileId: z.string(), reason: z.literal("signed-out") })) }).parse(JSON.parse(result.output));
+      assert.deepEqual(report.profiles.map(({ profileId }) => profileId), [world.second.profileId]);
+      assert.deepEqual(report.notChecked, [{ profileId: world.first.profileId, reason: "signed-out" }]);
+      assert.equal(report.profiles[0]?.report.spanAuthority.state, degraded ? "degraded" : "reconciled");
+      const text = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor"], clock, world.workspace, world.machine);
+      assert.equal(text.exitCode, result.exitCode, text.output);
+      assert.match(text.output, new RegExp(`^person ${world.second.profileId}\\nauthority storage doctor`, "u"));
+      assert.ok(text.output.includes(`person ${world.first.profileId}: not checked, signed out`));
+      assert.deepEqual(world.stores(), before);
+    });
+  }
+
+  it("refuses both reports with one plain line and a nonzero exit when nobody is signed in", async () => {
+    const world = await installation([], true);
+    const before = world.stores();
+    const output = join(world.workspace, "refused.json");
+    const previousExitCode = process.exitCode;
+    try {
+      process.exitCode = 0;
+      const text = composeTransactionExportCommand(world.machine,
+        ["--from", "2026-07-01", "--to", "2026-09-09", "--output", output]);
+      assert.equal(process.exitCode, 1);
+      assert.match(text, /^storage transactions REFUSED — no ready person is signed in/u);
+      assert.equal(text.trim().split("\n").length, 1);
+    } finally { process.exitCode = previousExitCode; }
+    for (const args of [["doctor"], ["doctor", "--json"]]) {
+      const result = await composeStorageCommand(rebuildRuntimeIsolation, args, clock, world.workspace, world.machine);
+      assert.equal(result.exitCode, 1);
+      assert.match(result.output, /^storage doctor REFUSED — no ready person is signed in/u);
+      assert.equal(result.output.trim().split("\n").length, 1);
+    }
+    assert.equal(existsSync(output), false);
+    assert.deepEqual(world.stores(), before);
+  });
+
+  for (const installationCommand of [true, false]) {
+    it(`keeps today's report shape ${installationCommand ? "with one ready person" : "outside an installation"}`, async () => {
+      const profile = await createBoundProfileFixture();
+      cleanups.push(() => profile.close());
+      const owner = installationCommand ? profile.machine : profile.admission;
+      const before = readFileSync(profile.path);
+      const output = join(profile.workspace, "single.json");
+      const exported: unknown = JSON.parse(composeTransactionExportCommand(owner,
+        ["--from", "2026-07-01", "--to", "2026-09-09", "--output", output]));
+      const exportSchema = z.strictObject({ output: z.string(), sourceDigest: z.string(), transactions: z.literal(0) });
+      if (installationCommand) {
+        const report = z.strictObject({ profiles: z.array(exportSchema.extend({ profileId: z.string() })) }).parse(exported);
+        assert.deepEqual(report.profiles.map(({ profileId }) => profileId), [profile.admission.profileBinding.profileId]);
+        assert.equal(report.profiles[0]?.output, join(profile.workspace, `single.${profile.admission.profileBinding.profileId}.json`));
+      } else assert.equal(exportSchema.parse(exported).output, output);
+      const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, profile.workspace,
+        owner, installationCommand ? undefined : boundProfileCredentials(profile.admission));
+      assert.equal(doctor.exitCode, 0, doctor.output);
+      if (installationCommand) {
+        const report = z.strictObject({ profiles: z.array(z.strictObject({ profileId: z.string(), report: StorageDoctorReportSchema })) })
+          .parse(JSON.parse(doctor.output));
+        assert.deepEqual(report.profiles.map(({ profileId }) => profileId), [profile.admission.profileBinding.profileId]);
+      } else assert.equal(StorageDoctorReportSchema.parse(JSON.parse(doctor.output)).kind, "authority-storage-doctor");
+      assert.deepEqual(readFileSync(profile.path), before);
+    });
+  }
+
+  it("leaves a single signed-out person's store closed when refusing both reports", async () => {
+    const profile = await createBoundProfileFixture();
+    cleanups.push(() => profile.close());
+    createProfileRegistry(profile.machine).advanceSession(null);
+    const before = readFileSync(profile.path);
+    const previousExitCode = process.exitCode;
+    try {
+      process.exitCode = 0;
+      const output = composeTransactionExportCommand(profile.machine,
+        ["--from", "2026-07-01", "--to", "2026-09-09", "--output", join(profile.workspace, "refused.json")]);
+      assert.equal(process.exitCode, 1);
+      assert.match(output, /^storage transactions REFUSED — no ready person is signed in/u);
+    } finally { process.exitCode = previousExitCode; }
+    const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor"], clock, profile.workspace, profile.machine);
+    assert.equal(doctor.exitCode, 1);
+    assert.match(doctor.output, /^storage doctor REFUSED — no ready person is signed in/u);
+    assert.deepEqual(readFileSync(profile.path), before);
   });
 });
 

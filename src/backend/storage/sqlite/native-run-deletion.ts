@@ -61,7 +61,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
   // Below the custody schema, worker lifetimes and worker history are read only through the predecessor reader.
   const predecessorCustody = schemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
   const readRun = predecessorCustody ? (raw: unknown) => strictRun(predecessorCustodyRunRow(raw)) : strictRun;
-  // Below the command-row schema, a command row is read as the image migration 32 gives it.
+  // Below the command-row schema, a command row is read as the image migration 33 gives it.
   const commandRow = (raw: unknown) => schemaVersion < COMMAND_ROW_STATE_SCHEMA_VERSION ? convertPredecessorCommandRowState("commands", raw) : raw;
   const readCommand = (raw: unknown) => (predecessorCustody ? predecessorCommandFromRow : commandFromRow)(commandRow(raw));
   const isHistory = (raw: unknown) => predecessorCustody && isPredecessorWorkerHistory(raw);

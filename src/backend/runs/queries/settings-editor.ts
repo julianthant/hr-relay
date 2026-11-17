@@ -21,6 +21,17 @@ const LABELS: Readonly<Record<string, string>> = {
   "timeouts.duoApprovalSeconds": "Duo approval timeout", "concurrency.defaultWorkers": "Default workers", "paths.reportsDir": "Reports directory",
   ucpathUserId: "UCPath user ID", ucpathPassword: "UCPath password",
   sharepointOnboardingRosterUrl: "SharePoint onboarding roster URL",
+  "preferences.preventSleepWhileRunning": "Prevent sleep while running", "preferences.confirmCloseDuringRun": "Confirm before closing during a run",
+  "preferences.notifications.runFinished": "Run finished", "preferences.notifications.needsYou": "Needs you",
+  "preferences.notifications.failures": "Failures", "preferences.notifications.sound": "Notification sound",
+};
+const DESCRIPTIONS: Readonly<Record<string, string>> = {
+  "preferences.preventSleepWhileRunning": "Keep this Mac awake while a run is going.",
+  "preferences.confirmCloseDuringRun": "Warn before Relay closes while a run is going.",
+  "preferences.notifications.runFinished": "Set when Relay alerts you that a run has finished.",
+  "preferences.notifications.needsYou": "Alert when a run is waiting for you.",
+  "preferences.notifications.failures": "Alert when a run fails.",
+  "preferences.notifications.sound": "Sound for finished runs, failures and runs that need you.",
 };
 function settingsLabel(key: string): string {
   return LABELS[key] ?? key.split(".").map(part => part.replace(/([a-z])([A-Z])/gu, "$1 $2")).join(" · ");
@@ -71,7 +82,7 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
     const effectiveValue = atPath(effectiveValues, path);
     return {
       path, catalogKey: key, input: control.input, control, label: settingsLabel(path),
-      description: key.startsWith("annualDates.") ? "M/D/YYYY or MM/DD/YYYY" : settingsLabel(key),
+      description: key.startsWith("annualDates.") ? "M/D/YYYY or MM/DD/YYYY" : DESCRIPTIONS[key] ?? settingsLabel(key),
       ...(effectiveValue === undefined ? {} : { effectiveValue }),
       ...(atPath(activeValues, path) === undefined ? {} : { activeValue: atPath(activeValues, path) }),
       ...(atPath(defaults, path) === undefined ? {} : { defaultValue: atPath(defaults, path) }),

@@ -93,7 +93,7 @@ function validatePredecessorLifecycleCommand(input: unknown): void {
   validateNativeLifecycleRequest({ ...command, request, requestFingerprint: runLifecycleRequestFingerprint(command.operation, request) });
 }
 
-/** A predecessor command row, read as the image migration 32 gives it; the request is returned exactly as stored. */
+/** A predecessor command row, read as the image migration 33 gives it; the request is returned exactly as stored. */
 export function predecessorCommandFromRow(input: unknown): ReturnType<typeof commandFromRow> {
   return commandFromRow(convertPredecessorCommandRowState("commands", input), validatePredecessorLifecycleCommand);
 }
