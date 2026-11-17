@@ -29,7 +29,8 @@ for (const width of [1280, 1024]) test(`served workbook library, General workboo
     await roster.getByRole("button", { name: "Actions for Fixture roster.xlsx", exact: true }).click();
     await page.getByRole("menuitem", { name: "Sync now", exact: true }).click();
     await expect.poll(server.downloads).toBe(1);
-    await expect(page.getByText("A change to Fixture roster.xlsx isn't confirmed yet.", { exact: false })).toBeVisible();
+    await expect(page.getByText("Syncing Fixture roster.xlsx isn't confirmed yet.", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Check result", exact: true })).toBeVisible();
     await page.screenshot({ path: `${out}/workbook-sync-running-${width}.png` });
     await writeFile(`${out}/workbook-sync-running-${width}.yaml`, await page.locator("body").ariaSnapshot());
     server.release();
