@@ -4,6 +4,7 @@ import { disposeHttpRouteHarness, harness } from "../../../../support/helpers/ba
 import { WorkflowExplorerWireSchema } from "../../../../../src/models/dashboard/explorer.js";
 import type { ExplorerReviewSpec, ExplorerSpecGate, ExplorerSpecValue } from "../../../../../src/models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../../src/models/failures/error-catalog.js";
+import { isUnlistedStorageFailure, operatorFailureLabel } from "../../../../../src/models/failures/failure-labels.js";
 
 afterEach(disposeHttpRouteHarness);
 
@@ -187,9 +188,10 @@ it("lists every declared task failure explicitly; the unlisted rule is reserved 
     const decisions = blocks(spec, group.key, "decision");
     for (const node of workflow.nodes.filter(candidate => group.nodes.includes(candidate.id))) {
       for (const task of node.tasks) for (const code of task.errorCodes) {
+        if (isUnlistedStorageFailure(failureCodeFromTaskCode(code))) continue;
         const decision = decisions.find(candidate => candidate.outcomes.some(outcome => outcome.value === code)); assert.ok(decision, `${group.label}: ${code}`);
         const outcome = decision.outcomes.find(candidate => candidate.value === code); assert.ok(outcome);
-        assert.deepEqual([outcome.label, outcome.then, outcome.stops], [operatorFailureSentence(failureCodeFromTaskCode(code)), "The run stops with a failure card.", true]);
+        assert.deepEqual([outcome.label, outcome.then, outcome.stops], [operatorFailureLabel(failureCodeFromTaskCode(code)), `${operatorFailureSentence(failureCodeFromTaskCode(code))} The run stops with a failure card.`, true]);
         const stopped = walk(spec, {}, { [decision.id]: code });
         assert.equal(stopped.stop?.value, code);
         assert.equal(stopped.steps.at(-1)?.id, group.key);

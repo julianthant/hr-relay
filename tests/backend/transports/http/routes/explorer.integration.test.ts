@@ -3,7 +3,7 @@ import { afterEach, it } from "vitest";
 import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness } from "../../../../support/helpers/backend/http-route-harness.js";
 import { WorkflowExplorerWireSchema, type ExplorerWorkflowWire } from "../../../../../src/models/dashboard/explorer.js";
 import type { ExplorerReviewSpec, ExplorerSpecGate, ExplorerSpecValue } from "../../../../../src/models/dashboard/explorer-review-spec.js";
-import { operatorFailureSentence } from "../../../../../src/models/failures/error-catalog.js";
+import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../../src/models/failures/error-catalog.js";
 import { READABLE_WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
 
 afterEach(disposeHttpRouteHarness);
@@ -64,7 +64,7 @@ it("serves Person Lookup's Start run options with their labelled choices and def
       when: [{ mode: ["search"], crmCheck: ["true"] }] },
   ]);
   assert.deepEqual(walk(spec).values, { mode: "search", "search-by": "name", crmCheck: "true", includeCrmDates: "false",
-    "search-result": "resolved", "crm-result": "Found", "employment-status": "active", "reference-check-result": "succeeded" });
+    "search-result": "resolved", "crm-result": "Found", "employment-status": "active" });
 });
 
 it("derives the steps and session chips of every option value", async () => {
@@ -128,8 +128,8 @@ it("serves each decision's outcomes with the sentence of what the run does and w
     then: "Continues; unless the CRM cross-check narrows it to one person, the run ends as Multiple matches." });
   assert.equal(outcome(search, "not-found").stops, false);
   const failed = outcome(search, "PERSON_LOOKUP_UCPATH_SEARCH_FAILED");
-  assert.deepEqual(failed, { value: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED", label: operatorFailureSentence("PERSON_LOOKUP_UCPATH_SEARCH_FAILED"),
-    then: "The run stops with a failure card.", stops: true });
+  assert.deepEqual(failed, { value: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED", label: "UCPath search failed",
+    then: "UCPath search failed. The run stops with a failure card.", stops: true });
   assert.ok(search.outcomes.every(candidate => candidate.label !== "Anything else"));
   const stopped = walk(spec, {}, { "search-result": "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" });
   assert.equal(stopped.stop?.value, "PERSON_LOOKUP_UCPATH_SEARCH_FAILED");
@@ -193,6 +193,52 @@ it("serves a valid review spec for every readable workflow", async () => {
     assert.deepEqual(workflow.reviewSpec.steps.map(entry => entry.title), workflow.timeline.map(group => group.label));
     assert.ok(walk(workflow.reviewSpec).steps.length > 0, workflow.id);
   }
+});
+
+/** The longest label that stays on one line in the Explorer's w-80 outcome select at 1280 px. */
+const LABEL_LIMIT = 38;
+const decisionsOf = (spec: ExplorerReviewSpec) => spec.steps.flatMap(entry => entry.blocks.flatMap(block => block.kind === "decision" ? [block] : []));
+
+it("labels every outcome with a short operator choice, never a sentence", async () => {
+  for (const workflow of await served()) for (const decision of decisionsOf(workflow.reviewSpec)) for (const outcome of decision.outcomes) {
+    const where = `${workflow.id}/${decision.id}/${outcome.value}: ${outcome.label}`;
+    assert.equal(decision.outcomes.filter(candidate => candidate.label === outcome.label).length, 1, where);
+    assert.ok(outcome.label.length <= LABEL_LIMIT, where);
+    assert.doesNotMatch(outcome.label, /\.$|Delegated work/u, where);
+  }
+});
+
+it("keeps each listed failure's catalog sentence before what the run does", async () => {
+  for (const workflow of await served()) for (const node of workflow.nodes) for (const task of node.tasks) for (const code of task.errorCodes) {
+    const catalog = failureCodeFromTaskCode(code);
+    for (const decision of decisionsOf(workflow.reviewSpec)) for (const outcome of decision.outcomes.filter(candidate => candidate.value === code)) {
+      assert.ok(outcome.then.startsWith(`${operatorFailureSentence(catalog)} `), `${workflow.id}/${decision.id}/${code}`);
+    }
+  }
+});
+
+it("names the delegated workflow on each child-run outcome", async () => {
+  const outcomes = async (workflowId: string, decisionId: string) => {
+    const found = decisionsOf(await review(workflowId)).find(decision => decision.id === decisionId); assert.ok(found, decisionId);
+    return found.outcomes.map(outcome => [outcome.value, outcome.label]);
+  };
+  assert.deepEqual(await outcomes("emergency-contact", "read-document"), [["succeeded", "OCR finished"], ["child-failed", "OCR failed"]]);
+  assert.deepEqual(await outcomes("ocr", "lookup-identities"), [["succeeded", "Person Lookup: all finished"], ["child-failed", "Person Lookup: some failed"]]);
+});
+
+const WORKBOOK_STORAGE_FAULTS = ["WORKBOOK_OPERATION_CONFLICT", "WORKBOOK_METADATA_UNSUPPORTED", "WORKBOOK_REVISION_UNAVAILABLE",
+  "WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE", "WORKBOOK_STORAGE_FAILED", "WORKBOOK_STORAGE_CORRUPT", "WORKBOOK_NOT_FOUND", "WORKBOOK_INVALID",
+  "WORKBOOK_VERSION_CONFLICT", "WORKBOOK_PROVIDER_UNAVAILABLE"];
+
+it("leaves workbook storage faults to the unlisted-failure rule because the operator cannot act on them in a review", async () => {
+  let declared = 0;
+  for (const workflow of await served()) for (const node of workflow.nodes) for (const task of node.tasks) for (const code of task.errorCodes) {
+    const listed = decisionsOf(workflow.reviewSpec).some(decision => decision.outcomes.some(outcome => outcome.value === code));
+    const storage = WORKBOOK_STORAGE_FAULTS.includes(failureCodeFromTaskCode(code));
+    if (storage) declared += 1;
+    assert.equal(listed, !storage, `${workflow.id}/${node.id}/${code}`);
+  }
+  assert.ok(declared > 0);
 });
 
 it("removes the Explorer validation endpoint", async () => {
