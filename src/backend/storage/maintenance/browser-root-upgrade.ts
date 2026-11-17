@@ -25,10 +25,29 @@ const FileWitness = Identity.extend({ digest: Digest });
 const Move = z.strictObject({ source: BrowserRootSchema.shape.directory, target: BrowserRootSchema.shape.directory, identity: Identity.nullable() });
 const Common = z.strictObject({ schemaVersion: z.literal(1), operationId: z.uuid(), installationId: z.uuid(),
   prior: PriorDocument, current: BrowserRootsSchema, source: FileWitness, backup: FileWitness, moves: z.array(Move).max(64) });
+const ProbingJournal = Common.extend({ phase: z.literal("probing") });
 const PreparedJournal = Common.extend({ phase: z.literal("prepared") });
 const ReadyJournal = Common.extend({ phase: z.literal("ready"), stage: FileWitness });
-const Journal = z.discriminatedUnion("phase", [Common.extend({ phase: z.literal("probing") }), PreparedJournal, ReadyJournal]);
+const Journal = z.discriminatedUnion("phase", [ProbingJournal, PreparedJournal, ReadyJournal]);
 type UpgradeJournal = z.infer<typeof Journal>;
+export type BrowserRootUpgradeState = UpgradeJournal["phase"] | "absent";
+export type BrowserRootUpgradeEvent = "back-up" | "probe" | "stage" | "publish";
+
+/** Each phase takes only its own next step; a failed step is revalidated and resumed forward, never rolled back. */
+const BROWSER_ROOT_UPGRADE_TRANSITIONS = {
+  absent: { "back-up": "probing" },
+  probing: { probe: "prepared" },
+  prepared: { stage: "ready" },
+  ready: { publish: "absent" },
+} as const satisfies Record<BrowserRootUpgradeState, Partial<Record<BrowserRootUpgradeEvent, BrowserRootUpgradeState>>>;
+
+export function browserRootUpgradeTransition(state: BrowserRootUpgradeState, event: BrowserRootUpgradeEvent): BrowserRootUpgradeState | undefined {
+  const row: Partial<Record<BrowserRootUpgradeEvent, BrowserRootUpgradeState>> = BROWSER_ROOT_UPGRADE_TRANSITIONS[state];
+  return row[event];
+}
+const awaitsProbe = (journal: UpgradeJournal): journal is z.infer<typeof ProbingJournal> => browserRootUpgradeTransition(journal.phase, "probe") !== undefined;
+const awaitsStage = (journal: UpgradeJournal): journal is z.infer<typeof PreparedJournal> => browserRootUpgradeTransition(journal.phase, "stage") !== undefined;
+const awaitsPublish = (journal: UpgradeJournal): journal is z.infer<typeof ReadyJournal> => browserRootUpgradeTransition(journal.phase, "publish") !== undefined;
 
 const encode = (value: unknown): Buffer => Buffer.from(canonicalJsonStringify(value));
 const hash = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -146,7 +165,7 @@ export async function upgradeBrowserRoots(lease: InstallationLease, operation: O
     writePrivateStage(backupPath, source.bytes); fsyncPath(backupRoot); fsyncPath(control);
     const backup = required(backupPath);
     if (!backup.bytes.equals(source.bytes)) refuse("backup-unproved");
-    journal = Journal.parse({ schemaVersion: 1, phase: "probing", operationId, installationId: prior.installationId,
+    journal = Journal.parse({ schemaVersion: 1, phase: browserRootUpgradeTransition("absent", "back-up"), operationId, installationId: prior.installationId,
       prior, current, source: witness(source), backup: witness(backup), moves });
     publish(journalPath, journal);
   } else journal = Journal.parse(decode(pending.bytes));
@@ -162,7 +181,7 @@ export async function upgradeBrowserRoots(lease: InstallationLease, operation: O
     const current = required(path);
     const prior = PriorDocument.safeParse(decode(current.bytes));
     if (prior.success && same(prior.data, journal.prior)) assertFile(path, journal.source);
-    else if (journal.phase !== "ready" || !same(BrowserRootsSchema.parse(decode(current.bytes)), journal.current)
+    else if (!awaitsPublish(journal) || !same(BrowserRootsSchema.parse(decode(current.bytes)), journal.current)
       || !sameDirectory(current.identity, journal.stage) || hash(current.bytes) !== journal.stage.digest) refuse("source-changed");
     if (journal.moves.length !== journal.prior.roots.length) refuse("move-membership");
     let unmoved = false;
@@ -180,7 +199,7 @@ export async function upgradeBrowserRoots(lease: InstallationLease, operation: O
       }
       if (row.owner.kind !== "signup") refuse("move-binding");
       if (sourceIdentity !== undefined && sameDirectory(sourceIdentity, move.identity) && targetIdentity === undefined) unmoved = true;
-      else if (journal.phase === "probing" || sourceIdentity !== undefined || targetIdentity === undefined || !sameDirectory(targetIdentity, move.identity) || unmoved) refuse("move-prefix-changed");
+      else if (awaitsProbe(journal) || sourceIdentity !== undefined || targetIdentity === undefined || !sameDirectory(targetIdentity, move.identity) || unmoved) refuse("move-prefix-changed");
     }
     const parents = [...new Set(["browsers/onboarding", ...journal.prior.roots.filter(row => row.owner.kind === "signup").map(row => row.profileRoot)])];
     for (const parent of parents) {
@@ -193,7 +212,7 @@ export async function upgradeBrowserRoots(lease: InstallationLease, operation: O
   };
   try {
     validate();
-    if (journal.phase === "probing") {
+    if (awaitsProbe(journal)) {
       const parents = [...new Set(journal.prior.roots.map(row => rootPath(row.profileRoot)))];
       proveUnused(parents);
       const config = resolveConfigWithProvenance({}, { primaryDisplay: null }, clock, { stateRoot: state, artifactRoot: lease.locator.artifactRoot }).config;
@@ -212,7 +231,7 @@ export async function upgradeBrowserRoots(lease: InstallationLease, operation: O
         if (!sameDirectory(identityAt(directory) ?? refuse("source-directory-missing"), move.identity)) refuse("source-directory-substituted");
       }
       proveUnused(parents);
-      journal = PreparedJournal.parse({ ...journal, phase: "prepared" });
+      journal = PreparedJournal.parse({ ...journal, phase: browserRootUpgradeTransition(journal.phase, "probe") });
       publish(journalPath, journal);
       validate();
     }
@@ -226,11 +245,11 @@ export async function upgradeBrowserRoots(lease: InstallationLease, operation: O
       validate();
     }
     const stagePath = join(machine, `.browser-roots.${journal.operationId}.compact.tmp`), bytes = encode(journal.current);
-    if (journal.phase === "prepared") {
+    if (awaitsStage(journal)) {
       let staged = read(stagePath);
       if (staged === undefined) { writePrivateStage(stagePath, bytes); fsyncPath(machine); staged = required(stagePath); }
       if (!staged.bytes.equals(bytes)) refuse("stage-changed");
-      journal = ReadyJournal.parse({ ...journal, phase: "ready", stage: witness(staged) });
+      journal = ReadyJournal.parse({ ...journal, phase: browserRootUpgradeTransition(journal.phase, "stage"), stage: witness(staged) });
       publish(journalPath, journal);
     }
     validate();

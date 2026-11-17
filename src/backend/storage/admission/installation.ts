@@ -20,7 +20,7 @@ import { sameDirectory, fileIdentityObservation, capturePriorPrivateFileLock,noS
 import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js";
 import { createProfileVerifiers,preparedProfileVerifierPepperWitness,verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { SourceRecordSchema,file as backupFile,hash as backupHash,profileAuthorityFileWitnesses,retainedStorageBackup } from "../maintenance/existing-data-backup-files.js";
-import { FlatStartCleanIntentSchema,assertFlatStartCleanCredentials,assertFlatStartCleanFiles,flatStartCleanPlan,readFlatStartCleanSource,type FlatStartCleanIntent } from "../maintenance/flat-start-clean.js";
+import { FlatStartCleanIntentSchema,assertFlatStartCleanCredentials,flatStartCleanAfter,assertFlatStartCleanFiles,flatStartCleanPlan,readFlatStartCleanSource,type FlatStartCleanIntent } from "../maintenance/flat-start-clean.js";
 import type { StoppedBackupClosure } from "../maintenance/profile-inventory.js";
 import { createPrivateDirectory,fsyncPath,privatePathRejects,replacePrivateFile,writePrivateStage } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError,assertSourceClosuresProved,hasUnprovedSourceClosure,rememberUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
@@ -46,7 +46,7 @@ import { StoppedCredentialErasureHeadSchema as CredentialErasureHeadSchema,Stopp
 import { captureCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
 
-import { FixedLayoutIntentSchema,assertFixedLayoutConfiguring,assertFixedLayoutEntries,assertFixedLayoutMove,fixedLayoutBindingEntries,fixedLayoutEntries,fixedLayoutSourceFence,publishFixedLayoutIntent,readFixedLayoutIntent,type FixedLayoutIntent } from "../maintenance/fixed-layout.js";
+import { FixedLayoutIntentSchema,assertFixedLayoutConfiguring,fixedLayoutAdmits,fixedLayoutUnfinished,assertFixedLayoutEntries,assertFixedLayoutMove,fixedLayoutBindingEntries,fixedLayoutEntries,fixedLayoutSourceFence,publishFixedLayoutIntent,readFixedLayoutIntent,type FixedLayoutIntent } from "../maintenance/fixed-layout.js";
 import { restoreRetainedFilesDigest, assertRestoreRootMembership } from "../maintenance/automatic-restore-files.js";
 import { proveProfileRootsUnused } from "../maintenance/process-closure.js";
 import { verifyStoppedBackupManifestAtPath } from "../sqlite/backup-service.js";
@@ -152,8 +152,11 @@ const DigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
 const ControlUpgradeFileSchema = FileIdentitySchema.extend({ digest: DigestSchema });
 
 const ControlUpgradeCredentialPlansSchema = z.array(z.strictObject({ profileId: z.uuid(), plan: CanonicalCredentialConversionPlanSchema })).max(10_000);
-const ControlUpgradeBackupsSchema = z.array(z.strictObject({ profileId: z.uuid(), directory: z.string().regex(/^[0-9a-f-]{36}\.[0-9a-f-]{36}\.authority$/u),
-  verifiedBackup: z.strictObject({ manifest: AuthorityBackupManifestSchema, manifestSha256: DigestSchema }).optional() })).max(10_000);
+const ControlUpgradeVerifiedBackupSchema = z.strictObject({ manifest: AuthorityBackupManifestSchema, manifestSha256: DigestSchema });
+const ControlUpgradeBackupRowSchema = z.strictObject({ profileId: z.uuid(), directory: z.string().regex(/^[0-9a-f-]{36}\.[0-9a-f-]{36}\.authority$/u),
+  verifiedBackup: ControlUpgradeVerifiedBackupSchema.optional() });
+const ControlUpgradeBackupsSchema = z.array(ControlUpgradeBackupRowSchema).max(10_000);
+const ControlUpgradeVerifiedBackupsSchema = z.array(ControlUpgradeBackupRowSchema.extend({ verifiedBackup: ControlUpgradeVerifiedBackupSchema })).max(10_000);
 const RetainedControlUpgradeEntrySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("file"), name: z.string().regex(/^[0-9a-f-]{36}\.(?:registry|control|marker)\.before\.json$|^[0-9a-f-]{36}\.receipt\.json$/u), file: ControlUpgradeFileSchema }),
   z.strictObject({ kind: z.literal("authority-directory"), name: z.string().regex(/^[0-9a-f-]{36}\.[0-9a-f-]{36}\.authority$/u),
@@ -171,16 +174,34 @@ const ControlUpgradeCommonSchema = z.strictObject({ schemaVersion: z.literal(3),
   retained: z.array(RetainedControlUpgradeEntrySchema),
   sourceEvidence: z.string().max(16 * 1024 * 1024) });
 
-const ControlUpgradeReceiptSchema = z.discriminatedUnion("phase", [
-  ControlUpgradeCommonSchema.extend({ phase: z.literal("preparing"), credentials: z.tuple([]), backups: z.tuple([]) }),
-  ControlUpgradeCommonSchema.extend({ phase: z.enum(["backing-up", "publishing"]), browserStage: ControlUpgradeFileSchema, credentials: ControlUpgradeCredentialPlansSchema, backups: ControlUpgradeBackupsSchema }),
-]);
-const PredecessorControlUpgradeCommonSchema = ControlUpgradeCommonSchema.extend({ browsers: StoppedBrowserRootsV1Schema });
-const StoppedControlUpgradeReceiptSchema = z.union([ControlUpgradeReceiptSchema, z.discriminatedUnion("phase", [
-  PredecessorControlUpgradeCommonSchema.extend({ phase: z.literal("preparing"), credentials: z.tuple([]), backups: z.tuple([]) }),
-  PredecessorControlUpgradeCommonSchema.extend({ phase: z.enum(["backing-up", "publishing"]), browserStage: ControlUpgradeFileSchema, credentials: ControlUpgradeCredentialPlansSchema, backups: ControlUpgradeBackupsSchema }),
-])]);
+/** One receipt per browser-roots document version; publishing starts only once every person's backup is verified. */
+export function controlUpgradeReceiptSchema<Browsers extends z.ZodType>(browsersSchema: Browsers) {
+  const common = ControlUpgradeCommonSchema.extend({ browsers: browsersSchema });
+  return z.discriminatedUnion("phase", [
+    common.extend({ phase: z.literal("preparing"), credentials: z.tuple([]), backups: z.tuple([]) }),
+    common.extend({ phase: z.literal("backing-up"), browserStage: ControlUpgradeFileSchema, credentials: ControlUpgradeCredentialPlansSchema, backups: ControlUpgradeBackupsSchema }),
+    common.extend({ phase: z.literal("publishing"), browserStage: ControlUpgradeFileSchema, credentials: ControlUpgradeCredentialPlansSchema, backups: ControlUpgradeVerifiedBackupsSchema }),
+  ]);
+}
+const ControlUpgradeReceiptSchema = controlUpgradeReceiptSchema(z.lazy(() => BrowserRootsSchema));
+const StoppedControlUpgradeReceiptSchema = z.union([ControlUpgradeReceiptSchema, controlUpgradeReceiptSchema(StoppedBrowserRootsV1Schema)]);
 type StoppedControlUpgradeReceipt = z.infer<typeof StoppedControlUpgradeReceiptSchema>;
+export type ControlUpgradePhase = StoppedControlUpgradeReceipt["phase"];
+export type ControlUpgradeEvent = "plan-browsers" | "stage-browsers" | "publish" | "publish-credentials" | "finish";
+
+/**
+ * What each replayed step does in each receipt phase: run it, skip it because a later phase shows it already ran, or refuse.
+ * Publishing re-runs on replay and rewrites the same receipt; nothing rolls back.
+ */
+const CONTROL_UPGRADE_TRANSITIONS = {
+  preparing: { "plan-browsers": "run", "stage-browsers": "run", publish: "refused", "publish-credentials": "refused", finish: "refused" },
+  "backing-up": { "plan-browsers": "passed", "stage-browsers": "passed", publish: "run", "publish-credentials": "refused", finish: "refused" },
+  publishing: { "plan-browsers": "passed", "stage-browsers": "passed", publish: "run", "publish-credentials": "run", finish: "run" },
+} as const satisfies Record<ControlUpgradePhase, Record<ControlUpgradeEvent, "run" | "passed" | "refused">>;
+
+export function controlUpgradeStep(phase: ControlUpgradePhase, event: ControlUpgradeEvent): "run" | "passed" | "refused" {
+  return CONTROL_UPGRADE_TRANSITIONS[phase][event];
+}
 const GenerationSchema = z.number().int().nonnegative();
 const ProfileRestoreContextSchema = z.lazy(() => z.strictObject({ binding: ProfileDatabaseBindingSchema, continuity: ProfileContinuitySchema,
   credentials: CanonicalCredentialRestoreSnapshotSchema }));
@@ -313,7 +334,7 @@ export async function prepareFixedLayoutPublication(lease: InstallationLease, ma
 
 export function recoverFixedLayoutPublication(targetWorkspace: string, lifetime: RuntimeLifetimeLock): FixedLayoutPublication {
   const intent = readFixedLayoutIntent(targetWorkspace);
-  if (intent === undefined || intent.phase === "complete") fail("fixed-layout-recovery-missing");
+  if (intent === undefined || !fixedLayoutUnfinished(intent.phase)) fail("fixed-layout-recovery-missing");
   lifetime.assertExclusiveWorkspaceTarget(intent.sourceWorkspace);
   assertMaintenanceCustodyAvailable("layout-migration");
   const operation = lifetime.beginOfflineMaintenance(intent.sourceWorkspace);
@@ -1427,8 +1448,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   lifetime.assertHeld();
   if (resolve(workspacePath) !== workspace) fail("installation workspace must be canonical");
   const layout = readFixedLayoutIntent(workspace);
-  if (layout !== undefined && layout.phase !== "complete"
-    && (layout.phase !== "configuring" || options?.stoppedControlForward !== true || options.offlineOperation === undefined)) fail("fixed-layout-startup-recovery-required");
+  if (!fixedLayoutAdmits(layout?.phase ?? "absent", options?.stoppedControlForward === true && options.offlineOperation !== undefined)) fail("fixed-layout-startup-recovery-required");
   if ((mode === "exclusive" || options?.stoppedControlForward === true) && !(lifetime instanceof RuntimeLifetimeLock)) fail("exclusive-root-lifetime-required");
   if (options?.stoppedControlForward === true && mode !== "exclusive") fail("stopped-control-forward-exclusive-required");
   if (lifetime instanceof RuntimeLifetimeLock) {
@@ -1847,7 +1867,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         };
         current();
         while (intent.cursor < plan.length) {
-          if (!intent.pending) { intent = { ...intent, pending: true }; atomicJson(intentPath, intent); }
+          if (!intent.pending) { intent = flatStartCleanAfter(intent, { type: "begin-member" }, plan.length); atomicJson(intentPath, intent); }
           current();
           const member = plan[intent.cursor];
           if (member === undefined) fail("flat-start-clean-cursor-invalid");
@@ -1856,16 +1876,16 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
             if (member.kind === "directory") rmdirSync(path); else unlinkSync(path);
           }
           fsyncPath(dirname(path));
-          intent = { ...intent, cursor: intent.cursor + 1, pending: false }; atomicJson(intentPath, intent);
+          intent = flatStartCleanAfter(intent, { type: "member-deleted" }, plan.length); atomicJson(intentPath, intent);
           current();
         }
-        if (intent.phase === "erasing") { intent = { ...intent, phase: "publishing" }; atomicJson(intentPath, intent); }
+        const published = flatStartCleanAfter(intent, { type: "all-deleted" }, plan.length);
+        if (published !== intent) { intent = published; atomicJson(intentPath, intent); }
         current(); initializeMachineRegistry(control, locator, intent);
         current();
         const document = readMachineRegistry(control, locator, false);
         const registryDigest = backupHash(Buffer.from(canonicalJsonStringify(document)));
-        if (intent.result !== undefined && intent.result.registryDigest !== registryDigest) fail("flat-start-clean-result-changed");
-        intent = { ...intent, phase: "complete", result: { registryDigest } };
+        intent = flatStartCleanAfter(intent, { type: "published", registryDigest }, plan.length);
         atomicJson(intentPath, intent);
         const completed = join(control, "flat-start-clean-complete.json");
         if (lstatMaybe(completed)) fail("flat-start-clean-completion-exists");
@@ -2720,7 +2740,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     retainedProofs.clear();
     const stages = validateControl(receipt);
     const prefix = join(backupDirectory, receipt.operationId);
-    if (receipt.phase !== "publishing" || receipt.backups.some(row => row.verifiedBackup === undefined)) fail("profile-control-upgrade-verified-backup-required");
+    if (controlUpgradeStep(receipt.phase, "finish") !== "run") fail("profile-control-upgrade-verified-backup-required");
     const browserPath = join(locator.stateRoot, "machine", "browser-roots.json"), browserStage = `${prefix}.browser.stage`;
     if (lstatMaybe(browserStage)) { renameSync(browserStage, browserPath); fsyncPath(dirname(browserPath)); fsyncPath(backupDirectory); }
     if (!sameControlUpgradeFile(browserPath, receipt.browserStage)) fail("profile-control-upgrade-browser-readback");
@@ -2747,7 +2767,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       if (pending !== undefined) {
         if (plan) fail("profile-control-upgrade-recovery-required");
         validateControl(pending);
-        if (pending.phase !== "preparing") return;
+        if (controlUpgradeStep(pending.phase, "plan-browsers") === "passed") return;
       }
       const prior = pending?.prior ?? readProfileEvidence(controlPath, StoppedProfileContinuitySchema);
       const priorDocument = pending?.priorDocument ?? readProfileEvidence(registryPath, StoppedProfileRegistryDocumentSchema);
@@ -2887,8 +2907,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       const assertCanonicalPublication = (operationId: string, digest: string) => {
         assertCanonicalConversion(operationId, digest);
         const receipt = readControlUpgradeReceipt(intentPath);
-        if (receipt.phase !== "publishing" || receipt.backups.length !== receipt.document.profiles.length
-          || receipt.backups.some(row => row.verifiedBackup === undefined)) fail("profile-control-upgrade-verified-backup-required");
+        if (controlUpgradeStep(receipt.phase, "publish-credentials") !== "run" || receipt.backups.length !== receipt.document.profiles.length) fail("profile-control-upgrade-verified-backup-required");
       };
       const stateRoot = join(locator.stateRoot, "profiles", profileId), issued = Object.freeze({ profileId });
       const credential = prior.schemaVersion === 5 || prior.schemaVersion === 6 ? undefined : prior.erasures.find(row => row.profileId === profileId);
@@ -2905,7 +2924,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
           withInstallationControl(control, () => {
             assertHeld();
             const receipt = readControlUpgradeReceipt(intentPath);
-            if (receipt.phase !== "preparing" || canonicalJsonStringify(receipt.browsers) !== canonicalJsonStringify(expected)) fail("profile-control-upgrade-browser-plan-changed");
+            if (controlUpgradeStep(receipt.phase, "plan-browsers") !== "run" || canonicalJsonStringify(receipt.browsers) !== canonicalJsonStringify(expected)) fail("profile-control-upgrade-browser-plan-changed");
             const next = parseStoppedBrowserRootUpgradeSource(document);
             if (next.schemaVersion !== expected.schemaVersion || next.installationId !== locator.installationId || next.revision !== expected.revision + 1
               || next.nextGeneration !== expected.nextGeneration || next.roots.length !== expected.roots.length) fail("profile-control-upgrade-browser-plan-changed");
@@ -2951,7 +2970,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         if (plan) fail("profile-control-upgrade-recovery-required");
         publicationProofs(pending.document.profiles);
         validateControl(pending);
-        if (pending.phase !== "preparing") return { receipt: pending, runtimeAccess };
+        if (controlUpgradeStep(pending.phase, "stage-browsers") === "passed") return { receipt: pending, runtimeAccess };
         const browserDocument = publishedBrowserDocument(pending.browsers);
         const credentials = pending.document.profiles.flatMap(profile => {
           const entry = inventoryProofs.get(profile.profileId); if (entry === undefined) fail("profile-control-upgrade-inventory-required");
@@ -3015,6 +3034,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         receipt = StoppedControlUpgradeReceiptSchema.parse({ ...receipt, backups: receipt.backups.map(backup => backup.profileId === row.profileId ? { ...backup, verifiedBackup } : backup) });
         withInstallationControl(control, () => { held(); const currentReceipt = StoppedControlUpgradeReceiptSchema.parse(receipt); validateControl(currentReceipt); writeControlUpgradeReceipt(intentPath, currentReceipt); });
       }
+      if (controlUpgradeStep(receipt.phase, "publish") !== "run") fail("profile-control-upgrade-publication-uncertain");
       receipt = StoppedControlUpgradeReceiptSchema.parse({ ...receipt, phase: "publishing" });
       withInstallationControl(control, () => { held(); const currentReceipt = StoppedControlUpgradeReceiptSchema.parse(receipt); validateControl(currentReceipt); writeControlUpgradeReceipt(intentPath, currentReceipt); });
       for (const row of receipt.credentials) {

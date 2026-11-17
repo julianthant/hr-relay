@@ -15,8 +15,39 @@ export const FlatStartCleanIntentSchema = z.strictObject({
   timing: z.strictObject({ launchTimeoutMs: z.number().int().positive(), closeProofMs: z.number().int().positive() }),
   phase: z.enum(["erasing", "publishing", "complete"]), cursor: z.number().int().safe().nonnegative(), pending: z.boolean(),
   result: z.strictObject({ registryDigest: DigestSchema }).optional(),
-}).refine(intent => (intent.phase === "complete") === (intent.result !== undefined));
+}).refine(intent => (intent.phase === "complete") === (intent.result !== undefined))
+  .refine(intent => intent.phase === "erasing" || !intent.pending);
 export type FlatStartCleanIntent = z.infer<typeof FlatStartCleanIntentSchema>;
+export type FlatStartCleanEvent = Readonly<{ type: "begin-member" | "member-deleted" | "all-deleted" } | { type: "published"; registryDigest: string }>;
+
+/** The cursor never passes the plan, a finished cursor has no pending member, and only erasing stops before the end. */
+const flatStartCleanCursorValid = (intent: FlatStartCleanIntent, planLength: number): boolean =>
+  intent.cursor <= planLength && !(intent.cursor === planLength && intent.pending) && (intent.phase === "erasing" || intent.cursor === planLength);
+
+/**
+ * The journal after one writer step. Erasing deletes one plan member at a time (marked pending first), then publishing
+ * records the registry digest; replay resumes forward from any progress and never rolls back.
+ */
+export function flatStartCleanAfter(intent: FlatStartCleanIntent, event: FlatStartCleanEvent, planLength: number): FlatStartCleanIntent {
+  if (!flatStartCleanCursorValid(intent, planLength)) throw new Error("flat-start-clean-cursor-invalid");
+  const erasing = intent.phase === "erasing", remaining = intent.cursor < planLength;
+  switch (event.type) {
+    case "begin-member":
+      if (erasing && remaining) return intent.pending ? intent : { ...intent, pending: true };
+      break;
+    case "member-deleted":
+      if (erasing && intent.pending) return { ...intent, cursor: intent.cursor + 1, pending: false };
+      break;
+    case "all-deleted":
+      if (!remaining) return erasing ? { ...intent, phase: "publishing" } : intent;
+      break;
+    case "published":
+      if (intent.result !== undefined && intent.result.registryDigest !== event.registryDigest) throw new Error("flat-start-clean-result-changed");
+      if (!erasing) return intent.result === undefined ? { ...intent, phase: "complete", result: { registryDigest: event.registryDigest } } : intent;
+      break;
+  }
+  throw new Error("flat-start-clean-transition-refused");
+}
 
 const FlatProtectedSchema = z.strictObject({ schemaVersion: z.literal(2), record: ProtectedStoreRecordSchema,
   history: z.array(z.strictObject({ request: ProtectedSettingsApplyInputSchema,
@@ -56,9 +87,7 @@ export function readFlatStartCleanSource(workspace: string, installationId: stri
   const bytes = file(join(dirname(reference.backupPath), "source.json")).bytes;
   const source = SourceRecordSchema.parse(JSON.parse(bytes.toString("utf8")));
   if (source.installationId !== installationId || source.operationId !== intent.operationId || hash(bytes) !== intent.sourceDigest) throw new Error("flat-start-clean-intent-changed");
-  const plan = flatStartCleanPlan(source);
-  if (intent.cursor > plan.length || intent.cursor === plan.length && intent.pending
-    || intent.phase !== "erasing" && (intent.cursor !== plan.length || intent.pending)) throw new Error("flat-start-clean-cursor-invalid");
+  if (!flatStartCleanCursorValid(intent, flatStartCleanPlan(source).length)) throw new Error("flat-start-clean-cursor-invalid");
   return source;
 }
 
