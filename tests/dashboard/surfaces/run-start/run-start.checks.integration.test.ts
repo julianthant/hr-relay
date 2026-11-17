@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, describe, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
+import { FIXTURE_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-bootstrap.js";
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../support/fixtures/dashboard/fixture-settings.js";
+import { PreflightRerunCommandRequestSchema } from "../../../../src/models/preflight/preflight-contract.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
@@ -77,7 +80,16 @@ describe("the Run dialog's Checks step", () => {
     await act(async () => { pending.resolve(h.readiness([PASSING])); });
     assert.equal(slow.disabled("Start run"), false);
     await h.cleanup();
-    const down = await h.openDialog(h.stubClient({ readPreflight: async () => ({ state: "unavailable", reason: "The runtime is restarting." }) }));
+    const down = await h.openDialog(h.stubClient({
+      readPreflight: async () => ({ state: "unavailable", reason: "The runtime is restarting." }),
+      editableSettings: async () => FIXTURE_EDITABLE_SETTINGS,
+      preflightScopes: async () => FIXTURE_BOOTSTRAP.workflows,
+      rerunPreflight: async request => {
+        const command = PreflightRerunCommandRequestSchema.parse(request);
+        if (h.READY.state !== "present") throw new Error("fixture readiness report required");
+        return { state: "completed", commandId: command.commandId, report: h.READY.report };
+      },
+    }));
     await reachChecks(down);
     assert.equal(down.disabled("Start run"), true);
     assert.ok(down.text().includes("The runtime is restarting."));
