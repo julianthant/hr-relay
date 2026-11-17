@@ -6,6 +6,10 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { test } from "./helpers/fixtures.js";
 import { DUO_VARIANTS } from "./helpers/needs-duo-scenes.js";
+import { MOCK_DIST_DIR } from "./helpers/bundle.js";
+import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
+import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
+import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
 
 // "Needs Duo" variants in the parity mock harness; frames are evidence, never test references.
 const repoRoot = resolve(import.meta.dirname, "../..");
@@ -54,4 +58,34 @@ for (const theme of THEMES) for (const width of WIDTHS) test(`needs duo frames @
     await page.screenshot({ path: join(OUT, `${variant}-${theme}-${width}.png`) });
   }
   expect(errors).toEqual([]);
+});
+
+// Served dashboard, before and after: the same run held by Duo, once as the old running row and once with the served operatorWait.
+for (const state of ["before", "after"] as const) for (const width of WIDTHS) test(`served needs duo ${state} @ ${width}`, async ({ page }) => {
+  test.setTimeout(240_000);
+  // The same run held by Duo: before it is the old running row, after it carries the served operatorWait.
+  const day = structuredClone(FIXTURE_DAY_WIRE) as { queueSurfaces: Record<string, unknown>[] };
+  const target = day.queueSurfaces.find(row => row.surfaceKind !== "operation" && (row.parent ?? null) === null && row.status === "running");
+  if (target === undefined) throw new Error("needs-duo-served-running-row-missing");
+  target.liveMessage = { state: "present", value: "Waiting for Duo approval" };
+  if (state === "after") {
+    target.status = "awaiting-approval";
+    target.operatorWait = { state: "present", kind: "duo", system: "ucpath", since: new Date().toISOString() };
+  }
+  const served = await startFixtureServer({ distDir: MOCK_DIST_DIR, bundle: { proof: "working-tree" }, dayWire: day as never });
+  try {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto(`${served.baseUrl}/?day=${FIXTURE_DAY}&fixture=picked-a`);
+    await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
+    await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
+    const row = page.getByRole("button").filter({ hasText: "Waiting for Duo approval" }).first();
+    await expect(row).toBeVisible();
+    await row.click();
+    if (state === "after") {
+      await expect(page.getByText("Needs Duo").first()).toBeVisible();
+      await expect(page.getByText("Approve the Duo sign-in")).toBeVisible();
+    } else await expect(page.getByText("Needs Duo")).toHaveCount(0);
+    await page.mouse.move(1, 1);
+    await page.screenshot({ path: join(OUT, `served-${state}-${width}.png`) });
+  } finally { await served.close(); }
 });
