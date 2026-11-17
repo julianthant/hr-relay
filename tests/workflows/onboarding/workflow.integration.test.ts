@@ -384,9 +384,9 @@ describe("onboarding roster names in a real run", () => {
     const detail = buildRunDetail(createOperatorRunDetail({ database: f.database, stateRoot: f.stateRoot, projection, runReader: reader,
       canonical: { database: f.database, reader, descriptors } }), root.envelope.runId);
     assert.deepEqual(detail.timeline.steps?.slice(0, 4).map(step => [step.key, step.state, step.members.map(member => [member.nodeId, member.state, member.notRunReason])]), [
-      ["crm-data", "done", [["roster-choice", "skipped", "condition-false"], ["crm-source", "done", undefined], ["hire-plan", "done", undefined]]],
+      ["crm-data", "done", [["crm-source", "done", undefined], ["hire-plan", "done", undefined]]],
       ["ucpath-search", "done", [["ucpath-source", "done", undefined], ["hire-subject", "done", undefined]]],
-      ["i9-search", "done", [lookupRuns ? ["i9-lookup-child", "done", undefined] : ["i9-lookup-child", "skipped", "condition-false"], ["i9-lookup", "done", undefined]]],
+      ["i9-search", "done", [...(lookupRuns ? [["i9-lookup-child", "done", undefined]] : []), ["i9-lookup", "done", undefined]]],
       ["hire-review", "blocked", [["hire-findings", "done", undefined], ["hire-review", "blocked", undefined]]],
     ]);
   });
