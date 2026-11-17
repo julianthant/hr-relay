@@ -165,17 +165,17 @@ export type FixedLayoutPhase = FixedLayoutIntent["phase"];
 export type FixedLayoutJournalState = FixedLayoutPhase | "absent";
 
 /** The phases a publication may write over each journal state: the same phase again, or the next one. */
-const FIXED_LAYOUT_TRANSITIONS = {
+const FIXED_LAYOUT_TRANSITIONS = deepFreeze({
   absent: { moving: "advance" },
   moving: { moving: "unchanged", configuring: "advance" },
   configuring: { configuring: "unchanged", complete: "advance" },
   complete: { complete: "unchanged" },
-} as const satisfies Record<FixedLayoutJournalState, Partial<Record<FixedLayoutPhase, "advance" | "unchanged">>>;
+} as const satisfies Record<FixedLayoutJournalState, Partial<Record<FixedLayoutPhase, "advance" | "unchanged">>>);
 
 /** Installation admission per journal state; `configuring` is admitted only under stopped-control-forward maintenance. */
-const FIXED_LAYOUT_ADMISSION = {
+const FIXED_LAYOUT_ADMISSION = deepFreeze({
   absent: "admitted", moving: "refused", configuring: "stopped-control-forward", complete: "admitted",
-} as const satisfies Record<FixedLayoutJournalState, "admitted" | "stopped-control-forward" | "refused">;
+} as const satisfies Record<FixedLayoutJournalState, "admitted" | "stopped-control-forward" | "refused">);
 
 export function fixedLayoutTransition(from: FixedLayoutJournalState, to: FixedLayoutPhase): "advance" | "unchanged" | "refused" {
   const row: Partial<Record<FixedLayoutPhase, "advance" | "unchanged">> = FIXED_LAYOUT_TRANSITIONS[from];

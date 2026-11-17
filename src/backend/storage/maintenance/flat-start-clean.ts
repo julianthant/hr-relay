@@ -1,6 +1,7 @@
 import { lstatSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { StoppedProtectedSettingsApplyInputSchema as ProtectedSettingsApplyInputSchema, StoppedProtectedSettingsNameSchema as ProtectedSettingsNameSchema, StoppedProtectedStoreRecordSchema as ProtectedStoreRecordSchema } from "../configuration/protected-settings-upgrade.js";
 import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
 import { ChatGptCredentialRecordSchema } from "../configuration/chatgpt-credential-repository.js";
@@ -24,27 +25,38 @@ export type FlatStartCleanEvent = Readonly<{ type: "begin-member" | "member-dele
 const flatStartCleanCursorValid = (intent: FlatStartCleanIntent, planLength: number): boolean =>
   intent.cursor <= planLength && !(intent.cursor === planLength && intent.pending) && (intent.phase === "erasing" || intent.cursor === planLength);
 
+type FlatStartCleanProgress = "erasing" | "erasing-pending" | "erased" | "publishing" | "complete";
+type FlatStartCleanStep = "mark-pending" | "advance-cursor" | "publish" | "complete" | "unchanged";
+
 /**
- * The journal after one writer step. Erasing deletes one plan member at a time (marked pending first), then publishing
- * records the registry digest; replay resumes forward from any progress and never rolls back.
+ * Erasing deletes one plan member at a time (marked pending first), then publishing records the registry digest.
+ * Replay resumes forward from any progress and never rolls back; a missing cell is refused.
  */
+const FLAT_START_CLEAN_TRANSITIONS = deepFreeze({
+  erasing: { "begin-member": "mark-pending" },
+  "erasing-pending": { "begin-member": "unchanged", "member-deleted": "advance-cursor" },
+  erased: { "all-deleted": "publish" },
+  publishing: { "all-deleted": "unchanged", published: "complete" },
+  complete: { "all-deleted": "unchanged", published: "unchanged" },
+} as const satisfies Record<FlatStartCleanProgress, Partial<Record<FlatStartCleanEvent["type"], FlatStartCleanStep>>>);
+
+const flatStartCleanProgress = (intent: FlatStartCleanIntent, planLength: number): FlatStartCleanProgress =>
+  intent.phase !== "erasing" ? intent.phase : intent.pending ? "erasing-pending" : intent.cursor < planLength ? "erasing" : "erased";
+
+/** The journal after one writer step. */
 export function flatStartCleanAfter(intent: FlatStartCleanIntent, event: FlatStartCleanEvent, planLength: number): FlatStartCleanIntent {
   if (!flatStartCleanCursorValid(intent, planLength)) throw new Error("flat-start-clean-cursor-invalid");
-  const erasing = intent.phase === "erasing", remaining = intent.cursor < planLength;
-  switch (event.type) {
-    case "begin-member":
-      if (erasing && remaining) return intent.pending ? intent : { ...intent, pending: true };
+  if (event.type === "published" && intent.result !== undefined && intent.result.registryDigest !== event.registryDigest) throw new Error("flat-start-clean-result-changed");
+  const row: Partial<Record<FlatStartCleanEvent["type"], FlatStartCleanStep>> = FLAT_START_CLEAN_TRANSITIONS[flatStartCleanProgress(intent, planLength)];
+  switch (row[event.type]) {
+    case "unchanged": return intent;
+    case "mark-pending": return { ...intent, pending: true };
+    case "advance-cursor": return { ...intent, cursor: intent.cursor + 1, pending: false };
+    case "publish": return { ...intent, phase: "publishing" };
+    case "complete":
+      if (event.type === "published") return { ...intent, phase: "complete", result: { registryDigest: event.registryDigest } };
       break;
-    case "member-deleted":
-      if (erasing && intent.pending) return { ...intent, cursor: intent.cursor + 1, pending: false };
-      break;
-    case "all-deleted":
-      if (!remaining) return erasing ? { ...intent, phase: "publishing" } : intent;
-      break;
-    case "published":
-      if (intent.result !== undefined && intent.result.registryDigest !== event.registryDigest) throw new Error("flat-start-clean-result-changed");
-      if (!erasing) return intent.result === undefined ? { ...intent, phase: "complete", result: { registryDigest: event.registryDigest } } : intent;
-      break;
+    case undefined: break;
   }
   throw new Error("flat-start-clean-transition-refused");
 }

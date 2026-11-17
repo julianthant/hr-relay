@@ -4,6 +4,7 @@ import { readdirSync } from "node:fs";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { BrowserRootSchema, BrowserRootsSchema, StoppedBrowserRootsV1Schema, StoppedBrowserRootsV2Schema } from "../browser-root-contract.js";
 import { BrowserRootUnavailableError, assertPrivateProfilePath, profileReservations, type BrowserProfileProbeFactory } from "../browser-roots.js";
 import { assertStoppedMachineMaintenance, type InstallationLease } from "../admission/installation.js";
@@ -34,12 +35,12 @@ export type BrowserRootUpgradeState = UpgradeJournal["phase"] | "absent";
 export type BrowserRootUpgradeEvent = "back-up" | "probe" | "stage" | "publish";
 
 /** Each phase takes only its own next step; a failed step is revalidated and resumed forward, never rolled back. */
-const BROWSER_ROOT_UPGRADE_TRANSITIONS = {
+const BROWSER_ROOT_UPGRADE_TRANSITIONS = deepFreeze({
   absent: { "back-up": "probing" },
   probing: { probe: "prepared" },
   prepared: { stage: "ready" },
   ready: { publish: "absent" },
-} as const satisfies Record<BrowserRootUpgradeState, Partial<Record<BrowserRootUpgradeEvent, BrowserRootUpgradeState>>>;
+} as const satisfies Record<BrowserRootUpgradeState, Partial<Record<BrowserRootUpgradeEvent, BrowserRootUpgradeState>>>);
 
 export function browserRootUpgradeTransition(state: BrowserRootUpgradeState, event: BrowserRootUpgradeEvent): BrowserRootUpgradeState | undefined {
   const row: Partial<Record<BrowserRootUpgradeEvent, BrowserRootUpgradeState>> = BROWSER_ROOT_UPGRADE_TRANSITIONS[state];

@@ -38,6 +38,7 @@ import { assertNoOldBuildRuntimeArtifacts,assertNoSymlinkComponents,lstatMaybe }
 import { systemClock } from "../../../rules/time/clock.js";
 import { credentialHeadStateOf } from "../../../rules/storage/credential-head.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { BrowserRootsSchema,StoppedBrowserRootsV1Schema,parseStoppedBrowserRootUpgradeSource,type BrowserRootsDocument,type StoppedBrowserRootsDocument } from "../browser-root-contract.js";
@@ -193,15 +194,18 @@ export type ControlUpgradeEvent = "plan-browsers" | "stage-browsers" | "publish"
  * What each replayed step does in each receipt phase: run it, skip it because a later phase shows it already ran, or refuse.
  * Publishing re-runs on replay and rewrites the same receipt; nothing rolls back.
  */
-const CONTROL_UPGRADE_TRANSITIONS = {
+const CONTROL_UPGRADE_TRANSITIONS = deepFreeze({
   preparing: { "plan-browsers": "run", "stage-browsers": "run", publish: "refused", "publish-credentials": "refused", finish: "refused" },
   "backing-up": { "plan-browsers": "passed", "stage-browsers": "passed", publish: "run", "publish-credentials": "refused", finish: "refused" },
   publishing: { "plan-browsers": "passed", "stage-browsers": "passed", publish: "run", "publish-credentials": "run", finish: "run" },
-} as const satisfies Record<ControlUpgradePhase, Record<ControlUpgradeEvent, "run" | "passed" | "refused">>;
+} as const satisfies Record<ControlUpgradePhase, Record<ControlUpgradeEvent, "run" | "passed" | "refused">>);
 
 export function controlUpgradeStep(phase: ControlUpgradePhase, event: ControlUpgradeEvent): "run" | "passed" | "refused" {
   return CONTROL_UPGRADE_TRANSITIONS[phase][event];
 }
+/** Credential publication and finish run only on a publishing receipt, whose every backup is verified. */
+const controlUpgradeRuns = (receipt: StoppedControlUpgradeReceipt, event: "publish-credentials" | "finish"): receipt is Extract<StoppedControlUpgradeReceipt, { phase: "publishing" }> =>
+  controlUpgradeStep(receipt.phase, event) === "run";
 const GenerationSchema = z.number().int().nonnegative();
 const ProfileRestoreContextSchema = z.lazy(() => z.strictObject({ binding: ProfileDatabaseBindingSchema, continuity: ProfileContinuitySchema,
   credentials: CanonicalCredentialRestoreSnapshotSchema }));
@@ -2740,7 +2744,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     retainedProofs.clear();
     const stages = validateControl(receipt);
     const prefix = join(backupDirectory, receipt.operationId);
-    if (controlUpgradeStep(receipt.phase, "finish") !== "run") fail("profile-control-upgrade-verified-backup-required");
+    if (!controlUpgradeRuns(receipt, "finish")) fail("profile-control-upgrade-verified-backup-required");
     const browserPath = join(locator.stateRoot, "machine", "browser-roots.json"), browserStage = `${prefix}.browser.stage`;
     if (lstatMaybe(browserStage)) { renameSync(browserStage, browserPath); fsyncPath(dirname(browserPath)); fsyncPath(backupDirectory); }
     if (!sameControlUpgradeFile(browserPath, receipt.browserStage)) fail("profile-control-upgrade-browser-readback");
@@ -2907,7 +2911,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       const assertCanonicalPublication = (operationId: string, digest: string) => {
         assertCanonicalConversion(operationId, digest);
         const receipt = readControlUpgradeReceipt(intentPath);
-        if (controlUpgradeStep(receipt.phase, "publish-credentials") !== "run" || receipt.backups.length !== receipt.document.profiles.length) fail("profile-control-upgrade-verified-backup-required");
+        if (!controlUpgradeRuns(receipt, "publish-credentials") || receipt.backups.length !== receipt.document.profiles.length) fail("profile-control-upgrade-verified-backup-required");
       };
       const stateRoot = join(locator.stateRoot, "profiles", profileId), issued = Object.freeze({ profileId });
       const credential = prior.schemaVersion === 5 || prior.schemaVersion === 6 ? undefined : prior.erasures.find(row => row.profileId === profileId);
