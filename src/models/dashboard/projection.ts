@@ -249,6 +249,10 @@ const QueueBaseFields = {
   status: QueueStatusSchema,
     /* Set on a queued row whose workflow has no live worker; absent while one is alive. */
   notStarting: QueueNotStartingWireSchema.optional(),
+  operatorWait: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), kind: z.literal("duo"), system: BrowserSystemIdSchema, since: IsoInstantSchema }),
+    z.strictObject({ state: z.literal("absent") }),
+  ]),
     /* Who cancelled a cancelled run: the operator, or Relay when the profile logged out or the queue went stale. */
   cancelledBy: z.enum(["operator", "logout", "stale-queue"]).optional(),
   outcome: QueueBusinessOutcomeSchema.optional(),

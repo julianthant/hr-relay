@@ -3931,11 +3931,11 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  /** Systems whose live Duo ceremony lease this worker holds. */
-  heldDuoSystems(workerId: string): readonly string[] {
+  /** Live Duo ceremony leases this worker holds, with their original acquisition times. */
+  heldDuoLeases(workerId: string) {
     return this.withAuthorityReadSnapshot(() => this.#database.prepare("SELECT * FROM auth_leases WHERE holder_worker_id=? AND state='held'").all(workerId)
       .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema))
-      .filter(lease => isDuoCeremonyLeaseLive(lease, this.#clock.now().getTime())).map(lease => lease.holder.system));
+      .filter(lease => isDuoCeremonyLeaseLive(lease, this.#clock.now().getTime())).map(lease => ({ system: lease.holder.system, since: lease.acquiredAt })));
   }
 
   withAuthorityReadSnapshot<Result>(read: () => Result): Result {

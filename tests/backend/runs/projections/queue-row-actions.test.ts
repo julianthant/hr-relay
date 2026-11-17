@@ -118,6 +118,7 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
     endedAt: terminal
       ? { state: "present", value: NOW }
       : { state: "absent", reason: `run is ${status} and has not ended` },
+    operatorWait: { state: "absent" },
     gateOpenedAt: status === "awaiting-approval"
       ? { state: "present", value: NOW }
       : { state: "absent", reason: `run is ${status} and is not waiting on a gate` },
