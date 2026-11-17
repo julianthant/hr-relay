@@ -10,6 +10,9 @@ export const SHORTCUT_ACTIONS = [
   { id: 'attention', title: 'Next run needing you', description: 'Jump to the next run waiting for a decision.', defaults: ['n'] },
 ] as const;
 export type ShortcutAction = typeof SHORTCUT_ACTIONS[number]['id'];
+/** The assistant composer's send key; Command and Ctrl both count as the modifier. */
+export const SEND_SHORTCUT_OPTIONS = [{ value: 'enter', label: 'Enter' }, { value: 'mod-enter', label: '⌘Enter' }] as const;
+export const SEND_SHORTCUT_TERMS = 'send shortcut choose which keys send a message in the assistant';
 export { type ShortcutPreferences } from "../../../../models/config/person-preferences.js";
 export const DEFAULT_SHORTCUT_PREFERENCES = NEUTRAL_PERSON_PREFERENCES.shortcuts;
 export function validateShortcutPreferences(value: unknown): ShortcutPreferences { return ShortcutPreferencesSchema.parse(value); }

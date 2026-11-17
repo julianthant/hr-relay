@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { PersonPreferencesSchema, NEUTRAL_PERSON_PREFERENCES, resolvePersonPreferences, derivePersonPreferencesFingerprint } from "../../../src/models/config/person-preferences.js";
 import { mergeSettingsPatch } from "../../../src/models/config/settings.js";
+import { SETTINGS_CATALOG } from "../../../src/models/config/catalog.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../src/models/config/host-display.js";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
@@ -29,4 +30,11 @@ it("requires current preference fields and authenticates their exact persisted s
   assert.equal(ConfigSnapshotRecordSchema.safeParse(oldSnapshot).success, false);
   assert.equal(ConfigSnapshotRecordSchema.safeParse({ ...CONFIG_SNAPSHOT, preferences: { ...CONFIG_SNAPSHOT.preferences, theme: "light" } }).success, false);
   assert.equal(ConfigSnapshotRecordSchema.safeParse(CONFIG_SNAPSHOT).success, true);
+});
+it("sends on Enter until the person picks Command-Enter, as one catalogued leaf", () => {
+  assert.equal(resolvePersonPreferences().sendShortcut, "enter");
+  assert.equal(resolvePersonPreferences(mergeSettingsPatch({}, { "preferences.sendShortcut": { set: "mod-enter" } }).preferences).sendShortcut, "mod-enter");
+  assert.equal(mergeSettingsPatch(mergeSettingsPatch({}, { "preferences.sendShortcut": { set: "mod-enter" } }), { "preferences.sendShortcut": { clear: true } }).preferences?.sendShortcut, undefined);
+  assert.throws(() => mergeSettingsPatch({}, { "preferences.sendShortcut": { set: "shift-enter" } }));
+  assert.deepEqual(SETTINGS_CATALOG.filter(row => row.key === "preferences.sendShortcut").map(row => [row.schema, row.defaultKind, row.sourceClass]), [["z.enum", "contract", "ordinary-settings"]]);
 });
