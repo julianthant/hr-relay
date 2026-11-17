@@ -16,6 +16,7 @@ import { createNoteTimelineWriter } from "../../src/backend/storage/events/note-
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../src/backend/storage/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
+import { assertFakeKeychain } from "./fake-keychain-entry.js";
 import { descriptorSetHash } from "../../src/backend/app/registries/workflow-registry.js";
 import {
   createRunQueueProjection,
@@ -126,7 +127,7 @@ export interface PerfFixture {
   close(): Promise<void>;
 }
 
-interface SeedContext {
+export interface SeedContext {
   readonly path: string;
   readonly workers: Map<string, string>;
   readonly database: AuthorityDatabase;
@@ -135,7 +136,7 @@ interface SeedContext {
   readonly notes: { emitNote(input: unknown): unknown };
 }
 
-interface RunSpec {
+export interface RunSpec {
   readonly seed: number;
   readonly day: string;
   readonly title: string;
@@ -150,7 +151,7 @@ function instantOf(day: string, seed: number): Date {
   return new Date(at.getTime() + (seed % 20_000) * 1000);
 }
 
-function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
+export function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
   const descriptor = spec.separations === true ? separationsDescriptor : personLookupDescriptor;
   const rawInput = spec.separations === true ? { documentNumber: String(4510 + spec.seed), timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST" } : { emplId: "10873698" };
   const parsedInput = spec.separations === true ? SeparationsInput.parse(rawInput) : { mode: "search", crmCheck: true, emplId: "10873698", keepNonHdh: false, includeCrmDates: false };
@@ -234,17 +235,27 @@ function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
 }
 
 /** Enqueue → claim → validating → running, through production transitions only. */
-function startRunning(context: SeedContext, spec: RunSpec, workerLabel: string, nodeId: string): RunRecord {
+export function startRunning(context: SeedContext, spec: RunSpec, workerLabel: string, nodeId: string): RunRecord {
   const descriptor = spec.separations === true ? separationsDescriptor : personLookupDescriptor;
+  const workerId = fixtureWorker(context, descriptor, workerLabel);
+  const enqueued = enqueueRun(context, spec);
+  return claimRunning(context, descriptor, workerId, nodeId, enqueued.envelope.enqueuedAt, enqueued.envelope.runId);
+}
+
+/** The worker slot a label names, admitted on first use. */
+export function fixtureWorker(context: SeedContext, descriptor: typeof personLookupDescriptor | typeof separationsDescriptor, workerLabel: string): string {
   const ordinals = context.database.authority.workerSlots.list(descriptor.id);
   const previous = ordinals.find(slot => slot.workerId === context.workers.get(workerLabel) && slot.retiredAt === null);
   if (previous === undefined) testWorkerPorts(context.database, context.clock, { path: context.path, descriptor, poolIndex: ordinals.length + 1 });
   const slot = previous ?? context.database.authority.workerSlots.list(descriptor.id).at(-1);
   if (slot === undefined) throw new Error("perf-worker-slot-missing");
-  const workerId = slot.workerId;
-  context.workers.set(workerLabel, workerId);
-  const enqueued = enqueueRun(context, spec);
-  const now = enqueued.envelope.enqueuedAt;
+  context.workers.set(workerLabel, slot.workerId);
+  return slot.workerId;
+}
+
+/** Claims the next queued run of the workflow for the worker and moves it to running; `expectedRunId` names the run it must be. */
+export function claimRunning(context: SeedContext, descriptor: typeof personLookupDescriptor | typeof separationsDescriptor, workerId: string, nodeId: string,
+  now: string, expectedRunId?: string): RunRecord {
   const claimMember1 = context.database.authority.workerSlots.get(workerId);
   if (claimMember1 === undefined) throw new Error("fixture-claim-member-required");
   const claimed = context.database.authority.runs.claimNext({ workflow: descriptor.id,
@@ -252,12 +263,12 @@ function startRunning(context: SeedContext, spec: RunSpec, workerLabel: string, 
     now,
   });
   if (claimed.state !== "claimed") {
-    throw new Error(`perf seed ${String(spec.seed)} was not claimed by ${workerId}: ${claimed.state}`);
+    throw new Error(`perf claim by ${workerId} was ${claimed.state}`);
   }
   const runId = claimed.run.envelope.runId;
-  if (runId !== enqueued.envelope.runId) {
+  if (expectedRunId !== undefined && runId !== expectedRunId) {
     throw new Error(
-      `claimNext took ${runId}, not the just-enqueued ${enqueued.envelope.runId}; the perf seeder's `
+      `claimNext took ${runId}, not the just-enqueued ${expectedRunId}; the perf seeder's `
       + "claim ordering is wrong and every status below it would be mislabelled",
     );
   }
@@ -368,8 +379,7 @@ function terminalizeFailed(context: SeedContext, run: RunRecord, seed: number): 
   });
 }
 
-function terminalizeDone(context: SeedContext, run: RunRecord): void {
-  const now = run.envelope.enqueuedAt;
+export function terminalizeDone(context: SeedContext, run: RunRecord, now = run.envelope.enqueuedAt): void {
   const checkpoint = RunCheckpointRecordSchema.parse({
     workflowId: run.envelope.workflow,
     itemId: run.envelope.itemId,
@@ -646,6 +656,7 @@ function seedNotes(context: SeedContext, tally: SeedTally): number {
 
 
 export async function seedDashboardPerfFixture(): Promise<PerfFixture> {
+  await assertFakeKeychain();
   const profile = await createBoundProfileFixture();
   const root = profile.workspace;
   const stateRoot = profile.stateRoot;
@@ -654,6 +665,7 @@ export async function seedDashboardPerfFixture(): Promise<PerfFixture> {
     { path: profile.path, busyTimeoutMs: 1000, migrationOwner: "dashboard-perf-fixture" },
     clock,
   );
+  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const spans = createTimelineEmitter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
   const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
   const context: SeedContext = { workers: new Map(), path: profile.path, database, clock, spans, notes };

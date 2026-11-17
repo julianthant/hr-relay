@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AUTHORITY_DERIVED_TABLES } from "../../../../src/models/config/authority.js";
 import { WorkerPoolRecordSchema } from "../../../../src/models/run/worker-pool.js";
 import { insertNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
@@ -162,7 +163,7 @@ it("automatically upgrades schema 25 with queued work intact", async () => {
     const before = rawEight(f.path, 25);
     assert.ok(before.runs.length > 0); assert.ok(before.artifacts.length > 0);
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
-    assert.deepEqual(tables(), [...migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION)].sort());
+    assert.deepEqual(tables(), [...migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION), ...AUTHORITY_DERIVED_TABLES].sort());
     const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "assistant_attachments", "assistant_conversations", "assistant_messages"].sort());
     for (const [table, rows] of Object.entries(before)) {

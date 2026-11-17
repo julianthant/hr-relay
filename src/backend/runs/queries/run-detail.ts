@@ -4,7 +4,8 @@ import type { NativeRunEventWire } from "../../../models/dashboard/run-detail.js
 import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js";
 import type { RunDecisionWire } from "../../../models/dashboard/run-decision.js";
 import { projectDecision, rowActionOption } from "../decisions/project-decision.js";
-import { availableSections, buildRunGate } from "./run-trust.js";
+import { availableSections } from "./run-detail/availability.js";
+import { buildRunGate } from "./run-detail/gate-park.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
 import { ocrChildRetryAvailable,readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
 import { aggregateMemberRetryAvailable } from "./run-retry.js";
@@ -35,7 +36,7 @@ import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-t
 import { requireCanonicalRun } from "./run-read.js";
 import { assertRunTimelineCompatible } from "./run-timeline-compatibility.js";
 
-export { availableSections } from "./run-trust.js";
+export { availableSections } from "./run-detail/availability.js";
 export { buildRunSection, readRunSection } from "./run-sections.js";
 export { resolveGateArmAnswer, resolveIdentityGateAnswer } from "./run-detail/gate-park.js";
 export { createRunNoteScanCache } from "./run-logs.js";

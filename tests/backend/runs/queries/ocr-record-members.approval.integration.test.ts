@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
+import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
@@ -53,44 +54,49 @@ function authorityState(f: Fixture, database = f.database) {
 }
 
 function served(f: Fixture, database = f.database, reader = f.canonical.lifecycle, verifyMemberTargets = false) {
-  const before = authorityState(f, database);
-  const projection = createOperatorProjection({ database, stateRoot: f.harness.authority.stateRoot, clock: f.clock,
-    reader, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
-    ledger: createTransactionHistory(database.authority), descriptors: { resolve: f.resolve } });
-  projection.ingestFromTimeline();
-  assert.equal(projection.health().state, "live");
-  const wire = projection.buildDashboardDayWire(f.clock.todayLocal());
-  const parent = wire.queueSurfaces.find(row => row.runId === f.parentRun.envelope.runId);
-  const ocr = wire.queueSurfaces.find(row => row.runId === f.run.envelope.runId);
-  assert.ok(parent?.surfaceKind === "operation" && ocr?.surfaceKind === "operation");
-  assert.equal(parent.availableSections.includes("review"), true);
-  assert.equal(ocr.availableSections.includes("review"), true);
-  const deps = createOperatorRunDetail({ database, stateRoot: f.harness.authority.stateRoot, projection, runReader: reader,
-    canonical: { database, reader, descriptors: { resolve: f.resolve } } });
-  const parentDetail = buildRunDetail(deps, parent.runId), ocrDetail = buildRunDetail(deps, ocr.runId);
-  const review = buildOcrReviewSection(deps, ocr.runId); assert.equal(review.section, "review");
-  if (review.section !== "review") assert.fail("Missing OCR review");
-  assert.ok(review.payload.ocr);
-  const logsChecked: number[] = [];
-  if (verifyMemberTargets) {
-    for (const row of [parent, ocr]) {
-      logsChecked.push(assertMemberLogsServed(deps, row.recordMembers?.members ?? []));
-      for (const member of row.recordMembers?.members ?? []) {
-        const detail = buildRunDetail(deps, member.target.runId);
-        assert.equal(detail.runId, member.target.runId);
-        assert.equal(detail.header.workflowId, member.target.workflowId);
-        assert.equal(detail.panelKind, member.target.panelKind);
-        if (member.target.section === "review") {
-          const target = member.target;
-          const section = buildOcrReviewSection(deps, target.runId); assert.ok(section.section === "review");
-          assert.ok(section.payload.ocr?.revision.records.some(record => record.recordId === target.record.recordId));
+  return database.withAuthorityReadSnapshot(() => {
+    const before = authorityState(f, database);
+    const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader),
+      withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries: { ...composeQueueSummaries(database),
+        activity: () => { throw new Error("Unexpected activity read in OCR approval proof"); } } };
+    const projection = createOperatorProjection({ database, stateRoot: f.harness.authority.stateRoot, clock: f.clock,
+      reader: servedReader, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
+      ledger: createTransactionHistory(database.authority), descriptors: { resolve: f.resolve } });
+    projection.ingestFromTimeline();
+    assert.equal(projection.health().state, "live");
+    const wire = projection.buildDashboardDayWire(f.clock.todayLocal());
+    const parent = wire.queueSurfaces.find(row => row.runId === f.parentRun.envelope.runId);
+    const ocr = wire.queueSurfaces.find(row => row.runId === f.run.envelope.runId);
+    assert.ok(parent?.surfaceKind === "operation" && ocr?.surfaceKind === "operation");
+    assert.equal(parent.availableSections.includes("review"), true);
+    assert.equal(ocr.availableSections.includes("review"), true);
+    const deps = createOperatorRunDetail({ database, stateRoot: f.harness.authority.stateRoot, projection, runReader: reader,
+      canonical: { database, reader, descriptors: { resolve: f.resolve } } });
+    const parentDetail = buildRunDetail(deps, parent.runId), ocrDetail = buildRunDetail(deps, ocr.runId);
+    const review = buildOcrReviewSection(deps, ocr.runId); assert.equal(review.section, "review");
+    if (review.section !== "review") assert.fail("Missing OCR review");
+    assert.ok(review.payload.ocr);
+    const logsChecked: number[] = [];
+    if (verifyMemberTargets) {
+      for (const row of [parent, ocr]) {
+        logsChecked.push(assertMemberLogsServed(deps, row.recordMembers?.members ?? []));
+        for (const member of row.recordMembers?.members ?? []) {
+          const detail = buildRunDetail(deps, member.target.runId);
+          assert.equal(detail.runId, member.target.runId);
+          assert.equal(detail.header.workflowId, member.target.workflowId);
+          assert.equal(detail.panelKind, member.target.panelKind);
+          if (member.target.section === "review") {
+            const target = member.target;
+            const section = buildOcrReviewSection(deps, target.runId); assert.ok(section.section === "review");
+            assert.ok(section.payload.ocr?.revision.records.some(record => record.recordId === target.record.recordId));
+          }
         }
       }
     }
-  }
-  assert.deepEqual(projection.buildDashboardDayWire(f.clock.todayLocal()).queueSurfaces, wire.queueSurfaces);
-  assert.deepEqual(authorityState(f, database), before);
-  return { projection, wire, parent, ocr, parentDetail, ocrDetail, review: review.payload, logsChecked };
+    assert.deepEqual(projection.buildDashboardDayWire(f.clock.todayLocal()).queueSurfaces, wire.queueSurfaces);
+    assert.deepEqual(authorityState(f, database), before);
+    return { projection, wire, parent, ocr, parentDetail, ocrDetail, review: review.payload, logsChecked };
+  });
 }
 
 function displayIdentity(row: QueueSurfaceWire) {

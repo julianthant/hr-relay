@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync, statfsSync } from "node:fs";
 import { join } from "node:path";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
-import { verifyBackupManifestAtPath } from "../../../storage/sqlite/backup-service.js";
+import { parseBackupManifestFile, verifyBackupManifestOffThread } from "../../../storage/sqlite/backup-service.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import type { NotificationInbox } from "../../../runs/notifications/inbox.js";
 import { followOwnedWrite } from "./notification-sources.js";
@@ -40,8 +40,8 @@ function fileIdentity(path: string): string {
 }
 /** A backup's verdict depends on its manifest, its database file and that file's SQLite companions. */
 const backupFiles = (backupPath: string) => ["", "-wal", "-shm", "-journal"].map(suffix => fileIdentity(`${backupPath}${suffix}`)).join("|");
-/** No backup writer, credential reader, or unrelated outbox is called by this observation. */
-export async function readNotificationHealth(input: { admission: RuntimeAdmission; database: AuthorityDatabase; reader: Pick<RunRecordService, "list">; stateRoot: string; clock: Clock }): Promise<NotificationHealthReading> {
+/** No backup writer, credential reader, or unrelated outbox is called by this observation. An aborted read rejects: a stopped inspection is no reading. */
+export async function readNotificationHealth(input: { admission: RuntimeAdmission; database: AuthorityDatabase; reader: Pick<RunRecordService, "list">; stateRoot: string; clock: Clock; signal?: AbortSignal }): Promise<NotificationHealthReading> {
   const { stateRoot, clock } = input;
   const filesystem = statfsSync(stateRoot, { bigint: true });
   const wal = join(stateRoot, "state.db-wal");
@@ -62,25 +62,35 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
   if (existsSync(backupRoot)) {
     for (const file of readdirSync(backupRoot).filter(name => name.endsWith(".manifest.json"))) {
       const manifestPath = join(backupRoot, file), manifest = fileIdentity(manifestPath), prior = remembered?.get(manifestPath);
-      // The full verifier runs again only for a new or changed backup; a failure is never remembered.
+      // The full verifier runs again only for a new or changed backup, on a worker thread; a failure is never remembered.
       if (prior !== undefined && prior.manifest === manifest && prior.backup === backupFiles(prior.backupPath)) { current.set(manifestPath, prior); continue; }
       try {
-        const { backupPath } = await verifyBackupManifestAtPath(input.admission, manifestPath);
-        if (fileIdentity(manifestPath) === manifest) current.set(manifestPath, { manifest, backupPath, backup: backupFiles(backupPath) });
-      } catch { backupFailed = true; }
+        // The verdict belongs to the files as they were before verification began; a backup that changed since is not the one inspected.
+        const backupPath = join(backupRoot, parseBackupManifestFile(manifestPath).backupFileName), file = fileIdentity(backupPath), backup = backupFiles(backupPath);
+        const verified = await verifyBackupManifestOffThread(input.admission, manifestPath, { signal: input.signal });
+        if (verified.backupPath !== backupPath || fileIdentity(backupPath) !== file) throw new Error("backup-changed-during-inspection");
+        if (fileIdentity(manifestPath) === manifest && backupFiles(backupPath) === backup) current.set(manifestPath, { manifest, backupPath, backup });
+      } catch (error) {
+        if (input.signal?.aborted === true) throw error;
+        backupFailed = true;
+      }
     }
   }
   verifiedBackups.set(input.database, current);
   return { freeBytes: Number(filesystem.bavail * filesystem.bsize), walBytes: existsSync(wal) ? statSync(wal).size : 0, integrityFailed, backupFailed, leaseExpired };
 }
 
-/** Publication first, checkpoint second. A crash between them retries the same durable source ID. */
-export function createNotificationHealthObserver(input: { database: AuthorityDatabase; clock: Clock; inbox: NotificationInbox; read(): Promise<NotificationHealthReading> }) {
+/** Publication first, checkpoint second. A crash between them retries the same durable source ID. A pass stopped before its reading writes and publishes nothing. */
+export function createNotificationHealthObserver(input: { database: AuthorityDatabase; clock: Clock; inbox: NotificationInbox; read(): Promise<NotificationHealthReading>; signal?: AbortSignal }) {
   return async () => {
     const { database, clock } = input;
     const priorWal = database.authority.notificationHealth.get("wal-growth");
     if (priorWal !== undefined && clock.nowMs() - Date.parse(priorWal.observedAt) < 60_000) return;
-    const reading = await input.read();
+    const stopped = () => input.signal?.aborted === true;
+    if (stopped()) return;
+    let reading: NotificationHealthReading;
+    try { reading = await input.read(); }
+    catch (error) { if (stopped()) return; throw error; }
     const at = clock.now().toISOString();
     const samples = [...(priorWal?.samples ?? []), { at, bytes: reading.walBytes }].slice(-3);
     const growing = samples.length === 3 && samples.every(sample => sample.bytes >= 256 * 1024 * 1024)
