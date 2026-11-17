@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { buildRunSection } from "../../../../../src/backend/runs/queries/run-detail.js";
-import { FailureRecordSchema } from "../../../../../src/models/trust/failure.js";
+import { FailureRecordSchema, type FailureRecord } from "../../../../../src/models/trust/failure.js";
+import { OnboardingReadHirePlan } from "../../../../../src/models/workflows/onboarding/read-hire-plan.js";
+import { OnboardingMatchHireSubject } from "../../../../../src/models/workflows/onboarding/match-hire-subject.js";
+import { OnboardingReadI9Lookup } from "../../../../../src/models/workflows/onboarding/read-i9-lookup.js";
+import { RecordedDataPointSchema } from "../../../../../src/rules/workflow/task-provenance.js";
+import { redactObservedDataPoints } from "../../../../../src/backend/logs/observed-data.js";
+import { createTaskProvenanceCollector } from "../../../../../src/backend/runs/provenance/task-provenance.js";
+import { readPayPathPositionTask } from "../../../../../src/backend/systems/ucpath/tasks/read-paypath-position.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../../src/backend/systems/ucpath/driver/fake.js";
+import { deterministicPayPathOperations } from "../../../../../src/backend/systems/ucpath/driver/paypath-fake.js";
+import { UcpathReadPayPathPosition } from "../../../../../src/models/systems/ucpath/read-paypath-position.js";
 import { workStudyWorkflow } from "../../../../../src/workflows/work-study/workflow.js";
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { makeWorld, queuedEventOf, runEndedEventOf, failureRecordOf, uuidOf, traceOf, type DashboardWorld } from "../../../../support/helpers/backend/dashboard-harness.js";
@@ -20,7 +30,12 @@ afterEach(async () => {
   for (const world of worlds.splice(0)) await world.dispose();
 });
 
-async function fixture(kind: "ucpath" | "i9" = "ucpath", { withheld = false, observed = true } = {}) {
+async function fixture(kind: "ucpath" | "i9" = "ucpath", { withheld = false, observed = true, failedAt, beforeFailure }: {
+  withheld?: boolean;
+  observed?: boolean;
+  failedAt?: Readonly<{ nodeId: string; taskId: string; code: string }>;
+  beforeFailure?: (world: DashboardWorld, failure: FailureRecord) => void | Promise<void>;
+} = {}) {
   const module = kind === "ucpath" ? registeredModule(workStudyWorkflow) : onboardingModule;
   const descriptor = module.descriptor;
   const nodeId = kind === "ucpath" ? "paypath-position" : "i9-lookup";
@@ -29,7 +44,7 @@ async function fixture(kind: "ucpath" | "i9" = "ucpath", { withheld = false, obs
   const world = await makeWorld({ profileFixture: () => profiles.create(), descriptors: { resolve: () => descriptor } });
   worlds.push(world);
   const failure = FailureRecordSchema.parse({ ...failureRecordOf({ seed: 41, workflow: descriptor.id, code }),
-    nodeId, taskId, occurredAt: world.clock.now().toISOString(),
+    nodeId, taskId, ...failedAt, occurredAt: world.clock.now().toISOString(),
     ...(kind === "ucpath" ? { action: { elementId: "ucpath.person-org.eid-input", operation: "read" } } : {}) });
   queuedEventOf(world, { seed: 41, workflow: descriptor.id, descriptor,
     lifecycle: { state: "terminal", outcome: "failed", failureId: failure.failureId, endedAt: failure.occurredAt } });
@@ -48,8 +63,9 @@ async function fixture(kind: "ucpath" | "i9" = "ucpath", { withheld = false, obs
       ? { key: "emplId", state: "allowed", classification: "direct-identifier", transform: "allow", value }
       : { key: "emplId", state: "redacted", classification: "direct-identifier", transform: "drop", rawValue: value }] }] });
   if (kind === "ucpath" && observed) observe("10000001");
-  if (kind === "i9") world.writer.emit({ t: "span.ended", kind: "task", ts: failure.occurredAt, workflow: descriptor.id,
+  if (kind === "i9" && failedAt === undefined) world.writer.emit({ t: "span.ended", kind: "task", ts: failure.occurredAt, workflow: descriptor.id,
     ...address, spanPath: `${failure.traceId}/hire-subject#1`, outcome: "done" });
+  await beforeFailure?.(world, failure);
   runEndedEventOf(world, 41, "failed", { workflow: descriptor.id, failureId: failure.failureId });
   const deps = { runReader: world.runReader, timeline: world.timeline, stateRoot: world.stateRoot,
     projection: world.projection, authority: world.authority, descriptors: { resolve: () => ({ ...descriptor, dataOrigins: dataOriginViewsOf(module) }) },
@@ -65,6 +81,84 @@ async function fixture(kind: "ucpath" | "i9" = "ucpath", { withheld = false, obs
 }
 
 describe("served failure card facts", () => {
+  it.each([{ outcome: "Provided", refused: true }, { outcome: "Read", refused: false }])(
+    "serves a real PayPath task's recorded fact as $outcome", async ({ outcome, refused }) => {
+      const h = await fixture("ucpath", { observed: false, beforeFailure: async (world, failure) => {
+        const descriptor = registeredModule(workStudyWorkflow).descriptor;
+        const spanPath = `${failure.traceId}/paypath-position#1`;
+        const collector = createTaskProvenanceCollector({ descriptor, clock: world.clock, upstreamEvidence: { checkpoints: [] },
+          execution: { runId: failure.runId, traceId: failure.traceId, attempt: failure.attempt,
+            workflowId: failure.workflowId, nodeId: "paypath-position", taskId: UcpathReadPayPathPosition.id },
+          onRecord: batch => world.writer.emit({ t: "data.observed", ts: batch.recordedAt, observedAt: batch.recordedAt,
+            workflow: failure.workflowId, runId: failure.runId, traceId: failure.traceId, attempt: failure.attempt,
+            spanPath, nodeId: "paypath-position", taskId: UcpathReadPayPathPosition.id,
+            points: redactObservedDataPoints(UcpathReadPayPathPosition.id, batch.points) }),
+        });
+        const output = UcpathReadPayPathPosition.output.parse({ ...UcpathReadPayPathPosition.example,
+          position: { ...UcpathReadPayPathPosition.example.position, positionPool: "" } });
+        const invoke = () => readPayPathPositionTask.impl.run({ input: UcpathReadPayPathPosition.input.parse({ emplId: "10000001" }), ctx: {
+          driver: { ...createDeterministicUcpathPersonOrgDriver(), ...deterministicPayPathOperations(refused
+            ? { refusal: "unexpected-page-state" } : { read: output }) },
+          signal: new AbortController().signal, recordData: collector.recordData,
+          captureScreenshot: async () => undefined, log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
+          fail: code => { throw new Error(code); },
+        } });
+        if (refused) await assert.rejects(invoke(), /unexpected-page-state/u);
+        else {
+          const read = await invoke();
+          assert.deepEqual(read, output);
+          assert.ok(collector.finalizeRead(read).points.every(point => point.direction === "read"));
+        }
+      } });
+      const display = h.read().display;
+      const label = refused ? "Employee ID" : "Employee";
+      assert.equal(display?.lastCompleted, `${outcome} ${label}`);
+      assert.deepEqual(display?.field, { label, value: refused ? "10000001" : UcpathReadPayPathPosition.example.displayedName, outcome });
+      assert.doesNotMatch(JSON.stringify({ ...display, field: undefined }), /10000001/u);
+      h.world.authority.put(RunRecordSchema.parse({ ...h.run, input: { ...h.run.input,
+        parsed: { ...h.run.input.parsed, protectedBindings: [{ kind: "test-data-local", sourceId: uuidOf(49),
+          inputPath: "emplId", name: "personLookupCanaryEid" }] } } }));
+      const protectedDisplay = h.read().display;
+      assert.equal(protectedDisplay?.lastCompleted, `${outcome} ${label}`);
+      assert.equal(protectedDisplay?.field, undefined);
+      assert.doesNotMatch(JSON.stringify(protectedDisplay), /10000001/u);
+    },
+  );
+
+  it.each([
+    { failedAt: { nodeId: "ucpath-source", taskId: "ucpath/search-person-match", code: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" },
+      nodeId: "hire-plan", taskId: OnboardingReadHirePlan.id, output: OnboardingReadHirePlan.output.parse({ ...OnboardingReadHirePlan.example,
+        employee: { ...OnboardingReadHirePlan.example.employee, ssn: "123456789" } }),
+      lastCompleted: "Validate hire data", field: { label: "Position", value: "12345678", outcome: "Read" } },
+    { failedAt: { nodeId: "i9-lookup", taskId: String(OnboardingReadI9Lookup.id), code: "ONBOARDING_I9_LOOKUP_UNRESOLVED" },
+      nodeId: "hire-subject", taskId: OnboardingMatchHireSubject.id, output: OnboardingMatchHireSubject.output.parse(OnboardingMatchHireSubject.example),
+      lastCompleted: "Check UCPath duplicate identity", field: { label: "Hire match", value: "New hire", outcome: "Read" } },
+    { failedAt: { nodeId: "hire-findings", taskId: "ucpath/read-hire-findings", code: "UNEXPECTED_PAGE_STATE" },
+      nodeId: "i9-lookup", taskId: OnboardingReadI9Lookup.id, output: OnboardingReadI9Lookup.output.parse(OnboardingReadI9Lookup.example),
+      lastCompleted: "Retain delegated I-9 lookup", field: { label: "I-9 status", value: "Not found", outcome: "Read" } },
+  ])("serves the last recorded Onboarding values before $failedAt.nodeId fails", async testCase => {
+    const h = await fixture("i9", {
+      failedAt: testCase.failedAt,
+      beforeFailure: (world, failure) => {
+        const spanPath = `${failure.traceId}/${testCase.nodeId}#1`;
+        const points = Object.entries<unknown>(testCase.output).map(([field, value]) => RecordedDataPointSchema.parse({
+          direction: "read", field, value, recordedAt: failure.occurredAt,
+          execution: { runId: failure.runId, traceId: failure.traceId, attempt: failure.attempt,
+            workflowId: failure.workflowId, nodeId: testCase.nodeId, taskId: testCase.taskId },
+        }));
+        world.writer.emit({ t: "data.observed", ts: failure.occurredAt, observedAt: failure.occurredAt,
+          workflow: failure.workflowId, runId: failure.runId, traceId: failure.traceId, attempt: failure.attempt,
+          spanPath, nodeId: testCase.nodeId, taskId: testCase.taskId, points: redactObservedDataPoints(testCase.taskId, points) });
+        world.writer.emit({ t: "span.ended", kind: "task", ts: failure.occurredAt, workflow: failure.workflowId,
+          runId: failure.runId, traceId: failure.traceId, attempt: failure.attempt, spanPath, outcome: "done" });
+      },
+    });
+    const display = h.read().display;
+    assert.equal(display?.lastCompleted, testCase.lastCompleted);
+    assert.deepEqual(display?.field, testCase.field);
+    assert.doesNotMatch(JSON.stringify(display), /123456789|2000-01-14|employee\.dob|employee\.ssn/u);
+  });
+
   it("serves the failed read, catalog reason, attempted action, completed fact, value and existing retry command", async () => {
     const h = await fixture();
     const failure = h.read();

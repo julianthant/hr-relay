@@ -192,10 +192,14 @@ function failureDisplayFacts(deps: RunDetailQueryDeps, run: RunRecord, failure: 
       if (event.nodeId !== nodeIdOfTaskSpanPath(event.spanPath)) throw new LogIdentityRefusedError("RUN_LOG_FAILURE_NATIVE_IDENTITY_MISMATCH");
       const origin = descriptor?.dataOrigins?.find(entry => entry.nodeId === event.nodeId && entry.taskId === event.taskId);
       for (const observed of projectObservedOperatorFields(event, origin?.operatorFields)) {
-        if (observed.direction !== "read") continue;
-        lastCompleted = `Read ${observed.label}`;
+        const outcome = observed.direction === "read" ? "Read"
+          : observed.direction === "write" && observed.point.field === "emplId"
+            && event.taskId === "ucpath/read-paypath-position" && event.taskId === failure.taskId
+            && event.nodeId === failure.nodeId && failure.code === "UNEXPECTED_PAGE_STATE" ? "Provided" : undefined;
+        if (outcome === undefined) continue;
+        lastCompleted = `${outcome} ${observed.label}`;
         if (!protectedInput && observed.point.values.every(value => value.state === "allowed")) {
-          field = { label: observed.label, value: observed.value, outcome: "Read" };
+          field = { label: observed.label, value: observed.value, outcome };
         }
       }
     }

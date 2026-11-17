@@ -9,6 +9,11 @@ import { buildCrmData } from "../crm-data/step.js";
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "ucpath-search", label: "Check UCPath duplicates" }),
+  operatorFields: [
+    { label: "Hire match", visibility: "logs", sources: [{ nodeId: "hire-subject", kind: "output", fieldPath: "state" }],
+      display: { cases: [{ value: "new-hire", text: "New hire" }, { value: "existing-person", text: "Existing person" }, { value: "review-required", text: "Review required" }] } },
+    { label: "Employee ID", visibility: "logs", sources: [{ nodeId: "hire-subject", kind: "output", fieldPath: "person.emplId" }] },
+  ] as const,
   review: {
     pages: [
       {
