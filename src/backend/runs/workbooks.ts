@@ -748,7 +748,7 @@ function checkReferencePerson(repository: AuthorityRepositories["workbooks"], re
     const cell = nameColumn === undefined ? undefined : match.row.cells[nameColumn]?.value;
     return { row: sheet.rows.findIndex(row => row.id === match.rowId) + 1, name: typeof cell === "string" ? cell : null };
   });
-  const check = checkReferenceRows(name, rows);
+  const check = checkReferenceRows(name, rows, nameColumn !== undefined);
   return { spreadsheet: reference.snapshot.type.name, sheet: worksheet.name, ...check,
     line: referenceCheckLine(reference.snapshot.type.name, worksheet.name, check) };
 }

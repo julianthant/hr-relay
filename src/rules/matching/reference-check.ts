@@ -5,16 +5,16 @@ export const ReferenceCheckOutcomeSchema = z.enum(["found", "not-found", "name-d
 export type ReferenceCheckOutcome = z.infer<typeof ReferenceCheckOutcomeSchema>;
 export const ReferenceCheckResultSchema = z.enum(["confirmed", "unconfirmed", "no-person"]);
 
-/** One sheet row that carries the person's Employee ID; `name` is null when the sheet has no name column. */
+/** One sheet row that carries the person's Employee ID; `name` is null when the sheet has no name column or the cell holds no text. */
 type ReferenceRow = Readonly<{ row: number; name: string | null }>;
 type ReferenceRowCheck = Readonly<{ outcome: ReferenceCheckOutcome; row: number | null }>;
 
-/** The name is compared only when the run found one and the row holds one. */
-export function checkReferenceRows(personName: string | null, rows: readonly ReferenceRow[]): ReferenceRowCheck {
+/** The name is compared when the sheet has a name column and the run found a name; a blank or non-text name there never confirms the person. */
+export function checkReferenceRows(personName: string | null, rows: readonly ReferenceRow[], hasNameColumn: boolean): ReferenceRowCheck {
   const first = rows[0];
   if (first === undefined) return { outcome: "not-found", row: null };
-  const agreeing = rows.find(candidate => personName === null || candidate.name === null || candidate.name.trim() === ""
-    || classifyNameSimilarity(personName, candidate.name) !== "different");
+  if (!hasNameColumn || personName === null) return { outcome: "found", row: first.row };
+  const agreeing = rows.find(candidate => candidate.name !== null && classifyNameSimilarity(personName, candidate.name) !== "different");
   return agreeing === undefined ? { outcome: "name-differs", row: first.row } : { outcome: "found", row: agreeing.row };
 }
 

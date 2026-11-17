@@ -69,8 +69,8 @@ declaration it answers with `typeId`; an absent `typeId` means the required refe
 are captured by their key field only and retained with the run's other references.
 `workbooks/verify-person` looks the found Employee ID up in each picked check worksheet at its
 retained version and returns, per spreadsheet, `found`, `not-found` or `name-differs` with the row
-number. The name is compared only when the worksheet maps exactly one name column; no value from a
-row leaves the read. The shared declaration is `REFERENCE_CHECK` in
+number. The name is compared when the worksheet maps a name column and the run found a name; a
+blank or non-text name in that column reports `name-differs`. No value from a row leaves the read. The shared declaration is `REFERENCE_CHECK` in
 `src/models/processing/workbooks/verify-person.ts`.
 
 Start planning takes an explicit entry-scoped Library, named version and worksheet selection.

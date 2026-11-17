@@ -74,6 +74,16 @@ describe("Person Lookup reference spreadsheet check", () => {
     assert.equal(JSON.stringify(f.database.authority.runCheckpoints.listByItem(f.descriptor.id, settled.run.envelope.itemId)).includes(ROW_ONLY_NAME), false);
   });
 
+  it("reports a name difference when the name column's cell is blank or not text", async () => {
+    const f = await world.fixture();
+    const settled = await f.run(SEARCH, [
+      f.spreadsheet("Fall roster", "Hires", ["eid", "fullName"], [[REFERENCE_PERSON.emplId, ""]]),
+      f.spreadsheet("Spring roster", "Hires", ["eid", "fullName"], [["10000009", "Blair Example"], [REFERENCE_PERSON.emplId, 20260101]]),
+    ]);
+    assert.equal(outcome(f, settled).state, "active");
+    assert.deepEqual(checkLines(settled), [["allowed", "Fall roster · Hires: name differs in row 2"], ["allowed", "Spring roster · Hires: name differs in row 3"]]);
+  });
+
   it("writes one line per picked spreadsheet, in pick order", async () => {
     const f = await world.fixture();
     const settled = await f.run(SEARCH, [
