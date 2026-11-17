@@ -15,8 +15,8 @@ import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.j
 import { WorkflowRail } from "./workflow-rail.js";
 import { useRailCollapsed } from "./workflow-rail-model.js";
 
-export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, settingsOpen, notifications, reads, setReads, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
-  workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; previewCounts?: readonly WorkflowCountWire[]; active: string; preview: string | null;
+export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, countsLoading, previewCounts, active, preview, onSelect, onPreview, settingsOpen, notifications, reads, setReads, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
+  workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; countsLoading?: boolean; previewCounts?: readonly WorkflowCountWire[]; active: string; preview: string | null;
   onSelect: (id: string) => void; onPreview: (id: string) => void;
   settingsOpen: boolean;
   notifications: NotificationsState;
@@ -56,7 +56,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
     </header>
     <div className="workspace-rail-body">
       {open && !collapsed ? <NotificationsPanel activeId={activeId} showPriority={showPriority} onShowPriority={setShowPriority} dismissed={dismissed} onDismiss={id => setDismissed(current => [...current, id])} onControl={notificationRail.onControl} state={notificationRail.state} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} onBack={back} notice={notice || inbox?.notice || ""} />
-        : <WorkflowRail workflows={workflows} counts={counts} previewCounts={previewCounts} active={active} preview={preview} onSelect={onSelect} onPreview={onPreview} collapsed={collapsed} />}
+        : <WorkflowRail workflows={workflows} counts={counts} countsLoading={countsLoading} previewCounts={previewCounts} active={active} preview={preview} onSelect={onSelect} onPreview={onPreview} collapsed={collapsed} />}
     </div>
     {notificationRail.ping && notificationRail.pingItem && <NotificationPing item={notificationRail.pingItem} />}
   </aside>;

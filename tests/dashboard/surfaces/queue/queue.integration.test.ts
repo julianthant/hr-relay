@@ -15,6 +15,8 @@ visibleQueueKeys,
 queueScopeWorkflow
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueuePanel,QueueRow } from "../../../../src/dashboard/surfaces/queue/queue.js";
+import { LogTimelineSkeleton, QueueSkeleton, RunPanelSkeleton } from "../../../../src/dashboard/surfaces/shared/loading/loading.js";
+import { RunStateChips } from "../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
 import {
 QueueSurfaceWireSchema,
 type QueueSurfaceWire,
@@ -460,5 +462,50 @@ describe("Queue consumes the served day boundary", () => {
       host.remove();
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("queue and run panel loading and status", () => {
+  const single = () => rowWhere(row => row.surfaceKind === "single");
+  const live = (status: QueueSurfaceWire["status"], liveMessage: QueueSurfaceWire["liveMessage"]) => QueueSurfaceWireSchema.parse({ ...single(), status, liveMessage });
+
+  it("draws the queue skeleton with the loaded bands and no workflow heading", () => {
+    const html = renderToStaticMarkup(createElement(QueueSkeleton));
+    assert.match(html, /Needs you/);
+    assert.match(html, /Active/);
+    assert.doesNotMatch(html, /Person Lookup/);
+    assert.equal(html.match(/border-t/g)?.length, 4);
+  });
+
+  it("draws the run panel skeleton with a header, the stage strip and the padded feed", () => {
+    const html = renderToStaticMarkup(createElement(RunPanelSkeleton));
+    assert.match(html, /<header/);
+    assert.match(html, /aria-label="Selected run logs"/);
+    assert.match(html, /px-4 pb-6 pt-5/);
+    assert.equal(renderToStaticMarkup(createElement(LogTimelineSkeleton)).match(/<li /g)?.length, 4);
+  });
+
+  it("says Starting, not Queued, for a queued run that reports a live line", () => {
+    const starting = live("queued", { state: "present", value: "Starting a UCPath session" });
+    assert.match(rowMarkup(starting), /Starting/);
+    assert.doesNotMatch(rowMarkup(starting), />Queued</);
+    assert.match(renderToStaticMarkup(createElement(RunStateChips, { row: starting })), /Starting/);
+    const waiting = live("queued", { state: "absent", reason: "not started" });
+    assert.match(rowMarkup(waiting), /Queued/);
+    assert.match(renderToStaticMarkup(createElement(RunStateChips, { row: waiting })), /Queued/);
+  });
+
+  it("shows the run's status in the panel for cancelling, cancelled and blocked runs", () => {
+    const absent = { state: "absent", reason: "none" } as const;
+    for (const [status, word] of [["cancelling", "Cancelling"], ["cancelled", "Cancelled"], ["blocked", "Write parked"], ["done", "Done"]] as const) {
+      assert.match(renderToStaticMarkup(createElement(RunStateChips, { row: live(status, absent) })), new RegExp(word));
+    }
+  });
+
+  it("marks a dry run in the panel header", () => {
+    const dry = QueueSurfaceWireSchema.parse({ ...single(), dryRun: true });
+    assert.match(renderToStaticMarkup(createElement(RunStateChips, { row: dry })), /dry run/);
+    const real = QueueSurfaceWireSchema.parse({ ...single(), dryRun: false });
+    assert.doesNotMatch(renderToStaticMarkup(createElement(RunStateChips, { row: real })), /dry run/);
   });
 });
