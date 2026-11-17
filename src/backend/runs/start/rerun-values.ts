@@ -2,7 +2,7 @@ import type { EvidenceSchemaReader } from "../../../models/storage/evidence-sche
 import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
 import { validateRerunSourcePlan, RerunRefusedError, rerunEvidenceReader, validateRerunWriteProof, validateRerunTransactionEvidence } from "./rerun.js";
 import { z } from "zod";
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowDelegatedDescriptor, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RunExistenceSchema, type RunExistence } from "../../../models/config/authority.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { RerunValuesRequestSchema, RerunValuesResponseSchema,
@@ -14,6 +14,7 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { projectTransactionOutcome } from "../../../models/workflow/graph.js";
 import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import type { RunRecord } from "../../../models/run/record.js";
 import { RerunValueMappingsSchema } from "../../../models/workflow/rerun-values.js";
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
@@ -63,6 +64,48 @@ function containsProtected(value: JsonValue, privateValues: readonly string[]): 
   if (typeof value === "string") return privateValues.some((secret) => value.includes(secret));
   if (value === null || typeof value !== "object") return false;
   return Object.values(value).some((child) => containsProtected(JsonValueSchema.parse(child), privateValues));
+}
+
+type NodeFact = RerunValuesSnapshot["steps"][number]["nodes"][number];
+type StepFact = RerunValuesSnapshot["steps"][number];
+const ADVANCE = { unfinished: 0, failed: 1, completed: 2 } as const;
+
+function childWorkflows(descriptor: AnyWorkflowDescriptor): readonly string[] {
+  return [...new Set(descriptor.startRows.flatMap(({ members }) => members.flatMap(({ workflow }) => workflow === undefined ? [] : [workflow])))];
+}
+
+/** One child run's node states, from what it recorded; display only, so nothing here refuses the source. */
+function childNodeFacts(repositories: AuthorityDatabase["authority"], descriptor: AnyWorkflowDescriptor, run: RunRecord): ReadonlyMap<string, NodeFact> {
+  const runId = run.envelope.runId;
+  const checkpoints = new Map(repositories.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId)
+    .filter((checkpoint) => checkpoint.runId === runId).map((checkpoint) => [checkpoint.nodeId, checkpoint]));
+  const gates = new Set(repositories.gateResults.listByRun(runId).map(({ gateId }) => String(gateId)));
+  const failureId = run.lifecycle.state === "terminal" ? run.lifecycle.failureId : undefined;
+  const failed = failureId === undefined ? undefined : repositories.failures.listByRun(runId).find((failure) => failure.failureId === failureId)?.nodeId;
+  const settled = new Set(repositories.writeIntents.listByRun(runId)
+    .filter(({ status }) => status === "committed" || status === "observed-present").map(({ taskId }) => String(taskId)));
+  return new Map(descriptorRuntimeNodes(descriptor).map((node): [string, NodeFact] => {
+    const nodeId = String(node.id), checkpoint = checkpoints.get(nodeId);
+    const fact: Pick<NodeFact, "state" | "reason"> = checkpoint?.assertion !== undefined ? { state: "unfinished", reason: "operator-asserted" }
+      : failed === nodeId ? { state: "failed", reason: "failure" }
+        : checkpoint !== undefined ? { state: "completed", reason: "checkpoint" }
+          : gates.has(nodeId) ? { state: "completed", reason: "gate-result" }
+            : node.kind === "transaction" && settled.has(String(node.commit.uses.id)) ? { state: "completed", reason: "settled-transaction" }
+              : { state: "unfinished", reason: "not-recorded" };
+    return [nodeId, { nodeId: node.id, ...fact }];
+  }));
+}
+
+/** Each step as the least advanced child run left it; with no child run, nothing is recorded. */
+function leastAdvancedSteps(descriptor: AnyWorkflowDescriptor, runs: readonly ReadonlyMap<string, NodeFact>[]): readonly StepFact[] {
+  return descriptor.timeline.map((step) => {
+    const views = (runs.length === 0 ? [new Map<string, NodeFact>()] : runs).map((facts): StepFact => {
+      const nodes = step.nodes.map(({ id }) => facts.get(String(id)) ?? { nodeId: id, state: "unfinished", reason: "not-recorded" });
+      const state = nodes.some(({ state }) => state === "failed") ? "failed" : nodes.every(({ state }) => state === "completed") ? "completed" : "unfinished";
+      return { key: step.key, state, nodes };
+    });
+    return views.reduce((least, view) => ADVANCE[view.state] < ADVANCE[least.state] ? view : least);
+  });
 }
 
 /** One snapshot, only reads. This response carries no plan or repeat authorization. */
@@ -138,7 +181,6 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         if (typeof value !== "string" || value.length === 0) refuse("source-invalid");
         return value;
       });
-      type NodeFact = RerunValuesSnapshot["steps"][number]["nodes"][number];
       const facts = new Map<string, NodeFact>();
       for (const node of nodes) {
         const checkpoint = checkpoints.get(node.id);
@@ -223,9 +265,20 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           nodeId: member.nodeId, state: "unfinished", reason: "not-recorded",
         })) } : { key: step.key, state, nodes: members };
       });
-      // The source's own typed facts refill a step it had typed; they stay typed by hand.
-      const typed = (run.envelope.stepOmissions ?? []).filter((entry) => entry.workflow === undefined
-        && descriptor.stepOmissions.some((spec) => spec.step === entry.step)
+      const children = childWorkflows(descriptor).map((workflow) => {
+        const child = workflowDelegatedDescriptor(descriptor, workflow);
+        const latest = new Map<string, RunRecord>();
+        for (const member of repositories.runs.listChildren(run.envelope.runId)) {
+          if (member.envelope.workflow !== workflow) continue;
+          const known = latest.get(member.envelope.itemId);
+          if (known === undefined || member.envelope.attempt > known.envelope.attempt) latest.set(member.envelope.itemId, member);
+        }
+        return { workflow, steps: leastAdvancedSteps(child, [...latest.values()].map((member) => childNodeFacts(repositories, child, member))) };
+      });
+      // The source's typed facts refill a step it had typed, its own or a child's a row targets; they stay typed by hand.
+      const typed = (run.envelope.stepOmissions ?? []).filter((entry) => (entry.workflow === undefined
+        ? descriptor.stepOmissions.some((spec) => spec.step === entry.step)
+        : descriptor.startRows.some(({ target }) => target?.workflow === entry.workflow && target.step === entry.step))
         && !containsProtected(JsonValueSchema.parse(entry.facts), privateValues));
       let sourceInput: RerunValuesSnapshot["sourceInput"] = { state: "available", value: run.input.parsed.value };
       if (canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
@@ -278,6 +331,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         source: { runId: request.runId, version: run.version, workflow: descriptor.id,
           descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, outcome: lifecycle.outcome },
         steps, values, transactions,
+        ...(children.length === 0 ? {} : { children }),
         ...(typed.length === 0 ? {} : { typed }),
       } });
     });

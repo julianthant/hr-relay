@@ -1,0 +1,159 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { afterEach, it } from "vitest";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
+import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
+import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
+import type { StepManualDeclaration } from "../../../../src/models/workflow/step-omission.js";
+import { EidSchema } from "../../../../src/rules/identity/ids.js";
+import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
+import { compileWorkflow, composeWorkflowModule, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
+import { bindWorkflowDelegationTargets } from "../../../../src/workflow-kit/workflow.js";
+import { Plan1CanonicalInput, Plan1Input, Plan1Output, plan1Contract, plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
+import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
+import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
+
+const world = createRunExecutorTestWorld();
+afterEach(world.cleanup);
+
+const CHILD = "fixture-typed-child-member";
+const common = { version: 1, label: "Synthetic typed child", icon: "Search" as const, category: "operations" as const,
+  input: Plan1Input, canonicalInput: Plan1CanonicalInput, inputSubject: "eid" as const, surface: { shape: "single" as const },
+  enqueue: "reject-active" as const, actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [],
+  identity: { matchKey: (input: { emplId: string }) => input.emplId }, presentation: { title: () => "Synthetic typed child" },
+  scenarios: ["fixture-plan1/happy"] as const, role: defineWorkflowRole({ kind: "standalone" }) };
+const READ_TYPED: StepManualDeclaration = {
+  form: { fields: [{ key: "disposition", label: "Disposition", kind: "text", replaces: { nodeId: "read", path: "disposition" } }] },
+  produces: { read: ({ facts, scope }) => Plan1Output.parse({ eid: (scope.input as { emplId: string }).emplId, disposition: facts.disposition, providerState: "typed" }) },
+};
+
+/** The child reads then finishes; the parent releases one member, two for mode "repeat", and an ok and a failing one for "confirmed". */
+function workflows() {
+  const child = compileWorkflow(defineWorkflow({ ...common, id: CHILD, code: "ftc", steps: ({ task, group, result }) => {
+    const read = task({ id: "read", contract: plan1Contract, replay: "checkpoint" }, [], ({ input }) => input);
+    const finish = task({ id: "finish", contract: plan1Contract, replay: "checkpoint" }, [read], ({ input }) => input);
+    return { steps: [[group({ key: "reading", label: "Reading" }, { manual: READ_TYPED }), [read]], [{ key: "finish", label: "Finish" }, [finish]]],
+      result: result(Plan1Output, [read, finish], ({ outputs }) => outputs.read) };
+  } }));
+  const parent = compileWorkflow(defineWorkflow({ ...common, id: "fixture-typed-child-parent", code: "ftp",
+    rows: [
+      { key: "members", label: "Members", members: [{ step: "members" }] },
+      { key: "member-read", label: "Member read", members: [{ workflow: CHILD, step: "reading" }], target: { workflow: CHILD, step: "reading" } },
+      { key: "member-finish", label: "Member finish", members: [{ workflow: CHILD, step: "finish" }] },
+    ],
+    steps: ({ delegate, result }) => {
+      const members = delegate({ id: "members", target: { id: CHILD, input: Plan1Input, result: Plan1Output }, edgeId: "members",
+        cardinality: "many", await: "terminal", join: "all",
+        policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" } }, [], {
+        bind: ({ input }) => input.mode === "repeat" || input.mode === "confirmed"
+          ? [{ ...input, emplId: EidSchema.parse("10800001"), mode: "ok" as const },
+            { ...input, emplId: EidSchema.parse("10800002"), mode: input.mode === "confirmed" ? "fail" as const : "ok" as const }]
+          : [{ ...input, mode: "ok" as const }],
+        deriveChildItemId: (_input, identity) => identity.canonicalItemId,
+      });
+      return { steps: [[{ key: "members", label: "Members" }, [members]]], result: result(Plan1Input, [], ({ input }) => input) };
+    } }));
+  const modules = [composeWorkflowModule(child, plan1Stores.stores), composeWorkflowModule(parent, plan1Stores.stores)];
+  bindWorkflowDelegationTargets(modules.map((module) => module.descriptor));
+  return { parent, modules };
+}
+
+async function harness() {
+  const { parent, modules } = workflows();
+  const h = await world.executorHarness({ descriptor: parent.descriptor, stores: plan1Stores });
+  const { database, clock, path, stateRoot } = h.authority;
+  const patch = { "actor.label": { set: "Synthetic operator" } } as const;
+  assert.equal(executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
+    settings: createSettingsApplicationExecutor(settings => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock,
+      { stateRoot, artifactRoot: h.authority.profile.admission.artifactRoot }), createCredentialStore({ stateRoot })) }, {
+    commandId: randomUUID(), family: "settings", type: "apply-settings", source: "settings-surface",
+    requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { expectedRevision: 1 },
+    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+  }).state, "applied");
+  const execution = canonicalChildExecution(h.deps, database, path, id => modules.find(module => module.descriptor.id === id)?.descriptor);
+  const rerun = (runId: string) => {
+    const run = database.authority.runs.get(runId);
+    assert.ok(run !== undefined);
+    const response = readRerunValues({ reader: execution.lifecycle, database, descriptors: { resolve: () => parent.descriptor } }, { runId, expectedVersion: run.version });
+    assert.equal(response.state, "available", JSON.stringify(response));
+    return response.snapshot;
+  };
+  return { database, execution, parent: parent.descriptor, rerun };
+}
+const stepStates = (steps: readonly { key: string; state: string }[]) => steps.map(({ key, state }) => [key, state]);
+
+const TYPED = [{ workflow: CHILD, step: "reading", facts: { disposition: "typed by hand" } }];
+
+it("hands a typed child entry to the one released child, which records it under its own step while the parent plans nothing", async () => {
+  const { database, execution, parent, rerun } = await harness();
+  const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false, selectedStepKeys: ["members"], stepOmissions: TYPED });
+  assert.deepEqual(root.envelope.stepOmissions, [{ workflow: CHILD, step: "reading", facts: { disposition: "typed by hand" }, labels: { disposition: "Disposition" } }]);
+  const { run } = await execution.execute(root, world.SIGNAL);
+  assert.ok(run?.lifecycle.state === "terminal");
+  assert.equal(run.lifecycle.outcome, "done", JSON.stringify(database.authority.failures.listByRun(root.envelope.runId)));
+  const [child, ...others] = database.authority.runs.listChildren(root.envelope.runId);
+  assert.ok(child !== undefined);
+  assert.equal(others.length, 0);
+  assert.deepEqual(child.envelope.stepOmissions, [{ step: "reading", facts: { disposition: "typed by hand" }, labels: { disposition: "Disposition" } }]);
+  const checkpoints = database.authority.runCheckpoints.listByItem(CHILD, child.envelope.itemId).filter(({ runId }) => runId === child.envelope.runId);
+  const read = checkpoints.find(({ nodeId }) => nodeId === "read");
+  assert.equal(read?.assertion?.step, "reading");
+  assert.deepEqual(read?.output.value, { eid: "10800000", disposition: "typed by hand", providerState: "typed" });
+  assert.equal(checkpoints.find(({ nodeId }) => nodeId === "finish")?.assertion, undefined);
+  const parentCheckpoints = database.authority.runCheckpoints.listByItem(parent.id, root.envelope.itemId).filter(({ runId }) => runId === root.envelope.runId);
+  assert.ok(parentCheckpoints.every(({ assertion }) => assertion === undefined));
+  const snapshot = rerun(root.envelope.runId);
+  assert.deepEqual(snapshot.typed, root.envelope.stepOmissions);
+  assert.deepEqual(snapshot.values, []);
+  assert.deepEqual(snapshot.steps.map(({ key }) => key), ["members"]);
+  assert.deepEqual(snapshot.children?.map(({ workflow, steps }) => [workflow, stepStates(steps)]), [[CHILD, [["reading", "unfinished"], ["finish", "completed"]]]]);
+  assert.deepEqual(snapshot.children?.[0]?.steps[0]?.nodes, [{ nodeId: "read", state: "unfinished", reason: "operator-asserted" }]);
+});
+
+it("refuses a run that releases more than one person while typed child values are present, before any child exists", async () => {
+  const { database, execution, parent } = await harness();
+  const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "repeat" }, { dryRun: false, selectedStepKeys: ["members"], stepOmissions: TYPED });
+  const { run } = await execution.execute(root, world.SIGNAL);
+  assert.notEqual(run?.lifecycle.state === "terminal" ? run.lifecycle.outcome : undefined, "done");
+  assert.equal(database.authority.runs.listChildren(root.envelope.runId).length, 0);
+});
+
+it("delegates as today with nothing typed: every member runs its own reading and carries no typed entry", async () => {
+  const { database, execution, parent, rerun } = await harness();
+  const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "repeat" }, { dryRun: false, selectedStepKeys: ["members"] });
+  assert.equal(root.envelope.stepOmissions, undefined);
+  const { run } = await execution.execute(root, world.SIGNAL);
+  assert.ok(run?.lifecycle.state === "terminal");
+  assert.equal(run.lifecycle.outcome, "done");
+  const children = database.authority.runs.listChildren(root.envelope.runId);
+  assert.equal(children.length, 2);
+  for (const child of children) {
+    assert.equal(child.envelope.stepOmissions, undefined);
+    const read = database.authority.runCheckpoints.listByItem(CHILD, child.envelope.itemId).find(({ runId, nodeId }) => runId === child.envelope.runId && nodeId === "read");
+    assert.equal(read?.assertion, undefined);
+  }
+  const snapshot = rerun(root.envelope.runId);
+  assert.equal(snapshot.typed, undefined);
+  assert.deepEqual(snapshot.children?.map(({ workflow, steps }) => [workflow, stepStates(steps)]), [[CHILD, [["reading", "completed"], ["finish", "completed"]]]]);
+});
+
+it("serves a child row's steps from the least advanced of several child runs", async () => {
+  const { execution, parent, rerun } = await harness();
+  const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "confirmed" }, { dryRun: false, selectedStepKeys: ["members"] });
+  const seen: unknown[] = [];
+  let run = root;
+  for (let pass = 0; pass < 4 && run.lifecycle.state !== "terminal"; pass++) {
+    const next = await execution.execute(root, world.SIGNAL);
+    seen.push([next.run?.lifecycle, next.outcomes.map(o => o.state)]);
+    if (next.run !== undefined) run = next.run;
+  }
+  assert.ok(run.lifecycle.state === "terminal", JSON.stringify(seen));
+  assert.equal(run.lifecycle.outcome, "failed");
+  assert.deepEqual(rerun(root.envelope.runId).children?.map(({ workflow, steps }) => [workflow, stepStates(steps)]),
+    [[CHILD, [["reading", "failed"], ["finish", "unfinished"]]]]);
+});

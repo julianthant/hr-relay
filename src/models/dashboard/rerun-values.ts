@@ -14,6 +14,7 @@ const NodeCompletionSchema = z.strictObject({
   reason: z.enum(["checkpoint", "gate-result", "settled-transaction", "failure", "incomplete-execution",
     "operator-asserted", "step-omitted", "not-recorded"]),
 });
+const StepCompletionSchema = z.strictObject({ key: z.string().min(1), state: CompletionStateSchema, nodes: z.array(NodeCompletionSchema).min(1) });
 const CandidateCoordinatesSchema = RerunValueMappingSchema.extend({
   sourceStepKey: z.string().min(1),
 });
@@ -41,9 +42,11 @@ export const RerunValuesSnapshotSchema = z.strictObject({
     descriptorVersion: PositiveIntSchema, contractFingerprint: FingerprintSchema,
     outcome: z.enum(["done", "failed", "interrupted"]),
   }),
-  steps: z.array(z.strictObject({ key: z.string().min(1), state: CompletionStateSchema, nodes: z.array(NodeCompletionSchema).min(1) })),
+  steps: z.array(StepCompletionSchema),
+  /** Each delegated child workflow a Start row shows: its steps as the least advanced child run of that workflow left them. */
+  children: z.array(z.strictObject({ workflow: WorkflowIdSchema, steps: z.array(StepCompletionSchema) })).optional(),
   values: z.array(ValueCandidateSchema),
-  /** The source run's typed facts per step, for a step it had typed; offered as typed by hand. */
+  /** The source run's typed facts per step, for a step it had typed (a child step's under its workflow); offered as typed by hand. */
   typed: StepOmissionsSchema.optional(),
   transactions: z.array(z.strictObject({
     stepKey: z.string().min(1), nodeId: NodeIdSchema, taskId: TaskIdSchema,
