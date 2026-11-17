@@ -75,7 +75,7 @@ async function harness(child: typeof writeChild, result: z.ZodType, binds: reado
     const write = buildWriteFixtureRegistry(world), stores = [...plan1Stores.stores, ...write.stores];
     return defineTaskStoreRegistry(stores, { scenarioIds: [...new Set([...plan1Stores.corpus.scenarioIds, ...write.corpus.scenarioIds])],
       tasks: stores.flatMap((store) => Object.values(store.tasks)).map(({ contract }) => ({ id: contract.id, effect: contract.effect })) });
-  }, undefined, undefined, profiles.create, [child]);
+  }, undefined, undefined, profiles.create, [child], undefined, true);
   disposers.push(h.dispose);
   return h;
 }
@@ -111,6 +111,16 @@ describe("child step facts over a transaction's phases and several child runs", 
     assert.deepEqual(facts(child?.steps[0]?.nodes ?? []), [["prepare", "completed", "previewed"], ["commit", "unfinished", "not-recorded"]]);
   });
 
+  it("shows a dry-run child whose write is already present as both phases already present, not as a prepared page", async () => {
+    const h = await harness(writeChild, Output, [WRITE_FIXTURE_EID], writeRows);
+    h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
+    const run = await runThrough(h, true);
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify(run.lifecycle));
+    const [child] = children(h, run) ?? [];
+    assert.deepEqual(child?.steps.map(({ key, state }) => [key, state]), [["write", "completed"]]);
+    assert.deepEqual(facts(child?.steps[0]?.nodes ?? []), [["prepare", "completed", "already-present"], ["commit", "completed", "already-present"]]);
+  });
+
   it("shows a child whose prepare threw as prepare failed and commit unfinished", async () => {
     const h = await harness(writeChild, Output, [WRITE_FIXTURE_EID], writeRows);
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
@@ -120,6 +130,17 @@ describe("child step facts over a transaction's phases and several child runs", 
     const [child] = children(h, run) ?? [];
     assert.deepEqual(child?.steps.map(({ key, state }) => [key, state]), [["write", "failed"]]);
     assert.deepEqual(facts(child?.steps[0]?.nodes ?? []), [["prepare", "failed", "failure"], ["commit", "unfinished", "not-recorded"]]);
+  });
+
+  it("keeps a prepare that finished before the probe-to-fence budget expired completed, and its commit not completed", async () => {
+    const h = await harness(writeChild, Output, [WRITE_FIXTURE_EID], writeRows);
+    h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
+    h.world.onPrepare = () => h.clock.advanceMonotonic(30_001);
+    const run = await runThrough(h, false);
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed", JSON.stringify(run.lifecycle));
+    assert.equal(h.database.authority.writeIntents.listByRun(h.database.authority.runs.listChildren(run.envelope.runId)[0]?.envelope.runId ?? "").length, 0);
+    const [child] = children(h, run) ?? [];
+    assert.deepEqual(facts(child?.steps[0]?.nodes ?? []), [["prepare", "completed", "prepared"], ["commit", "failed", "failure"]]);
   });
 
   it("takes each node from the least advanced child run, not the step from the least advanced run", async () => {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values.js";
@@ -92,7 +93,7 @@ async function harness(nested = false) {
     assert.equal(response.state, "available", JSON.stringify(response));
     return response.snapshot;
   };
-  return { database, execution, parent: parent.descriptor, rerun };
+  return { database, path, execution, parent: parent.descriptor, rerun };
 }
 const stepStates = (steps: readonly { key: string; state: string }[]) => steps.map(({ key, state }) => [key, state]);
 
@@ -151,9 +152,7 @@ it("delegates as today with nothing typed: every member runs its own reading and
   assert.deepEqual(snapshot.children?.map(({ workflow, steps }) => [workflow, stepStates(steps)]), [[CHILD, [["reading", "completed"], ["finish", "completed"]]]]);
 });
 
-it("serves a child row's steps from the least advanced of several child runs", async () => {
-  const { execution, parent, rerun } = await harness();
-  const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "confirmed" }, { dryRun: false, selectedStepKeys: ["members"] });
+async function settle(execution: Awaited<ReturnType<typeof harness>>["execution"], root: ReturnType<Awaited<ReturnType<typeof harness>>["execution"]["start"]>) {
   const seen: unknown[] = [];
   let run = root;
   for (let pass = 0; pass < 4 && run.lifecycle.state !== "terminal"; pass++) {
@@ -162,6 +161,13 @@ it("serves a child row's steps from the least advanced of several child runs", a
     if (next.run !== undefined) run = next.run;
   }
   assert.ok(run.lifecycle.state === "terminal", JSON.stringify(seen));
+  return run;
+}
+
+it("serves a child row's steps from the least advanced of several child runs", async () => {
+  const { execution, parent, rerun } = await harness();
+  const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "confirmed" }, { dryRun: false, selectedStepKeys: ["members"] });
+  const run = await settle(execution, root);
   assert.equal(run.lifecycle.outcome, "failed");
   assert.deepEqual(rerun(root.envelope.runId).children?.map(({ workflow, steps }) => [workflow, stepStates(steps)]),
     [[CHILD, [["reading", "failed"], ["finish", "unfinished"]]]]);
@@ -179,4 +185,31 @@ it("reports completed delegation nodes in both a parent row and a nested child r
   assert.deepEqual(snapshot.children?.[0]?.steps.find(({ key }) => key === "finish"), {
     key: "finish", state: "completed", nodes: [{ nodeId: "finish", state: "completed", reason: "delegation-settled" }],
   });
+});
+
+it("reads a delegation a failed child never started as not recorded", async () => {
+  const { execution, parent, rerun } = await harness(true);
+  const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "confirmed" }, { dryRun: false, selectedStepKeys: ["members"] });
+  assert.equal((await settle(execution, root)).lifecycle.state, "terminal");
+  const finish = rerun(root.envelope.runId).children?.[0]?.steps.find(({ key }) => key === "finish");
+  assert.deepEqual(finish, { key: "finish", state: "unfinished", nodes: [{ nodeId: "finish", state: "unfinished", reason: "not-recorded" }] });
+});
+
+it("refuses the Rerun source when a retained delegation no longer authenticates", async () => {
+  const { database, path, execution, parent } = await harness();
+  const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
+  const { run } = await execution.execute(root, world.SIGNAL);
+  assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
+  const member = database.authority.dependencies.groups(root.envelope.runId).find(({ group }) => group.invocation.nodeId === "members")?.group.children[0];
+  assert.ok(member);
+  const raw = new DatabaseSync(path);
+  try {
+    const tampered = raw.prepare("UPDATE delegation_dependencies SET payload_json = replace(payload_json, ?, ?) WHERE id = ?")
+      .run(`"childItemId":${JSON.stringify(member.dependency.childItemId)}`, `"childItemId":${JSON.stringify(randomUUID())}`, member.dependency.dependencyId);
+    assert.equal(tampered.changes, 1);
+  } finally { raw.close(); }
+  const source = database.authority.runs.get(root.envelope.runId);
+  assert.ok(source);
+  assert.deepEqual(readRerunValues({ reader: execution.lifecycle, database, descriptors: { resolve: () => parent } }, { runId: source.envelope.runId, expectedVersion: source.version }),
+    { state: "refused", code: "source-invalid" });
 });

@@ -13,7 +13,7 @@ const NodeCompletionSchema = z.strictObject({
   /** A child transaction node's prepare or commit phase; a Start row can show each on its own. */
   phase: z.enum(["prepare", "commit"]).optional(),
   state: CompletionStateSchema,
-  reason: z.enum(["checkpoint", "gate-result", "settled-transaction", "delegation-settled", "previewed", "prepared",
+  reason: z.enum(["checkpoint", "gate-result", "settled-transaction", "delegation-settled", "previewed", "prepared", "already-present",
     "failure", "incomplete-execution", "operator-asserted", "step-omitted", "not-recorded"]),
 });
 const StepCompletionSchema = z.strictObject({ key: z.string().min(1), state: CompletionStateSchema, nodes: z.array(NodeCompletionSchema).min(1) });

@@ -12,7 +12,9 @@ import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { projectTransactionOutcome } from "../../../models/workflow/graph.js";
-import { readRunPreviewResult, resolveDelegationEvidenceOutput } from "../../../models/run/result.js";
+import { DelegationOutcomePolicyUnsatisfiedError, readRunPreviewResult, resolveDelegationEvidenceOutput } from "../../../models/run/result.js";
+import { currentDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { DelegationInvocationRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
 import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -75,13 +77,40 @@ function childWorkflows(descriptor: AnyWorkflowDescriptor): readonly string[] {
   return [...new Set(descriptor.startRows.flatMap(({ members }) => members.flatMap(({ workflow }) => workflow === undefined ? [] : [workflow])))];
 }
 
-/** Whether a child-run node's delegation settled: its members reached the join (a dry-run preview counts); display only, so an unsettled one is simply not recorded. */
+/** Whether a child-run node's delegation settled: invoked, every member terminal, and the join satisfied (a dry-run preview counts). Not invoked, a member still running, or an unsatisfied join is simply not settled; any other failure means the retained delegation does not authenticate, which refuses the source. */
 function delegationSettled(repositories: AuthorityDatabase["authority"], runId: string, node: RuntimeFlowNode): boolean {
   if (node.kind !== "child-run") return false;
   try {
+    const invoked = currentDelegationManifests(repositories, runId).filter((manifest) =>
+      DelegationInvocationRequestSchema.parse(repositories.lifecycleJournal.findDelegationInvocation(manifest.manifestId)?.request).nodeId === node.id);
+    const [manifest] = invoked;
+    if (manifest === undefined) return false;
+    if (manifest.join !== "none" && repositories.dependencies.members(manifest.manifestId)
+      .some((member) => (member.terminal?.run ?? member.child).lifecycle.state !== "terminal")) return false;
     resolveDelegationEvidenceOutput(repositories.dependencies.evidence(runId, String(node.id)), node.target.result);
     return true;
-  } catch { return false; }
+  } catch (error) {
+    if (error instanceof DelegationOutcomePolicyUnsatisfiedError) return false;
+    refuse("source-invalid");
+  }
+}
+
+/** Transaction nodes whose prepare task span ended done in this run; the timeline keeps it even when execution refused before the fence. */
+function preparedBySpan(repositories: AuthorityDatabase["authority"], run: RunRecord, nodes: readonly RuntimeFlowNode[]): ReadonlySet<string> {
+  const prefixes = new Map(nodes.flatMap((node) => node.kind === "transaction" ? [[`${run.envelope.traceId}/${String(node.id)}/prepare#`, String(node.id)] as const] : []));
+  const prepared = new Set<string>();
+  if (prefixes.size === 0) return prepared;
+  for (let after = 0; ;) {
+    const page = repositories.timelineEvents.page({ runId: run.envelope.runId, after, limit: 1000 });
+    for (const record of page) {
+      const event = record.payload.kind === "span" ? record.payload.event : undefined;
+      if (event?.t !== "span.ended" || event.kind !== "task" || event.outcome !== "done") continue;
+      for (const [prefix, nodeId] of prefixes) if (event.spanPath.startsWith(prefix)) prepared.add(nodeId);
+    }
+    const last = page.at(-1);
+    if (page.length < 1000 || last === undefined) return prepared;
+    after = last.cursor;
+  }
 }
 
 function unitKey(nodeId: string, phase?: "prepare" | "commit"): string { return phase === undefined ? nodeId : `${nodeId}#${phase}`; }
@@ -98,19 +127,22 @@ function childUnitFacts(repositories: AuthorityDatabase["authority"], descriptor
   const settledTasks = new Set(intents.filter(({ status }) => status === "committed" || status === "observed-present").map(({ taskId }) => String(taskId)));
   const preparedTasks = new Set(intents.map(({ taskId }) => String(taskId)));
   const result = repositories.runResults.get(runId);
-  const preview = result === undefined ? undefined : readRunPreviewResult(result);
-  const previewed = new Set((preview?.steps ?? []).flatMap((step) => step.state === "transaction-preview" ? [String(step.nodeId)] : []));
+  const previews = new Map((result === undefined ? undefined : readRunPreviewResult(result))?.steps
+    .flatMap((step) => step.state === "transaction-preview" ? [[String(step.nodeId), step.preview.outcome.state] as const] : []));
+  const nodes = descriptorRuntimeNodes(descriptor);
+  const preparedSpans = preparedBySpan(repositories, run, nodes);
   const facts = new Map<string, NodeFact>();
-  for (const node of descriptorRuntimeNodes(descriptor)) {
+  for (const node of nodes) {
     const nodeId = String(node.id), checkpoint = checkpoints.get(nodeId);
     if (node.kind === "transaction") {
       const taskId = String(node.commit.uses.id);
       const asserted = checkpoint?.assertion !== undefined;
-      const settled = !asserted && (checkpoint !== undefined || settledTasks.has(taskId));
-      const prepared = settled || preparedTasks.has(taskId) || previewed.has(nodeId);
+      const settled = !asserted && (checkpoint !== undefined || settledTasks.has(taskId) || previews.get(nodeId) === "already-present");
+      const previewed = previews.get(nodeId) === "would-prepare";
+      const prepared = settled || previewed || preparedTasks.has(taskId) || preparedSpans.has(nodeId);
       const prepare: Pick<NodeFact, "state" | "reason"> = asserted ? { state: "unfinished", reason: "operator-asserted" }
-        : settled ? { state: "completed", reason: checkpoint !== undefined ? "checkpoint" : "settled-transaction" }
-          : prepared ? { state: "completed", reason: previewed.has(nodeId) ? "previewed" : "prepared" }
+        : settled ? { state: "completed", reason: checkpoint !== undefined ? "checkpoint" : previews.has(nodeId) ? "already-present" : "settled-transaction" }
+          : prepared ? { state: "completed", reason: previewed ? "previewed" : "prepared" }
             : failed === nodeId ? { state: "failed", reason: "failure" } : { state: "unfinished", reason: "not-recorded" };
       const commit: Pick<NodeFact, "state" | "reason"> = asserted ? { state: "unfinished", reason: "operator-asserted" }
         : settled ? prepare : failed === nodeId && prepared ? { state: "failed", reason: "failure" } : { state: "unfinished", reason: "not-recorded" };
