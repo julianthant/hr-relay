@@ -19,3 +19,5 @@
 .sv2-grid tbody tr:hover > td { background: color-mix(in srgb, var(--ds-fg) 7%, transparent); }
 .sv2-grid tbody td[data-selected] { background: color-mix(in srgb, var(--ds-fg) 10%, transparent); }
 .sv2-grid tbody tr:hover > td[data-selected] { background: color-mix(in srgb, var(--ds-fg) 14%, transparent); }
+
+.hub-sheets-library .ds-search-field [data-slot="search-field-group"] { border-radius: 8px; }
