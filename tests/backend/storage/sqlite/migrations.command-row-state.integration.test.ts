@@ -4,7 +4,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { applyAuthorityMigrationsAfter, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { commandFromRow, insertNativeCommand, settleNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
-import { COMMAND_ROW_STATE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { COMMAND_ROW_STATE_MIGRATION, COMMAND_ROW_STATE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { deriveBulkChildCommand } from "../../../../src/rules/commands/command-groups.js";
 import { BulkRunCommandRequestSchema, deriveBulkRunCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -29,9 +29,10 @@ function schema32(): DatabaseSync {
   return database;
 }
 
+/** Applies migration 33 alone, so the schema it leaves is schema 33's. */
 function migrateTo33(database: DatabaseSync): void {
   database.exec("BEGIN");
-  applyAuthorityMigrationsAfter(database, 32, { now: AT, captureFile: () => { throw new Error("no capture expected"); } });
+  for (const statement of COMMAND_ROW_STATE_MIGRATION.statements) database.exec(statement);
   database.exec("COMMIT");
 }
 
@@ -52,9 +53,9 @@ function seed(database: DatabaseSync): void {
 }
 
 describe("command row state migration 33", () => {
-  it("is schema version 33, the current schema", () => {
+  it("is schema version 33, under the query indexes' current 34", () => {
     assert.equal(COMMAND_ROW_STATE_SCHEMA_VERSION, 33);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 33);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 34);
     assert.deepEqual(migrationTableNames(33), migrationTableNames(32));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });

@@ -1,5 +1,5 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { COMMAND_ROW_STATE_MIGRATION, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { COMMAND_ROW_STATE_MIGRATION, CURRENT_AUTHORITY_SCHEMA_VERSION, QUERY_INDEXES, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -19,8 +19,18 @@ function restoreSchema32CommandTable(database: DatabaseSync): void {
   for (const statement of owned) database.exec(statement);
 }
 
+/** Steps a current authority back to schema 33: none of the query indexes, and checkpoint replay keeps its own index. */
+export function restoreSchema33QueryIndexes(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 34);
+  const replay = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE INDEX checkpoints_replay_idx [^;]+/u)?.[0];
+  assert.ok(replay);
+  for (const name of Object.keys(QUERY_INDEXES)) database.exec(`DROP INDEX ${name}`);
+  database.exec(`${replay}; UPDATE database_states SET schema_version=33; PRAGMA user_version=33`);
+}
+
 /** Steps a current authority back to schema 32. */
 export function restoreSchema32CommandRows(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 34) restoreSchema33QueryIndexes(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 33);
   const nested = database.isTransaction;
   if (!nested) database.exec("BEGIN");
@@ -31,7 +41,7 @@ export function restoreSchema32CommandRows(database: DatabaseSync): void {
 
 /** Steps a current authority back to schema 30: the change log, its run references, its triggers and indexes did not exist. Schema 32 changed no table, index or trigger. */
 export function removeSchema31ChangeLog(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 33) restoreSchema32CommandRows(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 33) restoreSchema32CommandRows(database);
   if (database.prepare("PRAGMA user_version").get()?.user_version === 32) database.exec("UPDATE database_states SET schema_version=31; PRAGMA user_version=31");
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 31);
   const objects = z.array(z.object({ type: z.string(), name: z.string() })).parse(database.prepare("SELECT type,name FROM sqlite_schema").all())
