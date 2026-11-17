@@ -473,11 +473,19 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         ...(member.durationSec === undefined ? {} : { durationLabel: fmtElapsed(member.durationSec) }) }; }) };
   });
   const findings = sections.find(section => section.section === "parked-write" && section.payload.ucpathFindings !== undefined);
-  return { steps: [...named, ...runDecisionStep(detail.decision, named.at(-1)?.time)], timeline,
+  return { steps: [...named, ...runDecisionStep(detail.decision, named.at(-1)?.time), ...cancelledEnding(detail.cancellation)], timeline,
     ...(findings?.section !== "parked-write" || findings.payload.ucpathFindings === undefined ? {} : { ucpathFindings: {
       stepId: findings.payload.writeIntentId, attemptLabel: `Attempt ${findings.payload.runAttempt}`,
       presentation: ucpathFoundPresentation(findings.payload.ucpathFindings),
     } }) };
+}
+
+/** The served cancelled ending closes the log; it is a run-level fact, never a node's timeline event. */
+export const RUN_CANCELLED_STEP_ID = "run-cancelled";
+function cancelledEnding(cancellation: RunDetailWire["cancellation"]): readonly LogStep[] {
+  if (cancellation === undefined) return [];
+  const time = fmtActionClock(cancellation.at);
+  return [{ id: RUN_CANCELLED_STEP_ID, time, title: cancellation.title, entries: [{ kind: "note", id: RUN_CANCELLED_STEP_ID, time, message: cancellation.outcome }] }];
 }
 
 /** The run-level decision (paused, stalled, cancelling) closes the log; a failed member's retry stays the header icon. */
