@@ -14,7 +14,7 @@ import { z } from "zod";
 import { ConfigSchema } from "../../../models/config/schema.js";
 import { profileInitials } from "../../../models/profiles/profile-identity.js";
 import { LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOperationSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason } from "../../../models/profiles/profile.js";
-import { CanonicalCredentialConversionPlanSchema,CanonicalCredentialHeadSchema,CanonicalCredentialOperationSchema,CanonicalCredentialPublicationSourceSchema,CanonicalCredentialRestoreSnapshotSchema,CredentialMaintenanceHold,captureCanonicalCredentialStartupLocks,publishStoppedCanonicalCredentials,type CanonicalCredentialConversionPlan } from "../configuration/canonical-credential-store.js";
+import { CanonicalCredentialConversionPlanSchema,CanonicalCredentialHeadSchema,canonicalCredentialHeadReading,CanonicalCredentialOperationSchema,CanonicalCredentialPublicationSourceSchema,CanonicalCredentialRestoreSnapshotSchema,CredentialMaintenanceHold,captureCanonicalCredentialStartupLocks,publishStoppedCanonicalCredentials,type CanonicalCredentialConversionPlan } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
 import { sameDirectory, fileIdentityObservation, capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,removeExactPath,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js";
@@ -36,6 +36,7 @@ import { OfflineMaintenanceOperationUnavailableError,RuntimeLifetimeLock,WorkerR
 import { assertNoOldBuildRuntimeArtifacts,assertNoSymlinkComponents,lstatMaybe } from "./process-root.js";
 
 import { systemClock } from "../../../rules/time/clock.js";
+import { credentialHeadStateOf } from "../../../rules/storage/credential-head.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
@@ -636,7 +637,7 @@ function assertRestoreCredentialSnapshot(locator: RuntimeLocator, profile: Profi
   const path = join(locator.stateRoot, "machine", "credential-keys", `${binding.profileId}.json`), file = readPrivateFile(path, { label: "lock", maxBytes: 25 * 1024 * 1024 });
   if (file === undefined || createHash("sha256").update(file.bytes).digest("hex") !== credentials.digest) fail("profile-restore-credential-head-changed");
   const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
-  if (head.state !== "active" || head.installationId !== binding.installationId || head.profileId !== binding.profileId
+  if (credentialHeadStateOf(head, "unread") !== "active" || head.installationId !== binding.installationId || head.profileId !== binding.profileId
     || head.key.installationId !== binding.installationId || head.key.profileId !== binding.profileId
     || head.key.keyId !== credentials.keyId || head.generation !== credentials.generation
     || canonicalJsonStringify(head.counters) !== canonicalJsonStringify(credentials.counters)
@@ -1001,8 +1002,10 @@ function prepareUnpublishedDraftAbort(control: string, locator: RuntimeLocator, 
     credentialKeyCustody.assertAbsent({ installationId: locator.installationId, profileId: operation.profileId, keyId: operation.credentials.keyId });
   } else {
     if (canonicalJsonStringify({ ...fileIdentityObservation(headFile.identity, { preserveSafeNumbers: true }), digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
-    const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(headFile.bytes)));
-    if (head.state !== "erased" || head.installationId !== locator.installationId || head.profileId !== operation.profileId
+    const reading = canonicalCredentialHeadReading(CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(headFile.bytes))), "unread");
+    if (!("head" in reading) || reading.state !== "erased") fail("profile-draft-abort-head-changed");
+    const head = reading.head;
+    if (head.installationId !== locator.installationId || head.profileId !== operation.profileId
       || head.key.installationId !== head.installationId || head.key.profileId !== head.profileId || head.key.keyId !== operation.credentials.keyId
       || head.operationId !== abort.operationId || head.generation !== abort.generation) fail("profile-draft-abort-head-changed");
   }
@@ -1138,7 +1141,7 @@ function readProfileUpgradeAuthority(control: string, workspace: string, locator
   } else {
     const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(headFile.bytes)));
     if (head.installationId !== locator.installationId || head.profileId !== id) fail("profile-stopped-upgrade-key-required");
-    if (head.state === "active") {
+    if (credentialHeadStateOf(head, "unread") === "active") {
       if (head.key.installationId !== head.installationId || head.key.profileId !== head.profileId) fail("profile-stopped-upgrade-key-required");
       credentialKeyCustody.read(head.key);
     } else if (signup?.onboarding?.abort === undefined) fail("profile-stopped-upgrade-key-required");
@@ -2430,7 +2433,7 @@ function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typ
       assertBinding(path, { installationId: locator.installationId, profileId: profile.profileId });
       if (lstatMaybe(join(machine, "credential-operations", `${profile.profileId}.json`))) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
       const head = readProfileEvidence(join(machine, "credential-keys", `${profile.profileId}.json`), CanonicalCredentialHeadSchema);
-      if (head.state !== "active" || head.installationId !== locator.installationId || head.profileId !== profile.profileId) fail("profile-control-upgrade-canonical-head-unavailable");
+      if (credentialHeadStateOf(head, "absent") !== "active" || head.installationId !== locator.installationId || head.profileId !== profile.profileId) fail("profile-control-upgrade-canonical-head-unavailable");
       for (const record of prior.completedRestores.filter(row => row.profile.profileId === profile.profileId)) assertCompletedRestoreCustody(locator, record);
       const database = fileStatus(path);
       return { profileId: profile.profileId, head, database: { ...fileIdentityObservation({ device: database.dev, inode: database.ino }, { preserveSafeNumbers: true }), size: privateFileNumber(database.size), ...fileTimestampMilliseconds(database) },

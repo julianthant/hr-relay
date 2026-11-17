@@ -153,6 +153,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |
 | `src/rules/identity/stable-uuid.ts` | Browser-safe deterministic UUID derivation shared with the runtime `identifiers.ts` entry; native and browser callers use the same digest and UUID bits. |
 | `src/rules/runs/run-status.ts` | Shared run status and task/category state derivation for Queue, Logs, Activity and native summary filtering. |
+| `src/rules/storage/credential-head.ts` | Canonical credential head state derived from the head and credential operation files, and its frozen transition table with the store's refusal codes. `backend/storage/configuration/canonical-credential-store.ts` and the installation and account-deletion readers ask it instead of reading the head's `state` field. |
 | `src/rules/` | Pure decisions and validation, including identity, clocks, normalization, ledger derivation, redaction, and write safety. |
 | `src/workflow-kit/` | Root-level TypeScript modules for task and workflow declaration, flow construction, compilation, sessions, providers, artifacts, and capabilities. |
 | `src/workflow-kit/workflow-definition.ts` | `defineWorkflow` and `compileWorkflow`. |
