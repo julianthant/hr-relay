@@ -2,11 +2,6 @@
   "reason": "Every unserved schema arm and unconsumed route declares its current owner and missing consumer.",
   "bindings": [
     {
-      "binding": "route:GET /api/v1/assistant/activity",
-      "direction": "served-unconsumed",
-      "note": "assistant-served-match-02 owns the Activity list and its typed dashboard client; this backend-first route serves today's assistant activity."
-    },
-    {
       "binding": "RunDetailSectionResponseSchema#workbook-writes",
       "direction": "declared-unserved",
       "note": "All production workflow workbook declarations are intentionally empty. Generic captured-reference writes, native Logs receipts and row resolution are exercised by the synthetic declared consumer in tests/backend/runs/workbooks.integration.test.ts; Onboarding phase 2 owns the first real declaration and mapping."
