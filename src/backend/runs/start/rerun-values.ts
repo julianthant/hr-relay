@@ -2,7 +2,7 @@ import type { EvidenceSchemaReader } from "../../../models/storage/evidence-sche
 import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
 import { validateRerunSourcePlan, RerunRefusedError, rerunEvidenceReader, validateRerunWriteProof, validateRerunTransactionEvidence } from "./rerun.js";
 import { z } from "zod";
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowDelegatedDescriptor, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RunExistenceSchema, type RunExistence } from "../../../models/config/authority.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { RerunValuesRequestSchema, RerunValuesResponseSchema,
@@ -12,8 +12,12 @@ import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { projectTransactionOutcome } from "../../../models/workflow/graph.js";
+import { DelegationOutcomePolicyUnsatisfiedError, readRunPreviewResult, resolveDelegationEvidenceOutput } from "../../../models/run/result.js";
+import { currentDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { DelegationInvocationRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
 import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import type { RunRecord } from "../../../models/run/record.js";
 import { RerunValueMappingsSchema } from "../../../models/workflow/rerun-values.js";
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
@@ -63,6 +67,114 @@ function containsProtected(value: JsonValue, privateValues: readonly string[]): 
   if (typeof value === "string") return privateValues.some((secret) => value.includes(secret));
   if (value === null || typeof value !== "object") return false;
   return Object.values(value).some((child) => containsProtected(JsonValueSchema.parse(child), privateValues));
+}
+
+type NodeFact = RerunValuesSnapshot["steps"][number]["nodes"][number];
+type StepFact = RerunValuesSnapshot["steps"][number];
+const ADVANCE = { unfinished: 0, failed: 1, completed: 2 } as const;
+
+function childWorkflows(descriptor: AnyWorkflowDescriptor): readonly string[] {
+  return [...new Set(descriptor.startRows.flatMap(({ members }) => members.flatMap(({ workflow }) => workflow === undefined ? [] : [workflow])))];
+}
+
+/** Whether a child-run node's delegation settled: invoked, every member terminal, and the join satisfied (a dry-run preview counts). Not invoked, a member still running, or an unsatisfied join is simply not settled; any other failure means the retained delegation does not authenticate, which refuses the source. */
+function delegationSettled(repositories: AuthorityDatabase["authority"], runId: string, node: RuntimeFlowNode): boolean {
+  if (node.kind !== "child-run") return false;
+  try {
+    const invoked = currentDelegationManifests(repositories, runId).filter((manifest) =>
+      DelegationInvocationRequestSchema.parse(repositories.lifecycleJournal.findDelegationInvocation(manifest.manifestId)?.request).nodeId === node.id);
+    const [manifest] = invoked;
+    if (manifest === undefined) return false;
+    if (manifest.join !== "none" && repositories.dependencies.members(manifest.manifestId)
+      .some((member) => (member.terminal?.run ?? member.child).lifecycle.state !== "terminal")) return false;
+    resolveDelegationEvidenceOutput(repositories.dependencies.evidence(runId, String(node.id)), node.target.result);
+    return true;
+  } catch (error) {
+    if (error instanceof DelegationOutcomePolicyUnsatisfiedError) return false;
+    refuse("source-invalid");
+  }
+}
+
+/** Transaction nodes whose prepare task span ended done in this run; the timeline keeps it even when execution refused before the fence. */
+function preparedBySpan(repositories: AuthorityDatabase["authority"], run: RunRecord, nodes: readonly RuntimeFlowNode[]): ReadonlySet<string> {
+  const prefixes = new Map(nodes.flatMap((node) => node.kind === "transaction" ? [[`${run.envelope.traceId}/${String(node.id)}/prepare#`, String(node.id)] as const] : []));
+  const prepared = new Set<string>();
+  if (prefixes.size === 0) return prepared;
+  for (let after = 0; ;) {
+    const page = repositories.timelineEvents.page({ runId: run.envelope.runId, after, limit: 1000 });
+    for (const record of page) {
+      const event = record.payload.kind === "span" ? record.payload.event : undefined;
+      if (event?.t !== "span.ended" || event.kind !== "task" || event.outcome !== "done") continue;
+      for (const [prefix, nodeId] of prefixes) if (event.spanPath.startsWith(prefix)) prepared.add(nodeId);
+    }
+    const last = page.at(-1);
+    if (page.length < 1000 || last === undefined) return prepared;
+    after = last.cursor;
+  }
+}
+
+function unitKey(nodeId: string, phase?: "prepare" | "commit"): string { return phase === undefined ? nodeId : `${nodeId}#${phase}`; }
+
+/** One child run's states per node, and per phase of a transaction node, from what it recorded; display only, so nothing here refuses the source. */
+function childUnitFacts(repositories: AuthorityDatabase["authority"], descriptor: AnyWorkflowDescriptor, run: RunRecord): ReadonlyMap<string, NodeFact> {
+  // A child run of an older descriptor reports every current step unfinished, as an older source does.
+  if (run.envelope.descriptorVersion !== descriptor.version || run.envelope.contractFingerprint !== descriptor.contractFingerprint) return new Map();
+  const runId = run.envelope.runId;
+  const checkpoints = new Map(repositories.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId)
+    .filter((checkpoint) => checkpoint.runId === runId).map((checkpoint) => [checkpoint.nodeId, checkpoint]));
+  const gates = new Set(repositories.gateResults.listByRun(runId).map(({ gateId }) => String(gateId)));
+  const failureId = run.lifecycle.state === "terminal" ? run.lifecycle.failureId : undefined;
+  const failed = failureId === undefined ? undefined : repositories.failures.listByRun(runId).find((failure) => failure.failureId === failureId)?.nodeId;
+  const intents = repositories.writeIntents.listByRun(runId);
+  const settledTasks = new Set(intents.filter(({ status }) => status === "committed" || status === "observed-present").map(({ taskId }) => String(taskId)));
+  const preparedTasks = new Set(intents.map(({ taskId }) => String(taskId)));
+  const result = repositories.runResults.get(runId);
+  const previews = new Map((result === undefined ? undefined : readRunPreviewResult(result))?.steps
+    .flatMap((step) => step.state === "transaction-preview" ? [[String(step.nodeId), step.preview.outcome.state] as const] : []));
+  const nodes = descriptorRuntimeNodes(descriptor);
+  const preparedSpans = preparedBySpan(repositories, run, nodes);
+  const facts = new Map<string, NodeFact>();
+  for (const node of nodes) {
+    const nodeId = String(node.id), checkpoint = checkpoints.get(nodeId);
+    if (node.kind === "transaction") {
+      const taskId = String(node.commit.uses.id);
+      const asserted = checkpoint?.assertion !== undefined;
+      const settled = !asserted && (checkpoint !== undefined || settledTasks.has(taskId) || previews.get(nodeId) === "already-present");
+      const previewed = previews.get(nodeId) === "would-prepare";
+      const prepared = settled || previewed || preparedTasks.has(taskId) || preparedSpans.has(nodeId);
+      const prepare: Pick<NodeFact, "state" | "reason"> = asserted ? { state: "unfinished", reason: "operator-asserted" }
+        : settled ? { state: "completed", reason: checkpoint !== undefined ? "checkpoint" : previews.has(nodeId) ? "already-present" : "settled-transaction" }
+          : prepared ? { state: "completed", reason: previewed ? "previewed" : "prepared" }
+            : failed === nodeId ? { state: "failed", reason: "failure" } : { state: "unfinished", reason: "not-recorded" };
+      const commit: Pick<NodeFact, "state" | "reason"> = asserted ? { state: "unfinished", reason: "operator-asserted" }
+        : settled ? prepare : failed === nodeId && prepared ? { state: "failed", reason: "failure" } : { state: "unfinished", reason: "not-recorded" };
+      facts.set(unitKey(nodeId, "prepare"), { nodeId: node.id, phase: "prepare", ...prepare });
+      facts.set(unitKey(nodeId, "commit"), { nodeId: node.id, phase: "commit", ...commit });
+      continue;
+    }
+    const fact: Pick<NodeFact, "state" | "reason"> = checkpoint?.assertion !== undefined ? { state: "unfinished", reason: "operator-asserted" }
+      : failed === nodeId ? { state: "failed", reason: "failure" }
+        : checkpoint !== undefined ? { state: "completed", reason: "checkpoint" }
+          : gates.has(nodeId) ? { state: "completed", reason: "gate-result" }
+            : delegationSettled(repositories, runId, node) ? { state: "completed", reason: "delegation-settled" }
+              : { state: "unfinished", reason: "not-recorded" };
+    facts.set(nodeId, { nodeId: node.id, ...fact });
+  }
+  return facts;
+}
+
+/** Each step from its units (a node, or a transaction node's phase), each as the least advanced child run left it; with no child run, nothing is recorded. */
+function leastAdvancedSteps(descriptor: AnyWorkflowDescriptor, runs: readonly ReadonlyMap<string, NodeFact>[]): readonly StepFact[] {
+  const kinds = new Map(descriptorRuntimeNodes(descriptor).map((node) => [String(node.id), node.kind]));
+  return descriptor.timeline.map((step) => {
+    const nodes = step.nodes.flatMap(({ id }) => (kinds.get(String(id)) === "transaction" ? (["prepare", "commit"] as const) : [undefined]).map((phase): NodeFact => {
+      const blank: NodeFact = { nodeId: id, ...(phase === undefined ? {} : { phase }), state: "unfinished", reason: "not-recorded" };
+      const facts = runs.map((run) => run.get(unitKey(String(id), phase)) ?? blank);
+      return facts.reduce((least, fact) => ADVANCE[fact.state] < ADVANCE[least.state] ? fact : least, facts[0] ?? blank);
+    }));
+    const state = nodes.some(({ state }) => state === "failed") ? "failed" : nodes.every(({ state }) => state === "completed") ? "completed" : "unfinished";
+    return { key: step.key, state, nodes };
+  });
 }
 
 /** One snapshot, only reads. This response carries no plan or repeat authorization. */
@@ -138,7 +250,6 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         if (typeof value !== "string" || value.length === 0) refuse("source-invalid");
         return value;
       });
-      type NodeFact = RerunValuesSnapshot["steps"][number]["nodes"][number];
       const facts = new Map<string, NodeFact>();
       for (const node of nodes) {
         const checkpoint = checkpoints.get(node.id);
@@ -157,6 +268,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           fact = { nodeId: node.id, state: "unfinished", reason: "incomplete-execution" };
         } else if (checkpoint !== undefined) fact = { nodeId: node.id, state: "completed", reason: "checkpoint" };
         else if (gates.some(({ gateId }) => String(gateId) === String(node.id))) fact = { nodeId: node.id, state: "completed", reason: "gate-result" };
+        else if (!older && delegationSettled(repositories, request.runId, node)) fact = { nodeId: node.id, state: "completed", reason: "delegation-settled" };
         else fact = { nodeId: node.id, state: "unfinished", reason: "not-recorded" };
         facts.set(node.id, fact);
       }
@@ -223,9 +335,20 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           nodeId: member.nodeId, state: "unfinished", reason: "not-recorded",
         })) } : { key: step.key, state, nodes: members };
       });
-      // The source's own typed facts refill a step it had typed; they stay typed by hand.
-      const typed = (run.envelope.stepOmissions ?? []).filter((entry) => entry.workflow === undefined
-        && descriptor.stepOmissions.some((spec) => spec.step === entry.step)
+      const children = childWorkflows(descriptor).map((workflow) => {
+        const child = workflowDelegatedDescriptor(descriptor, workflow);
+        const latest = new Map<string, RunRecord>();
+        for (const member of repositories.runs.listChildren(run.envelope.runId)) {
+          if (member.envelope.workflow !== workflow) continue;
+          const known = latest.get(member.envelope.itemId);
+          if (known === undefined || member.envelope.attempt > known.envelope.attempt) latest.set(member.envelope.itemId, member);
+        }
+        return { workflow, steps: leastAdvancedSteps(child, older ? [] : [...latest.values()].map((member) => childUnitFacts(repositories, child, member))) };
+      });
+      // The source's typed facts refill a step it had typed, its own or a child's a row targets; they stay typed by hand.
+      const typed = (run.envelope.stepOmissions ?? []).filter((entry) => (entry.workflow === undefined
+        ? descriptor.stepOmissions.some((spec) => spec.step === entry.step)
+        : descriptor.startRows.some(({ target }) => target?.workflow === entry.workflow && target.step === entry.step))
         && !containsProtected(JsonValueSchema.parse(entry.facts), privateValues));
       let sourceInput: RerunValuesSnapshot["sourceInput"] = { state: "available", value: run.input.parsed.value };
       if (canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
@@ -278,6 +401,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         source: { runId: request.runId, version: run.version, workflow: descriptor.id,
           descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, outcome: lifecycle.outcome },
         steps, values, transactions,
+        ...(children.length === 0 ? {} : { children }),
         ...(typed.length === 0 ? {} : { typed }),
       } });
     });

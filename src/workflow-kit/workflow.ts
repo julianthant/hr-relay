@@ -472,6 +472,7 @@ export function bindWorkflowDelegationTargets(descriptors: readonly AnyWorkflowD
         || workflowTerminalResultExecution(target).schemaHash !== deriveSchemaHash(node.target.result, "output")) throw new Error("delegation-target-contract-mismatch");
       targets.set(String(node.id), target);
     }
+    checkChildStartRows(descriptor, targets);
     return [descriptor, targets] as const;
   }));
   const qualified = new Map<AnyWorkflowDescriptor, Readonly<{ support: WorkflowDryRunSupport; depth: number }>>();
@@ -510,6 +511,73 @@ export function bindWorkflowDelegationTargets(descriptors: readonly AnyWorkflowD
   for (const [descriptor, targets] of bindings) {
     const state = projectionStateOf(descriptor);
     state.targets = targets; state.support = visit(descriptor).support;
+  }
+}
+
+/** The bound descriptor of a workflow this one delegates to, as its start rows name it. */
+export function workflowDelegatedDescriptor(descriptor: AnyWorkflowDescriptor, workflow: string): AnyWorkflowDescriptor {
+  const targets = projectionStateOf(descriptor).targets;
+  if (targets === undefined) throw new Error(`${descriptor.id} delegation targets are not bound`);
+  const found = [...targets.values()].find((target) => String(target.id) === workflow);
+  if (found === undefined) throw new Error(`${descriptor.id} does not delegate to ${workflow}`);
+  return found;
+}
+
+/** Child members show every node of each named child's steps exactly once; a child target is a whole child step with manual entry, targeted once. */
+function checkChildStartRows(descriptor: AnyWorkflowDescriptor, targets: ReadonlyMap<string, AnyWorkflowDescriptor>): void {
+  const id = String(descriptor.id);
+  const children = new Map([...targets.values()].map((target) => [String(target.id), target]));
+  const covered = new Map<string, string>();
+  const targeted = new Set<string>();
+  const named = new Set<string>();
+  const childOf = (workflow: string): AnyWorkflowDescriptor => {
+    const child = children.get(workflow);
+    if (child === undefined) throw new Error(`${id}: start rows name child workflow "${workflow}", which is not bound`);
+    return child;
+  };
+  for (const row of descriptor.startRows) {
+    for (const member of row.members) {
+      if (member.workflow === undefined) continue;
+      const child = childOf(member.workflow);
+      named.add(member.workflow);
+      const step = child.timeline.find(({ key }) => key === member.step);
+      if (step === undefined) throw new Error(`${id}: start row "${row.key}" names step "${member.step}", which is not on the timeline of child workflow "${member.workflow}"`);
+      const childNodes = descriptorRuntimeNodes(child);
+      for (const nodeId of member.nodes ?? step.nodes.map((node) => String(node.id))) {
+        if (!step.nodes.some((node) => String(node.id) === nodeId)) throw new Error(`${id}: start row "${row.key}" names node "${nodeId}", which is not in step "${member.step}" of child workflow "${member.workflow}"`);
+        const node = nodeByIdOrThrow(String(child.id), childNodes, NodeIdSchema.parse(nodeId), `start row "${row.key}"`);
+        if (member.phase !== undefined && node.kind !== "transaction") throw new Error(`${id}: start row "${row.key}" names the ${member.phase} phase of ${node.kind} node "${nodeId}" of child workflow "${member.workflow}"`);
+        const phases = node.kind === "transaction" ? member.phase === undefined ? ["prepare", "commit"] : [member.phase] : [undefined];
+        for (const phase of phases) {
+          const unit = `${phase === undefined ? "" : `the ${phase} phase of `}node "${nodeId}" of child workflow "${member.workflow}"`;
+          const other = covered.get(unit);
+          if (other !== undefined) throw new Error(`${id}: start rows "${other}" and "${row.key}" both show ${unit}`);
+          covered.set(unit, row.key);
+        }
+      }
+    }
+    if (row.target?.workflow === undefined) continue;
+    const child = childOf(row.target.workflow);
+    if (!child.stepOmissions.some(({ step }) => step === row.target?.step)) {
+      throw new Error(`${id}: start row "${row.key}" targets step "${row.target.step}" of child workflow "${row.target.workflow}", which declares no manual entry`);
+    }
+    targeted.add(`${row.target.workflow}/${row.target.step}`);
+  }
+  for (const workflow of named) {
+    const child = childOf(workflow);
+    const childNodes = descriptorRuntimeNodes(child);
+    for (const step of child.timeline) {
+      for (const { id: nodeId } of step.nodes) {
+        const node = nodeByIdOrThrow(String(child.id), childNodes, NodeIdSchema.parse(String(nodeId)), "start rows");
+        const units = node.kind === "transaction" ? ["the prepare phase of ", "the commit phase of "] : [""];
+        for (const unit of units) if (!covered.has(`${unit}node "${nodeId}" of child workflow "${workflow}"`)) {
+          throw new Error(`${id}: no start row shows ${unit}node "${nodeId}" of step "${step.key}" of child workflow "${workflow}"`);
+        }
+      }
+    }
+    for (const { step } of child.stepOmissions) {
+      if (!targeted.has(`${workflow}/${step}`)) throw new Error(`${id}: step "${step}" of child workflow "${workflow}" takes typed values, but no start row targets it`);
+    }
   }
 }
 
@@ -903,7 +971,8 @@ function deriveStepOmissions(
   return Object.freeze(specs);
 }
 
-/** One row per timeline step unless the workflow declares rows; declared rows cover every node of the served workflow's own steps exactly once. */
+/** One row per timeline step unless the workflow declares rows; declared rows cover every node of the served workflow's own steps exactly once.
+ * A child member or target names a workflow this definition delegates to; its steps are checked once the child is bound. */
 function deriveStartRows(
   id: string,
   nodes: readonly RuntimeFlowNode[],
@@ -928,13 +997,20 @@ function deriveStartRows(
   };
   const keys = new Set<string>();
   const labels = new Set<string>();
+  const delegated = new Set(nodes.flatMap((node) => node.kind === "child-run" ? [String(node.target.id)] : []));
+  const delegatedOrThrow = (row: string, workflow: string, role: "names" | "targets"): void => {
+    if (!delegated.has(workflow)) throw new Error(`${id}: start row "${row}" ${role} child workflow "${workflow}", which this workflow does not delegate to`);
+  };
   for (const row of rows) {
     if (keys.has(row.key)) throw new Error(`${id}: start row key "${row.key}" is declared twice`);
     if (labels.has(row.label)) throw new Error(`${id}: start row label "${row.label}" is declared twice`);
     keys.add(row.key);
     labels.add(row.label);
     for (const member of row.members) {
-      if (member.workflow !== undefined) throw new Error(`${id}: start row "${row.key}" names child workflow "${member.workflow}"; rows show the served workflow's own steps`);
+      if (member.workflow !== undefined) {
+        delegatedOrThrow(row.key, member.workflow, "names");
+        continue;
+      }
       const step = stepByKey.get(member.step);
       if (step === undefined) throw new Error(`${id}: start row "${row.key}" names step "${member.step}", which is not on the timeline`);
       const memberNodes = member.nodes ?? step.nodes.map((node) => node.id);
@@ -947,15 +1023,16 @@ function deriveStartRows(
       }
     }
     if (row.target === undefined) continue;
-    if (row.target.workflow !== undefined) throw new Error(`${id}: start row "${row.key}" targets child workflow "${row.target.workflow}"; a target is a step of the served workflow`);
-    const target = row.target.step;
-    if (!row.members.some((member) => member.workflow === undefined && member.step === target && member.nodes === undefined && member.phase === undefined)) {
+    const { workflow, step: target } = row.target;
+    if (workflow !== undefined) delegatedOrThrow(row.key, workflow, "targets");
+    if (!row.members.some((member) => member.workflow === workflow && member.step === target && member.nodes === undefined && member.phase === undefined)) {
       throw new Error(`${id}: start row "${row.key}" targets step "${target}", which is not one of its whole-step members`);
     }
-    if (!switchable.has(target)) throw new Error(`${id}: start row "${row.key}" targets step "${target}", which declares neither a selection nor manual entry`);
-    const other = targeted.get(target);
-    if (other !== undefined) throw new Error(`${id}: start rows "${other}" and "${row.key}" both target step "${target}"`);
-    targeted.set(target, row.key);
+    if (workflow === undefined && !switchable.has(target)) throw new Error(`${id}: start row "${row.key}" targets step "${target}", which declares neither a selection nor manual entry`);
+    const unit = workflow === undefined ? `step "${target}"` : `step "${target}" of child workflow "${workflow}"`;
+    const other = targeted.get(unit);
+    if (other !== undefined) throw new Error(`${id}: start rows "${other}" and "${row.key}" both target ${unit}`);
+    targeted.set(unit, row.key);
   }
   for (const step of timeline) {
     for (const { id: nodeId } of step.nodes) {
@@ -963,7 +1040,7 @@ function deriveStartRows(
       const units = node.kind === "transaction" ? [`the prepare phase of node "${nodeId}"`, `the commit phase of node "${nodeId}"`] : [`node "${nodeId}"`];
       for (const unit of units) if (!covered.has(unit)) throw new Error(`${id}: no start row shows ${unit} of step "${step.key}"`);
     }
-    if (switchable.has(step.key) && !targeted.has(step.key)) throw new Error(`${id}: step "${step.key}" can be switched off, but no start row targets it`);
+    if (switchable.has(step.key) && !targeted.has(`step "${step.key}"`)) throw new Error(`${id}: step "${step.key}" can be switched off, but no start row targets it`);
   }
   return Object.freeze(rows.map((row) => deepFreeze(row)));
 }

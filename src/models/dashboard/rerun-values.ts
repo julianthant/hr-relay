@@ -10,10 +10,13 @@ export const RerunValuesRequestSchema = z.strictObject({ runId: RunIdSchema, exp
 const CompletionStateSchema = z.enum(["completed", "failed", "unfinished"]);
 const NodeCompletionSchema = z.strictObject({
   nodeId: NodeIdSchema,
+  /** A child transaction node's prepare or commit phase; a Start row can show each on its own. */
+  phase: z.enum(["prepare", "commit"]).optional(),
   state: CompletionStateSchema,
-  reason: z.enum(["checkpoint", "gate-result", "settled-transaction", "failure", "incomplete-execution",
-    "operator-asserted", "step-omitted", "not-recorded"]),
+  reason: z.enum(["checkpoint", "gate-result", "settled-transaction", "delegation-settled", "previewed", "prepared", "already-present",
+    "failure", "incomplete-execution", "operator-asserted", "step-omitted", "not-recorded"]),
 });
+const StepCompletionSchema = z.strictObject({ key: z.string().min(1), state: CompletionStateSchema, nodes: z.array(NodeCompletionSchema).min(1) });
 const CandidateCoordinatesSchema = RerunValueMappingSchema.extend({
   sourceStepKey: z.string().min(1),
 });
@@ -41,9 +44,11 @@ export const RerunValuesSnapshotSchema = z.strictObject({
     descriptorVersion: PositiveIntSchema, contractFingerprint: FingerprintSchema,
     outcome: z.enum(["done", "failed", "interrupted"]),
   }),
-  steps: z.array(z.strictObject({ key: z.string().min(1), state: CompletionStateSchema, nodes: z.array(NodeCompletionSchema).min(1) })),
+  steps: z.array(StepCompletionSchema),
+  /** Each delegated child workflow a Start row shows: per node, or per phase of a transaction node, the least advanced child run of that workflow. */
+  children: z.array(z.strictObject({ workflow: WorkflowIdSchema, steps: z.array(StepCompletionSchema) })).optional(),
   values: z.array(ValueCandidateSchema),
-  /** The source run's typed facts per step, for a step it had typed; offered as typed by hand. */
+  /** The source run's typed facts per step, for a step it had typed (a child step's under its workflow); offered as typed by hand. */
   typed: StepOmissionsSchema.optional(),
   transactions: z.array(z.strictObject({
     stepKey: z.string().min(1), nodeId: NodeIdSchema, taskId: TaskIdSchema,

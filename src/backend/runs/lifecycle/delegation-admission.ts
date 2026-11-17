@@ -40,6 +40,7 @@ import { observationLeafPaths, readObservationPath, resolveObservationOrigin } f
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { DelegationManifestIdSchema, DependencyIdSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { delegatedStepOmissions } from "../../../models/workflow/step-omission.js";
 
 export class DelegationConfigUnavailableError extends Error {
   readonly code = "DELEGATION_CONFIG_UNAVAILABLE";
@@ -258,6 +259,9 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
       const journal = lifecycle.inspectJournal(repositories, "delegation-invocation", invocation, { kind: "none" });
       if (journal.state === "divergent") throw new Error("delegation-replay-divergent");
       let manifest = repositories.delegationManifests.get(manifestId);
+      // Typed values apply to one person: released with more than one member, they are refused.
+      if ((parent.envelope.stepOmissions?.length ?? 0) > 0 && plan.children.length > 1) throw new RunContinuationRefusedError("delegation-typed-values-many-members");
+      const stepOmissions = delegatedStepOmissions(parent.envelope.stepOmissions, target.id);
       if (journal.state === "new") {
         if (manifest !== undefined) throw new Error("delegation-manifest-orphaned");
         const systems = workflowProjections(target).systems;
@@ -297,6 +301,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
             ...(revision === undefined ? {} : { recovery: "restart-from-start" as const }),
             ...(parent.envelope.browserMode === undefined ? {} : { browserMode: parent.envelope.browserMode }),
             ...(parent.envelope.captureBrowserScreenshots === undefined ? {} : { captureBrowserScreenshots: parent.envelope.captureBrowserScreenshots }),
+            ...(stepOmissions === undefined ? {} : { stepOmissions }),
             parent: { runId: parent.envelope.runId, edgeId: plan.edgeId, tracePrefix: parent.envelope.traceId },
             input: { raw: valueFreeProtectedInput(input, bindings), parsed: { schemaHash: invocation.target.canonicalInputSchemaHash, value: input, protectedBindings: bindings }, ingressSchemaHash: invocation.target.inputSchemaHash,
               ...(checkReferences.length === 0 ? {} : { workbookReferences: checkReferences }) },
@@ -333,6 +338,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
           || entry.childItemId !== planned.childItemId || entry.canonicalInputFingerprint !== planned.canonicalInputFingerprint
           || child === undefined || child.envelope.parent?.runId !== parent.envelope.runId || child.envelope.parent.edgeId !== plan.edgeId
           || child.envelope.parent.tracePrefix !== parent.envelope.traceId || child.envelope.workflow !== target.id || child.envelope.itemId !== planned.childItemId
+          || (entry.reuse === undefined && canonicalJsonStringify(child.envelope.stepOmissions ?? null) !== canonicalJsonStringify(stepOmissions ?? null))
           || child.envelope.descriptorVersion !== target.version || child.envelope.contractFingerprint !== target.contractFingerprint
           || child.envelope.dryRun !== parent.envelope.dryRun || child.envelope.configSnapshotId !== parent.envelope.configSnapshotId
           || child.envelope.configFingerprint !== parent.envelope.configFingerprint || child.input.ingressSchemaHash !== invocation.target.inputSchemaHash
