@@ -5,7 +5,7 @@ import { afterEach, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
-import { WorkbookLibraryEntrySchema, projectWorkbookCompatibility } from "../../../../src/models/dashboard/workbook-library.js";
+import { WorkbookLibraryEntrySchema, WorkbookLibraryVersionViewSchema, projectWorkbookCompatibility } from "../../../../src/models/dashboard/workbook-library.js";
 import { StartPlanRequestSchema, type StartPlanRequest } from "../../../../src/models/dashboard/start-plan.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 
@@ -19,18 +19,21 @@ const onboardingFlow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: onboar
   requiredWorkbookFields: [...onboarding.requiredWorkbookFields], workbookReference: onboarding.workbookReference, workbookCheck: CHECK,
   referenceSources: [], steps: projectStartSteps(onboarding), inputRun: { state: "present", surface: onboarding.surfaces.inputRun } };
 
-const libraryEntry = (libraryId: string, name: string, worksheets: readonly string[]) => WorkbookLibraryEntrySchema.parse({ libraryId, name, version: 2, updatedAt: "2026-11-01T00:00:00Z", rowCount: 1,
+const libraryEntry = (libraryId: string, name: string, worksheets: readonly string[], pinned = false) => WorkbookLibraryEntrySchema.parse({ libraryId, name, version: 2, updatedAt: "2026-11-01T00:00:00Z", rowCount: 1,
   worksheets: worksheets.map(id => ({ id, name: id })), metadata: { typeId: "any", sharePoint: null },
   type: { id: "any", name: "Any", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: libraryId },
-  state: { libraryId, revision: 1, selectedVersionId: "v", removed: false, pinned: false, tags: [], origin: { kind: "local" },
-    versions: [{ id: "v", name: "v6", snapshotId: "s", version: 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" }] } });
+  state: { libraryId, revision: 1, selectedVersionId: "v", removed: false, pinned, tags: [], origin: { kind: "local" },
+    versions: [{ id: "v", name: "v6", snapshotId: "s", version: 2, savedAt: "2026-11-01T00:00:00Z", source: "operator" }, { id: "old", name: "v5", snapshotId: "o", version: 1, savedAt: "2026-10-01T00:00:00Z", source: "operator" }] } });
+const oldView = (libraryId: string, sheets: readonly string[]) => WorkbookLibraryVersionViewSchema.parse({ libraryId, version: { id: "old", name: "v5", snapshotId: "o", version: 1, savedAt: "2026-10-01T00:00:00Z", source: "operator" },
+  workbook: { name: libraryId, libraryId, themes: [], hasFormulas: false, sheets: sheets.map(id => ({ id, name: id, width: 1, hidden: [],
+    columnBindings: [{ id: "c", sourceColumn: 0, sourceHeader: "EID", fieldId: "eid", basis: "manual" }], rows: [{ id: "header", cells: [{ value: "EID" }] }] })) } });
 const source = (libraryId: string, sheets: Readonly<Record<string, readonly string[]>>) => ({ libraryId, versionId: "v", origin: { kind: "local" as const }, removed: false,
   sheets: Object.entries(sheets).map(([id, fields]) => ({ id, name: id, mappings: fields.map((fieldId, column) => ({ fieldId, column, basis: "manual" as const })) })) });
 function reads(entries: readonly ReturnType<typeof libraryEntry>[], sources: ReturnType<typeof source>[], workflows: Parameters<typeof projectWorkbookCompatibility>[0] = []) {
   const compatibility = projectWorkbookCompatibility(workflows, sources);
-  return { workbookList: async () => [], workbookCatalog: async () => entries, workbookCompatibility: async () => compatibility, workbookTypes: async () => [], workbookLibraryVersion: async () => { throw new Error("unused"); } };
+  return { workbookList: async () => [], workbookCatalog: async () => entries, workbookCompatibility: async () => compatibility, workbookTypes: async () => [], workbookLibraryVersion: async (libraryId: string, versionId: string) => { assert.equal(versionId, "old"); return oldView(libraryId, libraryId === "roster" ? ["Earlier"] : ["Sheet1"]); } };
 }
-const roster = libraryEntry("roster", "Contact roster", ["First", "Second"]);
+const roster = libraryEntry("roster", "Contact roster", ["First", "Second"], true);
 const tracker = libraryEntry("tracker", "I-9 tracker", ["Sheet1"]);
 const plain = libraryEntry("plain", "Notes", ["Notes"]);
 const served = reads([roster, tracker, plain], [source("roster", { First: ["eid", "fullName"], Second: ["eid"] }), source("tracker", { Sheet1: ["eid"] }), source("plain", { Notes: ["fullName"] })]);
@@ -64,6 +67,51 @@ it("picks and removes a row in place; the optional check starts with no pick and
   assert.ok(h.buttons().some(button => h.buttonName(button) === "Use I-9 tracker"));
   await dialog.press("Continue"); await dialog.press("Start run");
   assert.deepEqual(planned?.workbookReferences, [{ typeId: "reference-check", entry: 1, libraryId: "roster", versionId: "v", sheetId: "First", expectedVersion: 2 }]);
+});
+
+it("offers the version select on a picked row and sends the named version's worksheet", async () => {
+  let planned: StartPlanRequest | undefined;
+  const dialog = await h.openDialog(h.stubClient({ ...served, submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }),
+    { workflows: [lookup], panelWorkflowId: lookup.workflowId });
+  await h.settle(); await click("Use Contact roster");
+  const trigger = h.buttons().find(button => h.buttonName(button) === "Contact roster version"); assert.ok(trigger);
+  await act(async () => { trigger.click(); });
+  const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.includes("v5")); assert.ok(option);
+  await act(async () => { option.click(); }); await h.settle(); await h.settle();
+  assert.match(text(), /Earlier/u);
+  await dialog.type(h.TYPED); await dialog.press("Continue"); await dialog.press("Start run");
+  assert.deepEqual(planned?.workbookReferences, [{ typeId: "reference-check", entry: 1, libraryId: "roster", versionId: "old", sheetId: "Earlier", expectedVersion: 2 }]);
+});
+
+it("picks several worksheets of one spreadsheet as separate references", async () => {
+  let planned: StartPlanRequest | undefined;
+  const dialog = await h.openDialog(h.stubClient({ ...served, submitStartPlan: async input => { planned = StartPlanRequestSchema.parse(input); return h.planResponse("5a000000-0000-4000-8000-000000000001"); } }),
+    { workflows: [lookup], panelWorkflowId: lookup.workflowId });
+  await h.settle(); await click("Use Contact roster");
+  await click("Contact roster worksheets, First");
+  const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].find(node => node.textContent?.includes("Second")); assert.ok(item);
+  await act(async () => { item.click(); }); await h.settle();
+  assert.ok(h.buttons().some(button => h.buttonName(button) === "Contact roster worksheets, 2 worksheets"));
+  await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  await dialog.type(h.TYPED); await dialog.press("Continue"); await dialog.press("Start run");
+  assert.deepEqual(planned?.workbookReferences?.map(reference => [reference.libraryId, reference.sheetId]), [["roster", "First"], ["roster", "Second"]]);
+});
+
+it("draws the Add spreadsheet menu as the mock does: Pinned first, the mock's empty text, search finds the rest", async () => {
+  await h.openDialog(h.stubClient({ ...served }), { workflows: [lookup], panelWorkflowId: lookup.workflowId });
+  await h.settle(); await click("Add spreadsheet");
+  assert.match(text(), /Pinned/u);
+  const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(node => node.textContent ?? "");
+  assert.equal(items().length, 1); assert.match(items()[0], /Contact roster/u);
+  const search = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a spreadsheet"]'); assert.ok(search);
+  await act(async () => { const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set; setter?.call(search, "tracker"); search.dispatchEvent(new Event("input", { bubbles: true })); });
+  assert.match(items().join(" "), /I-9 tracker/u);
+});
+
+it("shows the mock's guidance when nothing is pinned", async () => {
+  await h.openDialog(h.stubClient({ ...reads([tracker], [source("tracker", { Sheet1: ["eid"] })]) }), { workflows: [lookup], panelWorkflowId: lookup.workflowId });
+  await h.settle(); await click("Add spreadsheet");
+  assert.match(text(), /Pin spreadsheets in Spreadsheets to list them here\. Search finds the rest\./u);
 });
 
 it("sends no reference when nothing is picked", async () => {

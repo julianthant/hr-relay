@@ -1,5 +1,5 @@
 import { StartPlanRequestSchema, type StartPlanRequest } from "../../../models/dashboard/start-plan.js";
-import { useWorkbookRows, useWorkbookVersionSources, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT } from "./run-workbook-rows-model.js";
+import { useWorkbookRows, useWorkbookVersionSources, useCheckVersionSheets, checkVersionKey, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT } from "./run-workbook-rows-model.js";
 import { spreadsheetField } from "../../../models/fields/workbook-fields.js";
 import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
@@ -273,14 +273,35 @@ export function RunStartDialog({
   const referenceSources = sourceProjection?.sources ?? [];
   const workbookCheck = selectedWorkflow?.workbookCheck;
   /** Every local library spreadsheet whose current version maps the check's key field, apart from the one the required reference already picked. */
-  const checkSheets = useMemo((): readonly CheckSheet[] => workbookCheck === undefined || library.compatibility === undefined ? [] : library.compatibility.libraries.flatMap(source => {
+  const checkLibraries = useMemo(() => workbookCheck === undefined || library.compatibility === undefined ? [] : library.compatibility.libraries.flatMap(source => {
     const entry = library.catalog.find(candidate => candidate.libraryId === source.libraryId && candidate.state.origin.kind === "local" && !candidate.state.removed);
     const worksheets = source.sheets.filter(sheet => sheet.mappings.some(mapping => mapping.fieldId === workbookCheck.keyFieldId)).map(sheet => ({ sheetId: sheet.sheetId, sheetName: sheet.sheetName }));
     return entry === undefined || worksheets.length === 0 || entry.libraryId === referenceDrafts[workbookReference?.id ?? ""]?.libraryId ? []
-      : [{ libraryId: entry.libraryId, name: entry.name, versionName: entry.state.versions.find(version => version.id === source.versionId)?.name ?? "", worksheets }];
+      : [{ libraryId: entry.libraryId, name: entry.name, pinned: entry.state.pinned, currentVersionId: source.versionId, currentSheets: worksheets,
+        versions: entry.state.versions.map((version, index) => ({ id: version.id, name: version.name || `v${entry.state.versions.length - index}` })) }];
   }).toSorted((a, b) => a.name.localeCompare(b.name)), [workbookCheck, library.compatibility, library.catalog, referenceDrafts, workbookReference?.id]);
-  const checkVersionId = (libraryId: string) => library.compatibility?.libraries.find(source => source.libraryId === libraryId)?.versionId ?? "";
-  const pickedChecks = checkSheets.filter(sheet => checkPicks[sheet.libraryId] !== undefined && sheet.worksheets.some(worksheet => worksheet.sheetId === checkPicks[sheet.libraryId]));
+  const historicalChecks = useMemo(() => checkLibraries.flatMap(entry => {
+    const pick = checkPicks[entry.libraryId];
+    return pick === undefined || pick.versionId === entry.currentVersionId ? [] : [{ libraryId: entry.libraryId, versionId: pick.versionId }];
+  }), [checkLibraries, checkPicks]);
+  const checkVersionSheets = useCheckVersionSheets(client, commandBinding?.authority.epoch ?? client, historicalChecks, workbookCheck?.keyFieldId);
+  const checkSheets = useMemo((): readonly CheckSheet[] => checkLibraries.map(entry => {
+    const pick = checkPicks[entry.libraryId];
+    const versionId = pick?.versionId ?? entry.currentVersionId;
+    const loaded = versionId === entry.currentVersionId ? { state: "ready" as const, sheets: entry.currentSheets } : checkVersionSheets[checkVersionKey(entry.libraryId, versionId)] ?? { state: "loading" as const, sheets: [] };
+    return { libraryId: entry.libraryId, name: entry.name, pinned: entry.pinned, versions: entry.versions, versionId, versionName: entry.versions.find(version => version.id === versionId)?.name ?? "",
+      worksheets: loaded.sheets, worksheetsState: loaded.state, ...(pick === undefined ? {} : { pickedSheetIds: pick.sheetIds }) };
+  }), [checkLibraries, checkPicks, checkVersionSheets]);
+  /** The picks that can be sent: named version read, at least one of its worksheets chosen. */
+  const pickedChecks = checkSheets.filter(sheet => sheet.pickedSheetIds !== undefined && sheet.worksheetsState === "ready"
+    && sheet.worksheets.some(worksheet => sheet.pickedSheetIds?.includes(worksheet.sheetId)));
+  const checkPending = checkSheets.some(sheet => sheet.pickedSheetIds !== undefined && sheet.worksheetsState !== "ready");
+  const checkSelections = pickedChecks.flatMap(sheet => sheet.worksheets.filter(worksheet => sheet.pickedSheetIds?.includes(worksheet.sheetId))
+    .map(worksheet => ({ libraryId: sheet.libraryId, versionId: sheet.versionId, sheetId: worksheet.sheetId })));
+  useEffect(() => {
+    for (const sheet of checkSheets) if (sheet.pickedSheetIds?.length === 0 && sheet.worksheetsState === "ready" && sheet.worksheets.length > 0)
+      update(current => launchDraft.pickCheck(current, sheet.libraryId, { versionId: sheet.versionId, sheetIds: [sheet.worksheets[0].sheetId] }));
+  }, [checkSheets, update]);
   const versionSources = useWorkbookVersionSources(client, commandBinding?.authority.epoch ?? client,
     selectedLibrary?.libraryId, selectedVersion, selectedLibrary?.state.selectedVersionId,
     selectedWorkflow?.requiredWorkbookFields ?? [], referenceSources);
@@ -534,11 +555,11 @@ export function RunStartDialog({
       browserMode,
       captureBrowserScreenshots,
       priority,
-      ...(requiredTypes.length || pickedChecks.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, selectedReferences, values === null ? preview.submissions.length : 1,
-        [...versionSources.sources, ...pickedChecks.flatMap(sheet => sheet.worksheets.map(worksheet => ({ libraryId: sheet.libraryId, versionId: checkVersionId(sheet.libraryId), sheetId: worksheet.sheetId })))],
+      ...(requiredTypes.length || checkSelections.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, selectedReferences, values === null ? preview.submissions.length : 1,
+        [...versionSources.sources, ...checkSelections],
         (workbookReference?.writableFields.length ?? 0) > 0,
         rowCapability === undefined ? undefined : { typeId: rowCapability.typeId, rows: selectedWorkbookRows?.choices ?? [] },
-        workbookCheck === undefined ? undefined : { typeId: workbookCheck.id, picks: pickedChecks.map(sheet => ({ libraryId: sheet.libraryId, versionId: checkVersionId(sheet.libraryId), sheetId: checkPicks[sheet.libraryId] })) }) } : {}),
+        workbookCheck === undefined ? undefined : { typeId: workbookCheck.id, picks: checkSelections }) } : {}),
       selectedStepKeys,
       // Send omission facts only after every declared form parses.
       ...(customizeSteps && stepOmissions !== null && stepOmissions.length > 0 ? { stepOmissions } : {}),
@@ -618,13 +639,19 @@ export function RunStartDialog({
   const previewFlow = previewSelection ? mockWorkflow(previewSelection.workflowId) : undefined;
 
   const checkBusy = library.catalogRefreshing || library.compatibility === undefined;
-  const onCheckAdd = (libraryId: string) => update(current => launchDraft.pickCheck(current, libraryId, checkSheets.find(sheet => sheet.libraryId === libraryId)?.worksheets[0].sheetId ?? ""));
-  const onCheckSheet = (libraryId: string, sheetId: string) => update(current => launchDraft.pickCheck(current, libraryId, sheetId));
-  const onCheckRemove = (libraryId: string) => update(current => launchDraft.removeCheck(current, libraryId));
-  const checkRows = <RunCheckRows sheets={checkSheets} picked={checkPicks} busy={checkBusy} onAdd={onCheckAdd} onSheet={onCheckSheet} onRemove={onCheckRemove} />;
+  const checkHandlers = {
+    onAdd: (libraryId: string) => { const sheet = checkSheets.find(candidate => candidate.libraryId === libraryId);
+      if (sheet !== undefined) update(current => launchDraft.pickCheck(current, libraryId, { versionId: sheet.versionId, sheetIds: sheet.worksheets.slice(0, 1).map(worksheet => worksheet.sheetId) })); },
+    onVersion: (libraryId: string, versionId: string) => update(current => launchDraft.pickCheck(current, libraryId, { versionId, sheetIds: [] })),
+    onSheets: (libraryId: string, sheetIds: readonly string[]) => update(current => {
+      const pick = current.checkPicks[libraryId];
+      return pick === undefined ? current : launchDraft.pickCheck(current, libraryId, { versionId: pick.versionId, sheetIds });
+    }),
+    onRemove: (libraryId: string) => update(current => launchDraft.removeCheck(current, libraryId)),
+  };
+  const checkRows = <RunCheckRows sheets={checkSheets} busy={checkBusy} {...checkHandlers} />;
   const referenceControls = (types: readonly string[], withCheck: boolean) => types.length === 0 ? (!withCheck || workbookCheck === undefined ? undefined : library.catalogLoading ? <p role="status">Loading reference data…</p>
-    : <RunCheckCard sheets={checkSheets} picked={checkPicks} busy={checkBusy} catalogError={library.catalogError}
-      onAdd={onCheckAdd} onSheet={onCheckSheet} onRemove={onCheckRemove} onRefresh={() => void library.adapter.refreshCatalog()} />)
+    : <RunCheckCard sheets={checkSheets} busy={checkBusy} catalogError={library.catalogError} {...checkHandlers} onRefresh={() => void library.adapter.refreshCatalog()} />)
     : <>{library.catalogLoading ? <p role="status">Loading reference data…</p> : types.map(typeId => {
     const draft = referenceDrafts[typeId];
     const sheetOptions = versionSources.state === 'ready' ? versionSources.sources : [];
@@ -648,7 +675,7 @@ export function RunStartDialog({
     next: nextStage, inputBlocked: blockedReason !== null, stepsBlocked: stepsBlockedReason !== null, optionsBlocked: optionsBlockedReason !== null,
     rerunInputBlocked: rerunInputBlocked || (declaredInput && isRerun && preview.submissions.length !== 1),
     checksBlocked: runChecksBlocked(checks.state),
-    referencesUnavailable: requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || Boolean(library.catalogError) || library.compatibility === undefined || versionSources.state !== "ready"),
+    referencesUnavailable: checkPending || requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || Boolean(library.catalogError) || library.compatibility === undefined || versionSources.state !== "ready"),
     path: launchStages.map(stage => stage.label),
     omissionMismatch, plannedCount: plan?.planned.length ?? 0, ...(supportsDryRun ? { dryRun } : {}),
   };
