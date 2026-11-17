@@ -14,6 +14,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { compileWorkflow, composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { personLookupWorkflow } from "../../../../src/workflows/person-lookup/workflow.js";
+import { onboardingWorkflow } from "../../../../src/workflows/onboarding/workflow.js";
 import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
 
 const clock = manualClock(new Date("2026-08-09T12:00:00.000Z"));
@@ -31,11 +32,12 @@ it("serves every readable definition with its ordered steps and every declared t
     assert.equal(review.unlistedFailure, "Anything not listed stops the run with a failure card.");
     assert.deepEqual(review.steps.map(step => [step.id, step.title]), entry.timeline.map(group => [group.key, group.label]));
     for (const [index, group] of entry.timeline.entries()) for (const node of entry.nodes.filter(candidate => group.nodes.includes(candidate.id))) {
+      const declaration = READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === entry.id)?.definition.steps.find(([step]) => step.key === group.key)?.[0];
       for (const task of node.tasks) for (const code of task.errorCodes) {
         const outcomes = review.steps[index]?.blocks.flatMap(block => block.kind === "decision" ? block.outcomes : []).filter(outcome => outcome.value === code) ?? [];
         assert.ok(outcomes.length > 0, `${entry.id}/${node.id}/${code}`);
         for (const outcome of outcomes) assert.deepEqual([outcome.label, outcome.then, outcome.stops],
-          [operatorFailureSentence(failureCodeFromTaskCode(code)), "The run stops with a failure card.", true], `${entry.id}/${node.id}/${code}`);
+          [operatorFailureSentence(failureCodeFromTaskCode(code)), declaration?.review?.outcomes?.find(outcome => outcome.value === code)?.then ?? "The run stops with a failure card.", true], `${entry.id}/${node.id}/${code}`);
       }
     }
     assert.ok(decisions(review).every(block => block.outcomes.every(outcome => outcome.label !== "Anything else")), entry.id);
@@ -66,10 +68,10 @@ it("serves session chips for delegated runs from the delegating step", () => {
 
 it("lists only outcomes that change the flow, ask the operator or stop the run", () => {
   const ocr = workflow("ocr").reviewSpec;
-  assert.deepEqual(decision(ocr, "approve-records").outcomes.map(outcome => [outcome.value, outcome.stops]), [["waits", false]]);
+  assert.deepEqual(decision(ocr, "approve-records").outcomes.map(outcome => [outcome.value, outcome.stops]), [["waits", false], ["cancelled", true]]);
   const emergency = workflow("emergency-contact").reviewSpec;
   assert.deepEqual(decision(emergency, "read-document").outcomes.map(outcome => [outcome.value, outcome.stops]), [["succeeded", false], ["child-failed", true]]);
-  assert.equal(decisions(emergency).some(block => block.id === "members"), false);
+  assert.deepEqual(decision(emergency, "members").outcomes.map(outcome => [outcome.value, outcome.stops]), [["succeeded", false], ["child-failed", false]]);
   const onbase = workflow("onbase").reviewSpec;
   const save = decision(onbase, "import-document");
   assert.deepEqual(save.initial, { by: "dry-run", values: { true: "dry-run" }, otherwise: "saved" });
@@ -103,6 +105,12 @@ it("rejects forged gates, values, initial outcomes and missing failures without 
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "card" ? { ...block, when: [{ "search-result": ["not-found"] }] } : block))).success, true);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, when: [{ "search-result": ["not-found"] }] } : block))).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, initial: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" } : block))).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block,
+    initial: { by: "mode", values: { match: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" }, otherwise: "resolved" } } : block))).success, true);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block,
+    initial: { by: "mode", values: { match: "FORGED_FAILURE" }, otherwise: "resolved" } } : block))).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block,
+    initial: { by: "mode", values: { match: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" }, otherwise: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" } } : block))).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "card" ? { ...block, rows: block.rows.map(row => ({ ...row, source: "missing" })) } : block))).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse({ ...spec, sessions: [{ system: "ucpath", acquired: true }] }).success, false);
   const dropped = withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, outcomes: block.outcomes.filter(outcome => outcome.value !== "PERSON_LOOKUP_UCPATH_SEARCH_FAILED") } : block));
@@ -118,6 +126,24 @@ it("refuses a Search by option whose choice no review row reads", () => {
   const original = deps.modules.find(module => module.descriptor.id === "person-lookup"); assert.ok(original);
   const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
   assert.throws(() => buildWorkflowExplorer({ ...deps, modules: [module] }), /option search-by has no review row that reads input field emplId/u);
+});
+
+it("applies a task's outcome explanation to every decision that owns it", () => {
+  const then = "Stops before using unverified hire findings.";
+  const definition = { ...onboardingWorkflow, steps: onboardingWorkflow.steps.map(([group, entries]) =>
+    [group.key !== "i9-creation" || group.review === undefined ? group : { ...group, review: { ...group.review,
+      outcomes: [{ nodeId: "write-plan", value: "ONBOARDING_WRITE_REVIEW_REFUSED", then }],
+    } }, entries] as const) };
+  const deps = explorerQueryDeps(clock, hash);
+  const original = deps.modules.find(module => module.descriptor.id === "onboarding"); assert.ok(original);
+  const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
+  const entry = buildWorkflowExplorer({ ...deps, modules: deps.modules.map(candidate => candidate === original ? module : candidate) })
+    .workflows.find(workflow => workflow.id === "onboarding"); assert.ok(entry);
+  for (const id of ["write-path", "existing-write-path"]) {
+    const outcome = decision(entry.reviewSpec, id).outcomes.find(outcome => outcome.value === "ONBOARDING_WRITE_REVIEW_REFUSED");
+    assert.ok(outcome);
+    assert.deepEqual([outcome.then, outcome.stops], [then, true]);
+  }
 });
 
 const GENERATOR = "src/backend/runs/queries/explorer-review-spec.ts";

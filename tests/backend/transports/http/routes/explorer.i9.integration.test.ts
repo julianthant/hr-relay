@@ -136,9 +136,10 @@ it("shows confirmed identity rows only for an identifier match and the name sear
   const ambiguous = walk(spec, {}, { "identifier-result": "ambiguous" });
   assert.ok(!shownCards(ambiguous.values).some(([title]) => title === "Person Organizational Summary detail" || title === "Person Organizational Summary results"));
   const decision = blocks(spec, "person-match", "decision").find(candidate => candidate.id === "hire-date-needed"); assert.ok(decision);
-  assert.deepEqual(visible(decision.outcomes, found.values).map(outcome => outcome.value), ["false"]);
-  assert.deepEqual(visible(decision.outcomes, ambiguous.values).map(outcome => outcome.value), ["true"]);
-  assert.deepEqual(visible(decision.outcomes, nameOnly.values).map(outcome => outcome.value), ["false", "true"]);
+  const continuing = (values: Values) => visible(decision.outcomes, values).filter(outcome => !outcome.stops).map(outcome => outcome.value);
+  assert.deepEqual(continuing(found.values), ["false"]);
+  assert.deepEqual(continuing(ambiguous.values), ["true"]);
+  assert.deepEqual(continuing(nameOnly.values), ["false", "true"]);
 });
 
 it("reports no person in the reference check, never a confirmation, when retention found no unique identity", async () => {
@@ -169,7 +170,7 @@ it("defaults the retention recommendation to Shred for nobody found and manual r
     assert.equal(valueOf(row.value, selected.values), label);
     assert.equal(visible(card.rows, selected.values).some(candidate => candidate.label === "Employee ID"), identity === "found");
     const decision = blocks(spec, "roster-match", "decision").find(candidate => candidate.id === "retention-action"); assert.ok(decision);
-    assert.deepEqual(visible(decision.outcomes, selected.values).map(outcome => outcome.value), identity === "found" ? ["Keep", "Shred", ""] : [action]);
+    assert.deepEqual(visible(decision.outcomes, selected.values).filter(outcome => !outcome.stops).map(outcome => outcome.value), identity === "found" ? ["Keep", "Shred", ""] : [action]);
   }
 });
 
@@ -211,10 +212,16 @@ it("shows the extra name as Fill and hire-date evidence as Read, hiding identifi
   assert.ok(!visible(blocks(spec, "person-match", "card"), selected.values).some(card => card.title === "Person Organizational Summary detail"));
 });
 
+const STEP_SYSTEMS: Readonly<Record<string, readonly (string | undefined)[]>> = {
+  "i9-check-start": [undefined, undefined, "ucpath"], "i9-check": ["ucpath", "ucpath", undefined, "local"], "i9-lookup": ["i9"],
+};
+
 it("serves each step's Logs title, description, checks and complete fictional page rows with traceable sources", async () => {
   for (const workflow of (await served()).filter(candidate => ["i9-check-start", "i9-check", "i9-lookup"].includes(candidate.id))) {
     const spec = workflow.reviewSpec;
-    assert.deepEqual(spec.steps.map(entry => [entry.id, entry.title, entry.system]), workflow.timeline.map(group => [group.key, group.label, group.system]));
+    assert.deepEqual(spec.steps.map(entry => [entry.id, entry.title]), workflow.timeline.map(group => [group.key, group.label]));
+    // A step without its own system shows the one system its tasks or the workflow it starts sign in to.
+    assert.deepEqual(spec.steps.map(entry => entry.system), STEP_SYSTEMS[workflow.id]);
     for (const entry of spec.steps) {
       assert.ok(entry.description.some(line => line.text.trim()), entry.title);
       assert.ok(entry.checks.length > 0, entry.title);
