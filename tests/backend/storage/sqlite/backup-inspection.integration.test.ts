@@ -73,7 +73,7 @@ try {
   try {
     held.assertHeld();
     assert.throws(() => f.admission.beginOfflineMaintenance(), /offline-maintenance-busy/u);
-    const report = await prepareStoppedBackupClosure(profileBrowserClosure, f.admission, held, clock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.stateRoot, clock, f.processLockRoot, held));
+    const report = await prepareStoppedBackupClosure(profileBrowserClosure, f.admission, held, clock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.stateRoot, clock, f.processLockRoot, held, "schema-migration"));
     assert.equal(report.state, "verified");
     assert.equal(report.manifests.length, 1);
     const manifest = report.manifests[0]; assert.ok(manifest);
@@ -98,7 +98,7 @@ try {
   const f = await fixture(), bytes = readFileSync(f.path), before = inspectAuthorityBackupReadOnly(f.admission, f.path);
   const held = f.admission.acquireOfflineMaintenance();
   held.release();
-  await assert.rejects(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, held, clock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.stateRoot, clock, f.processLockRoot, held)), /offline-maintenance-unissued/u);
+  await assert.rejects(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, held, clock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.stateRoot, clock, f.processLockRoot, held, "schema-migration")), /offline-maintenance-unissued/u);
   assert.deepEqual(readFileSync(f.path), bytes);
   assert.deepEqual(inspectAuthorityBackupReadOnly(f.admission, f.path), before);
   assert.equal(existsSync(join(f.stateRoot, "backups", "authority")), false);
@@ -162,7 +162,7 @@ for (const fault of ["missing", "copied", "foreign", "expired", "census-changed"
         if (fault === "missing") {
           const result: unknown = Reflect.apply(backupStoppedAuthority, undefined, [undefined, f.admission, f.stateRoot, f.clock, f.processLockRoot, operation]);
           await result;
-        } else await backupStoppedAuthority(candidate, f.admission, f.stateRoot, f.clock, f.processLockRoot, operation);
+        } else await backupStoppedAuthority(candidate, f.admission, f.stateRoot, f.clock, f.processLockRoot, operation, "schema-migration");
     }, { code: "STORAGE_BACKUP_CLOSURE_UNPROVED" });
     assert.deepEqual(readFileSync(f.path), before);
     assert.equal(existsSync(join(f.stateRoot, "backups")), false);
@@ -210,7 +210,7 @@ it("backs up with a verified empty registry without an OS census or a second nat
     const native = vi.spyOn(profileBrowserClosure, "probeClosed").mockRejectedValue(new Error("backup-must-not-launch-browser"));
     try {
       const before = readFileSync(f.path);
-      const report = await backupStoppedAuthority(closure, f.admission, f.stateRoot, f.clock, f.processLockRoot, operation);
+      const report = await backupStoppedAuthority(closure, f.admission, f.stateRoot, f.clock, f.processLockRoot, operation, "schema-migration");
       assert.equal(report.state, "verified"); assert.equal(native.mock.calls.length, 0); assert.equal(query.mock.calls.length, 0);
       assert.deepEqual(createBrowserRoots(f.admission).inventory().roots, []);
       assert.deepEqual(readFileSync(f.path), before);

@@ -22,7 +22,7 @@ async function world(assertCurrent: () => void = () => {}) {
   const fixture = await openBoundDatabaseFixture("assistant-activity-test"); owners.push(fixture);
   const clock = manualClock(new Date("2026-11-06T20:00:00.000Z"));
   const history = fixture.database.authority.assistantHistory;
-  const query = createAssistantActivityQuery({ database: fixture.database, clock, timeZone: "America/Los_Angeles",
+  const query = createAssistantActivityQuery({ database: fixture.database, clock,
     assertCurrent, workflowLabel: () => "Person Lookup" });
   const refuse = (acceptedAt: string, settledAt: string) => {
     const conversationId = randomUUID(), messageId = randomUUID();

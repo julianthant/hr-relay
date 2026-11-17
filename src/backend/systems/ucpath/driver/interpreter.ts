@@ -40,11 +40,12 @@ import type {
 } from "../../../../models/systems/ucpath/search-person-org.js";
 import type { z } from "zod";
 import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
-import type { Eid } from "../../../../rules/identity/ids.js";
+import type { Eid, LocalDate } from "../../../../rules/identity/ids.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 import type { UcpathJobSummaryRead } from "../../../../models/ui/ucpath-job-summary.js";
-import { readJobSummaryOnPage, searchPersonOrgOnPage } from "./person-org-operation.js";
+import { searchPersonOrgOnPage } from "./person-org-operation.js";
+import { readWorkforceJobSummaryOnPage } from "./workforce-job-summary-operation.js";
 import {
   resolveUcpathElement,
   resolveUcpathFindingElement,
@@ -62,14 +63,14 @@ export interface UcpathPersonOrgOperations {
   readonly readJobSummary: (
     assertCurrent: () => void,
     page: Page,
-    input: Readonly<{ emplId: Eid }>,
+    input: Readonly<{ emplId: Eid; asOf?: LocalDate }>,
     observedAt: string,
   ) => Promise<UcpathJobSummaryRead>;
 }
 
 const ucpathPersonOrgOperations: UcpathPersonOrgOperations = Object.freeze({
   searchPersonOrg: searchPersonOrgOnPage,
-  readJobSummary: readJobSummaryOnPage,
+  readJobSummary: readWorkforceJobSummaryOnPage,
 });
 
 

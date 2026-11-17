@@ -83,17 +83,19 @@ afterEach(_afterEachFixture0);
     }), /aborted before inspection/u);
   });
 
-  it("projects baseline and each upgrade phase through doctor, browser wire and preflight without private journal payload", async () => {
+  it("projects baseline and each settled upgrade through doctor, browser wire and preflight without private journal payload", async () => {
     const f = await fixture();
     const baseline = await doctorAuthorityStorage(f.admission,f.options, undefined, f.credentialStore);
     assert.equal(baseline.authorityUpgrades.state, "available");
     if (baseline.authorityUpgrades.state !== "available") throw new Error("baseline missing");
     assert.deepEqual(baseline.authorityUpgrades.phases.map(({ phase }) => phase), ["baseline"]);
     const expected: { phase: string; fromSchemaVersion: number; toSchemaVersion: number; recordedAt: string }[] = [...baseline.authorityUpgrades.phases];
-    for (const [index, phase] of (["planned", "committed", "settled"] as const).entries()) {
+    // UNIQUE(upgrade_id, phase): each settled upgrade has its own source fingerprint.
+    for (const [index, upgradeId] of (["a", "d"] as const).map(digit => digit.repeat(64)).entries()) {
+      const phase = "settled";
       const record = AuthorityUpgradeRecordSchema.parse({
         recordKey: `bbbbbbbb-bbbb-4bbb-8bbb-${String(index + 1).padStart(12, "0")}`,
-        upgradeId: "a".repeat(64), planDigest: "b".repeat(64),
+        upgradeId, planDigest: "b".repeat(64),
         phase, fromSchemaVersion: 0, toSchemaVersion: 1, by: "local-operator",
         recordedAt: "2026-09-06T20:00:00.000Z",
         backup: { manifestPath: `${f.root}/private-manifest.json`, sha256: "c".repeat(64), authorityGeneration: 7 },
@@ -115,7 +117,7 @@ afterEach(_afterEachFixture0);
       assert.deepEqual(report.authorityUpgrades, { state: "available", phases: expected });
       assert.deepEqual(wire.authorityUpgrades, report.authorityUpgrades);
       assert.ok(observation.summary.includes(`authority upgrade phase ${phase}`));
-      assert.equal(observation.state, phase === "settled" ? "healthy" : "unhealthy");
+      assert.equal(observation.state, "healthy");
       const publicOutput = JSON.stringify({ wire, observation, upgrade: report.authorityUpgrades });
       for (const privateValue of [f.root, record.recordKey, ...["a", "b", "c", "d", "e"].map((value) => value.repeat(64))]) {
         assert.equal(publicOutput.includes(privateValue), false, "private upgrade field escaped");

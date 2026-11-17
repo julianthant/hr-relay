@@ -17,7 +17,7 @@ import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/e
 import { z } from "zod";
 import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { localDatePart } from "../../../rules/time/clock.js";
+import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import {
   DashboardDayWireSchema,
   WorkerCardUnavailableReasonSchema,
@@ -767,7 +767,7 @@ export class RunQueueProjection {
           }
           continue;
         }
-        const day = localDatePart(new Date(authority.envelope.enqueuedAt));
+        const day = searchPartitionDay(new Date(authority.envelope.enqueuedAt));
         const replacement = this.#surface(row, authority, children.get(runId) ?? [], context);
         const batch = replacement.session;
         if (batch.state === "present" && batch.presentation !== undefined
@@ -788,7 +788,7 @@ export class RunQueueProjection {
           if (this.#parentFact(context, holder)?.visibility === "linked") break;
           const parent = byId.get(holder.envelope.parent.runId);
           if (parent === undefined) throw new ProjectionDegradedError("queue-parent-source-unavailable");
-          if (localDatePart(new Date(parent.envelope.enqueuedAt)) !== day) crossDayMembersChanged = true;
+          if (searchPartitionDay(new Date(parent.envelope.enqueuedAt)) !== day) crossDayMembersChanged = true;
           holder = parent;
         }
         if (crossDayMembersChanged) snapshotNeeded = true;
@@ -1118,7 +1118,7 @@ export class RunQueueProjection {
   #runLink(context: QueueReadContext, run: RunRecord): LinkedRunView {
     const known = context.links.get(run.envelope.runId);
     if (known !== undefined) return known;
-    const link: LinkedRunView = { runId: run.envelope.runId, partitionDay: LocalDateSchema.parse(localDatePart(new Date(run.envelope.enqueuedAt))),
+    const link: LinkedRunView = { runId: run.envelope.runId, partitionDay: LocalDateSchema.parse(searchPartitionDay(new Date(run.envelope.enqueuedAt))),
       workflowId: run.envelope.workflow, label: this.#deps.descriptors.resolve(run.envelope.workflow)?.label ?? run.envelope.workflow,
       panelKind: panelKindOf(run.envelope.shape, this.#deps.authority.reviewAvailable?.(run.envelope.runId) === true), status: this.#status(run) };
     context.links.set(run.envelope.runId, link);
@@ -1441,7 +1441,7 @@ export class RunQueueProjection {
       const children = canonicalRunChildren(runs);
       for (const authority of runs) {
         const row = this.#rows.get(authority.envelope.runId);
-        const rowDay = localDatePart(new Date(authority.envelope.enqueuedAt));
+        const rowDay = searchPartitionDay(new Date(authority.envelope.enqueuedAt));
         if (rowDay.startsWith(monthPrefix) && isQueueTopLevel({ parent: this.#parentFact(context, authority) })) {
           monthCounts.set(rowDay, (monthCounts.get(rowDay) ?? 0) + 1);
         }
@@ -1470,7 +1470,7 @@ export class RunQueueProjection {
     const visibleItems = new Map(surfaces.map(surface => [itemKey(surface.workflowId, surface.itemId),
       { workflowId: surface.workflowId, itemId: surface.itemId }]));
     const attempts = visibleItems.size === 0 ? [] : summaries === undefined ? fixtureRuns?.filter(candidate =>
-      localDatePart(new Date(candidate.envelope.enqueuedAt)) === parsedDay)
+      searchPartitionDay(new Date(candidate.envelope.enqueuedAt)) === parsedDay)
       : summaries.itemAttempts(parsedDay, [...visibleItems.values()]);
     if (attempts === undefined) throw new ProjectionDegradedError("queue-attempt-history-unavailable");
     const surfaceByRunId = new Map(surfaces.map(surface => [surface.runId, surface]));
@@ -1481,7 +1481,7 @@ export class RunQueueProjection {
       const relatedMember = related.has(envelope.runId) && surface !== undefined && isQueueMember(surface)
         && parent?.surfaceKind === "operation" && parent.memberRunIds.includes(envelope.runId);
       if (surface === undefined || (!selectedDayIds.has(envelope.runId) && !relatedMember)
-        || (!relatedMember && localDatePart(new Date(envelope.enqueuedAt)) !== parsedDay)
+        || (!relatedMember && searchPartitionDay(new Date(envelope.enqueuedAt)) !== parsedDay)
         || surface.workflowId !== envelope.workflow || surface.itemId !== envelope.itemId
         || surface.attempt !== envelope.attempt || Number(surface.rowRevision) !== Number(candidate.version)) {
         throw new ProjectionDegradedError("queue-attempt-history-membership-mismatch");
@@ -1614,7 +1614,7 @@ export class RunQueueProjection {
     const children = canonicalRunChildren(runs);
     for (const authority of runs) {
       const row = this.#rows.get(authority.envelope.runId);
-      const day = localDatePart(new Date(authority.envelope.enqueuedAt));
+      const day = searchPartitionDay(new Date(authority.envelope.enqueuedAt));
       if (day < start || day > end) continue;
 
       if (authority.envelope.shape !== "operation" && authority.envelope.workflow === "separations") personRows.push(authority);

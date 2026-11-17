@@ -8,6 +8,7 @@ import { defineCanonicalInput } from "../../models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 import { SeparationsMatchIdentity } from "../../models/workflows/separations/match-identity.js";
 import { SeparationsResultSchema } from "../../models/workflows/separations/result.js";
+import { REFERENCE_CHECK } from "../../models/processing/workbooks/verify-person.js";
 import { EID_PATTERN, EidSchema } from "../../rules/identity/ids.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
@@ -15,6 +16,7 @@ import { APPROVAL_NODE, DEPARTMENT_NODE, EMPLOYMENT_NODE, GATE_NODE, JOB_SUMMARY
 import { DATES_NODE, separationsKronosTimecardDefinition } from "./steps/kronos-timecard/step.js";
 import { ACTION_NODE, TERMINATION_TYPE_NODE, separationsKualiReadDefinition } from "./steps/kuali-extraction/step.js";
 import { FINALIZE_NODE, KUALI_FINALIZATION_STEP, separationsKualiFinalizationDefinition } from "./steps/kuali-finalization/step.js";
+import { separationsReferenceCheckDefinition } from "./steps/reference-check/step.js";
 import { RECEIPT_NODE, SWEEP_NODE, TERMINATION_NODE, UCPATH_TRANSACTION_STEP, separationsUcpathTerminationDefinition } from "./steps/ucpath-transaction/step.js";
 export { KRONOS_TIMECARD_OMISSION } from "./steps/kronos-timecard/step.js";
 export { KUALI_FINALIZATION_OMISSION } from "./steps/kuali-finalization/step.js";
@@ -76,6 +78,7 @@ function omittedOr<T, R>(
 export const separationsWorkflow = defineWorkflow({
   id: "separations",
   requiredWorkbookFields: [],
+  workbookCheck: REFERENCE_CHECK,
   version: 1,
   code: "sp",
   label: "Separations",
@@ -227,6 +230,7 @@ export const separationsWorkflow = defineWorkflow({
     "separations/finalization-parks-after-termination",
     "separations/re-read-is-a-new-item",
     "separations/gate-resume-shape",
+    "separations/reference-check",
   ],
   steps: author => {
     const { result } = author;
@@ -235,12 +239,13 @@ export const separationsWorkflow = defineWorkflow({
     const jobs = separationsIdentityCheckDefinition.readJobs(author, extraction, resolved);
     const timecard = separationsKronosTimecardDefinition.build(author, extraction, resolved);
     const identity = separationsIdentityCheckDefinition.build(author, extraction, resolved, jobs, timecard);
-    const termination = separationsUcpathTerminationDefinition.build(author, extraction, jobs, timecard, identity);
+    const reference = separationsReferenceCheckDefinition.build(author, identity);
+    const termination = separationsUcpathTerminationDefinition.build(author, extraction, jobs, timecard, identity, reference);
     const finalization = separationsKualiFinalizationDefinition.build(author, extraction, jobs, timecard, identity, termination);
     const { approval } = identity, { employment, departmentOption } = jobs, { dates } = timecard;
     const { receipt, clearPending, fileTermination } = termination, { finalizeKuali } = finalization;
     return {
-      steps: [...extraction.steps, ...identity.steps, ...timecard.steps, ...termination.steps, ...finalization.steps],
+      steps: [...extraction.steps, ...jobs.steps, ...timecard.steps, ...identity.steps, ...reference.steps, ...termination.steps, ...finalization.steps],
       result: result(
         SeparationsResultSchema,
         [approval, employment, departmentOption, dates, receipt, clearPending, fileTermination, finalizeKuali],

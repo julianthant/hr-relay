@@ -4,22 +4,30 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { z } from "zod";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 import { predecessorSeparationsRerun } from "../../../support/helpers/backend/predecessor-separations-rerun.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import type { EvidenceSchemaAdmission } from "../../../../src/models/storage/evidence-schema-admission.js";
 
+// Catch any fixture composition that accidentally falls back to elapsed system time.
+vi.mock("../../../../src/rules/time/clock.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../../../src/rules/time/clock.js")>();
+  let elapsedMs = 0;
+  return { ...actual, systemClock: { ...actual.systemClock, monotonicMs: () => elapsedMs += 51 } };
+});
+
+const CLOCK = manualClock(new Date("2026-08-14T10:00:00.000Z"));
 const tables = ["runs", "run_results", "run_checkpoints", "write_intents", "write_attempts", "gate_results", "run_delegations", "commands", "command_audits", "run_receipts", "timeline_events", "delegation_dependencies", "run_failures"] as const;
 async function assertConversionRefused(workspace: string, lifetime: RuntimeLifetimeLock) {
   const { acquireEntrypointAdmission } = await import("../../../../src/backend/storage/admission/bootstrap-admission.js");
   const { composeProfileRuntime } = await import("../../../../src/backend/app/composition/storage-compose.js");
-  const { systemClock } = await import("../../../../src/rules/time/clock.js");
   const machine = acquireEntrypointAdmission(workspace, "shared", lifetime);
-  const runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts: { primaryDisplay: null } });
+  const runtime = composeProfileRuntime({ admission: machine, clock: CLOCK, hostFacts: { primaryDisplay: null } });
   try {
     const custodyUnavailable = (error: unknown): boolean => error instanceof Error
       && (("code" in error && error.code === "STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE")
         || custodyUnavailable(error.cause) || error instanceof AggregateError && error.errors.some(custodyUnavailable));
-    assert.throws(() => runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() }),
+    assert.throws(() => runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: CLOCK.now().toISOString() }),
       (error: unknown) => error instanceof Error && "code" in error && error.code === "PROFILE_STARTUP_CONVERSION_REFUSED"
         && (process.platform !== "win32" || custodyUnavailable(error.cause)));
   } finally { await runtime.close("shutdown"); machine.release(); }
@@ -48,12 +56,11 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
   const { authenticateDocument, createCredentialStore } = await import("../../../../src/backend/storage/configuration/credential-store.js");
   const { deriveSchemaHash } = await import("../../../../src/models/validation/schema-bound-value.js");
   const { separationsDescriptor: descriptor } = await import("../../../support/helpers/registered-workflows.js");
-  const { systemClock } = await import("../../../../src/rules/time/clock.js");
   const before = frozenRows(f.path), protectedPath = join(f.stateRoot, "credentials", "protected.json"), oldCredentials = readFileSync(protectedPath);
   const lifetime = await RuntimeLifetimeLock.acquire(0);
   let restoreFault: (() => void) | undefined;
   try {
-    const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null });
+    const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, CLOCK);
     if (process.platform === "win32") {
       await startup(); await assertConversionRefused(f.workspace, lifetime);
       assert.deepEqual(frozenRows(f.path), before); assert.deepEqual(readFileSync(protectedPath), oldCredentials);
@@ -77,17 +84,17 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
     assert.deepEqual(readFileSync(protectedPath), credentials); assert.deepEqual(conversions(f.path), journal);
     assert.deepEqual(readdirSync(join(f.stateRoot, "backups", "authority")).sort(), backups); assert.deepEqual(frozenRows(f.path), before);
     const machine = acquireEntrypointAdmission(f.workspace, "exclusive", lifetime);
-    const runtime = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock });
+    const runtime = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: CLOCK });
     try {
-      const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
+      const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: CLOCK.now().toISOString() });
       assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("converted-evidence-sign-in-refused");
       const admission = machine.admitProfile(active.profileId);
-      const database = AuthorityDatabase.open(admission, { path: f.path, migrationOwner: "converted-evidence-readback", busyTimeoutMs: 250 }, systemClock,
+      const database = AuthorityDatabase.open(admission, { path: f.path, migrationOwner: "converted-evidence-readback", busyTimeoutMs: 250 }, CLOCK,
         undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: admission.stateRoot }));
       try {
         const document = createCanonicalCredentials(admission).readRecord("protected"); assert.ok(document);
         assert.equal(authenticateDocument(document.value).retiredLegacy.valueIds.includes(f.valueId), true);
-        const service = createReceiptService({ database, runReader: testRunService(database, systemClock), descriptors: [descriptor] });
+        const service = createReceiptService({ database, runReader: testRunService(database, CLOCK), descriptors: [descriptor] });
         // The pre-initials run input is retired history: its receipt is never re-derived under the current canonical input.
         assert.throws(() => service.ensureReceipt(f.run.envelope.runId), /canonical-input/u);
         const { createOperatorProjection } = await import("../../../../src/backend/app/composition/dashboard/queue.js");
@@ -95,8 +102,8 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
         const { buildRunLogsSection } = await import("../../../../src/backend/runs/queries/run-logs.js");
         const { READABLE_WORKFLOW_MODULES } = await import("../../../../src/backend/app/registries/workflow-registry.js");
         const descriptors = { resolve: (id: string) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor };
-        const reader = testRunService(database, systemClock);
-        const projection = createOperatorProjection({ database, reader, descriptors, stateRoot: f.stateRoot, clock: systemClock,
+        const reader = testRunService(database, CLOCK);
+        const projection = createOperatorProjection({ database, reader, descriptors, stateRoot: f.stateRoot, clock: CLOCK,
           appVersion: "0.1.0", descriptorSetHash: descriptor.contractFingerprint,
           ledger: { foldActivityRange: () => { throw new Error("unrequested-activity"); } } });
         projection.rebuildFromTimeline();
@@ -134,7 +141,6 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
   const { AuthorityDatabase } = await import("../../../../src/backend/storage/sqlite/authority-database.js");
   const { createCredentialStore } = await import("../../../../src/backend/storage/configuration/credential-store.js");
   const { createCredentialSecretSource, readAdmittedProfileIdentity } = await import("../../../../src/backend/runtime/settings/settings-runtime.js");
-  const { systemClock } = await import("../../../../src/rules/time/clock.js");
   const { readRerunValues } = await import("../../../../src/backend/runs/start/rerun-values.js");
   const { createStartPlanService } = await import("../../../../src/backend/runs/commands/start-plan-service.js");
   const { separationsDescriptor: descriptor } = await import("../../../support/helpers/registered-workflows.js");
@@ -143,7 +149,7 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
   const { profileInitials } = await import("../../../../src/models/profiles/profile-identity.js");
   const before = frozenRows(f.path), lifetime = await RuntimeLifetimeLock.acquire(0);
   try {
-    const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null });
+    const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, CLOCK);
     if (process.platform === "win32") {
       await startup(); await assertConversionRefused(f.workspace, lifetime);
       assert.deepEqual(frozenRows(f.path), before); assert.equal(conversions(f.path).length, 0); return;
@@ -154,14 +160,14 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
     assert.deepEqual(readdirSync(join(f.stateRoot, "backups", "authority")).sort(), backups);
     assert.deepEqual(frozenRows(f.path), before);
     const machine = acquireEntrypointAdmission(f.workspace, "exclusive", lifetime);
-    const runtime = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock });
+    const runtime = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: CLOCK });
     try {
-      const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
+      const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: CLOCK.now().toISOString() });
       assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("converted-rerun-sign-in-refused");
       // The account enters initials of its own, so a plan that derived letters from the name would be caught.
       assert.equal(runtime.session.changeDetails(active.token, { timekeeperInitials: "QZ" }).state, "changed");
       const admission = machine.admitProfile(active.profileId), credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot });
-      const database = AuthorityDatabase.open(admission, { path: f.path, migrationOwner: "certified-rerun-readback", busyTimeoutMs: 250 }, systemClock,
+      const database = AuthorityDatabase.open(admission, { path: f.path, migrationOwner: "certified-rerun-readback", busyTimeoutMs: 250 }, CLOCK,
         undefined, undefined, undefined, credentials);
       try {
         const identity = readAdmittedProfileIdentity(machine, admission), request = { runId: f.run.envelope.runId, expectedVersion: f.run.version };
@@ -172,7 +178,7 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
         const digest = repeatEvidenceDigest(write, f.run.input.parsed.protectedBindings);
         assert.ok(values.snapshot.transactions.some(transaction => transaction.evidenceDigest === digest));
         const config = database.authority.runtimeConfig.get(); assert.ok(config);
-        const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock: systemClock,
+        const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock: CLOCK,
           ids: sequentialIdFactory("b"), planTtlMs: 600_000, plannedBy: "local-operator", configFingerprint: config.configFingerprint,
           configSnapshotId: config.configSnapshotId, protectedSecrets: createCredentialSecretSource(credentials, () => readAdmittedProfileIdentity(machine, admission)) });
         const source = { ...request, intent: "rerun", selectedStepKeys: descriptor.timeline.map(step => step.key) };

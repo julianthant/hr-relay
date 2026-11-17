@@ -281,7 +281,7 @@ export function createStorageRestoreTestWorld() {
   async function takeBackup(database: AuthorityDatabase, paths: DrillPaths): Promise<string> {
     const service = new AuthorityBackupService(paths.admission,database, { directory: paths.backupDirectory }, CLOCK);
     const report = await service.request({
-      trigger: "operator",
+      trigger: "schema-migration",
       requiredGeneration: database.getMeta().authorityGeneration,
     });
     const manifest = report.manifests.at(-1);

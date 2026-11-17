@@ -62,11 +62,11 @@ describe("command destinations", () => {
 
   it("resolves recovery before and after settlement, and a command result", () => {
     const recovery = notice("command-unknown");
-    const open = (command: { request: typeof request; state: "admitted" | "executing" | "refused"; result?: typeof applied } | undefined) => createNotificationTargetQuery({ ...base, get: () => recovery, command: () => command });
+    const open = (command: { request: typeof request; state: "admitted" | "uncertain" | "refused"; result?: typeof applied } | undefined) => createNotificationTargetQuery({ ...base, get: () => recovery, command: () => command });
     expect(open({ request, state: "admitted" })(recovery.notificationId, recovery.actorId)).toEqual({ kind: "recovery", commandId, request });
     expect(open({ request, state: "refused", result: applied })(recovery.notificationId, recovery.actorId)).toEqual({ kind: "command-result", commandId, day: "2026-07-03", request, result: applied });
     expect(open(undefined)(recovery.notificationId, recovery.actorId)).toMatchObject({ kind: "refused", reason: "target-unavailable" });
-    expect(open({ request, state: "executing" })(recovery.notificationId, recovery.actorId)).toMatchObject({ kind: "refused", reason: "target-unavailable" });
+    expect(open({ request, state: "uncertain" })(recovery.notificationId, recovery.actorId)).toMatchObject({ kind: "refused", reason: "target-unavailable" });
     const settled = notice("command-refused");
     expect(createNotificationTargetQuery({ ...base, get: () => settled, command: () => ({ request, state: "refused", result: applied }) })(settled.notificationId, settled.actorId)).toEqual({ kind: "command-result", commandId, day: "2026-07-03", request, result: applied });
     const gone = { ...base, read: () => ({ state: "absent" as const, runId: RunIdSchema.parse(UUID_2) }) };

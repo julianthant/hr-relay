@@ -3,10 +3,10 @@ import { join } from "node:path";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
 import { assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment } from "../../../../models/config/secrets.js";
 import { ASSISTANT_DEFAULT_EFFORT,ASSISTANT_DEFAULT_MODEL,AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
-import { BackupServiceStateWireSchema,type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
+import { BackupServiceStateSchema,type BackupServiceState } from "../../../../models/storage/storage-status.js";
 import { systemIdFactory } from "../../../../rules/identity/identifiers.js";
 import { ActorIdSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
-import { runtimeTimeZone,systemClock } from "../../../../rules/time/clock.js";
+import { systemClock } from "../../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { createDebugEventWriter } from "../../../logs/debug-events.js";
 import { composeLoopDelayMonitor } from "../../../logs/loop-delay.js";
@@ -15,7 +15,7 @@ import { importLocalDebugLog } from "../../../storage/events/local-debug-log.js"
 import { runQueuedSpanEvent } from "../../../runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
-import { activeSettingsRuntimeIdentity,readBootSettings } from "../../../runtime/settings/settings-runtime.js";
+import { activeSettingsRuntimeIdentity,readBootSettings,startSettingsKeepAwake } from "../../../runtime/settings/settings-runtime.js";
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
@@ -44,7 +44,6 @@ export function prepareDashboardEnvironment(input: DashboardComposeInput, custod
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const clock = input.clock ?? systemClock;
-  const timeZone = runtimeTimeZone();
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
   const machineAdmission = requireRuntimeAdmission(input.admission);
@@ -66,11 +65,11 @@ export function prepareDashboardEnvironment(input: DashboardComposeInput, custod
   ).version;
   // Validate the production bundle before opening authority, locks or sockets.
   const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
-  return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend };
+  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend };
 }
 
 export function prepareDashboardRuntime(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody, environment: ReturnType<typeof prepareDashboardEnvironment>, staticBundle: Awaited<ReturnType<typeof openStaticBundle>> | undefined) {
-  const { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend } = environment;
+  const { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend } = environment;
   const hostFacts = hostConfigFacts(env);
   let databaseClosed = true;
   startupCleanups.push(() => {
@@ -172,13 +171,16 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
 
 
   const backupDirectory = join(stateRoot, "backups", "authority");
-  const backupServiceState: BackupServiceStateWire = BackupServiceStateWireSchema.parse({
+  const backupServiceState: BackupServiceState = BackupServiceStateSchema.parse({
     state: "never-run",
-    reason: "verified backups run after clean shutdown; the last three shutdown backups are retained",
+    reason: "verified backups run hourly while the dashboard is open and after clean shutdown; one in-session backup and the last three shutdown backups are retained",
   });
 
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: appVersion, development: frontend === "vite-dev" });
+  context.attachSlowOperations(debugEvents);
+  context.sessionBackups.start(ownedDiagnostics(database, debugEvents));
+  startupCleanups.push(() => context.sessionBackups.requestCancellation());
   const loopDelayMonitor = composeLoopDelayMonitor(input.loopDelay, { clock, debugEvents: ownedDiagnostics(database, debugEvents) });
   startupCleanups.push(() => loopDelayMonitor.stop());
   chatGptAccount.setDebugEvents(debugEvents);
@@ -205,6 +207,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     if (error instanceof AuthoritySourceClosureUnprovedError) custody.failedClosures.push(error);
     throw error;
   }
+  profile.runtime.registerCommandActivity(profile.token, startSettingsKeepAwake({ database, reader: lifecycle, debugEvents: ownedDiagnostics(database, debugEvents) }));
   const { backfillGapNotifier, inbox: notificationInbox, observer: notificationObserver } = createTrustNotifications({
     admission, database, clock, ids, reader: lifecycle, stateRoot,
   });
@@ -234,5 +237,5 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }

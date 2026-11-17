@@ -35,6 +35,7 @@ import {
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
 import { requireCanonicalRun } from "./run-read.js";
 import { assertRunTimelineCompatible } from "./run-timeline-compatibility.js";
+import { readDelegationCancellation } from "../../storage/sqlite/delegation-authority.js";
 
 export { availableSections } from "./run-detail/availability.js";
 export { buildRunSection, readRunSection } from "./run-sections.js";
@@ -94,6 +95,22 @@ function spanNotRunReason(
 }
 
 
+/** Nodes whose latest span skipped a branch this run did not take; the served timeline leaves them out of both stages and events. */
+function untakenBranchNodes(row: RunFoldRecord | undefined): ReadonlySet<string> {
+  const latest = new Map<string, RunFoldRecord["taskSpans"][number]>();
+  for (const span of row?.taskSpans ?? []) {
+    const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
+    if (nodeId === undefined) continue;
+    const held = latest.get(nodeId);
+    if (held === undefined || (held.startedAt ?? held.endedAt ?? "").localeCompare(span.startedAt ?? span.endedAt ?? "") <= 0) latest.set(nodeId, span);
+  }
+  return new Set([...latest].flatMap(([nodeId, span]) => {
+    const reason = spanNotRunReason(span, nodeId);
+    return reason === "condition-false" || reason === "branch-not-selected" ? [nodeId] : [];
+  }));
+}
+
+
 function replaySourceOf(
   checkpoints: SubjectCheckpointSource,
   authority: RunRecord,
@@ -119,8 +136,10 @@ function buildTimelineSteps(
   timeline: NonNullable<RunDetailDescriptorView["timeline"]>,
   row: RunFoldRecord,
   runTerminal: boolean,
+  runCancelled: boolean,
   replaySource: (nodeId: string) => { attempt: number; claimGeneration?: number } | undefined,
   wait: DelegationWaitState | null | undefined,
+  untaken: ReadonlySet<string>,
 ): TimelineStepWire[] {
   type SpanFold = RunFoldRecord["taskSpans"][number];
   const spansByNode = new Map<string, SpanFold[]>();
@@ -182,12 +201,13 @@ function buildTimelineSteps(
     };
   };
 
-  return timeline.map((category) => {
-    const members = category.nodes.map(memberOf);
+  const steps = timeline.flatMap((category) => {
+    const members = category.nodes.filter(node => !untaken.has(node.id)).map(memberOf);
+    if (members.length === 0) return [];
     const measured = members.filter((member) => member.durationMs !== undefined);
     const totalMs = measured.reduce((sum, member) => sum + (member.durationMs ?? 0), 0);
     const maxExecutions = Math.max(...members.map((member) => member.executions));
-    return TimelineStepWireSchema.parse({
+    return [TimelineStepWireSchema.parse({
       key: category.key,
       label: category.label,
       ...(category.system === undefined ? {} : { system: category.system }),
@@ -204,8 +224,13 @@ function buildTimelineSteps(
         ...(member.replayedFrom === undefined ? {} : { replayedFrom: member.replayedFrom }),
         ...(member.notRunReason === undefined ? {} : { notRunReason: member.notRunReason }),
       })),
-    });
+    })];
   });
+  if (runCancelled) {
+    const unfinished = steps.find(step => ["pending", "active", "blocked", "cancelled"].includes(step.state));
+    if (unfinished !== undefined) unfinished.state = "cancelled";
+  }
+  return steps;
 }
 
 export function buildRunDetail(
@@ -283,10 +308,13 @@ export function buildRunDetail(
     state: "absent",
     reason: "a gate is not a task span; the executor measures no duration for it",
   } as const;
+  const untaken = untakenBranchNodes(row);
   for (const span of row?.taskSpans ?? []) {
+    const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
+    if (nodeId !== undefined && untaken.has(nodeId)) continue;
     const state = taskStateOf(span.outcome);
     // A skip without its recorded reason cannot imply a guarded condition or cancellation.
-    const spanReason = spanNotRunReason(span, nodeIdOfTaskSpanPath(span.spanPath));
+    const spanReason = spanNotRunReason(span, nodeId);
     const notRun = state !== "skipped"
       ? { state: "absent", reason: "this step ran" } as const
       : spanReason === undefined
@@ -297,7 +325,6 @@ export function buildRunDetail(
       || record.payload.event.spanPath !== span.spanPath || record.payload.event.attempt !== span.attempt) {
       throw new LogIdentityRefusedError("task span has no exact native event identity");
     }
-    const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
     timelineEvents.push({
       native: nativeOf(record, nodeId),
       categoryKey: categoryOf(nodeId),
@@ -356,6 +383,14 @@ export function buildRunDetail(
     : { state: "absent", reason: `run is ${status}` };
 
   const canonical = deps.canonical;
+  let cancellation: RunDetailWire["cancellation"];
+  if (lifecycle.state === "terminal" && lifecycle.outcome === "cancelled") {
+    const requestedBy = canonical !== undefined && canonical.database.authority.lifecycleJournal.findCancellation(runId) !== undefined
+      ? readDelegationCancellation(canonical.database.authority, runId).cancelledBy : "unavailable";
+    cancellation = { title: "Run cancelled", at: lifecycle.endedAt, requestedBy,
+      outcome: requestedBy === "parent" ? "This run was cancelled when its parent was stopped."
+        : requestedBy === "operator" ? "You cancelled this run." : "This run was cancelled." };
+  }
   const review = canonical === undefined ? undefined : canonical.database.withAuthorityReadSnapshot(() => {
     const ocrRunId = authority.envelope.workflow === "ocr" ? runId : hostedOcrRun(canonical.database.authority, authority)?.envelope.runId;
     return ocrRunId === undefined ? undefined : readOcrReviewAuthority(canonical.database.authority, canonical.reader, ocrRunId);
@@ -407,13 +442,16 @@ export function buildRunDetail(
             descriptorView.timeline,
             row,
             authority.lifecycle.state === "terminal",
+            authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "cancelled",
             (nodeId) => replaySourceOf(checkpoints, authority, nodeId),
             delegationWait,
+            untaken,
           ),
         }),
     },
     gate,
     outcome,
+    ...(cancellation === undefined ? {} : { cancellation }),
     context: {
       // Every done task recorded provenance-validated data (1f mandate); a settled delegation join records no checkpoint and observed nothing.
       // The evidence service is 2g, so its count is genuinely zero today.

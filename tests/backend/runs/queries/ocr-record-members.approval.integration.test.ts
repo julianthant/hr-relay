@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
+import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
@@ -17,7 +18,8 @@ import { UcpathCandidateSchema } from "../../../../src/models/systems/ucpath/sea
 import { EmergencyContactMemberInputSchema } from "../../../../src/models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactMemberResultSchema } from "../../../../src/models/workflows/emergency-contact/result.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
-import { RunDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
+import { RunDelegatedDryRunPreviewResultSchema } from "../../../../src/models/run/result.js";
+import { onbaseFilingFixture } from "../../../support/helpers/backend/onbase-filing-fixture.js";
 import { isQueueTopLevel, isQueueMember } from "../../../../src/models/dashboard/queue-parent.js";
 import type { QueueRecordMember, QueueSurfaceWire } from "../../../../src/models/dashboard/projection.js";
 import { correctedOcrRecord } from "../../../../src/dashboard/surfaces/run-detail/review/review-model.js";
@@ -37,7 +39,7 @@ type Fixture = Awaited<ReturnType<typeof world.fixture>>;
 function authorityState(f: Fixture, database = f.database) {
   return database.withAuthorityReadSnapshot(() => {
     const repositories = database.authority;
-    const runs = ["emergency-contact", "ocr", "emergency-contact-member", "ocr-page", "person-lookup", "i9-lookup"]
+    const runs = ["emergency-contact", "ocr", "emergency-contact-member", "onbase", "ocr-page", "person-lookup", "i9-lookup"]
       .flatMap(workflow => repositories.runs.listByWorkflow(workflow));
     const review = repositories.ocrReviews.latest(f.run.envelope.runId); assert.ok(review);
     return { generation: database.getMeta().authorityGeneration, runs,
@@ -52,44 +54,49 @@ function authorityState(f: Fixture, database = f.database) {
 }
 
 function served(f: Fixture, database = f.database, reader = f.canonical.lifecycle, verifyMemberTargets = false) {
-  const before = authorityState(f, database);
-  const projection = createOperatorProjection({ database, stateRoot: f.harness.authority.stateRoot, clock: f.clock,
-    reader, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
-    ledger: createTransactionHistory(database.authority), descriptors: { resolve: f.resolve } });
-  projection.ingestFromTimeline();
-  assert.equal(projection.health().state, "live");
-  const wire = projection.buildDashboardDayWire(f.clock.todayLocal());
-  const parent = wire.queueSurfaces.find(row => row.runId === f.parentRun.envelope.runId);
-  const ocr = wire.queueSurfaces.find(row => row.runId === f.run.envelope.runId);
-  assert.ok(parent?.surfaceKind === "operation" && ocr?.surfaceKind === "operation");
-  assert.equal(parent.availableSections.includes("review"), true);
-  assert.equal(ocr.availableSections.includes("review"), true);
-  const deps = createOperatorRunDetail({ database, stateRoot: f.harness.authority.stateRoot, projection, runReader: reader,
-    canonical: { database, reader, descriptors: { resolve: f.resolve } } });
-  const parentDetail = buildRunDetail(deps, parent.runId), ocrDetail = buildRunDetail(deps, ocr.runId);
-  const review = buildOcrReviewSection(deps, ocr.runId); assert.equal(review.section, "review");
-  if (review.section !== "review") assert.fail("Missing OCR review");
-  assert.ok(review.payload.ocr);
-  const logsChecked: number[] = [];
-  if (verifyMemberTargets) {
-    for (const row of [parent, ocr]) {
-      logsChecked.push(assertMemberLogsServed(deps, row.recordMembers?.members ?? []));
-      for (const member of row.recordMembers?.members ?? []) {
-        const detail = buildRunDetail(deps, member.target.runId);
-        assert.equal(detail.runId, member.target.runId);
-        assert.equal(detail.header.workflowId, member.target.workflowId);
-        assert.equal(detail.panelKind, member.target.panelKind);
-        if (member.target.section === "review") {
-          const target = member.target;
-          const section = buildOcrReviewSection(deps, target.runId); assert.ok(section.section === "review");
-          assert.ok(section.payload.ocr?.revision.records.some(record => record.recordId === target.record.recordId));
+  return database.withAuthorityReadSnapshot(() => {
+    const before = authorityState(f, database);
+    const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader),
+      withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries: { ...composeQueueSummaries(database),
+        activity: () => { throw new Error("Unexpected activity read in OCR approval proof"); } } };
+    const projection = createOperatorProjection({ database, stateRoot: f.harness.authority.stateRoot, clock: f.clock,
+      reader: servedReader, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
+      ledger: createTransactionHistory(database.authority), descriptors: { resolve: f.resolve } });
+    projection.ingestFromTimeline();
+    assert.equal(projection.health().state, "live");
+    const wire = projection.buildDashboardDayWire(f.clock.todayLocal());
+    const parent = wire.queueSurfaces.find(row => row.runId === f.parentRun.envelope.runId);
+    const ocr = wire.queueSurfaces.find(row => row.runId === f.run.envelope.runId);
+    assert.ok(parent?.surfaceKind === "operation" && ocr?.surfaceKind === "operation");
+    assert.equal(parent.availableSections.includes("review"), true);
+    assert.equal(ocr.availableSections.includes("review"), true);
+    const deps = createOperatorRunDetail({ database, stateRoot: f.harness.authority.stateRoot, projection, runReader: reader,
+      canonical: { database, reader, descriptors: { resolve: f.resolve } } });
+    const parentDetail = buildRunDetail(deps, parent.runId), ocrDetail = buildRunDetail(deps, ocr.runId);
+    const review = buildOcrReviewSection(deps, ocr.runId); assert.equal(review.section, "review");
+    if (review.section !== "review") assert.fail("Missing OCR review");
+    assert.ok(review.payload.ocr);
+    const logsChecked: number[] = [];
+    if (verifyMemberTargets) {
+      for (const row of [parent, ocr]) {
+        logsChecked.push(assertMemberLogsServed(deps, row.recordMembers?.members ?? []));
+        for (const member of row.recordMembers?.members ?? []) {
+          const detail = buildRunDetail(deps, member.target.runId);
+          assert.equal(detail.runId, member.target.runId);
+          assert.equal(detail.header.workflowId, member.target.workflowId);
+          assert.equal(detail.panelKind, member.target.panelKind);
+          if (member.target.section === "review") {
+            const target = member.target;
+            const section = buildOcrReviewSection(deps, target.runId); assert.ok(section.section === "review");
+            assert.ok(section.payload.ocr?.revision.records.some(record => record.recordId === target.record.recordId));
+          }
         }
       }
     }
-  }
-  assert.deepEqual(projection.buildDashboardDayWire(f.clock.todayLocal()).queueSurfaces, wire.queueSurfaces);
-  assert.deepEqual(authorityState(f, database), before);
-  return { projection, wire, parent, ocr, parentDetail, ocrDetail, review: review.payload, logsChecked };
+    assert.deepEqual(projection.buildDashboardDayWire(f.clock.todayLocal()).queueSurfaces, wire.queueSurfaces);
+    assert.deepEqual(authorityState(f, database), before);
+    return { projection, wire, parent, ocr, parentDetail, ocrDetail, review: review.payload, logsChecked };
+  });
 }
 
 function displayIdentity(row: QueueSurfaceWire) {
@@ -106,13 +113,14 @@ for (const dryRun of [true, false]) {
     let ticks = Date.parse(contactPage.page.observedAt);
     const persistence = createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
       displayedEid: employee.emplId, displayedName: employee.name }), () => new Date(++ticks).toISOString());
-    const sessions = sessionFactoryHarness({ ucpath: () => {
+    const filing = await onbaseFilingFixture(3);
+    const sessions = sessionFactoryHarness({ onbase: filing.session(() => f.clock), ucpath: () => {
       const session = persistence.session();
       return createDeterministicUcpathPersonOrgDriver({ results: [employee],
         selection: { status: "resolved", selected: employee, candidateEids: [employee.emplId] } }, undefined, session.port, session.save);
     }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
     const f = await world.fixture({ coordinator: true, member: childWorkflowModuleOf("emergency-contact", "emergency-contact-member"),
-      record: true, pageCount: 3, dryRun, sessions, operatorEvidence: true,
+      record: true, pageCount: 3, dryRun, sessions, operatorEvidence: true, documentBytes: filing.bytes,
       reviewedPages: Array.from({ length: 3 }, () => ({ employeeName: employee.name,
         contactName: "Original Contact", correctedContactName: "Released Contact" })),
       screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
@@ -254,7 +262,11 @@ for (const dryRun of [true, false]) {
     for (const member of members) {
       const result = repositories.runResults.get(member.child.envelope.runId); assert.ok(result);
       if (dryRun) {
-        assert.equal(RunDryRunPreviewResultSchema.parse(result.result.value).externalCommit, "none");
+        // The member previews its Save and then its OnBase filing.
+        const preview = RunDelegatedDryRunPreviewResultSchema.parse(result.result.value);
+        assert.equal(preview.externalCommit, "none");
+        assert.equal(preview.steps.find(step => step.nodeId === "contact-preview")?.state, "transaction-preview");
+        assert.equal(preview.steps.find(step => step.nodeId === "onbase-filing")?.state, "delegation-preview");
         assert.deepEqual(repositories.writeIntents.listByRun(member.child.envelope.runId), []);
       } else {
         const output = EmergencyContactMemberResultSchema.parse(result.result.value);
@@ -262,6 +274,13 @@ for (const dryRun of [true, false]) {
         assert.equal(output.proof.effect.name, "Released Contact");
       }
     }
+    const filings = members.flatMap(member => repositories.runs.listChildren(member.child.envelope.runId));
+    // The two approved records come from different pages, so each member files its own page.
+    assert.equal(filings.length, 2);
+    assert.ok(filings.every(run => run.envelope.workflow === "onbase" && run.envelope.dryRun === dryRun
+      && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done"));
+    for (const run of filings) if (dryRun) assert.deepEqual(repositories.writeIntents.listByRun(run.envelope.runId), []);
+    assert.equal(filing.imports(), dryRun ? 0 : filings.length, "each live filing clicks Import once; a dry run never does");
     assert.deepEqual(repositories.ocrExtractions.findBySource(f.reading.input.image.sha256), extractions);
     const mismatch = (id: string) => {
       const descriptor = f.resolve(id);

@@ -22,6 +22,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { searchPartitionDay } from "../../../../src/models/dashboard/search-calendar.js";
 import type { WorkbookLibraryChangeSchema } from "../../../../src/models/dashboard/workbook-library.js";
 import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../src/models/workflows/i9-check/start.js";
+import { REFERENCE_CHECK } from "../../../../src/models/processing/workbooks/verify-person.js";
 import { OcrApprovedSnapshotSchema, ocrReviewDigest, ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
 import { answersFingerprint } from "../../../../src/models/ocr/extraction.js";
 import { OcrApprovalReferenceSchema } from "../../../../src/models/workflows/ocr/result.js";
@@ -49,7 +50,8 @@ import type { z } from "zod";
 
 export function createI9CheckStartWorld() {
   const world = createRunExecutorTestWorld();
-  return { cleanup: world.cleanup, async fixture(options: Readonly<{ dryRun?: boolean }> = {}) {
+  return { cleanup: world.cleanup, /** `checks` are extra library spreadsheets picked as the second check; `rows` follow the header row, so the first data row is sheet row 2. */
+  async fixture(options: Readonly<{ dryRun?: boolean; checks?: readonly Readonly<{ name: string; sheet: string; fields: readonly string[]; rows: readonly (readonly string[])[] }>[] }> = {}) {
     const publishCalls: string[] = [], projections: (readonly string[])[] = [];
     const pages = new Map<string, z.output<typeof ExtractPdfPagesOutputSchema>>();
     const renderer = defineTask(ExtractPdfPages, { sessions: [], async run({ input, ctx }) {
@@ -115,7 +117,8 @@ export function createI9CheckStartWorld() {
           "workbooks.library": countPublishes(createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
             publicationSource: () => { const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
               return { workflowId: descriptor.id, workflowLabel: descriptor.label, partitionDay: searchPartitionDay(new Date(run.envelope.enqueuedAt)) }; },
-            references: { runId: run.envelope.runId, write: () => { throw new Error("I-9 fixture must not patch a reference"); }, read: request => {
+            references: { runId: run.envelope.runId, write: () => { throw new Error("I-9 fixture must not patch a reference"); },
+              verifyPerson: command => runWorkbooks.verifyPerson(run, command), read: request => {
               assert.equal(request.typeId, I9_CHECK_REFERENCE.typeId); assert.deepEqual(request.keys, [...expected.values()]);
               for (const [name, captured] of [
                 ["missing run", { ...run, envelope: { ...run.envelope, runId: randomUUID() } }],
@@ -153,9 +156,16 @@ export function createI9CheckStartWorld() {
       expected.set(upload.artifact.sha256, candidate.emplId);
     }
     const input = I9CheckStartInput.parse({ documents, asOf: "2026-11-01", reviewerName: "Example Reviewer" });
+    const checks = (options.checks ?? []).map(check => {
+      const extra = library.create({ name: check.name, themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: check.sheet, width: check.fields.length, hidden: [], headerRow: 1,
+        columnBindings: check.fields.map((fieldId, index) => ({ id: `check-${String(index)}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+        rows: [{ id: "header", cells: check.fields.map(value => ({ value })) }, ...check.rows.map((cells, index) => ({ id: `row-${String(index)}`, cells: cells.map(value => ({ value })) }))] }] });
+      return { entry: 1, typeId: REFERENCE_CHECK.id, libraryId: extra.libraryId, versionId: library.libraryVersion(extra.libraryId).version.id,
+        sheetId: "sheet", expectedVersion: library.read(extra.libraryId).version };
+    });
     const run = canonical.start(root.descriptor, input, { dryRun: options.dryRun ?? false, workbookReferences: [{ entry: 1,
       libraryId: saved.libraryId, versionId: selectedReference.versionId, sheetId: "history",
-      expectedVersion: library.read(saved.libraryId).version }] });
+      expectedVersion: library.read(saved.libraryId).version }, ...checks] });
     const changeReference = async () => {
       const current = library.read(saved.libraryId), workbook = structuredClone(current.workbook);
       for (const row of workbook.sheets[0].rows.slice(1)) row.cells[1].value = "999999999";

@@ -129,7 +129,7 @@ describe.skipIf(process.platform !== "win32")("actual Windows maintenance refusa
     const source = readFileSync(f.path), protectedBytes = readFileSync(credential), target = join(f.stateRoot, "refused-backup.sqlite");
     try {
       const service = new AuthorityBackupService(f.admission, database, { directory: join(f.stateRoot, "backups", "authority") }, clock);
-      assert.throws(() => service.request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration }), StorageMaintenanceCustodyUnavailableError);
+      assert.throws(() => service.request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration }), StorageMaintenanceCustodyUnavailableError);
       assert.throws(() => openAuthorityBackupSourceReadOnly(f.admission, f.path), StorageMaintenanceCustodyUnavailableError);
       await assert.rejects(database.onlineBackupTo(target), StorageMaintenanceCustodyUnavailableError);
       assert.equal(existsSync(target), false);

@@ -40,7 +40,7 @@ for (const malformed of ["slot", "config"] as const) it(`refuses malformed curre
     let manifestPath: string;
     try {
       const report = await new AuthorityBackupService(fixture.admission, database, { directory }, clock)
-        .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+        .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
       const manifest = report.manifests[0]; assert.ok(manifest);
       manifestPath = join(directory, manifest.backupFileName + ".manifest.json");
     } finally { database.close(); }

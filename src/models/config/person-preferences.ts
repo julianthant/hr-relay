@@ -16,17 +16,30 @@ export const ShortcutPreferencesSchema = z.strictObject({
   }
 });
 export type ShortcutPreferences = z.infer<typeof ShortcutPreferencesSchema>;
+export const NotificationPreferencesSchema = z.strictObject({
+  runFinished: z.enum(["always", "unfocused", "never"]),
+  needsYou: z.boolean(),
+  failures: z.boolean(),
+  sound: z.enum(["default", "none"]),
+});
 export const PersonPreferencesSchema = z.strictObject({
   theme: z.enum(["dark", "light"]),
   animations: z.boolean(),
   workflowPanelMode: z.enum(["floating", "icon", "sidebar"]),
   selectedWorkflowId: z.string().max(120),
   shortcuts: ShortcutPreferencesSchema,
+  preventSleepWhileRunning: z.boolean(),
+  confirmCloseDuringRun: z.enum(["active-run", "always", "never"]),
+  notifications: NotificationPreferencesSchema,
+  sendShortcut: z.enum(["enter", "mod-enter"]),
 });
 export type PersonPreferences = z.infer<typeof PersonPreferencesSchema>;
 export const NEUTRAL_PERSON_PREFERENCES = deepFreeze(PersonPreferencesSchema.parse({
   theme: "dark", animations: true, workflowPanelMode: "floating", selectedWorkflowId: "",
   shortcuts: { numberMode: "runs", bindings: { search: ["/"], start: ["r"], next: ["j", "ArrowDown"], previous: ["k", "ArrowUp"], attention: ["n"] } },
+  preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run",
+  notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" },
+  sendShortcut: "enter",
 }));
 export function derivePersonPreferencesFingerprint(input: unknown): string {
   return sha256Hex(canonicalJsonStringify(PersonPreferencesSchema.parse(input)));
@@ -34,9 +47,10 @@ export function derivePersonPreferencesFingerprint(input: unknown): string {
 export function resolvePersonPreferences(input: z.input<typeof PersonPreferencesOverrideSchema> = {}): PersonPreferences {
   return PersonPreferencesSchema.parse({ ...NEUTRAL_PERSON_PREFERENCES, ...input,
     shortcuts: { ...NEUTRAL_PERSON_PREFERENCES.shortcuts, ...input.shortcuts,
-      bindings: { ...NEUTRAL_PERSON_PREFERENCES.shortcuts.bindings, ...input.shortcuts?.bindings } } });
+      bindings: { ...NEUTRAL_PERSON_PREFERENCES.shortcuts.bindings, ...input.shortcuts?.bindings } },
+    notifications: { ...NEUTRAL_PERSON_PREFERENCES.notifications, ...input.notifications } });
 }
 export const PersonPreferencesOverrideSchema = z.strictObject({ ...PersonPreferencesSchema.shape, shortcuts: z.strictObject({
   numberMode: ShortcutPreferencesSchema.shape.numberMode.optional(),
   bindings: ShortcutPreferencesSchema.shape.bindings.partial().optional(),
-}).optional() }).partial();
+}).optional(), notifications: NotificationPreferencesSchema.partial().optional() }).partial();

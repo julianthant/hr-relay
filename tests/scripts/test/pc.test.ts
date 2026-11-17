@@ -14,7 +14,7 @@ describe("PC test selection", () => {
   it("lists the whole architecture project and changed unit and integration projects by default", () => {
     expect(pcListingArgs([])).toEqual([
       ["--project", "architecture"],
-      ["--project", "unit", "--project", "integration", "--changed=origin/staging"],
+      ["--project", "unit", "--project", "integration", "--changed=origin/development"],
     ]);
   });
 
@@ -143,7 +143,7 @@ describe("PC Git source transport", () => {
     git("add", ".");
     git("commit", "--quiet", "-m", "base");
     const base = git("rev-parse", "HEAD");
-    git("push", "--quiet", "origin", "HEAD:refs/heads/staging");
+    git("push", "--quiet", "origin", "HEAD:refs/heads/development");
     writeFileSync(join(slot, "work/node_modules/retained"), "installed");
     return { origin, work, run, slot, git, base };
   }
@@ -182,7 +182,7 @@ describe("PC Git source transport", () => {
     expect(source.deltaBytes).toBeGreaterThan(0);
   });
 
-  it("selects the live published staging base and supports an empty delta", () => {
+  it("selects the live published development base and supports an empty delta", () => {
     const f = fixture();
     const source = buildPcSource(f.work, f.run);
     expect(source.baseCommit).toBe(f.base);

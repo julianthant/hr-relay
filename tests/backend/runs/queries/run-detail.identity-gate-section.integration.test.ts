@@ -10,7 +10,7 @@ buildRunSection,
 resolveIdentityGateAnswer,
 type RunDetailQueryDeps,
 } from "../../../../src/backend/runs/queries/run-detail.js";
-import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
+import { jobRowFromCells } from "../../../support/helpers/ucpath-job-rows.js";
 import { TimelineEventRecordSchema, timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
@@ -97,7 +97,7 @@ function packetOf(overrides: Readonly<{
   const source = overrides.source ?? "name-resolved";
   const eid = overrides.eid ?? EID;
   const ucpathName = overrides.ucpathName ?? "Hernandez, Jose Santos";
-  const rows = [deriveJobRowFromCells([
+  const rows = [jobRowFromCells([
     "0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
     "Housing Dining Hospitality", "004920", "STDT 3", "", "0.500000", "Student",
   ], 0)];
@@ -108,7 +108,7 @@ function packetOf(overrides: Readonly<{
     emplIdSource: source,
     documentEidConflicts: false,
     jobSummary: {
-      pageStateId: "ucpath.person-org.detail-ready",
+      pageStateId: "ucpath.workforce-job-summary.detail-ready",
       emplId: eid as never,
       displayedName: ucpathName,
       jobRows: rows,

@@ -7,7 +7,7 @@ import type { AssistantSettlement } from "../../../src/backend/storage/sqlite/as
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { createOperatorProjection } from "../../../src/backend/app/composition/dashboard/queue.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
-import { manualClock, runtimeTimeZone } from "../../../src/rules/time/clock.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { openBoundDatabaseFixture } from "../../support/helpers/admission-fixture.js";
 import { sqliteRunReader } from "../../support/helpers/canonical-run-reader.js";
@@ -18,9 +18,9 @@ afterEach(async () => { for (const owner of owners.splice(0)) await owner.close(
 async function world() {
   const fixture = await openBoundDatabaseFixture("assistant-usage-test");
   owners.push(fixture);
-  const read = (from = "2026-11-01", to = "2026-11-03", timeZone = "America/Los_Angeles") => queryActivitySummaries(fixture.database,
+  const read = (from = "2026-11-01", to = "2026-11-03") => queryActivitySummaries(fixture.database,
     { from, to, generatedAt: "2026-11-06T20:00:00.000Z" },
-    { timeZone, descriptors: { resolve: () => undefined }, ledger: { foldActivityRange: () => ({ systems: [] }) } });
+    { descriptors: { resolve: () => undefined }, ledger: { foldActivityRange: () => ({ systems: [] }) } });
   const history = fixture.database.authority.assistantHistory;
   const send = (at: string, settledAt = at, reply?: AssistantSettlement["reply"]) => {
     const conversationId = randomUUID(), messageId = randomUUID();
@@ -44,7 +44,7 @@ it("serves every selected day as zero retained usage and identifies unrecorded c
   ], approved: { state: "unavailable", reason: "not-recorded" } });
 });
 
-it("counts retained native sends once by acceptance day in the report zone across DST", async () => {
+it("counts retained native sends once by Pacific acceptance day across DST whatever the machine zone", async () => {
   const w = await world();
   w.send("2026-11-01T06:59:59.999Z");
   const first = w.send("2026-11-01T07:00:00.000Z");
@@ -67,9 +67,11 @@ it("counts retained native sends once by acceptance day in the report zone acros
   assert.deepEqual(report.assistantMessages.days, [
     { day: "2026-11-01", count: 4 }, { day: "2026-11-02", count: 1 }, { day: "2026-11-03", count: 1 },
   ]);
-  assert.deepEqual(w.read("2026-11-01", "2026-11-03", "UTC").assistantMessages.days, [
-    { day: "2026-11-01", count: 4 }, { day: "2026-11-02", count: 2 }, { day: "2026-11-03", count: 0 },
-  ]);
+  const prior = process.env.TZ;
+  try {
+    process.env.TZ = "UTC";
+    assert.deepEqual(w.read().assistantMessages.days, report.assistantMessages.days);
+  } finally { if (prior === undefined) delete process.env.TZ; else process.env.TZ = prior; }
   assert.equal(w.database.getMeta().authorityGeneration, generation);
   assert.deepEqual(w.read("2026-10-01", "2026-10-01").assistantMessages.days, [{ day: "2026-10-01", count: 0 }]);
   assert.equal(JSON.stringify(report).includes("Private"), false);
@@ -82,7 +84,7 @@ it("wires the retained report to the same populated native usage source as the s
     reader: sqliteRunReader(w.database, clock), appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
     descriptors: { resolve: () => undefined }, ledger: createTransactionHistory(w.database.authority) });
   const expected = projection.buildActivityReportWire("2026-11-01", "2026-11-03");
-  const { volume, ...actual } = w.read("2026-11-01", "2026-11-03", runtimeTimeZone());
+  const { volume, ...actual } = w.read("2026-11-01", "2026-11-03");
   assert.ok(volume);
   assert.equal(expected.assistantMessages.days[0]?.count, 1);
   assert.deepEqual(actual, expected);

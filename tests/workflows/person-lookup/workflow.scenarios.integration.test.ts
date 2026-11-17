@@ -184,7 +184,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal(result.state, testCase.state === "failed" ? "failed" : "done", database.authority.failures.listByRun(queued.envelope.runId).map((failure) => failure.summary).join("; "));
     const events = harness.emitter.events();
     const tasks = events.filter((event) => event.t === "span.ended" && event.kind === "task");
-    assert.deepEqual(personLookupDescriptor.timeline.map((step) => step.label), ["Search for person", "Cross-check identity", "Read employment status", "Read CRM dates"]);
+    assert.deepEqual(personLookupDescriptor.timeline.map((step) => step.label), ["Search for person", "Cross-check identity", "Read employment status", "Read CRM dates", "Check reference spreadsheets"]);
     const runEvents = JSON.stringify(database.authority.timelineEvents.page({}));
     assert.equal(runEvents.includes("123456789"), false);
     assert.equal(runEvents.includes("sign-in"), false);
@@ -253,7 +253,7 @@ describe("approved Person Lookup scenarios", () => {
     const order = personLookupDescriptor.nodes.map((node) => String(node.id));
     assert.deepEqual(endedIds, [...endedIds].sort((a, b) => order.indexOf(a) - order.indexOf(b)));
     const statuses = stepStatuses(harness);
-    assert.deepEqual(statuses, ["completed", input.crmCheck && (!matchMode || testCase.state === "found") ? "completed" : "skipped", matchMode ? "skipped" : "completed", testCase.dates ? "completed" : "skipped"]);
+    assert.deepEqual(statuses, ["completed", input.crmCheck && (!matchMode || testCase.state === "found") ? "completed" : "skipped", matchMode ? "skipped" : "completed", testCase.dates ? "completed" : "skipped", "skipped"]);
     const actions = database.authority.timelineEvents.page({}).flatMap((event) => event.payload.kind === "note" && event.payload.note.action !== undefined ? [event.payload.note.action] : []);
     const searchActions = ["ucpath.person-org.summary", "ucpath.person-org.criteria", "ucpath.person-org.search-button"];
     const byName = input.mode === "search" && !("emplId" in input);
@@ -364,7 +364,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.ok(events.length > 0);
     assert.equal(JSON.stringify(database.authority.timelineEvents.page({}).filter(event => event.payload.kind === "note")).includes(".login"), false);
     assert.ok(events.some(event => typeof event === "object" && event !== null && "reason" in event && event.reason === "login-failed"));
-    assert.deepEqual(stepStatuses(harness), system === "crm" ? ["completed", "failed", "not-started", "not-started"] : ["failed", "not-started", "not-started", "not-started"]);
+    assert.deepEqual(stepStatuses(harness), system === "crm" ? ["completed", "failed", "not-started", "not-started", "not-started"] : ["failed", "not-started", "not-started", "not-started", "not-started"]);
     if (system !== "crm") assert.equal(database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId).length, 0);
     }
   });
@@ -380,7 +380,7 @@ describe("approved Person Lookup scenarios", () => {
     assert.equal(database.authority.runs.get(queued.envelope.runId)?.lifecycle.state, "terminal");
     assert.equal(harness.sessions.opens(), 0);
     assert.equal(database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, queued.envelope.itemId).length, 0);
-    assert.deepEqual(stepStatuses(harness), ["not-started", "not-started", "not-started", "not-started"]);
+    assert.deepEqual(stepStatuses(harness), ["not-started", "not-started", "not-started", "not-started", "not-started"]);
     const running = await makeCase({ id: "F4-midrun", state: "cancelled", onCrmSearch: () => {
       const run = running.harness.authority.database.authority.runs.get(running.queued.envelope.runId); assert.ok(run);
       assert.equal(testRunService(running.harness.authority.database, running.harness.authority.clock).transition({ commandId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", runId: run.envelope.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() } }).state, "applied");
@@ -390,7 +390,7 @@ describe("approved Person Lookup scenarios", () => {
     const checkpoints = running.harness.authority.database.authority.runCheckpoints.listByItem(personLookupDescriptor.id, midClaim.run.envelope.itemId);
     assert.ok(checkpoints.some(checkpoint => checkpoint.nodeId === "searching"));
     assert.equal(checkpoints.some(checkpoint => checkpoint.nodeId === "active-status"), false);
-    assert.deepEqual(stepStatuses(running.harness), ["completed", "completed", "not-started", "not-started"]);
+    assert.deepEqual(stepStatuses(running.harness), ["completed", "completed", "not-started", "not-started", "not-started"]);
     const cancelled = running.harness.authority.database.authority.runs.get(midClaim.run.envelope.runId); assert.ok(cancelled);
     assert.ok(cancelled.lifecycle.state === "terminal"); assert.equal(cancelled.lifecycle.outcome, "cancelled");
 

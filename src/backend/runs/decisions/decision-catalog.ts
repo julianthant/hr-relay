@@ -28,7 +28,6 @@ export type DecisionDeclaration = Readonly<{
 
 const cancelRun: DeclaredOption = { id: "cancel-run", label: "Cancel run", hint: "Stop this run. Nothing more is written.", send: { via: "row-action", command: "cancel" } };
 const annotate = { via: "command", family: "failure-resolution", type: "annotate-failure" } as const;
-const addNote: DeclaredOption = { id: "add-note", label: "Add note", hint: "Record what you found. The run stays failed.", send: annotate };
 /** A parked write is answered by Relay re-reading it or by the operator confirming it is absent; no answer settles it on its own. */
 const parkedWrite: readonly DeclaredOption[] = [
   { id: "check-again", label: "Check again", hint: "Reads the target system again; files nothing.", send: { via: "action", command: "check-parked-write" } },
@@ -71,13 +70,11 @@ export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclarat
   "review-before-write": { choiceLabel: "Next step", title: "Review before Relay writes", recommended: [], gateArms: true, options: [] },
   "write-parked": { choiceLabel: "Answer", title: "Did the write save?", recommended: ["saved", "check-again"], options: parkedWrite },
   "write-unknown": { choiceLabel: "Answer", title: "Did the write save?", recommended: ["saved", "check-again"], options: parkedWrite },
-  "failed-retryable": { choiceLabel: "Next step", title: "A step failed", recommended: ["retry", "add-note"], options: [
+  "failed-retryable": { choiceLabel: "Next step", title: "A step failed", recommended: ["retry"], options: [
     { id: "retry", label: "Retry step", hint: "Nothing was written, so the step can run again.", send: { via: "action", command: "retry" } },
-    addNote,
   ] },
   "failed-after-write": { choiceLabel: "Next step", title: "A step failed after a write", recommended: ["mark-as-failed"], options: [
     { id: "mark-as-failed", label: "Mark as failed", hint: "Ends this person's run as failed; files nothing.", send: annotate },
-    addNote,
   ] },
   "member-failed": { title: "This member failed", recommended: ["retry"], options: [
     { id: "retry", label: "Retry member", hint: "Run this member again. The rest of the batch is unchanged.", send: { via: "action", command: "retry" } },
@@ -126,6 +123,7 @@ export const IDENTITY_REVIEW_TEXT = Object.freeze({
   value: {
     noFormEid: "Not on the form",
     oneActiveJob: "1 active job",
+    soleRecord: "1 job, status not shown",
     noActiveJob: "No active job",
     unknownJob: "A job status Relay does not recognize",
     noMatch: "No match",
@@ -142,6 +140,14 @@ export const IDENTITY_REVIEW_TEXT = Object.freeze({
     disagreed: "Approving files the rest of this separation for this person anyway.",
   },
   unavailable: "Relay cannot show this identity review. Reload, or cancel the run.",
+});
+
+/** The reference review's served text: a picked spreadsheet did not hold the person, or names them differently. */
+export const REFERENCE_CHECK_REVIEW_TEXT = Object.freeze({
+  title: "A reference spreadsheet does not confirm this person",
+  compared: "Relay compared the Employee ID, and the name where the sheet has one.",
+  cancelHint: "Stop this run. Nothing is written.",
+  stale: "This review changed. Reload it before answering.",
 });
 
 /** The declared identifier of a parked write, read from its natural key; a declared key that lacks it is corrupt. */

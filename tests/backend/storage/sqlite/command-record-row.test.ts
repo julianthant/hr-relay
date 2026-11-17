@@ -1,7 +1,7 @@
 import { deriveBulkRunCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,expect,it } from "vitest";
-import { NativeCommandAuditSchema,AssistantM1NativeCommandAuditSchema,AssistantM1NativeCommandRowSchema,assertAssistantM1CommandIdentity,commandIdentity,convertAssistantCommandPairToM1,commandFromRow,insertNativeCommand,settleNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
+import { NativeCommandAuditSchema,AssistantM1NativeCommandAuditSchema,AssistantM1NativeCommandRowSchema,assertAssistantM1CommandIdentity,commandIdentity,convertAssistantCommandPairToM1,commandFromRow,convertPredecessorCommandRowState,insertNativeCommand,settleNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { SETTINGS_SCHEMA_HASH,derivePersistedSettingsFingerprint } from "../../../../src/models/config/settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -44,14 +44,18 @@ function pair(request: unknown, audit: unknown = null, state = audit === null ? 
 const attribution = { kind: "assistant", requestedBy: "local-operator", profileId: UUID_1, conversationId: UUID_2,
   acceptedMessageId: UUID_3, binding: { kind: "session", actionId: UUID_4 } };
 describe("unregistered M1 command attribution conversion", () => {
-  it.each(["admitted", "executing"])("preserves exact %s request bytes and explicit unknown provenance", state => {
-    const before = pair(ordinary, null, state), after = convertAssistantCommandPairToM1(before.command, before.audit);
+  it("preserves exact admitted request bytes and explicit unknown provenance", () => {
+    const before = pair(ordinary, null, "admitted"), after = convertAssistantCommandPairToM1(before.command, before.audit);
     expect(after).toEqual({ command: { ...before.command, attribution_json: '{"kind":"unrecorded"}' }, audit: null });
     expect(AssistantM1NativeCommandRowSchema.parse(after.command)).toEqual(after.command);
     expect(() => assertAssistantM1CommandIdentity(after.command, ordinary, { kind: "unrecorded" })).not.toThrow();
     expect(() => assertAssistantM1CommandIdentity(after.command, ordinary, attribution)).toThrow(/command-divergent/u);
     expect(() => commandFromRow(after.command)).toThrow();
     expect(AssistantM1NativeCommandRowSchema.safeParse(before.command).success).toBe(false);
+  });
+  it("refuses an executing row", () => {
+    const before = pair(ordinary, null, "executing");
+    expect(() => convertAssistantCommandPairToM1(before.command, before.audit)).toThrow();
   });
   it("authenticates ordinary settled copies without inferring assistant provenance", () => {
     const before = pair(ordinary, ordinaryAudit), snapshot = structuredClone(before), after = convertAssistantCommandPairToM1(before.command, before.audit);
@@ -121,5 +125,46 @@ describe("unregistered M1 command attribution conversion", () => {
       { payload_json: canonicalJsonStringify({ ...ordinaryAudit, versionChanges: [{ target: { family: "run", runId: UUID_2 }, before: 1, after: 2 }] }) }]) {
       expect(() => convertAssistantCommandPairToM1(before.command, { ...before.audit, ...patch })).toThrow();
     }
+  });
+});
+
+const erroredAudit = { ...ordinaryAudit, result: { state: "rejected", commandId: UUID_1, code: "bulk-child-errored", message: "Child errored" } };
+const replanAudit = { ...ordinaryAudit, result: { state: "rejected", commandId: UUID_1, code: "replan-required", message: "Stale" } };
+function memoryDatabase(): DatabaseSync {
+  const db = new DatabaseSync(":memory:");
+  databases.push(db);
+  for (const migration of SQLITE_MIGRATIONS) for (const sql of migration.statements) db.exec(sql);
+  return db;
+}
+describe("command row state", () => {
+  it("refuses an executing row", () => {
+    expect(() => commandFromRow(pair(ordinary, null, "executing").command)).toThrow();
+  });
+  it("stores an errored bulk child as uncertain and no other rejection", () => {
+    expect(commandFromRow(pair(ordinary, erroredAudit, "uncertain").command)).toEqual(ordinary);
+    expect(() => commandFromRow(pair(ordinary, erroredAudit, "refused").command)).toThrow(/command-row-outcome-mismatch/u);
+  });
+  it.each([[erroredAudit, "uncertain"], [replanAudit, "refused"], [ordinaryAudit, "succeeded"]])("settles to the state of its audit result", (audit, state) => {
+    const db = memoryDatabase();
+    expect(insertNativeCommand(db, ordinary)).toBe(1);
+    settleNativeCommand(db, audit);
+    expect(db.prepare("SELECT state FROM commands").get()?.state).toBe(state);
+  });
+});
+describe("predecessor command row state", () => {
+  const stored = (audit: unknown, state: string) => pair(ordinary, audit, state).command;
+  it("rewrites a refused errored bulk child to uncertain", () => {
+    const row = stored(erroredAudit, "refused");
+    expect(convertPredecessorCommandRowState("commands", row)).toEqual({ ...row, state: "uncertain" });
+    expect(commandFromRow(convertPredecessorCommandRowState("commands", row))).toEqual(ordinary);
+  });
+  it("leaves every other row and table unchanged", () => {
+    const refused = stored(replanAudit, "refused"), uncertain = stored(erroredAudit, "uncertain"), settled = stored(ordinaryAudit, "succeeded");
+    for (const row of [refused, uncertain, settled, pair(ordinary).command, { state: "refused" }, "not a row", null]) {
+      expect(convertPredecessorCommandRowState("commands", row)).toEqual(row);
+    }
+    expect(convertPredecessorCommandRowState("command_audits", stored(erroredAudit, "refused"))).toEqual(stored(erroredAudit, "refused"));
+    const garbage = { ...stored(erroredAudit, "refused"), outcome_json: "{" };
+    expect(convertPredecessorCommandRowState("commands", garbage)).toEqual(garbage);
   });
 });

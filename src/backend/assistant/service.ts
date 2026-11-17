@@ -15,6 +15,7 @@ import { AssistantHistoryOperationSchema, type AssistantActivityWire, type Assis
 import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../runs/commands/refusals.js";
+import { PreflightAdmissionRefusal } from "../../rules/preflight/preflight-admission.js";
 import { AssistantReferenceError, type AssistantReferenceTable, createAssistantReferences, maskOperatorText } from "./references.js";
 import { AssistantAuthorizationError, type createAssistantSessionAuthorization } from "./authorization.js";
 import { admitAttachment, AssistantAttachmentRefusal, attachmentMediaType } from "./attachments.js";
@@ -72,6 +73,10 @@ export function createAssistantService(options: AssistantServiceOptions) {
   const actionRefused = (error: unknown) => {
     if (options.debugEvents !== undefined) emitFaultWithCauses(options.debugEvents, undefined, error,
       { category: "http", area: "assistant-proposal", reason: "action-decision", code: "ASSISTANT_PROPOSAL_REFUSED" });
+  };
+  /** Value-free fault lines: the code, the tool name and each cause's class, never a message. */
+  const fault = (error: unknown, area: string, reason: string, code: AssistantFailureCode) => {
+    if (options.debugEvents !== undefined) emitFaultWithCauses(options.debugEvents, undefined, error, { category: "http", area, reason, code });
   };
   return Object.freeze({
     activity: options.activity?.read,
@@ -265,6 +270,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
             } catch (error) {
               const code = toolRefusalCode(error);
               if (code === undefined) throw error;
+              fault(error, "assistant-tool", tool.name.replaceAll("_", "-"), code);
               outcome = { code, output: canonicalJsonStringify({ error: code, text: ASSISTANT_FAILURES[code] }) };
             }
             outcomes.set(key, outcome);
@@ -295,6 +301,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           if (code.success) return stop(code.data);
         }
         if (error instanceof AssistantProtocolError || error instanceof z.ZodError || error instanceof SyntaxError) return stop("ASSISTANT_INVALID");
+        fault(error, "assistant-turn", "unclassified-failure", "ASSISTANT_UNAVAILABLE");
         return stop("ASSISTANT_UNAVAILABLE");
       }
   }
@@ -348,6 +355,9 @@ function toolRefusalCode(error: unknown): AssistantFailureCode | undefined {
   if (error instanceof AssistantReferenceError) return error.reason === "reference-limit" ? "ASSISTANT_LIMIT" : "ASSISTANT_READ_STALE";
   if (error instanceof TargetNotFoundError || error instanceof SectionUnavailableError) return "ASSISTANT_READ_UNAVAILABLE";
   if (error instanceof AssistantAuthorizationError) return error.code;
+  // The start planner's readiness check: the same codes Run shows, so the model can tell the operator what to fix.
+  if (error instanceof PreflightAdmissionRefusal) return error.reason === "blocked" ? "RUN_START_READINESS_BLOCKED"
+    : error.reason === "stale" || error.reason === "observation-changed" ? "RUN_START_READINESS_CHANGED" : "RUN_START_READINESS_UNAVAILABLE";
   return undefined;
 }
 const SELECTED_RUN = /^run_([a-f0-9-]{36})_([1-9][0-9]*)$/u;
