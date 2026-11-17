@@ -7,11 +7,13 @@ runStartStages,
 } from "../../../../src/dashboard/surfaces/run-start/run-start-timeline.js";
 
 describe("run-start timeline", () => {
-  it("keeps Options in the ordinary path", () => {
+  it("keeps Options in the ordinary path and ends every path on Checks", () => {
     assert.deepEqual(runStartStages(false), [
       { label: "Input", number: 1 },
       { label: "Options", number: 2 },
+      { label: "Checks", number: 3 },
     ]);
+    assert.deepEqual(runStartStages(false, true).map(stage => stage.label), ["Steps", "Values", "Options", "Checks"]);
   });
 
   it("adds Steps after Options when customization is enabled", () => {
@@ -20,10 +22,12 @@ describe("run-start timeline", () => {
       { label: "Input", number: 1 },
       { label: "Options", number: 2 },
       { label: "Steps", number: 3 },
+      { label: "Checks", number: 4 },
     ]);
     assert.equal(adjacentRunStartStage(stages, "Input", "next"), "Options");
     assert.equal(adjacentRunStartStage(stages, "Options", "next"), "Steps");
-    assert.equal(adjacentRunStartStage(stages, "Steps", "next"), null);
+    assert.equal(adjacentRunStartStage(stages, "Steps", "next"), "Checks");
+    assert.equal(adjacentRunStartStage(stages, "Checks", "next"), null);
     assert.equal(adjacentRunStartStage(stages, "Input", "previous"), null);
   });
 

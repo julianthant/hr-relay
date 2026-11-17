@@ -167,7 +167,7 @@ describe("served Person Lookup Run and Rerun", () => {
     assert.equal(dialog.text().includes("123456789"), false);
     assert.deepEqual(snapshot.sourceInput, { state: "available", value: input });
     if (input.mode === "match") {
-      await dialog.press("Back");
+      await dialog.press("Back"); await dialog.press("Back");
       await dialog.type("Changed, Person, x, [masked]");
       assert.equal(dialog.disabled("Continue"), true);
       await dialog.type("Example, Person, x, [masked]");

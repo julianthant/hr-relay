@@ -10,7 +10,7 @@ import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflo
 import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 
 import assert from "node:assert/strict";
-import { act, createElement, type ReactElement } from "react";
+import { act, createElement, type ComponentProps, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
@@ -19,6 +19,7 @@ import { RunStartDialog, type RunStartWorkflow } from "../../../../src/dashboard
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../../src/models/dashboard/start-plan.js";
 import { CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
+import type { PreflightReadinessWire } from "../../../../src/models/preflight/preflight-contract.js";
 import { FIXTURE_BOOTSTRAP } from "../../../mocks/helpers/fixture-day.js";
 
 export function createRunStartDialogHarness() {
@@ -126,12 +127,24 @@ export function createRunStartDialogHarness() {
     message: "The start plan was built against version 4.",
   });
 
+  /** One served readiness report: every named check with its verdict; a failed or warned check carries its summary. */
+  type ServedCheck = Readonly<{ check: string; status: "pass" | "warning" | "fail"; summary?: string }>;
+  function readiness(checks: readonly ServedCheck[]): PreflightReadinessWire {
+    const results = checks.map(({ check, status, summary }) => status === "pass" ? { status, check, summary: summary ?? `${check} is ready` }
+      : status === "warning" ? { status, check, summary: summary ?? `${check} needs attention`, impact: "A feature may be unavailable.", remediation: "Review it." }
+      : { status, check, summary: summary ?? `${check} is not ready`, blocks: ["dashboard.serve"], remediation: "Fix it." });
+    return { state: "present", report: { configFingerprint: HASH, descriptorFingerprint: HASH, checkedAt: "2026-08-26T21:00:00.000Z",
+      requestedCapabilities: ["dashboard.serve"], results } } as unknown as PreflightReadinessWire;
+  }
+  const READY = readiness([{ check: "config.valid", status: "pass" }, { check: "secrets.ucpath-sso", status: "pass" }]);
+
   function stubClient(served: Partial<DashboardClient>): DashboardClient {
     const submitStartPlan = served.submitStartPlan;
     const executeCommand = served.executeCommand;
     let reviewedPlan: StartPlanResponse | undefined;
     let readback: ReturnType<typeof DashboardDayWireSchema.parse> | undefined;
     const methods: Partial<DashboardClient> = { ...served,
+      readPreflight: served.readPreflight ?? (async () => READY),
       ...(submitStartPlan === undefined ? {} : { submitStartPlan: async (input: unknown) => {
         reviewedPlan = await submitStartPlan(input);
         return reviewedPlan;
@@ -227,6 +240,8 @@ export function createRunStartDialogHarness() {
     readonly stage: () => string;
     readonly text: () => string;
     readonly press: (name: string) => Promise<void>;
+    /** Draws the same dialog again with other props, as the shell does while Settings is open over it. */
+    readonly rerender: (extra: Partial<ComponentProps<typeof RunStartDialog>>) => Promise<void>;
     readonly type: (next: string) => Promise<void>;
     readonly enter: (options?: { shift?: boolean; on?: Element }) => Promise<boolean>;
     readonly choosePriority: (next: string) => Promise<void>;
@@ -280,12 +295,13 @@ export function createRunStartDialogHarness() {
     onApplied: (workflowId: string) => void = () => undefined,
   ): Promise<OpenDialog> {
     intakeHandoffs.length = 0; closed.length = 0;
-    await render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, {
+    const catalog = buildWorkflowCatalog(catalogue.workflows, false, servedFixtureSources(catalogue.workflows));
+    const dialogElement = (extra: Partial<ComponentProps<typeof RunStartDialog>>) => createElement(ToastProvider, { children: createElement(DashboardClientProvider, {
       client,
       children: createElement(FixtureCommandBinding, { actorId: ACTOR_ID, children: createElement(RunStartDialog, {
         open: true,
         onOpenChange: next => closed.push(next),
-        catalog: buildWorkflowCatalog(catalogue.workflows, false, servedFixtureSources(catalogue.workflows)),
+        catalog,
         panelWorkflowId: catalogue.panelWorkflowId,
         actorId: ACTOR_ID,
         rerunSource: catalogue.rerunSource,
@@ -293,8 +309,16 @@ export function createRunStartDialogHarness() {
         onOpenIntake: (workflowId: string, intakeSessionId: string) => {
           intakeHandoffs.push({ workflowId, intakeSessionId });
         },
+        ...extra,
       }) }),
-    }) }));
+    }) });
+    await render(dialogElement({}));
+    const rerender = async (extra: Partial<ComponentProps<typeof RunStartDialog>>): Promise<void> => {
+      assert.ok(mounted, "the dialog is mounted");
+      const root = mounted;
+      await act(async () => { root.render(dialogElement(extra)); });
+      for (let wait = 0; wait < 6; wait += 1) await settle();
+    };
 
     const typedInput = (): HTMLTextAreaElement => {
       const box = document.body.querySelector("textarea");
@@ -310,7 +334,19 @@ export function createRunStartDialogHarness() {
 
     const switchNamed = (name: string): HTMLInputElement | undefined => [...document.body.querySelectorAll<HTMLInputElement>('[role="switch"], [role="checkbox"]')]
       .find(node => [name, `Include ${name}`, `${name} (required)`].includes(node.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent ?? "") || node.getAttribute("aria-label") === name);
+    /** Checks is the last stage and holds Start; a press of Start from an earlier stage goes there first and waits for the checks. */
     const press = async (name: string): Promise<void> => {
+      if (/^(Start|Create rerun)/u.test(name) && !buttons().some(button => buttonName(button) === name)) {
+        for (let guard = 0; guard < 6 && stage() !== "Checks"; guard += 1) {
+          const before = stage();
+          const next = buttons().find(button => buttonName(button) === "Continue");
+          if (next === undefined) break;
+          await act(async () => { next.click(); });
+          await settle();
+          if (stage() === before) break;
+        }
+        for (let wait = 0; wait < 6; wait += 1) await settle();
+      }
       const visibleMatches = buttons().filter((button) => (button.textContent ?? "").trim() === name);
       const matches = visibleMatches.length > 0
         ? visibleMatches
@@ -418,6 +454,7 @@ export function createRunStartDialogHarness() {
       stage,
       text: () => (document.body.textContent ?? "").replace(/\s+/gu, " "),
       press,
+      rerender,
       type,
       enter,
       choosePriority,
@@ -478,5 +515,5 @@ export function createRunStartDialogHarness() {
     return dialog;
   }
 
-  return { cleanup, openDialog, stubClient, ACTOR_ID, WORKFLOW_ID, TYPED, HASH, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName, chooseReference, chooseVersion };
+  return { cleanup, openDialog, stubClient, readiness, READY, ACTOR_ID, WORKFLOW_ID, TYPED, HASH, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName, chooseReference, chooseVersion };
 }
