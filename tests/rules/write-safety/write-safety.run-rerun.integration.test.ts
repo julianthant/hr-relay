@@ -7,7 +7,7 @@ import { StartPlanRequestSchema } from "../../../src/models/dashboard/start-plan
 import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
 import { absentProbeEvidence } from "../../support/fixtures/write-sequencer-fixtures.js";
 
-const { setup, button, press, checkbox, field, fill, mount, cleanup } = createMountedRerunWorld();
+const { setup, press, checkbox, field, fill, mount, cleanup } = createMountedRerunWorld();
 afterEach(cleanup);
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
