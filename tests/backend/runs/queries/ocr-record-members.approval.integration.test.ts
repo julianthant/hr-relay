@@ -310,14 +310,14 @@ for (const dryRun of [true, false]) {
   }, scaledMs(60_000));
 }
 
-it("keeps failed OCR pages on their own Logs while hiding successful reads under the hosted review", async () => {
+it("keeps failed OCR pages on their own Logs, on the host row too, while hiding successful reads under the hosted review", async () => {
   const f = await world.fixture({ coordinator: true, record: true, pageCount: 3, failManualPageOnce: 2 });
   const view = served(f, f.database, f.canonical.lifecycle, true);
-  assert.equal(view.logsChecked[1], 1, "the failed page's row opens its own served log");
+  assert.deepEqual(view.logsChecked, [2, 1], "the host row serves its reading log and the failed page's own log; the OCR row serves the failed page's log");
   assert.equal(view.parent.status, "running");
   assert.equal(view.parentDetail.gate.state, "absent");
   assert.equal(view.ocrDetail.gate.state, "open");
-  assert.deepEqual(view.parent.recordMembers?.members.map(member => member.statusLabel), ["Reading"]);
+  assert.deepEqual(view.parent.recordMembers?.members.map(member => member.statusLabel), ["Reading", "Failed"]);
   const pages = f.database.authority.runs.listChildren(f.run.envelope.runId).filter(run => run.envelope.workflow === "ocr-page");
   assert.equal(pages.length, 3);
   const failed = pages.find(run => run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed"); assert.ok(failed);
@@ -329,6 +329,7 @@ it("keeps failed OCR pages on their own Logs while hiding successful reads under
   assert.equal(failure.ownerRunId, f.run.envelope.runId);
   assert.equal(failure.statusLabel, "Failed");
   assert.equal(failure.target.runId, failed.envelope.runId);
+  assert.deepEqual(view.parent.recordMembers?.members.filter(member => member.kind === "page-failure"), [failure]);
   assert.equal(failure.target.workflowId, "ocr-page");
   assert.equal(failure.target.section, "logs");
   assert.deepEqual(failure.childRunIds, [failed.envelope.runId]);
@@ -338,4 +339,20 @@ it("keeps failed OCR pages on their own Logs while hiding successful reads under
     assert.equal(members.some(member => member.target.runId === page.envelope.runId), false);
   }
   assert.equal(f.database.authority.runs.listByWorkflow("emergency-contact-member").length, 0);
+});
+
+it("shows a hosted OCR whose every page failed as failed pages on the Emergency Contact row, not as Reading", async () => {
+  const f = await world.fixture({ coordinator: true, record: true, pageCount: 1, failManualPageOnce: 1, stopAfterPageFailure: true });
+  const resumed = await f.canonical.execute(f.parentRun, new AbortController().signal);
+  assert.deepEqual(resumed.outcomes.map(outcome => outcome.state), ["parked-gate"]);
+  const view = served(f, f.database, f.canonical.lifecycle, true);
+  assert.equal(view.ocrDetail.gate.state, "open");
+  assert.equal(view.review.ocr?.revision.records.length, 0);
+  const [failed] = f.database.authority.runs.listChildren(f.run.envelope.runId).filter(run => run.envelope.workflow === "ocr-page");
+  assert.ok(failed?.lifecycle.state === "terminal" && failed.lifecycle.outcome === "failed");
+  assert.deepEqual(view.parent.recordMembers?.members.map(member => ({ kind: member.kind, title: member.title, statusLabel: member.statusLabel,
+    runId: member.target.runId, section: member.target.section })), [
+    { kind: "page-failure", title: "Page 1", statusLabel: "Failed", runId: failed.envelope.runId, section: "logs" },
+  ]);
+  assert.equal(view.logsChecked[0], 1, "the Emergency Contact row opens the failed page's own served log");
 });

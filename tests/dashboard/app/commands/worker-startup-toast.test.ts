@@ -79,13 +79,14 @@ describe("applied worker startup toast", () => {
 describe("stopped worker toast", () => {
   const label = (workflowId: string) => workflowId === "person-lookup" ? "Person Lookup" : workflowId;
   const queued = FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.workflowId === "person-lookup" && row.status === "queued");
+  const topLevel = queued.filter(row => row.parent === null), children = queued.filter(row => row.parent !== null);
   const day = (stopReason: "crashed" | "operator" | undefined, rows = queued) => DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, queueSurfaces: rows,
     workerCards: FIXTURE_DAY_WIRE.workerCards.filter(card => card.workflowId === "person-lookup").map(card => stopReason === undefined ? card
       : { ...card, state: "failed", stopReason, endedAt: FIXTURE_NOW, browsers: [], currentRun: { state: "absent", reason: "no current run" } }) });
 
   it("names the stopped worker while its workflow has queued runs no worker can take", () => {
-    assert.ok(queued.length > 1);
-    assert.deepEqual(stoppedWorkerToasts(day("crashed"), label), [{ tone: "warning", title: `${String(queued.length)} runs queued; worker unavailable`,
+    assert.ok(topLevel.length > 1 && children.length > 0);
+    assert.deepEqual(stoppedWorkerToasts(day("crashed"), label), [{ tone: "warning", title: `${String(topLevel.length)} runs queued; worker unavailable`,
       description: "Person Lookup worker crashed. Retry it in Sessions." }]);
     assert.deepEqual(stoppedWorkerToasts(day("operator", queued.slice(0, 1)), label), [{ tone: "warning", title: "Run queued; worker unavailable",
       description: "Person Lookup worker stopped by you. Retry it in Sessions." }]);
@@ -99,16 +100,24 @@ describe("stopped worker toast", () => {
   });
 
   it("tells the operator to add a worker while a workflow with queued runs has no worker at all", () => {
-    const singles = queued.filter(row => row.surfaceKind !== "preview");
-    assert.ok(singles.length > 1 && singles.length < queued.length);
+    const singles = topLevel.filter(row => row.surfaceKind !== "preview");
+    assert.ok(singles.length > 0 && singles.length < topLevel.length);
     const none = (rows = queued, authority: "present" | "unavailable" = "present") => DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, queueSurfaces: rows,
       workerCards: FIXTURE_DAY_WIRE.workerCards.filter(card => card.workflowId !== "person-lookup"),
       workerAuthority: { ...FIXTURE_DAY_WIRE.workerAuthority, state: authority, members: FIXTURE_DAY_WIRE.workerAuthority.members.filter(member => member.workflow !== "person-lookup"),
         ...(authority === "present" ? {} : { reason: "Worker membership is unavailable." }) } });
-    assert.deepEqual(stoppedWorkerToasts(none(), label), [{ tone: "warning", title: `${String(singles.length)} runs queued; worker unavailable`,
+    assert.deepEqual(stoppedWorkerToasts(none(), label), [{ tone: "warning", title: singles.length === 1 ? "Run queued; worker unavailable" : `${String(singles.length)} runs queued; worker unavailable`,
       description: "Person Lookup has no worker. Add one in Sessions." }]);
     // A preview plan asks for no worker, and unread membership proves nothing.
     assert.deepEqual(stoppedWorkerToasts(none(queued.filter(row => row.surfaceKind === "preview")), label), []);
     assert.deepEqual(stoppedWorkerToasts(none(queued, "unavailable"), label), []);
+  });
+
+  it("leaves a queued delegated child to its root workflow's worker", () => {
+    const none = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, queueSurfaces: children,
+      workerCards: FIXTURE_DAY_WIRE.workerCards.filter(card => card.workflowId !== "person-lookup"),
+      workerAuthority: { ...FIXTURE_DAY_WIRE.workerAuthority, state: "present", members: FIXTURE_DAY_WIRE.workerAuthority.members.filter(member => member.workflow !== "person-lookup") } });
+    assert.deepEqual(stoppedWorkerToasts(none, label), []);
+    assert.deepEqual(stoppedWorkerToasts(day("crashed", children), label), []);
   });
 });
