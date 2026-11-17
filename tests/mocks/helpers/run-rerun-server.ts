@@ -30,12 +30,14 @@ import { FIXTURE_START_PICKER_BOOTSTRAP } from "./fixture-start.js";
 
 const retainedRunRerunFixtureOwners = new Set<object>();
 
-export async function startRunRerunServer() {
+export type RerunSourceKind = "completed" | "failed" | "cancelled";
+
+export async function startRunRerunServer(sourceKind: RerunSourceKind = "completed") {
   assertServedBundle(MOCK_DIST_DIR, { proof: "working-tree" });
   const h = await launchHarness("reject-active", seedInitialSettingsRuntimeConfig);
   const held: { harness: typeof h; primary?: unknown; server?: ReturnType<typeof createServer> } = { harness: h };
   retainedRunRerunFixtureOwners.add(held);
-  try { const source = await h.completeSource(); return await serveLaunchAuthority(h, source, undefined, held); }
+  try { const source = sourceKind === "failed" ? await h.failedSource() : sourceKind === "cancelled" ? h.cancelledSource() : await h.completeSource(); return await serveLaunchAuthority(h, source, undefined, held); }
   catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 
