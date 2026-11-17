@@ -40,8 +40,8 @@ interface Options {
   readonly rerunValues?: readonly RerunValueMappingSpec[];
   /** check publishes instead of reading */
   readonly publishCheck?: boolean;
-  /** read's output gains an `odd` value under this schema */
-  readonly oddLeaf?: z.ZodType;
+  /** read's output gains an optional `odd` value under this schema */
+  readonly oddLeaf?: z.ZodType<string | number | undefined>;
 }
 
 /** reading: search -> read -> check (or a publishing check); saving: save (a transaction) -> receipt; extra: a selection step with one read. */
@@ -60,7 +60,7 @@ function fixture(options: Options = {}) {
     steps: ({ task, transaction, group, result }) => {
       const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }));
       const readContract = options.oddLeaf === undefined ? plan1Contract : defineTaskContract({ ...plan1Definition,
-        output: z.strictObject({ ...Plan1Output.shape, odd: options.oddLeaf }), example: { ...plan1Definition.example, odd: "XXXXX" } });
+        output: z.strictObject({ ...Plan1Output.shape, odd: options.oddLeaf.optional() }), example: { ...plan1Definition.example, odd: "XXXXX" } });
       const read = task({ id: "read", contract: readContract, replay: "checkpoint" }, [search], ({ input }) => input);
       const check = options.publishCheck === true
         ? task({ id: "check", contract: publishContract, replay: "checkpoint", dryRun: "stop-before-publish" }, [read], ({ input }) => input)
@@ -146,6 +146,7 @@ describe("manual entry definition checks", () => {
       z.string().optional().refine((value) => typeof value === "string" && value.length >= 5),
       z.union([z.string(), z.number()]).refine((value) => typeof value === "string" && value.length >= 5),
       z.union([z.string().transform((value) => value.toUpperCase()), z.string()]),
+      z.xor([z.string(), z.literal("blocked")]),
     ]) assert.throws(() => fixture({ oddLeaf, reading: odd }), /field "odd" stores text facts, which "read\.odd" does not provably accept unchanged/u);
     assert.equal(fixture({ oddLeaf: z.union([z.string(), z.number()]), reading: odd }).stepOmissions.length, 1);
   });

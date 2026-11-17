@@ -120,6 +120,7 @@ describe("representation check", () => {
       [text, z.string().optional().refine(() => true)], [text, z.string().nullable().refine(() => true)], [text, z.string().default("x").refine(() => true)],
       [text, z.union([z.string(), z.number()]).refine(() => true)], [text, z.union([z.number(), z.string()])],
       [text, z.union([z.string().transform((value) => value.toUpperCase()), z.string()])], [text, z.unknown().refine(() => true)],
+      [text, z.xor([z.string(), z.literal("blocked")])],
     ] as const) assert.equal(stepManualFieldFitsLeaf(field, leaf), false, `${field.kind} ${JSON.stringify(leaf._zod.def.type)}`);
   });
 });
