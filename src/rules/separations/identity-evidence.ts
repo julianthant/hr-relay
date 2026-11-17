@@ -155,7 +155,7 @@ export function deriveApprovalShape(input: Readonly<{
     input.nameTier === "similar"
     || input.nameSearchStatus === "ambiguous"
     || !input.nameSearchAgrees
-    || input.disposition !== "single-active-job"
+    || (input.disposition !== "single-active-job" && input.disposition !== "sole-record")
   ) {
     return "choose-a-candidate";
   }
@@ -223,14 +223,16 @@ export function buildIdentityEvidencePacket(
       documentValue: "a separation is being prepared for this person",
       ucpathValue: `${jobs.disposition} — ${String(jobs.activeRowCount)} active of `
         + `${String(jobs.rowCount)} employment rows`,
-      agrees: jobs.disposition === "single-active-job",
+      agrees: jobs.disposition === "single-active-job" || jobs.disposition === "sole-record",
       note: jobs.disposition === "single-active-job"
         ? "exactly one active employment, which is the ordinary separation shape"
-        : jobs.disposition === "no-active-job"
-          ? "UCPath shows no active employment — this person may already be fully separated (S21/S22)"
-          : jobs.disposition === "concurrent-active-jobs"
-            ? "more than one active employment; which job is being separated is not derivable (S23)"
-            : "at least one employment row carries an HR status this system does not recognize",
+        : jobs.disposition === "sole-record"
+          ? "UCPath opened the person's only employment record directly; that page shows no status, so the sole record is the job"
+          : jobs.disposition === "no-active-job"
+            ? "UCPath shows no active employment — this person may already be fully separated (S21/S22)"
+            : jobs.disposition === "concurrent-active-jobs"
+              ? "more than one active employment; which job is being separated is not derivable (S23)"
+              : "at least one employment row carries an HR status this system does not recognize",
     },
     {
       field: "name-search",

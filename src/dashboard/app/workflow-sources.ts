@@ -33,6 +33,8 @@ export interface WorkflowComposition {
   readonly logsSources?: WorkflowSourcePolicy;
   readonly dataSources?: WorkflowSourcePolicy;
   readonly catalogIncludesMocks?: boolean;
+  /** The design-mock harness lets a previewed workflow start local preview runs; the product never does. */
+  readonly previewStarts?: boolean;
   readonly servedDay?: boolean;
   readonly sessions?: SurfaceSource;
   readonly activity?: SurfaceSource;

@@ -6,6 +6,7 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { createWorkbookIntakeBridge } from "../../../../src/backend/runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
+import { queryAssistantUsage } from "../../../../src/backend/assistant/usage-counts.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createProtectedSettingsRuntimeReader } from "../../../../src/backend/runtime/settings/settings-runtime.js";
@@ -267,6 +268,7 @@ export async function harness(options: {
       : undefined,
   };
   const projection = createRunQueueProjection({
+    assistantUsage: (from, to, generatedAt) => queryAssistantUsage(database, { from, to, generatedAt }),
     timeline: database.authority.timelineEvents,
     reader: sqliteRunReader(database, clock),
     stateRoot,

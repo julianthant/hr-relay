@@ -12,6 +12,7 @@ type Pdf = { source: ReturnType<typeof OcrSourceUploadSchema.parse>; readingId: 
 export type PdfRunDraft = { files: readonly Pdf[]; asOf: string; reviewer: string };
 /** The operator's choice for each declared launch field of a PDF workflow, keyed by input field; a field with no entry is unpicked. */
 export type PdfRunPicks = Readonly<Record<string, string>>;
+class WrongPdfType extends Error { constructor() { super("Choose valid PDF files."); } }
 const refused = () => new Error(formatErrorCatalogFailure(createErrorCatalogFailure("OCR_SOURCE_REFUSED", {})).text);
 
 /** The declared launch fields of a PDF workflow. The Run dialog offers choices only, so any other declared kind is refused. */
@@ -59,7 +60,8 @@ export function usePdfRunInput(client: DashboardClient, binding: DashboardComman
       for (const file of files) {
         const accepted = surface.accepts.find(accept => accept.mediaType === "application/pdf");
         if (accepted === undefined || !accepted.extensions.some(extension => file.name.toLowerCase().endsWith(extension))
-          || file.size === 0 || file.size > accepted.maxBytes || file.type !== "" && file.type !== "application/pdf") throw refused();
+          || file.type !== "" && file.type !== "application/pdf") throw new WrongPdfType();
+        if (file.size === 0 || file.size > accepted.maxBytes) throw refused();
         const source = OcrSourceUploadSchema.parse(await client.uploadOcrSource({ fileName: file.name, bytes: new Uint8Array(await file.arrayBuffer()) }, operation.signal));
         if (source.uploadedBy !== owner.scope.actorId || source.fileName !== file.name || source.artifact.bytes !== file.size) throw refused();
         uploaded.push({ source, readingId: crypto.randomUUID() });
@@ -69,7 +71,7 @@ export function usePdfRunInput(client: DashboardClient, binding: DashboardComman
       if (new Set(combined.map(file => file.source.artifact.sha256)).size !== combined.length) throw refused();
       setDraft({ files: combined, asOf: previous?.asOf ?? owner.authority.today, reviewer: previous?.reviewer ?? owner.authority.epoch.bootstrap.actor.label });
     } catch (cause) {
-      if (current.current === operation && !operation.signal.aborted) setError(cause instanceof DashboardClientError ? cause.message : refused().message);
+      if (current.current === operation && !operation.signal.aborted) setError(cause instanceof DashboardClientError || cause instanceof WrongPdfType ? cause.message : refused().message);
     } finally { if (current.current === operation) { current.current = null; setLoading(false); } }
   }, [client]);
   return { draft, picks, pick: (field: string, value: string) => setPicks(previous => ({ ...previous, [field]: value })), loading, error, reset, choose, remove: (index: number) => {

@@ -629,6 +629,7 @@ function identityComparisons(packet: IdentityEvidencePacket): readonly Readonly<
     name: [packet.documentName, packet.ucpathName],
     eid: [/^\d{8}$/u.test(packet.documentEidText) ? maskedEid(packet.documentEidText) : value.noFormEid, maskedEid(packet.emplId)],
     employment: [value.oneActiveJob, jobs.disposition === "single-active-job" ? value.oneActiveJob
+      : jobs.disposition === "sole-record" ? value.soleRecord
       : jobs.disposition === "no-active-job" ? value.noActiveJob
         : jobs.disposition === "concurrent-active-jobs" ? `${String(jobs.activeRowCount)} active jobs` : value.unknownJob],
     "name-search": [packet.documentName, nameSearch.status === "resolved" ? `${nameSearch.candidate.name} · ${maskedEid(nameSearch.candidate.eid)}`

@@ -108,12 +108,13 @@ export const separationsWorkflow = defineWorkflow({
   actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {
     inputRun: {
-      placeholder: "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
+      placeholder: "Enter Kuali document numbers separated by a semicolon or Shift+Enter (e.g. 4502; 4510)",
       parser: {
         split: { kind: "delimited", delimiters: [";", "\n"] },
         rules: [
           { when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" },
         ],
+        unmatched: "Kuali ID must contain digits.",
       },
       examples: [
         {
@@ -239,7 +240,7 @@ export const separationsWorkflow = defineWorkflow({
     const { approval } = identity, { employment, departmentOption } = jobs, { dates } = timecard;
     const { receipt, clearPending, fileTermination } = termination, { finalizeKuali } = finalization;
     return {
-      steps: [...extraction.steps, ...identity.steps, ...timecard.steps, ...reference.steps, ...termination.steps, ...finalization.steps],
+      steps: [...extraction.steps, ...jobs.steps, ...timecard.steps, ...identity.steps, ...reference.steps, ...termination.steps, ...finalization.steps],
       result: result(
         SeparationsResultSchema,
         [approval, employment, departmentOption, dates, receipt, clearPending, fileTermination, finalizeKuali],

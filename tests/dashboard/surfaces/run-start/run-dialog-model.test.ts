@@ -53,7 +53,7 @@ const applied = (commandId: string) => CommandResultSchema.parse({ state: "appli
 const feedback = formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {}));
 const authorityText = formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text;
 
-const LAST: LaunchGates = { next: null, inputBlocked: false, stepsBlocked: false, optionsBlocked: false, rerunInputBlocked: false, referencesUnavailable: false, omissionMismatch: false, plannedCount: 1 };
+const LAST: LaunchGates = { next: null, inputBlocked: false, stepsBlocked: false, optionsBlocked: false, rerunInputBlocked: false, checksBlocked: false, referencesUnavailable: false, omissionMismatch: false, plannedCount: 1 };
 const gates = (patch: Partial<LaunchGates> = {}): LaunchGates => ({ ...LAST, ...patch });
 const at = (patch: Partial<RunDialogState>): RunDialogState => ({ ...initialRunDialogState, ...patch });
 const rerunReady = (load: Partial<{ warning: typeof WARNING; acknowledgment: string }> = {}) =>
@@ -177,6 +177,15 @@ describe("moving between stages", () => {
     assert.equal(refusal(at({ stage: "Steps", source: rerunReady() }), { type: "go-to", stage: "Steps", via: "back" }), "not-here");
   });
 
+  it("back from Checks skips Steps unless the path on screen has it", () => {
+    const plain = ["Input", "Options", "Checks"] as const;
+    assert.equal(moved(at({ stage: "Checks" }), { type: "go-to", stage: "Options", via: "back", path: plain }).next.stage, "Options");
+    assert.equal(refusal(at({ stage: "Checks" }), { type: "go-to", stage: "Steps", via: "back", path: plain }), "not-here");
+    assert.equal(moved(at({ stage: "Checks" }), { type: "go-to", stage: "Steps", via: "back", path: ["Input", "Options", "Steps", "Checks"] }).next.stage, "Steps");
+    assert.equal(runDialogControls(at({ stage: "Checks" }), gates({ path: plain })).back, "Options");
+    assert.equal(runDialogControls(at({ stage: "Checks", source: rerunReady() }), gates({ path: ["Steps", "Values", "Options", "Checks"] })).back, "Options");
+  });
+
   it("the stage bar goes to an earlier stage only, idle and without a saved submission", () => {
     assert.equal(moved(at({ stage: "Steps" }), { type: "go-to", stage: "Input", via: "stage-bar" }).next.stage, "Input");
     assert.equal(refusal(at({ stage: "Input" }), { type: "go-to", stage: "Options", via: "stage-bar" }), "not-here");
@@ -213,6 +222,9 @@ describe("moving between stages", () => {
 
   it("continue on the last stage or Warning is not a move", () => {
     assert.equal(refusal(at({ stage: "Options" }), { type: "continue", gates: LAST }), "not-here");
+    assert.equal(refusal(at({ stage: "Checks" }), { type: "continue", gates: LAST }), "not-here", "Checks is the last stage");
+    assert.equal(refusal(at({ stage: "Steps" }), { type: "continue", gates: gates({ next: "Checks", stepsBlocked: true }) }), "blocked", "missing step facts stop Steps before Checks");
+    assert.equal(moved(at({ stage: "Options" }), { type: "continue", gates: gates({ next: "Checks" }) }).next.stage, "Checks");
     assert.equal(refusal(at({ stage: "Warning", source: rerunReady({ warning: WARNING }) }), { type: "continue", gates: gates({ next: "Values" }) }), "not-here");
   });
 
@@ -240,6 +252,9 @@ describe("moving between stages", () => {
   it("start without a plan is blocked by step facts on Steps and by the input; missing references set the problem", () => {
     assert.equal(refusal(at({ stage: "Steps" }), startEvent({ stepsBlocked: true })), "blocked");
     assert.equal(refusal(at({ stage: "Options" }), startEvent({ inputBlocked: true })), "blocked");
+    assert.equal(refusal(at({ stage: "Checks" }), startEvent({ checksBlocked: true })), "blocked", "a failed or unread check keeps Start off");
+    assert.equal(refusal(at({ stage: "Checks", shown: shownA }), startEvent({ checksBlocked: true })), "blocked", "a plan on screen does not bypass the checks");
+    assert.deepEqual(kinds(moved(at({ stage: "Checks" }), startEvent({ checksBlocked: false }))), ["request-plan"]);
     assert.equal(refusal(at({ stage: "Options", source: rerunReady() }), startEvent({ rerunInputBlocked: true })), "blocked");
     const references = moved(at({ stage: "Options" }), startEvent({ referencesUnavailable: true }));
     assert.equal(references.next.problem, REFERENCES_UNAVAILABLE);
@@ -563,8 +578,8 @@ describe("runDialogControls", () => {
     assert.equal(runDialogControls(at({ stage: "Options" }), gates({ dryRun: true })).primary.label, "Start dry run");
     assert.equal(runDialogControls(at({ stage: "Options" }), gates({ dryRun: false })).primary.label, "Start live run");
     const two = { ...shownA, plan: plan(PLAN_A, { planned: [plan(PLAN_A).planned[0], { logicalKey: "entry:2", title: "Grace Hopper", matchKey: "eid:E2" }] }) };
-    assert.equal(runDialogControls(at({ stage: "Options", shown: two }), LAST).primary.label, "Start 2 runs");
-    assert.equal(runDialogControls(at({ stage: "Options", shown: shownA, source: rerunReady() }), LAST).primary.label, "Create rerun");
+    assert.equal(runDialogControls(at({ stage: "Options", shown: two }), LAST).primary.label, "Start run");
+    assert.equal(runDialogControls(at({ stage: "Options", shown: shownA, source: rerunReady() }), LAST).primary.label, "Start run");
     const warning = runDialogControls(at({ stage: "Warning", source: rerunReady({ warning: WARNING }) }), gates({ next: "Values" }));
     assert.equal(warning.primary.label, "Confirm");
     assert.deepEqual(warning.cancel, { type: "cancel-warning" });

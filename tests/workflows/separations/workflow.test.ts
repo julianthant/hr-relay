@@ -105,10 +105,11 @@ describe("workflow definition public equivalence characterization", () => {
         ],
         surfaces: {
           inputRun: {
-            placeholder: "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
+            placeholder: "Enter Kuali document numbers separated by a semicolon or Shift+Enter (e.g. 4502; 4510)",
             parser: {
               split: { kind: "delimited", delimiters: [";", "\n"] },
               rules: [{ when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" }],
+              unmatched: "Kuali ID must contain digits.",
             },
             examples: [
               { key: "one-document", label: "One document", text: "4502", note: "the ordinary case — one run for one Kuali separation document" },
@@ -145,12 +146,6 @@ describe("workflow definition public equivalence characterization", () => {
           {
             key: "identity-check", label: "Identity check", nodes: [
               { id: "name-search", label: "Name Search" }, { id: "subject", label: "Separation Subject" },
-              { id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" },
-              { id: "approval", label: "Approval Check" },
-            ]
-          },
-          {
-            key: "job-summary", label: "Job summary", nodes: [
               { id: "job-summary", label: "Job Summary" }, { id: "employment", label: "Employment" },
               { id: "department-option", label: "Department Option" },
             ]
@@ -159,6 +154,12 @@ describe("workflow definition public equivalence characterization", () => {
             key: "kronos-timecard", label: "Kronos timecard", nodes: [
               { id: "timecard-search", label: "Timecard Search" }, { id: "timecard", label: "Timecard" },
               { id: "dates", label: "Reconciled Dates" },
+            ]
+          },
+          {
+            key: "identity-review", label: "Identity approval", nodes: [
+              { id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" },
+              { id: "approval", label: "Approval Check" },
             ]
           },
           {
@@ -265,7 +266,7 @@ describe("workflow definition public equivalence characterization", () => {
         { id: "termination-type", kind: "task", dependsOn: ["document"] },
         { id: "name-search", kind: "task", dependsOn: ["plan"] },
         { id: "subject", kind: "task", dependsOn: ["document", "plan", "name-search"] },
-        { id: "job-summary", kind: "task", dependsOn: ["subject"] },
+        { id: "job-summary", kind: "task", dependsOn: ["document", "subject"] },
         { id: "employment", kind: "task", dependsOn: ["document", "job-summary"] },
         { id: "department-option", kind: "task", dependsOn: ["document", "employment"] },
         { id: "timecard-search", kind: "task", dependsOn: ["subject"] },

@@ -656,17 +656,18 @@ export class WorkerSessionManager {
         };
         assertLeaseActive();
         let reason: string | undefined;
+        let detail: string | undefined;
         let failure: unknown;
         try {
           const unavailable = await this.#captureLeaseScreenshot(resource, { kind: "task-point", nodeId: screenshotOwner.nodeId, attempt: screenshotOwner.attempt, boundary }, configFingerprint, assertLeaseActive, screenshotOwner.sampleLabels);
-          if (unavailable !== undefined) { reason = unavailable; failure = new BrowserScreenshotUnavailableError(unavailable); }
+          if (unavailable !== undefined) { reason = unavailable.reason; detail = unavailable.detail; failure = new BrowserScreenshotUnavailableError(unavailable.reason); }
         } catch (cause) {
           assertLeaseActive();
           failure = cause;
           reason = cause instanceof Error && ["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "AggregateError", "TimeoutError"].includes(cause.name) ? cause.name : "Error";
         }
         if (reason !== undefined) {
-          screenshotOwner.log.warn("Screenshot capture unavailable.", { code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", boundary, reason });
+          screenshotOwner.log.warn("Screenshot capture unavailable.", { code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", boundary, reason, captureFailure: detail ?? reason });
           throw new TaskError(screenshotOwner.taskId, "BROWSER_SCREENSHOT_CAPTURE_FAILED", ERROR_CATALOG.BROWSER_SCREENSHOT_CAPTURE_FAILED.text, { cause: failure });
         }
       };
@@ -732,7 +733,7 @@ export class WorkerSessionManager {
     configFingerprint: Fingerprint,
     assertLeaseActive?: () => void,
     sampleLabels?: readonly string[],
-  ): Promise<Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"] | undefined> {
+  ): Promise<Pick<Extract<BrowserScreenshotEvidence, { state: "unavailable" }>, "reason" | "detail"> | undefined> {
     const context = this.#runScreenshotContext;
     if (context === undefined) {
       if (trigger.kind === "task-point") throw new Error("Required capture has no run binding");
@@ -755,7 +756,7 @@ export class WorkerSessionManager {
       screenshot,
       ...(sampleLabels === undefined ? {} : { sampleLabels }),
     });
-    if (screenshot.state === "unavailable") return screenshot.reason;
+    if (screenshot.state === "unavailable") return screenshot.detail === undefined ? { reason: screenshot.reason } : { reason: screenshot.reason, detail: screenshot.detail };
   }
 
   async closeAll(reason: "parked" | "worker-stop"): Promise<void> {

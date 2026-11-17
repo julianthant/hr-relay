@@ -121,6 +121,7 @@ export function SettingsPage({
   onSaved,
   onSaveProblem,
   onClose,
+  backToRun = false,
 }: {
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
@@ -136,6 +137,8 @@ export function SettingsPage({
   onSection: (next: string, target?: string) => void;
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onClose: () => void;
+  /** Settings was opened by a Run dialog Fix button: the way out reads "Back to run" and focus moves in on open. */
+  backToRun?: boolean;
   onSaved?: SettingsSaveListener;
   onSaveProblem?: SettingsSaveProblemListener;
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
@@ -169,6 +172,7 @@ export function SettingsPage({
     return () => { element.removeEventListener("scroll", remember); };
   }, [activeId, searchTarget, searchVisit]);
   useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
+  useEffect(() => { if (backToRun) content.current?.focus(); }, [backToRun]);
   const settingsEntries = groups.filter(group => group.id === "personal" || group.id === "advanced").flatMap(group => group.entries);
   const activeSettingsEditorSection = activeId !== undefined && (settingsEntries.some(entry => entry.id === activeId) || activeId === "performance");
   const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount;
@@ -212,7 +216,7 @@ export function SettingsPage({
   return (
     <TakeoverFrame label="Settings" direction="row" animateFrame={false} className="settings-takeover">
       <nav aria-label="Settings sections" className="settings-panel-nav rail-scroll">
-        <header className="settings-nav-header"><h2>Settings</h2><IconButton label="Back to dashboard" size="sm" icon={<ArrowLeft className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
+        <header className="settings-nav-header"><h2>Settings</h2><IconButton label={backToRun ? "Back to run" : "Back to dashboard"} size="sm" icon={<ArrowLeft className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
         <SearchInput ref={navSearch} variant="sidebar" aria-label="Search settings" placeholder="Search" value={navQuery} onChange={event => setNavQuery(event.target.value)} onClear={() => setNavQuery("")} className="settings-nav-search"
           aria-controls={navQuery.trim() ? "settings-search-results" : undefined}
           onKeyDown={event => {

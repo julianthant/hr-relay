@@ -57,8 +57,10 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
               profileName={boot.actor.label}
               descriptorFingerprint={boot.descriptorHash}
               onSection={(next, settingsTarget) => setRoute({ ...routeWithoutTakeovers(route), settings: next, settingsTarget,
+                ...(route.settingsFrom === undefined ? {} : { settingsFrom: route.settingsFrom }),
                 ...(next === "activity" ? { activity: "" } : next === "explorer" ? { explore: activeWorkflowId } : {}) })}
-              onClose={() => closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route))}
+              onClose={() => route.settingsFrom === "run" ? setRoute(routeWithoutTakeovers(route)) : closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route))}
+              backToRun={route.settingsFrom === "run"}
               onExitGuardChange={onSettingsExitGuardChange}
               onSaved={onSettingsSaved}
               onSaveProblem={onSettingsSaveProblem}
