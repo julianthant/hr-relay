@@ -40,14 +40,14 @@ async function openChecks(page: Page, baseUrl: string) {
   return dialog;
 }
 
-test("every Fix lands on a focused row and Escape returns to the dialog", async ({ page }) => {
+for (const width of [1280, 1024]) test(`every Fix lands on its focused row, and Escape returns to the dialog at ${width}`, async ({ page }) => {
   const app = new Hono();
   app.get("/api/v1/preflight", c => c.json(PreflightReadinessWireSchema.parse({ state: "present", report: report(PreflightSelectionSchema.parse(JSON.parse(c.req.query("selection") ?? "{}")).workflowId) })));
   const server = await startSweepOverlay(app, { bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, descriptorHash: day.descriptorHash, day });
   try {
-    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.setViewportSize({ width, height: 720 });
     let dialog = await openChecks(page, server.baseUrl);
-    await page.screenshot({ path: `${out}/after-checks-fail-1280.png` });
+    await page.screenshot({ path: `${out}/after-checks-fail-${width}.png` });
     const fixes = await dialog.locator("[data-run-check-fix]").evaluateAll(nodes => nodes.map(n => [n.getAttribute("data-run-check-fix"), n.textContent]));
     expect(fixes).toEqual([["fiscal.current", "Set fiscal year"], ["secrets.ucpath-sso", "Add password"], ["profile.identity", "Set timekeeper name"]]);
     for (const [check] of fixes) {
@@ -55,14 +55,13 @@ test("every Fix lands on a focused row and Escape returns to the dialog", async 
       await expect(page.getByRole("navigation", { name: "Settings sections" })).toBeVisible();
       await expect(page.getByText(/Opened for the .* check/u)).toBeVisible();
       await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("data-settings-path") ?? "none")).not.toBe("none");
-      const focused = await page.evaluate(() => document.activeElement?.getAttribute("data-settings-path"));
-      expect(focused).toBe(LANDS[check as string]);
-      await page.screenshot({ path: `${out}/after-fix-${check}-1280.png` });
+      expect(await page.evaluate(() => document.activeElement?.getAttribute("data-settings-path"))).toBe(LANDS[check as string]);
+      await page.screenshot({ path: `${out}/after-fix-${check}-${width}.png` });
       await page.keyboard.press("Escape");
       dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();
       await expect(dialog.getByLabel("Check results")).toBeVisible();
+      await page.screenshot({ path: `${out}/after-escape-back-${check}-${width}.png` });
     }
-    await page.screenshot({ path: `${out}/after-escape-back-1280.png` });
   } finally { await page.goto("about:blank"); await server.close(); }
 });
