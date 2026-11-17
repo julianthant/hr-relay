@@ -1283,7 +1283,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             client={client} workflowCatalog={explorerCatalog} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
-            onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} theme={theme} onToggleTheme={onToggleTheme}>
+            onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} onSettingsSaveProblem={problem => toast(problem)} theme={theme} onToggleTheme={onToggleTheme}>
           <>
           {}
           <CommandRecovery
