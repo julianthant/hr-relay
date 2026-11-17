@@ -3,6 +3,9 @@ import { PreflightSelectionSchema, type PreflightReadinessWire } from "../../../
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { readWithDeadline } from "../../client/read-deadline.js";
 import type { PreflightQueries } from "../../client/queries/preflight-queries.js";
+import type { SettingsQueries } from "../../client/queries/settings-queries.js";
+import { useDashboardCommandBinding } from "../../state/client-context.js";
+import { systemClock } from "../../../rules/time/clock.js";
 import { CHECK_COPY } from "../settings/preflight/preflight-check-copy.js";
 import { runCheckFix } from "../settings/preflight/preflight-remedy-model.js";
 
@@ -40,19 +43,44 @@ export function runCheckRows(wire: PreflightReadinessWire): RunChecksState {
 export const runChecksBlocked = (state: RunChecksState): boolean =>
   state.state !== "ready" || state.rows.some(row => row.verdict === "fail");
 
-/** Reads the selected workflow's readiness while `active`, and again on every `recheck` or workflow change. */
-export function useRunChecks(client: PreflightQueries, workflowId: string | undefined, active: boolean): Readonly<{ state: RunChecksState; recheck: () => void }> {
+/** Prepares missing exact-scope evidence and explicitly reruns it on `recheck`. */
+export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "editableSettings">, workflowId: string | undefined, active: boolean): Readonly<{ state: RunChecksState; recheck: () => void }> {
+  const binding = useDashboardCommandBinding();
+  const actorId = binding?.scope.actorId;
+  const authority = binding?.authority.epoch;
   const [state, setState] = useState<RunChecksState>({ state: "checking" });
   const [round, setRound] = useState(0);
   useEffect(() => {
     if (!active || workflowId === undefined) return;
     let current = true;
     setState({ state: "checking" });
-    void readWithDeadline(() => client.readPreflight(PreflightSelectionSchema.parse({ workflowId })), "PREFLIGHT_READ_UNAVAILABLE").then(
-      wire => { if (current) setState(runCheckRows(wire)); },
+    const check = async (): Promise<PreflightReadinessWire | undefined> => {
+      const selection = PreflightSelectionSchema.parse({ workflowId });
+      if (round === 0) {
+        const wire = await readWithDeadline(() => client.readPreflight(selection), "PREFLIGHT_READ_UNAVAILABLE");
+        if (!current || wire.state === "present") return wire;
+      }
+      if (actorId === undefined) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_SCOPE_UNAVAILABLE.text };
+      const [settings, workflows] = await readWithDeadline(() => Promise.all([client.editableSettings(), client.preflightScopes()]), "PREFLIGHT_SCOPE_UNAVAILABLE");
+      if (!current) return;
+      const workflow = workflows.find(candidate => candidate.id === workflowId);
+      if (workflow === undefined) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_SCOPE_UNAVAILABLE.text };
+      if (settings.runtimeStatus.state !== "current") return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_SETTINGS_RESTART_REQUIRED.text };
+      await readWithDeadline(() => client.rerunPreflight({
+        commandId: crypto.randomUUID(), requestedAt: systemClock.now().toISOString(), requestedBy: actorId,
+        source: "run-start", type: "rerun-preflight", target: {
+          expectedConfigFingerprint: settings.activeConfigFingerprint,
+          expectedDescriptorFingerprint: workflow.descriptorFingerprint, selection,
+        },
+      }), "PREFLIGHT_RERUN_UNAVAILABLE");
+      if (!current) return;
+      return readWithDeadline(() => client.readPreflight(selection), "PREFLIGHT_READ_UNAVAILABLE");
+    };
+    void check().then(
+      wire => { if (current && wire !== undefined) setState(runCheckRows(wire)); },
       () => { if (current) setState({ state: "unavailable", message: ERROR_CATALOG.PREFLIGHT_READ_UNAVAILABLE.text }); });
     return () => { current = false; };
-  }, [client, workflowId, active, round]);
+  }, [client, workflowId, active, round, actorId, authority]);
   const recheck = useCallback(() => setRound(value => value + 1), []);
   return { state, recheck };
 }
