@@ -807,7 +807,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   SETTINGS_SAVE_UNCONFIRMED: catalogEntry(
-    "Relay could not confirm this save. Your changes are still here. Save again to check.",
+    "Relay could not confirm this change was saved. Check the setting, then change it again if it is not what you picked.",
     EmptyParametersSchema,
   ),
   PROFILE_LOGIN_CHANGE_UNKNOWN: catalogEntry(
