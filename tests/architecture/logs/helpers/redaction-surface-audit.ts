@@ -1742,6 +1742,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/cross-date-search", path: "snapshot.token", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].metadata.actor.value", origin: "captured-hr-value" },
   { surface: "wire/cross-date-search", path: "results[].metadata.subject.value", origin: "captured-hr-value" },
+  { surface: "wire/cross-date-search", path: "results[].displayTitle", origin: "captured-hr-value" },
   { surface: "wire/cross-date-search", path: "results[].registration.categoryId", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].registration.code", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].registration.label", origin: "repository-authored" },

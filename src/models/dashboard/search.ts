@@ -132,6 +132,7 @@ export const CrossDateSearchResultSchema = z.strictObject({
   traceId: TraceIdSchema,
   workflowId: CrossDateSearchWorkflowFacetSchema,
   registration: CrossDateSearchRegistrationSchema,
+  displayTitle: z.string().min(1).optional(),
   partitionDay: z.iso.date(),
   state: CrossDateSearchStateFacetSchema,
   shape: CrossDateSearchShapeFacetSchema,
