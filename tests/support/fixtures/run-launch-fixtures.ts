@@ -155,6 +155,22 @@ export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", in
       await h.planner.prepare?.({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false }, new AbortController().signal);
       const run = h.start(h.proposal()); h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
       const result = await h.execute(run); if (result.state !== "done") throw new Error(`source did not complete: ${result.state}`); return h.fresh(run); },
+    /** A source that failed in prepare, so Rerun opens from a failed run. */
+    async failedSource() {
+      const run = h.start(h.proposal());
+      h.world.onPrepare = () => { throw new Error("synthetic prepare failure"); };
+      try { const result = await h.execute(run); if (result.state !== "failed") throw new Error(`source did not fail: ${result.state}`); }
+      finally { delete h.world.onPrepare; }
+      return h.fresh(run); },
+    /** A source stopped by the operator while queued, so Rerun opens from a cancelled run. */
+    cancelledSource() {
+      const run = h.start(h.proposal());
+      const result = h.kernel.execute({ commandId: h.ids.uuid(), family: "run", type: "cancel", source: "dashboard", requestedBy: "local-operator",
+        requestedAt: h.clock.now().toISOString(), target: { runId: run.envelope.runId, expectedVersion: run.version } });
+      if (result.state !== "applied") throw new Error(`source was not cancelled: ${result.state}`);
+      const cancelled = h.fresh(run);
+      if (cancelled.lifecycle.state !== "terminal" || cancelled.lifecycle.outcome !== "cancelled") throw new Error("source did not end cancelled");
+      return cancelled; },
     authoritySnapshot() { return JSON.stringify({ generation: h.database.getMeta(), roots: h.queueRoots,
       plans: h.planIds.minted(), ids: h.ids.minted(), lifecycleIds: h.lifecycleIds.minted() }); },
   };
