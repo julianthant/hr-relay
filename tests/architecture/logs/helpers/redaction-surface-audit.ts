@@ -1,4 +1,4 @@
-import { AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryViewSchema, AssistantRequestSchema, AssistantRespondEnvelopeSchema } from "../../../../src/models/dashboard/assistant.js";
+import { AssistantActivityWireSchema, AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryViewSchema, AssistantRequestSchema, AssistantRespondEnvelopeSchema } from "../../../../src/models/dashboard/assistant.js";
 import { ASSISTANT_PLUGIN_MODULES, assistantToolEgress } from "./assistant-tool-egress.js";
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema } from "../../../../src/models/dashboard/activity-population.js";
 import { ChatGptAccountStatusSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptOcrTestResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
@@ -808,6 +808,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantRespondEnvelopeSchema },
   { id: "request/assistant-history", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantHistoryOperationSchema },
   { id: "wire/assistant-history", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantHistoryViewSchema },
+  { id: "wire/assistant-activity", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantActivityWireSchema },
   { id: "wire/assistant-conversation", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantConversationViewSchema },
   { id: "egress/assistant-user-message", egress: "process-egress", module: "src/backend/assistant/service.ts", schema: z.strictObject({ content: z.string() }) },
   // Replayed rows: operator turns replay as user messages (above); answers and the fixed proposal and decision captions replay as assistant messages.
@@ -1312,6 +1313,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "request/assistant-history", path: "text", origin: "repository-authored" },
   { surface: "request/assistant-history", path: "messages[].text", origin: "external-text" },
   { surface: "wire/assistant-history", path: "chats[].title", origin: "operator-authored" },
+  { surface: "wire/assistant-activity", path: "rows[].label", origin: "repository-authored" },
   { surface: "wire/assistant-conversation", path: "messages[].text", origin: "external-text" },
   { surface: "wire/assistant-conversation", path: "messages[].attachments[].name", origin: "local-filesystem-name" },
   { surface: "egress/assistant-user-message", path: "content", origin: "operator-authored",
@@ -1716,6 +1718,10 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.workbookRows.typeId", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.parser.split.delimiters[]", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.parser.constants[].value.text", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.parser.unmatched", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.modes[].parser.missingRefusal", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.modes[].parser.shapeRefusal", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.modes[].parser.spec.unmatched", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.controls[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.controls[].refusal", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.inputRun.typedInput.controls[].modes[]", origin: "repository-authored" },

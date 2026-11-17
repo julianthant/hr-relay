@@ -43,7 +43,8 @@ describe("canonical Person Lookup launch input", () => {
     assert.deepEqual(preview.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "902481357", crmCheck: false, includeCrmDates: false }]);
     assert.deepEqual(preview.entries, [{ index: 0, sourceText: "Example, Person, x, [masked]" }]);
     const rejected = previewRunInput(surface, "Example, Person, x, x", { mode: "match", crmCheck: false, includeCrmDates: false });
-    assert.match(rejected.problem ?? "", /Match requires/u);
+    assert.equal(rejected.problem, "Match needs DOB or SSN; both cannot be x.");
+    assert.deepEqual(rejected.entries, [{ index: 0, sourceText: "Example, Person, x, x" }]);
     assert.deepEqual(rejected.submissions, []);
   });
   it("parses the declared grammar and merges duplicate identities", () => {
@@ -57,7 +58,8 @@ describe("canonical Person Lookup launch input", () => {
     ] as const) {
       assert.deepEqual(previewRunInput(surface, text, { mode, crmCheck: mode === "search", includeCrmDates: false }).submissions, expected);
     }
-    for (const text of ["Example, Person, x, 902-48-1357", "Example, Person, x, 902 48 1357", "Example, , x, 902481357", "Example, Person, x, x"]) {
+    assert.deepEqual(previewRunInput(surface, "Example, Person, x, 902-48-1357", { mode: "match" }).submissions, previewRunInput(surface, "Example, Person, x, 902481357", { mode: "match" }).submissions);
+    for (const text of ["Example, Person, x, 902 48 1357", "Example, , x, 902481357", "Example, Person, x, x"]) {
       assert.ok(previewRunInput(surface, text, { mode: "match" }).problem);
     }
   });

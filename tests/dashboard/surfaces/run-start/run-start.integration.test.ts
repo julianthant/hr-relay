@@ -63,7 +63,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await act(async () => checkbox("Dry run").click()); await press("Start dry run");
     assert.equal(document.querySelector('[role="dialog"]') !== null, true);
     assert.equal(window.sessionStorage.length, 1); assert.equal(h.queueRoots.length, 2);
-    assert.equal(text().includes("Rerun started"), false); assert.match(text(), /readback/u);
+    assert.equal(text().includes("Rerun created"), false); assert.match(text(), /readback/u);
     await press("Cancel"); assert.equal(window.sessionStorage.length, 1);
   });
   for (const replacement of ["client", "actor", "day ABA"] as const) {
@@ -82,7 +82,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
         { actorId: replacement === "actor" ? "other-operator" : "local-operator", requestKey: replacement === "day ABA" ? 2 : 0 });
       const finish = release; assert.ok(finish); await act(async () => finish());
       assert.equal(document.querySelector('[role="dialog"]') !== null, true);
-      assert.equal(text().includes("Rerun started"), false); assert.equal(window.sessionStorage.length, 1);
+      assert.equal(text().includes("Rerun created"), false); assert.equal(window.sessionStorage.length, 1);
       assert.equal(h.finalCommands.length, 1);
       if (replacement !== "actor") assert.equal(button("Replay exact submission").disabled, false);
     });
@@ -96,7 +96,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await reachChecks("Start dry run"); await act(async () => button("Start dry run").click());
     await press("Back"); await press("Back"); await fill(field("Employee ID"), "10812346");
     const finish = release; assert.ok(finish); await act(async () => finish());
-    assert.equal(document.querySelector('[role="dialog"]') !== null, true); assert.equal(text().includes("Rerun started"), false);
+    assert.equal(document.querySelector('[role="dialog"]') !== null, true); assert.equal(text().includes("Rerun created"), false);
     assert.equal(window.sessionStorage.length, 1); assert.equal(h.finalCommands.length, 1);
   });
   it("refuses a final submission without a command binding", async () => {

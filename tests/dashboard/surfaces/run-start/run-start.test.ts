@@ -154,7 +154,7 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
   it("drops the plan when a run control moves under it", async () => {
 
     const dialog = await openDialog(stubClient({
-      submitStartPlan: async () => ({ ...planResponse("5a000000-0000-4000-8000-000000000001"), refused: [{ entry: 2, code: "input-invalid", message: "Bad row." }] }),
+      submitStartPlan: async () => ({ ...planResponse("5a000000-0000-4000-8000-000000000001"), priority: "bulk", refused: [{ entry: 2, code: "input-invalid", message: "Bad row." }] }),
     }));
     await dialog.type(`${TYPED}\n10873699`);
     await dialog.press("Continue");
@@ -163,7 +163,7 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
     assert.ok(planIsDrawn(), "the plan never rendered");
 
     await dialog.press("Back");
-    await dialog.choosePriority("bulk");
+    await dialog.choosePriority("interactive");
     await dialog.press("Continue");
 
     assert.ok(!planIsDrawn(), "the plan survived a control that re-fingerprints the request");
@@ -435,7 +435,7 @@ describe("an omittable step draws its own form when it is left out", () => {
     assert.ok(dialog.text().includes("Separation date"));
 
     assert.ok(dialog.text().includes("The employee's last physical day of work, MM/DD/YYYY"));
-    assert.ok(dialog.text().includes("6 / 7 included"));
+    assert.ok(dialog.text().includes("6 of 7 included"));
   });
 
   it("says so when the omitted step asks for nothing at all", async () => {
@@ -526,7 +526,7 @@ describe("the request carries the operator's omissions", () => {
     );
 
     await dialog.press("Back");
-    assert.ok(dialog.text().includes("5 / 7 included"));
+    assert.ok(dialog.text().includes("5 of 7 included"));
   });
 
   it("sends no omissions at all when the operator omitted nothing", async () => {
@@ -560,7 +560,7 @@ describe("a plan that omits a different set cannot be started", () => {
     assert.ok(dialog.text().includes("This plan does not describe the steps you omitted"));
     assert.ok(dialog.text().includes("kronos-timecard"));
     assert.ok(dialog.text().includes("kuali-finalization"));
-    assert.equal(dialog.disabled("Start 1 run"), true, "a plan for a different run was startable");
+    assert.equal(dialog.disabled("Start live run"), true, "a plan for a different run was startable");
   });
 
   it("starts when the plan names exactly the set the dialog sent", async () => {
@@ -626,12 +626,12 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
     assert.equal(dialog.disabled("UCPath transaction"), false);
 
     await dialog.press("Kronos timecard");
-    assert.ok(dialog.text().includes("5 / 7 included"), dialog.text());
+    assert.ok(dialog.text().includes("5 of 7 included"), dialog.text());
     assert.equal(dialog.disabled("UCPath transaction"), true, "the forced row stayed pressable");
     assert.ok(dialog.text().includes("Omitted with Kronos timecard."));
 
     await dialog.press("UCPath transaction");
-    assert.ok(dialog.text().includes("5 / 7 included"));
+    assert.ok(dialog.text().includes("5 of 7 included"));
 
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
@@ -643,7 +643,7 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
 
     await dialog.press("Back");
     await dialog.press("Kronos timecard");
-    assert.ok(dialog.text().includes("7 / 7 included"), "undoing the choice left the forced step out");
+    assert.ok(dialog.text().includes("7 of 7 included"), "undoing the choice left the forced step out");
     assert.equal(dialog.disabled("UCPath transaction"), false);
   });
 });

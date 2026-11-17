@@ -9,10 +9,12 @@ export interface AnalyticsData {
   running: number; typicalSeconds: number | null;
   workflows: readonly AnalyticsWorkflow[];
   reasons: readonly { label: string; workflow: string; runs: number }[];
+  /** Per-day assistant use for the report's days, in order. Tool calls and approvals are not recorded, so no series exists for them. */
+  assistant: { messages: readonly { date: string; count: number }[]; actions: readonly { date: string; proposed: number }[] };
 }
 
 /** `date` is the readable day or week the hover card names. */
-export interface AnalyticsBucket { date: string; label: string; step: number; done: number; failed: number; attention: number; seconds: Record<string, number | null> }
+export interface AnalyticsBucket { date: string; label: string; start: string; end: string; step: number; done: number; failed: number; attention: number; seconds: Record<string, number | null> }
 
 const DAY = 86_400_000;
 const MAX_DAILY_BARS = 31;
@@ -43,7 +45,7 @@ export function analyticsBuckets(range: ActivityDateRange, workflows: readonly A
     const start = shiftDate(range.from, offset);
     const end = shiftDate(range.from, Math.min(offset + step, total) - 1);
     const label = step === 1 && total <= 7 ? `${WEEKDAY.format(parse(start))} ${new Date(parse(start)).getUTCDate()}` : step > 7 ? FULL_DATE.format(parse(start)) : MONTH_DAY.format(parse(start));
-    const bucket: AnalyticsBucket = { date: start === end ? FULL_DATE.format(parse(start)) : analyticsPeriodLabel({ from: start, to: end }), label, step, done: 0, failed: 0, attention: 0, seconds: {} };
+    const bucket: AnalyticsBucket = { date: start === end ? FULL_DATE.format(parse(start)) : analyticsPeriodLabel({ from: start, to: end }), label, start, end, step, done: 0, failed: 0, attention: 0, seconds: {} };
     for (const workflow of workflows) {
       const days = workflow.days.filter(day => day.date >= start && day.date <= end);
       for (const day of days) { bucket.done += day.done; bucket.failed += day.failed; bucket.attention += day.attention; }
@@ -55,6 +57,10 @@ export function analyticsBuckets(range: ActivityDateRange, workflows: readonly A
   return buckets;
 }
 
+/** A per-day count summed into each bucket, so assistant charts share the run charts' bars. */
+export const bucketCounts = (buckets: readonly AnalyticsBucket[], rows: readonly { date: string; count: number }[]): number[] =>
+  buckets.map(bucket => rows.reduce((total, row) => row.date >= bucket.start && row.date <= bucket.end ? total + row.count : total, 0));
+
 /** "Sep 20 – 26, 2026", or "Aug 28 – Sep 26, 2026" across months. */
 export function analyticsPeriodLabel(range: ActivityDateRange): string {
   const first = new Date(parse(range.from)), last = new Date(parse(range.to));
@@ -64,3 +70,9 @@ export function analyticsPeriodLabel(range: ActivityDateRange): string {
 }
 
 export const analyticsClock = (seconds: number | null) => seconds === null ? "—" : `${Math.floor(seconds / 60)}m ${String(Math.round(seconds % 60)).padStart(2, "0")}s`;
+
+/** Counts in multiples of 6 so four ticks fall on whole numbers. */
+export function countScale(max: number) {
+  const top = Math.max(6, Math.ceil(max / 6) * 6);
+  return { top, ticks: [top, top * 2 / 3, top / 3, 0].map(value => ({ value, label: String(value) })) };
+}

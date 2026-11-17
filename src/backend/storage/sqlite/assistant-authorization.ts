@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { AssistantActionRecordSchema, AssistantChatRecordSchema, type AssistantActionRecord } from "../../../models/profiles/assistant-authorization.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
+import { CommandResultSchema, NotificationCommandRequestSchema } from "../../../rules/commands/commands.js";
 
 type Table = "assistant_chats" | "assistant_actions";
 interface Ports {
@@ -15,6 +16,20 @@ export function createAssistantAuthorizationRepository(ports: Ports) {
     return row === undefined ? undefined : nativeOrdinaryRecordFromRow(table, row);
   };
   return Object.freeze({
+    notificationActivity() {
+      const metadata = z.strictObject({ id: z.uuid(),
+        operation: z.union(NotificationCommandRequestSchema.options.map(option => option.shape.type)),
+        outcome: z.union(CommandResultSchema.options.map(option => option.shape.state)).refine(state => state !== "pending", "assistant-activity-audit-pending"), completedAt: z.iso.datetime() });
+      return ports.database.prepare(`SELECT a.id, json_extract(a.payload_json,'$.command.type') AS operation,
+        json_extract(d.payload_json,'$.result.state') AS outcome, d.created_at AS completedAt
+        FROM assistant_actions a JOIN assistant_chats c ON c.id=a.chat_id
+        JOIN command_audits d ON d.command_id=a.command_id
+        JOIN database_states owner ON owner.id=1 AND owner.profile_id=c.profile_id
+        WHERE json_extract(a.payload_json,'$.binding.profileId')=c.profile_id
+        AND json_extract(a.payload_json,'$.command.family')='notification'
+        AND json_extract(a.payload_json,'$.command.source')='assistant'
+        ORDER BY d.created_at, a.id`).all().map(row => metadata.parse(row));
+    },
     chat(id: string) {
       const value = read("assistant_chats", z.uuid().parse(id));
       return value === undefined ? undefined : AssistantChatRecordSchema.parse(value);

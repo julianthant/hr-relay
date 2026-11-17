@@ -578,8 +578,8 @@ describe("runDialogControls", () => {
     assert.equal(runDialogControls(at({ stage: "Options" }), gates({ dryRun: true })).primary.label, "Start dry run");
     assert.equal(runDialogControls(at({ stage: "Options" }), gates({ dryRun: false })).primary.label, "Start live run");
     const two = { ...shownA, plan: plan(PLAN_A, { planned: [plan(PLAN_A).planned[0], { logicalKey: "entry:2", title: "Grace Hopper", matchKey: "eid:E2" }] }) };
-    assert.equal(runDialogControls(at({ stage: "Options", shown: two }), LAST).primary.label, "Start 2 runs");
-    assert.equal(runDialogControls(at({ stage: "Options", shown: shownA, source: rerunReady() }), LAST).primary.label, "Create rerun");
+    assert.equal(runDialogControls(at({ stage: "Options", shown: two }), LAST).primary.label, "Start run");
+    assert.equal(runDialogControls(at({ stage: "Options", shown: shownA, source: rerunReady() }), LAST).primary.label, "Start run");
     const warning = runDialogControls(at({ stage: "Warning", source: rerunReady({ warning: WARNING }) }), gates({ next: "Values" }));
     assert.equal(warning.primary.label, "Confirm");
     assert.deepEqual(warning.cancel, { type: "cancel-warning" });

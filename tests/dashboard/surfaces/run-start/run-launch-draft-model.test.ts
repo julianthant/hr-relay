@@ -58,7 +58,7 @@ describe("the fresh draft", () => {
     const draft = freshLaunchDraft(plain);
     assert.deepEqual({ ...draft, touchedFacts: [...draft.touchedFacts] }, {
       text: "", typed: { workflowId: "plain", draft: {} }, sourceInputUnchanged: false, stepSelection: undefined,
-      stepDrafts: {}, touchedFacts: [], factsAttempted: false, priority: "interactive", dryRunRequested: false, browserMode: "headed",
+      stepDrafts: {}, touchedFacts: [], factsAttempted: false, priority: undefined, dryRunRequested: false, browserMode: "headed",
       referenceSelections: {}, referenceDrafts: {}, checkPicks: {}, selectedWorkbookRows: undefined, launchFields: {}, valueDrafts: {}, copiedOmissions: {},
     });
   });
@@ -76,7 +76,7 @@ describe("workflow change", () => {
     const next = changeWorkflow(used(freshLaunchDraft(plain)), other);
     assert.equal(next.text, "");
     assert.equal(next.sourceInputUnchanged, false);
-    assert.deepEqual([next.priority, next.dryRunRequested, next.browserMode], ["interactive", false, "headed"]);
+    assert.deepEqual([next.priority, next.dryRunRequested, next.browserMode], [undefined, false, "headed"]);
     assert.deepEqual([next.stepDrafts, [...next.touchedFacts], next.factsAttempted, next.referenceSelections, next.selectedWorkbookRows, next.launchFields, next.stepSelection],
       [{}, [], false, {}, undefined, {}, undefined]);
     assert.deepEqual(next.referenceDrafts, { ref: { libraryId: "l", versionId: "v" } });

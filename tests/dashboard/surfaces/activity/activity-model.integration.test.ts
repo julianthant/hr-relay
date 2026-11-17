@@ -79,7 +79,13 @@ function report(overrides: Record<string, unknown> = {}): ActivityReportWire {
       : index === 0 ? totalRuns : 0,
   }));
   const volume = { state: "complete" as const, ...volumeSkeleton, coveredRuns: buckets.reduce((sum, bucket) => sum + bucket.runs, 0), buckets };
-  return ActivityReportWireSchema.parse({ ...value, volume });
+  const assistantDays: string[] = [];
+  for (let instant = Date.parse(from); instant <= Date.parse(to); instant += 86_400_000) assistantDays.push(new Date(instant).toISOString().slice(0, 10));
+  return ActivityReportWireSchema.parse({ ...value, volume,
+    assistantMessages: { state: "retained-history", days: assistantDays.map(day => ({ day, count: 0 })) },
+    assistantTools: { state: "unavailable", reason: "not-recorded" },
+    assistantActions: { state: "retained-history", days: assistantDays.map(day => ({ day, proposed: 0 })), approved: { state: "unavailable", reason: "not-recorded" } },
+  });
 }
 
 const queueRow: QueueRowIdentity = {
