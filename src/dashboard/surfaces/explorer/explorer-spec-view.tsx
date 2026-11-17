@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { CheckCheck, LockKeyhole, MousePointer2, Monitor, Workflow } from "lucide-react";
+import { CheckCheck, LockKeyhole, Monitor, Workflow } from "lucide-react";
 import type { ExplorerReviewSpec } from "../../../models/dashboard/explorer-review-spec.js";
 import { dsFocus, PageHeading, Select } from "../../ds/ui.js";
 import { FieldRow, FieldRows } from "../shared/steps/field-row.js";
+import { ClickLine } from "../shared/steps/click-line.js";
 import { NoteLine } from "../shared/steps/note-line.js";
 import { PageCard } from "../shared/steps/page-card.js";
 import { PickTableView } from "../shared/steps/pick-table-view.js";
@@ -22,7 +23,7 @@ function Decision({ decision, values, onChoose }: { decision: SpecDecision; valu
   const outcomes = visible(decision.outcomes, values);
   const outcome = outcomes.find(item => item.value === values[decision.id]) ?? outcomes[0];
   return <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-    <Select aria-label={decision.label} className="w-60" value={outcome.value} onChange={event => onChoose(event.target.value)}>
+    <Select aria-label={decision.label} className="w-80 max-w-full" value={outcome.value} onChange={event => onChoose(event.target.value)}>
       {outcomes.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
     </Select>
     {!outcome.stops && <span className="text-body text-ui-secondary">{outcome.then}</span>}
@@ -85,7 +86,7 @@ export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { 
 
   return <ExplorerPage workflowId={workflowId} workflows={workflows} onWorkflow={onWorkflow}>
     {options.length > 0 && <section aria-labelledby="run-options" className="mb-4 mt-6">
-      <h2 id="run-options" className="m-0 mb-4 text-heading">Run options</h2>
+      <h2 id="run-options" className="m-0 mb-4 text-section">Run options</h2>
       <div className="grid grid-cols-4 gap-4">{options.map(option => <div key={option.id} className="flex min-w-0 flex-col gap-1.5">
         <span id={`option-${option.id}`} className="text-body font-medium text-ui-secondary">{option.label}</span>
         <Select aria-labelledby={`option-${option.id}`} value={values[option.id]} onChange={event => choose(option.id, event.target.value)}>
@@ -104,7 +105,7 @@ export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { 
           {visible(step.description, values).slice(0, 1).map(line => <p key={line.text} className="m-0 text-body text-ui-secondary">{line.text}</p>)}
           {visible(step.checks, values).map(line => <NoteLine key={line.text} message={line.text} icon={<CheckCheck aria-hidden className="size-3.5 self-start translate-y-0.5 text-ui-positive" />} />)}
           {visible(step.blocks, values).map((block, position) => {
-            if (block.kind === "click") return <p key={`click:${position}`} className="m-0 flex items-center gap-3 text-body text-ui-secondary"><MousePointer2 aria-hidden className="size-3.5 shrink-0 text-ui-muted" /><span>Clicks <span className="font-medium text-ui-primary">{block.target}</span></span></p>;
+            if (block.kind === "click") return <ClickLine key={`click:${position}`} label={`Clicks ${block.target}`} />;
             if (block.kind === "starts") return <Starts key={`starts:${position}`} block={block} onWorkflow={onWorkflow} />;
             if (block.kind === "pick") return <Pick key={`pick:${position}`} pick={block} />;
             if (block.kind === "decision") return <Decision key={block.id} decision={block} values={values} onChoose={outcome => decide(block.id, outcome)} />;
