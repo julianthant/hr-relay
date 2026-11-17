@@ -1012,6 +1012,9 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: "wire/stream-envelope", path: "payload.replacement.parent.title", origin: "captured-hr-value" },
     { surface: 'wire/bootstrap', path: 'workflows[].start.requiredWorkbookFields[]', origin: 'repository-authored' },
     ...['id', 'keyFieldId', 'writableFields[]'].map(path => ({ surface: 'wire/bootstrap', path: `workflows[].start.workbookReference.${path}`, origin: 'repository-authored' as const })),
+    ...['id', 'keyFieldId'].map(path => ({ surface: 'wire/bootstrap', path: `workflows[].start.workbookCheck.${path}`, origin: 'repository-authored' as const })),
+    // A pick's typeId names the workflow's declared reference or check, never a library value.
+    ...['recovery', 'correction'].map(owner => ({ surface: 'wire/run-detail-section', path: `payload.value.${owner}.request.workbookReferences[].typeId`, origin: 'repository-authored' as const })),
     { surface: 'wire/bootstrap', path: 'workflows[].start.readiness.fixAction.requiredFields[]', origin: 'repository-authored' },
     { surface: 'wire/bootstrap', path: 'workflows[].start.readiness.reason', origin: 'repository-authored' },
     ...COMPATIBILITY_LEAF_ORIGINS.flatMap(([path, origin]) => [
@@ -1853,6 +1856,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.edgeId", origin: "repository-authored" },
 
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.condition.value", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.condition.of.typeId", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].shape.statusKey", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].tasks[].binding.note", origin: "repository-authored" },
 

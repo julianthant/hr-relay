@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
+import { buildRunWorkbookSection } from "../../../src/backend/runs/workbooks.js";
 import { VerifyWorkbookPerson } from "../../../src/models/processing/workbooks/verify-person.js";
 import { PersonLookupResultSchema } from "../../../src/models/workflows/person-lookup/result.js";
 import { createPersonLookupReferenceWorld, REFERENCE_PERSON } from "../../support/helpers/backend/person-lookup-reference-world.js";
@@ -53,6 +54,8 @@ describe("Person Lookup reference spreadsheet check", () => {
     assert.equal(outcome(f, settled).state, "active");
     assert.deepEqual(checkSpans(settled), [["done", undefined]]);
     assert.deepEqual(checkLines(settled), [["allowed", "Fall roster · Hires: found in row 3"]]);
+    const served = buildRunWorkbookSection(f.database.authority, settled.run);
+    assert.deepEqual([served.operations, served.referenceChoices ?? []], [[], []]);
   });
 
   it("reports a spreadsheet that does not hold the person and still finishes the lookup", async () => {
@@ -74,7 +77,7 @@ describe("Person Lookup reference spreadsheet check", () => {
   it("writes one line per picked spreadsheet, in pick order", async () => {
     const f = await world.fixture();
     const settled = await f.run(SEARCH, [
-      f.spreadsheet("Badge list", "Issued", ["eid"], [["10000009"], ["10000008"]]),
+      f.spreadsheet("Badge list", "Issued", ["eid"], [["10000009"], ["10000003"]]),
       f.spreadsheet("Fall roster", "Hires", ["eid", "fullName"], [[Number(REFERENCE_PERSON.emplId), "Example, Avery"]]),
     ]);
     assert.deepEqual(checkLines(settled), [["allowed", "Badge list · Issued: not found"], ["allowed", "Fall roster · Hires: found in row 2"]]);

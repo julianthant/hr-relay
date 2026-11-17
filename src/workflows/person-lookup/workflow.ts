@@ -102,8 +102,8 @@ export const personLookupWorkflow = defineWorkflow({
     const searching = personLookupSearchingDefinition.build(author);
     const crossverify = personLookupCrossVerifyDefinition.build(author, searching);
     const activestatus = personLookupActiveStatusDefinition.build(author, searching, crossverify);
-    const referencecheck = personLookupReferenceCheckDefinition.build(author, searching, crossverify, activestatus);
     const crmdates = personLookupCrmDatesDefinition.build(author, searching, crossverify, activestatus);
-    return { steps: [...searching.steps, ...crossverify.steps, ...activestatus.steps, ...referencecheck.steps, ...crmdates.steps], result: crmdates.result };
+    const referencecheck = personLookupReferenceCheckDefinition.build(author, searching, crossverify, activestatus);
+    return { steps: [...searching.steps, ...crossverify.steps, ...activestatus.steps, ...crmdates.steps, ...referencecheck.steps], result: crmdates.result };
   },
 });

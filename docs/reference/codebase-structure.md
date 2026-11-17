@@ -232,7 +232,7 @@ declare its delegation edge to resolve a child.
 
 
 Person Lookup has five chunk harnesses at `src/workflows/person-lookup/steps/<step>/step.ts`:
-`searching`, `cross-verify`, `active-status`, `reference-check`, and `crm-dates`.
+`searching`, `cross-verify`, `active-status`, `crm-dates`, and `reference-check`.
 Separations has five chunk harnesses at `src/workflows/separations/steps/<role>/step.ts`:
 `identity-check`, `kronos-timecard`, `kuali-extraction`, `kuali-finalization`, and `ucpath-transaction`.
 `src/workflow-kit/validation/source-layout.ts` derives definition and scenario paths from workflow roles.

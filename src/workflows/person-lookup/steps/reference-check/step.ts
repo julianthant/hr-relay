@@ -6,6 +6,7 @@ import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-ki
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { buildActiveStatus } from "../active-status/step.js";
+import { buildCrmDates } from "../crm-dates/step.js";
 import { buildCrossVerify } from "../cross-verify/step.js";
 import { buildSearching } from "../searching/step.js";
 
@@ -39,6 +40,7 @@ const referenceCheckEntries = defineStepEntries(REFERENCE_CHECK_STEP);
 export const REFERENCE_CHECK_NODE = "reference-check";
 
 export const referenceCheckNode = referenceCheckEntries.task(REFERENCE_CHECK_NODE, VerifyWorkbookPerson, {
+  label: "Check reference spreadsheets",
   replay: "checkpoint",
   when: { kind: "is-present", of: { from: "reference", typeId: REFERENCE_CHECK.id } }
 });
@@ -70,8 +72,9 @@ export const personLookupReferenceCheckDefinition = defineStep({
         const searching = buildSearching(author);
         const crossverify = buildCrossVerify(author, searching);
         const activestatus = buildActiveStatus(author, searching, crossverify);
+        const crmdates = buildCrmDates(author, searching, crossverify, activestatus);
         const built = buildReferenceCheck(author, searching, crossverify, activestatus);
-        return { steps: [...searching.steps, ...crossverify.steps, ...activestatus.steps, ...built.steps], result: built.result };
+        return { steps: [...searching.steps, ...crossverify.steps, ...activestatus.steps, ...crmdates.steps, ...built.steps], result: built.result };
       },
     }),
   },

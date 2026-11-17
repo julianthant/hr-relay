@@ -16,7 +16,7 @@ export const registration = deepFreeze({
     defineStepProof(personLookupWorkflow, personLookupSearchingDefinition),
     defineStepProof(personLookupWorkflow, personLookupCrossVerifyDefinition),
     defineStepProof(personLookupWorkflow, personLookupActiveStatusDefinition),
-    defineStepProof(personLookupWorkflow, personLookupReferenceCheckDefinition),
     defineStepProof(personLookupWorkflow, personLookupCrmDatesDefinition),
+    defineStepProof(personLookupWorkflow, personLookupReferenceCheckDefinition),
   ],
 } as const);

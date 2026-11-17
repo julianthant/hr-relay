@@ -788,8 +788,8 @@ Every start surface publishes the committed run through `runQueuedSpanEvent` bef
 | Cross-check identity (`crmCheck=true`) | `crm-results` | `crm/read-onboarding-results` | `search-identity`, `cross-verify`, `crm-identity`, `searching`, `matching` | `checkpoint`; `crm-identity.unselectedCrmRecords` is present |
 | Read employment status | `crm-only-recovery` | `ucpath/search-person-org` | `crm-identity`, `crm-selected-record`, `crm-results` | `checkpoint`; `crm-identity.recoveryEid` is present |
 | Read employment status | `active-status` | `workflow:person-lookup/read-active-status` | `search-identity`, `crm-identity`, `crm-only-recovery`, `crm-selected-record`, `crm-results` | `always-rerun`; `mode = "search"` |
-| Check reference spreadsheets | `reference-check` | `workbooks/verify-person` | `search-identity`, `crm-identity`, `matching`, `crm-selected-record`, `crm-results`, `active-status` | `checkpoint`; a spreadsheet is picked for `reference-check` |
 | Read CRM dates (`includeCrmDates=true`) | `crm-dates` | `crm/read-onboarding-dates` | `active-status` | `checkpoint`; `active-status.datesEid` is present |
+| Check reference spreadsheets | `reference-check` | `workbooks/verify-person` | `search-identity`, `crm-identity`, `matching`, `crm-selected-record`, `crm-results`, `active-status` | `checkpoint`; a spreadsheet is picked for `reference-check` |
 
 Search mode accepts an EID or name. Match mode accepts a name plus a date of birth, an SSN, or both. The input schema owns the defaults for `crmCheck`, `keepNonHdh`, and `includeCrmDates`.
 

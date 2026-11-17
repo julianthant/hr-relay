@@ -817,7 +817,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
 
   /* person-lookup ingress */
   ...[PERSON_LOOKUP_INPUT,
-    ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-reference-check", "person-lookup-crm-dates"].map(workflowInput),
+    ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates", "person-lookup-reference-check"].map(workflowInput),
   ].flatMap(scope => [
     ...person(scope, "name", "emplId", "lastName", "firstName", "dob"),
     { scope, path: "ssn", classification: "direct-identifier", transform: "digest" },

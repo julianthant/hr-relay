@@ -431,7 +431,7 @@ Their store lists are derived from compiled contract namespaces, not maintained 
 
 | Workflow | Stores used | Composition |
 | --- | --- | --- |
-| `person-lookup` | `ucpath`, `crm`, `workbooks`, `workflow:person-lookup` | UCPath search, CRM cross-verification, active-status fold, the optional reference spreadsheet check, and conditional CRM dates. The active-status fold uses `always-rerun`; page reads use checkpoints. |
+| `person-lookup` | `ucpath`, `crm`, `workbooks`, `workflow:person-lookup` | UCPath search, CRM cross-verification, active-status fold, conditional CRM dates, and the optional reference spreadsheet check. The active-status fold uses `always-rerun`; page reads use checkpoints. |
 | `separations` | `kuali`, `ucpath`, `new-kronos`, `workflow:separations` | Kuali document facts, subject and employment resolution, timecard reads, date reconciliation, identity authority, pending termination sweep, termination filing, receipt validation, and Kuali field save. |
 
 Browser task reuse does not bypass the workflow's gates, write policy, freshness, or evidence
