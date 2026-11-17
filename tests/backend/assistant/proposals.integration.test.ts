@@ -284,7 +284,7 @@ it("shows an Emergency Contact PDF start row as its registered source file, neve
   const descriptor = DESCRIPTORS.find(candidate => candidate.id === "emergency-contact"); assert.ok(descriptor);
   const planning = workflowPlanning(descriptor), schemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
   const document = { id: randomUUID(), sha256: "c".repeat(64), bytes: 21, mediaType: "application/pdf" };
-  const input = { schemaHash, value: planning.parseCanonicalInput(planning.parseInput({ document, readingId: randomUUID(), roster: null, reading: { kind: "subscription" } }).input) };
+  const input = { schemaHash, value: planning.parseCanonicalInput(planning.parseInput({ document, readingId: randomUUID(), roster: null, reading: { kind: "subscription" }, onbaseFiling: "file" }).input) };
   assert.deepEqual(plannedRowDisplay("emergency-contact", input, id => id === document.id ? "contact.pdf" : undefined), { kind: "file", fileName: "contact.pdf", formType: "emergency-contact" });
   assert.deepEqual(plannedRowDisplay("emergency-contact", input), { kind: "request" }, "an unregistered source shows no file name");
 });

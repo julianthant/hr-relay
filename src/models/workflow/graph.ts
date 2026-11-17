@@ -48,6 +48,8 @@ export interface RuntimeScope {
   readonly dryRun?: DryRunScope;
   readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: JsonObject;
+  /** Declared reference ids the run picked a spreadsheet for; read by node conditions only. */
+  readonly references?: readonly string[];
 }
 
 export interface WorkflowGateSource<

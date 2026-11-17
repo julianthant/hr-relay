@@ -78,3 +78,25 @@ it.each([
  if(refused)assert.throws(read,{code:"RUN_LOG_DISPLAY_VALUE_UNMAPPED"});
  else {const section=read();assert.ok(section.section==="logs");assert.deepEqual(section.payload.rows?.flatMap(row=>row.kind==="observed"?row.displayFields?.map(field=>"value" in field?field.value:"unread")??[]:[]),redacted?["Redacted"]:[]);}
 });
+
+it("shows one Reference spreadsheet line per picked spreadsheet and no other part of the check", async () => {
+  const w = await world();
+  queuedEventOf(w, { seed: 87, descriptor: personLookupModule.descriptor });
+  const run = w.authority.records.get(uuidOf(87)); assert.ok(run);
+  const at = w.clock.now().toISOString();
+  const checks = [
+    { spreadsheet: "Fall roster", sheet: "Hires", outcome: "found", row: 3, line: "Fall roster · Hires: found in row 3" },
+    { spreadsheet: "Badge list", sheet: "Issued", outcome: "not-found", row: null, line: "Badge list · Issued: not found" },
+    { spreadsheet: "Spring roster", sheet: "Hires", outcome: "name-differs", row: 12, line: "Spring roster · Hires: name differs in row 12" },
+  ];
+  w.writer.emit({ t: "data.observed", ts: at, observedAt: at, workflow: "person-lookup", runId: run.envelope.runId, attempt: 1, traceId: traceOf(87),
+    spanPath: `${traceOf(87)}/reference-check#1`, nodeId: "reference-check", taskId: "workbooks/verify-person",
+    points: Object.entries({ state: "checked", result: "unconfirmed", checks }).map(([field, value]) => ({ direction: "read" as const, field,
+      values: [{ key: field, state: "allowed" as const, classification: "safe-diagnostic" as const, transform: "allow" as const, value }] })) });
+  w.projection.ingestFromTimeline();
+  const section = buildRunLogsSection({ runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority,
+    descriptors: { resolve: () => ({ dataOrigins: dataOriginViewsOf(personLookupModule) }) } }, run.envelope.runId, undefined, run);
+  assert.ok(section.section === "logs");
+  const fields = section.payload.rows?.flatMap(row => row.kind === "observed" ? row.displayFields ?? [] : []) ?? [];
+  assert.deepEqual(fields.map(field => [field.label, "value" in field ? field.value : "unread"]), checks.map(check => ["Reference spreadsheet", check.line]));
+});
