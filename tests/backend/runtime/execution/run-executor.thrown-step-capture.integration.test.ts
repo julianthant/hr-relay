@@ -32,8 +32,8 @@ function thrownTask(thrown: Thrown) {
   });
 }
 
-/** `deadline` reaches the task deadline while the failure screenshot is being taken. */
-type Page = BrowserScreenshotEvidence["state"] | "throws" | "deadline";
+/** `deadline` reaches the task deadline while the failure screenshot is being taken; `deadline-pending` also keeps that screenshot in flight past it. */
+type Page = BrowserScreenshotEvidence["state"] | "throws" | "deadline" | "deadline-pending";
 
 type Refusal = Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"];
 
@@ -42,7 +42,8 @@ function sessionsShowing(page: Page, reachDeadline: () => void, refusal: Refusal
   return { ...base, factory: { ...base.factory, async open(input) {
     const resource = await base.factory.open(input);
     return { ...resource, async screenshot(): Promise<BrowserScreenshotEvidence> {
-      if (page === "deadline") reachDeadline();
+      if (page === "deadline" || page === "deadline-pending") reachDeadline();
+      if (page === "deadline-pending") await new Promise(resolve => { setTimeout(resolve, 50); });
       if (page === "throws") throw new Error("synthetic screenshot refusal");
       const evidence = { pageVersion: 1, sessionId: resource.sessionId, observedAt: "2026-08-29T08:00:00.000Z" } as const;
       return page === "available"
@@ -165,6 +166,14 @@ describe("a task that throws", () => {
       ["BROWSER_SCREENSHOT_CAPTURE_FAILED", "Failure screenshot not taken: task-deadline"],
       ["TASK_UNHANDLED_FAILURE", "The browser lease failed after the task stopped: ucpath/search-person-org exceeded its immutable 60000ms task deadline"],
     ]);
+  });
+
+  it("names the deadline when it ends the run while the failure screenshot is still being taken", async () => {
+    const { outcome, failure } = await runThrownStep("deadline-pending");
+    assert.equal(outcome.state, "failed");
+    assert.equal(failure?.code, "TASK_UNHANDLED_FAILURE");
+    assert.deepEqual(failure?.causeChain.slice(1).map(({ code, summary }) => [code, summary]),
+      [["BROWSER_SCREENSHOT_CAPTURE_FAILED", "Failure screenshot not taken: task-deadline"]]);
   });
 });
 

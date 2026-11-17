@@ -266,14 +266,25 @@ const SCREENSHOT_REASON: Readonly<Record<string, string>> = {
   "pixel-limit": "the page was too large to capture", "observer-unavailable": "the secret-field check stopped working during capture",
 };
 
-/** Why a step has no screenshot, in the operator's words; any other recorded reason is a browser error. */
-function noScreenshotLine(reason: string): string {
-  return `No screenshot: ${Object.hasOwn(SCREENSHOT_REASON, reason) ? SCREENSHOT_REASON[reason] : "the browser could not take it"}.`;
+const SCREENSHOT_STOPPED = "Screenshot capture stopped at ";
+// Longest stage first: "final-sign-in-check" also ends in "sign-in-check".
+const CAPTURE_STAGE: readonly (readonly [string, string])[] = [["final-sign-in-check", "while re-confirming the sign-in"],
+  ["sign-in-check", "while confirming the sign-in"], ["secret-check", "while checking for secret fields"], ["page-capture", "while capturing the page"]];
+
+/** Why a step has no screenshot, in the operator's words; any other recorded reason is a browser error. A detail names the capture stage and its value-free browser call. */
+function noScreenshotLine(reason: string, detail?: string): string {
+  const text = Object.hasOwn(SCREENSHOT_REASON, reason) ? SCREENSHOT_REASON[reason] : "the browser could not take it";
+  const stage = detail === undefined ? undefined : CAPTURE_STAGE.find(([token]) => detail.startsWith(`${token}-`));
+  const stopped = detail === undefined ? "" : stage === undefined ? ` (${detail})` : ` ${stage[1]} (${detail.slice(stage[0].length + 1)})`;
+  return `No screenshot: ${text}${stopped}.`;
 }
 
 function failureScreenshotReason(failure: Readonly<{ causeChain: readonly Readonly<{ code: string; summary: string }>[] }>): string | undefined {
-  const refused = failure.causeChain.find(cause => cause.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED" && cause.summary.startsWith(SCREENSHOT_REFUSED));
-  return refused === undefined ? undefined : noScreenshotLine(refused.summary.slice(SCREENSHOT_REFUSED.length).trim());
+  const causes = failure.causeChain.filter(cause => cause.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED");
+  const refused = causes.find(cause => cause.summary.startsWith(SCREENSHOT_REFUSED));
+  const stopped = causes.find(cause => cause.summary.startsWith(SCREENSHOT_STOPPED));
+  return refused === undefined ? undefined : noScreenshotLine(refused.summary.slice(SCREENSHOT_REFUSED.length).trim(),
+    stopped?.summary.slice(SCREENSHOT_STOPPED.length).trim());
 }
 
 export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardClient, "artifactUrl">): Readonly<{
@@ -350,11 +361,13 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         captureFailure: boundary === "before-submit" ? "pre-submit-failed" : proved ? "post-submit-proved" : "post-submit-unknown" };
       else {
         const reason = row.note.fields.find(field => field.key === "reason" && field.kind === "text")?.value;
+        const captureFailure = row.note.fields.find(field => field.key === "captureFailure" && field.kind === "text")?.value;
         // The failed step's card already says why it has no screenshot.
         const told = sections.some(section => section.section === "failure" && section.payload.state === "available"
           && section.payload.value.nodeId === requireNative(row.native).nodeId && section.payload.value.attempt === requireNative(row.native).attempt
           && failureScreenshotReason(section.payload.value) !== undefined);
-        entry = told ? undefined : typeof reason === "string" ? { ...entry, message: noScreenshotLine(reason) } : entry;
+        entry = told ? undefined : typeof reason === "string"
+          ? { ...entry, message: noScreenshotLine(reason, typeof captureFailure === "string" && captureFailure !== reason ? captureFailure : undefined) } : entry;
       }
     }
     const entries: LogEntry[] = entry === undefined ? [] : [entry];

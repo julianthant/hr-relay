@@ -1409,7 +1409,7 @@ export async function executeClaimedRun(
             // A deadline or lease fault after the task stopped is recorded beside the task's own failure, not in its place.
             if (stopped === undefined || error === stopped.error || error instanceof RunAbandonedError) throw error;
             if (failureCapture.state === "settled") failureCauses.push(followingFailureCause(error, "The browser lease failed after the task stopped"));
-            else failureCaptureRefused(controller.signal.aborted ? "task-deadline" : "lease-ended");
+            else failureCaptureRefused({ reason: controller.signal.aborted ? "task-deadline" : "lease-ended" });
             throw stopped.error;
           }
         }
