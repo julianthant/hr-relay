@@ -94,7 +94,7 @@ import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatem
 import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessorCommandFromRow, predecessorCustodyRunFromRow, predecessorCustodyRunRow, predecessorLifecycleRequest, predecessorWorkerSlotFromRow } from "./worker-custody-predecessor.js";
 import { predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitionRunRecord,transitionStoredRun,updateRunRecord } from "./run-record-row.js";
-import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
+import { SearchStateColumnSchema,createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
 import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
 import { createRunSummaries } from "./run-summaries.js";
@@ -1390,7 +1390,7 @@ function validateStoredRow(context: StoredRowContext, table: AuthorityTableName,
       try {
         if (table === "database_states") {
           const row = z.strictObject({id:z.literal(1),schema_version:z.literal(expectedSchemaVersion),authority_generation:z.number().int().nonnegative(),updated_at:IsoInstantSchema,
-            search_generation:z.number().int().nonnegative().nullable(),search_state:z.enum(["unbuilt","ready","invalid"]),
+            search_generation:z.number().int().nonnegative().nullable(),search_state:SearchStateColumnSchema,
             ...(expectedSchemaVersion >= 7 ? { installation_id: z.uuid(), profile_id: z.uuid() } : {}) }).parse(raw);
           if (row.search_state === "ready" && row.search_generation !== row.authority_generation) throw new Error("search-generation-mismatch");
         } else if (table === "runs") read.run(raw);
@@ -1693,7 +1693,7 @@ function fixedLayoutChangedAuthorityTables(before: DatabaseSync, after: Database
 function assertFixedLayoutPublications(before: DatabaseSync, after: DatabaseSync, sourceGeneration: number, activatedAt: string): void {
   const schema = z.strictObject({ id: z.literal(1), schema_version: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
     authority_generation: z.number().int().nonnegative(), updated_at: z.string(),
-    search_generation: z.number().int().nonnegative().nullable(), search_state: z.enum(["unbuilt", "ready", "invalid"]),
+    search_generation: z.number().int().nonnegative().nullable(), search_state: SearchStateColumnSchema,
     installation_id: z.uuid(), profile_id: z.uuid() });
   const prior = schema.parse(before.prepare("SELECT * FROM database_states WHERE id=1").get());
   const current = schema.parse(after.prepare("SELECT * FROM database_states WHERE id=1").get());
