@@ -34,7 +34,8 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { closeSync,existsSync,mkdirSync,openSync,readdirSync,readFileSync,renameSync,rmSync } from "node:fs";
-import { appendEmergencyFault } from "../../logs/emergency-faults.js";
+import { createDebugEventWriter } from "../../logs/debug-events.js";
+import { appendEmergencyFault, withEmergencyTimelineWriter } from "../../logs/emergency-faults.js";
 import { dirname,join,resolve } from "node:path";
 import { z } from "zod";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
@@ -46,6 +47,7 @@ import { systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { createRunQueueProjection } from "../../runs/projections/run-queue-projection.js";
 import { OfflineSpanRootRepairService,type SpanRootRepairReport } from "../../runs/recovery/span-root-repair.js";
+import { findRunHolder } from "../../transports/cli/person-stores.js";
 import { createNativeBrowserProbe } from "../../runtime/browser/native-browser.js";
 import { requireStoppedPool, type WorkerPool } from "../../runtime/workers/worker-pool.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
@@ -115,6 +117,33 @@ function causedByUnresolvedWrites(error: unknown): boolean {
 }
 
 const buildVersion = () => z.object({ version: z.string() }).parse(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"))).version;
+
+/** Buffers events that fire before a debug writer exists, then emits one storage row per slow operation. */
+export function createSlowOperationEvents(category: "http" | "worker") {
+  const pending: Array<Readonly<{ name: string; durationMs: number }>> = [];
+  let emit: ((input: unknown) => unknown) | undefined;
+  const deliver = (operation: Readonly<{ name: string; durationMs: number }>): void => {
+    try {
+      emit?.({ category, phase: "settled", area: "storage", reason: "slow-operation", code: operation.name,
+        durationMs: operation.durationMs, correlationId: randomUUID() });
+    } catch { /* a debug row never changes the storage operation */ }
+  };
+  return Object.freeze({
+    hook(operation: Readonly<{ name: string; durationMs: number }>) {
+      if (emit === undefined) pending.push(operation);
+      else deliver(operation);
+    },
+    attach(debugEvents: { emit(input: unknown): unknown }) {
+      emit = input => debugEvents.emit(input);
+      for (const operation of pending.splice(0)) deliver(operation);
+    },
+  });
+}
+
+function attachStorageSlowOperations(slow: ReturnType<typeof createSlowOperationEvents>, database: AuthorityDatabase, clock: Clock, stateRoot: string): void {
+  const build = buildVersion();
+  slow.attach(createDebugEventWriter({ repository: withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build }), clock, build }));
+}
 
 /** Error text can carry input, so the boot log gets a leading kebab-case token plus closed cause rows (class, code, SQLite result code, frames). */
 function logRefusalReason(stateRoot: string, refusal: Error & { code: string }, area: string, clock: Clock): void {
@@ -247,7 +276,9 @@ async function recoverRegisteredPersonCrash(workspace: string, lifetime: Runtime
     let database: AuthorityDatabase | undefined, primary: { error: unknown } | undefined;
     try {
       await probeRestoreProfileBrowsersClosed(admission, join(workspace, rebuildRuntimeIsolation.processLockRoot), machine.maintenanceOperation(), clock, profileBrowserClosure);
-      database = AuthorityDatabase.openStoppedStartupRecovery(admission, clock);
+      const slowOperations = createSlowOperationEvents("http");
+      database = AuthorityDatabase.openStoppedStartupRecovery(admission, clock, slowOperations.hook);
+      attachStorageSlowOperations(slowOperations, database, clock, admission.stateRoot);
       const lifecycle = new RunRecordService({ database, clock, ids: { uuid: randomUUID },
         publishQueued: () => { throw new Error("startup-crash-recovery-cannot-enqueue"); } });
       reconcileStoppedStartupCrash({ machine, admission, database, lifecycle, clock, lock: lifetime });
@@ -614,7 +645,9 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
           const backup = await backupStoppedAuthority(closure, admission, admission.stateRoot, clock, processLockRoot, operation, "schema-migration");
           const manifest = backup.manifests[0];
           if (backup.manifests.length !== 1 || manifest === undefined || manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("fixed-layout-current-backup-required");
-          const database = AuthorityDatabase.openFixedLayoutSource(machine, admission, clock);
+          const slowOperations = createSlowOperationEvents("http");
+          const database = AuthorityDatabase.openFixedLayoutSource(machine, admission, clock, slowOperations.hook);
+          attachStorageSlowOperations(slowOperations, database, clock, admission.stateRoot);
           let primary: { error: unknown } | undefined;
           try {
             const saved = readBootSettings(database.authority), priorActive = database.authority.runtimeConfig.get();
@@ -849,9 +882,11 @@ export function composeSelectedProfileStorage(input: Readonly<{
     assertProfileBrowserRoot(admission, resolved.config.paths.browserProfileRoot);
     return resolved;
   };
+  const slowOperations = createSlowOperationEvents("http");
   const database = AuthorityDatabase.open(admission, {
     path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "selected-profile-runtime",
-  }, input.clock, undefined, undefined, undefined, input.credentials);
+  }, input.clock, undefined, undefined, undefined, input.credentials, slowOperations.hook);
+  attachStorageSlowOperations(slowOperations, database, input.clock, stateRoot);
   try {
     database.withAuthorityTransaction(repositories => {
       assertCurrent();
@@ -888,7 +923,8 @@ export function composeSelectedProfileStorage(input: Readonly<{
         return account.revalidateAuthority(captured, admission);
       },
     });
-    return Object.freeze({ admission, profileEpoch: selected.epoch, credentials: input.credentials, database, account, accountAuthority, settings, protectedSecrets, assertCurrent, resolveSettings });
+    return Object.freeze({ admission, profileEpoch: selected.epoch, credentials: input.credentials, database, account, accountAuthority, settings, protectedSecrets, assertCurrent, resolveSettings,
+      attachSlowOperations: (debugEvents: { emit(input: unknown): unknown }) => { slowOperations.attach(debugEvents); } });
   } catch (error) {
     try { database.close(); }
     catch (closeError) { throw new RuntimeCustodyUncertainError([error, closeError]); }
@@ -1303,7 +1339,7 @@ const STORAGE_USAGE = [
   "       storage upgrade [--plan] [--machine-control] [--timeline-from <verified-copy-directory>] [--json]",
   "       storage cancel-queued-runs --plan [--json]",
   "       storage cancel-queued-runs --capture <digest> --apply [--json]",
-  "       storage repair-span-root --run <run-id> [--json]",
+  "       storage repair-span-root --run <run-id> [--person <profile-id>] [--json]",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces); exit 0 only when",
   "           authority, recovery inspection, credentials and span reconciliation are healthy; backup is reported, not gated",
   "  backup   write ONE verified authority backup + manifest under the state root's backups/authority;",
@@ -1312,7 +1348,8 @@ const STORAGE_USAGE = [
   "           stopped and the manifest is never chosen for you",
   "  repair-span-root  append one marked SQLite run.queued root reconstructed from exact",
   "           run/session/start-plan authority; existing span bytes stay unchanged and",
-  "           the runtime must be stopped",
+  "           the runtime must be stopped; on an installation the repair runs in the store",
+  "           of the signed-in person, which must hold the run, and --person must name them",
 ].join("\n");
 
 function formatAge(ageMs: number): string {
@@ -1459,11 +1496,14 @@ function rebuildStagedProjections(
     const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission);
     let staged: AuthorityDatabase;
     try {
+      const slowOperations = createSlowOperationEvents("http");
       staged = AuthorityDatabase.openStoppedRestoreProjection(
         stagedAdmission,
         { path: stagedPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-storage-restore" },
         clock,
+        slowOperations.hook,
       );
+      attachStorageSlowOperations(slowOperations, staged, clock, stateRoot);
     } catch (error) {
       stagedAdmission.release();
       throw error;
@@ -1524,42 +1564,68 @@ async function repairSpanRootCommand(
   _repoRoot: string,
   admission: RuntimeAdmission,
 ): Promise<StorageCommandOutcome> {
-  const runIndex = rest.indexOf("--run");
-  const runId = runIndex === -1 ? undefined : rest[runIndex + 1];
-  if (runId === undefined || runId.startsWith("--")) {
+  const value = (flag: string): string | undefined => {
+    const found = rest.includes(flag) ? rest[rest.indexOf(flag) + 1] : undefined;
+    return found === undefined || found.startsWith("--") ? undefined : found;
+  };
+  const runId = value("--run"), person = value("--person"), json = rest.includes("--json");
+  if (runId === undefined) {
     return {
       output: `storage repair-span-root requires one exact run id: --run <run-id>\n${STORAGE_USAGE}`,
       exitCode: 2,
     };
   }
+  if (rest.includes("--person") && (person === undefined || !admission.isInstallation())) {
+    return {
+      output: `storage repair-span-root --person names one person of an installation: --person <profile-id>\n${STORAGE_USAGE}`,
+      exitCode: 2,
+    };
+  }
+  const refused = (error: unknown): StorageCommandOutcome => ({
+    output: [
+      `span root repair REFUSED — ${messageChain(error)}`,
+      "rerun doctor before deciding the next action; an exact repeat reuses the retained marked event without another append",
+    ].join("\n"),
+    exitCode: 1,
+  });
+  // Each person keeps their own store under the machine root, so the machine admission repairs under the admission of the person who holds the run.
+  let holder: string | undefined;
+  if (admission.isInstallation()) {
+    try { holder = findRunHolder(admission, runId, person); }
+    catch (error) {
+      if (hasUnprovedSourceClosure(error)) throw error;
+      return refused(error);
+    }
+  }
   const operation = admission.acquireOfflineMaintenance();
+  let owner: RuntimeAdmission | undefined;
   try {
-    const json = rest.includes("--json");
-    const stateRoot = admission.stateRoot;
+    owner = holder === undefined ? admission : admission.admitStoppedProfile(holder, operation);
+    const stateRoot = owner.stateRoot;
     const authorityPath = join(stateRoot, "state.db");
     const processLockRoot = join(offlineMaintenanceWorkspace(operation), isolation.processLockRoot);
-    const service = new OfflineSpanRootRepairService(profileBrowserClosure, admission, {
+    const service = new OfflineSpanRootRepairService(profileBrowserClosure, owner, {
       stateRoot,
       authorityPath,
       processLockRoot,
       busyTimeoutMs: 5000,
     }, clock);
     const report = await service.repair({ runId }, operation);
+    if (owner !== admission) owner.release();
     return {
-      output: json ? JSON.stringify(report, null, 2) : formatSpanRootRepairReport(report),
+      output: holder === undefined
+        ? json ? JSON.stringify(report, null, 2) : formatSpanRootRepairReport(report)
+        : json ? JSON.stringify({ profileId: holder, report }, null, 2) : `person ${holder}\n${formatSpanRootRepairReport(report)}`,
       exitCode: 0,
     };
   } catch (error) {
-    if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission, restore: operation });
-    try { if (isOfflineMaintenanceOperationActive(operation)) operation.release(); }
-    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission, restore: operation }); }
-    return {
-      output: [
-        `span root repair REFUSED — ${messageChain(error)}`,
-        "rerun doctor before deciding the next action; an exact repeat reuses the retained marked event without another append",
-      ].join("\n"),
-      exitCode: 1,
-    };
+    const custody = { admission: owner ?? admission, restore: operation };
+    if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], custody);
+    try {
+      if (isOfflineMaintenanceOperationActive(operation)) operation.release();
+      if (owner !== admission) owner?.release();
+    } catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], custody); }
+    return refused(error);
   }
 }
 

@@ -18,6 +18,10 @@ it('sends the exact named version, selection identity for each parsed input', ()
     { entry: 2, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 },
   ]);
 });
+it('sends no reference for a workflow whose only spreadsheet need is the optional check', () => {
+  expect(launchWorkbookReferences([], [entry], {}, 2, sources, false)).toEqual([]);
+  expect(launchWorkbookReferences([], [], {}, 1, [], false)).toEqual([]);
+});
 it('refuses missing reference identities, unavailable named versions', () => {
   expect(() => launchWorkbookReferences(['missing'], [entry], selections, 1, sources, false)).toThrow();
   expect(() => launchWorkbookReferences(['roster-type'], [], selections, 1, sources, false)).toThrow();

@@ -26,6 +26,17 @@ describe("dashboard wire primitives", () => {
     assert.equal(WorkflowStartReadinessSchema.safeParse({ scope: "workbook-sources", state: "ready", fixAction: needed }).success, false);
   });
 
+  it("serves the optional reference check beside or without a required reference, ready with no pick", () => {
+    const ready = { scope: "workbook-sources", state: "ready" }, workbookCheck = { id: "reference-check", keyFieldId: "eid" };
+    const checkOnly = { ...WORKFLOW_PRIMITIVE, start: { ...WORKFLOW_PRIMITIVE.start, requiredWorkbookFields: [], workbookCheck, readiness: ready } };
+    assert.deepEqual(WorkflowBootstrapPrimitiveSchema.parse(checkOnly).start.workbookCheck, workbookCheck);
+    const both = { ...WORKFLOW_PRIMITIVE, start: { ...WORKFLOW_PRIMITIVE.start, requiredWorkbookFields: ["eid"], workbookCheck,
+      workbookReference: { id: "roster", keyFieldId: "eid", mode: "all", writableFields: [] }, readiness: ready } };
+    assert.equal(WorkflowBootstrapPrimitiveSchema.safeParse(both).success, true);
+    assert.equal(WorkflowBootstrapPrimitiveSchema.safeParse({ ...both, start: { ...both.start, workbookCheck: { id: "roster", keyFieldId: "eid" } } }).success, false);
+    assert.equal(WorkflowBootstrapPrimitiveSchema.safeParse({ ...checkOnly, start: { ...checkOnly.start, workbookCheck: { ...workbookCheck, optional: true } } }).success, false);
+  });
+
   it("refuses a served chunk harness whose composition is not in the same document", () => {
     const composition = {
       ...WORKFLOW_PRIMITIVE,

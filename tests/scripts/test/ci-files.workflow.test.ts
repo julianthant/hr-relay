@@ -207,12 +207,13 @@ describe("separate event and admitted proof workflows", () => {
     expect(body).toContain("needs: changes");
     expect(body).toContain("timeout-minutes: 20");
     for (const setup of ["actions/checkout@v7", "actions/setup-node@v7", "node-version-file: .node-version",
-      "cache: npm", "run: npm ci", "run: npm run build:observer-policy", "actions/cache@v6",
+      "cache: npm", "run: npm ci", "actions/cache@v6",
       "path: ~/.cache/ms-playwright", "key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}",
       "run: npx playwright install chromium", "run: npm run web:build", "mktemp -d /dev/shm/relay-tmp.XXXXXX",
       String.raw`printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"`]) {
       expect(body).toContain(setup);
     }
+    if (name === "smoke") expect(body).toContain("run: npm run build:observer-policy");
     expect(body).toContain(`run: npm run test:${name}`);
     const condition = body.match(/^ {4}if: (.+)$/mu)?.[1];
     assert.ok(condition);
