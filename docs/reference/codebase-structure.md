@@ -68,7 +68,7 @@ src/
 │           ui,validation,workflow,workflows,write-safety}/
 ├── rules/{commands,crm-doc-download,i9-check,identity,intake,kronos,matching,normalization,
 │          notifications,onboarding,preflight,redaction,runs,separations,sessions,spreadsheets,
-│          time,ucpath,validation,work-study,workflow,write-safety}/
+│          storage,time,ucpath,validation,work-study,workflow,write-safety}/
 ├── workflow-kit/validation/
 ├── workflows/{crm-doc-download,emergency-contact,emergency-contact-member,i9-check,
 │              i9-check-start,i9-lookup,ocr,ocr-page,onbase,onboarding,person-lookup,
@@ -153,6 +153,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |
 | `src/rules/identity/stable-uuid.ts` | Browser-safe deterministic UUID derivation shared with the runtime `identifiers.ts` entry; native and browser callers use the same digest and UUID bits. |
 | `src/rules/runs/run-status.ts` | Shared run status and task/category state derivation for Queue, Logs, Activity and native summary filtering. |
+| `src/rules/storage/upgrade-journal.ts` | Authority schema upgrade journal: the state derived from the `database_upgrades` rows and the transition table each writer checks before it appends `baseline` or `settled`. |
 | `src/rules/` | Pure decisions and validation, including identity, clocks, normalization, ledger derivation, redaction, and write safety. |
 | `src/workflow-kit/` | Root-level TypeScript modules for task and workflow declaration, flow construction, compilation, sessions, providers, artifacts, and capabilities. |
 | `src/workflow-kit/workflow-definition.ts` | `defineWorkflow` and `compileWorkflow`. |
