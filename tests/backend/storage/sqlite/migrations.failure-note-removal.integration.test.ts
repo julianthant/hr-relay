@@ -88,8 +88,7 @@ describe("failure note removal migration 34", () => {
       assert.equal(JSON.stringify(database.prepare("SELECT payload_json FROM command_audits").all()).includes("Checked the record"), false);
       assert.deepEqual([row(database, "commands", UUID_4), row(database, "commands", UUID_6), row(database, "command_audits", UUID_7)], unchanged);
       assert.deepEqual(migrationTableNames(33).filter(table => table !== "commands" && table !== "command_audits")
-        .filter(table => table !== "authority_changes").map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })),
-      others.filter(entry => entry.table !== "authority_changes"));
+        .map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), others);
       assert.deepEqual(schemaObjects(database), prior);
       assert.throws(() => database.exec(`UPDATE command_audits SET created_at='later' WHERE id='${UUID_5}'`), /retained-evidence-immutable/u);
       assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);

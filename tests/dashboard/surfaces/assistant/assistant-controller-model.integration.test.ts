@@ -31,7 +31,7 @@ it('isolates retained chats, cancels cross-chat replies and invalidates every ch
   const listeners = new Set<() => void>();
   let snapshot: ChatGptAccountSnapshot = { state: 'connected', name: 'Synthetic', email: 'synthetic@example.com', planUsage: 'enabled' };
   const account: ChatGptAccountPort = { mode: 'live', getSnapshot: () => snapshot, subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    signIn: async () => {}, cancelSignIn: async () => {} };
+    signIn: async () => {}, cancelSignIn: async () => {}, signOut: async () => undefined };
   const publishAccount = (next: ChatGptAccountSnapshot) => { snapshot = next; for (const listener of listeners) listener(); };
   const loseAccount = () => publishAccount({ state: 'unavailable', message: 'Synthetic account loss' });
   let current!: ReturnType<typeof useAssistantController>;

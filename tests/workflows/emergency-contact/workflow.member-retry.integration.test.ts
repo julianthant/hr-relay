@@ -420,7 +420,7 @@ it("resumes a member Retry paused before its Save by reading its stale contacts 
   assert.equal(completed.outcome.state, "done", completed.outcome.state === "failed"
     ? JSON.stringify(f.database.authority.failures.get(completed.outcome.failureId)) : JSON.stringify(completed.outcome));
   f.hooks.onSpan = undefined;
-  const rows = approvedRows(); assert.equal(rows.length, 2);
+  const rows = approvedRows(); assert.equal(rows.length, 3, "the resumed read and the re-entry read after OnBase filing");
   assert.ok(Date.parse(rows[1]?.provenance[0]?.observedAt ?? "") >= resumedAt);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(held.envelope.runId).map(intent => intent.status), ["committed"]);
   assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), [1, 1]);
@@ -654,7 +654,9 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   // The hold check and its acknowledgment must share the first outer transaction after capture: no Retry or Pause can commit between them.
   if (settlementRetry) assert.deepEqual(holdAcknowledged, { transactionDepth: 1, outerTransaction: 1 });
   if (diagnosticCapture) assert.deepEqual(f.database.authority.failures.listByRun(f.parentRun.envelope.runId), []);
-  assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["abandoned", "done"]);
+  assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["abandoned", "yielded-delegation", "done", "done"], "the replacement yields to its OnBase child, which files, then re-enters");
+  const saves = f.children().flatMap(child => f.database.authority.writeIntents.listByRun(child.envelope.runId));
+  assert.equal(new Set(saves.map(intent => intent.itemId)).size, saves.length, "each member's Save runs exactly once");
   assert.deepEqual(f.database.authority.timelineEvents.page({ after: debugAfter, limit: 1000 }).filter(record => record.payload.kind === "debug"
     && record.payload.event.reason === "run-failed"), [], "a held or lost failure settlement records no failure event");
   assert.equal(report.stopped, "idle"); assert.equal(report.closure, "proved");
@@ -663,7 +665,8 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   assert.equal(runClaim(f.current()), undefined);
   assert.equal(f.database.authority.runResults.get(f.parentRun.envelope.runId), undefined);
   const replacement = f.children().find(child => child.envelope.retryOf === previous.envelope.runId); assert.ok(replacement);
-  assert.deepEqual(claimed, [f.parentRun.envelope.runId, replacement.envelope.runId]);
+  const filing = f.database.authority.runs.listChildren(replacement.envelope.runId); assert.equal(filing.length, 1);
+  assert.deepEqual(claimed, [f.parentRun.envelope.runId, replacement.envelope.runId, filing[0]?.envelope.runId, replacement.envelope.runId]);
   assert.equal(report.outcomes[1]?.runId, replacement.envelope.runId);
   assert.equal(canonicalJsonStringify(f.current().envelope), originalEnvelope);
   assert.deepEqual(originalBytes(f), originalRows);

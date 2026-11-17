@@ -1,4 +1,4 @@
-import { WorkbookCompatibilitySchema, WorkbookFieldRequirementSchema, WorkbookRequirementDeclarationSchema } from "./workbook-library.js";
+import { WorkbookCheckRequirementSchema, WorkbookCompatibilitySchema, WorkbookFieldRequirementSchema, WorkbookRequirementDeclarationSchema } from "./workbook-library.js";
 import { z } from "zod";
 import { ActivityTimeZoneSchema } from "./activity-volume.js";
 import { CapabilityAvailabilitySchema } from "../../rules/validation/absence.js";
@@ -62,6 +62,8 @@ export const WorkflowStartWireSchema = z.strictObject({
   spreadsheetIntake: z.boolean(),
   requiredWorkbookFields: z.array(z.string().min(1)).refine(ids => new Set(ids).size === ids.length),
   workbookReference: WorkbookFieldRequirementSchema.optional(),
+  /** The optional second check: the launcher lists every sheet that maps its key field, and a start may pick none. */
+  workbookCheck: WorkbookCheckRequirementSchema.optional(),
   steps: z.array(z.strictObject({
     key: StepKeySchema,
     label: z.string().min(1),
@@ -82,6 +84,7 @@ export const WorkflowStartWireSchema = z.strictObject({
   const checked = WorkbookRequirementDeclarationSchema.safeParse({
     requiredWorkbookFields: start.requiredWorkbookFields,
     ...(start.workbookReference === undefined ? {} : { workbookReference: start.workbookReference }),
+    ...(start.workbookCheck === undefined ? {} : { workbookCheck: start.workbookCheck }),
   });
   if (!checked.success) context.addIssue({ code: "custom", message: "invalid workflow workbook requirement" });
 });

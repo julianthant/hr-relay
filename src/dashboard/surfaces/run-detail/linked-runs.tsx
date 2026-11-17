@@ -2,17 +2,8 @@ import { useRef, useState, type KeyboardEvent } from "react";
 import { ArrowUpRight, GitBranch } from "lucide-react";
 import { IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
-import type { QueueSurfaceWire, LinkedRunWire } from "../queue/queue-model.js";
-import { dsStatusOf, statusText } from "../shared/status/status-model.js";
-
-export type LinkedRunEntry = Readonly<{ name: string; workflow: string; status: string; relation: "Parent" | "Child"; target: LinkedRunWire }>;
-
-/** The served parent first, then the runs it delegated to; the wire carries nothing else. */
-export function linkedRunEntries(row: Pick<QueueSurfaceWire, "parent" | "linkedRuns">): readonly LinkedRunEntry[] {
-  const entry = (target: LinkedRunWire, relation: LinkedRunEntry["relation"], name: string): LinkedRunEntry =>
-    ({ name, workflow: target.label, status: statusText(dsStatusOf(target.status)), relation, target });
-  return [...row.parent === null ? [] : [entry(row.parent, "Parent", row.parent.title)], ...row.linkedRuns.map(link => entry(link, "Child", link.label))];
-}
+import type { LinkedRunWire } from "../queue/queue-model.js";
+import type { LinkedRunEntry } from "./log-panel-model.js";
 
 /** The Logs header's icon button with its count; it renders nothing for a run with no linked run. */
 export function LinkedRunsButton({ entries, onOpen }: { entries: readonly LinkedRunEntry[]; onOpen?: (target: LinkedRunWire) => void }) {

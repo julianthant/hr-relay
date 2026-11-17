@@ -9,7 +9,9 @@ import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { personLookupActiveStatusDefinition } from "./steps/active-status/step.js";
 import { personLookupCrmDatesDefinition } from "./steps/crm-dates/step.js";
 import { personLookupCrossVerifyDefinition } from "./steps/cross-verify/step.js";
+import { personLookupReferenceCheckDefinition } from "./steps/reference-check/step.js";
 import { personLookupSearchingDefinition } from "./steps/searching/step.js";
+import { REFERENCE_CHECK } from "../../models/processing/workbooks/verify-person.js";
 
 export { PersonLookupCanonicalInput, PersonLookupInput };
 
@@ -21,7 +23,8 @@ const SEARCH_ENTRIES = { split: { kind: "delimited", delimiters: [";", "\n"] }, 
 export const personLookupWorkflow = defineWorkflow({
   id: "person-lookup",
   requiredWorkbookFields: [],
-  version: 3,
+  workbookCheck: REFERENCE_CHECK,
+  version: 4,
   code: "pl",
   label: "Person Lookup",
   summary: "Searches or matches one person in UCPath, cross-checks CRM, and reads employment status and selected CRM dates.",
@@ -100,6 +103,7 @@ export const personLookupWorkflow = defineWorkflow({
     const crossverify = personLookupCrossVerifyDefinition.build(author, searching);
     const activestatus = personLookupActiveStatusDefinition.build(author, searching, crossverify);
     const crmdates = personLookupCrmDatesDefinition.build(author, searching, crossverify, activestatus);
-    return { steps: [...searching.steps, ...crossverify.steps, ...activestatus.steps, ...crmdates.steps], result: crmdates.result };
+    const referencecheck = personLookupReferenceCheckDefinition.build(author, searching, crossverify, activestatus);
+    return { steps: [...searching.steps, ...crossverify.steps, ...activestatus.steps, ...crmdates.steps, ...referencecheck.steps], result: crmdates.result };
   },
 });

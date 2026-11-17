@@ -33,6 +33,7 @@ for (const kind of ["closure", "unknown"] as const) it(`serves explicit ${kind} 
     readStatus: async signal => { observed = signal; if (kind === "closure") throw new ChatGptResourceClosureUnprovedError(new Error("private")); throw new Error("private"); },
     refreshAccount: async () => { throw new Error("unexpected refresh"); },
     signIn: async () => { throw new Error("unexpected sign-in"); },
+    signOut: async () => { throw new Error("unexpected sign-out"); },
   } });
   const request = new Request(path, { signal: abort.signal });
   const result = ChatGptAccountStatusSchema.parse(await (await app.request(request)).json());

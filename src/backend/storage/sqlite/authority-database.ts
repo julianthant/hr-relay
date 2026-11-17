@@ -299,6 +299,8 @@ type SettingsCurrentRepository = Readonly<{
 
 type DependencyRepository = Readonly<{
   authenticateGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup>;
+  /** The open read snapshot's authentications, for the database's own repositories only; undefined in a write transaction and outside a snapshot. */
+  snapshotMemo(repositories: AuthorityRepositories): DelegationAuthenticationMemo | undefined;
   parents(envelopes: readonly RunRecord["envelope"][]): ReturnType<typeof readQueueParents>;
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof DependencyRecordSchema>>;
   get(dependencyId: string): z.infer<typeof DependencyRecordSchema> | undefined;
@@ -5931,6 +5933,8 @@ export class AuthorityDatabase implements Disposable {
       }),
       dependencies: Object.freeze({
         authenticateGroup: (manifest: DelegationManifest) => this.#readDelegationGroup(manifest),
+        snapshotMemo: (repositories: AuthorityRepositories) =>
+          repositories === this.authority && this.#transactionMode === "read" ? this.#delegationReadSnapshot?.memo : undefined,
         parents: (envelopes: readonly RunRecord["envelope"][]) => readQueueParents(this.authority, envelopes),
         groups: (parentRunId: string, selection: "current" | "retained" = "current") => {
           const parent = this.authority.runs.get(parentRunId);
