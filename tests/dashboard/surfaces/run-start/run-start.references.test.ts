@@ -22,6 +22,18 @@ it('sends no reference for a workflow whose only spreadsheet need is the optiona
   expect(launchWorkbookReferences([], [entry], {}, 2, sources, false)).toEqual([]);
   expect(launchWorkbookReferences([], [], {}, 1, [], false)).toEqual([]);
 });
+it('sends each check pick with its declaration beside the required reference, for every parsed input', () => {
+  const check = { typeId: 'reference-check', picks: [{ libraryId: 'roster', versionId: 'current', sheetId: 'people' }] };
+  expect(launchWorkbookReferences([], [entry], {}, 2, sources, false, undefined, check)).toEqual([1, 2].map(number => (
+    { typeId: 'reference-check', entry: number, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 })));
+  expect(launchWorkbookReferences(['roster-type'], [entry], selections, 1, sources, false, undefined, check)).toEqual([
+    { entry: 1, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 },
+    { typeId: 'reference-check', entry: 1, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 },
+  ]);
+  expect(launchWorkbookReferences([], [entry], {}, 1, sources, false, undefined, { typeId: 'reference-check', picks: [] })).toEqual([]);
+  expect(() => launchWorkbookReferences([], [entry], {}, 1, [], false, undefined, check)).toThrow();
+  expect(() => launchWorkbookReferences([], [], {}, 1, sources, false, undefined, check)).toThrow();
+});
 it('refuses missing reference identities, unavailable named versions', () => {
   expect(() => launchWorkbookReferences(['missing'], [entry], selections, 1, sources, false)).toThrow();
   expect(() => launchWorkbookReferences(['roster-type'], [], selections, 1, sources, false)).toThrow();

@@ -81,7 +81,7 @@ export { createTimeoutDeadlineScheduler };
 
 // Worker stdout carries ids, states, codes and counts only; every other task field stays in the run log.
 const STDOUT_LOG_FIELDS: ReadonlySet<string> = new Set(["runId", "workerId", "nodeId", "taskId", "requestId", "writeIntentId", "attempt",
-  "state", "status", "code", "capability", "method", "boundary", "errorName", "HDH department",
+  "state", "status", "code", "capability", "method", "boundary", "captureFailure", "errorName", "HDH department",
   "candidates", "rosterRows", "subjects", "eidCellsUnusable", "nameCellsUnusable"]);
 
 /** Structured stdout logging for the worker CLI process (never `console.*`). */

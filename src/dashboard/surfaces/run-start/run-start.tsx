@@ -1,5 +1,5 @@
 import { StartPlanRequestSchema, type StartPlanRequest } from "../../../models/dashboard/start-plan.js";
-import { useWorkbookRows, useWorkbookVersionSources, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT } from "./run-workbook-rows-model.js";
+import { useWorkbookRows, useWorkbookVersionSources, useCheckVersionSheets, checkVersionKey, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT } from "./run-workbook-rows-model.js";
 import { spreadsheetField } from "../../../models/fields/workbook-fields.js";
 import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
@@ -34,9 +34,9 @@ import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 
 import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
-import { TypedInput, PlanRefusals, StepOmissionFactsForm, RunReferenceRows } from "./run-start-kit.js";
+import { TypedInput, PlanRefusals, StepOmissionFactsForm, RunReferenceRows, RunCheckRows, RunCheckCard, type CheckSheet } from "./run-start-kit.js";
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
-import { SYSTEM_LABEL, type BrowserSystemId } from "../shared/status/system-chip-model.js";
+import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-model.js";
 import { foldStepOmissionFacts, forcedStepOmissions, initialStepOmissionDraft, omittedStepViews, startRequestFingerprint, previewRunInput, launchWorkbookReferences, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
 import { adjacentRunStartStage, reconcileRunStartStage, runStartStages, type RunStartStage } from "./run-start-timeline.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
@@ -83,6 +83,8 @@ export interface RunStartWorkflow {
   readonly spreadsheetIntake: boolean;
   readonly requiredWorkbookFields: readonly string[];
   readonly workbookReference?: Readonly<{ id: string; keyFieldId: string; mode: "keys" | "all"; writableFields: readonly string[] }>;
+  /** The optional second check: any library spreadsheet that maps the key field fits, and a start may pick none. */
+  readonly workbookCheck?: Readonly<{ id: string; keyFieldId: string }>;
   readonly referenceSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string; sheetName: string }>[];
 }
 
@@ -186,6 +188,7 @@ export function RunStartDialog({
   previewLaunch,
   previewRuns,
   onSubmitPreview,
+  previewStartable,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -208,6 +211,8 @@ export function RunStartDialog({
   previewLaunch?: Readonly<{ workflowId: MockWorkflowId; source?: MockRun }>;
   previewRuns?: readonly MockRun[];
   onSubmitPreview?: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
+  /** True only where a previewed workflow may start a local run (the design-mock harness); the served dashboard opens it for viewing. */
+  previewStartable?: boolean;
 }) {
   const workflows = useMemo(() => servedLaunchWorkflows(catalog), [catalog]);
   if (catalog.some(entry => entry.launch.state === "preview") && onSubmitPreview === undefined) throw new Error("RUN_PREVIEW_CAPABILITY_INCOMPLETE");
@@ -243,7 +248,7 @@ export function RunStartDialog({
   const selectedWorkflowRef = useRef(previewSelection?.workflowId ?? workflowId);
   useEffect(() => { selectedWorkflowRef.current = previewSelection?.workflowId ?? workflowId; }, [previewSelection, workflowId]);
   const [currentStage, setCurrentStage] = useViewState("launchStage", "Input");
-  const [draft, setDraft] = useState(() => launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId))));
+  const [draft, setDraft] = useState(() => launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId)), commandBinding?.authority.today));
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const update = useCallback((change: (current: LaunchDraft) => LaunchDraft) => {
@@ -251,10 +256,10 @@ export function RunStartDialog({
     draftRef.current = next;
     setDraft(next);
   }, []);
-  const { text, sourceInputUnchanged, stepDrafts, touchedFacts, factsAttempted, priority, dryRunRequested, browserMode,
-    referenceSelections, referenceDrafts, selectedWorkbookRows, valueDrafts, copiedOmissions } = draft;
+  const { text, sourceInputUnchanged, stepDrafts, touchedFacts, factsAttempted, priority: priorityChoice, dryRunRequested, browserMode,
+    referenceSelections, referenceDrafts, checkPicks, selectedWorkbookRows, valueDrafts, copiedOmissions } = draft;
   const typedDraft = launchDraft.typedDraftOf(draft, workflowId);
-  const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && workflow.workbookReference !== undefined), null, true);
+  const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && (workflow.workbookReference !== undefined || workflow.workbookCheck !== undefined)), null, true);
   const selectedWorkflow = workflows.find(workflow => workflow.workflowId === workflowId);
   const workbookReference = selectedWorkflow?.workbookReference;
   const requiredTypes = useMemo(() => workbookReference === undefined ? [] : [workbookReference.id], [workbookReference]);
@@ -269,6 +274,37 @@ export function RunStartDialog({
     || canonicalJsonStringify(sourceProjection.workbookReference ?? null) !== canonicalJsonStringify(workbookReference ?? null)))
     throw new Error(`WORKBOOK_COMPATIBILITY_DECLARATION_MISMATCH: ${workflowId}`);
   const referenceSources = sourceProjection?.sources ?? [];
+  const workbookCheck = selectedWorkflow?.workbookCheck;
+  /** Every local library spreadsheet whose current version maps the check's key field, apart from the one the required reference already picked. */
+  const checkLibraries = useMemo(() => workbookCheck === undefined || library.compatibility === undefined ? [] : library.compatibility.libraries.flatMap(source => {
+    const entry = library.catalog.find(candidate => candidate.libraryId === source.libraryId && candidate.state.origin.kind === "local" && !candidate.state.removed);
+    const worksheets = source.sheets.filter(sheet => sheet.mappings.some(mapping => mapping.fieldId === workbookCheck.keyFieldId)).map(sheet => ({ sheetId: sheet.sheetId, sheetName: sheet.sheetName }));
+    return entry === undefined || worksheets.length === 0 || entry.libraryId === referenceDrafts[workbookReference?.id ?? ""]?.libraryId ? []
+      : [{ libraryId: entry.libraryId, name: entry.name, pinned: entry.state.pinned, currentVersionId: source.versionId, currentSheets: worksheets,
+        versions: entry.state.versions.map((version, index) => ({ id: version.id, name: version.name || `v${entry.state.versions.length - index}` })) }];
+  }).toSorted((a, b) => a.name.localeCompare(b.name)), [workbookCheck, library.compatibility, library.catalog, referenceDrafts, workbookReference?.id]);
+  const historicalChecks = useMemo(() => checkLibraries.flatMap(entry => {
+    const pick = checkPicks[entry.libraryId];
+    return pick === undefined || pick.versionId === entry.currentVersionId ? [] : [{ libraryId: entry.libraryId, versionId: pick.versionId }];
+  }), [checkLibraries, checkPicks]);
+  const checkVersionSheets = useCheckVersionSheets(client, commandBinding?.authority.epoch ?? client, historicalChecks, workbookCheck?.keyFieldId);
+  const checkSheets = useMemo((): readonly CheckSheet[] => checkLibraries.map(entry => {
+    const pick = checkPicks[entry.libraryId];
+    const versionId = pick?.versionId ?? entry.currentVersionId;
+    const loaded = versionId === entry.currentVersionId ? { state: "ready" as const, sheets: entry.currentSheets } : checkVersionSheets[checkVersionKey(entry.libraryId, versionId)] ?? { state: "loading" as const, sheets: [] };
+    return { libraryId: entry.libraryId, name: entry.name, pinned: entry.pinned, versions: entry.versions, versionId, versionName: entry.versions.find(version => version.id === versionId)?.name ?? "",
+      worksheets: loaded.sheets, worksheetsState: loaded.state, ...(pick === undefined ? {} : { pickedSheetIds: pick.sheetIds }) };
+  }), [checkLibraries, checkPicks, checkVersionSheets]);
+  /** The picks that can be sent: named version read, at least one of its worksheets chosen. */
+  const pickedChecks = checkSheets.filter(sheet => sheet.pickedSheetIds !== undefined && sheet.worksheetsState === "ready"
+    && sheet.worksheets.some(worksheet => sheet.pickedSheetIds?.includes(worksheet.sheetId)));
+  const checkPending = checkSheets.some(sheet => sheet.pickedSheetIds !== undefined && sheet.worksheetsState !== "ready");
+  const checkSelections = pickedChecks.flatMap(sheet => sheet.worksheets.filter(worksheet => sheet.pickedSheetIds?.includes(worksheet.sheetId))
+    .map(worksheet => ({ libraryId: sheet.libraryId, versionId: sheet.versionId, sheetId: worksheet.sheetId })));
+  useEffect(() => {
+    for (const sheet of checkSheets) if (sheet.pickedSheetIds?.length === 0 && sheet.worksheetsState === "ready" && sheet.worksheets.length > 0)
+      update(current => launchDraft.pickCheck(current, sheet.libraryId, { versionId: sheet.versionId, sheetIds: [sheet.worksheets[0].sheetId] }));
+  }, [checkSheets, update]);
   const versionSources = useWorkbookVersionSources(client, commandBinding?.authority.epoch ?? client,
     selectedLibrary?.libraryId, selectedVersion, selectedLibrary?.state.selectedVersionId,
     selectedWorkflow?.requiredWorkbookFields ?? [], referenceSources);
@@ -344,7 +380,7 @@ export function RunStartDialog({
     dryRun,
     browserMode,
     captureBrowserScreenshots,
-    priority,
+    priority: priorityChoice,
     selectedStepKeys,
     stepOmissionDrafts: omissionRows.map(({ step, draft }) => ({ step, draft })),
   })]);
@@ -419,9 +455,9 @@ export function RunStartDialog({
   const selectWorkflow = useCallback((next: string, preserveStage = false) => {
     resetPdfs();
     setWorkflowId(next);
-    update(current => launchDraft.changeWorkflow(current, workflows.find(entry => entry.workflowId === next)));
+    update(current => launchDraft.changeWorkflow(current, workflows.find(entry => entry.workflowId === next), commandBinding?.authority.today));
     if (!preserveStage) { setCurrentStage("Input"); setCustomizeSteps(false); }
-  }, [workflows, update, setCurrentStage, setCustomizeSteps, setWorkflowId, resetPdfs]);
+  }, [workflows, update, setCurrentStage, setCustomizeSteps, setWorkflowId, resetPdfs, commandBinding?.authority.today]);
 
   // Opening lands on the panel you are standing in, every time — including the
   // second time, which is why this keys on `open` rather than running once.
@@ -493,15 +529,18 @@ export function RunStartDialog({
       const selected = selectedWorkbookRows?.choices ?? [];
       const value = previewWorkbookRows(inputRun.surface, selected, selected, typedValues);
       if (!rowSelectionFresh) return { ...value, submissions: [], problem: "The selected rows belong to earlier spreadsheet data. Clear the previous selection and choose rows again." };
+      if (rowReference === undefined) return { ...value, submissions: [], problem: null };
       if (workbookRows.state !== "ready") return { ...value, submissions: [], problem: workbookRows.error ?? (workbookRows.state === "loading" ? "Loading saved spreadsheet rows." : "Saved spreadsheet rows are unavailable. Choose an available spreadsheet and version.") };
       return value;
     }
     return previewRunInput(inputRun.surface, text, typedValues,
       sourceInputUnchanged && snapshot?.source.runId === rerunSource?.runId && snapshot?.source.version === rerunSource?.expectedVersion && snapshot !== null ? rerunTypedSourceInput(inputRun.surface.typedInput, snapshot.sourceInput) : undefined);
-  }, [inputRun, rowCapability, selectedWorkbookRows, rowSelectionFresh, workbookRows.state, workbookRows.error, text, typedValues, snapshot, rerunSource, sourceInputUnchanged, pdfSurface, pdfInput.draft, pdfInput.picks]);
+  }, [inputRun, rowCapability, rowReference, selectedWorkbookRows, rowSelectionFresh, workbookRows.state, workbookRows.error, text, typedValues, snapshot, rerunSource, sourceInputUnchanged, pdfSurface, pdfInput.draft, pdfInput.picks]);
 
 
 
+  /** Priority starts off when more than one person is entered, until the operator picks it. */
+  const priority = launchDraft.effectivePriority(priorityChoice, preview.entries.length);
   /** The plan request for the draft on screen; the gates keep it from being asked for a draft that cannot plan. */
   const buildPlanRequest = (): StartPlanRequest => {
     const values = snapshot === null ? null : pdfSurface === undefined ? rerunSubmission(snapshot, preview.submissions[0] ?? {}, valueDrafts)
@@ -521,9 +560,11 @@ export function RunStartDialog({
       browserMode,
       captureBrowserScreenshots,
       priority,
-      ...(requiredTypes.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, selectedReferences, values === null ? preview.submissions.length : 1,
-        versionSources.sources, (workbookReference?.writableFields.length ?? 0) > 0,
-        rowCapability === undefined ? undefined : { typeId: rowCapability.typeId, rows: selectedWorkbookRows?.choices ?? [] }) } : {}),
+      ...(requiredTypes.length || checkSelections.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, selectedReferences, values === null ? preview.submissions.length : 1,
+        [...versionSources.sources, ...checkSelections],
+        (workbookReference?.writableFields.length ?? 0) > 0,
+        rowCapability === undefined ? undefined : { typeId: rowCapability.typeId, rows: selectedWorkbookRows?.choices ?? [] },
+        workbookCheck === undefined ? undefined : { typeId: workbookCheck.id, picks: checkSelections }) } : {}),
       selectedStepKeys,
       // Send omission facts only after every declared form parses.
       ...(customizeSteps && stepOmissions !== null && stepOmissions.length > 0 ? { stepOmissions } : {}),
@@ -602,13 +643,27 @@ export function RunStartDialog({
   const launchRefusal = selectedLaunch?.state === 'unavailable' ? selectedLaunch.reason : undefined;
   const previewFlow = previewSelection ? mockWorkflow(previewSelection.workflowId) : undefined;
 
-  const referenceControls = (types: readonly string[]) => types.length === 0 ? undefined : <>{library.catalogLoading ? <p role="status">Loading reference data…</p> : types.map(typeId => {
+  const checkBusy = library.catalogRefreshing || library.compatibility === undefined;
+  const checkHandlers = {
+    onAdd: (libraryId: string) => { const sheet = checkSheets.find(candidate => candidate.libraryId === libraryId);
+      if (sheet !== undefined) update(current => launchDraft.pickCheck(current, libraryId, { versionId: sheet.versionId, sheetIds: sheet.worksheets.slice(0, 1).map(worksheet => worksheet.sheetId) })); },
+    onVersion: (libraryId: string, versionId: string) => update(current => launchDraft.pickCheck(current, libraryId, { versionId, sheetIds: [] })),
+    onSheets: (libraryId: string, sheetIds: readonly string[]) => update(current => {
+      const pick = current.checkPicks[libraryId];
+      return pick === undefined ? current : launchDraft.pickCheck(current, libraryId, { versionId: pick.versionId, sheetIds });
+    }),
+    onRemove: (libraryId: string) => update(current => launchDraft.removeCheck(current, libraryId)),
+  };
+  const checkRows = <RunCheckRows sheets={checkSheets} busy={checkBusy} {...checkHandlers} />;
+  const referenceControls = (types: readonly string[], withCheck: boolean) => types.length === 0 ? (!withCheck || workbookCheck === undefined ? undefined : library.catalogLoading ? <p role="status">Loading reference data…</p>
+    : <RunCheckCard sheets={checkSheets} busy={checkBusy} catalogError={library.catalogError} {...checkHandlers} onRefresh={() => void library.adapter.refreshCatalog()} />)
+    : <>{library.catalogLoading ? <p role="status">Loading reference data…</p> : types.map(typeId => {
     const draft = referenceDrafts[typeId];
     const sheetOptions = versionSources.state === 'ready' ? versionSources.sources : [];
     const requiredFields = selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [];
     const sheets = library.catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed).map(entry => ({ libraryId: entry.libraryId, name: entry.name,
       versions: entry.state.versions, currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
-    return <RunReferenceRows key={typeId} requiredLabel={requiredFields.length > 1 ? `${requiredFields.slice(0, -1).join(', ')} and ${requiredFields[requiredFields.length - 1]}` : requiredFields.join('')}
+    return <RunReferenceRows key={typeId} checkRows={withCheck && workbookCheck !== undefined ? checkRows : undefined} requiredLabel={requiredFields.length > 1 ? `${requiredFields.slice(0, -1).join(', ')} and ${requiredFields[requiredFields.length - 1]}` : requiredFields.join('')}
       sheets={sheets} chosenLibraryId={draft?.libraryId} chosenVersionId={draft?.versionId} chosenSheetId={selectedReferences[typeId]?.sheetId ?? ''}
       worksheets={sheetOptions.map(source => ({ sheetId: source.sheetId, sheetName: source.sheetName }))} worksheetsState={versionSources.state} worksheetsError={versionSources.error}
       busy={library.catalogRefreshing || library.compatibility === undefined} catalogError={library.catalogError}
@@ -625,7 +680,7 @@ export function RunStartDialog({
     next: nextStage, inputBlocked: blockedReason !== null, stepsBlocked: stepsBlockedReason !== null, optionsBlocked: optionsBlockedReason !== null,
     rerunInputBlocked: rerunInputBlocked || (declaredInput && isRerun && preview.submissions.length !== 1),
     checksBlocked: runChecksBlocked(checks.state),
-    referencesUnavailable: requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || Boolean(library.catalogError) || library.compatibility === undefined || versionSources.state !== "ready"),
+    referencesUnavailable: checkPending || requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || Boolean(library.catalogError) || library.compatibility === undefined || versionSources.state !== "ready"),
     path: launchStages.map(stage => stage.label),
     omissionMismatch, plannedCount: plan?.planned.length ?? 0, ...(supportsDryRun ? { dryRun } : {}),
   };
@@ -675,16 +730,17 @@ export function RunStartDialog({
   return (
     <Dialog open={open && !hidden} onOpenChange={closeAndReset}>
       <DialogContent
+        onOpenAutoFocus={event => { if (isRerun) { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>('button[aria-label="Close"]')?.focus(); } }}
         onCloseAutoFocus={event => { if (hidden) event.preventDefault(); else onCloseAutoFocus?.(event); }}
         size="xl"
         band
         title={previewSelection?.source || isRerun ? "Rerun" : "Start run"}
-        description={previewFlow ? `${previewFlow.label} · Workflow preview` : isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `${workflow.label} · Workflow preview` : "Choose a workflow to begin"}
+        description={previewFlow ? `${previewFlow.label} · ${previewStartable === true ? "Workflow preview" : "Not available yet"}` : isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `${workflow.label} · Workflow preview` : "Choose a workflow to begin"}
         className={cn("launch-design launch-dialog", (previewSelection?.source || isRerun) && "launch-rerun")}
       >
           {!previewSelection?.source && !isRerun && picker}
 
-          {launchRefusal ? <><DialogBody><EmptyState title="Workflow unavailable" description={launchRefusal} /></DialogBody><DialogFooter><Button onClick={() => closeAndReset(false)}>Close</Button></DialogFooter></> : previewSelection && onSubmitPreview && previewRuns ? <WorkflowMockRunForm key={`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`} workflowId={previewSelection.workflowId} source={previewSelection.source} runs={previewRuns} initialDraft={previewDrafts.current.get(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`)} onDraftChange={draft => previewDrafts.current.set(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`, draft)} onClose={() => closeAndReset(false)} onSubmit={onSubmitPreview} /> : <>
+          {launchRefusal ? <><DialogBody><EmptyState title="Workflow unavailable" description={launchRefusal} /></DialogBody><DialogFooter><Button onClick={() => closeAndReset(false)}>Close</Button></DialogFooter></> : previewSelection && onSubmitPreview && previewRuns ? <WorkflowMockRunForm key={`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`} workflowId={previewSelection.workflowId} source={previewSelection.source} runs={previewRuns} initialDraft={previewDrafts.current.get(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`)} onDraftChange={draft => previewDrafts.current.set(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`, draft)} onClose={() => closeAndReset(false)} onSubmit={onSubmitPreview} startable={previewStartable === true} /> : <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ol aria-label="Run configuration path" className="launch-stagebar">
               {launchStages.map((stage, index) => {
@@ -715,10 +771,10 @@ export function RunStartDialog({
 
             {currentStage === "Steps" && <section className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between gap-3">
-              <h3 className="text-heading font-semibold">{isRerun ? "Choose what to run again" : "Workflow steps"}</h3>
-              {workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} / {workflow.steps.length} included</span>}
+              <h3 className="text-heading font-semibold">Steps</h3>
+              {workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} of {workflow.steps.length} included</span>}
               </div>
-              <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Required steps stay included. Optional steps may be omitted."}</p>
+              <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Replace reading steps with manual values. Form actions stay included."}</p>
             </section>}
 
             {currentStage === "Checks" && <RunChecksStage checks={checks.state} onFix={fixCheck} onRecheck={checks.recheck} />}
@@ -740,7 +796,7 @@ export function RunStartDialog({
                       inputRef={typedInputRef}
                       draft={typedValues}
                       rowInput={rowCapability === undefined ? undefined : <>
-                        {referenceControls([rowCapability.typeId])}
+                        {referenceControls([rowCapability.typeId], true)}
                         {library.catalogRefreshing && <p role="status">Refreshing reference data. Row selection is disabled.</p>}
                         {workbookRows.state === "loading" && <div role="status" aria-label="Loading saved rows"><Skeleton className="h-9 w-full" /></div>}
                         {workbookRows.state === "error" && <Banner tone="danger" title="Saved rows unavailable">{workbookRows.error}<Button variant="secondary" onClick={() => void library.adapter.refreshCatalog()}>Refresh reference data</Button></Banner>}
@@ -768,7 +824,7 @@ export function RunStartDialog({
                       />
                     </Well>
                   )}
-                  {referenceControls(requiredTypes.filter(typeId => typeId !== rowCapability?.typeId))}
+                  {referenceControls(requiredTypes.filter(typeId => typeId !== rowCapability?.typeId), rowCapability === undefined)}
                   {pdfSurface === undefined && !declaredInput && isRerun && snapshot !== null && (
                     <section aria-label="Previous values" className="flex flex-col gap-[var(--ds-space-cozy)]">
                       {snapshot.values.length === 0 && <p className={cn(dsText.body, dsFg.muted)}>No reusable values recorded.</p>}
@@ -835,7 +891,7 @@ export function RunStartDialog({
                       const forcedBy = forcedByStep.get(step.key) ?? [];
                       const row = omissionRows.find((candidate) => candidate.step === step.key);
                       const sourceState = snapshot?.steps.find(entry => entry.key === step.key)?.state;
-                      const systems = step.systems?.map(system => SYSTEM_LABEL[system]).join(" · ");
+                      const systems = step.systems?.map(system => SYSTEM_NAME[system]).join(" · ");
                       const note = forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.`
                         : control.state === "omittable" && !selected && !isRerun && !multiSubject ? "Use saved or entered values instead."
                         : control.state === "omittable" && control.forces.length > 0 ? `Also omits: ${stepLabels(control.forces)}` : systems;
@@ -846,7 +902,7 @@ export function RunStartDialog({
                         below={row !== undefined && !isRerun ? <StepOmissionFactsForm step={row.label} form={row.form} draft={row.draft} errors={visibleFactErrors(row)}
                           onChange={(field, next) => changeFact(row.step, row.form, field, next)} onTouch={(field) => touchFact(row.step, field)} /> : undefined}>
                         {isRerun && snapshot !== null && <Badge tone={sourceState === "completed" ? "success" : sourceState === "failed" ? "danger" : "neutral"} className="launch-step-status" data-status={sourceState}>{sourceState === "completed" ? "Completed" : sourceState === "failed" ? "Failed" : "Not started"}</Badge>}
-                        {locked && <span className="sr-only">{isRerun && sourceState === "completed" ? `Completed in the source; this workflow requires it to run again. ${control.reason}` : control.reason}</span>}
+                        {locked && <span className="sr-only">{isRerun && sourceState === "completed" ? "Completed in the source; it runs again." : "Required step."}</span>}
                       </RunListRow>;
                     })}
                   </RunList>
@@ -938,6 +994,7 @@ export function RunStartSurfaces({
   previewLaunch,
   previewRuns,
   onSubmitPreview,
+  previewStartable,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -954,6 +1011,8 @@ export function RunStartSurfaces({
   previewLaunch?: Readonly<{ workflowId: MockWorkflowId; source?: MockRun }>;
   previewRuns?: readonly MockRun[];
   onSubmitPreview?: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
+  /** True only where a previewed workflow may start a local run (the design-mock harness); the served dashboard opens it for viewing. */
+  previewStartable?: boolean;
 }) {
   return (
     <RunStartDialog
@@ -972,6 +1031,7 @@ export function RunStartSurfaces({
       previewLaunch={previewLaunch}
       previewRuns={previewRuns}
       onSubmitPreview={onSubmitPreview}
+      previewStartable={previewStartable}
     />
   );
 }

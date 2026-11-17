@@ -331,6 +331,11 @@ export type AssistantMessageRecord = z.infer<typeof AssistantMessageRecordSchema
 export const AssistantChatSummarySchema = z.strictObject({ id: z.uuid(), title: Title, revision: Revision, createdAt: z.iso.datetime(), expiresAt: z.iso.datetime() });
 export const AssistantHistoryViewSchema = z.strictObject({ chats: z.array(AssistantChatSummarySchema).max(ASSISTANT_CHATS_MAX), selectedId: z.uuid().nullable() });
 export type AssistantHistoryView = z.infer<typeof AssistantHistoryViewSchema>;
+export const AssistantActivityWireSchema = z.strictObject({
+  day: z.iso.date(),
+  rows: z.array(z.strictObject({ id: z.uuid(), label: z.string().min(1).max(160), at: z.iso.datetime() })),
+});
+export type AssistantActivityWire = z.infer<typeof AssistantActivityWireSchema>;
 export const AssistantStoredMessageSchema = z.strictObject({
   id: z.uuid(), ordinal: z.number().int().min(1), role: z.enum(["operator", "assistant"]), kind: AssistantMessageKindSchema,
   text: DisplayText, delivery: AssistantDeliverySchema, code: FailureCode.nullable(), actionId: z.uuid().nullable(),

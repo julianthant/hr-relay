@@ -55,20 +55,21 @@ describe("browser current-owner fence", () => {
       try {
         const capture = await resource.screenshot!();
         assert.equal(capture.state, "unavailable");
-        if (capture.state === "unavailable") assert.equal(capture.reason, "verification-failed");
+        if (capture.state === "unavailable") assert.deepEqual([capture.reason, capture.detail], ["verification-failed", "sign-in-check-type-error"]);
         assert.deepEqual(debug, [{ phase: "failed", correlationId: sessionId, reason: "capture-cause", code: "INTERNAL_FAILURE",
-          message: "TypeError", stack: "TypeError\n    at src/backend/systems/crm/session.ts:42:7" }]);
+          message: "TypeError", stack: "TypeError\n    at src/backend/systems/crm/session.ts:42:7", area: "sign-in-check-type-error" }]);
         assert.equal(/Quillan|Petra|private|fictional/u.test(JSON.stringify(debug)), false);
       } finally { await resource.close({ reason: "worker-stop" }); }
     });
   });
 
-  it("names the failed Playwright call and page error class on the capture cause from fixed names only", async () => {
+  it("names the capture stage, failed Playwright call and page error class on the capture cause from fixed names only", async () => {
     for (const [message, area] of [
-      ["frame.evaluate: ReferenceError: __name is not defined", "frame-evaluate-referenceerror"],
-      ["frame.evaluate: QuillanPrivateError: synthetic private text", "frame-evaluate-page-error"],
-      ["quillanPrivate.petraCall: TypeError: synthetic private text", "unknown-call-typeerror"],
-      ["frame.evaluate: Execution context was destroyed by Quillan", "frame-evaluate"],
+      ["frame.evaluate: ReferenceError: __name is not defined", "sign-in-check-frame-evaluate-referenceerror"],
+      ["frame.evaluate: QuillanPrivateError: synthetic private text", "sign-in-check-frame-evaluate-page-error"],
+      ["quillanPrivate.petraCall: TypeError: synthetic private text", "sign-in-check-unknown-call-typeerror"],
+      ["frame.evaluate: Execution context was destroyed by Quillan", "sign-in-check-frame-evaluate"],
+      ["Quillan private text without a call", "sign-in-check-error"],
     ] as const) {
       await fixtures.withTempRuntime(async ({ config }) => {
         const native = fixtures.fakeLauncher(), owner = epoch();
@@ -81,7 +82,7 @@ describe("browser current-owner fence", () => {
         const resource = await factory.open(input);
         try {
           const capture = await resource.screenshot!();
-          assert.equal(capture.state === "unavailable" ? capture.reason : capture.state, "verification-failed");
+          assert.deepEqual(capture.state === "unavailable" ? [capture.reason, capture.detail] : [capture.state], ["verification-failed", area]);
           const causes = records.flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "capture-cause" ? [record.payload.event] : []);
           assert.deepEqual(causes.map(event => event.area), [area], message);
           assert.equal(mirrored.some(line => line.includes(`"area":"${area}"`)), true, message);
@@ -218,7 +219,7 @@ describe("browser current-owner fence", () => {
 
   it("refuses the label screenshot after the safety check settles stale and still removes its owned banner", async () => {
     const page = fixtures.fakePage(), owner = epoch(), evaluate = page.evaluate;
-    let bannerOwned = false, captures = 0, removals = 0, published = false;
+    let bannerOwned = false, captures = 0, removals = 0, revocations = 0, published = false;
     page.evaluate = async (callback, arg) => {
       if (callback.toString().includes('document.createElement("div")')) {
         bannerOwned = true;
@@ -229,7 +230,10 @@ describe("browser current-owner fence", () => {
     const frame = page.mainFrame(), evaluateFrame = frame.evaluate;
     frame.evaluate = async (callback, arg) => {
       const result = await evaluateFrame(callback, arg);
-      if (bannerOwned && callback.toString().includes("return state.seen")) queueMicrotask(() => queueMicrotask(owner.revoke));
+      if (bannerOwned && revocations === 0 && /__relayCaptureSecrets[\s\S]*["']unavailable["']/u.test(callback.toString())) {
+        revocations++;
+        queueMicrotask(() => queueMicrotask(owner.revoke));
+      }
       return result;
     };
     page.locator = () => ({ count: async () => 0,
@@ -244,6 +248,7 @@ describe("browser current-owner fence", () => {
       });
       published = true;
     }, ProfileCustodyUnavailableError);
+    assert.equal(revocations, 1);
     assert.equal(captures, 0);
     assert.equal(removals, 1);
     assert.equal(bannerOwned, false);

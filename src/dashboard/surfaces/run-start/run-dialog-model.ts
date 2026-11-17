@@ -460,8 +460,7 @@ export function runDialogControls(view: RunDialogState, gates: LaunchGates): Run
       enter: enabled ? event : null, hint: enabled ? "Enter to continue" : null };
   }
   const plan = view.shown?.plan;
-  const label = plan === undefined ? gates.dryRun === undefined ? "Start run" : gates.dryRun ? "Start dry run" : "Start live run"
-    : plan.dryRun ? "Start dry run" : view.source.kind === "rerun" ? "Create rerun" : `Start ${String(plan.planned.length)} ${plan.planned.length === 1 ? "run" : "runs"}`;
+  const label = gates.dryRun === undefined ? "Start run" : (plan === undefined ? gates.dryRun : plan.dryRun) ? "Start dry run" : "Start live run";
   const enabled = startRefusal(view, gates, view.shown) === undefined;
   const event = (input: RunDialogPrimaryInput) => ({ type: "start", ...input }) as const;
   return { primary: { label, enabled, loading, event }, back, cancel: { type: "close" },

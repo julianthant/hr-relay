@@ -152,14 +152,14 @@ describe("workflow definition public equivalence characterization", () => {
         "typedInput": {
     modeField: "mode", modeLabel: "Lookup mode", initialMode: "search", description: "Each entry starts one run.",
     modes: [
-      { value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or a new line.", placeholder: "10000001; Lee, Jordan",
+      { value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or Shift+Enter.", placeholder: "10000001; Lee, Jordan",
         defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
         parser: { kind: "entries", spec: { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }] } },
         display: { kind: "first-present", fields: ["emplId", "name"] }, identityFields: ["emplId", "name"],
       },
       { value: "match", label: "Match", inputLabel: "Name, DOB and SSN", hint: "Last, First, DOB, SSN. Use x for an unavailable DOB or SSN, but not both. Separate people with semicolons.", placeholder: "Lee, Jordan, 01/01/2000, x",
         defaults: [{ field: "crmCheck", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
-        parser: { kind: "name-tuple", delimiter: ";", familyName: "lastName", givenName: "firstName", identifiers: [{ field: "dob", canonicalField: "text" }, { field: "ssn", canonicalField: "ssn" }], missing: "x", missingIdentifiersCode: "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS" },
+        parser: { kind: "name-tuple", delimiter: ";", familyName: "lastName", givenName: "firstName", identifiers: [{ field: "dob", canonicalField: "text" }, { field: "ssn", canonicalField: "ssn" }], missing: "x", missingIdentifiersCode: "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS", shapeRefusal: "Use Last, First, DOB, SSN; separate people with semicolons.", missingRefusal: "Match needs DOB or SSN; both cannot be x." },
         display: { kind: "tuple", fields: ["lastName", "firstName", "dob", "ssn"], separator: ", ", missing: "x", masked: ["ssn"] }, identityFields: ["lastName", "firstName", "dob", "ssn"],
       },
     ],
@@ -169,7 +169,7 @@ describe("workflow definition public equivalence characterization", () => {
       { field: "includeCrmDates", label: "Read CRM dates", placement: "step", modes: ["search"], requires: ["crmCheck"] },
     ],
   },
-        "placeholder": "Enter employee IDs or names separated by semicolons or new lines",
+        "placeholder": "Enter employee IDs or names separated by a semicolon or Shift+Enter",
         "parser": {
           "split": {
             "kind": "delimited",
