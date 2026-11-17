@@ -781,7 +781,7 @@ export function RunStartDialog({
             )}
 
             {currentStage === "Steps" && <section className="flex flex-col gap-1">
-              <div className="flex items-baseline justify-between gap-3 pr-[var(--ds-row-pad-x)]">
+              <div className="flex max-w-[var(--ds-w-body-content)] items-baseline justify-between gap-3 pr-[var(--ds-row-pad-x)]">
               <h3 className="text-heading font-semibold">Steps</h3>
               {workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} of {workflow.steps.length} included</span>}
               </div>
@@ -876,7 +876,7 @@ export function RunStartDialog({
                     const step = snapshot?.steps.find((candidate) => candidate.nodes.some((node) => node.nodeId === entry.nodeId));
                     if (step === undefined) throw new Error("RERUN_WARNING_STEP_UNAVAILABLE");
                     return <Well key={`${entry.nodeId}:${entry.writeIntentId}`}>
-                      <KeyValueList items={[{ key: "Step", value: stepLabel(step.key) }, { key: "System", value: SYSTEM_NAME[entry.system] }]} />
+                      <KeyValueList items={[{ key: "Step", value: <span className="font-[family-name:var(--ds-font-body)]">{stepLabel(step.key)}</span> }, { key: "System", value: <span className="font-[family-name:var(--ds-font-body)]">{SYSTEM_NAME[entry.system]}</span> }]} />
                     </Well>;
                   })}
                 </section>
