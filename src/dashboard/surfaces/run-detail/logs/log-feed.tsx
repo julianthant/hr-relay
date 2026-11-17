@@ -113,7 +113,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
       const viewport = scroller.current;
       if (!viewport) throw new Error("log-timeline-viewport-missing");
       const style = getComputedStyle(viewport);
-      const scrollTarget = targetEntryId ? target : section;
+      const scrollTarget = targetEntryId && step.header === false ? target : section;
       viewport.scrollTop += scrollTarget.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop || "0");
       target.focus({ preventScroll: true });
       jumpFrame.current = undefined;
