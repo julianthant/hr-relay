@@ -6,6 +6,7 @@ import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/
 import { FIXTURE_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../support/fixtures/dashboard/fixture-settings.js";
 import { PreflightRerunCommandRequestSchema } from "../../../../src/models/preflight/preflight-contract.js";
+import { WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
@@ -83,7 +84,7 @@ describe("the Run dialog's Checks step", () => {
     const down = await h.openDialog(h.stubClient({
       readPreflight: async () => ({ state: "unavailable", reason: "The runtime is restarting." }),
       editableSettings: async () => FIXTURE_EDITABLE_SETTINGS,
-      preflightScopes: async () => FIXTURE_BOOTSTRAP.workflows,
+      preflightScopes: async () => WorkflowBootstrapPrimitiveSchema.array().parse(FIXTURE_BOOTSTRAP.workflows),
       rerunPreflight: async request => {
         const command = PreflightRerunCommandRequestSchema.parse(request);
         if (h.READY.state !== "present") throw new Error("fixture readiness report required");
