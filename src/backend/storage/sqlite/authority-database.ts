@@ -7,7 +7,7 @@ import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { deriveEvidenceReceiptId } from "../../../models/trust/evidence-identity.js";
 import { CURRENT_RUN_SETTLEMENT_SQL, readRunSettlementRow, runSettlementContext, runSettlementColumns } from "./run-settlement-row.js";
-import { convertPersonPreferencesRow } from "./person-preferences-migration.js";
+import { SETTINGS_RECORD_CONVERSION_VERSION, convertSettingsRecordRow, isSettingsRecordConversionMarker } from "./settings-record-conversion.js";
 import { readContinuationGate, validateRunContinuation } from "./run-continuation.js";
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
 import type { ChildProcess } from "node:child_process";
@@ -51,6 +51,7 @@ import { WorkerPoolRecordSchema,workerPoolVersion,type WorkerPoolRecord } from "
 import { CanonicalCrashRecoveryRequestSchema,RunClaimTokenSchema } from "../../../models/run/worker.js";
 import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
 import { deriveBulkChildCommand,deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
+import { CommandRowStateSchema,type CommandRowState } from "../../../rules/commands/command-lifecycle.js";
 import { AuthorityCommandAuditRecordSchema,AuthorityCommandRecordSchema,BulkParentCommandRecordSchema,BulkRunCommandAcceptanceRecordSchema,CommandAuditRecordSchema,CommandIdentityConflictError,CommandRequestSchema,RunLifecycleCommandAuditRecordSchema,RunLifecycleCommandRecordSchema,StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
@@ -76,7 +77,7 @@ import { privatePathRejects } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
-import { NativeCommandAuditSchema,commandFromRow,insertNativeCommand,settleNativeCommand,settledRunDeletionIds } from "./command-record-row.js";
+import { NativeCommandAuditSchema,commandFromRow,convertPredecessorCommandRowState,insertNativeCommand,settleNativeCommand,settledRunDeletionIds } from "./command-record-row.js";
 import { authoritySourceDatabaseIdentity,type AuthorityBackupExpectedSource } from "./database-identity.js";
 import { deletedRunFromRow } from "./deleted-run-row.js";
 import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
@@ -99,7 +100,7 @@ import { continuationDelegationGroups } from "./run-continuation-delegation.js";
 import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
-import { readAppSettings, migratePersonPreferences } from "./settings-storage.js";
+import { readAppSettings, migrateSettingsRecords } from "./settings-storage.js";
 import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } from "./timeline-repository.js";
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
@@ -131,7 +132,7 @@ import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow, migrateAssis
 import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertNoAssistantGrantHistory } from "./assistant-grant-retirement.js";
 import { assistantAttachmentFromRow, byteAwareRow } from "./assistant-attachments.js";
 import { RECOGNIZED_AUTHORITY_SCHEMA_VERSIONS } from "../../../models/config/authority-schema-versions.js";
-import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
+import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,COMMAND_ROW_STATE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema,type ArtifactOutboxStorageRecord,type ArtifactSinkHeadRecord,type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
@@ -230,7 +231,7 @@ type ReadRepository<RecordValue> = Readonly<{
 
 type CommandNoticeRead = Readonly<{
   request: z.infer<typeof CommandRequestSchema>;
-  state: "admitted" | "executing" | "succeeded" | "refused" | "uncertain";
+  state: CommandRowState;
   result?: z.infer<typeof CommandAuditRecordSchema>["result"];
 }>;
 type CommandRepository = Readonly<{
@@ -408,7 +409,7 @@ const UNRELEASED_QUIT_HOLD_SQL = `held.family='application'
   AND json_extract(held.request_json,'$.type')='pause-all-and-quit'
   AND json_extract(held.request_json,'$.payload.confirmed')=1
   AND json_extract(held.request_json,'$.target.runtimeGeneration')=?
-  AND NOT EXISTS(SELECT 1 FROM commands release WHERE release.state IN ('executing','succeeded') AND release.family='run-lifecycle'
+  AND NOT EXISTS(SELECT 1 FROM commands release WHERE release.state='succeeded' AND release.family='run-lifecycle'
     AND json_extract(release.request_json,'$.operation')='application-admission'
     AND json_extract(release.request_json,'$.request.runtimeGeneration')=?
     AND json_extract(release.request_json,'$.request.releases')=held.id)`;
@@ -1335,7 +1336,7 @@ function inspectionRunReader(expectedSchemaVersion: number): (raw: unknown) => P
   };
 }
 
-/** What validating one stored row needs: the store, its schema's readers and the preference conversion below schema 27. */
+/** What validating one stored row needs: the store, its schema's readers and the row conversions of the schemas above it. */
 type StoredRowContext = Readonly<{ database: DatabaseSync; read: StoredReaders; expectedSchemaVersion: number; predecessorCustody: boolean;
   convertPreferences: (table: string, row: unknown) => unknown }>;
 
@@ -1343,8 +1344,9 @@ function storedRowContext(database: DatabaseSync, expectedSchemaVersion: number)
   const predecessorCustody = expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
   const read: StoredReaders = { ...(predecessorCustody ? PREDECESSOR_CUSTODY_READERS : CURRENT_READERS), run: inspectionRunReader(expectedSchemaVersion) };
   const convertPreferences = (table: string, row: unknown) => {
-    const person = expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
-    return expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
+    const person = expectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow(table, row) : row;
+    const effort = expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
+    return expectedSchemaVersion < COMMAND_ROW_STATE_SCHEMA_VERSION ? convertPredecessorCommandRowState(table, effort) : effort;
   };
   return { database, read, expectedSchemaVersion, predecessorCustody, convertPreferences };
 }
@@ -1901,7 +1903,7 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
       if (statement === `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`) convertWorkerCustody(database, input.now, input.captureFile, settleEvidence);
       if (migration.version === ASSISTANT_GRANT_RETIREMENT_VERSION && index === 0) assertNoAssistantGrantHistory(database);
       execMigrationStatement(database, statement);
-      if (migration.version === 16 && index === 2) migratePersonPreferences(database);
+      if (isSettingsRecordConversionMarker(statement)) migrateSettingsRecords(database);
       if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
       if (statement === `SELECT '${WORKER_CUSTODY_SCAN_ID}'`) assertWorkerCustodyConverted(database);
     }
@@ -2007,7 +2009,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
 }
 
 function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion: number) {
-  const convert = inspectedSchemaVersion < 16 ? convertPersonPreferencesRow : (_table: string, row: unknown) => row;
+  const convert = inspectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow : (_table: string, row: unknown) => row;
   const settings = readAppSettings(database, convert);
   const settingsAuthority = settings === undefined
     ? Object.freeze({ state: "never-initialized" as const })
@@ -2767,9 +2769,9 @@ export class AuthorityDatabase implements Disposable {
       if (database.prepare("PRAGMA foreign_key_check").all().length !== 0) throw new Error("flat-archive-integrity-refused");
       const meta = readMetaRow(database);
       if (meta.schema_version !== 6 || meta.installation_id !== undefined || meta.profile_id !== undefined) throw new Error("flat-backup-schema-refused");
-      const settings = readAppSettings(database, convertPersonPreferencesRow);
+      const settings = readAppSettings(database, convertSettingsRecordRow);
       const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
-        .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", convertPersonPreferencesRow("settings_snapshots", row))));
+        .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", convertSettingsRecordRow("settings_snapshots", row))));
       const expectedPaths = { stateRoot: root, artifactRoot: join(root, "artifacts"), browserProfileRoot: join(root, "browsers"),
         duoCredential: join(root, "credentials", "duo-webauthn.json"), reportsDir: join(workspace, "data", "reports"),
         downloadsDir: join(workspace, "data", "downloads"), onboardingDocsDir: join(workspace, "data", "onboarding"),
@@ -5697,7 +5699,7 @@ export class AuthorityDatabase implements Disposable {
           const stored = commandFromRow(row);
           if (!("family" in stored)) return undefined;
           const request = CommandRequestSchema.parse(stored);
-          const state = z.enum(["admitted", "executing", "succeeded", "refused", "uncertain"]).parse(z.object({ state: z.string() }).parse(row).state);
+          const state = CommandRowStateSchema.parse(z.object({ state: z.string() }).parse(row).state);
           const audit = this.authority.commandAudits.findByCommand(request.commandId);
           return audit === undefined ? { request, state } : { request, state, result: audit.result };
         },
@@ -6646,7 +6648,7 @@ export class AuthorityDatabase implements Disposable {
     const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
     const row = z.strictObject({ commandId: z.uuid(), hold: z.enum(["quit", "update", "shutdown", "logout"]) }).optional().parse(this.#database.prepare(`SELECT id AS commandId,
       CASE family WHEN 'application' THEN 'quit' ELSE json_extract(request_json,'$.request.reason') END AS hold FROM commands held
-      WHERE state IN ('executing','succeeded') AND ((${UNRELEASED_QUIT_HOLD_SQL}) OR (family='run-lifecycle'
+      WHERE state='succeeded' AND ((${UNRELEASED_QUIT_HOLD_SQL}) OR (family='run-lifecycle'
       AND json_extract(request_json,'$.operation')='application-admission'
       AND json_type(request_json,'$.request.reason')='text'
       AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation, generation, generation));
@@ -6656,7 +6658,7 @@ export class AuthorityDatabase implements Disposable {
   #quitAdmission(): string | undefined {
     const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
     return z.strictObject({ commandId: z.uuid() }).optional().parse(this.#database.prepare(`SELECT id AS commandId FROM commands held
-      WHERE state IN ('executing','succeeded') AND ${UNRELEASED_QUIT_HOLD_SQL} ORDER BY created_at,id LIMIT 1`).get(generation, generation))?.commandId;
+      WHERE state='succeeded' AND ${UNRELEASED_QUIT_HOLD_SQL} ORDER BY created_at,id LIMIT 1`).get(generation, generation))?.commandId;
   }
 
   #insertAdmissionCommand(repositories: AuthorityRepositories, request: z.infer<typeof ApplicationAdmissionRequestSchema>): void {

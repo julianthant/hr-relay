@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it, vi } from "vitest";
 import dashboardConfig from "../vite.dashboard.config.js";
 import {
+  DASHBOARD_FRONTEND_HOST,
   DASHBOARD_FRONTEND_OWNER_PATH,
   DASHBOARD_LAUNCH_NONCE_ENV,
 } from "../src/models/dashboard/dashboard-frontend-owner.js";
@@ -148,5 +149,13 @@ describe("the dashboard development proxy", () => {
     assert.deepEqual(proxy["/api"], expected);
     assert.deepEqual(proxy["/artifacts"], expected);
     assert.deepEqual(proxy["/events"], expected);
+  });
+});
+
+describe("the dashboard development server bind", () => {
+  it("binds the host the frontend owner probe fetches, so a ::1-first localhost cannot hide it", () => {
+    assert.equal(DASHBOARD_FRONTEND_HOST, "127.0.0.1");
+    assert.equal(dashboardConfig.server?.host, DASHBOARD_FRONTEND_HOST);
+    assert.equal(dashboardConfig.server?.strictPort, true);
   });
 });

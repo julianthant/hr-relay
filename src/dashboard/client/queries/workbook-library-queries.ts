@@ -9,12 +9,14 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { httpError, schemaError } from "../errors.js";
 import type { DashboardTransport } from "../transport.js";
 import { parseOrThrow } from "./query-parse.js";
-import { WorkbookResultsSchema, WorkbookCompatibilitySchema, WorkbookLibraryCatalogSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryVersionViewSchema,
+import { WorkbookCloneRequestSchema, WorkbookSharePointImportRequestSchema, WorkbookResultsSchema, WorkbookCompatibilitySchema, WorkbookLibraryCatalogSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryVersionViewSchema,
   type WorkbookLibraryEntry, type WorkbookLibraryAction, type WorkbookLibraryActionResult } from "../../../models/dashboard/workbook-library.js";
 
 export interface WorkbookLibraryQueries {
   workbookResults(): Promise<z.infer<typeof WorkbookResultsSchema>>;
   workbookImport(workbook: unknown): Promise<z.infer<typeof WorkbookImportResultSchema>>;
+  workbookClone(libraryId: string, request: z.infer<typeof WorkbookCloneRequestSchema>): Promise<z.infer<typeof WorkbookImportResultSchema>>;
+  workbookImportSharePoint(request: z.infer<typeof WorkbookSharePointImportRequestSchema>): Promise<z.infer<typeof WorkbookImportResultSchema>>;
   workbookCatalog(): Promise<readonly WorkbookLibraryEntry[]>;
   workbookCompatibility(): Promise<z.infer<typeof WorkbookCompatibilitySchema>>;
   workbookTypes(): Promise<readonly z.infer<typeof WorkbookTypeSchema>[]>;
@@ -83,6 +85,16 @@ export function createWorkbookLibraryQueries(transport: DashboardTransport): Wor
       const view = parseOrThrow(WorkbookLibraryVersionViewSchema, path, await transport.requestJson(path));
       if (view.libraryId !== libraryId || view.version.id !== versionId) throw schemaError(path, 'named version identity mismatch');
       return view;
+    },
+    async workbookClone(libraryId: string, value: z.infer<typeof WorkbookCloneRequestSchema>) {
+      const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/clone`;
+      const request = parseOrThrow(WorkbookCloneRequestSchema, path, value);
+      return parseOrThrow(WorkbookImportResultSchema, path, await transport.requestJson(path, { method: 'POST', body: JSON.stringify(request) }));
+    },
+    async workbookImportSharePoint(value: z.infer<typeof WorkbookSharePointImportRequestSchema>) {
+      const path = '/api/v1/workbooks/import';
+      const request = parseOrThrow(WorkbookSharePointImportRequestSchema, path, value);
+      return parseOrThrow(WorkbookImportResultSchema, path, await transport.requestJson(path, { method: 'POST', body: JSON.stringify(request) }));
     },
     async workbookLibraryAction(libraryId: string, value: WorkbookLibraryAction) {
       const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/library-actions`;

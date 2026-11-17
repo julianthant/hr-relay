@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
 import { z } from "zod";
-import { applyAuthorityMigrationsAfter } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames, auditMigrationTableCoverage } from "../../../../src/backend/storage/sqlite/migrations.js";
 
 const EntrySchema = z.strictObject({ seq: z.number().int(), table_name: z.string(), row_key: z.string(), op: z.string(), keys_json: z.string() });
@@ -21,7 +20,7 @@ function schema30(): DatabaseSync {
 }
 
 function migrateTo31(database: DatabaseSync): void {
-  applyAuthorityMigrationsAfter(database, 30, { now: "2026-11-13T00:00:00.000Z", captureFile: () => { throw new Error("no capture expected"); } });
+  for (const statement of SQLITE_MIGRATIONS.find(value => value.version === 31)?.statements ?? []) database.exec(statement);
 }
 
 function insertCommand(database: DatabaseSync, id: string, request: unknown, outcome: unknown = null, target: string | null = null): void {
@@ -40,7 +39,7 @@ describe("change log migration 31", () => {
       migrateTo31(database);
       for (const value of prior) assert.deepEqual(schemaObjects(database).find(object => object.name === value.name), value);
       assert.deepEqual(migrationTableNames(30).map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), rows);
-      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 31);
+      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 33);
       assert.deepEqual(migrationTableNames(31), migrationTableNames(30));
       assert.deepEqual(auditMigrationTableCoverage(), []);
       assert.deepEqual(schemaObjects(database).filter(object => object.type === "table" && !prior.some(value => value.name === object.name)).map(object => object.name),
