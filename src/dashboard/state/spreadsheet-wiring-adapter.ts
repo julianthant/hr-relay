@@ -14,7 +14,7 @@ import { NOT_MAPPED, type RegisteredSpreadsheet } from '../surfaces/spreadsheets
 import { spreadsheetEditorField } from '../surfaces/spreadsheets/spreadsheet-fields-model.js';
 
 type WorkbookLibraryQueries = Pick<DashboardClient, 'workbookList' | 'workbookOpen' | 'workbookRevision' | 'workbookCreate' | 'workbookSave' | 'workbookHistory'
-  | 'workbookCatalog' | 'workbookCompatibility' | 'workbookLibraryAction' | 'workbookLibraryActionStatus' | 'workbookLibraryVersion' | 'workbookTypes' | 'workbookPutType'>;
+  | 'workbookCatalog' | 'workbookCompatibility' | 'workbookLibraryAction' | 'workbookLibraryActionStatus' | 'workbookLibraryVersion' | 'workbookTypes' | 'workbookPutType' | 'workbookClone' | 'workbookImportSharePoint'>;
 export type LibraryChangeResult = Readonly<{ state: 'confirmed' }> | Readonly<{ state: 'refused' | 'uncertain' | 'recorded'; message: string }>;
 type Snapshot = { files: readonly RegisteredSpreadsheet[]; loading: boolean; refreshing: boolean; opening?: string; openError: string; error: string;
   catalog: readonly WorkbookLibraryEntry[]; compatibility?: WorkbookCompatibility; types: readonly WorkbookType[]; typesError: string; catalogLoading: boolean; catalogRefreshing: boolean; catalogError: string; pendingLibraries: readonly string[]; pendingTypes: readonly WorkbookType[] };
@@ -177,6 +177,18 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         return adapter.settleLibrary(entry.libraryId);
       }
     },
+    /** A new library spreadsheet is created at most once: a refusal means nothing was created, anything else is left for the operator to check. */
+    async addLibrary(write: () => Promise<unknown>): Promise<LibraryChangeResult> {
+      try { await write(); }
+      catch (error) {
+        if (error instanceof DashboardClientError && error.kind === 'http' && error.status !== undefined && error.status >= 400 && error.status < 500 && error.code) return { state: 'refused', message: message(error) };
+        return { state: 'uncertain', message: `The spreadsheet may not have been added. Check the list before trying again. ${message(error)}` };
+      }
+      await adapter.refreshCatalog(); await adapter.list();
+      return { state: 'confirmed' };
+    },
+    cloneLibrary(libraryId: string, request: Parameters<WorkbookLibraryQueries['workbookClone']>[1]) { return adapter.addLibrary(() => client.workbookClone(libraryId, request)); },
+    importSharePoint(request: Parameters<WorkbookLibraryQueries['workbookImportSharePoint']>[0]) { return adapter.addLibrary(() => client.workbookImportSharePoint(request)); },
     async saveValuesVersion(id: string, name: string, document: EditableWorkbook): Promise<LibraryChangeResult> {
       const draft = drafts.get(keyFor(id)), libraryId = draft?.opened?.libraryId;
       if (!libraryId || draftHoldsSave(draft)) return { state: 'refused', message: 'Check the current save result before saving a new version.' };
