@@ -170,7 +170,8 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
     memberLabel: string;
     filter(record: OcrApprovedSnapshot["records"][number]): boolean;
     validate(records: readonly OcrApprovedSnapshot["records"][number][]): void;
-    memberInput(input: z.output<Input>, approved: z.output<typeof ApprovedOcrRecordInputSchema>): z.input<MemberInput>;
+    memberInput(input: z.output<Input>, approved: z.output<typeof ApprovedOcrRecordInputSchema>, ocr: z.output<typeof OcrWorkflowResultSchema>,
+      records: readonly OcrApprovedSnapshot["records"][number][]): z.input<MemberInput>;
   }>,
 ) {
   const ocr = delegate({ id: "read-document", label: "Read and approve PDF",
@@ -192,7 +193,7 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
     const records = outputs["approved-records"].snapshot.records.filter(options.filter);
     options.validate(records);
     return records.map(record =>
-      options.memberInput(input, ApprovedOcrRecordInputSchema.parse({ approval: reference.output.approvedSnapshot, record })));
+      options.memberInput(input, ApprovedOcrRecordInputSchema.parse({ approval: reference.output.approvedSnapshot, record }), reference.output, records));
   }, sourceRecordIds: ({ outputs }) => outputs["approved-records"].snapshot.records.filter(options.filter).map(record => [record.recordId]),
   deriveChildItemId: (_input, context) => context.canonicalItemId });
   return { ocr, approved, members, steps: [

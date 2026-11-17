@@ -43,8 +43,8 @@ const SEARCH_STATE_TO_QUEUE: Readonly<Record<CrossDateSearchPage["results"][numb
 
 export function searchResults(snapshot: Awaited<ReturnType<typeof readSearchSnapshot>>): readonly NavbarSearchResult[] {
   return snapshot.results.map(row => ({ id: row.runId,
-    subject: row.metadata.subject.state === "available" ? row.metadata.subject.value : searchMessage("SEARCH_SUBJECT_UNAVAILABLE"),
-    workflow: row.registration.state === "registered" ? row.registration.label : row.workflowId,
+    subject: row.displayTitle ?? (row.metadata.subject.state === "available" ? row.metadata.subject.value : searchMessage("SEARCH_SUBJECT_UNAVAILABLE")),
+    workflow: row.registration.state === "registered" ? row.registration.label : "Unregistered workflow",
     day: row.partitionDay, state: DISPLAY_STATUS_LABELS[displayStatusOf(SEARCH_STATE_TO_QUEUE[row.state])],
     ...(row.runNumber.state === "present" ? { publicId: String(row.runNumber.value) } : {}),
     destination: { kind: "run", runId: row.runId, day: row.partitionDay },

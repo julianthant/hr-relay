@@ -8,6 +8,12 @@ import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "crm-data", label: "Read and validate hire data" }),
+  locked: "guard-read" as const,
+  operatorFields: [
+    { label: "First name", visibility: "logs", sources: [{ nodeId: "hire-plan", kind: "output", fieldPath: "employee.firstName" }] },
+    { label: "Last name", visibility: "logs", sources: [{ nodeId: "hire-plan", kind: "output", fieldPath: "employee.lastName" }] },
+    { label: "Position", visibility: "logs", sources: [{ nodeId: "hire-plan", kind: "output", fieldPath: "employee.positionNumber" }] },
+  ] as const,
   review: {
     pages: [
       {

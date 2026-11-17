@@ -15,6 +15,8 @@ import type { BrowserSystemBindings } from "../../../../src/backend/runtime/brow
 const clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
 const scheduler = { schedule: (_deadline: number, callback: () => void) => { const timer = setTimeout(callback, 1); return { cancel: () => clearTimeout(timer) }; } };
 const f = createBrowserSessionFactoryFixtures(clock, "11111111-1111-4111-8111-111111111111", scheduler);
+// The lease holder runs no OnBase work here, so a waiting acquisition keeps its sessionAcquireMs bound.
+const holderHasNoActiveRun: Pick<AuthorityDatabase["authority"]["runs"], "listActiveOwners"> = { listActiveOwners: () => [] };
 const input = { workerId: WorkerIdSchema.parse("onbase-worker-1"), workflowId: WorkflowIdSchema.parse("onbase"), system: "onbase", instance: "prod",
   configFingerprint: FingerprintSchema.parse("a".repeat(64)), acceptDownloads: false, exclusive: true, signal: new AbortController().signal,
   duoCeremony: { withCeremony: async () => { throw new Error("fixture does not authenticate"); } } } as const;
@@ -22,7 +24,7 @@ const input = { workerId: WorkerIdSchema.parse("onbase-worker-1"), workflowId: W
 function factoryFor({ config, root }: Readonly<{ config: BrowserSessionFactoryOptions["config"]; root: string }>, repository: ReturnType<typeof exclusiveLeaseFixture>["repository"],
   harness: ReturnType<typeof f.fakeLauncher>, options: Partial<BrowserSessionFactoryOptions> = {}) {
   return new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config: { ...config, paths: { ...config.paths, browserProfileRoot: join(root, "profiles") } },
-    browserOwner: { profileId: "22222222-2222-4222-8222-222222222222", database: { authority: { exclusiveSessionLeases: repository } } as AuthorityDatabase },
+    browserOwner: { profileId: "22222222-2222-4222-8222-222222222222", database: { authority: { exclusiveSessionLeases: repository, runs: holderHasNoActiveRun } } as AuthorityDatabase },
     clock, scheduler, isolation: rebuildRuntimeIsolation, protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-value" }),
     newSessionId: () => "11111111-1111-4111-8111-111111111111", assertCurrent() {}, slotOrdinal: () => 1,
     admitProfile: async identity => BrowserProfileAdmissionSchema.parse({ ...identity, profileRevision: 1, resetRequired: false }),
@@ -114,7 +116,7 @@ describe("OnBase exclusive browser lifetime", () => {
         const bindings: BrowserSystemBindings = { onbase: { system: "onbase", exclusive: true, createDriver: () => ({ system: "onbase" }),
           login: async () => "logged-in", verifyAuthenticated: f.verifierFor().verify } };
         const factory = (ordinal: number, sessionId: string, harness: ReturnType<typeof f.fakeLauncher>) => new PlaywrightWorkerSessionFactory({
-          ...mockBrowserRootPort(), browserOwner: { profileId: "22222222-2222-4222-8222-222222222222", database: { authority: { exclusiveSessionLeases: repository } } as AuthorityDatabase },
+          ...mockBrowserRootPort(), browserOwner: { profileId: "22222222-2222-4222-8222-222222222222", database: { authority: { exclusiveSessionLeases: repository, runs: holderHasNoActiveRun } } as AuthorityDatabase },
           config: { ...config, paths: { ...config.paths, browserProfileRoot: join(root, "profiles") } }, protectedSecrets: protectedSecretSource({ ucpathUserId: ordinal === 1 ? "Fixture-User" : "fixture-user", ucpathPassword: "fixture-value" }),
           clock, scheduler, isolation: rebuildRuntimeIsolation, assertCurrent() {}, slotOrdinal: () => ordinal, newSessionId: () => sessionId,
           admitProfile: async identity => BrowserProfileAdmissionSchema.parse({ ...identity, profileRevision: 1, resetRequired: false }), bindings, launcher: harness.launcher,
@@ -139,7 +141,7 @@ describe("OnBase exclusive browser lifetime", () => {
       const { database, repository } = exclusiveLeaseFixture();
       try {
         const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config: { ...config, paths: { ...config.paths, browserProfileRoot: join(root, "profiles") } },
-          browserOwner: { profileId: "22222222-2222-4222-8222-222222222222", database: { authority: { exclusiveSessionLeases: repository } } as AuthorityDatabase },
+          browserOwner: { profileId: "22222222-2222-4222-8222-222222222222", database: { authority: { exclusiveSessionLeases: repository, runs: holderHasNoActiveRun } } as AuthorityDatabase },
           clock, scheduler, isolation: rebuildRuntimeIsolation, protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-value" }),
           newSessionId: () => "11111111-1111-4111-8111-111111111111", assertCurrent() {}, slotOrdinal: () => 1,
           admitProfile: async identity => BrowserProfileAdmissionSchema.parse({ ...identity, profileRevision: 1, resetRequired: false }),

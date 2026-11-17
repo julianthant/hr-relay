@@ -7,7 +7,7 @@ export const FailureResolutionSchema = z.discriminatedUnion("status", [
 ]);
 export const FailureResolutionTargetSchema = z.strictObject({ runId: RunIdSchema, failureId: FailureIdSchema, expectedVersion: PositiveIntSchema });
 export const FailureResolutionActionSchema = z.discriminatedUnion("action", [
- z.strictObject({ action: z.literal("resolve"), note: z.string().trim().min(1).max(1000).optional() }),
+ z.strictObject({ action: z.literal("resolve") }),
  z.strictObject({ action: z.literal("reopen") }),
 ]);
 export const FailureResolutionCaptureSchema = z.strictObject({ failureId: FailureIdSchema, runId: RunIdSchema, resolution: FailureResolutionSchema });

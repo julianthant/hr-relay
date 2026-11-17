@@ -2454,7 +2454,8 @@ function dispatchActive(
         case "retry":
           repositories.runtimeConfig.requireSettingsCurrent();
           return executeRetry(dependencies, repositories, request, now);
-        case "cancel": return executeCancel(dependencies, repositories, request, now);
+        // Stop on a run: a claimed run's fenced write finishes and settles once, then the tree ends cancelled.
+        case "cancel": return executeCancel(dependencies, repositories, request, now, true);
         case "delete": return executeDelete(dependencies, repositories, request, now);
         case "bump": return executeBump(dependencies, repositories, request, now);
         case "rename": return executePresentation(dependencies, repositories, request, now);

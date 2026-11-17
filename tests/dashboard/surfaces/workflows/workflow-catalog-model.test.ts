@@ -189,7 +189,7 @@ describe_m1("frontend workflow catalog", () => {
     const future = { ...served[0], workflowId: "new-workflow", label: "New workflow", categoryId: "Payroll", code: "NW" };
     const renamed = { ...served[0], label: "Registered name" };
     const entries = buildWorkflowCatalog_m1([renamed, served[1], future], true, servedFixtureSources_m1([renamed, served[1], future]));
-    expect_m1(entries).toHaveLength(12);
+    expect_m1(entries).toHaveLength(11);
     expect_m1(new Set(entries.map(entry => entry.id)).size).toBe(entries.length);
     expect_m1(entries.find(entry => entry.id === renamed.workflowId)).toMatchObject({ label: "Registered name", source: "served", launch: { state: "served" }, served: renamed });
     expect_m1(entries.find(entry => entry.id === future.workflowId)).toMatchObject({ label: future.label, code: "NW", launch: { state: "served" }, served: future });
@@ -227,6 +227,13 @@ describe_m1("frontend workflow catalog", () => {
     const hiddenOcr = { ...served[0], workflowId: "ocr", label: "OCR" };
     expect_m1(buildWorkflowCatalog_m1([hiddenOcr, ...served], true, { ...servedFixtureSources_m1(served), ocr: "hidden" }).some(entry => entry.id === "ocr")).toBe(false);
     expect_m1(catalog.filter(entry => entry.launch.state === "unavailable").map(entry => entry.id).sort()).toEqual([]);
+  });
+  it_m1("keeps hidden OnBase out of the catalog and Run picker while Emergency Contact members still start it", () => {
+    expect_m1(WORKFLOW_SOURCES_m1.onbase).toBe("hidden");
+    expect_m1(catalog.find(entry => entry.id === "onbase")).toBeUndefined();
+    const picker = renderToStaticMarkup_m1(createElement_m1(RunWorkflowPicker_m1, { catalog, value: "", query: "", onQuery: noop, onChange: noop }));
+    expect_m1(picker).not.toContain("OnBase");
+    expect_m1(childWorkflowModuleOf("emergency-contact-member", "onbase").descriptor.id).toBe("onbase");
   });
   it_m1("boots the product catalog from public definitions without exposing or disabling the I-9 PDF parent", () => {
     const publicStarts = WORKFLOW_MODULES.map(({ descriptor, role }) => ({

@@ -16,6 +16,7 @@ import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-qu
 import { RunRecordService, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/execution/durable-child-executor.js";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
+import type { ProtectedSecretSource } from "../../../../src/models/config/secrets.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import type { ProtectedInputBinding } from "../../../../src/models/write-safety/protected-input.js";
 import { ActorIdSchema, FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
@@ -27,7 +28,7 @@ import { testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifec
 export function canonicalChildExecution(deps: RunExecutorDependencies, database: AuthorityDatabase, path: string,
   resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined,
   checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord, resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>,
-  options?: Readonly<{ poolIndex?: number; workbooks?: StartPlannerDeps["workbooks"];
+  options?: Readonly<{ poolIndex?: number; workbooks?: StartPlannerDeps["workbooks"]; protectedSecrets?: ProtectedSecretSource;
     resources?(reader: Pick<RunRecordService, "read">, run: RunRecord): Pick<RunExecutorDependencies, "providers" | "artifactProjector" | "taskNotes"> }>) {
   const { clock } = deps;
   const poolIndex = options?.poolIndex ?? 1;
@@ -108,16 +109,19 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   return {
     kernel, lifecycle, childRuns, step, plans,
     start(descriptor: AnyWorkflowDescriptor, input: unknown, startOptions: Readonly<{ dryRun: boolean; protectedSubmissionBindings?: readonly ProtectedInputBinding[];
-      workbookReferences?: readonly z.infer<typeof WorkbookActiveSelectionSchema>[]; selectedStepKeys?: readonly string[] }>) {
+      workbookReferences?: readonly z.infer<typeof WorkbookActiveSelectionSchema>[]; selectedStepKeys?: readonly string[];
+      stepOmissions?: readonly Readonly<{ step: string; facts: Readonly<Record<string, unknown>> }>[] }>) {
       const active = database.authority.runtimeConfig.get();
       assert.ok(active);
       const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors: { resolve },
         ...(options?.workbooks === undefined ? {} : { workbooks: options.workbooks }),
+        ...(options?.protectedSecrets === undefined ? {} : { protectedSecrets: options.protectedSecrets }),
         clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: LOCAL_OPERATOR_ACTOR_ID,
         configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId,
         ...(startOptions.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: startOptions.protectedSubmissionBindings }) });
       const plan = planner.plan({ workflowId: descriptor.id, submissions: [input], dryRun: startOptions.dryRun,
         ...(startOptions.workbookReferences === undefined ? {} : { workbookReferences: startOptions.workbookReferences }),
+        ...(startOptions.stepOmissions === undefined ? {} : { stepOmissions: startOptions.stepOmissions }),
         selectedStepKeys: startOptions.selectedStepKeys ?? descriptor.timeline.map(step => step.key) });
       assert.equal(plan.planned.length, 1, JSON.stringify(plan.refused));
       assert.equal(plan.refused.length, 0);

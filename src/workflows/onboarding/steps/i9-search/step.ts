@@ -15,6 +15,14 @@ import { hireReviewChoices } from "../../../../rules/onboarding/match-hire-subje
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "i9-search", label: "Search I-9 profiles" }),
+  locked: "guard-read" as const,
+  operatorFields: [
+    { label: "I-9 lookup", visibility: "logs", sources: [{ nodeId: "i9-lookup", kind: "output", fieldPath: "state" }],
+      display: { cases: [{ value: "checked", text: "Checked" }, { value: "not-required", text: "Not required" }] } },
+    { label: "I-9 status", visibility: "logs", sources: [{ nodeId: "i9-lookup", kind: "output", fieldPath: "result.i9Status" }],
+      display: { cases: [{ value: "signed", text: "Signed" }, { value: "unsigned", text: "Unsigned" }, { value: "historical", text: "Historical" },
+        { value: "not-found", text: "Not found" }, { value: "unable-to-access", text: "Unable to access" }] } },
+  ] as const,
   review: { pages: [], branchLabels: [] } as const
 });
 const entries = defineStepEntries(group);
