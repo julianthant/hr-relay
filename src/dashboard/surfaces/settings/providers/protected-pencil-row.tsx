@@ -1,5 +1,5 @@
 import { Pencil } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Dialog, DialogContent, DialogFooter, IconButton, ResultRow, dsIcon } from "../../../ds/ui.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { formatSetting } from "../editor/settings-draft-model.js";
@@ -9,11 +9,12 @@ type Editor = ReturnType<typeof useEditableSettings>;
 type Name = Parameters<Editor["protectedEditor"]["update"]>[0];
 
 /** A saved protected value shown as a row; the pencil opens a dialog over the same draft and Save command. */
-export function ProtectedPencilRow({ editor, name, label, description, onRemove }: {
-  editor: Editor; name: Name; label: string; description: string;
+export function ProtectedPencilRow({ editor, name, label, thing, description, onRemove }: {
+  editor: Editor; name: Name; label: string; thing: string; description: string;
   onRemove: (hasSaved: boolean, label: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const pencil = useRef<HTMLButtonElement>(null);
   const { setExplicitSave } = editor.protectedEditor;
   useEffect(() => { setExplicitSave(open); return () => setExplicitSave(false); }, [open, setExplicitSave]);
   if (editor.editor.state !== "loaded") return null;
@@ -26,14 +27,14 @@ export function ProtectedPencilRow({ editor, name, label, description, onRemove 
   return <div data-settings-path={`protected.${name}`}>
     <ResultRow label={label} value={<span className="inline-flex items-center justify-end gap-3 -mr-0.5">
       <span className="text-ui-muted">{shown}</span>
-      <IconButton type="button" label={`Edit ${label}`} variant="ghost" size="sm" disabled={disabled} icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} />
+      <IconButton ref={pencil} type="button" label={`Edit ${thing}`} variant="ghost" size="sm" disabled={disabled} icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} />
     </span>} />
     <Dialog open={open} onOpenChange={next => { if (!next) close(); }}>
-      <DialogContent size="sm" title={label} description="Saved for this account only.">
+      <DialogContent size="sm" hideClose title={`Edit ${thing}`} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
         <ProtectedSettingField editor={editor} name={name} description={description} onRemove={onRemove} />
         <DialogFooter>
-          <Button variant="secondary" onClick={close}>Cancel</Button>
-          <Button onClick={() => { credentials.submit(); setOpen(false); }}>Save</Button>
+          <Button variant="muted" onClick={close}>Cancel</Button>
+          <Button variant="primary" onClick={() => { credentials.submit(); setOpen(false); }}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

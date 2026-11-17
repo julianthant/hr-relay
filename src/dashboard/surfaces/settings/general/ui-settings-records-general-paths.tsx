@@ -2,7 +2,7 @@ import { Form } from "@heroui/react";
 import { useRef,useState,type ReactNode } from "react";
 import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
-import {BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Switch,dsText, Notice } from "../../../ds/ui.js";
+import {BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Switch,dsText, Notice, ResultRow } from "../../../ds/ui.js";
 import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
 import { formatSetting,settingInput,type SettingsDraftOperation } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
@@ -107,15 +107,14 @@ export function DeleteAccountControl({ presentation }: { presentation: DeleteAcc
   const trigger = useRef<HTMLButtonElement>(null);
   const deleting = presentation.state === "deleting";
   const failed = presentation.state === "refused" || presentation.state === "uncertain";
-  return <BodySection title="Account"><FormGroup label="Account">
-    <div className="hub-settings-row">
-      <div><div className="hub-row-label">Delete account</div><span className="hub-row-note" role={failed ? "alert" : deleting ? "status" : undefined}>{failed ? presentation.message : deleting ? "Deleting your account; erasure is not complete." : presentation.state === "unavailable" ? "Account deletion is unavailable. Try again when connected." : "Remove your data and credentials from this Mac."}</span></div>
-      <div className="hub-setting-control"><Button ref={trigger} variant="dangerGhost" disabled={presentation.state !== "ready"} onClick={() => setConfirming(true)}>{deleting ? "Deleting…" : "Delete account"}</Button></div>
-    </div>
+  const note = failed ? presentation.message : deleting ? "Deleting your account; erasure is not complete." : presentation.state === "unavailable" ? "Account deletion is unavailable. Try again when connected." : undefined;
+  return <FormGroup label="Account">
+    <ResultRow label="Delete account" className="!min-h-[52px]" description={note === undefined ? undefined : <span role={failed ? "alert" : deleting ? "status" : undefined}>{note}</span>}
+      value={<Button ref={trigger} variant="danger" disabled={presentation.state !== "ready"} onClick={() => setConfirming(true)}>{deleting ? "Deleting…" : "Delete"}</Button>} />
     <Dialog open={confirming && presentation.state === "ready"} onOpenChange={setConfirming}>
       <DialogContent onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }} title={presentation.state === "unavailable" ? "Delete account?" : `Delete ${presentation.personName}’s account?`} description="Your runs, history, settings, and credentials will be erased from this Mac. This can’t be undone." size="sm">
         <DialogFooter><Button variant="secondary" autoFocus onClick={() => setConfirming(false)}>Cancel</Button><Button variant="danger" onClick={() => { if (presentation.state === "ready") { setConfirming(false); presentation.onConfirm(); } }}>Delete account</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-  </FormGroup></BodySection>;
+  </FormGroup>;
 }
