@@ -12,13 +12,14 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../.
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { preRunsNotificationsSettingsRow, restorePreRunsNotificationsSettingsRows } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
+import { restoreSchema32CommandRows } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const world = createSettingsAuthorityTestWorld();
 afterEach(world.cleanup);
 
-const SIX_DEFAULTS = { preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run", notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" } };
+const ADDED_DEFAULTS = { preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run", notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" }, sendShortcut: "enter" };
 const SAVED_BEFORE = { "concurrency.defaultWorkers": { set: 3 }, "preferences.theme": { set: "light" } };
 const CONVERTED_TABLES = ["settings_snapshots", "settings", "commands", "command_audits"];
 const PayloadSchema = z.object({ payload_json: z.string() });
@@ -53,11 +54,12 @@ async function schema31Store() {
   const raw = new DatabaseSync(f.path);
   raw.exec("PRAGMA foreign_keys=ON");
   restorePreRunsNotificationsSettingsRows(raw);
+  restoreSchema32CommandRows(raw);
   raw.exec("UPDATE database_states SET schema_version=31; PRAGMA user_version=31");
   return { ...f, raw };
 }
 
-it("upgrades a schema-31 store: every settings value is kept, the six defaults are added, nothing else changes and a save is accepted", async () => {
+it("upgrades a schema-31 store: every settings value is kept, the later preference defaults are added, nothing else changes and a save is accepted", async () => {
   const f = await schema31Store();
   try {
     const before = tables(f.raw), priorTriggers = triggers(f.raw), priorSnapshots = snapshots(f.raw);
@@ -83,7 +85,7 @@ it("upgrades a schema-31 store: every settings value is kept, the six defaults a
     assert.deepEqual({ ...upgraded?.initialization, settings: null }, { ...stopped.initialization, settings: null });
     for (const [index, snapshot] of snapshots(f.raw).entries()) {
       const record = ConfigSnapshotRecordSchema.parse(snapshot);
-      assert.deepEqual(record.preferences, { ...z.record(z.string(), z.unknown()).parse(priorSnapshots[index]?.preferences), ...SIX_DEFAULTS });
+      assert.deepEqual(record.preferences, { ...z.record(z.string(), z.unknown()).parse(priorSnapshots[index]?.preferences), ...ADDED_DEFAULTS });
       assert.equal(canonicalJsonStringify({ ...record, preferences: null, preferencesFingerprint: null }), canonicalJsonStringify({ ...priorSnapshots[index], preferences: null, preferencesFingerprint: null }));
     }
     assert.equal(snapshots(f.raw).some(snapshot => ConfigSnapshotRecordSchema.parse(snapshot).preferences.theme === "light"), true);
@@ -127,7 +129,7 @@ it("refuses a snapshot whose stored preferences were altered, and leaves the sto
 
 it.each([
   ["no members", () => ({})],
-  ["only the members this upgrade adds", () => SIX_DEFAULTS],
+  ["only the members this upgrade adds", () => ADDED_DEFAULTS],
   ["one member short", (stored: Record<string, unknown>) => Object.fromEntries(Object.entries(stored).filter(([key]) => key !== "theme"))],
   ["an unknown member", (stored: Record<string, unknown>) => ({ ...stored, extra: true })],
 ])("refuses a snapshot whose preferences no build wrote (%s), though its fingerprint matches, and leaves the store as it was", async (_name, malformed) => {

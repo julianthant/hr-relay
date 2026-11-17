@@ -7,7 +7,7 @@ import { FAILURE_NOTE_REMOVAL_SCHEMA_VERSION } from "../../../../src/backend/sto
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { regressSchema34FailureNotes } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { regressSchema34FailureNotes, regressSchema35SendShortcut } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { LATER, NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -58,9 +58,9 @@ function schema33(): DatabaseSync {
 }
 
 describe("failure note removal migration 34", () => {
-  it("is schema version 34, the current schema, and changes no table", () => {
+  it("is schema version 34, under the send shortcut conversion's current 35, and changes no table", () => {
     assert.equal(FAILURE_NOTE_REMOVAL_SCHEMA_VERSION, 34);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 34);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 35);
     assert.deepEqual(migrationTableNames(34), migrationTableNames(33));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });
@@ -117,6 +117,7 @@ describe("failure note removal migration 34", () => {
         for (const migration of SQLITE_MIGRATIONS) if (migration.version > 7) for (const statement of migration.statements) database.exec(statement);
         database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
         database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
+        regressSchema35SendShortcut(database);
         regressSchema34FailureNotes(database);
         seed(database);
         assert.equal(inspectNativeAuthority(database, 33).schemaVersion, 33);

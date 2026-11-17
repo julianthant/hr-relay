@@ -10,8 +10,10 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 export const PRE_PREFERENCES_SETTINGS_SCHEMA_HASH = "19627be7a40904943283fc624f14d93596d5fda16d3690ee4ed6f3407ed675d7";
 /** The settings schema hash of stores written before the Runs and Notifications settings existed. */
 export const PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH = "39fde8a538405f533301def527db504117799174867cc4d93beb55310382f29a";
+/** The settings schema hash of stores written before the assistant send shortcut existed. */
+export const PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH = "a8ebb3d571f77af72aafeb62477b0950bd3e050c29101d4d7e460c54dc918bdf";
 /** The newest schema whose migration converts settings records; a stopped store below it is read through the converter. */
-export const SETTINGS_RECORD_CONVERSION_VERSION = 32;
+export const SETTINGS_RECORD_CONVERSION_VERSION = 35;
 
 type SettingsRecordConversion = Readonly<{
   /** The settings schema hash a stored row carries before this conversion, and after it. */
@@ -31,18 +33,22 @@ const PERSON_PREFERENCES_CONVERSION = conversion(1, "person-preferences", PRE_PR
   theme: "dark", animations: true, workflowPanelMode: "floating", selectedWorkflowId: "",
   shortcuts: { numberMode: "runs", bindings: { search: ["/"], start: ["r"], next: ["j", "ArrowDown"], previous: ["k", "ArrowUp"], attention: ["n"] } },
 });
-const RUNS_NOTIFICATIONS_CONVERSION = conversion(2, "runs-notifications-settings", PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH, "a8ebb3d571f77af72aafeb62477b0950bd3e050c29101d4d7e460c54dc918bdf", {
+const RUNS_NOTIFICATIONS_CONVERSION = conversion(2, "runs-notifications-settings", PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH, PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH, {
   preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run",
   notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" },
+});
+const SEND_SHORTCUT_CONVERSION = conversion(3, "send-shortcut", PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH, "648527992928080cd6b9f458d2e09b636043c7f23304687406d30a558b986896", {
+  sendShortcut: "enter",
 });
 /**
  * Every conversion of the stored settings record, oldest first; each entry starts at the hash the one before it ends on.
  * An entry is frozen: its hashes and defaults are literals, so the SQL of its migration never changes. A change to the
  * settings schema appends one entry, whose `to` is the new SETTINGS_SCHEMA_HASH, and one migration that runs its marker.
  */
-export const SETTINGS_RECORD_CONVERSIONS: readonly SettingsRecordConversion[] = deepFreeze([PERSON_PREFERENCES_CONVERSION, RUNS_NOTIFICATIONS_CONVERSION]);
+export const SETTINGS_RECORD_CONVERSIONS: readonly SettingsRecordConversion[] = deepFreeze([PERSON_PREFERENCES_CONVERSION, RUNS_NOTIFICATIONS_CONVERSION, SEND_SHORTCUT_CONVERSION]);
 export const PERSON_PREFERENCES_CONVERSION_MARKER = PERSON_PREFERENCES_CONVERSION.marker;
 export const RUNS_NOTIFICATIONS_CONVERSION_MARKER = RUNS_NOTIFICATIONS_CONVERSION.marker;
+export const SEND_SHORTCUT_CONVERSION_MARKER = SEND_SHORTCUT_CONVERSION.marker;
 
 export function isSettingsRecordConversionMarker(statement: string): boolean {
   return SETTINGS_RECORD_CONVERSIONS.some(entry => entry.marker === statement);
