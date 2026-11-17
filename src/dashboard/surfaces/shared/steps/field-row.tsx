@@ -1,18 +1,25 @@
 import { useEffect, useRef, useState } from "react";
-import { Cpu, Eye, PencilLine } from "lucide-react";
+import { ArrowUpRight, Cpu, Eye, PencilLine } from "lucide-react";
 import { displayExtractedDate } from "../../../lib/date-format.js";
-import { Tooltip } from "../../../ds/ui.js";
+import { Tooltip, dsFocus } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 
 export type FieldRowKind = "fill" | "read" | "compute";
 
-/** A fill row (typed value, blue) or a read row (what the page showed). `unread` marks a read that found nothing. */
-export function FieldRow({ kind, label, value, unread = false }: { kind: FieldRowKind; label: string; value: string; unread?: boolean }) {
+const COLUMNS = "grid-cols-[1rem_minmax(var(--spacing-log-label),.85fr)_minmax(0,1.15fr)] max-[1100px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] @max-[448px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)]";
+const COLUMNS_WITH_SOURCE = "grid-cols-[1rem_minmax(var(--spacing-log-label),.85fr)_minmax(0,1.15fr)_auto] max-[1100px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)_auto] @max-[448px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)_auto]";
+
+/**
+ * A fill row (typed value, blue) or a read row (what the page showed). `unread` marks a read that found nothing.
+ * `onSource` adds the arrow that opens where the value comes from (Explorer).
+ */
+export function FieldRow({ kind, label, value, unread = false, onSource }: { kind: FieldRowKind; label: string; value: string; unread?: boolean; onSource?: (trigger: HTMLButtonElement) => void }) {
   const Icon = kind === "fill" ? PencilLine : kind === "compute" ? Cpu : Eye;
-  return <div data-log-field={kind} className="grid min-w-0 grid-cols-[1rem_minmax(var(--spacing-log-label),.85fr)_minmax(0,1.15fr)] items-baseline gap-x-3 max-[1100px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] @max-[448px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] border-b border-ui-stroke py-2.5 last:border-b-0">
+  return <div data-log-field={kind} className={cn("grid min-w-0 items-baseline gap-x-3 border-b border-ui-stroke py-2.5 last:border-b-0", onSource ? COLUMNS_WITH_SOURCE : COLUMNS)}>
     <Icon aria-hidden className={cn("size-3.5 self-start translate-y-0.5", kind === "fill" ? "text-ui-info" : "text-ui-muted")} />
     <dt className="min-w-0 text-body font-medium">{label}</dt>
     <FieldValueCell value={value} className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word] @max-[448px]:overflow-hidden @max-[448px]:text-ellipsis @max-[448px]:[overflow-wrap:normal] max-[1100px]:truncate", kind === "fill" ? "text-ui-info font-medium" : unread ? "text-ui-danger/75" : "text-ui-secondary")} />
+    {onSource && <button type="button" aria-label={`Show source for ${label}`} onClick={event => onSource(event.currentTarget)} className={cn("self-start translate-y-0.5 rounded-sm text-ui-info hover:text-ui-primary", dsFocus)}><ArrowUpRight aria-hidden className="size-3.5" /></button>}
   </div>;
 }
 

@@ -346,9 +346,9 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
       } else if (shape.kind === "transaction") {
         const live = previewsOnDryRun(node) ? LIVE : undefined;
         point(live === undefined ? "saved" : { by: DRY_RUN, values: { true: DRY_RUN }, otherwise: "saved" }, [continuing("saved", "Saved", live),
+          { value: "already-present", label: "Already present", then: "Uses the verified existing change without saving it again, then continues.", stops: false },
           { value: "unconfirmed", label: "Save unconfirmed", then: "Parks the write for your review in Logs and does not retry it.", stops: true, ...gated(live) },
-          ...(live === undefined ? [] : [{ value: DRY_RUN, label: "Dry run", then: "Prepares the change without saving it, then continues.", stops: false, ...gated(DRY) }]),
-          { value: "already-present", label: "Already filed", then: "Uses the independently verified existing change without saving it again, then continues.", stops: false, ...gated(live) }]);
+          ...(live === undefined ? [] : [{ value: DRY_RUN, label: "Dry run", then: "Prepares the change without saving it, then continues.", stops: false, ...gated(DRY) }])]);
       } else if (shape.kind === "child-run" && shape.await === "terminal" && shape.onChildFailed !== "allow-partial") {
         point("succeeded", [continuing("succeeded", "Delegated work succeeds"), shape.onChildFailed === "fail-parent"
           ? { value: "child-failed", label: "Delegated work fails", then: STOPS, stops: true }

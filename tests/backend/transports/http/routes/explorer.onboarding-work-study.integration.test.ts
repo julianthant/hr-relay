@@ -214,7 +214,7 @@ it("shows each step's system and only the personal fields and sample template of
     [{ system: "crm", step: "crm-data", page: "Onboarding roster", field: "Legal name" }]);
 });
 
-it("reuses an already-filed transaction, and stops at an unconfirmed save without presenting later writes or a retry", async () => {
+it("reuses an already-filed transaction in live and dry runs, and stops at an unconfirmed save without presenting later writes or a retry", async () => {
   const { reviewSpec: study } = await served("work-study");
   const already = walk(study, {}, { "save-transaction": "already-present" });
   assert.equal(already.values["save-transaction"], "already-present");
@@ -235,7 +235,9 @@ it("reuses an already-filed transaction, and stops at an unconfirmed save withou
     for (const entry of dry.steps) for (const decision of blocks(spec, entry.id, "decision")) {
       if (!applies(decision, dry.values) || !decision.outcomes.some(outcome => outcome.value === "dry-run")) continue;
       assert.equal(dry.values[decision.id], "dry-run");
-      assert.equal(visible(decision.outcomes, dry.values).some(outcome => ["saved", "unconfirmed", "already-present"].includes(outcome.value)), false);
+      assert.equal(visible(decision.outcomes, dry.values).some(outcome => ["saved", "unconfirmed"].includes(outcome.value)), false);
+      assert.ok(visible(decision.outcomes, dry.values).some(outcome => outcome.value === "already-present"));
+      assert.equal(walk(spec, { "dry-run": "true" }, { [decision.id]: "already-present" }).values[decision.id], "already-present");
     }
   }
 });

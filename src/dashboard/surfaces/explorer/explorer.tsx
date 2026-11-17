@@ -2,9 +2,9 @@ import { useViewState } from "../../app/navigation/view-route-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { useMemo, useState } from "react";
 import { Button, EmptyState, Notice } from "../../ds/ui.js";
+import { LoadingRegion, SettingsRowsSkeleton } from "../shared/loading/loading.js";
 import { ExplorerTimeline } from "./explorer-flow.js";
-import { ExplorerSpecView } from "./explorer-spec-view.js";
-import { PERSON_LOOKUP_SPEC } from "./explorer-spec-fixtures.js";
+import { ExplorerPage, ExplorerSpecView } from "./explorer-spec-view.js";
 import { buildExplorerPreview, previewFieldSource } from "./explorer-fixture.js";
 import { blockedAfter, DEFAULT_SCENARIO, type PreviewScenario } from "./explorer-flow-model.js";
 import { buildEmergencyContactMock, buildOnboardingMock, DEFAULT_MOCK_SCENARIO, mockFieldSource, updateMockScenario } from "./explorer-mock-fixtures.js";
@@ -23,7 +23,7 @@ export function WorkflowExplorer({ catalog, client }: { catalog: readonly Workfl
   const [scenario, setScenario] = useState<PreviewScenario>(DEFAULT_SCENARIO);
   const [mockScenario, setMockScenario] = useState(DEFAULT_MOCK_SCENARIO);
   const [choices, setChoices] = useState(initialWorkflowChoices());
-  const resource = useExplorerWiring(client, served?.id, served?.served?.version);
+  const { state, retry } = useExplorerWiring(client, served?.id, served?.served?.version);
   if (identity.client !== client || identity.workflowId !== workflowId) {
     setIdentity({ client, workflowId, epoch: identity.epoch + (identity.client !== client ? 1 : 0) }); setScenario(DEFAULT_SCENARIO); setMockScenario(DEFAULT_MOCK_SCENARIO);
     setChoices(initialWorkflowChoices(id));
@@ -33,13 +33,16 @@ export function WorkflowExplorer({ catalog, client }: { catalog: readonly Workfl
     steps: buildExplorerPreview(scenario), summary: "Kuali request → UCPath termination → Kuali completion", completion: "Separation filed and Kuali document verified",
     path: { step: 17, control: "preview-pending" }, stopAfter: blockedAfter(scenario),
   }, [workflowId, mockScenario, scenario]);
-  if (workflowId === "fixture-person-lookup") return <ExplorerSpecView key={workflowId} spec={PERSON_LOOKUP_SPEC} workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId} />;
   if (!workflow || (!served && !id)) return <EmptyState title="Workflow unavailable" description="Choose a registered workflow to inspect its steps." action={<Button onClick={() => setWorkflowId(explorerRecoveryWorkflow(catalog))}>Open Separations</Button>} />;
   if (served) {
-    const projection = resource.state === "ready" ? resource.projection : resource.state === "refused" ? resource.previous : undefined;
-    const steps = projection !== undefined ? projection.steps : [{ number: 1, title: served.label, parts: [{ kind: "note" as const, text: resource.state === "loading" ? "Loading workflow definition" : resource.state === "unavailable" ? resource.reason : resource.state === "refused" ? formatErrorCatalogFailure(resource.failure).text : "Workflow unavailable" }] }];
-    return <>{resource.state === "refused" && projection !== undefined && <Notice tone="warning" title="Workflow definition unavailable" description={formatErrorCatalogFailure(resource.failure).text} />}<ExplorerTimeline key={identity.epoch} workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId} title={served.label} steps={steps} scenario={scenario} onScenario={setScenario} onMockChoice={(key, value) => setChoices(current => ({ ...current, [key.replace(/^workflow:/u, "")]: value }))}
-      sourceFor={field => projection?.sources.get(field.source ?? "")} summary="Registered workflow definition" completion={projection?.completion} stopAfter={projection?.stopAfter} path={{ step: 1, control: "explorer-step-1" }} /></>;
+    const spec = state.state === "ready" ? state.spec : state.state === "refused" ? state.previous : undefined;
+    return <>{state.state === "refused" && spec !== undefined && <Notice tone="warning" title="Workflow definition unavailable" description={formatErrorCatalogFailure(state.failure).text} />}
+      {spec !== undefined ? <ExplorerSpecView key={`${identity.epoch}:${workflowId}`} spec={spec} workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId} />
+        : <ExplorerPage workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId}>
+          {state.state === "unavailable" ? <EmptyState title="Workflow unavailable" description={state.reason} />
+            : state.state === "refused" ? <EmptyState title="Workflow unavailable" description={formatErrorCatalogFailure(state.failure).text} action={<Button onClick={retry}>Retry</Button>} />
+            : <LoadingRegion label="Loading workflow definition"><SettingsRowsSkeleton rows={4} /></LoadingRegion>}
+        </ExplorerPage>}</>;
   }
   if (!id) throw new Error(`explorer-mock-workflow-unknown: ${workflowId}`);
   const activeFlow = ["fixture-separations", "fixture-onboarding", "fixture-emergency-contact"].includes(workflowId) ? flow : buildWorkflowMock(id, choices);

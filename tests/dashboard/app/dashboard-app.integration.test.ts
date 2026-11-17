@@ -533,7 +533,7 @@ it_m1("passes the app client to a served Explorer read while mocks explicitly re
     }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.equal(calls, 1);
     assert_m1.ok(document.body.textContent?.includes("Search UCPath by employee ID or name and read the matching person records."), document.body.textContent ?? "");
-    assert_m1.ok(document.body.textContent?.includes("No run values are available."));
+    assert_m1.ok(document.body.textContent?.includes("Anything not listed stops the run with a failure card."));
     assert_m1.equal(document.body.textContent?.includes("Separation filed and Kuali document verified"), false);
     await _afterEachFixture0();
     calls = 0;
