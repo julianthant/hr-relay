@@ -14,6 +14,7 @@ import {
 import type { WorkbookRowChoice } from "./run-workbook-rows-model.js";
 
 export type ReferenceSelection = Readonly<{ libraryId: string; versionId: string; sheetId: string }>;
+export type CheckPick = Readonly<{ versionId: string; sheetIds: readonly string[] }>;
 export type ReferenceDraft = Readonly<{ libraryId: string; versionId?: string }>;
 
 /** Everything the operator has entered into the Run and Rerun dialog. The PDF files stay with their upload hook. */
@@ -32,6 +33,8 @@ export type LaunchDraft = Readonly<{
   browserMode: BrowserMode;
   referenceSelections: Readonly<Record<string, ReferenceSelection>>;
   referenceDrafts: Readonly<Record<string, ReferenceDraft>>;
+  /** The optional check's picked spreadsheets: library id to the named version and the worksheets chosen in it. */
+  checkPicks: Readonly<Record<string, CheckPick>>;
   selectedWorkbookRows?: Readonly<{ source: string; choices: readonly WorkbookRowChoice[] }>;
   /** Declared launch fields by key; a field is absent until the operator picks it. */
   launchFields: Readonly<Record<string, string>>;
@@ -57,7 +60,7 @@ export function freshLaunchDraft(workflow: RunStartWorkflow | undefined): Launch
     text: "", typed: { workflowId: workflow?.workflowId ?? "", draft: typedDefaultsOf(workflow) }, sourceInputUnchanged: false,
     stepSelection: undefined, stepDrafts: {}, touchedFacts: new Set(), factsAttempted: false,
     priority: "interactive", dryRunRequested: false, browserMode: "headed",
-    referenceSelections: {}, referenceDrafts: {}, selectedWorkbookRows: undefined, launchFields: {},
+    referenceSelections: {}, referenceDrafts: {}, checkPicks: {}, selectedWorkbookRows: undefined, launchFields: {},
     valueDrafts: {}, copiedOmissions: {},
   };
 }
@@ -163,6 +166,14 @@ export function pickWorksheet(draft: LaunchDraft, typeId: string, selection: Ref
 
 export function removeReference(draft: LaunchDraft, typeId: string): LaunchDraft {
   return { ...draft, referenceDrafts: omit(draft.referenceDrafts, typeId), referenceSelections: omit(draft.referenceSelections, typeId) };
+}
+
+export function pickCheck(draft: LaunchDraft, libraryId: string, pick: CheckPick): LaunchDraft {
+  return { ...draft, checkPicks: { ...draft.checkPicks, [libraryId]: pick } };
+}
+
+export function removeCheck(draft: LaunchDraft, libraryId: string): LaunchDraft {
+  return { ...draft, checkPicks: omit(draft.checkPicks, libraryId) };
 }
 
 export function selectWorkbookRows(draft: LaunchDraft, source: string, choices: readonly WorkbookRowChoice[]): LaunchDraft {
