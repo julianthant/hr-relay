@@ -118,10 +118,17 @@ it("keeps the consuming task's own origin, never a read span, for a leaf forward
  const points: RecordedDataPoint[] = [];
  const consumer = { ...execution, nodeId: "search-identity", taskId: ReadResolvedIdentity.id };
  const consumerSpan = "pl-180000-aaaa/search-identity#4.1";
- createTaskProvenanceCollector({ descriptor: personLookupDescriptor, execution: consumer, observationSpanPath: consumerSpan,
+ const createTyped = () => createTaskProvenanceCollector({ descriptor: personLookupDescriptor, execution: consumer, observationSpanPath: consumerSpan,
    canonicalInput: PersonLookupInput.parse({ name: "Fictional Person" }), upstreamEvidence: { checkpoints: [asserted], skippedTasks: ["matching"] },
-   clock: manualClock(new Date(assertedAt)), onRecord: batch => points.push(...batch.points) })
-   .recordData({ direction: "read", field: "selected", value: value.results[0].name, aliases: [{ path: [], source: { kind: "dependency", nodeId: "searching", path: ["results", 0, "name"] } }] });
+   clock: manualClock(new Date(assertedAt)), onRecord: batch => points.push(...batch.points) });
+ const fromTyped = (field: string, recorded: unknown, aliases: NonNullable<DataPoint["aliases"]>) => createTyped().recordData({ direction: "read", field, value: recorded as DataPoint["value"], aliases });
+ // An operator-typed source is still checked: a contradicting value or overlapping targets refuse.
+ expect(() => fromTyped("selected", "Someone Else", [{ path: [], source: { kind: "dependency", nodeId: "searching", path: ["results", 0, "name"] } }])).toThrow(/contradicts its exact source/u);
+ expect(() => fromTyped("selected", { name: value.results[0].name }, [{ path: [], source: { kind: "dependency", nodeId: "searching", path: ["results", 0] } }])).toThrow(/contradicts its exact source/u);
+ expect(() => fromTyped("selected", value.results[0], [{ path: [], source: { kind: "dependency", nodeId: "searching", path: ["results", 0] } },
+   { path: ["name"], source: { kind: "dependency", nodeId: "searching", path: ["results", 0, "name"] } }])).toThrow(/targets overlap/u);
+ expect(points).toEqual([]);
+ fromTyped("selected", value.results[0].name, [{ path: [], source: { kind: "dependency", nodeId: "searching", path: ["results", 0, "name"] } }]);
  expect(points[0].origins).toBeUndefined();
  const origin = resolveObservationOrigin({ ...consumer, spanPath: consumerSpan }, points[0], []);
  expect(origin).toEqual({ runId: execution.runId, attempt: 1, spanPath: consumerSpan, nodeId: "search-identity", taskId: ReadResolvedIdentity.id, field: "selected", path: [] });
