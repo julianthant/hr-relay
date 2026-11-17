@@ -65,7 +65,7 @@ it("all switches on plans no omission and keeps today's steps and node ids", () 
   ]);
 });
 
-it("the write steps always run, and an already filed termination or saved finalization ends already present through the step's own probe", () => {
+it("both write steps keep their own existing-record probes, and the receipt accepts an already-present filing", () => {
   const probeOf = (nodeId: string) => {
     const node = descriptor.nodes.find(({ id }) => String(id) === nodeId);
     assert.ok(node?.kind === "transaction", `${nodeId} is a transaction`);
