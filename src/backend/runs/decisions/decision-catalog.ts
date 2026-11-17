@@ -141,6 +141,14 @@ export const IDENTITY_REVIEW_TEXT = Object.freeze({
   unavailable: "Relay cannot show this identity review. Reload, or cancel the run.",
 });
 
+/** The reference review's served text: a picked spreadsheet did not hold the person, or names them differently. */
+export const REFERENCE_CHECK_REVIEW_TEXT = Object.freeze({
+  title: "A reference spreadsheet does not confirm this person",
+  compared: "Relay compared the Employee ID, and the name where the sheet has one.",
+  cancelHint: "Stop this run. Nothing is written.",
+  stale: "This review changed. Reload it before answering.",
+});
+
 /** The declared identifier of a parked write, read from its natural key; a declared key that lacks it is corrupt. */
 export function parkedWriteRecordId(taskId: string, idempotencyKey: string): string | undefined {
   const declared = PARKED_WRITE_RECORDS[taskId]?.id;

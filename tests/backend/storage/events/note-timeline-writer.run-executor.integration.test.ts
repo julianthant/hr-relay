@@ -56,9 +56,10 @@ describe("cold login action note secrecy", () => {
         return value;
       }
       const page = { locator: field, getByLabel: field, url: () => "https://sso.example.invalid/login" } as unknown as Page;
+      const envelopeDeadline = clock.monotonicMs() + 60_000;
       const gate = duoCeremonyGatesOver(database, clock, h.scheduler).openGate({
         workerId: WorkerIdSchema.parse(claim.workerId),
-        system: "ucpath", envelopeDeadlineMonotonicMs: clock.monotonicMs() + 60_000,
+        system: "ucpath", envelopeDeadlineMonotonicMs: () => envelopeDeadline,
         cancelCeremony: () => undefined, signal: SIGNAL });
       let capturedBytes = "";
       try {

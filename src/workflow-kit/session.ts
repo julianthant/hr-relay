@@ -93,6 +93,8 @@ export interface WorkerBrowserSessionFactory {
     /** The Duo ceremony lease gate for this acquisition: the manager opens one per acquisition and holds it across the fresh-profile-once retry, so it is an input. */
     duoCeremony: DuoCeremonyGate;
     acquisitionRemainingMs?: () => number;
+    /** Called while another worker actively running this workflow holds the exclusive lease; restarts the acquisition bound. */
+    extendAcquisition?: () => void;
     claimStaleRequestRecovery?: () => boolean;
     /** An idle exclusive Reopen names the retained session it replaces. */
     replacesSessionId?: string;

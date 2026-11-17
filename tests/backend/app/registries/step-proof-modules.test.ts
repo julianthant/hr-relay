@@ -23,10 +23,10 @@ function observeBind(bind: () => unknown) {
 describe("Person Lookup step proofs", () => {
   const proofs = STEP_PROOF_MODULES.filter(module => module.role.kind === "chunk-harness" && module.role.of === "person-lookup");
 
-  it("registers all four proofs under the composition without adding operator workflows", () => {
+  it("registers all five proofs under the composition without adding operator workflows", () => {
     assert.deepEqual(personLookupModule.role, { kind: "composition" });
     assert.deepEqual(proofs.map(module => String(module.descriptor.id)), [
-      "person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates",
+      "person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates", "person-lookup-reference-check",
     ]);
     assert.deepEqual(auditWorkflowModuleRoles([...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES]), []);
     for (const proof of proofs) {
