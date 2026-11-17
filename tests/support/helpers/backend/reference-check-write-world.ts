@@ -15,6 +15,9 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import type { ActionDescriptorWire } from "../../../../src/models/dashboard/actions.js";
 import type { WorkbookActiveSelectionSchema } from "../../../../src/models/dashboard/workbook-library.js";
+import { MatchIdentityOutputSchema } from "../../../../src/models/workflows/separations/match-identity.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
 import { REFERENCE_CHECK_REVIEW_GATE } from "../../../../src/models/processing/workbooks/reference-check-stop.js";
 import { REFERENCE_CHECK, VerifyWorkbookPerson } from "../../../../src/models/processing/workbooks/verify-person.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
@@ -25,6 +28,7 @@ import { testRunLifecycle, testRunService } from "../../fixtures/run-lifecycle-f
 import type { SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { boundProfileAdmission } from "../synthetic-database-admission.js";
 import { canonicalChildExecution } from "./canonical-child-execution.js";
+import { protectedSecretSource } from "../protected-secret-source.js";
 import { createRunExecutorTestWorld } from "./run-executor-world.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
 
@@ -52,7 +56,7 @@ export function createReferenceCheckWriteWorld() {
       sessions: h.manager, emitter: h.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: h.scheduler, taskDeadlineMs: 60_000,
       operator: "local-operator", log: h.deps.log });
     const deps: RunExecutorDependencies = { ...h.deps, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }), writeSequencer };
-    const execution = canonicalChildExecution(deps, database, path, resolve, undefined, { workbooks: library,
+    const execution = canonicalChildExecution(deps, database, path, resolve, undefined, { workbooks: library, protectedSecrets: protectedSecretSource({ profileName: "Synthetic Timekeeper", profileInitials: "TQ" }),
       resources: (_reader, run) => ({ providers: { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
         adapters: { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
           references: { runId: run.envelope.runId, write: () => { throw new Error("the reference check must not write a reference"); },
@@ -65,8 +69,9 @@ export function createReferenceCheckWriteWorld() {
       return { entry: 1, typeId: REFERENCE_CHECK.id, libraryId: saved.libraryId, versionId: library.libraryVersion(saved.libraryId).version.id,
         sheetId: "sheet", expectedVersion: library.read(saved.libraryId).version };
     };
-    const start = (input: unknown, picks: readonly z.infer<typeof WorkbookActiveSelectionSchema>[], dryRun = false) =>
-      execution.start(descriptor, input, { dryRun, ...(picks.length === 0 ? {} : { workbookReferences: picks }) });
+    const start = (input: unknown, picks: readonly z.infer<typeof WorkbookActiveSelectionSchema>[], dryRun = false,
+      extra: Readonly<Pick<Parameters<typeof execution.start>[2], "stepOmissions" | "selectedStepKeys" | "protectedSubmissionBindings">> = {}) =>
+      execution.start(descriptor, input, { dryRun, ...(picks.length === 0 ? {} : { workbookReferences: picks }), ...extra });
     const execute = async (run: RunRecord) => {
       const { run: settled } = await execution.execute(run, world.SIGNAL);
       assert.ok(settled);
@@ -83,6 +88,14 @@ export function createReferenceCheckWriteWorld() {
       assert.ok(resolution.state === "accepted", JSON.stringify(resolution));
       return execution.kernel.execute(resolution.request);
     };
+    /** Approves the parked `identity-approval` gate on the evidence the run's comparison stored, as the operator's one-click approval does. */
+    const approveIdentity = (run: RunRecord, eid: string, chosenFrom: "checked" | "name-search" | "manual") => {
+      const comparison = database.authority.runCheckpoints.latest(descriptor.id, current(run).envelope.itemId, "comparison");
+      assert.ok(comparison);
+      const approval = IdentityApprovalResultSchema.parse({ decision: "approved", eid, chosenFrom, evidenceDigest: MatchIdentityOutputSchema.parse(comparison.output.value).evidenceDigest });
+      return command(run, { source: "dashboard", family: "gate", type: "resolve-gate", target: { runId: run.envelope.runId, gateId: "identity-approval", expectedVersion: current(run).version },
+        payload: { result: { schemaHash: deriveSchemaHash(IdentityApprovalResultSchema, "output"), value: approval } } });
+    };
     const cancel = (run: RunRecord) => command(run, { source: "queue-row", family: "run", type: "cancel", target: { runId: run.envelope.runId, expectedVersion: current(run).version } });
     const retry = (run: RunRecord) => command(run, { source: "queue-row", family: "run", type: "retry", target: { runId: run.envelope.runId, expectedVersion: current(run).version } });
     const events = (run: RunRecord) => database.authority.timelineEvents.page({}).filter(event => event.scope.kind === "run" && event.scope.runId === run.envelope.runId);
@@ -97,6 +110,6 @@ export function createReferenceCheckWriteWorld() {
     const gateDeps = { runReader: reader, authority: { listGateResults: (runId: string) => database.authority.gateResults.listByRun(runId) },
       projection: { queueSurface: () => ({ actions: [CANCEL_ROW_ACTION] }) },
       canonical: { reader, database, descriptors: { resolve } } } as unknown as RunDetailQueryDeps;
-    return { database, clock, start, execute, current, continueAnyway, cancel, retry, events, checkLines, nodeSpans, spreadsheet, gateDeps };
+    return { database, clock, start, execute, current, continueAnyway, approveIdentity, cancel, retry, events, checkLines, nodeSpans, spreadsheet, gateDeps };
   } };
 }

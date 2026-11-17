@@ -10,6 +10,16 @@ import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { createReferenceCheckWriteWorld } from "../../support/helpers/backend/reference-check-write-world.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
+import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../../src/backend/systems/kuali/driver/fake.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/systems/ucpath/driver/fake.js";
+import { createDeterministicUcpathSmartHrWorldDriver, createUcpathSmartHrFakeWorld } from "../../../src/backend/systems/ucpath/driver/smart-hr-fake.js";
+import { UCPATH_PERSON_ORG_DETAIL_READY, UCPATH_PERSON_ORG_DETAIL_SCREEN, UCPATH_PERSON_ORG_DISPLAYED_EID, UCPATH_PERSON_ORG_SEARCH_READY,
+  UCPATH_PERSON_ORG_SEARCH_SCREEN } from "../../../src/models/ui/ucpath-person-org.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
+import { FINALIZATION_JOB_SUMMARY_READ, FINALIZATION_NAME_SEARCH_OUTPUT } from "../../support/helpers/kuali-finalization-fixtures.js";
+import { KUALI_SEPARATION_FORM_TYPE } from "../../../src/models/ui/kuali-separation-document.js";
+import { COMPOSITION_ACTION_ID, COMPOSITION_DOCUMENT_NAME, COMPOSITION_LAST_DAY_WORKED, COMPOSITION_SEPARATION_DATE, COMPOSITION_DOCUMENT, COMPOSITION_EID, COMPOSITION_NOW, COMPOSITION_RECEIPT,
+  COMPOSITION_UCPATH_NAME } from "../../support/helpers/separations-composition-fixtures.js";
 
 const ReferenceCheckStopInput = SeparationsReadReferenceStop.input;
 const world = createReferenceCheckWriteWorld();
@@ -107,5 +117,101 @@ describe("Separations reference spreadsheet check", () => {
     const scope = (dryRun: unknown) => ({ input: {}, outputs: { "reference-check": check }, ...(dryRun === undefined ? {} : { dryRun }) }) as unknown as Parameters<typeof stop.bind>[0];
     assert.deepEqual(referenceCheckStop(ReferenceCheckStopInput.parse(stop.bind(scope({ mode: "preview" })))), { ask: null });
     assert.deepEqual(referenceCheckStop(ReferenceCheckStopInput.parse(stop.bind(scope(undefined)))), { ask: true });
+  });
+});
+
+describe("Separations composition with a reference spreadsheet", () => {
+  const REFERENCE_GATE = "reference-check-review";
+  const OMIT_KRONOS = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/12/2026", separationDate: "06/19/2026" } }];
+
+  async function composition() {
+    const clock = manualClock(new Date(COMPOSITION_NOW));
+    const kuali = createKualiFakeWorld({ actionId: COMPOSITION_ACTION_ID, documentNumber: COMPOSITION_DOCUMENT, displayedEid: COMPOSITION_EID });
+    kuali.separationForm = { formType: KUALI_SEPARATION_FORM_TYPE, employeeName: COMPOSITION_DOCUMENT_NAME, eid: "", employeeType: "Student",
+      studentTitleCode: "4921 - STDT 2", division: "Campus Dining and Retail", location: "Synthetic Hall", terminationType: "Move out of Area",
+      lastDayWorked: COMPOSITION_LAST_DAY_WORKED, separationDate: COMPOSITION_SEPARATION_DATE, additionalComments: "", requestAcknowledged: false,
+      timekeeperName: "", timekeeperComments: "", terminationEffectiveDate: "", department: "- - -", payrollTitleCode: "", payrollTitle: "",
+      submittedTerminationTemplate: false, transactionNumber: "", finalPay: null };
+    const ucpath = createUcpathSmartHrFakeWorld({ emplId: COMPOSITION_EID, displayedName: COMPOSITION_UCPATH_NAME, nextTransactionId: COMPOSITION_RECEIPT });
+    const sessions = sessionFactoryHarness({
+      kuali: () => createDeterministicKualiDriver(kuali, clock),
+      ucpath: () => {
+        const person = createDeterministicUcpathPersonOrgDriver(FINALIZATION_NAME_SEARCH_OUTPUT, FINALIZATION_JOB_SUMMARY_READ);
+        const filing = createDeterministicUcpathSmartHrWorldDriver(ucpath, () => clock.now());
+        const personScreens: readonly unknown[] = [UCPATH_PERSON_ORG_SEARCH_SCREEN, UCPATH_PERSON_ORG_DETAIL_SCREEN];
+        const personStates: readonly unknown[] = [UCPATH_PERSON_ORG_SEARCH_READY, UCPATH_PERSON_ORG_DETAIL_READY];
+        // The person-org fake owns the search screens; the Smart HR world owns the transaction pages.
+        return { ...person, scanTerminationTransactions: filing.scanTerminationTransactions, stageTermination: filing.stageTermination,
+          stagePendingTerminationSweep: filing.stagePendingTerminationSweep, commit: filing.commit,
+          goto: (next: never) => personScreens.includes(next) ? person.goto(next) : filing.goto(next),
+          waitFor: (stateId: never) => personStates.includes(stateId) ? person.waitFor(stateId) : filing.waitFor(stateId),
+          read: (id: never) => id === UCPATH_PERSON_ORG_DISPLAYED_EID ? person.read(id) : filing.read(id) };
+      },
+    });
+    const f = await world.fixture(separationsDescriptor, sessions);
+    const commits = () => [...kuali.events, ...ucpath.events].filter(event => event.startsWith("commit:"));
+    const begin = (picks: Parameters<typeof f.start>[1], dryRun = false) => f.start({ documentNumber: COMPOSITION_DOCUMENT }, picks, dryRun, { stepOmissions: OMIT_KRONOS,
+      selectedStepKeys: separationsDescriptor.timeline.map(step => step.key).filter(key => key !== "kronos-timecard") });
+    const writeIntents = (run: RunRecord) => f.database.authority.writeIntents.listByRun(run.envelope.runId);
+    const holding = () => f.spreadsheet("Separations roster", "People", ["eid", "fullName"], [["10800009", "Blair Example"], [COMPOSITION_EID, COMPOSITION_UCPATH_NAME]]);
+    const missing = () => f.spreadsheet("Badge list", "Issued", ["eid"], [["10800009"]]);
+    const renamed = () => f.spreadsheet("Separations roster", "People", ["fullName", "eid"], [[ROW_ONLY_NAME, COMPOSITION_EID]]);
+    const parkedAt = (run: RunRecord) => run.lifecycle.state === "parked-gate" ? String(run.lifecycle.gateId) : run.lifecycle.state;
+    /** Executes, answering the name-only identity approval the way the operator's one-click approval does, and returns where the run stopped. */
+    const advance = async (run: RunRecord) => {
+      const first = await f.execute(run);
+      if (first.lifecycle.state !== "parked-gate" || String(first.lifecycle.gateId) !== "identity-approval") return first;
+      assert.equal(f.approveIdentity(run, COMPOSITION_EID, "checked").state, "applied");
+      return f.execute(run);
+    };
+    return { ...f, advance, commits, begin, writeIntents, holding, missing, renamed, parkedAt };
+  }
+
+  it("parks before any write when the person is missing, and Continue anyway files each write once", async () => {
+    const c = await composition(), started = c.begin([c.missing()]);
+    let run = await c.advance(started);
+    assert.equal(c.parkedAt(run), REFERENCE_GATE);
+    assert.deepEqual(c.commits(), []);
+    assert.deepEqual(c.writeIntents(started), []);
+    assert.equal(c.continueAnyway(started).state, "applied");
+    run = await c.advance(started);
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", c.parkedAt(run));
+    assert.deepEqual(c.commits(), ["commit:kuali.rrss-document.save-button", "commit:ucpath.smart-hr.save-and-submit-button"]);
+    assert.ok(c.writeIntents(started).length > 0);
+  });
+
+  it("parks on a name difference, and Cancel run ends it with no write", async () => {
+    const c = await composition(), started = c.begin([c.renamed()]);
+    assert.equal(c.parkedAt(await c.advance(started)), REFERENCE_GATE);
+    assert.equal(c.cancel(started).state, "applied");
+    const cancelled = c.current(started);
+    assert.ok(cancelled.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled");
+    assert.deepEqual(c.commits(), []);
+    assert.deepEqual(c.writeIntents(started), []);
+  });
+
+  it("never parks a dry run with the person missing, and records the check line", async () => {
+    const c = await composition(), run = await c.advance(c.begin([c.missing()], true));
+    assert.notEqual(c.parkedAt(run), REFERENCE_GATE);
+    assert.deepEqual(c.nodeSpans(run, REFERENCE_GATE), [["skipped", "condition-false"]]);
+    assert.deepEqual(c.checkLines(run), ["Badge list · Issued: not found"]);
+    assert.deepEqual(c.commits(), []);
+  });
+
+  it("resumes from stored state after Continue anyway without asking again", async () => {
+    const c = await composition(), started = c.begin([c.missing()]);
+    assert.equal(c.parkedAt(await c.advance(started)), REFERENCE_GATE);
+    assert.equal(c.continueAnyway(started).state, "applied");
+    const resumed = await c.execute(c.current(started));
+    assert.ok(resumed.lifecycle.state === "terminal" && resumed.lifecycle.outcome === "done", c.parkedAt(resumed));
+    assert.equal(c.database.authority.gateResults.listByRun(started.envelope.runId).filter(result => String(result.gateId) === REFERENCE_GATE).length, 1);
+    assert.deepEqual(c.commits(), ["commit:kuali.rrss-document.save-button", "commit:ucpath.smart-hr.save-and-submit-button"]);
+  });
+
+  it("does not park at the reference review when the picked spreadsheet holds the person", async () => {
+    const c = await composition(), run = await c.advance(c.begin([c.holding()]));
+    assert.notEqual(c.parkedAt(run), REFERENCE_GATE);
+    assert.deepEqual(c.nodeSpans(run, REFERENCE_GATE), [["skipped", "condition-false"]]);
+    assert.deepEqual(c.checkLines(run), ["Separations roster · People: found in row 3"]);
   });
 });
