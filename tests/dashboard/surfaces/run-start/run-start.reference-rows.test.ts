@@ -104,7 +104,8 @@ it("draws the Add spreadsheet menu as the mock does: Pinned first, the mock's em
   const items = () => [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(node => node.textContent ?? "");
   assert.equal(items().length, 1); assert.match(items()[0], /Contact roster/u);
   const search = document.body.querySelector<HTMLInputElement>('input[aria-label="Find a spreadsheet"]'); assert.ok(search);
-  await act(async () => { const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set; setter?.call(search, "tracker"); search.dispatchEvent(new Event("input", { bubbles: true })); });
+  const descriptor: { set?: (this: unknown, value: string) => void } | undefined = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+  await act(async () => { descriptor?.set?.call(search, "tracker"); search.dispatchEvent(new Event("input", { bubbles: true })); });
   assert.match(items().join(" "), /I-9 tracker/u);
 });
 

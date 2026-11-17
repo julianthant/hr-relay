@@ -59,7 +59,7 @@ describe("the fresh draft", () => {
     assert.deepEqual({ ...draft, touchedFacts: [...draft.touchedFacts] }, {
       text: "", typed: { workflowId: "plain", draft: {} }, sourceInputUnchanged: false, stepSelection: undefined,
       stepDrafts: {}, touchedFacts: [], factsAttempted: false, priority: "interactive", dryRunRequested: false, browserMode: "headed",
-      referenceSelections: {}, referenceDrafts: {}, selectedWorkbookRows: undefined, launchFields: {}, valueDrafts: {}, copiedOmissions: {},
+      referenceSelections: {}, referenceDrafts: {}, checkPicks: {}, selectedWorkbookRows: undefined, launchFields: {}, valueDrafts: {}, copiedOmissions: {},
     });
   });
   it("seeds a typed workflow's declared defaults and none without a workflow", () => {
