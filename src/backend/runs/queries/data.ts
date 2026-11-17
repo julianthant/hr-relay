@@ -14,6 +14,7 @@ import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
 import { runDataObservationsForRun } from "./run-logs.js";
 import { TargetNotFoundError } from "../commands/refusals.js";
+import { typedMarkOf } from "./run-detail/typed-values.js";
 import type { z } from "zod";
 
 type ContextDataPayload = z.infer<typeof ContextDataSectionSchema>;
@@ -64,16 +65,19 @@ export function displayScalar(value: string | number | boolean): string {
   return text.length === 0 ? "(empty)" : text;
 }
 
-type FactProvenanceWire = Pick<ContextDataEntry, "observedAt" | "source" | "correctedAt" | "assertedStep">;
+type FactProvenanceWire = Pick<ContextDataEntry, "observedAt" | "source" | "correctedAt" | "assertedStep" | "typedMark">;
 
-function provenanceFor(stored: RunCheckpointRecord, fieldPath: string): FactProvenanceWire {
+function provenanceFor(run: RunRecord, descriptor: AnyWorkflowDescriptor, stored: RunCheckpointRecord, fieldPath: string): FactProvenanceWire {
   let best: RunCheckpointRecord["provenance"][number] | undefined;
   for (const point of stored.provenance) {
     const path = String(point.path);
     if (path !== fieldPath && !fieldPath.startsWith(path + ".")) continue;
     if (best === undefined || path.length > String(best.path).length) best = point;
   }
-  const asserted = stored.assertion === undefined ? {} : { assertedStep: String(stored.assertion.step) };
+  const asserted = stored.assertion === undefined ? {} : {
+    assertedStep: String(stored.assertion.step),
+    typedMark: typedMarkOf(run, descriptor, String(stored.assertion.step), String(stored.nodeId), fieldPath),
+  };
   if (best === undefined) return asserted;
   return {
     observedAt: best.observedAt,
@@ -194,7 +198,7 @@ function entryOf(
     writtenAt: stored.writtenAt,
   };
   const attribution = originOf(descriptor, field.nodeId, field.fieldPath);
-  const provenance = provenanceFor(stored, field.fieldPath);
+  const provenance = provenanceFor(run, exactDescriptor, stored, field.fieldPath);
   if (lookup.kind === "absent") {
     return {
       label: field.label,

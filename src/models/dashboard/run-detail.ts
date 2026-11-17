@@ -189,6 +189,38 @@ export const TimelineStepMemberWireSchema = z.strictObject({
   }
 });
 
+/** Where a value the run used instead of a reading came from: typed at start, or copied unedited from the Rerun's source run. */
+export const TypedValueMarkSchema = z.enum(["Typed by hand", "From the earlier run"]);
+export type TypedValueMark = z.infer<typeof TypedValueMarkSchema>;
+
+/** The values typed in place of a step's reading, each under the label it was typed with. */
+export const TimelineTypedValuesWireSchema = z.strictObject({
+  title: z.literal("Operator-entered values"),
+  reading: z.literal("Not run, typed by hand"),
+  fields: z.array(z.strictObject({
+    key: z.string().min(1),
+    label: z.string().min(1),
+    value: z.string().min(1),
+    mark: TypedValueMarkSchema,
+  })),
+});
+export type TimelineTypedValuesWire = z.infer<typeof TimelineTypedValuesWireSchema>;
+
+/** A step whose nodes read values typed for another step names them. */
+export const TimelineUsesTypedWireSchema = z.strictObject({
+  line: z.string().min(1),
+  labels: z.array(z.string().min(1)).min(1),
+}).superRefine((uses, context) => {
+  if (uses.line !== usesTypedLine(uses.labels)) {
+    context.addIssue({ code: "custom", path: ["line"], message: "the uses line names exactly its labels" });
+  }
+});
+export type TimelineUsesTypedWire = z.infer<typeof TimelineUsesTypedWireSchema>;
+
+export function usesTypedLine(labels: readonly string[]): string {
+  return `Uses values typed by hand: ${labels.join(", ")}`;
+}
+
 /** The CATEGORICAL timeline step: one segment per descriptor-declared category (or per node for a workflow that declares nothing), never one per raw execution. */
 export const TimelineStepWireSchema = z.strictObject({
   system: z.union([BrowserSystemIdSchema, z.literal("local")]).optional(),
@@ -200,6 +232,9 @@ export const TimelineStepWireSchema = z.strictObject({
   /** Max executions of any one member node; present only when ≥ 2. */
   executions: z.number().int().min(2).optional(),
   members: z.array(TimelineStepMemberWireSchema).min(1),
+  /** Present when the run was started with this step's values typed. */
+  typedValues: TimelineTypedValuesWireSchema.optional(),
+  usesTyped: TimelineUsesTypedWireSchema.optional(),
 });
 export type TimelineStepWire = z.infer<typeof TimelineStepWireSchema>;
 
@@ -289,7 +324,7 @@ export const RunDetailWireSchema = z.strictObject({
   }).optional(),
   /** Historical archives may omit captures; every live read emits them. */
   captures: RunCaptureAvailabilityWireSchema.optional(),
-    /* The timeline steps this run OMITTED at start, by descriptor key; keys only — the operator's typed facts are the run's input and never cross this wire. */
+    /* The timeline steps this run OMITTED at start, by descriptor key; their typed values are served on each step's `typedValues`. */
   omittedSteps: z.array(TimelineCategoryKeySchema).min(1).optional(),
     /* The run-level decision (member retry, paused, stalled, cancelling); run controls send the queue row's own descriptors. */
   decision: RunDecisionWireSchema.optional(),
@@ -573,6 +608,7 @@ export const ContextDataSectionSchema = z.strictObject({
     source: z.enum(["live", "derived", "operator"]).optional(),
     correctedAt: IsoInstantSchema.optional(),
     assertedStep: TimelineCategoryKeySchema.optional(),
+    typedMark: TypedValueMarkSchema.optional(),
     origin: ContextDataOriginSchema.optional(),
     freshness: ContextDataFreshnessSchema.optional(),
   })),
@@ -614,6 +650,9 @@ export const ContextDataSectionSchema = z.strictObject({
         path: [index, "assertedStep"],
         message: "an operator-sourced value is either a correction or an assertion; without `correctedAt` it must name the omitted step it was asserted for",
       });
+    }
+    if (entry.typedMark !== undefined && entry.assertedStep === undefined) {
+      context.addIssue({ code: "custom", path: [index, "typedMark"], message: "only a value asserted for a typed step carries a typed mark" });
     }
     if (entry.freshness !== undefined && entry.origin === undefined) {
       context.addIssue({
