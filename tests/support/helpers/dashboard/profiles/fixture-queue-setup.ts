@@ -136,7 +136,6 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
       displayName: { state: "absent", reason: "the operator has not renamed this run" },
       subtitle,
       status: input.status,
-      operatorWait: { state: "absent" },
       liveMessage,
       warnings,
       pipeline: pipeline(input.pipeline ?? ["pending", "pending", "pending", "pending"]),
