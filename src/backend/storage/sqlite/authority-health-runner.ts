@@ -49,11 +49,11 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
     const upgradeSummary = latestUpgrade === undefined
       ? `authority upgrade journal ${report.authorityUpgrades.state}`
       : `authority upgrade phase ${latestUpgrade.phase}`;
-    const upgradeSettled = latestUpgrade?.phase === "baseline" || latestUpgrade?.phase === "settled";
 
+    // Both journal phases are settled states, so a readable, non-empty journal is enough.
     if (report.authority.state === "healthy"
       && report.spanAuthority.state === "reconciled"
-      && report.protectedSettings.state === "available" && upgradeSettled) {
+      && report.protectedSettings.state === "available" && report.authorityUpgrades.state === "available") {
       return PreflightObservationSchema.parse({
         check: this.check,
         state: "healthy",

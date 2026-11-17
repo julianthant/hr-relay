@@ -155,6 +155,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/rules/runs/run-status.ts` | Shared run status and task/category state derivation for Queue, Logs, Activity and native summary filtering. |
 | `src/rules/storage/credential-head.ts` | Canonical credential head state derived from the head and credential operation files, and its frozen transition table with the store's refusal codes. `backend/storage/configuration/canonical-credential-store.ts` and the installation and account-deletion readers ask it instead of reading the head's `state` field. |
 | `src/rules/storage/person-startup-standing.ts` | One person's startup standing for a runtime lifetime and its transition table. `backend/app/composition/storage-compose.ts` writes it at each startup step and reads it for sign-in refusal, shutdown backup, logout resume and the layout move. |
+| `src/rules/storage/upgrade-journal.ts` | Authority schema upgrade journal: the state derived from the `database_upgrades` rows and the transition table each writer checks before it appends `baseline` or `settled`. |
 | `src/rules/` | Pure decisions and validation, including identity, clocks, normalization, ledger derivation, redaction, and write safety. |
 | `src/workflow-kit/` | Root-level TypeScript modules for task and workflow declaration, flow construction, compilation, sessions, providers, artifacts, and capabilities. |
 | `src/workflow-kit/workflow-definition.ts` | `defineWorkflow` and `compileWorkflow`. |
