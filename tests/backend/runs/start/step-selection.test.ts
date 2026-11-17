@@ -327,12 +327,12 @@ describe("authored start selection admission", () => {
 describe("served start rows", () => {
   const SERVED_ROWS: Readonly<Record<string, readonly (readonly [string, string, string | null])[]>> = {
     "person-lookup": [["searching", "locked", null], ["cross-verify", "switch", null], ["active-status", "locked", null], ["crm-dates", "switch", null], ["reference-check", "locked", null]],
-    separations: [["kuali-extraction", "locked", null], ["identity-check", "locked", "approval"], ["job-summary", "locked", null], ["kronos-timecard", "switch", null], ["ucpath-transaction", "switch", null], ["kuali-finalization", "switch", null]],
-    onboarding: [["crm-data", "locked", "approval"], ["ucpath-search", "locked", null], ["i9-search", "locked", null], ["hire-review", "locked", "approval"], ["i9-creation", "locked", "form-action"], ["ucpath-hire", "locked", "form-action"], ["master-results", "locked", null]],
-    "work-study": [["ucpath-auth", "locked", null], ["transaction", "locked", "form-action"]],
+    separations: [["kuali-extraction", "locked", null], ["identity-check", "locked", "approval"], ["job-summary", "locked", null], ["kronos-timecard", "switch", null], ["reference-check", "locked", "approval"], ["ucpath-transaction", "switch", null], ["kuali-finalization", "switch", null]],
+    onboarding: [["crm-data", "locked", "guard-read"], ["ucpath-search", "locked", "guard-read"], ["i9-search", "locked", "guard-read"], ["hire-review", "locked", "approval"], ["i9-creation", "locked", "form-action"], ["ucpath-hire", "locked", "form-action"], ["master-results", "locked", null]],
+    "work-study": [["ucpath-auth", "locked", "guard-read"], ["transaction", "locked", "form-action"]],
     "i9-check-start": [["documents", "locked", null], ["roster-reference", "locked", null], ["retention", "locked", "form-action"]],
     "crm-doc-download": [["search-records", "locked", null], ["reference", "locked", "approval"], ["read-idocs", "locked", null], ["package-worksheets", "locked", null]],
-    "emergency-contact": [["read-document", "locked", null], ["members", "locked", null]],
+    "emergency-contact": [["read-emergency-contact", "locked", null], ["match-extracted-people", "locked", null], ["save-emergency-contact", "locked", null]],
   };
 
   it("serves one row per step with its kind and lock reason for every public workflow", () => {

@@ -6,7 +6,7 @@ import { PlanApprovedEmergencyContact } from "../../../../models/workflows/emerg
 import { defineStep,inheritStepProof,type WorkflowAuthor,type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 
-export const CONTACT_PLAN_STEP = Object.freeze({ ...defineWorkflowStep({ key: "contact-plan", label: "Review approved contact plan" }), operatorFields: [
+export const CONTACT_PLAN_STEP = Object.freeze({ ...defineWorkflowStep({ key: "contact-plan", label: "Review approved contact plan" }), locked: "bound-read" as const, operatorFields: [
   { label: "Existing primary change", sources: [{ nodeId: "contact-plan", kind: "output", fieldPath: "demotionLine" }] },
   { label: "Approved contact", sources: [{ nodeId: "contact-plan", kind: "output", fieldPath: "contactLine" }] },
 ] as const, system: "ucpath" as const,

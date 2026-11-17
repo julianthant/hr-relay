@@ -30,6 +30,11 @@ export const emergencyContactWorkflow = defineWorkflow({
     { nodeId: "read-result", purpose: "Retain the exact released reference and settled member outcomes in a schema-owned result." },
     { nodeId: "members", purpose: "Delegate the exact approved record order to Emergency Contact members." },
   ],
+  rows: [
+    { key: "read-emergency-contact", label: "Read emergency contact", members: [{ step: "read-document", nodes: ["read-document"] }] },
+    { key: "match-extracted-people", label: "Match extracted people", members: [{ step: "read-document", nodes: ["approved-records"] }] },
+    { key: "save-emergency-contact", label: "Save emergency contact", members: [{ step: "members" }] },
+  ],
   steps: author => {
     const records = emergencyContactReadDocumentDefinition.build(author), members = emergencyContactMembersDefinition.build(author, records);
     return { steps: [...records.steps, ...members.steps], result: members.result };
