@@ -12,8 +12,6 @@ type Pdf = { source: ReturnType<typeof OcrSourceUploadSchema.parse>; readingId: 
 export type PdfRunDraft = { files: readonly Pdf[]; asOf: string; reviewer: string };
 /** The operator's choice for each declared launch field of a PDF workflow, keyed by input field; a select with no entry is unpicked, a switch with no entry holds its declared initial value. */
 export type PdfRunPicks = Readonly<Record<string, string | boolean>>;
-/** The line under a declared switch's title; a switch with no entry here shows its title alone. */
-const SWITCH_DESCRIPTIONS: Readonly<Record<string, string>> = { extractWithOcr: "Turn off to enter records manually in OCR review." };
 const refused = () => new Error(formatErrorCatalogFailure(createErrorCatalogFailure("OCR_SOURCE_REFUSED", {})).text);
 
 /** The declared launch fields of a PDF workflow: choices and switches. Any other declared kind is refused. */
@@ -23,7 +21,6 @@ export function pdfRunLaunchFields(surface: UploadRunSurface) {
     return field;
   });
 }
-export function pdfRunSwitchDescription(field: string): string | undefined { return SWITCH_DESCRIPTIONS[field]; }
 /** A declared switch's current value: the operator's pick, else its declared initial value. */
 export function pdfRunSwitchValue(field: Readonly<{ field: string; initial: boolean }>, picks: PdfRunPicks): boolean {
   const pick = picks[field.field];
