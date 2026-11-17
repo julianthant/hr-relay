@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { workflowPreflightScope } from "../../../../src/backend/runs/start/preflight-scope.js";
 import { createPreflightReportService } from "../../../../src/backend/runtime/preflight/report-service.js";
@@ -11,6 +11,7 @@ import { createTimeoutDeadlineScheduler } from "../../../../src/backend/runtime/
 import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
 import { registerSettingsPreflightRoutes } from "../../../../src/backend/transports/http/routes/settings-preflight.js";
 import { createDashboardClient, type DashboardClient } from "../../../../src/dashboard/client/index.js";
+import { SETTINGS_READ_DEADLINE_MS } from "../../../../src/dashboard/client/read-deadline.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { runChecksBlocked, useRunChecks } from "../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import { RunChecksStage } from "../../../../src/dashboard/surfaces/run-start/run-checks.js";
@@ -32,9 +33,10 @@ afterEach(async () => {
   await act(async () => { root?.unmount(); });
   root = undefined;
   document.body.replaceChildren();
+  vi.useRealTimers();
 });
 
-function checksHarness(workflowId: string, failConfig = true) {
+function checksHarness(workflowId: string, failConfig = true, beforeRerun?: () => Promise<void>) {
   const descriptor = WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor;
   assert.ok(descriptor, `registered workflow ${workflowId}`);
   const clock = manualClock(new Date("2026-11-17T12:00:00Z"));
@@ -67,7 +69,9 @@ function checksHarness(workflowId: string, failConfig = true) {
   registerSettingsPreflightRoutes(app, { clock, preflight: service });
   const requests: string[] = [];
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
-    requests.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
+    const path = new URL(url).pathname;
+    requests.push(`${init?.method ?? "GET"} ${path}`);
+    if (path === "/api/v1/preflight/rerun") await beforeRerun?.();
     return app.request(url, { ...init, headers: { ...init?.headers, host: "127.0.0.1:3938" } });
   } });
   return { client, observations, requests, scope };
@@ -172,4 +176,35 @@ it("does not execute a late check after the dialog has closed during settings ac
   await settle();
   assert.deepEqual(h.observations, []);
   assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 0);
+});
+
+it("bounds a stalled rerun response, ignores its late completion and permits an explicit fresh check", async () => {
+  const response = Promise.withResolvers<void>();
+  const h = checksHarness("emergency-contact", false, () => response.promise);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    await mount(h.client, "emergency-contact");
+    assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(SETTINGS_READ_DEADLINE_MS - 1); });
+    assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, true);
+    assert.ok(document.body.textContent?.includes("Checking"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    const recheck = [...document.querySelectorAll("button")].find(button => button.textContent === "Check again");
+    assert.ok(recheck, document.body.textContent ?? "");
+    assert.ok(document.body.textContent?.includes("Checks unavailable"));
+    assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, true);
+    const reads = h.requests.filter(request => request === "GET /api/v1/preflight").length;
+    await act(async () => { response.resolve(); });
+    await settle();
+    assert.ok(document.body.textContent?.includes("Checks unavailable"));
+    assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, true);
+    assert.equal(h.requests.filter(request => request === "GET /api/v1/preflight").length, reads);
+    await act(async () => { recheck.click(); });
+    await settle();
+    assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 2);
+    assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, false);
+  } finally {
+    await act(async () => { response.resolve(); });
+    await settle();
+  }
 });

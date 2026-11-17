@@ -66,13 +66,13 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
       const workflow = workflows.find(candidate => candidate.id === workflowId);
       if (workflow === undefined) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_SCOPE_UNAVAILABLE.text };
       if (settings.runtimeStatus.state !== "current") return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_SETTINGS_RESTART_REQUIRED.text };
-      await client.rerunPreflight({
+      await readWithDeadline(() => client.rerunPreflight({
         commandId: crypto.randomUUID(), requestedAt: systemClock.now().toISOString(), requestedBy: actorId,
         source: "run-start", type: "rerun-preflight", target: {
           expectedConfigFingerprint: settings.activeConfigFingerprint,
           expectedDescriptorFingerprint: workflow.descriptorFingerprint, selection,
         },
-      });
+      }), "PREFLIGHT_RERUN_UNAVAILABLE");
       if (!current) return;
       return readWithDeadline(() => client.readPreflight(selection), "PREFLIGHT_READ_UNAVAILABLE");
     };
