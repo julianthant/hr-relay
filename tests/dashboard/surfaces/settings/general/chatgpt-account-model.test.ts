@@ -44,8 +44,8 @@ describe("General ChatGPT account", () => {
     assert.match(host?.textContent ?? "", /jordan.lee@example\.com/u);
     assert.doesNotMatch(host?.textContent ?? "", /Using ChatGPT plan|Preview/u);
     const focused = document.activeElement;
-    assert.ok(focused instanceof HTMLButtonElement && host?.contains(focused), "focus recovers inside the account region after Connect");
-    assert.equal(focused.textContent, "Disconnect", "the first control of the connected account takes focus");
+    assert.ok(focused instanceof HTMLAnchorElement && host?.contains(focused), "focus recovers inside the account region after Connect");
+    assert.equal(focused.textContent, "Manage usage", "the first control of the connected account takes focus");
   });
 
   it("requests plan access directly for a disabled account", async () => {

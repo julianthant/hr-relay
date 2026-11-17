@@ -24,7 +24,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
     if (pending !== undefined) return;
     const previous = actionFocus.current;
     if (previous && !previous.isConnected && document.activeElement === document.body) {
-      region.current?.querySelector<HTMLElement>("a,button")?.focus();
+      region.current?.querySelector<HTMLElement>("a,button:not([data-destructive])")?.focus();
     }
     actionFocus.current = null;
   }, [account.state, pending]);
@@ -100,7 +100,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
               {"authorizationUrl" in displayed && displayed.authorizationUrl !== undefined && <ButtonLink variant="secondary" href={displayed.authorizationUrl} target="_blank" rel="noopener noreferrer">Reopen sign-in page</ButtonLink>}
               <Button variant="ghost" disabled={pending !== undefined} loading={pending === "cancel"} onClick={() => { void perform("cancel"); }}>Cancel</Button>
             </>}
-            {connected && account.state === "connected" && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => setConfirming(true)}>Disconnect</Button>}
+            {connected && account.state === "connected" && <Button variant="secondary" data-destructive disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => setConfirming(true)}>Disconnect</Button>}
             {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : "Connect ChatGPT"}</Button>}
           </div>} />}
       {account.state !== "loading" && connected && plan !== "disabled" && <ResultRow controlWidth="wide" label="Manage" value={<div className="flex items-center justify-end gap-2">
@@ -110,8 +110,8 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
     {confirming && <Dialog open onOpenChange={next => { if (!next) setConfirming(false); }}>
       <DialogContent size="sm" title="Disconnect ChatGPT?" description="Relay forgets this account; the assistant and OCR stop until you connect again.">
         <DialogFooter>
-          <Button variant="secondary" onClick={() => setConfirming(false)}>Cancel</Button>
-          <Button variant="primary" onClick={() => { void disconnect(); }}>Disconnect</Button>
+          <Button variant="secondary" autoFocus onClick={() => setConfirming(false)}>Cancel</Button>
+          <Button variant="danger" onClick={() => { void disconnect(); }}>Disconnect</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>}
