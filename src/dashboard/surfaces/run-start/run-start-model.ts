@@ -209,9 +209,9 @@ function plainRefusal(caught: unknown): string {
 
 /** The rows a refused text still shows, split as the workflow splits it; an identifier column is masked. */
 function refusedRows(surface: InputRunSurface, text: string, draft: TypedInputDraft): RunInputPreview["entries"] {
-  let mode: ReturnType<typeof typedInputMode>;
-  try { mode = surface.typedInput === undefined ? undefined : typedInputMode(surface.typedInput, draft); } catch { return []; }
-  const parser = mode?.parser;
+  const typed = surface.typedInput;
+  const chosen = typed === undefined ? undefined : draft[typed.modeField] ?? typed.initialMode;
+  const parser = typed?.modes.find(candidate => candidate.value === chosen)?.parser;
   const texts = parser === undefined ? splitEntries(surface.parser, text)
     : parser.kind === "entries" ? splitEntries(parser.spec, text)
       : text.split(parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {

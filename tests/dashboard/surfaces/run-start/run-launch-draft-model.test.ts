@@ -58,7 +58,7 @@ describe("the fresh draft", () => {
     const draft = freshLaunchDraft(plain);
     assert.deepEqual({ ...draft, touchedFacts: [...draft.touchedFacts] }, {
       text: "", typed: { workflowId: "plain", draft: {} }, sourceInputUnchanged: false, stepSelection: undefined,
-      stepDrafts: {}, touchedFacts: [], factsAttempted: false, priority: "interactive", dryRunRequested: false, browserMode: "headed",
+      stepDrafts: {}, touchedFacts: [], factsAttempted: false, priority: undefined, dryRunRequested: false, browserMode: "headed",
       referenceSelections: {}, referenceDrafts: {}, checkPicks: {}, selectedWorkbookRows: undefined, launchFields: {}, valueDrafts: {}, copiedOmissions: {},
     });
   });
