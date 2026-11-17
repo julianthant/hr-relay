@@ -4,6 +4,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { EXCLUSIVE_SESSION_LEASE_MIGRATION } from "./exclusive-session-leases.js";
 import { ASSISTANT_HISTORY_MIGRATION } from "./assistant-history.js";
 import { ASSISTANT_EFFORT_SCALE_MIGRATION } from "./assistant-effort-migration.js";
+import { FAILURE_NOTE_REMOVAL_MIGRATION } from "./failure-note-removal-migration.js";
 import { ASSISTANT_ATTACHMENTS_MIGRATION } from "./assistant-attachments.js";
 import { ASSISTANT_GRANT_RETIREMENT_MIGRATION, RETIRED_ASSISTANT_GRANT_TABLE } from "./assistant-grant-retirement.js";
 import { CHANGE_LOG_MIGRATION } from "./authority-change-log.js";
@@ -1084,6 +1085,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
       BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
   ] },
   COMMAND_ROW_STATE_MIGRATION,
+  FAILURE_NOTE_REMOVAL_MIGRATION,
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,

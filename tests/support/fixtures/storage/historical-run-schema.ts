@@ -19,8 +19,15 @@ function restoreSchema32CommandTable(database: DatabaseSync): void {
   for (const statement of owned) database.exec(statement);
 }
 
+/** Steps a current authority back to schema 33: schema 34 strips failure notes from stored commands in place and keeps the same layout. */
+export function regressSchema34FailureNotes(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 34);
+  database.exec("UPDATE database_states SET schema_version=33; PRAGMA user_version=33");
+}
+
 /** Steps a current authority back to schema 32. */
 export function restoreSchema32CommandRows(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 34) regressSchema34FailureNotes(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 33);
   const nested = database.isTransaction;
   if (!nested) database.exec("BEGIN");
@@ -31,7 +38,7 @@ export function restoreSchema32CommandRows(database: DatabaseSync): void {
 
 /** Steps a current authority back to schema 30: the change log, its run references, its triggers and indexes did not exist. Schema 32 changed no table, index or trigger. */
 export function removeSchema31ChangeLog(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 33) restoreSchema32CommandRows(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 33) restoreSchema32CommandRows(database);
   if (database.prepare("PRAGMA user_version").get()?.user_version === 32) database.exec("UPDATE database_states SET schema_version=31; PRAGMA user_version=31");
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 31);
   const objects = z.array(z.object({ type: z.string(), name: z.string() })).parse(database.prepare("SELECT type,name FROM sqlite_schema").all())
