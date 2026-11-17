@@ -1,5 +1,10 @@
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { STORAGE_HEALTH_CAUSE_RULES, storageHealthCauseOf } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { candidateRestoreEligibility, STORAGE_HEALTH_CAUSE_RULES, storageHealthCauseOf } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/models/config/authority-schema-versions.js";
 
 /** Every message that reaches the classifier today, copied from its throw site, with the code it gets. */
 const THROWN: ReadonlyArray<readonly [string, string, string]> = [
@@ -50,5 +55,18 @@ describe("storage health cause classification", () => {
 
   it("summarizes a non-error value on one line", () => {
     expect(storageHealthCauseOf("authority\n   database is\tlocked ")).toEqual({ code: "authority-locked", summary: "authority database is locked" });
+  });
+});
+
+describe("candidate restore eligibility", () => {
+  it("decides eligibility only behind the live admission that inspected the candidate", () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "relay-candidate-eligibility-")));
+    const admission = RuntimeAdmission.syntheticFixture(join(root, "state.db"));
+    try {
+      const facts = { schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityAvailable: true, samePersonValid: () => true };
+      expect(candidateRestoreEligibility(admission, facts)).toEqual({ state: "eligible" });
+      admission.release();
+      expect(() => candidateRestoreEligibility(admission, facts)).toThrow(/released/u);
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });

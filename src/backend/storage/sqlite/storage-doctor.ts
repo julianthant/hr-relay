@@ -43,7 +43,7 @@ type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot,type StorageDoctorRepor
 import { validateSamePersonRestoreCandidate } from "./same-person-restore-candidate.js";
 import { inspectStorageRecovery,recoveryInspectionOf } from "./storage-recovery-status.js";
 import { backupHealthOf } from "../../../rules/storage/backup-health.js";
-import { restoreEligibilityOf } from "../../../rules/storage/restore-eligibility.js";
+import { restoreEligibilityOf, type RestoreEligibility, type RestoreEligibilityFacts } from "../../../rules/storage/restore-eligibility.js";
 import { TimelineRecordError } from "./timeline-repository.js";
 import { inspectAuthorityUpgradeStatus } from "./upgrade-status.js";
 import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
@@ -715,6 +715,12 @@ export function summarizeSpanAuthorityReconciliation(input: unknown): SpanAuthor
 }
 
 
+/** One verified candidate's eligibility, decided only while the admission that inspected it is live. */
+export function candidateRestoreEligibility(admission: RuntimeAdmission, facts: RestoreEligibilityFacts): RestoreEligibility {
+  admission.assertLive();
+  return restoreEligibilityOf(facts);
+}
+
 type CandidateWithMtime = Readonly<{
   candidate: RestoreCandidate;
   modifiedMs: number;
@@ -749,8 +755,7 @@ async function inspectCandidates(
             state: "known" as const,
             value: Math.max(0, authorityInspection.authorityGeneration - verified.manifest.authorityGeneration),
           };
-      admission.assertLive();
-      const restoreEligibility = restoreEligibilityOf({ schemaVersion: verified.manifest.schemaVersion,
+      const restoreEligibility = candidateRestoreEligibility(admission, { schemaVersion: verified.manifest.schemaVersion,
         authorityAvailable: authorityInspection !== undefined, samePersonValid: () => {
           try {
             validateSamePersonRestoreCandidate({ admission, activeAuthorityPath: join(stateRoot, "state.db"), verifiedBackup: verified });

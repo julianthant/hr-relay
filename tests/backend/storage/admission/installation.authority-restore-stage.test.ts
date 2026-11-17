@@ -6,6 +6,7 @@ import {
   authorityRestoreTransition,
   type AuthorityRestoreEvent,
   type AuthorityRestoreStage,
+  type AuthorityRestoreTransition,
 } from "../../../../src/backend/storage/admission/installation.js";
 
 const installationId = "00000000-0000-4000-8000-000000000001", profileId = "00000000-0000-4000-8000-000000000002";
@@ -38,7 +39,7 @@ describe("authority restore stage (design machine 5)", () => {
     expect(() => authorityRestoreStageOf(invalidated, true)).toThrow(/restore-recovery-file-changed/u);
   });
 
-  const table: Record<AuthorityRestoreStage | "absent", Record<AuthorityRestoreEvent, ReturnType<typeof authorityRestoreTransition>>> = {
+  const table: Record<AuthorityRestoreStage | "absent", Record<AuthorityRestoreEvent, AuthorityRestoreTransition>> = {
     absent: {
       begin: { state: "staged" },
       rename: { refused: "not-restoring" },
@@ -74,7 +75,7 @@ describe("authority restore stage (design machine 5)", () => {
   });
 
   for (const [stage, events] of Object.entries(table) as [AuthorityRestoreStage | "absent", typeof table.absent][]) {
-    for (const [event, expected] of Object.entries(events) as [AuthorityRestoreEvent, typeof expected][]) {
+    for (const [event, expected] of Object.entries(events) as [AuthorityRestoreEvent, AuthorityRestoreTransition][]) {
       it(`${stage} + ${event} -> ${"state" in expected ? expected.state : `refused ${expected.refused}`}`, () => {
         expect(authorityRestoreTransition(stage, event)).toEqual(expected);
       });

@@ -9,8 +9,9 @@ const neverAsked = () => { throw new Error("same-person validation must not run"
 
 describe("restore eligibility derivation (design machine 4)", () => {
   // D7: the restorable list is the openable list, so the doctor agrees with automatic restore on 20 through 30.
-  it.each([8, 15, 19, 20, 24, 28, 30, CURRENT_AUTHORITY_SCHEMA_VERSION])("keeps person backup schema %s eligible behind current authority", schemaVersion => {
+  it.each([8, 9, 10, 11, 12, 13, 14, 15, 19, 20, 24, 28, 30, CURRENT_AUTHORITY_SCHEMA_VERSION])("keeps person backup schema %s eligible behind current authority", schemaVersion => {
     expect(restoreEligibilityOf({ schemaVersion, authorityAvailable: true, samePersonValid: () => true })).toEqual({ state: "eligible" });
+    expect(restoreEligibilityOf({ schemaVersion, authorityAvailable: false, samePersonValid: neverAsked })).toEqual(AUTHORITY_UNAVAILABLE);
   });
 
   it.each([1, 6, 7, CURRENT_AUTHORITY_SCHEMA_VERSION + 1])("reports schema %s unsupported before any other fact", schemaVersion => {
