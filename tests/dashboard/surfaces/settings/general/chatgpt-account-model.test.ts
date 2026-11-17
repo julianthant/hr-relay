@@ -24,9 +24,9 @@ function button(name: string): HTMLButtonElement {
 }
 async function click(name: string) { await act(async () => { button(name).click(); }); }
 
-function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn">> = {}): ChatGptAccountPort {
+function controlledPort(snapshot: ChatGptAccountSnapshot, operations: Partial<Pick<ChatGptAccountPort, "signIn" | "signOut">> = {}): ChatGptAccountPort {
   return { mode: "live", getSnapshot: () => snapshot, subscribe: () => () => undefined,
-    signIn: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), ...operations };
+    signIn: () => Promise.resolve(), cancelSignIn: () => Promise.resolve(), signOut: () => Promise.resolve(undefined), ...operations };
 }
 
 describe("General ChatGPT account", () => {
@@ -44,8 +44,8 @@ describe("General ChatGPT account", () => {
     assert.match(host?.textContent ?? "", /jordan.lee@example\.com/u);
     assert.doesNotMatch(host?.textContent ?? "", /Using ChatGPT plan|Preview/u);
     const focused = document.activeElement;
-    assert.ok(focused instanceof HTMLAnchorElement && host?.contains(focused), "focus recovers inside the account region after Connect");
-    assert.equal(focused.textContent, "Manage usage", "the first control of the connected account takes focus");
+    assert.ok(focused instanceof HTMLButtonElement && host?.contains(focused), "focus recovers inside the account region after Connect");
+    assert.equal(focused.textContent, "Disconnect", "the first control of the connected account takes focus");
   });
 
   it("requests plan access directly for a disabled account", async () => {
@@ -99,7 +99,7 @@ describe("General ChatGPT account", () => {
     assert.equal(port.getSnapshot().state, "signed-out");
   });
 
-  it("offers no Disconnect or different-account control for any account state", async () => {
+  it("offers Disconnect only for a connected account and never a different-account control", async () => {
     for (const snapshot of [
       { state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "enabled" },
       { state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "disabled" },
@@ -107,7 +107,8 @@ describe("General ChatGPT account", () => {
       { state: "signed-out" },
     ] as const satisfies readonly ChatGptAccountSnapshot[]) {
       await mount(controlledPort(snapshot));
-      assert.doesNotMatch(host?.textContent ?? "", /Disconnect|Use a different account/u, snapshot.state);
+      assert.doesNotMatch(host?.textContent ?? "", /Use a different account/u, snapshot.state);
+      assert.equal(/Disconnect/u.test(host?.textContent ?? ""), snapshot.state === "connected", snapshot.state);
       act(() => root?.unmount()); root = undefined; host?.remove();
     }
   });

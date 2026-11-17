@@ -1,16 +1,19 @@
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { useContext, useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { BodySection, Button, ButtonLink, FormGroup, ResultRow, Skeleton, dsIcon, Notice } from "../../../ds/ui.js";
+import { BodySection, Button, ButtonLink, Dialog, DialogContent, DialogFooter, FormGroup, ResultRow, Skeleton, dsIcon, Notice } from "../../../ds/ui.js";
 import { LoadingRegion, SkeletonText } from "../../shared/loading/loading.js";
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { CHATGPT_USAGE_URL, ChatGptAccountContext, useChatGptAccount, type ChatGptAccountPort } from "./chatgpt-account-model.js";
 
 export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccountPort }) {
   const contextPort = useContext(ChatGptAccountContext);
   const port = override ?? contextPort;
   const account = useChatGptAccount(port);
-  const [pending, setPending] = useState<"sign-in" | "cancel">();
+  const [pending, setPending] = useState<"sign-in" | "cancel" | "sign-out">();
   const [error, setError] = useState<string>();
+  const [confirming, setConfirming] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string>();
   const mounted = useRef(false);
   const locked = useRef(false);
   const actionEpoch = useRef(0);
@@ -53,6 +56,26 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
       }
     }
   };
+  const disconnect = async () => {
+    setConfirming(false);
+    if (locked.current) return;
+    locked.current = true;
+    const request = ++actionEpoch.current;
+    setPending("sign-out");
+    setError(undefined);
+    setDisconnectError(undefined);
+    try {
+      const code = await port.signOut();
+      if (code !== undefined && mounted.current) setDisconnectError(ERROR_CATALOG[code].text);
+    } catch {
+      if (mounted.current) setDisconnectError(ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text);
+    } finally {
+      if (request === actionEpoch.current) {
+        locked.current = false;
+        if (mounted.current) setPending(undefined);
+      }
+    }
+  };
   const show = useDelayedLoading(account.state === "loading");
   const displayed = account.state === "unavailable" ? account.account ?? account : account;
   const signingIn = displayed.state === "signing-in";
@@ -66,6 +89,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
         : "Not connected. Connect your ChatGPT account to Relay.";
   return <BodySection title="Connected account">
       {account.state === "unavailable" && <Notice sticky tone="warning" title="ChatGPT account unavailable" description={account.message} />}
+      {disconnectError !== undefined && <Notice tone="danger" title="ChatGPT not disconnected" description={disconnectError} />}
       {error !== undefined && <Notice tone="danger" title="ChatGPT connection failed" description={error} />}
     <FormGroup label="Connected account"><div ref={region} data-settings-path="chatgpt.account" onFocusCapture={event => { if (event.target instanceof HTMLElement) actionFocus.current = event.target; }}>
       {account.state === "loading" ? show && <LoadingRegion label="Loading ChatGPT account"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} value={<Skeleton className="h-[var(--ds-h-body-control)] w-48 rounded-[var(--ds-radius-body-control)]" />} /></LoadingRegion>
@@ -76,11 +100,20 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
               {"authorizationUrl" in displayed && displayed.authorizationUrl !== undefined && <ButtonLink variant="secondary" href={displayed.authorizationUrl} target="_blank" rel="noopener noreferrer">Reopen sign-in page</ButtonLink>}
               <Button variant="ghost" disabled={pending !== undefined} loading={pending === "cancel"} onClick={() => { void perform("cancel"); }}>Cancel</Button>
             </>}
+            {connected && account.state === "connected" && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => setConfirming(true)}>Disconnect</Button>}
             {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : "Connect ChatGPT"}</Button>}
           </div>} />}
       {account.state !== "loading" && connected && plan !== "disabled" && <ResultRow controlWidth="wide" label="Manage" value={<div className="flex items-center justify-end gap-2">
         <ButtonLink variant={plan === "limit-reached" ? "primary" : "secondary"} href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink>
       </div>} />}
     </div></FormGroup>
+    {confirming && <Dialog open onOpenChange={next => { if (!next) setConfirming(false); }}>
+      <DialogContent size="sm" title="Disconnect ChatGPT?" description="Relay forgets this account; the assistant and OCR stop until you connect again.">
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => setConfirming(false)}>Cancel</Button>
+          <Button variant="primary" onClick={() => { void disconnect(); }}>Disconnect</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>}
   </BodySection>;
 }
