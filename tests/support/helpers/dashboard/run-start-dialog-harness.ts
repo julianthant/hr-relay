@@ -311,11 +311,10 @@ export function createRunStartDialogHarness() {
     const switchNamed = (name: string): HTMLInputElement | undefined => [...document.body.querySelectorAll<HTMLInputElement>('[role="switch"], [role="checkbox"]')]
       .find(node => [name, `Include ${name}`, `${name} (required)`].includes(node.closest("label")?.querySelector(".ds-switch-copy > span")?.textContent ?? "") || node.getAttribute("aria-label") === name);
     const press = async (name: string): Promise<void> => {
-      const action = name === "Continue" && buttons().some(button => button.textContent?.trim() === "Preview plan") ? "Preview plan" : name;
-      const visibleMatches = buttons().filter((button) => (button.textContent ?? "").trim() === action);
+      const visibleMatches = buttons().filter((button) => (button.textContent ?? "").trim() === name);
       const matches = visibleMatches.length > 0
         ? visibleMatches
-        : buttons().filter((button) => buttonName(button) === (name === "Continue" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
+        : buttons().filter((button) => buttonName(button) === name);
       const only = matches[0] ?? switchNamed(name);
       if (matches.length > 1 || only === undefined) {
         throw new Error(
@@ -404,7 +403,7 @@ export function createRunStartDialogHarness() {
     };
 
     const disabled = (name: string): boolean => {
-      const found = buttons().filter((button) => buttonName(button) === (name === "Continue" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
+      const found = buttons().filter((button) => buttonName(button) === name);
       const only = found[0] ?? switchNamed(name);
       if (found.length > 1 || only === undefined) {
         throw new Error(`expected exactly one control named "${name}", found ${String(found.length)}`);
@@ -463,7 +462,7 @@ export function createRunStartDialogHarness() {
 
   // Compare presence as a boolean; formatting a jsdom node can exhaust the assertion budget.
   function planIsDrawn(): boolean {
-    return document.body.querySelector("#run-start-confirm") !== null;
+    return document.body.querySelector("#run-start-plan") !== null;
   }
 
   async function reachResult(): Promise<OpenDialog> {
@@ -474,9 +473,7 @@ export function createRunStartDialogHarness() {
     await dialog.type(TYPED);
     await dialog.press("Continue");
     assert.equal(dialog.stage(), "Options");
-    await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Confirm");
-    await dialog.press("Start 1 run");
+    await dialog.press("Start run");
     assert.equal(closed.at(-1), false);
     return dialog;
   }

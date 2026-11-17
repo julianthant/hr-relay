@@ -3,7 +3,7 @@
 
 import type { StartMethod } from "./run-start-model.js";
 
-export type RunStartStage = "Input" | "Options" | "Steps" | "Values" | "Warning" | "Confirm";
+export type RunStartStage = "Input" | "Options" | "Steps" | "Values" | "Warning";
 
 export interface RunStartStageSpec {
   readonly label: RunStartStage;
@@ -15,11 +15,11 @@ export function runStartStages(
   method: StartMethod = "typed",
   rerun = false,
 ): readonly RunStartStageSpec[] {
-  const labels: RunStartStage[] = rerun ? ["Steps", "Values", "Options", "Confirm"] : method === "spreadsheet"
+  const labels: RunStartStage[] = rerun ? ["Steps", "Values", "Options"] : method === "spreadsheet"
     ? ["Input"]
     : customizeSteps
-      ? ["Input", "Options", "Steps", "Confirm"]
-      : ["Input", "Options", "Confirm"];
+      ? ["Input", "Options", "Steps"]
+      : ["Input", "Options"];
   return Object.freeze(labels.map((label, index) => Object.freeze({ label, number: index + 1 })));
 }
 

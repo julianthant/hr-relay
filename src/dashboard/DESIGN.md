@@ -79,7 +79,7 @@ permission. Served actions and exact write authority decide which controls are a
 Failed OCR children use the existing Retry icon button in their log-panel header when the server
 serves that action. Member lines keep their existing navigation behavior.
 
-Run Options omit the policy/version footer; Confirm retains the workflow version. Parsed identifier entries use two columns with a total count and named remove buttons. Leaving the textbox normalizes delimited entries; Match tuples retain raw identifiers in the editor and mask the preview.
+Run Options omit the policy/version footer, and the Run and Rerun dialog has no Confirm step: the last stage's Start plans and, when the plan is clean, submits at once; a plan that stops shows its refusals, omission mismatch or expiry note on that stage and a second Start submits it. Parsed identifier entries use two columns with a total count and named remove buttons. Leaving the textbox normalizes delimited entries; Match tuples retain raw identifiers in the editor and mask the preview.
 
 Search fields above a list (Settings sidebar, Run dialog workflow list) are one `SearchInput variant="sidebar"`: a full-radius pill on a 7% fill, no border, 36 px, 16 px magnifier, 14 px grey placeholder. Every runnable workflow's Run and Rerun dialog shows the per-spreadsheet Reference rows below its input; the OnBase Document type row sits above the PDF documents section, and Report start and Report end sit under a `Report period` title.
 
