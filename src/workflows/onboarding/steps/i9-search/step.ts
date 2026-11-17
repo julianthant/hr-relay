@@ -37,7 +37,7 @@ const group = Object.freeze({
       { id: "i9-lookup-result", label: "I-9 lookup", reads: { nodeId: "i9-lookup", fieldPath: "state" },
         nodeIds: ["i9-lookup"], initial: { by: "hire-match", values: { "existing-person": "not-required", "review-required": "not-required" }, otherwise: "checked" }, outcomes: [
           { value: "checked", label: "Lookup completed", then: "Retains the exact child result for the hire review.", when: [{ mode: ["new-hire"], "hire-match": ["new-hire", "review-required"] }] },
-          { value: "not-required", label: "Lookup not required", then: "Continues to review the existing person's hire findings." },
+          { value: "not-required", label: "Lookup not required", then: "Continues to review the existing person's hire findings.", when: [{ "hire-match": ["existing-person", "review-required"] }] },
         ] },
       { id: "i9-status", label: "I-9 status", reads: { nodeId: "i9-lookup", fieldPath: "result.i9Status" },
         nodeIds: ["i9-lookup"], initial: "not-found", when: [{ "i9-lookup-result": ["checked"] }], outcomes: [

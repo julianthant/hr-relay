@@ -142,6 +142,14 @@ it("validates run input rows, task input rows, click lines and declared decision
   assert.throws(() => compileReview(candidate([], [{ ...decision, reads: { nodeId: "search-identity", fieldPath: "candidateEids" } }])), /no closed set of values/u);
   assert.throws(() => compileReview(candidate([], [{ ...decision, outcomes: [...decision.outcomes, { value: "sideways", label: "Sideways" }] }])), /never holds/u);
   assert.throws(() => compileReview(candidate([], [{ ...decision, initial: "not-found", outcomes: [found, { ...missing, stops: true as const }] }])), /not one of its continuing outcomes/u);
+  const failure = "PERSON_LOOKUP_UCPATH_SEARCH_FAILED";
+  assert.doesNotThrow(() => compileReview(candidate([], [{ ...decision,
+    initial: { by: "mode", values: { match: failure }, otherwise: "resolved" } }])));
+  assert.throws(() => compileReview(candidate([], [{ ...decision, initial: failure }])), /not one of its continuing outcomes/u);
+  assert.throws(() => compileReview(candidate([], [{ ...decision,
+    initial: { by: "mode", values: { match: "ONBOARDING_WRITE_REVIEW_REFUSED" }, otherwise: "resolved" } }])), /not one of its continuing outcomes/u);
+  assert.throws(() => compileReview(candidate([], [{ ...decision,
+    initial: { by: "mode", values: { match: failure }, otherwise: failure } }])), /not one of its continuing outcomes/u);
   assert.throws(() => compileReview(candidate([], [{ ...decision, outcomes: [found, { value: "not-found", label: "Nobody found", stops: true as const }] }])), /without saying what the run does/u);
   assert.throws(() => compileReview(candidate([], [{ ...decision, nodeIds: ["active-status"] }])), /unknown or outside node/u);
 });

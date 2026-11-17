@@ -145,7 +145,7 @@ const review = Object.freeze({ ...defineWorkflowStep({ key: "hire-review", label
     decisions: [{ id: "hire-approval", label: "Approve the hire path", reads: { nodeId: "hire-review", fieldPath: "decision" },
       nodeIds: ["hire-review"], initial: { by: "hire-match", values: { "existing-person": "existing-person", "review-required": "existing-person" }, otherwise: "new-hire" },
       outcomes: [
-        { value: "new-hire", label: "File as a new hire", then: "Checks your approval against the identity, I-9 lookup and complete hire findings before any save.", when: [{ mode: ["new-hire"], "hire-match": ["new-hire", "review-required"] }] },
+        { value: "new-hire", label: "File as a new hire", then: "Checks your approval against the identity, I-9 lookup and complete hire findings before any save.", when: [{ mode: ["new-hire"], "hire-match": ["new-hire", "review-required"], "i9-lookup-result": ["checked"] }] },
         { value: "existing-person", label: "Use an existing person", then: "Uses the candidate you confirm in Logs and plans a concurrent hire without creating an I-9 record.", when: [{ "hire-match": ["existing-person", "review-required"] }] },
       ], cancellation: { label: "Reject and cancel run", then: "Cancels the run before any I-9 or UCPath change is saved." } }],
   } as const,
@@ -251,11 +251,15 @@ const group = Object.freeze({ ...defineWorkflowStep({ key: "i9-creation", label:
       }
     ],
     decisions: [{ id: "write-path", label: "Reviewed hire plan", reads: { nodeId: "write-plan", fieldPath: "hire.mode" },
-      nodeIds: ["write-plan"], initial: { by: "hire-approval", values: { "existing-person": "rehire" }, otherwise: "new-hire" }, outcomes: [
+      nodeIds: ["write-plan"], when: [{ "hire-approval": ["new-hire"] }],
+      initial: { by: "i9-status", values: { "unable-to-access": "ONBOARDING_WRITE_REVIEW_REFUSED" }, otherwise: "new-hire" }, outcomes: [
         { value: "new-hire", label: "New hire approved", then: "Creates or reuses the I-9 record before filing the hire." },
+      ] },
+      { id: "existing-write-path", label: "Reviewed existing-person hire plan", reads: { nodeId: "write-plan", fieldPath: "hire.mode" },
+        nodeIds: ["write-plan"], when: [{ "hire-approval": ["existing-person"] }], initial: "rehire", outcomes: [
         { value: "rehire", label: "Existing person approved", then: "Uses the approved Employee ID and files the concurrent hire without an I-9 record." },
       ] }],
-    branches: [{ nodeId: "i9-route", label: "I-9 record path", initial: { by: "write-path", values: { rehire: "existing" }, otherwise: "create" } }],
+    branches: [{ nodeId: "i9-route", label: "I-9 record path", initial: { by: "hire-approval", values: { "existing-person": "existing" }, otherwise: "create" } }],
     branchLabels: [
       { nodeId: "i9-route", outcome: "create", label: "Create an I-9 profile and remote record for a new hire" },
       { nodeId: "i9-route", outcome: "existing", label: "Use the confirmed existing person without creating an I-9 record" }

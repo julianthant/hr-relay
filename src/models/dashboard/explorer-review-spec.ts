@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { BrowserSystemIdSchema } from "../../rules/identity/ids.js";
 import { ReviewPickContentSchema, ReviewValueSchema } from "../workflow/review-spec.js";
+import { TaskErrorCodeSchema } from "../task/task-contract.js";
 
 const TextSchema = z.string().min(1);
 const IdSchema = z.string().min(1);
@@ -92,8 +93,10 @@ export const ExplorerReviewSpecSchema = z.strictObject({
       if (new Set(outcomes).size !== outcomes.length) issue(blockPath, `decision ${block.id} repeats an outcome`);
       block.outcomes.forEach((outcome, index) => { checkGate(outcome, [...blockPath, "outcomes", index]); });
       checkValue(block.initial, [...blockPath, "initial"]);
+      const defaultInitial = typeof block.initial === "string" ? block.initial : block.initial.otherwise;
       for (const initial of candidates(block.initial)) {
-        if (!block.outcomes.some(outcome => outcome.value === initial && !outcome.stops)) issue([...blockPath, "initial"], `decision ${block.id} starts at ${initial}, which is no continuing outcome`);
+        const forcedFailure = initial !== defaultInitial && TaskErrorCodeSchema.safeParse(initial).success;
+        if (!block.outcomes.some(outcome => outcome.value === initial && (!outcome.stops || forcedFailure))) issue([...blockPath, "initial"], `decision ${block.id} starts at ${initial}, which is no continuing outcome`);
       }
       known.set(block.id, outcomes);
     }

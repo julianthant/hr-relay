@@ -89,9 +89,29 @@ it("names Onboarding's delegated I-9 workflow and follows every retained lookup 
   assert.deepEqual(lookup.outcomes.slice(0, 2).map(outcome => [outcome.value, outcome.label]), [["checked", "Lookup completed"], ["not-required", "Lookup not required"]]);
   const status = blocks(spec, "i9-search", "decision").find(decision => decision.id === "i9-status"); assert.ok(status);
   assert.deepEqual(status.outcomes.slice(0, 5).map(outcome => outcome.value), ["not-found", "signed", "unsigned", "historical", "unable-to-access"]);
-  const inaccessible = walk(spec, {}, { "i9-status": "unable-to-access", "write-path": "ONBOARDING_WRITE_REVIEW_REFUSED" });
-  assert.equal(inaccessible.stop?.stops, true);
-  assert.equal(inaccessible.steps.at(-1)?.id, "i9-creation");
+  for (const dryRun of ["false", "true"]) for (const value of ["not-found", "signed", "unsigned", "historical", "unable-to-access"]) {
+    const result = walk(spec, { "dry-run": dryRun }, { "i9-status": value });
+    if (value === "unable-to-access") {
+      assert.equal(result.stop?.value, "ONBOARDING_WRITE_REVIEW_REFUSED");
+      assert.equal(result.steps.at(-1)?.id, "i9-creation");
+      for (const id of ["i9-profile-save", "i9-remote-create", "hire-create", "concurrent-hire-create"]) assert.equal(result.values[id], undefined);
+      for (const kind of ["card", "click"] as const) assert.deepEqual(visible(blocks(spec, "i9-creation", kind), result.values), []);
+    } else {
+      assert.equal(result.stop, undefined, value);
+      assert.equal(result.values["write-path"], "new-hire", value);
+      assert.equal(result.values["hire-create"], dryRun === "true" ? "dry-run" : "saved", value);
+    }
+  }
+  const fresh = walk(spec);
+  assert.equal(visible(lookup.outcomes, fresh.values).some(outcome => outcome.value === "not-required"), false);
+  assert.equal(walk(spec, {}, { "i9-lookup-result": "not-required" }).values["i9-lookup-result"], "checked");
+  const existing = walk(spec, {}, { "hire-match": "review-required", "i9-lookup-result": "checked", "i9-status": "unable-to-access", "hire-approval": "existing-person" });
+  assert.equal(existing.stop, undefined);
+  assert.equal(existing.values["concurrent-hire-create"], "saved");
+  assert.equal(existing.values["i9-profile-save"], undefined);
+  const skipped = walk(spec, {}, { "hire-match": "review-required", "i9-lookup-result": "not-required" });
+  const approval = blocks(spec, "hire-review", "decision").find(block => block.id === "hire-approval"); assert.ok(approval);
+  assert.equal(visible(approval.outcomes, skipped.values).some(outcome => outcome.value === "new-hire"), false);
   assert.equal(visible(blocks(spec, "i9-search", "starts"), walk(spec, { mode: "rehire" }).values).length, 0);
 });
 
@@ -178,8 +198,18 @@ it("shows each step's system and only the personal fields and sample template of
   const reason = setup.rows.find(row => row.label === "Action reason"); assert.ok(reason?.value);
   assert.equal(valueOf(reason.value, existing), "Concurrent Hire - Non Dual Emp");
   assert.equal(visible(setup.rows, fresh).some(row => row.label === "Employee ID"), false);
-  assert.deepEqual(spec.sources["ucpath-search/person-match/first-name"]?.reads,
-    [{ system: "crm", step: "crm-data", page: "CRM onboarding record", field: "First name" }]);
+  for (const id of ["first-name", "last-name"]) {
+    const source = spec.sources[`ucpath-search/person-match/${id}`]; assert.ok(source);
+    assert.deepEqual(source.reads, [
+      { system: "crm", step: "crm-data", page: "Onboarding roster", field: "Legal name" },
+      { system: "crm", step: "crm-data", page: "CRM onboarding record", field: "First name" },
+      { system: "crm", step: "crm-data", page: "CRM onboarding record", field: "Middle name" },
+      { system: "crm", step: "crm-data", page: "CRM onboarding record", field: "Last name" },
+    ]);
+    assert.match(source.detail, /roster Legal name.*CRM.*anchors/u);
+  }
+  assert.deepEqual(spec.sources["ucpath-search/person-match/date-of-birth"]?.reads,
+    [{ system: "crm", step: "crm-data", page: "CRM onboarding record", field: "Date of birth" }]);
   assert.deepEqual(spec.sources["i9-creation/new-employee/new-employee-first-name"]?.reads,
     [{ system: "crm", step: "crm-data", page: "Onboarding roster", field: "Legal name" }]);
 });

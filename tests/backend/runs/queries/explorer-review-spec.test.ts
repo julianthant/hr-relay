@@ -102,6 +102,12 @@ it("rejects forged gates, values, initial outcomes and missing failures without 
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "card" ? { ...block, when: [{ "search-result": ["not-found"] }] } : block))).success, true);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, when: [{ "search-result": ["not-found"] }] } : block))).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, initial: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" } : block))).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block,
+    initial: { by: "mode", values: { match: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" }, otherwise: "resolved" } } : block))).success, true);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block,
+    initial: { by: "mode", values: { match: "FORGED_FAILURE" }, otherwise: "resolved" } } : block))).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block,
+    initial: { by: "mode", values: { match: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" }, otherwise: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" } } : block))).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "card" ? { ...block, rows: block.rows.map(row => ({ ...row, source: "missing" })) } : block))).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse({ ...spec, sessions: [{ system: "ucpath", acquired: true }] }).success, false);
   const dropped = withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, outcomes: block.outcomes.filter(outcome => outcome.value !== "PERSON_LOOKUP_UCPATH_SEARCH_FAILED") } : block));

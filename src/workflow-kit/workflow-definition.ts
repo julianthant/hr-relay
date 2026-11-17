@@ -1332,8 +1332,14 @@ export function compileWorkflow<
         if (outcome.stops === true && outcome.then === undefined) throw new Error(`${owner} stops at ${outcome.value} without saying what the run does`);
       }
       const initials = typeof decision.initial === "string" ? [decision.initial] : [...Object.values(decision.initial.values), decision.initial.otherwise];
-      for (const initial of initials) if (!decision.outcomes.some(outcome => outcome.value === initial && outcome.stops !== true)) {
-        throw new Error(`${owner} starts at ${initial}, which is not one of its continuing outcomes`);
+      const defaultInitial = typeof decision.initial === "string" ? decision.initial : decision.initial.otherwise;
+      for (const initial of initials) {
+        // An earlier choice may force a declared task failure; the ordinary default must continue.
+        const forcedFailure = initial !== defaultInitial && ownNodes.some(candidate => decision.nodeIds.includes(candidate.id)
+          && candidate.kind === "task" && candidate.uses.errorCodes.some(code => code === initial));
+        if (!forcedFailure && !decision.outcomes.some(outcome => outcome.value === initial && outcome.stops !== true)) {
+          throw new Error(`${owner} starts at ${initial}, which is not one of its continuing outcomes`);
+        }
       }
     }
   }

@@ -358,19 +358,21 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
     const generic: Decision = { kind: "decision", id: `${group.key}-result`, label: "Step result", initial: "succeeded", outcomes: [continuing("succeeded", "Finishes")] };
     for (const member of group.nodes) {
       const node = nodeWire(member.id);
-      const owner = decisions.find(candidate => candidate.nodeIds.includes(node.id))?.block ?? generic;
-      if (node.shape.kind === "task" && node.shape.dryRun === "stop-before-publish" && known.has(DRY_RUN) && !owner.outcomes.some(outcome => outcome.value === DRY_RUN)) {
-        owner.outcomes.push({ value: DRY_RUN, label: "Dry run", then: "Prepares the output without publishing it, then continues.", stops: false, ...gated(DRY) });
-        if (typeof owner.initial === "string") owner.initial = { by: DRY_RUN, values: { true: DRY_RUN }, otherwise: owner.initial };
-      }
-      for (const task of node.tasks) for (const code of task.errorCodes) {
-        // A dry run prepares a transaction and never commits it, so commit failures apply only to a live run.
-        const when = both(known, nodeGate(node.id), task.arm === "commit" && previewsOnDryRun(node) ? LIVE : undefined);
-        const existing = owner.outcomes.findIndex(outcome => outcome.value === code);
-        const previous = owner.outcomes[existing];
-        const outcome: Outcome = { value: code, label: operatorFailureSentence(failureCodeFromTaskCode(code)), then: STOPS, stops: true,
-          ...gated(previous === undefined ? when : either(known, [previous.when, when])) };
-        if (previous === undefined) owner.outcomes.push(outcome); else owner.outcomes[existing] = outcome;
+      const owners = decisions.filter(candidate => candidate.nodeIds.includes(node.id)).map(candidate => candidate.block);
+      for (const owner of owners.length === 0 ? [generic] : owners) {
+        if (node.shape.kind === "task" && node.shape.dryRun === "stop-before-publish" && known.has(DRY_RUN) && !owner.outcomes.some(outcome => outcome.value === DRY_RUN)) {
+          owner.outcomes.push({ value: DRY_RUN, label: "Dry run", then: "Prepares the output without publishing it, then continues.", stops: false, ...gated(DRY) });
+          if (typeof owner.initial === "string") owner.initial = { by: DRY_RUN, values: { true: DRY_RUN }, otherwise: owner.initial };
+        }
+        for (const task of node.tasks) for (const code of task.errorCodes) {
+          // A dry run prepares a transaction and never commits it, so commit failures apply only to a live run.
+          const when = both(known, nodeGate(node.id), task.arm === "commit" && previewsOnDryRun(node) ? LIVE : undefined);
+          const existing = owner.outcomes.findIndex(outcome => outcome.value === code);
+          const previous = owner.outcomes[existing];
+          const outcome: Outcome = { value: code, label: operatorFailureSentence(failureCodeFromTaskCode(code)), then: STOPS, stops: true,
+            ...gated(previous === undefined ? when : either(known, [previous.when, when])) };
+          if (previous === undefined) owner.outcomes.push(outcome); else owner.outcomes[existing] = outcome;
+        }
       }
     }
     if (generic.outcomes.length > 1) decisions.push({ nodeIds: [], block: generic });
