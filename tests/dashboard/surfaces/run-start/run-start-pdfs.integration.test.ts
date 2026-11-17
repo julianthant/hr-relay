@@ -74,8 +74,9 @@ it("uploads both original PDFs through the typed client and plans one parent wit
   await attach([pdf("first.pdf", "%PDF first"), pdf("second.pdf", "%PDF second")]);
   expect(uploads).toEqual(["first.pdf", "second.pdf"]);
   expect(dialog.text()).toContain("2 PDFs selected");
-  expect(dialog.disabled("Continue")).toBe(false);
+  expect(dialog.disabled("Continue")).toBe(true);
   await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
+  expect(dialog.disabled("Continue")).toBe(false);
   await dialog.press("Continue");
   await dialog.press("Continue");
   expect(dialog.text()).toContain("Action History.xlsx · Fall review");
@@ -115,6 +116,37 @@ it("offers the Dry run switch for the PDF workflow and plans and confirms a dry 
   await dialog.press("Start dry run");
   expect(StartPlanRequestSchema.parse(plans[0]).dryRun).toBe(true);
   expect(dialog.text()).not.toContain("I-9 Check results");
+});
+
+it("holds Continue until the required reference spreadsheet is chosen and shows it on the last stage", async () => {
+  const plans: unknown[] = [];
+  const dialog = await h.openDialog(client({ uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
+    artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }),
+  submitStartPlan: async request => { plans.push(request); throw new Error("a missing reference must not reach planning"); } }), { workflows: [workflow], panelWorkflowId: workflow.workflowId });
+  await attach([pdf("first.pdf", "%PDF first")]);
+  expect(dialog.disabled("Continue")).toBe(true);
+  expect(dialog.text()).toContain("Add a reference spreadsheet first.");
+  expect(dialog.text()).not.toContain("malformed");
+  await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
+  expect(dialog.disabled("Continue")).toBe(false);
+  expect(dialog.text()).not.toContain("Add a reference spreadsheet first.");
+  await dialog.press("Continue"); await dialog.press("Continue");
+  expect(dialog.text()).toContain("Reference spreadsheet");
+  expect(dialog.text()).toContain("Action History.xlsx");
+  expect(plans).toEqual([]);
+});
+
+it("keeps Continue held when only a reference check is picked and no roster is chosen", async () => {
+  const checkWorkflow = { ...workflow, workbookCheck: { id: "reference-check", keyFieldId: "eid" } } as RunStartWorkflow;
+  const dialog = await h.openDialog(client({ uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
+    artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }) }),
+  { workflows: [checkWorkflow], panelWorkflowId: checkWorkflow.workflowId });
+  await attach([pdf("first.pdf", "%PDF first")]);
+  const use = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.getAttribute("aria-label") === `Use ${reference.name}`); assert.ok(use, "the check row offers Use");
+  await act(async () => use.click()); await h.settle();
+  expect(dialog.disabled("Continue")).toBe(true);
+  expect(dialog.text()).toContain("Add a reference spreadsheet first.");
+  expect(dialog.text()).toContain("Also check");
 });
 
 it("keeps the accepted selection and refuses invalid PDFs before planning or uploading them", async () => {

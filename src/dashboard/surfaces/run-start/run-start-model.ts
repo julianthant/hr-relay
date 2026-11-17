@@ -495,11 +495,17 @@ export function toggleStepSelection(
   return Object.freeze(steps.filter((candidate) => selected.has(candidate.key)).map((candidate) => candidate.key));
 }
 
+/** The footer's short reason while Continue is held; the sentence below stays as the refusal text. */
+export const MISSING_REFERENCE_REASON = "Add a reference spreadsheet first.";
+/** The one sentence for a required reference spreadsheet that was never chosen. */
+export const MISSING_REFERENCE_TEXT = "Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.";
+
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
   selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,
   eligibleSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[], writable: boolean,
   selectedRows?: { typeId: string; rows: readonly { sheetId: string; rowId: string }[] },
   checks?: { typeId: string; picks: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[] }) {
+  if (requiredTypes.some(typeId => selections[typeId] === undefined)) throw new Error(MISSING_REFERENCE_TEXT);
   if (requiredTypes.length > 1 || selectedRows !== undefined && (selectedRows.rows.length !== submissionCount || !requiredTypes.includes(selectedRows.typeId))) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
   const checkEntries = (index: number) => (checks?.picks ?? []).map(pick => {
     const entry = catalog.find(candidate => candidate.libraryId === pick.libraryId);
