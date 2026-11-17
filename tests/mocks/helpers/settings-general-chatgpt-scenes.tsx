@@ -3,10 +3,11 @@ import { useState } from "react";
 import { BodySection, Button, DsBodyScope, FormGroup, PageHeading, ResultRow, Switch, TooltipProvider } from "../../../src/dashboard/ds/ui.js";
 import { ChatGptAccountSettings } from "../../../src/dashboard/surfaces/settings/general/chatgpt-account.js";
 import type { ChatGptAccountPort, ChatGptAccountResource, ChatGptAccountSnapshot } from "../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
+import { AssistantPermissionsSettings } from "../../../src/dashboard/surfaces/settings/general/hub-preferences.js";
 import "../../../src/dashboard/surfaces/settings/hub-settings.css";
 
-/** Top of Settings > General: the ChatGPT card first, the Assistant's Permissions group second, in three structures. */
-export const GENERAL_VARIANTS = ["stacked", "one-panel", "status-line"] as const;
+/** Top of Settings > General (`built` is the shipped composition; the others are the phase-1 candidates): the ChatGPT card first, the Assistant's Permissions group second, in three structures. */
+export const GENERAL_VARIANTS = ["stacked", "one-panel", "status-line", "built"] as const;
 export const GENERAL_STATES = ["connected", "not-connected", "signing-in", "limit-reached", "check-failed"] as const;
 export type GeneralVariant = typeof GENERAL_VARIANTS[number];
 export type GeneralState = typeof GENERAL_STATES[number];
@@ -58,6 +59,7 @@ function Top({ variant, state }: { variant: GeneralVariant; state: GeneralState 
       <ChatGptAccountSettings port={port} />
       <BodySection as="h3" title="Permissions"><PermissionsRows /></BodySection>
     </BodySection>}
+    {variant === "built" && <><ChatGptAccountSettings port={port} /><AssistantPermissionsSettings /></>}
     {variant === "status-line" && <>
       <BodySection title="ChatGPT"><StatusLine state={state} /></BodySection>
       <BodySection title="Permissions"><PermissionsRows /></BodySection>

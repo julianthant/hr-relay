@@ -202,13 +202,13 @@ describe("ChatGPT card states", () => {
     assert.ok([...document.body.querySelectorAll("button")].some(node => node.textContent === "Try again"));
   });
 
-  it("sizes the loading skeleton as the two connected rows", () => {
+  it("sizes the loading skeleton as the one status row", () => {
     vi.useFakeTimers();
     try {
       host = document.createElement("div"); document.body.append(host); root = createRoot(host);
       act(() => root?.render(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "loading" }) })));
       act(() => { vi.advanceTimersByTime(2000); });
-      assert.equal(host.querySelectorAll(".ds-result-row").length, 2);
+      assert.equal(host.querySelectorAll(".ds-result-row").length, 1);
     } finally { vi.useRealTimers(); }
   });
 });

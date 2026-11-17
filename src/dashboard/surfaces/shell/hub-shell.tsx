@@ -17,7 +17,7 @@ import type { AssistantModelPreferenceView } from '../../../models/dashboard/ass
 
 const EMPTY_CHAT = { id: 'empty-chat', title: 'New chat', minutes: 0, group: 'Today' } as const;
 const HISTORY_TABS = [{ value: "chats", label: "Chats" }, { value: "activity", label: "Activity" }] as const;
-type HubShellProps = { source?: "mock" | "served"; authority?: unknown; subjectRef?: string; onOpenSettings?: (section?: string) => void; settingsOpen: boolean; onLogout: () => void; logoutOpen: boolean; onLogoutOpenChange: (open: boolean) => void; chatsPort?: HubChatsPort; onRunWorkflow: NonNullable<AssistantPorts["onRunWorkflow"]>; commands?: DashboardCommandBinding };
+type HubShellProps = { source?: "mock" | "served"; authority?: unknown; subjectRef?: string; onOpenSettings?: (section?: string, target?: string) => void; settingsOpen: boolean; onLogout: () => void; logoutOpen: boolean; onLogoutOpenChange: (open: boolean) => void; chatsPort?: HubChatsPort; onRunWorkflow: NonNullable<AssistantPorts["onRunWorkflow"]>; commands?: DashboardCommandBinding };
 export function HubShell(props: HubShellProps) {
   const client = useDashboardClient();
   const history = useAssistantHistory(client, props.source === 'served', props.authority);

@@ -1,4 +1,4 @@
-import { ArrowUp,Check,CircleAlert,CreditCard,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Sparkles,Table2,X } from "lucide-react";
+import { ArrowUp,Check,CircleAlert,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Sparkles,Table2,X } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
@@ -17,7 +17,6 @@ import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
 import { AccountSettings, type AccountPage } from "./account/account-settings.js";
 import { relayUsername } from "./account/relay-username.js";
-import { ChatGptAccountSettings } from "./general/chatgpt-account.js";
 import { DeleteAccountControl } from "./general/ui-settings-records-general-paths.js";
 import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import {type StorageHealthSummary } from "./storage/storage-settings-model.js";
@@ -45,7 +44,6 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   capabilities: Table2,
   keyboard: MessagesSquare,
   unrendered: CircleAlert,
-  subscription: CreditCard,
   spreadsheets: Folder,
   explorer: Search,
   activity: History,
@@ -273,7 +271,6 @@ export function SettingsPage({
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />
         )}
         {resolution.state === "open" && resolution.entry.id === "account" && (accountPage === undefined ? <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} /> : <AccountSettings page={accountPage} username={relayUsername(editor)} ucpath={<SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} embedded />} deleteAccount={deleteAccount ?? <DeleteAccountControl presentation={{ state: "unavailable" }} />} />)}
-        {resolution.state === "open" && resolution.entry.id === "subscription" && <section className="settings-compact-page"><PageHeading title="Subscription" /><ChatGptAccountSettings /></section>}
         {resolution.state === "open"
           && resolution.entry.source === "served"
           && !RENDERED_SERVED_SECTION_IDS.has(resolution.entry.id) && (
