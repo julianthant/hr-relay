@@ -36,7 +36,7 @@ import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
 import { TypedInput, PlanRefusals, StepOmissionFactsForm, RunReferenceRows } from "./run-start-kit.js";
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
-import { SYSTEM_LABEL, type BrowserSystemId } from "../shared/status/system-chip-model.js";
+import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-model.js";
 import { foldStepOmissionFacts, forcedStepOmissions, initialStepOmissionDraft, omittedStepViews, startRequestFingerprint, previewRunInput, launchWorkbookReferences, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
 import { adjacentRunStartStage, reconcileRunStartStage, runStartStages, type RunStartStage } from "./run-start-timeline.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
@@ -251,7 +251,7 @@ export function RunStartDialog({
     draftRef.current = next;
     setDraft(next);
   }, []);
-  const { text, sourceInputUnchanged, stepDrafts, touchedFacts, factsAttempted, priority, dryRunRequested, browserMode,
+  const { text, sourceInputUnchanged, stepDrafts, touchedFacts, factsAttempted, priority: priorityChoice, dryRunRequested, browserMode,
     referenceSelections, referenceDrafts, selectedWorkbookRows, valueDrafts, copiedOmissions } = draft;
   const typedDraft = launchDraft.typedDraftOf(draft, workflowId);
   const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && workflow.workbookReference !== undefined), null, true);
@@ -344,7 +344,7 @@ export function RunStartDialog({
     dryRun,
     browserMode,
     captureBrowserScreenshots,
-    priority,
+    priority: priorityChoice,
     selectedStepKeys,
     stepOmissionDrafts: omissionRows.map(({ step, draft }) => ({ step, draft })),
   })]);
@@ -502,6 +502,8 @@ export function RunStartDialog({
 
 
 
+  /** Priority starts off when more than one person is entered, until the operator picks it. */
+  const priority = launchDraft.effectivePriority(priorityChoice, preview.entries.length);
   /** The plan request for the draft on screen; the gates keep it from being asked for a draft that cannot plan. */
   const buildPlanRequest = (): StartPlanRequest => {
     const values = snapshot === null ? null : pdfSurface === undefined ? rerunSubmission(snapshot, preview.submissions[0] ?? {}, valueDrafts)
@@ -675,6 +677,7 @@ export function RunStartDialog({
   return (
     <Dialog open={open && !hidden} onOpenChange={closeAndReset}>
       <DialogContent
+        onOpenAutoFocus={event => { if (isRerun) { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>('button[aria-label="Close"]')?.focus(); } }}
         onCloseAutoFocus={event => { if (hidden) event.preventDefault(); else onCloseAutoFocus?.(event); }}
         size="xl"
         band
@@ -715,10 +718,10 @@ export function RunStartDialog({
 
             {currentStage === "Steps" && <section className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between gap-3">
-              <h3 className="text-heading font-semibold">{isRerun ? "Choose what to run again" : "Workflow steps"}</h3>
-              {workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} / {workflow.steps.length} included</span>}
+              <h3 className="text-heading font-semibold">Steps</h3>
+              {workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} of {workflow.steps.length} included</span>}
               </div>
-              <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Required steps stay included. Optional steps may be omitted."}</p>
+              <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Replace reading steps with manual values. Form actions stay included."}</p>
             </section>}
 
             {currentStage === "Checks" && <RunChecksStage checks={checks.state} onFix={fixCheck} onRecheck={checks.recheck} />}
@@ -835,7 +838,7 @@ export function RunStartDialog({
                       const forcedBy = forcedByStep.get(step.key) ?? [];
                       const row = omissionRows.find((candidate) => candidate.step === step.key);
                       const sourceState = snapshot?.steps.find(entry => entry.key === step.key)?.state;
-                      const systems = step.systems?.map(system => SYSTEM_LABEL[system]).join(" · ");
+                      const systems = step.systems?.map(system => SYSTEM_NAME[system]).join(" · ");
                       const note = forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.`
                         : control.state === "omittable" && !selected && !isRerun && !multiSubject ? "Use saved or entered values instead."
                         : control.state === "omittable" && control.forces.length > 0 ? `Also omits: ${stepLabels(control.forces)}` : systems;
@@ -846,7 +849,7 @@ export function RunStartDialog({
                         below={row !== undefined && !isRerun ? <StepOmissionFactsForm step={row.label} form={row.form} draft={row.draft} errors={visibleFactErrors(row)}
                           onChange={(field, next) => changeFact(row.step, row.form, field, next)} onTouch={(field) => touchFact(row.step, field)} /> : undefined}>
                         {isRerun && snapshot !== null && <Badge tone={sourceState === "completed" ? "success" : sourceState === "failed" ? "danger" : "neutral"} className="launch-step-status" data-status={sourceState}>{sourceState === "completed" ? "Completed" : sourceState === "failed" ? "Failed" : "Not started"}</Badge>}
-                        {locked && <span className="sr-only">{isRerun && sourceState === "completed" ? `Completed in the source; this workflow requires it to run again. ${control.reason}` : control.reason}</span>}
+                        {locked && <span className="sr-only">{isRerun && sourceState === "completed" ? "Completed in the source; it runs again." : "Required step."}</span>}
                       </RunListRow>;
                     })}
                   </RunList>

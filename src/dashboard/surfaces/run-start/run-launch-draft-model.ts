@@ -27,7 +27,8 @@ export type LaunchDraft = Readonly<{
   stepDrafts: Readonly<Record<string, StepOmissionDraft>>;
   touchedFacts: ReadonlySet<string>;
   factsAttempted: boolean;
-  priority: StartPriority;
+  /** Undefined until the operator picks; `effectivePriority` supplies the default. */
+  priority: StartPriority | undefined;
   dryRunRequested: boolean;
   browserMode: BrowserMode;
   referenceSelections: Readonly<Record<string, ReferenceSelection>>;
@@ -56,7 +57,7 @@ export function freshLaunchDraft(workflow: RunStartWorkflow | undefined): Launch
   return {
     text: "", typed: { workflowId: workflow?.workflowId ?? "", draft: typedDefaultsOf(workflow) }, sourceInputUnchanged: false,
     stepSelection: undefined, stepDrafts: {}, touchedFacts: new Set(), factsAttempted: false,
-    priority: "interactive", dryRunRequested: false, browserMode: "headed",
+    priority: undefined, dryRunRequested: false, browserMode: "headed",
     referenceSelections: {}, referenceDrafts: {}, selectedWorkbookRows: undefined, launchFields: {},
     valueDrafts: {}, copiedOmissions: {},
   };
@@ -139,6 +140,9 @@ export function changeValueText(draft: LaunchDraft, index: number, text: string)
   return { ...draft, valueDrafts: { ...draft.valueDrafts, [index]: { text, copied: false } } };
 }
 
+export function effectivePriority(choice: StartPriority | undefined, people: number): StartPriority {
+  return choice ?? (people > 1 ? "bulk" : "interactive");
+}
 export function changePriority(draft: LaunchDraft, priority: StartPriority): LaunchDraft { return { ...draft, priority }; }
 export function changeDryRun(draft: LaunchDraft, dryRunRequested: boolean): LaunchDraft { return { ...draft, dryRunRequested }; }
 export function changeBrowserMode(draft: LaunchDraft, browserMode: BrowserMode): LaunchDraft { return { ...draft, browserMode }; }
