@@ -21,7 +21,7 @@ const match = {
   lastName: z.string().trim().min(1),
   firstName: z.string().trim().min(1),
   dob: z.string().trim().min(1).refine((value) => !/^x$/iu.test(value), "Missing DOB must be omitted").optional(),
-  ssn: CANONICAL_FIELDS.ssn.schema.optional(),
+  ssn: z.string().transform((value) => value.replaceAll("-", "")).pipe(CANONICAL_FIELDS.ssn.schema).optional(),
   ...matchDefaults,
 };
 export const PersonLookupInput = z.union([

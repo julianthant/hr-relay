@@ -30,7 +30,7 @@ describe("the Run dialog has no Confirm stage", () => {
   });
 
   it("shows neither the workflow version line nor planned outputs on a stopped plan", async () => {
-    const refusedPlan = { ...h.planResponse(PLAN_ID), refused: [{ entry: 2, code: "input-invalid", message: "No such person." }] };
+    const refusedPlan = { ...h.planResponse(PLAN_ID), priority: "bulk", refused: [{ entry: 2, code: "input-invalid", message: "No such person." }] };
     const dialog = await h.openDialog(h.stubClient({
       submitStartPlan: async () => refusedPlan as ReturnType<typeof h.planResponse>,
       executeCommand: async () => h.APPLIED,
@@ -44,7 +44,7 @@ describe("the Run dialog has no Confirm stage", () => {
     assert.ok(!dialog.text().includes("ready to queue"));
     assert.equal(document.body.querySelector('[aria-label="Run outputs"]'), null);
     assert.deepEqual(h.closed, []);
-    await dialog.press("Start 1 run");
+    await dialog.press("Start run");
     assert.deepEqual(h.closed, [false], "the second Start submits the shown plan");
   });
 });

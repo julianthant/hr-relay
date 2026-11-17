@@ -1410,6 +1410,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         previewLaunch={mockLaunch ?? undefined}
         previewRuns={mockRuns}
         onSubmitPreview={submitMock}
+        previewStartable={workflowComposition.previewStarts === true}
         onPreviewClose={closeMockLaunch}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
