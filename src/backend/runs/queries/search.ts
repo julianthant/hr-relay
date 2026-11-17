@@ -1,4 +1,4 @@
-import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
+import { PACIFIC_TIME_ZONE, searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -113,7 +113,6 @@ const CursorSigningKeySchema = z.instanceof(Uint8Array).refine(
   "search cursor signing key must contain exactly 32 random bytes",
 );
 
-const PACIFIC_TIME_ZONE = "America/Los_Angeles";
 const PACIFIC_INSTANT_FORMATTER = new Intl.DateTimeFormat("en-US", {
   timeZone: PACIFIC_TIME_ZONE,
   year: "numeric",

@@ -50,7 +50,7 @@ export function resolutionCommand(overrides: Record<string, unknown> = {}) {
     requestedBy: "local-operator", source: "dashboard", reason: "Synthetic failure follow-up",
     family: "failure-resolution", type: "annotate-failure",
     target: { runId: record.runId, failureId: record.failureId, expectedVersion: 1 },
-    payload: { action: "resolve", note: "Updated page control." }, ...overrides });
+    payload: { action: "resolve" }, ...overrides });
 }
 
 /** The production HTTP route/admission/kernel; unrelated routes deliberately have no fixture. */
@@ -71,7 +71,8 @@ export function resolutionApp(f: Awaited<ReturnType<typeof resolutionFixture>>) 
 export function resolutionReadDeps(f: Awaited<ReturnType<typeof resolutionFixture>>) {
   const reader = sqliteRunReader(f.db, f.clock);
   const trust = createReceiptService({ database: f.db, runReader: reader, descriptors: [personLookupDescriptor] });
-  return { runReader: reader, trust, timeline: f.db.authority.timelineEvents } as unknown as RunDetailQueryDeps;
+  return { runReader: reader, trust, timeline: f.db.authority.timelineEvents,
+    descriptors: { resolve: (workflowId: string) => workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined } } as unknown as RunDetailQueryDeps;
 }
 
 import { createDashboardApp, type DashboardAppDeps } from "../../../../src/backend/transports/http/routes/api.js";

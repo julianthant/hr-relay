@@ -268,8 +268,9 @@ number and sends it with the recheck. Not saved composes `resolve-write-absent`.
 write from the operator's statement alone. Every choice uses its served command confirmation and
 binds the run version, intent, generation, write attempt, binding proof digest and occurrence key
 digest. Superseded choices refuse before dispatch.
-A failure after a write the run settled offers Mark as failed or Add note; both send
-`annotate-failure` with the served resolution version and never run, retry or file anything.
+A failure after a write the run settled offers Mark as failed, which sends `annotate-failure`
+with the served resolution version and never runs, retries or files anything. Failure resolution
+commands accept no note; stored notes remain readable.
 Pending, refused, uncertain with exact replay, and settled feedback use the existing command
 executor. Local result copy describes the request, without claiming verification or continuation.
 

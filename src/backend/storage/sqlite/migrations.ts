@@ -1,9 +1,10 @@
-import { PERSON_PREFERENCES_CONVERSION_MARKER, RUNS_NOTIFICATIONS_CONVERSION_MARKER, SETTINGS_RECORD_CONVERSION_VERSION } from "./settings-record-conversion.js";
+import { PERSON_PREFERENCES_CONVERSION_MARKER, RUNS_NOTIFICATIONS_CONVERSION_MARKER, SEND_SHORTCUT_CONVERSION_MARKER, SETTINGS_RECORD_CONVERSION_VERSION } from "./settings-record-conversion.js";
 import { createHash } from "node:crypto";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { EXCLUSIVE_SESSION_LEASE_MIGRATION } from "./exclusive-session-leases.js";
 import { ASSISTANT_HISTORY_MIGRATION } from "./assistant-history.js";
 import { ASSISTANT_EFFORT_SCALE_MIGRATION } from "./assistant-effort-migration.js";
+import { FAILURE_NOTE_REMOVAL_MIGRATION } from "./failure-note-removal-migration.js";
 import { ASSISTANT_ATTACHMENTS_MIGRATION } from "./assistant-attachments.js";
 import { ASSISTANT_GRANT_RETIREMENT_MIGRATION, RETIRED_ASSISTANT_GRANT_TABLE } from "./assistant-grant-retirement.js";
 import { CHANGE_LOG_MIGRATION } from "./authority-change-log.js";
@@ -1074,7 +1075,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   ASSISTANT_GRANT_RETIREMENT_MIGRATION,
   WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION,
   CHANGE_LOG_MIGRATION,
-  { version: SETTINGS_RECORD_CONVERSION_VERSION, statements: [
+  { version: 32, statements: [
     "DROP TRIGGER settings_snapshots_immutable",
     "DROP TRIGGER command_audits_immutable",
     RUNS_NOTIFICATIONS_CONVERSION_MARKER,
@@ -1084,6 +1085,16 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
       BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
   ] },
   COMMAND_ROW_STATE_MIGRATION,
+  FAILURE_NOTE_REMOVAL_MIGRATION,
+  { version: SETTINGS_RECORD_CONVERSION_VERSION, statements: [
+    "DROP TRIGGER settings_snapshots_immutable",
+    "DROP TRIGGER command_audits_immutable",
+    SEND_SHORTCUT_CONVERSION_MARKER,
+    `CREATE TRIGGER settings_snapshots_immutable BEFORE UPDATE ON settings_snapshots
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+    `CREATE TRIGGER command_audits_immutable BEFORE UPDATE ON command_audits
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+  ] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,

@@ -9,7 +9,7 @@ import { attemptUnresolved, commandAttemptView, type CommandAttemptView } from "
 import { batchMemberRetryAction, batchMemberRetrySourceMatches, childRetrySourceMatches, composeCommandRequest, verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import { DashboardCommandRequestSchema, type DashboardCommandRequest } from "../../rules/commands/commands.js";
 import type { DecisionOptionWire } from "../../models/dashboard/run-decision.js";
-import { answeredRow, decisionAnswerValid, lookupTyped, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
+import { answeredRow, decisionAnswerValid, failureCardFacts, lookupTyped, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -385,7 +385,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
       steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failure.display?.title ?? failure.code,
         entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failure.display?.title ?? failure.code,
-          state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message,
+          state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message, ...failureCardFacts(failure.display),
           ...(failure.writeState === "not-attempted" ? { footer: WRITE_STATE_NOTE[failure.writeState] } : { caution: WRITE_STATE_NOTE[failure.writeState] }),
           ...(noScreenshot === undefined ? {} : { unavailableCapture: noScreenshot }),
           ...(failure.decision === undefined ? {} : { served: failure.decision }) } }] });
@@ -473,11 +473,19 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         ...(member.durationSec === undefined ? {} : { durationLabel: fmtElapsed(member.durationSec) }) }; }) };
   });
   const findings = sections.find(section => section.section === "parked-write" && section.payload.ucpathFindings !== undefined);
-  return { steps: [...named, ...runDecisionStep(detail.decision, named.at(-1)?.time)], timeline,
+  return { steps: [...named, ...runDecisionStep(detail.decision, named.at(-1)?.time), ...cancelledEnding(detail.cancellation)], timeline,
     ...(findings?.section !== "parked-write" || findings.payload.ucpathFindings === undefined ? {} : { ucpathFindings: {
       stepId: findings.payload.writeIntentId, attemptLabel: `Attempt ${findings.payload.runAttempt}`,
       presentation: ucpathFoundPresentation(findings.payload.ucpathFindings),
     } }) };
+}
+
+/** The served cancelled ending closes the log; it is a run-level fact, never a node's timeline event. */
+export const RUN_CANCELLED_STEP_ID = "run-cancelled";
+function cancelledEnding(cancellation: RunDetailWire["cancellation"]): readonly LogStep[] {
+  if (cancellation === undefined) return [];
+  const time = fmtActionClock(cancellation.at);
+  return [{ id: RUN_CANCELLED_STEP_ID, time, title: cancellation.title, entries: [{ kind: "note", id: RUN_CANCELLED_STEP_ID, time, message: cancellation.outcome }] }];
 }
 
 /** The run-level decision (paused, stalled, cancelling) closes the log; a failed member's retry stays the header icon. */
@@ -816,11 +824,10 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         const resolution = served.resolution;
         if (option.send.family !== "failure-resolution" || option.send.type !== "annotate-failure" || resolution === undefined
           || !decisionAnswerValid(option, answer)) return;
-        const note = option.input?.kind === "text" ? answer.text?.trim() : undefined;
         dispatchIfDecisionCurrent.current(DashboardCommandRequestSchema.parse({ family: "failure-resolution", type: "annotate-failure", commandId: crypto.randomUUID(),
           requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "run-detail",
           target: { runId: row.runId, failureId: served.failureId, expectedVersion: resolution.capture.resolution.version },
-          payload: { action: "resolve", ...(note === undefined ? {} : { note }) } }));
+          payload: { action: "resolve" } }));
         return;
       }
       if (recovery === undefined || option === undefined || !decisionAnswerValid(option, answer)

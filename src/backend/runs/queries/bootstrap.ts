@@ -1,6 +1,7 @@
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport, workflowProjections } from "../../../workflow-kit/workflow.js";
-import { runtimeTimeZone, type Clock } from "../../../rules/time/clock.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { PACIFIC_TIME_ZONE } from "../../../models/dashboard/search-calendar.js";
 import { PreflightReportSchema } from "../../../models/preflight/preflight.js";
 import { z } from "zod";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire, type WorkflowStartWire, type WorkflowStartReadiness } from "../../../models/dashboard/bootstrap.js";
@@ -26,8 +27,6 @@ export interface BootstrapQueryDeps {
   readonly appVersion: string;
   readonly actorLabel: () => string;
   readonly clock: Clock;
-  /** Composition's local-calendar authority, shared with Activity summaries. */
-  readonly timeZone?: string;
   /** The composition root's own tuple — never a re-listed copy of it. */
   readonly modules: readonly BootstrapModuleView[];
   readonly descriptorSetHash: Fingerprint;
@@ -108,7 +107,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
     projectionGeneration: deps.projection.generation(),
     actor: { id: LOCAL_OPERATOR_ACTOR_ID, label: deps.actorLabel() },
-    serverClock: { now: deps.clock.now().toISOString(), zone: deps.timeZone ?? runtimeTimeZone() },
+    serverClock: { now: deps.clock.now().toISOString(), zone: PACIFIC_TIME_ZONE },
     storage: {
       authority: storageAuthority,
     },
