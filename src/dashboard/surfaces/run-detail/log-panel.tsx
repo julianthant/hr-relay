@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { ClipboardCheck, CircleCheck, TriangleAlert } from "lucide-react";
+import { DASHBOARD_LOGS_REGION_ID } from "../settings/settings-model.js";
 import { LogFeed, type LogDecisionHandler } from "./logs/log-feed.js";
 import type { LogStep } from "./logs/log-feed-model.js";
 import { LogTimeline } from "./logs/log-timeline.js";
@@ -46,7 +47,7 @@ export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar
   const header = (jump?: (stepId: string, entryId?: string) => void) => <LogHeader title={title} status={status}>
     {action && jump && <LogActionButton label={action.label} variant={action.label === 'Review' ? 'primary' : undefined} icon={headerIcon(action.label)} onClick={() => action.label === 'Review' && onReview ? onReview() : jump(action.stepId, action.entryId)} />}{toolbar}{linkedRuns && <LinkedRunsButton entries={linkedRuns} onOpen={onOpenLinkedRun} />}
   </LogHeader>;
-  return <section aria-label="Selected run logs" className="ui-theme-scope flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-fg:var(--ui-primary)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
+  return <section id={DASHBOARD_LOGS_REGION_ID} tabIndex={-1} aria-label="Selected run logs" className="ui-theme-scope flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-fg:var(--ui-primary)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
     {content ? <>{header()}{navigation}{content}{footerActions && <footer className="flex shrink-0 items-center justify-end gap-1 border-t border-ui-stroke bg-ui-panel px-3 py-2">{footerActions}</footer>}</> : <LogFeed steps={steps} afterStep={afterStep} footerActions={footerActions} initialStepId={initialStepId} onDecision={onDecision} onCancelRun={onCancelRun}
       navigation={jump => <>{header(jump)}{navigation}<LogTimeline stages={timeline} onJump={jump} /></>} />}
   </section>;
