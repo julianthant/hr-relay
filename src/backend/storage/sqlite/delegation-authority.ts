@@ -323,8 +323,8 @@ export function authenticateDescendantHome(repositories: AuthorityRepositories, 
     // claimed, it keeps its claim while this attempt's fenced write settles once (committed, or parked UNKNOWN), then ends at its next boundary.
     if (parent.cancelRequested === true && selected.manifest.policy.cascadeCancel !== "independent"
       && (member.cancelRequested !== true || runClaim(member) !== undefined
-        && !repositories.writeIntents.listByRun(member.envelope.runId).some(intent => intent.runAttempt === member.envelope.attempt
-          && (intent.status === "attempting" || intent.status === "committed" || intent.status === "parked")))) return false;
+        && !repositories.writeIntents.listByRun(member.envelope.runId).some(intent => (intent.status === "attempting" || intent.status === "committed" || intent.status === "parked")
+          && intent.runAttempt === member.envelope.attempt))) return false;
   }
   return true;
 }
