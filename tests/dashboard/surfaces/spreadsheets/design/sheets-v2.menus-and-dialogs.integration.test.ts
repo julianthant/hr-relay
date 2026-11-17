@@ -53,7 +53,8 @@ it('shows each served sync state under the SharePoint link and offers Retry sync
   wiring.catalog = [
     make('ok', 'Ok.xlsx', { linked: true, sync: sync({ lastFinishedAt: '2026-11-02T10:05:00Z', lastResult: 'ok' }) }),
     make('run', 'Run.xlsx', { linked: true, sync: { state: 'running' } }),
-    make('bad', 'Bad.xlsx', { linked: true, sync: sync({ lastFinishedAt: '2026-11-02T10:05:00Z', lastResult: 'failed', lastFailureCode: 'WORKBOOK_SYNC_FAILED' }) }),
+    make('bad', 'Bad.xlsx', { linked: true, sync: sync({ lastFinishedAt: '2026-11-02T10:05:00Z', lastResult: 'failed', lastFailureCode: 'WORKBOOK_VERSION_CONFLICT' }) }),
+    make('odd', 'Odd.xlsx', { linked: true, sync: sync({ lastFinishedAt: '2026-11-02T10:05:00Z', lastResult: 'failed', lastFailureCode: 'WORKBOOK_STORAGE_CORRUPT' }) }),
     make('new', 'New.xlsx', { linked: true, sync: sync({}) }),
     make('local', 'Local.xlsx'),
   ];
@@ -63,6 +64,15 @@ it('shows each served sync state under the SharePoint link and offers Retry sync
   assert.match(status('Ok.xlsx') ?? '', /^Synced Nov 2/u);
   assert.equal(status('Run.xlsx'), 'Syncing…');
   assert.equal(status('Bad.xlsx'), 'Sync failed');
+  // Focusing the failed status says why in the catalog's plain sentence, never the code; a code outside the sync set gets the generic sync sentence.
+  const why = async (name: string) => {
+    await act(async () => { host.querySelector<HTMLElement>(`li[aria-label="${name}"] [data-sync]`)?.focus(); });
+    await act(async () => { await new Promise(done => setTimeout(done, 700)); });
+    return document.body.querySelector('[role="tooltip"]')?.textContent ?? '';
+  };
+  assert.match(await why('Bad.xlsx'), /^The saved workbook changed\. Read its current version before saving\. \(Nov 2/u);
+  assert.match(await why('Odd.xlsx'), /^Sync did not finish\. Start Sync again\. \(Nov 2/u);
+  assert.doesNotMatch(host.textContent ?? '', /WORKBOOK_/u);
   assert.equal(status('New.xlsx'), 'Not synced yet');
   assert.equal(status('Local.xlsx'), undefined);
   await openMenu('Bad.xlsx');

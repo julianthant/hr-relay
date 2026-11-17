@@ -1,7 +1,7 @@
 import { forwardRef, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { ChevronDown, Download, Loader2, LogOut, MoreHorizontal, Search, UserPlus, Users, X, type LucideIcon } from 'lucide-react';
 import { Button, IconButton, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus } from '../../../ds/ui.js';
-import { type Sheet, addTag, stamp, tagsOf, MAX_TAG_LENGTH } from './sheets-v2-model.js';
+import { type Sheet, addTag, stamp, syncFailureWhy, tagsOf, MAX_TAG_LENGTH } from './sheets-v2-model.js';
 import { MENU } from './sheets-v2-menu.js';
 
 // soft = secondary (grey fill), line = outline (faint border), plain = ghost; primary is only a dialog's confirming action.
@@ -70,8 +70,9 @@ export function SyncStatus({ sheet }: { sheet: Sheet }) {
   if (sync.state === 'running') return <span data-sync="running" className="inline-flex items-center gap-1 text-ui-info"><Loader2 size={11} aria-hidden className="shrink-0 animate-spin" /><span className="truncate">Syncing…</span></span>;
   const failed = sync.lastResult === 'failed', never = sync.lastFinishedAt === undefined;
   const text = never ? 'Not synced yet' : failed ? 'Sync failed' : `Synced ${stamp(sync.lastFinishedAt!)}`;
-  return <span data-sync={never ? 'never' : failed ? 'failed' : 'ok'} title={never ? undefined : `${failed ? 'Sync failed' : 'Synced'} ${stamp(sync.lastFinishedAt!)}`} className={`inline-flex min-w-0 items-center gap-1.5 ${failed ? 'text-ui-danger' : ''}`}>
+  const line = <span data-sync={never ? 'never' : failed ? 'failed' : 'ok'} title={failed || never ? undefined : `Synced ${stamp(sync.lastFinishedAt!)}`} tabIndex={failed ? 0 : undefined} className={`inline-flex min-w-0 items-center gap-1.5 ${failed ? `text-ui-danger ${dsFocus}` : ''}`}>
     <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${failed ? 'bg-ui-danger' : never ? 'bg-ui-stroke' : 'bg-ui-positive'}`} /><span className="truncate">{text}</span></span>;
+  return failed ? <Tooltip content={`${syncFailureWhy(sheet)} (${stamp(sync.lastFinishedAt!)})`}>{line}</Tooltip> : line;
 }
 
 export type MenuAction = 'pin' | 'sync' | 'link' | 'clone' | 'rename' | 'tags' | 'delete' | 'download';

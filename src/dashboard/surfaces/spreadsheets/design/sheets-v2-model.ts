@@ -1,4 +1,5 @@
 import type { WorkbookCompatibility, WorkbookLibraryEntry, WorkbookLibrarySyncStatus } from '../../../../models/dashboard/workbook-library.js';
+import { ERROR_CATALOG } from '../../../../models/failures/error-catalog.js';
 import { spreadsheetField } from '../../../../models/fields/workbook-fields.js';
 import { cellText, type EditableSheet } from '../../../../rules/spreadsheets/workbook-io.js';
 import { columnName } from '../spreadsheet-editor-model.js';
@@ -30,6 +31,14 @@ export const sheetOf = (entry: WorkbookLibraryEntry): Sheet => ({
   sync: entry.sync, updatedAt: entry.updatedAt, version: entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.version ?? entry.version, currentVersionId: entry.state.selectedVersionId,
   versions: entry.state.versions.map(version => ({ id: version.id, n: version.version, at: version.savedAt, note: version.name })).toSorted((a, b) => b.n - a.n),
 });
+
+const SYNC_WHY = ['WORKBOOK_SYNC_FAILED', 'WORKBOOK_SYNC_NOT_APPLIED', 'WORKBOOK_VERSION_CONFLICT', 'WORKBOOK_METADATA_UNSUPPORTED'] as const;
+/** The plain sentence for why the last sync failed, or undefined when it did not fail; a code outside the sync set gets the generic sync sentence. */
+export function syncFailureWhy(sheet: Sheet): string | undefined {
+  if (sheet.sync?.lastResult !== 'failed') return undefined;
+  const code = SYNC_WHY.find(known => known === sheet.sync?.lastFailureCode) ?? 'WORKBOOK_SYNC_FAILED';
+  return ERROR_CATALOG[code].text;
+}
 
 export const tableOf = (sheet: Sheet): 'Pinned' | 'SharePoint' | 'Created' => sheet.pinned ? 'Pinned' : sheet.sharePoint ? 'SharePoint' : 'Created';
 export const newestFirst = (sheets: readonly Sheet[]): readonly Sheet[] => sheets.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
