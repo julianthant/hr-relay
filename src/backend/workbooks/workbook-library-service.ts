@@ -4,7 +4,7 @@ import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Clock } from "../../rules/time/clock.js";
-import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema, catalogCodeForThrown, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 import type { WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
 import { RunWorkbookNamedReferenceSchema } from "../../models/dashboard/workbooks.js";
 import { deriveSchemaHash, schemaBoundValueSchema, type SchemaBoundCanonicalValue } from "../../models/validation/schema-bound-value.js";
@@ -13,7 +13,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { WorkbookLibraryError } from "./workbook-library-error.js";
 import { workbookKey, workbookMatches } from "./master-changes.js";
-import { projectWorkbookCompatibility, workbookFieldCoverage, WorkbookActiveSnapshotRequestSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema, type WorkflowWorkbookSelectionRecord, type WorkbookLibraryActionRecord, type WorkbookLibraryActionResult, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema, type WorkflowWorkbookRequirementInput } from "../../models/dashboard/workbook-library.js";
+import { projectWorkbookCompatibility, workbookFieldCoverage, WorkbookActiveSnapshotRequestSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema, type WorkflowWorkbookSelectionRecord, type WorkbookLibraryActionRecord, type WorkbookLibraryActionResult, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibrarySyncRecord, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema, type WorkflowWorkbookRequirementInput } from "../../models/dashboard/workbook-library.js";
 import { MAX_SELECTED_WORKBOOK_SOURCES, MAX_WORKBOOK_GRID_CELLS, MAX_WORKBOOK_POPULATED_CELLS, populatedSpreadsheetValue } from "../../rules/spreadsheets/workbook-size.js";
 import type { EditableWorkbookWire } from "../../models/dashboard/workbooks.js";
 import { WorkbookCloneRequestSchema, WorkbookLocalImportRequestSchema, WorkbookSharePointImportRequestSchema } from "../../models/dashboard/workbook-library.js";
@@ -40,6 +40,8 @@ export interface WorkbookLibraryRepository {
   runOperations(runId: string): readonly WorkbookOperationRecord[];
   catalog(): readonly WorkbookLibraryEntry[];
   libraryState(libraryId: string): WorkbookLibraryState;
+  /** Replaces the entry's last finished SharePoint sync. */
+  recordSync(libraryId: string, record: WorkbookLibrarySyncRecord): void;
   libraryVersion(libraryId: string, versionId?: string): z.infer<typeof WorkbookLibraryVersionViewSchema>;
   libraryActionRecord(libraryId: string, operationId: string): WorkbookLibraryActionRecord | undefined;
   libraryAction(libraryId: string, value: unknown, at: string, sharePointWorkbook?: EditableWorkbookWire): WorkbookLibraryActionResult;
@@ -231,6 +233,16 @@ export interface WorkbookSyncDownload {
   ) => Promise<Result>): Promise<Result>;
 }
 export type WorkbookReferenceWorkflow = WorkflowWorkbookRequirementInput;
+/** The first catalog code on the failure or its causes; a failure without one records WORKBOOK_SYNC_FAILED. */
+function syncFailureCode(error: unknown): ErrorCatalogCode {
+  const seen = new Set<unknown>();
+  for (let current = error; current instanceof Error && !seen.has(current); current = current.cause) {
+    seen.add(current);
+    const code = ErrorCatalogCodeSchema.safeParse(Reflect.get(current, 'code'));
+    if (code.success) return code.data;
+  }
+  return catalogCodeForThrown(error) ?? 'WORKBOOK_SYNC_FAILED';
+}
 export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; sync: WorkbookSyncDownload;
   resultRun?: (runId: string) => Readonly<{ workflowId: string; enqueuedAt: string }> | undefined;
 }>) {
@@ -238,6 +250,24 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     const record = deps.repository.read(input(WorkbookIdSchema, libraryId));
     if (record === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
     return record;
+  };
+  const running = new Map<string, number>();
+  /** Serves the entry as running while `work` downloads its SharePoint link, then records how that sync finished. */
+  const tracked = async <T>(libraryId: string, work: () => Promise<T>): Promise<T> => {
+    const link = deps.repository.metadata(libraryId).sharePoint;
+    if (link === null) return work();
+    const finish = (result: { result: 'ok' } | { result: 'failed'; code: ErrorCatalogCode }) =>
+      deps.repository.recordSync(libraryId, { url: link.url, finishedAt: deps.clock.now().toISOString(), ...result });
+    running.set(libraryId, (running.get(libraryId) ?? 0) + 1);
+    try {
+      let value: T;
+      try { value = await work(); } catch (error) { finish({ result: 'failed', code: syncFailureCode(error) }); throw error; }
+      finish({ result: 'ok' });
+      return value;
+    } finally {
+      const remaining = (running.get(libraryId) ?? 1) - 1;
+      if (remaining === 0) running.delete(libraryId); else running.set(libraryId, remaining);
+    }
   };
   const assertNameAvailable = (name: string) => {
     if (deps.repository.catalog().some(entry => entry.name.trim().toLowerCase() === name.trim().toLowerCase()))
@@ -299,6 +329,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
           deps.clock.now().toISOString(), encodeEditableWorkbook({ ...workbook, name: request.name, libraryId }));
         apply({ kind: 'link', url: request.url });
         apply({ kind: 'sync' });
+        deps.repository.recordSync(libraryId, { url: request.url, finishedAt: deps.clock.now().toISOString(), result: 'ok' });
         return WorkbookImportResultSchema.parse({ workbook: encodeSavedWorkbook(read(libraryId)) });
       });
     },
@@ -309,7 +340,8 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       const source = deps.repository.libraryVersion(libraryId);
       return importLocalWorkbook(decodeEditableWorkbook({ ...source.workbook, libraryId: undefined, name: request.name }), request.tags);
     },
-    catalog: () => deps.repository.catalog(),
+    catalog: () => deps.repository.catalog().map(entry => entry.sync !== undefined && running.has(entry.libraryId)
+      ? { ...entry, sync: { ...entry.sync, state: 'running' as const } } : entry),
     libraryVersion: (libraryId: string, versionId?: string) => deps.repository.libraryVersion(input(WorkbookIdSchema, libraryId), versionId === undefined ? undefined : input(WorkbookIdSchema, versionId)),
     libraryActionRecord: (libraryId: string, operationId: string) => deps.repository.libraryActionRecord(input(WorkbookIdSchema, libraryId), input(WorkbookIdSchema, operationId)),
     libraryActionStatus(libraryId: string, operationId: string) {
@@ -327,7 +359,8 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       if (record.version !== action.expectedVersion || state.revision !== action.expectedRevision) throw new WorkbookLibraryError('WORKBOOK_VERSION_CONFLICT');
       signal.throwIfAborted();
       const apply = (workbook?: EditableWorkbookWire) => { assertCurrent(); return deps.repository.libraryAction(libraryId, action, deps.clock.now().toISOString(), workbook); };
-      return action.change.kind === 'sync' || action.change.kind === 'create-version' && action.change.from.kind === 'sharepoint'
+      if (action.change.kind === 'sync') return tracked(libraryId, () => withDownloadedWorkbook(libraryId, action.operationId, signal, apply));
+      return action.change.kind === 'create-version' && action.change.from.kind === 'sharepoint'
         ? withDownloadedWorkbook(libraryId, action.operationId, signal, apply) : apply();
     },
     create(value: unknown): SavedWorkbook {
@@ -375,10 +408,10 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
         return replay;
       }
       const record = read(libraryId);
-      return withDownloadedWorkbook(libraryId, operationId, signal, workbook => {
+      return tracked(libraryId, () => withDownloadedWorkbook(libraryId, operationId, signal, workbook => {
         return deps.repository.operation(libraryId, { operationId, source: { kind: 'sync', syncId: operationId }, at: deps.clock.now().toISOString(),
           change: { kind: 'sync', expectedVersion: record.version, workbook } });
-      });
+      }));
     },
   });
 }
