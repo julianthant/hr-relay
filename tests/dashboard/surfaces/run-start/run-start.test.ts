@@ -360,6 +360,47 @@ const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
 
 const SEPARATIONS = Object.freeze({ workflows: SEPARATIONS_WORKFLOWS, panelWorkflowId: "separations" });
 
+// The served Separations write steps always run, so these Steps-screen tests supply their own omittable controls.
+const SEPARATIONS_OMITTABLE_WRITES = Object.freeze({
+  panelWorkflowId: "separations",
+  workflows: SEPARATIONS_WORKFLOWS.map((workflow): RunStartWorkflow => workflow.workflowId !== "separations"
+    ? workflow
+    : {
+      ...workflow,
+      steps: workflow.steps.map((step): RunStartWorkflow["steps"][number] => {
+        if (step.key === "ucpath-transaction") {
+          return {
+            ...step,
+            control: {
+              state: "omittable",
+              forces: [],
+              form: {
+                fields: [
+                  {
+                    key: "transactionNumber",
+                    label: "UCPath transaction number",
+                    kind: "text",
+                    help: "The T-number of the termination already filed in UCPath (T followed by 6–12 digits). This run files nothing in UCPath.",
+                  },
+                  {
+                    key: "approvalStatus",
+                    label: "Approval status",
+                    kind: "enum",
+                    values: ["Approved", "Manually Processed", "Pending"],
+                    help: "The transaction's approval status as UCPath shows it now. Only a status that means the termination took effect can be asserted.",
+                    replaces: { nodeId: "receipt", path: "approvalStatus" },
+                  },
+                ],
+              },
+            },
+          };
+        }
+        if (step.key === "kuali-finalization") return { ...step, control: { state: "omittable", forces: [], form: { fields: [] } } };
+        return step;
+      }),
+    }),
+});
+
 const DOCUMENT = "4502";
 
 function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
@@ -412,8 +453,8 @@ it("keeps staging's dry-run sentence for a typed workflow", async () => {
   assert.equal((row.textContent ?? "").includes("or saving"), false);
 });
 
-async function openSteps(client: DashboardClient, typed: string = DOCUMENT): Promise<OpenDialog> {
-  const dialog = await openDialog(client, SEPARATIONS);
+async function openSteps(client: DashboardClient, typed: string = DOCUMENT, scenario: typeof SEPARATIONS = SEPARATIONS): Promise<OpenDialog> {
+  const dialog = await openDialog(client, scenario);
   await dialog.type(typed);
   await dialog.press("Continue");
   await dialog.press("Customize steps");
@@ -439,7 +480,7 @@ describe("an omittable step draws its own form when it is left out", () => {
   });
 
   it("says so when the omitted step asks for nothing at all", async () => {
-    const dialog = await openSteps(stubClient({}));
+    const dialog = await openSteps(stubClient({}), DOCUMENT, SEPARATIONS_OMITTABLE_WRITES);
     await dialog.press("Kuali finalization");
     assert.ok(
       dialog.text().includes("This step asks for nothing"),
@@ -449,7 +490,7 @@ describe("an omittable step draws its own form when it is left out", () => {
 
   it("draws an enum as a choice with NO pre-selected value", async () => {
 
-    const dialog = await openSteps(stubClient({}));
+    const dialog = await openSteps(stubClient({}), DOCUMENT, SEPARATIONS_OMITTABLE_WRITES);
     await dialog.press("UCPath transaction");
     const label = [...document.body.querySelectorAll("label")]
       .find((candidate) => (candidate.textContent ?? "").trim() === "Approval status");
@@ -506,7 +547,7 @@ describe("the request carries the operator's omissions", () => {
         submitted = input;
         return separationsPlan(["kronos-timecard", "ucpath-transaction"]);
       },
-    }));
+    }), DOCUMENT, SEPARATIONS_OMITTABLE_WRITES);
     await dialog.press("UCPath transaction");
     await dialog.press("Kronos timecard");
     await dialog.fill("Last day worked", "06/30/2026");
@@ -595,7 +636,7 @@ describe("typed facts describe ONE subject", () => {
 
 const CASCADING_SEPARATIONS = Object.freeze({
   panelWorkflowId: "separations",
-  workflows: SEPARATIONS_WORKFLOWS.map((workflow): RunStartWorkflow => workflow.workflowId !== "separations"
+  workflows: SEPARATIONS_OMITTABLE_WRITES.workflows.map((workflow): RunStartWorkflow => workflow.workflowId !== "separations"
     ? workflow
     : {
       ...workflow,

@@ -392,7 +392,7 @@ export function readJobs({ task, group }: Author, extraction: Extraction, resolv
   );
   return {
     jobSummary, employment, departmentOption,
-    steps: [[group(IDENTITY_CHECK_STEP, IDENTITY_CHECK_DISPLAY), [nameSearch, subject, jobSummary, employment, departmentOption]]] as const,
+    steps: [[group(IDENTITY_CHECK_STEP, { ...IDENTITY_CHECK_DISPLAY, locked: "guard-read" }), [nameSearch, subject, jobSummary, employment, departmentOption]]] as const,
   };
 }
 export function buildIdentity({ task, gate, group }: Author, extraction: Extraction, resolved: Subject, jobs: Jobs, timecard: Timecard) {

@@ -191,17 +191,6 @@ describe("workflow definition public equivalence characterization", () => {
             },
             produces: ["dates"],
           },
-          {
-            step: "ucpath-transaction",
-            form: {
-              fields: [
-                { key: "transactionNumber", label: "UCPath transaction number", help: "The T-number of the termination already filed in UCPath (T followed by 6–12 digits). This run files nothing in UCPath.", kind: "text" },
-                { key: "approvalStatus", label: "Approval status", help: "The transaction's approval status as UCPath shows it now. Only a status that means the termination took effect can be asserted.", kind: "enum", values: ["Approved", "Manually Processed", "Pending"], replaces: { nodeId: "receipt", path: "approvalStatus" } },
-              ]
-            },
-            produces: ["receipt"],
-          },
-          { step: "kuali-finalization", form: { fields: [] }, produces: [] },
         ],
       },
       module: {
@@ -287,8 +276,8 @@ describe("workflow definition public equivalence characterization", () => {
       ],
       omissions: {
         kronos: { asserted: [{ node: "dates", step: "kronos-timecard" }], omitted: [["timecard-search", "kronos-timecard"], ["timecard", "kronos-timecard"]], refusals: [] },
-        ucpath: { asserted: [{ node: "receipt", step: "ucpath-transaction" }], omitted: [["pending-set", "ucpath-transaction"], ["clear-pending", "ucpath-transaction"], ["file-termination", "ucpath-transaction"]], refusals: [] },
-        kuali: { asserted: [], omitted: [["filing-presence", "kuali-finalization"], ["finalize-kuali", "kuali-finalization"]], refusals: [] },
+        ucpath: { asserted: [], omitted: [], refusals: [{ code: "step-not-omittable", step: "ucpath-transaction", message: 'step "ucpath-transaction" declares no omission; it must run' }] },
+        kuali: { asserted: [], omitted: [], refusals: [{ code: "step-not-omittable", step: "kuali-finalization", message: 'step "kuali-finalization" declares no omission; it must run' }] },
       },
       steps: [
         { key: "resolve-action", nodeId: "resolve-action", label: "Kuali Action", kind: "task", taskId: "kuali/search-separation-action", conditional: false },

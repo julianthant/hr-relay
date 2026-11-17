@@ -34,7 +34,6 @@ import { UcpathApprovalStatusSchema } from "../../../../models/ui/ucpath-ss-smar
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
 import { DRY_RUN_TRANSACTION_NUMBER } from "../../../../models/workflow/dry-run.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
-import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import {
   SeparationsMatchDepartmentOption,
 } from "../../../../models/workflows/separations/match-department-option.js";
@@ -266,13 +265,6 @@ export const finalizeKualiNode = kualiFinalizationEntries.transaction(FINALIZE_N
   probeToFenceMaxMs: 45_000,
 });
 
-export const KUALI_FINALIZATION_OMISSION: StepManualDeclaration = {
-  form: { fields: [] },
-  produces: {},
-  skips: [FILING_PRESENCE_NODE, FINALIZE_NODE],
-  skipsGatesAndTransactions: true,
-};
-
 
 const FinalizationInputShape = {
   actionId: KualiActionIdSchema,
@@ -401,7 +393,7 @@ export function buildFinalization({ task, transaction, group }: Author, extracti
       return { prepare: value, commit: value, samples: [] };
     },
   });
-  return { finalizeKuali, steps: [[group(KUALI_FINALIZATION_STEP, { ...KUALI_FINALIZATION_DISPLAY, manual: KUALI_FINALIZATION_OMISSION }), [filingPresence, finalizeKuali]]] as const };
+  return { finalizeKuali, steps: [[group(KUALI_FINALIZATION_STEP, KUALI_FINALIZATION_DISPLAY), [filingPresence, finalizeKuali]]] as const };
 }
 
 export const separationsKualiFinalizationDefinition = defineStep({
