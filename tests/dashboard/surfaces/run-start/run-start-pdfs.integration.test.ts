@@ -188,10 +188,23 @@ it("plans one Emergency Contact run per uploaded PDF and says so on Confirm", as
   await dialog.press("Continue");
   const dryRun = [...document.querySelectorAll<HTMLElement>('[role="checkbox"], [role="switch"]')].find(node => node.closest("label")?.textContent?.startsWith("Dry run"));
   assert.ok(dryRun); await act(async () => dryRun.click());
+  // File to OnBase has no default: no choice is selected, and the plan cannot be asked for until one is.
+  const picks = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"][name^="File to OnBase-"]')];
+  expect(picks.map(radio => [radio.value, radio.checked])).toEqual([["file", false], ["skip", false]]);
+  expect(picks[0]?.closest(".ds-run-row")?.textContent).toContain("File to OnBase");
+  expect(dialog.disabled("Continue")).toBe(true);
+  expect(dialog.text()).toContain("Pick File to OnBase.");
+  expect(plans).toHaveLength(0);
+  const skip = picks[1]; assert.ok(skip); await act(async () => skip.click());
+  expect(dialog.disabled("Continue")).toBe(false);
   await dialog.press("Continue");
   const request = StartPlanRequestSchema.parse(plans[0]);
   expect(request.dryRun).toBe(true);
   expect(request.submissions).toHaveLength(2);
   expect(request.submissions.map(submission => EmergencyContactInputSchema.parse(submission).fileName)).toEqual(uploads);
+  expect(request.submissions.map(submission => EmergencyContactInputSchema.parse(submission).onbaseFiling)).toEqual(["skip", "skip"]);
   expect(dialog.text()).toContain("One run for each attached PDF");
+  // Confirm shows the pick with the run's other picks, before Start.
+  const shown = [...document.querySelectorAll(".launch-confirm-row")].map(row => [row.querySelector("dt")?.textContent, row.querySelector("dd")?.textContent]);
+  expect(shown).toContainEqual(["File to OnBase", "Do not file"]);
 });

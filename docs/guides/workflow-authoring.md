@@ -205,10 +205,10 @@ them to the Run picker.
 
 ## 5 · Person Lookup: reuse and a pure fold
 
-`src/workflows/person-lookup/workflow.ts` declares `searching`, `cross-verify`, `active-status` and
-conditional `crm-dates`, without gates or transactions. `crossVerify` references `searching` and
+`src/workflows/person-lookup/workflow.ts` declares `searching`, `cross-verify`, `active-status`,
+conditional `crm-dates` and the optional `reference-check`, without gates or transactions. `crossVerify` references `searching` and
 requires `selection.selected`; the result handles included dates and `not-requested`. Read this
-complete definition for schemas, parser, intake and presentation. Its four retained read-only
+complete definition for schemas, parser, intake and presentation. Its five retained read-only
 harnesses live under `steps/` and import its shared step/node identities. Each includes the upstream
 read groups needed by its target step and reuses the exact input, canonical schema and input defaults.
 

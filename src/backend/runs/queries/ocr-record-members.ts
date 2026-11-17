@@ -213,6 +213,16 @@ export function readOcrQueueMembers(repositories: AuthorityRepositories, reader:
   return readOcrRecordPresentation(repositories,reader,runId,workflowLabel,true);
 }
 
+/** An open member's own delegated child that failed or is held on an unsure write: the person reads that state and their line opens that child's logs. */
+function heldMemberChild(repositories: AuthorityRepositories, member: RunRecord) {
+  if (member.lifecycle.state === "terminal") return undefined;
+  for (const { group } of repositories.dependencies.groups(member.envelope.runId)) for (const child of group.children) {
+    const status = deriveRunStatus({ ...child.child,delegationWait: repositories.dependencies.waitState(child.child.envelope.runId) });
+    if (status === "failed" || status === "blocked") return { run: child.child, status, history: child.history };
+  }
+  return undefined;
+}
+
 function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
   parent: RunRecord, source: QueueRecordMembers, approval: unknown, resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined) {
   const reference = OcrApprovalReferenceSchema.parse(approval);
@@ -254,7 +264,11 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
     }
   }
   const selected = new Set(group === undefined ? snapshot.selectedRecordIds : bound.keys());
-  const runIds = [...new Set([...source.runIds,...[...bound.values()].flatMap(member => member.history)])];
+  const held = new Map([...bound].flatMap(([recordId,member]) => {
+    const child = heldMemberChild(repositories,member.child);
+    return child === undefined ? [] : [[recordId,child] as const];
+  }));
+  const runIds = [...new Set([...source.runIds,...[...bound.values()].flatMap(member => member.history),...[...held.values()].flatMap(child => child.history)])];
   return QueueRecordMembersSchema.parse({ runIds, members: source.members.filter(row => {
     const member = row.kind === "record" ? bound.get(row.record.recordId) : undefined;
     if (member === undefined || group === undefined) return true;
@@ -269,6 +283,15 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
       const status = deriveRunStatus({ ...parent,delegationWait: repositories.dependencies.waitState(parent.envelope.runId) });
       return { ...row, status: ["failed","blocked","cancelled"].includes(status) ? status : "running",
         statusLabel: status === "failed" ? "Failed" : status === "blocked" ? "Blocked" : status === "cancelled" ? "Cancelled" : parent.envelope.dryRun ? "Previewing" : "Saving" };
+    }
+    const waiting = held.get(row.record.recordId);
+    if (waiting !== undefined) {
+      const run = waiting.run;
+      return { ...row, status: waiting.status, statusLabel: waiting.status === "failed" ? "Failed" : "Blocked",
+        childRunIds: [...new Set([...row.childRunIds,...member.history,...waiting.history])],
+        target: { runId: run.envelope.runId, workflowId: run.envelope.workflow,
+          partitionDay: LocalDateSchema.parse(localDatePart(new Date(run.envelope.enqueuedAt))), label: resolve(run.envelope.workflow)?.label ?? run.envelope.workflow,
+          status: waiting.status, panelKind: panelKindOf(run.envelope.shape, false), section: "logs" } };
     }
     const child = member.child, descriptor = resolve(child.envelope.workflow);
     const exactDescriptor = descriptor?.version === child.envelope.descriptorVersion

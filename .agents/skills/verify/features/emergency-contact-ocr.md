@@ -1,15 +1,16 @@
 # Emergency Contact (OCR)
 
-Emergency Contact (EC) is a served workflow. It owns its OCR: there is no OCR entry in the sidebar or Run picker, and OCR runs only inside EC as its first Logs steps. OCR reads a PDF, groups records and looks up identities; the operator reviews and releases the approved records. EC then delegates each approved record to an EC member that previews that person's primary contact in UCPath.
+Emergency Contact (EC) is a served workflow. It owns its OCR: there is no OCR entry in the sidebar or Run picker, and OCR runs only inside EC as its first Logs steps. OCR reads a PDF, groups records and looks up identities; the operator reviews and releases the approved records. EC then delegates each approved record to an EC member that previews that person's primary contact in UCPath, then imports that person's page to OnBase through one hidden OnBase child. There is no OnBase entry in the sidebar or Run picker.
 
 ## Sub-features
 
 - OCR inside EC: Reading, Looking up, Verified, Needs lookup, failed-page lines; OCR Review and release; manual mode (blank predefined records).
 - EC parent: one queue row, operation row with record lines in source order; EC members show Previewing/Previewed in a dry run.
+- EC member steps: Review approved contact plan, Preview primary contact changes, Import to OnBase.
 
 ## How to get to it (user POV)
 
-Settings → ChatGPT account connected (OCR uses the operator's ChatGPT sign-in). Run → Emergency Contact → choose a PDF (`config/test-data.json` `files.synthetic-sample-pdf`, synthetic, no HR content) → Confirm → Start with dryRun checked.
+Settings → ChatGPT account connected (OCR uses the operator's ChatGPT sign-in); OnBase signed in (the operator does the login). Run → Emergency Contact → choose a PDF (`config/test-data.json` `files.synthetic-sample-pdf`, synthetic, no HR content) → Confirm → Start with dryRun checked.
 
 ## Driving it with playwright-cli
 
@@ -17,7 +18,7 @@ Upload with `playwright-cli upload <pdf>` through the launcher. Stop at the OCR 
 
 ## Passing dry run
 
-Logs open with the OCR reading steps, then the OCR review gate with record lines, then Verified after release. After release: members end Previewed (never Saved), the parent result retains the approved snapshot, and `explain run` shows no Save attempt. A settled mixed-outcome EC parent still admits Retry of each eligible failed member. UNKNOWN and a committed or unresolved Save still refuse.
+Logs open with the OCR reading steps, then the OCR review gate with record lines, then Verified after release. After release: members end Previewed (never Saved) with the Save and Import to OnBase both previewed, the parent result retains the approved snapshot, and `explain run` shows no Save attempt and no Import click. Before and after the run, search OnBase Document Retrieval for each member's UCPath ID: the dry run adds no new Emergency Contact document. A settled mixed-outcome EC parent still admits Retry of each eligible failed member. UNKNOWN and a committed or unresolved Save still refuse.
 
 ## Gotchas
 

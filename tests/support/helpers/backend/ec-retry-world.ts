@@ -9,6 +9,7 @@ import { emergencyContactMemberWorkflow } from "../../../../src/workflows/emerge
 import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import fixture from "../../fixtures/ui/ucpath/emergency-contact.fixture.json";
 import { createOcrReviewWorld } from "./ocr-review-world.js";
+import { onbaseFilingFixture } from "./onbase-filing-fixture.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../phase1f-executor-harness.js";
 
 export function createEcRetryWorld() {
@@ -18,7 +19,8 @@ export function createEcRetryWorld() {
   let remainingFailures = 1;
   let ticks = Date.parse(fixture.page.observedAt);
   const persistence = new Map<string, ReturnType<typeof createDeterministicContactPersistence>>();
-  const sessions = sessionFactoryHarness({ ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
+  const filing = await onbaseFilingFixture(2);
+  const sessions = sessionFactoryHarness({ onbase: filing.session(() => f.clock), ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
     const base = createDeterministicUcpathPersonOrgDriver();
     let activeEid: string | undefined;
     let active: ReturnType<typeof createDeterministicUcpathPersonOrgDriver> | undefined;
@@ -55,13 +57,13 @@ export function createEcRetryWorld() {
     };
   }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
   const member = composeWorkflowModule(compileWorkflow(emergencyContactMemberWorkflow), taskStoreRegistry.stores);
-  const f = await world.fixture({ coordinator: true, member, record: true, release: true, pageCount: 2, reviewedPages: facts, operatorEvidence: true, dryRun: options.dryRun, sessions, screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
+  const f = await world.fixture({ coordinator: true, member, record: true, release: true, pageCount: 2, reviewedPages: facts, operatorEvidence: true, dryRun: options.dryRun, sessions, documentBytes: filing.bytes, screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
   assert.equal(persistence.size, 0);
   for (let index = 0; index < facts.length; index++) {
     const command = f.command("correct-ocr-record", index + 1, index);
     assert.equal(f.canonical.kernel.execute({ ...command, payload: { ...command.payload, assertedEid: String(10800000 + index) } }).state, "applied");
   }
   assert.equal(f.canonical.kernel.execute(f.approval()).state, "applied");
-  return { ...f, member, persistence, facts };
+  return { ...f, member, persistence, facts, filing };
   } };
 }

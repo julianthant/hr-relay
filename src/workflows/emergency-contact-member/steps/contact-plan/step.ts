@@ -63,7 +63,7 @@ export const CONTACT_PLAN_STEP = Object.freeze({ ...defineWorkflowStep({ key: "c
   } as const,
 });
 export function buildContactPlan(author: WorkflowAuthor<typeof EmergencyContactMemberInputSchema>) {
-  const approved = author.task({ id: "approved-record", label: "Authenticate OCR release", contract: ReadApprovedOcrRecord, replay: "always-rerun" }, [], ({ input }) => input);
+  const approved = author.task({ id: "approved-record", label: "Authenticate OCR release", contract: ReadApprovedOcrRecord, replay: "always-rerun" }, [], ({ input }) => ({ approval: input.approval, record: input.record }));
   const mapped = author.task({ id: "map-contact", label: "Map approved contact fields", contract: MapApprovedEmergencyContact, replay: "always-rerun" }, [approved], ({ input, outputs }) =>
     ({ ...input, record: outputs["approved-record"].record }));
   const contacts = author.task({ id: "read-contacts", label: "Read complete saved contact set", contract: UcpathReadEmergencyContacts, replay: "always-rerun" }, [mapped, approved], ({ outputs }) => ({ emplId: outputs["map-contact"].emplId, expectedName: outputs["map-contact"].expectedName }));
