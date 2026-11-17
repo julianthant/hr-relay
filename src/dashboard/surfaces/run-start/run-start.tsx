@@ -41,7 +41,7 @@ import { foldStepOmissionFacts, forcedStepOmissions, initialStepOmissionDraft, o
 import { adjacentRunStartStage, reconcileRunStartStage, runStartStages, type RunStartStage } from "./run-start-timeline.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import { WorkflowPdfInput } from "../workflows/mocks/workflow-pdf-input.js";
-import { pdfRunLaunchFields, previewPdfRun, unpickedPdfRunField, usePdfRunInput } from "./run-start-pdfs.js";
+import { pdfRunLaunchFields, pdfRunOcrFooter, pdfRunSwitchValue, previewPdfRun, unpickedPdfRunField, usePdfRunInput } from "./run-start-pdfs.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration ) */
 
@@ -653,7 +653,7 @@ export function RunStartDialog({
       const version = chosen.state.versions.find(entry => entry.id === selection.versionId)?.name;
       return [{ key: "Reference spreadsheet", value: version ? `${chosen.name} \u00b7 ${version}` : chosen.name }];
     }),
-    ...launchFields.flatMap(field => { const option = field.options.find(candidate => candidate.value === pdfInput.picks[field.field]); return option === undefined ? [] : [{ key: field.label, value: option.label }]; }),
+    ...launchFields.flatMap(field => { if (field.kind === "boolean") return []; const option = field.options.find(candidate => candidate.value === pdfInput.picks[field.field]); return option === undefined ? [] : [{ key: field.label, value: option.label }]; }),
   ];
   // Enter continues or starts; Shift+Enter keeps its newline. Buttons, links and open pickers keep Enter for themselves.
   const enterRef = useRef<(() => void) | null>(null);
@@ -820,7 +820,9 @@ export function RunStartDialog({
                   flags={<>
                     {!isRerun && <RunListRow title="Customize steps" description="Choose optional steps."><Switch hideLabel label="Customize steps" checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     {supportsDryRun && <RunListRow title="Dry run" description={dryRunDescription}><Switch hideLabel label="Dry run" checked={dryRun} onCheckedChange={next => update(current => launchDraft.changeDryRun(current, next === true))} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
-                    {launchFields.map(field => <RunListRow key={field.field} title={field.label}><div className="w-[250px]"><SegmentedChoice hideLabel label={field.label} value={pdfInput.picks[field.field] ?? ""} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></div></RunListRow>)}
+                    {launchFields.map(field => field.kind === "boolean"
+                      ? <RunListRow key={field.field} title={field.label} {...(field.description === undefined ? {} : { description: field.description })}><Switch hideLabel label={field.label} checked={pdfRunSwitchValue(field, pdfInput.picks)} onCheckedChange={next => pdfInput.pick(field.field, next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>
+                      : <RunListRow key={field.field} title={field.label}><div className="w-[250px]"><SegmentedChoice hideLabel label={field.label} value={pdfInput.picks[field.field] ?? ""} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></div></RunListRow>)}
                     <RunListRow title="Screenshots" description="Required by this workflow."><span className="inline-flex items-center gap-1.5 text-[12px] text-ui-secondary"><Lock aria-hidden className="size-3" />Always on</span></RunListRow>
                   </>} />
               )}
@@ -879,7 +881,7 @@ export function RunStartDialog({
               items={[
                 workflow?.label,
                 workflow === undefined ? undefined : `${selectedStepKeys.length} of ${workflow.steps.length} steps`,
-                pdfSurface === undefined ? undefined : "OCR on",
+                pdfSurface === undefined ? undefined : pdfRunOcrFooter(pdfSurface, pdfInput.picks),
                 priority === "interactive" ? "Priority" : undefined,
                 currentStage === "Input"
                   ? blockedReason ?? undefined
