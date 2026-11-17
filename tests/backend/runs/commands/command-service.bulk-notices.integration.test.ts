@@ -140,7 +140,7 @@ describe("bulk command notices", () => {
     assert.equal(harness.database.authority.runs.get(secondRunId)?.version, secondVersion);
     const childId = deriveBulkChildCommandId(request.bulkCommandId, firstRunId);
     assert.equal(first.results[0]?.commandId, childId);
-    assert.deepEqual(commandJournal(path, childId), { state: "refused", audits: 1 });
+    assert.deepEqual(commandJournal(path, childId), { state: "uncertain", audits: 1 });
     const audit = harness.database.authority.commandAudits.findByCommand(childId);
     assert.ok(audit);
     assert.equal(audit.result.state, "rejected");
@@ -173,7 +173,7 @@ describe("bulk command notices", () => {
     assert.equal(replayChild.detail, ERROR_CATALOG.BULK_CHILD_ERRORED.text);
     assert.equal(harness.database.authority.runs.get(firstRunId)?.version, firstVersion);
     assert.equal(harness.database.authority.commands.get(deriveBulkChildCommandId(request.bulkCommandId, secondRunId)), undefined);
-    assert.deepEqual(commandJournal(path, childId), { state: "refused", audits: 1 });
+    assert.deepEqual(commandJournal(path, childId), { state: "uncertain", audits: 1 });
     assert.deepEqual(inbox.list("local-operator"), stored);
   });
 
