@@ -45,7 +45,7 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 `src/backend/runs/queries/activity-timing.ts` owns successful-root timing shared by the Analytics summary and population producers. `src/backend/runs/queries/activity-analytics.ts` owns the outcome split, failure-step counts and median duration those producers add to the same report.
 
-`src/backend/runs/queries/storage.ts` owns the composition-scoped verified backup observation and compact bootstrap projection; `src/backend/storage/sqlite/storage-doctor.ts` owns backup verification.
+`src/backend/runs/queries/storage.ts` owns the composition-scoped verified backup observation and compact bootstrap projection; `src/backend/storage/sqlite/storage-doctor.ts` owns backup verification and the ordered storage health-cause classification.
 
 `src/models/dashboard/workbook-library.ts` owns catalogue/version/action wire shapes.
 `src/models/dashboard/run-outputs.ts` owns intended workbook and worksheet ZIP output facts shared by retained plans and Confirm.
@@ -153,6 +153,8 @@ Paths in this table are relative to `src/backend/`.
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |
 | `src/rules/identity/stable-uuid.ts` | Browser-safe deterministic UUID derivation shared with the runtime `identifiers.ts` entry; native and browser callers use the same digest and UUID bits. |
 | `src/rules/runs/run-status.ts` | Shared run status and task/category state derivation for Queue, Logs, Activity and native summary filtering. |
+| `src/rules/storage/credential-head.ts` | Canonical credential head state derived from the head and credential operation files, and its frozen transition table with the store's refusal codes. `backend/storage/configuration/canonical-credential-store.ts` and the installation and account-deletion readers ask it instead of reading the head's `state` field. |
+| `src/rules/storage/person-startup-standing.ts` | One person's startup standing for a runtime lifetime and its transition table. `backend/app/composition/storage-compose.ts` writes it at each startup step and reads it for sign-in refusal, shutdown backup, logout resume and the layout move. |
 | `src/rules/storage/upgrade-journal.ts` | Authority schema upgrade journal: the state derived from the `database_upgrades` rows and the transition table each writer checks before it appends `baseline` or `settled`. |
 | `src/rules/` | Pure decisions and validation, including identity, clocks, normalization, ledger derivation, redaction, and write safety. |
 | `src/workflow-kit/` | Root-level TypeScript modules for task and workflow declaration, flow construction, compilation, sessions, providers, artifacts, and capabilities. |

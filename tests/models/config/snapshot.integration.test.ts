@@ -9,7 +9,7 @@ import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { NOW,UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
-import { AuthorityBootStore,AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase,storageHealthCauseOf } from "../../support/helpers/synthetic-storage-admission.js";
 
 const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const SNAPSHOT_ID = UUID_4;
@@ -65,8 +65,7 @@ describe("strict current config snapshots", () => {
     it(`refuses missing ${leaf} on boot and read without applying live defaults`, async () => {
       const path = await databaseWithSnapshotMissing(leaf);
       assert.throws(() => AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "snapshot-test" }, CLOCK), /authority table settings_snapshots failed native record validation/u);
-      const boot = AuthorityBootStore.open({ path, busyTimeoutMs: 250, migrationOwner: "snapshot-test" }, CLOCK);
-      try { const report = boot.report(); assert.equal(report.state, "degraded-read-only"); assert.equal(report.state === "degraded-read-only" && report.cause.code, "authority-record-invalid"); } finally { boot.close(); }
+      assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(path, 250), (error: unknown) => storageHealthCauseOf(error).code === "authority-record-invalid");
     });
   }
   it("preserves exact current snapshot bytes and refuses overwriting immutable evidence", async () => {

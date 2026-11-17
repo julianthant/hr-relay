@@ -282,17 +282,6 @@ export const REVIEWED_CATCH_DEFAULTS = [
     ]
   },
   {
-    "path": "src/backend/storage/sqlite/authority-boot.ts",
-    "reason": "A failed open or inspection returns degraded-read-only with mutations blocked; only successful close clears the database handle, and uncertain close preserves the handle and aggregate cause.",
-    "statements": [
-      {
-        "kind": "try",
-        "sha256": "cdcd384cd125be140cfe07817e6623892f7d13d2ee0ad5ea83a188113f061dbe",
-        "occurrences": 1
-      }
-    ]
-  },
-  {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
     "reason": "Only ENOENT returns absent source metadata; the caller rejects a missing main database and permits absent optional sidecars. Unsafe or changed sources throw. Construction and read failures rethrow after private cleanup; failed database close or snapshot disposal retains the resource owners and original causes as source-closure uncertainty, never a read result.",
     "statements": [
