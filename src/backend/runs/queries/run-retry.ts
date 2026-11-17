@@ -21,13 +21,23 @@ export function aggregateMemberRetryAvailable(repositories: AuthorityRepositorie
     || repositories.runtimeConfig.get()?.configFingerprint !== run.envelope.configFingerprint) return false;
   const authorization = authorizeWorkflowDelegationRefresh(owner, parent);
   const plan = authorization === undefined ? undefined : workflowDelegationAccounting(authorization, parent);
-  if (plan === undefined) return false;
+  if (plan === undefined) return heldParentChildRetryAvailable(repositories, run, parent, descriptor);
   authenticateOcrOperator(repositories, reader, parent);
   const members = repositories.dependencies.groups(parent.envelope.runId).filter(({ group }) => group.invocation.nodeId === plan.joinNodeId)
     .flatMap(({ group }) => group.children).filter(member => member.child.envelope.runId === run.envelope.runId);
   if (members.length !== 1 || members[0]?.dependency.state !== "failed" || childTerminalSettlement(run, repositories)?.state !== "failed") return false;
   return delegationRetryWriteRefusal(repositories, run, descriptor) === undefined
     && (parent.lifecycle.state !== "terminal" || delegationRefreshEligible(repositories, parent, authorization));
+}
+
+/** A `block-parent` join holds its parent open on a failed child: Retry replaces that child alone, and only while none of its writes was issued. */
+function heldParentChildRetryAvailable(repositories: AuthorityRepositories, run: RunRecord, parent: RunRecord, descriptor: AnyWorkflowDescriptor): boolean {
+  if (parent.lifecycle.state === "terminal") return false;
+  const members = repositories.dependencies.groups(parent.envelope.runId)
+    .filter(({ manifest }) => manifest.join !== "none" && manifest.policy.onChildFailed === "block-parent")
+    .flatMap(({ group }) => group.children).filter(member => member.child.envelope.runId === run.envelope.runId);
+  return members.length === 1 && members[0]?.dependency.state === "failed" && childTerminalSettlement(run, repositories)?.state === "failed"
+    && delegationRetryWriteRefusal(repositories, run, descriptor) === undefined;
 }
 
 export function batchMemberRetryAvailable(repositories: AuthorityRepositories, run: RunRecord,

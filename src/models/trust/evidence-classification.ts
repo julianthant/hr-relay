@@ -621,16 +621,17 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(taskOutput("ucpath/stage-emergency-contact"), "stagedPageState"),
   ...contactProofLeaves(taskOutput("ucpath/save-emergency-contact"), "proof."),
   ...contactProofLeaves(writeProof("ucpath/save-emergency-contact"), ""),
-  ...["emergency-contact-member", "emergency-contact-member-contact-plan", "emergency-contact-member-contact-preview"].flatMap(id => [
+  ...["emergency-contact-member", "emergency-contact-member-contact-plan", "emergency-contact-member-contact-preview", "emergency-contact-member-onbase-filing"].flatMap(id => [
     ...approvedOcrReferenceLeaves(workflowInput(id), "approval."), ...approvedOcrRecordLeaves(workflowInput(id), "record."),
+    ...ocrArtifactLeaves(workflowInput(id), "document."), ...open(workflowInput(id), "sourcePage", "onbaseFiling"),
   ]),
-  ...["emergency-contact-member", "emergency-contact-member-contact-preview"].flatMap(id => [
+  ...["emergency-contact-member", "emergency-contact-member-contact-preview", "emergency-contact-member-onbase-filing"].flatMap(id => [
     ...open(workflowResult(id), "disposition"), ...contactProofLeaves(workflowResult(id), "proof."),
   ]),
   ...contactPlannedOutputLeaves(workflowResult("emergency-contact-member-contact-plan")),
   ...["emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."), ...ocrRosterLeaves(workflowInput(id), "roster."),
-    ...open(workflowInput(id), "reading.kind"), ...ocrPrivateLeaves(workflowInput(id), "fileName", "readingId", "reading.actorId", "reading.assertions"),
+    ...open(workflowInput(id), "reading.kind", "onbaseFiling"), ...ocrPrivateLeaves(workflowInput(id), "fileName", "readingId", "reading.actorId", "reading.assertions"),
   ]),
   ...[workflowResult("emergency-contact"), workflowResult("emergency-contact-members"), taskOutput("workflow:emergency-contact/read-result")].flatMap(scope => [
     ...approvedOcrReferenceLeaves(scope, "approval."), ...ocrPrivateLeaves(scope, "members"),
