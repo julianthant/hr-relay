@@ -57,7 +57,7 @@ for (const theme of THEMES) for (const width of WIDTHS) test(`failure notice fra
     await expect(page.getByText("Copy details")).toHaveCount(0);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
     expect(overflow, `${scene}/${copy} horizontal overflow`).toBe(false);
-    await page.screenshot({ path: join(OUT, `${scene}-beneath1-${copy}-${theme}-${width}.png`) });
+    await page.screenshot({ path: join(OUT, `${scene}-${copy}-${theme}-${width}.png`) });
   }
   expect(errors).toEqual([]);
 });
