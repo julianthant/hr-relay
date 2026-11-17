@@ -113,7 +113,7 @@ afterEach(_afterEachFixture0);
       mkdirSync(dirname(authorityPath), { recursive: true, mode: 0o700 });
       const doctorOptions = {
         stateRootTrustAnchor: repoRoot, stateRoot, authorityPath,
-        backupDirectory: join(stateRoot, "backups", "authority"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,
+        backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 500,
       };
       const expected = boundary === "doctor"
         ? "runtime-admission: fixture overlaps installation witness"
@@ -199,7 +199,7 @@ afterEach(_afterEachFixture0);
     }
     const doctorOptions = {
       stateRootTrustAnchor: repoRoot, stateRoot, authorityPath,
-      backupDirectory: join(stateRoot, "backups", "authority"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,
+      backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 500,
     };
     let output: string;
     if (boundary === "cli-json") {

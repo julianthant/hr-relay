@@ -651,10 +651,9 @@ describe("canonical run-record service", () => {
       stateRoot: root,
       authorityPath,
       backupDirectory: join(root, "backups", "authority"),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 250,
     }, clock);
-    assert.deepEqual(doctor.spanAuthority, { state: "reconciled", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [] });
+    assert.deepEqual(doctor.spanAuthority, { state: "reconciled", streamRunCount: 0, liveRunCount: 0, deleted: [] });
     assert.deepEqual(service.read(runId), { state: "absent", runId });
     assert.equal(countTasks(), 0);
   });

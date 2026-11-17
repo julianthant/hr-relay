@@ -84,7 +84,7 @@ for (const state of ["damaged", "projection-missing", "projection-missing-attach
       assert.equal(attachment.messageId, messageId); assert.equal(attachment.ordinal, 1); assert.ok(attachment.expiresAt > now);
       assert.deepEqual(attachment.bytes, new TextEncoder().encode("retained bytes"));
     }
-    const backup = await new AuthorityBackupService(f.admission, database, { directory }, clock).request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+    const backup = await new AuthorityBackupService(f.admission, database, { directory }, clock).request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
     const manifest = backup.manifests[0]; assert.ok(manifest);
     database.close();
     const native = new DatabaseSync(f.path);
