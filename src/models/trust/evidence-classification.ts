@@ -603,9 +603,9 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ]),
   ...["work-study", "work-study-ucpath-auth", "work-study-transaction", "work-study-reference-check"].flatMap(id => [...person(workflowInput(id), "emplId"), ...open(workflowInput(id), "effectiveDate")]),
   /* The reference review stores only that the operator continued; whether to ask is a flag. */
-  ...["work-study", "work-study-reference-check", "separations", "separations-reference-check"].flatMap(id => open(gateResult(id, "reference-check-review"), "decision")),
-  ...["work-study", "separations"].flatMap(store => open(taskOutput(`workflow:${store}/read-reference-stop`), "ask")),
-  ...["work-study-reference-check", "separations-reference-check"].flatMap(id => open(workflowResult(id), "check", "check.state", "check.result", "check.checks")),
+  ...["work-study", "work-study-reference-check", "separations", "separations-reference-check", "onboarding", "onboarding-reference-check"].flatMap(id => open(gateResult(id, "reference-check-review"), "decision")),
+  ...["work-study", "separations", "onboarding"].flatMap(store => open(taskOutput(`workflow:${store}/read-reference-stop`), "ask")),
+  ...["work-study-reference-check", "separations-reference-check", "onboarding-reference-check"].flatMap(id => open(workflowResult(id), "check", "check.state", "check.result", "check.checks")),
   ...person(workflowInput("separations-reference-check"), "emplId", "employeeName"),
   ...approvedOcrRecordLeaves(taskOutput("ocr/read-approved-record"), "record."),
   ...approvedOcrSnapshotLeaves(taskOutput("ocr/read-approved-snapshot")),
@@ -706,7 +706,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...ocrManifestHeadLeaves(workflowResult("ocr-source-pages"), "manifest."),
   ...ocrPrivateLeaves(gateResult("ocr", "approve-records"), "snapshotId", "sourceRunId", "digest"),
   ...open(gateResult("ocr", "approve-records"), "revision"),
-  ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-hire-writes"].flatMap(id => [
+  ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-hire-writes", "onboarding-reference-check"].flatMap(id => [
     ...open(workflowInput(id), "mode", "configuredJobEndDate", "roster.state", "roster.reason"),
     ...onboardingPrivateLeaves(workflowInput(id), "email", "postalCodeOverride", "roster.row.references.legalName", "roster.row.references.livedName"),
     ...onboardingRosterLeaves(workflowInput(id), "roster.binding."),
@@ -725,6 +725,10 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...onboardingPrivateLeaves(taskOutput("workflow:onboarding/read-write-plan"), "hire.expectedName", "hire.emplId", "comments", "i9",
     ...["firstName", "lastName", "middleName", "preferredFirstName", "preferredLastName", "preferredMiddleName", "ssn", "dob", "address", "addressLine2", "city", "state", "postalCode", "phone", "email", "positionNumber", "departmentNumber", "recruitmentNumber", "employeeClassification", "hourlyRateMinor", "effectiveDate", "expectedJobEndDate"].map(path => `hire.employee.${path}`),
     ...["firstName", "lastName", "middleName", "ssn", "dob", "email", "departmentNumber", "expectedName"].map(path => `i9.${path}`)),
+  ...["onboarding-reference-check"].flatMap(id => [
+    ...open(gateResult(id, "hire-review"), "decision", "confirmedBy"),
+    ...onboardingPrivateLeaves(gateResult(id, "hire-review"), "emplId", "ruledOut"),
+  ]),
   ...["onboarding", "onboarding-hire-writes"].flatMap(id => [
     ...open(gateResult(id, "hire-review"), "decision", "confirmedBy"),
     ...onboardingPrivateLeaves(gateResult(id, "hire-review"), "emplId", "ruledOut"),
