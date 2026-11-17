@@ -14,20 +14,27 @@ import { createMountedRerunWorld } from "../../../support/helpers/dashboard/moun
 
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
-const { setup, mount, cleanup, press, checkbox, button, fill, field, text, unmount } = createMountedRerunWorld(profiles.create);
+const { setup, mount, cleanup, press, reachChecks, checkbox, button, fill, field, text, unmount } = createMountedRerunWorld(profiles.create);
 afterEach(async () => { vi.restoreAllMocks(); await cleanup(); });
 
 for (const rerun of [false, true]) {
-  async function review(h: Awaited<ReturnType<typeof setup>>, client: DashboardClient = h.client) {
-    const replaceBinding = await mount(h, rerun ? await h.completeSource() : undefined, client);
+  /** Reaches the last stage with a dry run chosen; the plan the first Start requests expires before it is submitted. */
+  async function review(h: Awaited<ReturnType<typeof setup>>, client: DashboardClient = h.client, expireAfterPlan = true) {
+    let planned = false;
+    const expiring = { ...client, submitStartPlan: async (request: unknown) => {
+      const plan = await client.submitStartPlan(request);
+      if (!planned && expireAfterPlan) { h.clock.advanceWall(600_000); h.clock.advanceMonotonic(600_000); }
+      planned = true;
+      return plan;
+    } };
+    const replaceBinding = await mount(h, rerun ? await h.completeSource() : undefined, expiring);
     if (rerun) { await press("Continue"); await press("Confirm"); await press("Continue"); }
     else { const box = document.querySelector("textarea"); assert.ok(box); await fill(box, "10812345"); await press("Continue"); }
-    await act(async () => checkbox("Dry run").click()); await press("Continue");
+    await act(async () => checkbox("Dry run").click());
     return replaceBinding;
   }
   it(`${rerun ? "Rerun" : "Run"} re-previews an expired plan and requires another Start`, async () => {
     const h = await setup(); await review(h);
-    h.clock.advanceWall(600_000); h.clock.advanceMonotonic(600_000);
     await press("Start dry run");
     assert.ok(text().includes("This plan expired, so it was checked again. Review it and press Start again."));
     assert.equal(document.querySelector('[role="dialog"]') !== null, true);
@@ -53,7 +60,7 @@ for (const rerun of [false, true]) {
           ? { check, state: "unhealthy" as const, summary: "PRIVATE_KERNEL_MARKER", impact: "Controlled failure" }
           : { check, state: "healthy" as const, summary: "Controlled healthy detector" }; } };
       }) }));
-    await review(h); blocked = true;
+    await review(h, { ...h.client, submitStartPlan: async request => { const plan = await h.client.submitStartPlan(request); blocked = true; return plan; } }, false);
     const timer = vi.spyOn(globalThis, "setTimeout");
     await press("Start dry run");
     assert.equal(document.querySelector('[role="dialog"]'), null);
@@ -74,7 +81,6 @@ for (const rerun of [false, true]) {
       if (++previews > 1) throw new Error("PRIVATE_REPREVIEW_MARKER");
       return h.client.submitStartPlan(request);
     } });
-    h.clock.advanceWall(600_000); h.clock.advanceMonotonic(600_000);
     await press("Start dry run");
     assert.equal(document.querySelector('[role="dialog"]'), null);
     assert.equal(text().split("Run not started").length - 1, 1);
@@ -89,8 +95,7 @@ for (const rerun of [false, true]) {
       if (++previews > 1) await gate.promise;
       return h.client.submitStartPlan(request);
     } });
-    h.clock.advanceWall(600_000); h.clock.advanceMonotonic(600_000);
-    await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
+    await reachChecks("Start dry run"); await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
     assert.equal(previews, 2); assert.equal(h.finalCommands.length, 1);
     await act(async () => gate.resolve());
     assert.equal(text().includes("Run not started"), false);
@@ -104,8 +109,7 @@ for (const rerun of [false, true]) {
       return h.client.submitStartPlan(request);
     } };
     const replaceBinding = await review(h, client);
-    h.clock.advanceWall(600_000); h.clock.advanceMonotonic(600_000);
-    await act(async () => button("Start dry run").click());
+    await reachChecks("Start dry run"); await act(async () => button("Start dry run").click());
     if (replacement === "draft") {
       await press("Back"); await press("Back");
       const box = rerun ? field("Employee ID") : document.querySelector("textarea");
@@ -121,7 +125,7 @@ for (const rerun of [false, true]) {
 
   it(`${rerun ? "Rerun" : "Run"} recovers an expired command without re-preview or resubmitting new bytes`, async () => {
     const h = await setup(); await review(h);
-    h.clock.advanceWall(600_000); h.clock.advanceMonotonic(600_000); h.loseResponse();
+    h.loseResponse();
     await press("Start dry run");
     assert.equal(document.querySelector('[role="dialog"]') !== null, true);
     assert.equal(window.sessionStorage.length, 1); assert.equal(h.submissions.length, 1);

@@ -7,19 +7,21 @@ import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { deriveEvidenceReceiptId } from "../../../models/trust/evidence-identity.js";
 import { CURRENT_RUN_SETTLEMENT_SQL, readRunSettlementRow, runSettlementContext, runSettlementColumns } from "./run-settlement-row.js";
-import { convertPersonPreferencesRow } from "./person-preferences-migration.js";
+import { SETTINGS_RECORD_CONVERSION_VERSION, convertSettingsRecordRow, isSettingsRecordConversionMarker } from "./settings-record-conversion.js";
 import { readContinuationGate, validateRunContinuation } from "./run-continuation.js";
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
 import { existsSync,statSync } from "node:fs";
 import { basename,dirname,join } from "node:path";
-import { DatabaseSync,backup as sqliteBackup } from "node:sqlite";
+import { DatabaseSync,backup as sqliteBackup,type SQLInputValue } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ArtifactRefSchema,type ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
-import { AUTHORITY_TABLE_REGISTRY,AuthorityTableNameSchema,AuthorityEvidenceSchemaUpgradeRecordSchema,AuthorityUpgradeRecordSchema,ProjectionTableNameSchema,type AuthorityTableName,type RunRecordRefusal,type TableName } from "../../../models/config/authority.js";
+import { CHANGE_LOG_SCHEMA_VERSION, ChangeEntrySchema, RUN_REFERENCE_SOURCES, RunReferenceSourceSchema, SingletonImageSchema, currentRowKey, expectedRunReferences, singletonChangeKeys, sourceRowWhere, type ChangeEntry, type DependencyKey, type RunReferenceSource, type SingletonImage } from "./authority-change-log.js";
+import { AUTHORITY_DERIVED_TABLES,AUTHORITY_TABLE_REGISTRY,AuthorityTableNameSchema,CHANGE_LOG_TABLE,RUN_REFERENCES_TABLE,AuthorityEvidenceSchemaUpgradeRecordSchema,AuthorityUpgradeRecordSchema,ProjectionTableNameSchema,type AuthorityEvidenceSchemaUpgradeRecord,type AuthorityTableName,type RunRecordRefusal,type TableName } from "../../../models/config/authority.js";
+import { authorityUpgradeJournalOf, authorityUpgradeTransition, type AuthorityUpgradeJournalEvent } from "../../../rules/storage/upgrade-journal.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { type ActiveRuntimeConfigRecord,type RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
@@ -50,6 +52,7 @@ import { WorkerPoolRecordSchema,workerPoolVersion,type WorkerPoolRecord } from "
 import { CanonicalCrashRecoveryRequestSchema,RunClaimTokenSchema } from "../../../models/run/worker.js";
 import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
 import { deriveBulkChildCommand,deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
+import { CommandRowStateSchema,type CommandRowState } from "../../../rules/commands/command-lifecycle.js";
 import { AuthorityCommandAuditRecordSchema,AuthorityCommandRecordSchema,BulkParentCommandRecordSchema,BulkRunCommandAcceptanceRecordSchema,CommandAuditRecordSchema,CommandIdentityConflictError,CommandRequestSchema,RunLifecycleCommandAuditRecordSchema,RunLifecycleCommandRecordSchema,StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
@@ -75,7 +78,7 @@ import { privatePathRejects } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
-import { NativeCommandAuditSchema,commandFromRow,insertNativeCommand,settleNativeCommand,settledRunDeletionIds } from "./command-record-row.js";
+import { NativeCommandAuditSchema,commandFromRow,convertPredecessorCommandRowState,insertNativeCommand,settleNativeCommand,settledRunDeletionIds } from "./command-record-row.js";
 import { authoritySourceDatabaseIdentity,type AuthorityBackupExpectedSource } from "./database-identity.js";
 import { deletedRunFromRow } from "./deleted-run-row.js";
 import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
@@ -93,12 +96,12 @@ import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatem
 import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessorCommandFromRow, predecessorCustodyRunFromRow, predecessorCustodyRunRow, predecessorLifecycleRequest, predecessorWorkerSlotFromRow } from "./worker-custody-predecessor.js";
 import { predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitionRunRecord,transitionStoredRun,updateRunRecord } from "./run-record-row.js";
-import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
+import { SearchStateColumnSchema,createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
 import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
-import { readAppSettings, migratePersonPreferences } from "./settings-storage.js";
+import { readAppSettings, migrateSettingsRecords } from "./settings-storage.js";
 import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } from "./timeline-repository.js";
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
@@ -127,9 +130,11 @@ import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { ASSISTANT_HISTORY_MIGRATION, assistantConversationFromRow, assistantMessageFromRow, createAssistantHistoryRepository } from "./assistant-history.js";
 import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow, migrateAssistantEffortScale } from "./assistant-effort-migration.js";
+import { FAILURE_NOTE_REMOVAL_CONVERSION_ID, FAILURE_NOTE_REMOVAL_SCHEMA_VERSION, convertFailureNoteRow, migrateFailureNotes } from "./failure-note-removal-migration.js";
 import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertNoAssistantGrantHistory } from "./assistant-grant-retirement.js";
 import { assistantAttachmentFromRow, byteAwareRow } from "./assistant-attachments.js";
-import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
+import { RECOGNIZED_AUTHORITY_SCHEMA_VERSIONS } from "../../../models/config/authority-schema-versions.js";
+import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,COMMAND_ROW_STATE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,WORKER_CUSTODY_DROPPED_TABLES,WORKER_CUSTODY_SCHEMA_VERSION,isWorkerCustodyDroppedTable,SQLITE_MIGRATIONS,WORKER_CUSTODY_CONVERSION_ID,WORKER_CUSTODY_SCAN_ID,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,OPENABLE_AUTHORITY_SCHEMA_VERSIONS,UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema,type ArtifactOutboxStorageRecord,type ArtifactSinkHeadRecord,type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
@@ -228,7 +233,7 @@ type ReadRepository<RecordValue> = Readonly<{
 
 type CommandNoticeRead = Readonly<{
   request: z.infer<typeof CommandRequestSchema>;
-  state: "admitted" | "executing" | "succeeded" | "refused" | "uncertain";
+  state: CommandRowState;
   result?: z.infer<typeof CommandAuditRecordSchema>["result"];
 }>;
 type CommandRepository = Readonly<{
@@ -295,6 +300,8 @@ type SettingsCurrentRepository = Readonly<{
 
 type DependencyRepository = Readonly<{
   authenticateGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup>;
+  /** The open read snapshot's authentications, for the database's own repositories only; undefined in a write transaction and outside a snapshot. */
+  snapshotMemo(repositories: AuthorityRepositories): DelegationAuthenticationMemo | undefined;
   parents(envelopes: readonly RunRecord["envelope"][]): ReturnType<typeof readQueueParents>;
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof DependencyRecordSchema>>;
   get(dependencyId: string): z.infer<typeof DependencyRecordSchema> | undefined;
@@ -364,6 +371,9 @@ export interface AuthorityLifecycleHooks {
   }>): void;
 }
 
+/** Called after an outermost write or read snapshot settles, and only when it took more than 50 ms. */
+export type SlowOperationHook = (operation: Readonly<{ name: string; durationMs: number }>) => void;
+
 
 type RunCheckpointRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<RunCheckpointRecord>;
@@ -401,7 +411,7 @@ const UNRELEASED_QUIT_HOLD_SQL = `held.family='application'
   AND json_extract(held.request_json,'$.type')='pause-all-and-quit'
   AND json_extract(held.request_json,'$.payload.confirmed')=1
   AND json_extract(held.request_json,'$.target.runtimeGeneration')=?
-  AND NOT EXISTS(SELECT 1 FROM commands release WHERE release.state IN ('executing','succeeded') AND release.family='run-lifecycle'
+  AND NOT EXISTS(SELECT 1 FROM commands release WHERE release.state='succeeded' AND release.family='run-lifecycle'
     AND json_extract(release.request_json,'$.operation')='application-admission'
     AND json_extract(release.request_json,'$.request.runtimeGeneration')=?
     AND json_extract(release.request_json,'$.request.releases')=held.id)`;
@@ -695,7 +705,7 @@ function errorMessage(error: unknown): string {
 
 function readIntPragma(
   database: DatabaseSync,
-  name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout" | "data_version",
+  name: "application_id" | "user_version" | "foreign_keys" | "synchronous" | "busy_timeout" | "data_version" | "schema_version",
 ): number {
   const row = IntPragmaRowSchema.parse(database.prepare(`PRAGMA ${name}`).get());
   const value = row[name === "busy_timeout" ? "timeout" : name];
@@ -717,9 +727,11 @@ function readTextPragma(database: DatabaseSync, name: "journal_mode"): string {
   return value;
 }
 
+/** The registry tables present; the change log's derived tables are checked as schema objects and against their sources instead. */
 function inspectionTableNames(database: DatabaseSync): string[] {
+  const derived = readIntPragma(database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION ? AUTHORITY_DERIVED_TABLES : [];
   return database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-    .all().map(row => TableNameRowSchema.parse(row).name);
+    .all().map(row => TableNameRowSchema.parse(row).name).filter(name => !derived.some(table => table === name));
 }
 
 function tableNames(database: DatabaseSync): TableName[] {
@@ -732,15 +744,20 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
     : "SELECT schema_version,authority_generation,updated_at FROM database_states WHERE id=1").get());
 }
 
-function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { return Object.freeze([
-  { name: "run-owner-exclusivity", sql: "SELECT count(*) AS count FROM runs JOIN deleted_runs ON deleted_runs.run_id=runs.id" },
+/** Each invariant declares the key kind it is grouped by; `scoped` limits it to the rows of the given keys, bound as one JSON array. */
+function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION, scoped = false) {
+  const only = (column: string) => scoped ? `${column} IN (SELECT value FROM json_each(?))` : "1";
+  return Object.freeze([
+  { name: "run-owner-exclusivity", scope: "run", sql: `SELECT count(*) AS count FROM runs JOIN deleted_runs ON deleted_runs.run_id=runs.id WHERE ${only("runs.id")}` },
 {
-    name: "run-completion-revisions",
+    name: "run-completion-revisions", scope: "run",
     sql: `SELECT count(*) AS count FROM runs AS run
-      WHERE json_type(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion') IS 'object'
+      WHERE ${only("run.id")} AND json_type(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion') IS 'object'
         AND run.version - json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.expectedVersion') - 1 <> (
-          SELECT count(DISTINCT json_extract(audit.payload_json, '$.result.appliedVersion')) FROM command_audits AS audit
-          WHERE json_extract(audit.payload_json, '$.kind') = 'run-lifecycle'
+          SELECT count(DISTINCT json_extract(audit.payload_json, '$.result.appliedVersion')) FROM ${schemaVersion >= CHANGE_LOG_SCHEMA_VERSION
+            ? `${RUN_REFERENCES_TABLE} AS reference JOIN command_audits AS audit ON audit.id = json_extract(reference.row_key, '$[0]')
+          WHERE reference.run_id = run.id AND reference.table_name = 'command_audits' AND`
+            : "command_audits AS audit WHERE"} json_extract(audit.payload_json, '$.kind') = 'run-lifecycle'
             AND json_extract(audit.payload_json, '$.result.kind') = 'run'
             AND json_extract(audit.payload_json, '$.result.runId') = run.id
             AND json_extract(audit.payload_json, '$.request.operation') IN ('transition')
@@ -750,12 +767,12 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
             AND json_extract(audit.payload_json, '$.result.appliedVersion') <= run.version)` ,
   },
 {
-    name: "run-completion-consequences",
+    name: "run-completion-consequences", scope: "run",
     sql: `SELECT count(*) AS count FROM runs AS run
       LEFT JOIN run_results AS result ON result.run_id = run.id AND ${schemaVersion >= 20 ? CURRENT_RUN_SETTLEMENT_SQL.replaceAll("settlement.","result.") : "1"}
       LEFT JOIN run_failures AS failure ON failure.run_id = run.id
         ${schemaVersion >= 21 ? "AND failure.id=json_extract(run.lifecycle_json,'$.completion.failureId')" : ""}
-      WHERE COALESCE(json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') IN ('done','failed'), 0)
+      WHERE ${only("run.id")} AND (COALESCE(json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') IN ('done','failed'), 0)
         IS NOT (json_type(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion') IS 'object')
         OR (json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.kind') = 'done' AND (
           result.run_id IS NULL OR failure.id IS NOT NULL
@@ -764,19 +781,19 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
           failure.id IS NULL OR result.run_id IS NULL
           OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.failureId') IS NOT failure.id
           OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.errorSummary') IS NOT json_extract(failure.payload_json, '$.summary')
-          OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.diagnosticSafetyVersion') IS NOT json_extract(failure.payload_json, '$.diagnosticSafetyVersion')))` ,
+          OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.diagnosticSafetyVersion') IS NOT json_extract(failure.payload_json, '$.diagnosticSafetyVersion'))))` ,
   },
 {
-    name: "final-runs-bind-result-owner",
+    name: "final-runs-bind-result-owner", scope: "run",
     sql: `SELECT count(*) AS count FROM runs AS run
       LEFT JOIN run_results AS result ON result.run_id=run.id AND ${schemaVersion >= 20 ? CURRENT_RUN_SETTLEMENT_SQL.replaceAll("settlement.","result.") : "1"}
-      WHERE run.state='terminal' AND run.outcome<>'interrupted' AND result.run_id IS NULL`,
+      WHERE ${only("run.id")} AND run.state='terminal' AND run.outcome<>'interrupted' AND result.run_id IS NULL`,
   },
 {
-    name: "failed-runs-bind-failure",
+    name: "failed-runs-bind-failure", scope: "run",
     sql: `
       SELECT count(*) AS count FROM runs AS run
-      WHERE json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') = 'failed'
+      WHERE ${only("run.id")} AND json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') = 'failed'
         AND NOT EXISTS (
           SELECT 1 FROM run_failures AS failure
           WHERE failure.id = json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.failureId')
@@ -785,11 +802,11 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
     `,
   },
 {
-    name: "failures-bind-failed-run",
+    name: "failures-bind-failed-run", scope: "run",
     sql: `
       SELECT count(*) AS count FROM run_failures AS failure
       JOIN runs AS run ON run.id = failure.run_id
-      WHERE ${schemaVersion >= 21 ? `NOT EXISTS (
+      WHERE ${only("run.id")} AND (${schemaVersion >= 21 ? `NOT EXISTS (
         SELECT 1 FROM run_results result WHERE result.run_id=run.id
           AND json_extract(result.terminal_run_json,'$.lifecycle.outcome')='failed'
           AND json_extract(result.terminal_run_json,'$.lifecycle.failureId')=failure.id
@@ -798,80 +815,80 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
           AND json_extract(result.payload_json,'$.result.value.authorization.failureId')=failure.id
           AND result.settlement_version=json_extract(result.terminal_run_json,'$.completion.expectedVersion')+1
       )` : `json_extract(run.lifecycle_json, '$.lifecycle.outcome') IS NOT 'failed'
-        OR json_extract(run.lifecycle_json, '$.lifecycle.failureId') IS NOT failure.id`}
+        OR json_extract(run.lifecycle_json, '$.lifecycle.failureId') IS NOT failure.id`})
     `,
   },
 {
-    name: "failure-identity-matches-run",
+    name: "failure-identity-matches-run", scope: "run",
     sql: `
       SELECT count(*) AS count FROM run_failures AS failure
       JOIN runs AS run ON run.id = failure.run_id
-      WHERE json_extract(failure.payload_json, '$.workflowId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.workflow')
+      WHERE ${only("run.id")} AND (json_extract(failure.payload_json, '$.workflowId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.workflow')
         OR json_extract(failure.payload_json, '$.traceId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.traceId')
-        OR json_extract(failure.payload_json, '$.attempt') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.attempt')
+        OR json_extract(failure.payload_json, '$.attempt') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.attempt'))
     `,
   },
 {
-    name: "run-result-identity-matches-run",
+    name: "run-result-identity-matches-run", scope: "run",
     sql: `
       SELECT count(*) AS count FROM run_results AS result
       JOIN runs AS run ON run.id = result.run_id
-      WHERE json_extract(result.payload_json, '$.workflowId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.workflow')
+      WHERE ${only("run.id")} AND (json_extract(result.payload_json, '$.workflowId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.workflow')
         OR json_extract(result.payload_json, '$.attempt') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.attempt')
         OR json_extract(result.payload_json, '$.descriptorVersion') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.descriptorVersion')
         OR json_extract(result.payload_json, '$.contractFingerprint') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.contractFingerprint')
         OR json_extract(result.payload_json, '$.configFingerprint') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.configFingerprint')
-        OR json_extract(result.payload_json, '$.configSnapshotId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.configSnapshotId')
+        OR json_extract(result.payload_json, '$.configSnapshotId') <> json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.configSnapshotId'))
     `,
   },
 {
-    name: "results-bind-terminal-run",
+    name: "results-bind-terminal-run", scope: "run",
     sql: `
       SELECT count(*) AS count FROM run_results AS result
       JOIN runs AS run ON run.id = result.run_id
-      WHERE ${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.state')" : "run.state"} IS NOT 'terminal' OR ${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} IS 'interrupted'
+      WHERE ${only("run.id")} AND (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.state')" : "run.state"} IS NOT 'terminal' OR ${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} IS 'interrupted'
         OR (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} = 'done' AND json_extract(result.payload_json,'$.result.value.kind') IN ('failed-evidence','lifecycle-evidence'))
         OR (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} = 'failed' AND json_extract(result.payload_json,'$.result.value.kind') IS NOT 'failed-evidence')
-        OR (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} IN ('cancelled','discarded','superseded') AND json_extract(result.payload_json,'$.result.value.kind') IS NOT 'lifecycle-evidence')
+        OR (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} IN ('cancelled','discarded','superseded') AND json_extract(result.payload_json,'$.result.value.kind') IS NOT 'lifecycle-evidence'))
     `,
   },
 {
     // Check one-active-run ownership before claiming; a second active row is a loop defect.
-    name: "worker-owns-at-most-one-active-run",
+    name: "worker-owns-at-most-one-active-run", scope: "worker",
     sql: `
       SELECT count(*) AS count FROM (
         SELECT owner_worker_id FROM runs
-        WHERE state IN ('claimed','validating','running')
+        WHERE ${only("owner_worker_id")} AND state IN ('claimed','validating','running')
         GROUP BY owner_worker_id HAVING count(*) > 1
       )
     `,
   },
 {
-    name: "diagnostic-attachment-binds-its-bundle",
+    name: "diagnostic-attachment-binds-its-bundle", scope: "snapshot",
     sql: `
       SELECT count(*) AS count FROM diagnostic_files AS attachment
       LEFT JOIN diagnostic_snapshots AS bundle ON bundle.id = attachment.snapshot_id
-      WHERE bundle.id IS NULL
+      WHERE ${only("attachment.snapshot_id")} AND (bundle.id IS NULL
         OR attachment.id IS NOT (attachment.snapshot_id || ':' || attachment.artifact_id)
         OR attachment.snapshot_id IS NOT json_extract(attachment.payload_json, '$.bundleId')
         OR attachment.artifact_id IS NOT json_extract(attachment.payload_json, '$.attachment.artifactId')
-        OR attachment.digest IS NOT json_extract(attachment.payload_json, '$.attachment.digest')
+        OR attachment.digest IS NOT json_extract(attachment.payload_json, '$.attachment.digest'))
     `,
   },
 {
-    name: "diagnostic-bundle-attachments-are-indexed",
+    name: "diagnostic-bundle-attachments-are-indexed", scope: "snapshot",
     sql: `
       SELECT count(*) AS count FROM diagnostic_snapshots AS bundle
-      WHERE json_array_length(bundle.payload_json, '$.attachments')
+      WHERE ${only("bundle.id")} AND json_array_length(bundle.payload_json, '$.attachments')
         <> (SELECT count(*) FROM diagnostic_files AS attachment WHERE attachment.snapshot_id = bundle.id)
     `,
   },
 {
-    name: "started-dry-run-scenario-result-binds-run",
+    name: "started-dry-run-scenario-result-binds-run", scope: "run",
     sql: `
       SELECT count(*) AS count FROM dryrun_results AS result
       LEFT JOIN runs AS run ON run.id = result.run_id
-      WHERE result.execution_state = 'started' AND (
+      WHERE ${only("result.run_id")} AND result.execution_state = 'started' AND (
         run.id IS NULL
         OR result.workflow IS NOT run.workflow
         OR result.trace_id IS NOT json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.envelope.traceId')
@@ -882,10 +899,10 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
     `,
   },
 {
-    name: "attempting-write-has-current-attempt",
+    name: "attempting-write-has-current-attempt", scope: "intent",
     sql: `
       SELECT count(*) AS count FROM write_intents AS intent
-      WHERE intent.status = 'attempting' AND NOT EXISTS (
+      WHERE ${only("intent.id")} AND intent.status = 'attempting' AND NOT EXISTS (
         SELECT 1 FROM write_attempts AS attempt
         WHERE attempt.id = json_extract(intent.payload_json, '$.currentAttemptId')
           AND attempt.intent_id = intent.id
@@ -895,20 +912,39 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
   }
 ] as const); }
 
-function invariantViolations(database: DatabaseSync): readonly string[] {
-  const violations = invariantQueries(readIntPragma(database,"user_version")).flatMap(({ name, sql }) => {
-    const { count } = CountRowSchema.parse(database.prepare(sql).get());
+/** The keys an invariant check is limited to, by the kind each invariant is grouped by; omitted, every row is checked. */
+type InvariantScope = Readonly<{ run: ReadonlySet<string>; worker: ReadonlySet<string>; snapshot: ReadonlySet<string>; intent: ReadonlySet<string>;
+  /** Commands whose group links are re-derived: changed commands, and the children of changed parents. */
+  command: ReadonlySet<string> }>;
+
+function invariantViolations(database: DatabaseSync, scope?: InvariantScope): readonly string[] {
+  const violations = invariantQueries(readIntPragma(database,"user_version"), scope !== undefined).flatMap(({ name, scope: kind, sql }) => {
+    if (scope !== undefined && scope[kind].size === 0) return [];
+    const statement = database.prepare(sql);
+    const { count } = CountRowSchema.parse(scope === undefined ? statement.get() : statement.get(JSON.stringify([...scope[kind]])));
     return count === 0 ? [] : [`${name} failed for ${String(count)} row(s)`];
   });
-  return [...violations, ...commandGroupLinkViolations(database)];
+  return [...violations, ...commandGroupLinkViolations(database, scope)];
 }
 
-/** Validate both declared links and missing links from each immutable parent selection. */
-function commandGroupLinkViolations(database: DatabaseSync): readonly string[] {
+/**
+ * Validate both declared links and missing links from each immutable parent selection; `scope` limits the links checked to its
+ * commands. A child's request names the run its parent targets, so the parents that could claim a scoped command are the bulk
+ * parents referencing a scoped run, and the scope's runs include every run a scoped command referenced before or after.
+ */
+function commandGroupLinkViolations(database: DatabaseSync, scope?: Readonly<{ command: ReadonlySet<string>; run: ReadonlySet<string> }>): readonly string[] {
+  if (scope?.command.size === 0) return [];
+  const commands = scope?.command;
   const rowSchema = z.strictObject({ id: z.string(), request_json: z.string(), parent_id: z.string().nullable() });
-  const rows = database.prepare("SELECT id, request_json, parent_id FROM commands ORDER BY id").all()
-    .map((row) => rowSchema.parse(row));
+  const rows = scope === undefined
+    ? database.prepare("SELECT id, request_json, parent_id FROM commands ORDER BY id").all().map((row) => rowSchema.parse(row))
+    : database.prepare(`SELECT id, request_json, parent_id FROM commands WHERE id IN (SELECT value FROM json_each(?1)) OR parent_id IN (SELECT value FROM json_each(?1))
+        OR id IN (SELECT parent_id FROM commands WHERE id IN (SELECT value FROM json_each(?1)))
+      UNION SELECT parent.id, parent.request_json, parent.parent_id FROM ${RUN_REFERENCES_TABLE} AS reference JOIN commands AS parent ON parent.id = json_extract(reference.row_key, '$[0]')
+        WHERE reference.run_id IN (SELECT value FROM json_each(?2)) AND reference.table_name = 'commands' AND parent.family = 'bulk-parent'
+      ORDER BY id`).all(JSON.stringify([...scope.command]), JSON.stringify([...scope.run])).map((row) => rowSchema.parse(row));
   const byId = new Map(rows.map((row) => [row.id, row]));
+  const checked = (id: string) => commands === undefined || commands.has(id) || commands.has(byId.get(id)?.parent_id ?? "");
   const expected = new Map<string, string>();
   for (const row of rows) {
     const raw: unknown = JSON.parse(row.request_json);
@@ -917,13 +953,13 @@ function commandGroupLinkViolations(database: DatabaseSync): readonly string[] {
     for (const target of parent.acceptance.request.targets) {
       const child = deriveBulkChildCommand(parent.acceptance.request, target);
       const saved = byId.get(child.commandId);
-      if (saved === undefined) continue;
+      if (saved === undefined || !(checked(child.commandId) || checked(parent.commandId))) continue;
       if (expected.has(child.commandId) && expected.get(child.commandId) !== parent.commandId) return ["command-group ambiguous child ownership"];
       if (canonicalJsonStringify(JSON.parse(saved.request_json) as unknown) !== canonicalJsonStringify(child)) return ["command-group child request mismatch"];
       expected.set(child.commandId, parent.commandId);
     }
   }
-  return rows.flatMap((row) => row.parent_id === (expected.get(row.id) ?? null)
+  return rows.flatMap((row) => !checked(row.id) || row.parent_id === (expected.get(row.id) ?? null)
     ? [] : ["command-group child linkage mismatch"]);
 }
 
@@ -1145,17 +1181,11 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
 
 
 function nativeTableKey(table: AuthorityTableName | "explorer_overrides" | typeof WORKER_CUSTODY_DROPPED_TABLES[number] | typeof RETIRED_ASSISTANT_GRANT_TABLE, database: DatabaseSync): string {
-  if (table === "run_results") return readIntPragma(database,"user_version") >= 20 ? "id" : "run_id";
-  if (table === "deleted_runs" || table === "run_search") return "run_id";
-  if (table === "worker_pools") return "workflow";
-  if (table === "workflow_workbook_selections") return "workflow_id";
-  if (table === "workbook_library_history") return readIntPragma(database, "user_version") >= 13
-    ? "workbook_id,version,name" : "workbook_id,version,payload_json";
-  if (table === "workbook_operations") return "sequence";
+  if (table === "run_results" && readIntPragma(database, "user_version") < 20) return "run_id";
+  if (table === "workbook_library_history" && readIntPragma(database, "user_version") < 13) return "workbook_id,version,payload_json";
   if (table === "worker_controls") return "command_id";
-  if (table === "auth_leases") return "credential_key";
-  if (table === "timeline_events") return "cursor";
-  return "id";
+  const current = AuthorityTableNameSchema.safeParse(table);
+  return current.success ? currentRowKey(current.data).join(",") : "id";
 }
 
 function authenticateStoredWriteResolution(database: DatabaseSync, input: unknown, read: StoredReaders = CURRENT_READERS): void {
@@ -1308,27 +1338,66 @@ function inspectionRunReader(expectedSchemaVersion: number): (raw: unknown) => P
   };
 }
 
-function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, workbookPayloads = true): number {
+/** What validating one stored row needs: the store, its schema's readers and the row conversions of the schemas above it. */
+type StoredRowContext = Readonly<{ database: DatabaseSync; read: StoredReaders; expectedSchemaVersion: number; predecessorCustody: boolean;
+  convertPreferences: (table: string, row: unknown) => unknown }>;
+
+function storedRowContext(database: DatabaseSync, expectedSchemaVersion: number): StoredRowContext {
   const predecessorCustody = expectedSchemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
   const read: StoredReaders = { ...(predecessorCustody ? PREDECESSOR_CUSTODY_READERS : CURRENT_READERS), run: inspectionRunReader(expectedSchemaVersion) };
   const convertPreferences = (table: string, row: unknown) => {
-    const person = expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
-    return expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
+    const person = expectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow(table, row) : row;
+    const effort = expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
+    const state = expectedSchemaVersion < COMMAND_ROW_STATE_SCHEMA_VERSION ? convertPredecessorCommandRowState(table, effort) : effort;
+    return expectedSchemaVersion < FAILURE_NOTE_REMOVAL_SCHEMA_VERSION ? convertFailureNoteRow(table, state) : state;
   };
+  return { database, read, expectedSchemaVersion, predecessorCustody, convertPreferences };
+}
+
+/** Tables validated as a whole family (workbooks) or by a conversion (retired and custody-dropped tables), never row by row. */
+function validatedRowByRow(table: AuthorityTableName | "explorer_overrides" | typeof WORKER_CUSTODY_DROPPED_TABLES[number] | typeof RETIRED_ASSISTANT_GRANT_TABLE): table is AuthorityTableName {
+  return !(table.startsWith("workbook_") || table === "explorer_overrides" || table === RETIRED_ASSISTANT_GRANT_TABLE || isWorkerCustodyDroppedTable(table));
+}
+
+function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, workbookPayloads = true): number {
+  const context = storedRowContext(database, expectedSchemaVersion);
   if (expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION) assertNoAssistantGrantHistory(database);
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
     // The custody conversion validates the tables it drops.
-    if (table.startsWith("workbook_") || table === "explorer_overrides" || table === RETIRED_ASSISTANT_GRANT_TABLE || isWorkerCustodyDroppedTable(table)) continue;
+    if (!validatedRowByRow(table)) continue;
     if (table === "run_search" && (!validateSearch || !searchReady)) continue;
     const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
       : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
     for (const raw of database.prepare(`SELECT * FROM ${table}${retained} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
+      validateStoredRow(context, table, raw);
+      validated++;
+    }
+  }
+  validated += validateAuthorityFamilies(context, workbookPayloads);
+  return validated;
+}
+
+/** The library, the assistant preference and settings are each validated as one family; returns the library rows validated. */
+function validateAuthorityFamilies(context: StoredRowContext, workbookPayloads = true, families: ReadonlySet<AuthorityFamily> = ALL_AUTHORITY_FAMILIES): number {
+  const { database, expectedSchemaVersion, convertPreferences } = context;
+  let validated = 0;
+  if (families.has("workbook") && workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18,
+    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version);
+  // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
+  if (families.has("assistant-preference") && expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
+  if (families.has("settings")) try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
+  return validated;
+}
+
+/** Validates one stored row exactly as the whole-store check does. */
+function validateStoredRow(context: StoredRowContext, table: AuthorityTableName, raw: Record<string, unknown>): void {
+  const { database, read, expectedSchemaVersion, predecessorCustody, convertPreferences } = context;
       try {
         if (table === "database_states") {
           const row = z.strictObject({id:z.literal(1),schema_version:z.literal(expectedSchemaVersion),authority_generation:z.number().int().nonnegative(),updated_at:IsoInstantSchema,
-            search_generation:z.number().int().nonnegative().nullable(),search_state:z.enum(["unbuilt","ready","invalid"]),
+            search_generation:z.number().int().nonnegative().nullable(),search_state:SearchStateColumnSchema,
             ...(expectedSchemaVersion >= 7 ? { installation_id: z.uuid(), profile_id: z.uuid() } : {}) }).parse(raw);
           if (row.search_state === "ready" && row.search_generation !== row.authority_generation) throw new Error("search-generation-mismatch");
         } else if (table === "runs") read.run(raw);
@@ -1394,15 +1463,188 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
           }
         } else throw new Error("native row admission is undefined");
       } catch (error) { throw new Error(`authority table ${table} failed native record validation: ${errorMessage(error)}`,{cause:error}); }
-      validated++;
-    }
+}
+
+type AuthorityFamily = "workbook" | "assistant-preference" | "settings";
+const ALL_AUTHORITY_FAMILIES: ReadonlySet<AuthorityFamily> = new Set(["workbook", "assistant-preference", "settings"]);
+type StoredRow = Record<string, unknown>;
+
+type Dependents = (database: DatabaseSync, key: DependencyKey) => readonly StoredRow[];
+
+const RowsSchema = z.array(z.record(z.string(), z.unknown()));
+function selectRows(database: DatabaseSync, sql: string, ...values: SQLInputValue[]): readonly StoredRow[] {
+  return RowsSchema.parse(database.prepare(sql).all(...values));
+}
+
+const COLUMN_KEY_KINDS = ["run", "worker", "snapshot", "intent", "command", "chat"] as const;
+type ColumnKeys = Readonly<Partial<Record<typeof COLUMN_KEY_KINDS[number], string>>>;
+
+/** Rows of `table` whose column equals the key's value, for each key kind listed. */
+function byColumn(table: AuthorityTableName, columns: ColumnKeys): Dependents {
+  return (database, key) => {
+    const kind = COLUMN_KEY_KINDS.find(candidate => key.startsWith(`${candidate}:`));
+    const column = kind === undefined ? undefined : columns[kind];
+    return kind === undefined || column === undefined ? [] : selectRows(database, `SELECT * FROM ${table} WHERE ${column}=?`, key.slice(kind.length + 1));
+  };
+}
+
+/** Rows of a run reference source whose JSON names the key's run, found through `run_references`. */
+function byRunReference(table: RunReferenceSource): Dependents {
+  const join = currentRowKey(table).map((column, index) => `source.${column}=json_extract(reference.row_key,'$[${String(index)}]')`).join(" AND ");
+  return (database, key) => key.startsWith("run:")
+    ? selectRows(database, `SELECT source.* FROM ${RUN_REFERENCES_TABLE} AS reference JOIN ${table} AS source ON ${join} WHERE reference.run_id=? AND reference.table_name='${table}'`, key.slice(4))
+    : [];
+}
+
+/**
+ * The rows of `table` whose validator reads a row emitting `key`. Most validators read only their own row; the rest read rows
+ * owned by the same run, a command's audit or a chat. The keys each row emits are generated SQL in the capture triggers.
+ */
+function tableDependents(database: DatabaseSync, table: AuthorityTableName, key: DependencyKey): readonly StoredRow[] {
+  switch (table) {
+    case "command_audits": return [...byColumn(table, { command: "command_id" })(database, key), ...byRunReference(table)(database, key)];
+    case "write_intents": return [...byColumn(table, { run: "run_id", intent: "id" })(database, key), ...byRunReference(table)(database, key)];
+    case "assistant_actions": return byColumn(table, { chat: "chat_id" })(database, key);
+    case "run_results": case "run_receipts": case "timeline_events": case "run_search": return byColumn(table, { run: "run_id" })(database, key);
+    default: return [];
   }
-  if (workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18,
-    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version);
-  // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
-  if (expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
-  try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
-  return validated;
+}
+
+/** Parent runs read their delegated children's settlements, so a run key also reaches every ancestor. */
+function withAncestorRuns(database: DatabaseSync, runs: Set<string>): void {
+  const pending = [...runs];
+  for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
+    const parent = z.object({ parent_id: z.string().nullable() }).optional().parse(database.prepare("SELECT parent_id FROM runs WHERE id=?").get(id))?.parent_id;
+    if (parent != null && !runs.has(parent)) { runs.add(parent); pending.push(parent); }
+  }
+}
+
+const SourceKeySchema = z.tuple([RunReferenceSourceSchema, z.string()]);
+const RunIdRowsSchema = z.array(z.object({ run_id: z.string() }));
+const ReferenceRowsSchema = z.array(z.object({ run_id: z.string(), table_name: z.string(), row_key: z.string() }));
+
+/** The runs one source row references: its stored links must equal what its current image implies, or the store is refused. */
+function sourceRowRuns(database: DatabaseSync, table: RunReferenceSource, rowKey: string): readonly string[] {
+  const stored = RunIdRowsSchema.parse(database.prepare(`SELECT run_id FROM ${RUN_REFERENCES_TABLE} WHERE table_name=? AND row_key=? ORDER BY run_id`).all(table, rowKey));
+  const members = z.array(z.union([z.string(), z.number()])).parse(JSON.parse(rowKey));
+  const expected = RunIdRowsSchema.parse(database.prepare(`SELECT DISTINCT run_id FROM (${expectedRunReferences(table, sourceRowWhere(table))}) ORDER BY run_id`)
+    .all(...RUN_REFERENCE_SOURCES[table].flatMap(() => members)));
+  if (canonicalJsonStringify(stored) !== canonicalJsonStringify(expected)) throw new Error(`run-references-mismatch: ${table} ${rowKey}`);
+  return stored.map(({ run_id }) => run_id);
+}
+
+/** Every stored link must equal the set the source rows imply. */
+function assertRunReferences(database: DatabaseSync): void {
+  // Each side is a subquery: a bare `a EXCEPT b UNION c` groups as `(a EXCEPT b) UNION c`.
+  const expected = `SELECT * FROM (${RunReferenceSourceSchema.options.map(table => expectedRunReferences(table)).join(" UNION ")})`;
+  const stored = `SELECT * FROM (SELECT run_id,table_name,row_key FROM ${RUN_REFERENCES_TABLE})`;
+  const differing = ReferenceRowsSchema.parse(database.prepare(`SELECT * FROM (${stored} EXCEPT ${expected}) UNION ALL SELECT * FROM (${expected} EXCEPT ${stored}) LIMIT 1`).all());
+  if (differing.length > 0) throw new Error("run-references-mismatch");
+}
+
+/** The logged changes after `after`, strictly parsed, in commit order. */
+export function readAuthorityChanges(database: DatabaseSync, after: number): readonly ChangeEntry[] {
+  return z.array(ChangeEntrySchema).parse(database.prepare(`SELECT seq,table_name,row_key,op,keys_json FROM ${CHANGE_LOG_TABLE} WHERE seq>? ORDER BY seq`).all(after));
+}
+
+/** The singleton fields a reader compares with the image it last validated; a missing singleton is refused. */
+export function readSingletonImage(database: DatabaseSync): SingletonImage {
+  return SingletonImageSchema.parse(database.prepare("SELECT search_state,search_generation,profile_id FROM database_states WHERE id=1").get());
+}
+
+/** The newest sequence number the change log ever issued; entries above a reader's cursor must run contiguously up to it. */
+function changeLogHighWater(database: DatabaseSync): number {
+  return z.object({ seq: z.number().int().nonnegative() }).optional().parse(database.prepare("SELECT seq FROM sqlite_sequence WHERE name=?").get(CHANGE_LOG_TABLE))?.seq ?? 0;
+}
+
+/** Entries kept for readers that fall behind; older ones are pruned, and a reader below the floor runs the whole-store check. */
+const CHANGE_LOG_RETAINED_ENTRIES = 100_000;
+const CHANGE_LOG_PRUNE_INTERVAL_MS = 60_000;
+
+/**
+ * One connection's position in the change log. Every entry at or below `cursor` is validated or the connection's own;
+ * `wholeStore` is set after a schema move or a gap, until a whole-store check passes; `failed` records the last refusal;
+ * `settled` is the position a passing search-`none` admit reached, which a restart rebuild's commit settles to.
+ */
+type ChangeLogReader = { cursor: number; schemaCookie: number; singleton: SingletonImage; wholeStore: boolean;
+  failed: "authority" | "projection-only" | undefined; settled: Readonly<{ cursor: number; dataVersion: number }> | undefined };
+
+function changeLogBaseline(database: DatabaseSync): ChangeLogReader {
+  return { cursor: changeLogHighWater(database), schemaCookie: readIntPragma(database, "schema_version"), singleton: readSingletonImage(database),
+    wholeStore: false, failed: undefined, settled: undefined };
+}
+
+/**
+ * How a reader re-validated a set of changes: `scoped` checked only their closure; `whole` ran the whole-store check because a
+ * change reaches every row of a kind (a completed search publication or a profile change).
+ */
+export type AuthorityChangeRoute = "scoped" | "whole";
+
+/**
+ * Re-validates exactly the units a set of logged changes can affect: each changed row's current image, every row whose
+ * validator reads a changed row, the families they belong to, the invariants and search coverage of their keys. Throws
+ * whenever the whole-store check (`validateAuthorityStore`) would throw for the same store. `singletonKeys` are the keys of
+ * the singleton's change since the reader last validated it (`singletonChangeKeys`).
+ */
+export function validateAuthorityChanges(database: DatabaseSync, entries: readonly ChangeEntry[], singletonKeys: readonly DependencyKey[],
+  search: "all" | "progress" | "none" = "all"): AuthorityChangeRoute {
+  const keys = new Set<DependencyKey>([...entries.flatMap(entry => entry.keys), ...singletonKeys]);
+  const searchReady = z.object({ search_state: z.string() }).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
+  if (keys.has("profile") || (keys.has("search-publication") && searchReady)) {
+    validateAuthorityStore(database, search);
+    return "whole";
+  }
+  const context = storedRowContext(database, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  const ofKind = (kind: string) => new Set([...keys].flatMap(key => key.startsWith(`${kind}:`) ? [key.slice(kind.length + 1)] : []));
+  const runs = ofKind("run");
+  for (const source of ofKind("source")) {
+    const [table, rowKey] = SourceKeySchema.parse(JSON.parse(source));
+    for (const run of sourceRowRuns(database, table, rowKey)) runs.add(run);
+  }
+  for (const item of ofKind("item")) {
+    const [workflow, itemId] = z.tuple([z.string(), z.string()]).parse(JSON.parse(item));
+    for (const { id } of z.array(z.object({ id: z.string() })).parse(database.prepare("SELECT id FROM runs WHERE workflow=? AND item_id=?").all(workflow, itemId))) runs.add(id);
+  }
+  withAncestorRuns(database, runs);
+  for (const run of runs) keys.add(`run:${run}`);
+  const units = new Map<AuthorityTableName, Map<string, StoredRow>>();
+  const addUnit = (table: AuthorityTableName, row: StoredRow) => {
+    const rows = units.get(table) ?? new Map<string, StoredRow>();
+    units.set(table, rows.set(canonicalJsonStringify(currentRowKey(table).map(column => row[column])), row));
+  };
+  // The singleton has no capture triggers, since every write moves it: its one row is re-validated on every admit.
+  const singleton = database.prepare("SELECT * FROM database_states WHERE id=1").get();
+  if (singleton === undefined) throw new Error("authority-singleton-missing");
+  addUnit("database_states", singleton);
+  for (const entry of entries) {
+    if (entry.op === "delete" || entry.table === RUN_REFERENCES_TABLE || !validatedRowByRow(entry.table)) continue;
+    const current = database.prepare(`SELECT * FROM ${entry.table} WHERE ${currentRowKey(entry.table).map(column => `${column}=?`).join(" AND ")}`).get(...entry.rowKey);
+    if (current !== undefined) addUnit(entry.table, current);
+  }
+  for (const key of keys) for (const table of AuthorityTableNameSchema.options) {
+    if (validatedRowByRow(table)) for (const row of tableDependents(database, table, key)) addUnit(table, row);
+  }
+  for (const [table, rows] of units) {
+    if (table === "run_search" && (search !== "all" || !searchReady)) continue;
+    for (const row of rows.values()) validateStoredRow(context, table, row);
+  }
+  validateAuthorityFamilies(context, true, new Set([...ofKind("family")].map(family => z.enum(["workbook", "assistant-preference", "settings"]).parse(family))));
+  const violations = invariantViolations(database, { run: runs, worker: ofKind("worker"), snapshot: ofKind("snapshot"), intent: ofKind("intent"), command: ofKind("command") });
+  if (violations.length > 0) throw new Error("current composite authority is invalid");
+  if (search === "none") return "scoped";
+  const index = createRunSearchIndex(database);
+  if (keys.has("search-publication")) index.validateCoverage();
+  else index.validateCoverageOf(runs, new Set(entries.flatMap(entry => entry.table === "run_search" ? [String(entry.rowKey[0])] : [])));
+  return "scoped";
+}
+
+/** The whole-store check a reader runs after another connection commits. */
+export function validateAuthorityStore(database: DatabaseSync, search: "all" | "progress" | "none" = "all"): void {
+  validateAuthorityRecordSchemas(database, search === "all");
+  if (readIntPragma(database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION) assertRunReferences(database);
+  const violations = invariantViolations(database);
+  if (violations.length > 0) throw new Error("current composite authority is invalid");
+  if (search !== "none") createRunSearchIndex(database).validateCoverage();
 }
 
 function authorityContentFingerprint(database: DatabaseSync, excludedUpgradeRecord?: string): string {
@@ -1458,7 +1700,7 @@ function fixedLayoutChangedAuthorityTables(before: DatabaseSync, after: Database
 function assertFixedLayoutPublications(before: DatabaseSync, after: DatabaseSync, sourceGeneration: number, activatedAt: string): void {
   const schema = z.strictObject({ id: z.literal(1), schema_version: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
     authority_generation: z.number().int().nonnegative(), updated_at: z.string(),
-    search_generation: z.number().int().nonnegative().nullable(), search_state: z.enum(["unbuilt", "ready", "invalid"]),
+    search_generation: z.number().int().nonnegative().nullable(), search_state: SearchStateColumnSchema,
     installation_id: z.uuid(), profile_id: z.uuid() });
   const prior = schema.parse(before.prepare("SELECT * FROM database_states WHERE id=1").get());
   const current = schema.parse(after.prepare("SELECT * FROM database_states WHERE id=1").get());
@@ -1552,7 +1794,7 @@ function runSearchDefinitions(): readonly string[] {
   const expected = new DatabaseSync(":memory:");
   try {
     for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) execMigrationStatement(expected, statement);
-    return z.array(z.strictObject({ sql: z.string() })).parse(expected.prepare("SELECT sql FROM sqlite_schema WHERE tbl_name='run_search' AND sql IS NOT NULL ORDER BY type DESC,name").all()).map(row => row.sql);
+    return z.array(z.strictObject({ sql: z.string() })).parse(expected.prepare("SELECT sql FROM sqlite_schema WHERE tbl_name='run_search' AND sql IS NOT NULL ORDER BY type='table' DESC,type,name").all()).map(row => row.sql);
   } finally { expected.close(); }
 }
 
@@ -1608,6 +1850,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     throw new Error(`authority schema metadata ${String(meta.schema_version)} disagrees with user_version ${String(schemaVersion)}`);
   }
   validateAuthorityRecordSchemas(database, !missingRunSearch, expectedSchemaVersion, workbookPayloads);
+  if (schemaVersion >= CHANGE_LOG_SCHEMA_VERSION) assertRunReferences(database);
   validateNotificationMetadata(database);
   const violations = invariantViolations(database);
   if (violations.length > 0) throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
@@ -1624,7 +1867,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = predecessorTables.length === 0 ? currentTables : z.array(z.union([currentTables.element,
     z.strictObject({ name: z.enum(predecessorTables), classification: z.literal("authority") }),
   ]));
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.literal(RECOGNIZED_AUTHORITY_SCHEMA_VERSIONS), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -1663,8 +1906,9 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
       if (statement === `SELECT '${WORKER_CUSTODY_CONVERSION_ID}'`) convertWorkerCustody(database, input.now, input.captureFile, settleEvidence);
       if (migration.version === ASSISTANT_GRANT_RETIREMENT_VERSION && index === 0) assertNoAssistantGrantHistory(database);
       execMigrationStatement(database, statement);
-      if (migration.version === 16 && index === 2) migratePersonPreferences(database);
+      if (isSettingsRecordConversionMarker(statement)) migrateSettingsRecords(database);
       if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
+      if (statement === `SELECT '${FAILURE_NOTE_REMOVAL_CONVERSION_ID}'`) migrateFailureNotes(database);
       if (statement === `SELECT '${WORKER_CUSTODY_SCAN_ID}'`) assertWorkerCustodyConverted(database);
     }
   }
@@ -1680,7 +1924,14 @@ function readAuthorityUpgradeRecords(database: DatabaseSync) {
     .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
 }
 
-type AuthorityEvidenceSchemaUpgradeRecord = z.infer<typeof AuthorityEvidenceSchemaUpgradeRecordSchema>;
+const readAuthorityUpgradeJournal = (database: DatabaseSync) => authorityUpgradeJournalOf(readAuthorityUpgradeRecords(database));
+
+/** Refuses a row the journal's transition table does not allow, before the writer inserts it. */
+function assertAuthorityUpgradeAppend(database: DatabaseSync, event: AuthorityUpgradeJournalEvent, phase: "baseline" | "settled") {
+  const transition = authorityUpgradeTransition(readAuthorityUpgradeJournal(database), event);
+  if (!("append" in transition)) throw new Error(`authority-upgrade-journal-${transition.refused}`);
+  if (transition.append !== phase) throw new Error("authority-upgrade-journal-phase-mismatch");
+}
 
 function evidenceSchemaPlanDigest(upgradeId: string, conversion: EvidenceSchemaConversion): string {
   return sha256Hex(`relay:evidence-schema-conversion:v1\0${upgradeId}\0${canonicalJsonStringify(conversion)}`);
@@ -1690,12 +1941,12 @@ function evidenceSchemaPlanDigest(upgradeId: string, conversion: EvidenceSchemaC
 function verifiedEvidenceSchemaRecords(database: DatabaseSync, admission: RuntimeAdmission,
   binding: Readonly<{ installationId?: string; profileId?: string }>): ReadonlyMap<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord> {
   const records = new Map<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord>();
-  for (const stored of readAuthorityUpgradeRecords(database)) {
-    if (!("evidenceSchemas" in stored) || stored.evidenceSchemas === undefined) continue;
+  const journal = readAuthorityUpgradeJournal(database);
+  for (const stored of journal.journal === "settled" ? journal.evidence : []) {
     admission.assertEvidenceSchemaConversion(stored);
     const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse(stored), conversion = record.evidenceSchemas;
     if (records.has(conversion.id)) throw new Error("evidence-schema-conversion-duplicate");
-    if (record.phase !== "settled" || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+    if (record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
       || record.planDigest !== evidenceSchemaPlanDigest(record.upgradeId, conversion)) throw new Error("evidence-schema-conversion-unproved");
     if (conversion.installationId !== binding.installationId || conversion.profileId !== binding.profileId) throw new Error("evidence-schema-conversion-foreign");
     records.set(conversion.id, record);
@@ -1756,6 +2007,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
       planDigest, backup: { manifestPath: backup.manifestPath, sha256: backup.manifest.sha256, authorityGeneration: backup.manifest.authorityGeneration },
       ...(logout?.settlement === undefined ? {} : { startupLogout: { operation: logout, postimage: authorityContentFingerprint(database) } }),
       by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() });
+    assertAuthorityUpgradeAppend(database, { type: "forward-upgrade", from: version }, record.phase);
     database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
       .run(record.recordKey, record.upgradeId, record.phase, backup.manifest.sha256, canonicalJsonStringify(record), record.recordedAt);
     const inspection = inspectNormalAuthority(database);
@@ -1769,7 +2021,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
 }
 
 function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion: number) {
-  const convert = inspectedSchemaVersion < 16 ? convertPersonPreferencesRow : (_table: string, row: unknown) => row;
+  const convert = inspectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow : (_table: string, row: unknown) => row;
   const settings = readAppSettings(database, convert);
   const settingsAuthority = settings === undefined
     ? Object.freeze({ state: "never-initialized" as const })
@@ -2066,7 +2318,7 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
         : {state:"malformed",runId:root.runId,table:"runs",summary:mismatches.join("; ")});
     });
     const snapshot = SpanAuthorityReadSnapshotSchema.parse({authorityGeneration:meta.authority_generation,authorityContentFingerprint:authorityContentFingerprint(database),
-      liveRunCount:runs.size,archivedRunCount:0,tombstoneOrdinalFindings:[],malformedRecords,resolutions,
+      liveRunCount:runs.size,tombstoneOrdinalFindings:[],malformedRecords,resolutions,
       missingSpanRunIds:malformedRecords.length === 0 ? [...runs.keys()].filter(id=>!queuedRunIds.has(RunIdSchema.parse(id))).map(id=>RunIdSchema.parse(id)) : []});
     database.exec("COMMIT");transactionOpen = false;
     return Object.freeze(snapshot);
@@ -2151,6 +2403,9 @@ export class AuthorityDatabase implements Disposable {
   #logoutBatch: Readonly<{ admission: RuntimeAdmission }> | undefined;
   #validatedExternalDataVersion: number | undefined;
   #snapshotExternalDataVersion: number | undefined;
+  /** Absent below schema 31, whose readers run the whole-store check after every peer commit. */
+  #changeReader: ChangeLogReader | undefined;
+  #lastChangePruneMs: number | undefined;
   #pageCacheChanges = 0;
   #transactionDepth = 0;
   #savepointSequence = 0;
@@ -2167,6 +2422,9 @@ export class AuthorityDatabase implements Disposable {
 
   #authorityCommitCallbacks: (() => void)[] = [];
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
+  #slowOperation: SlowOperationHook | undefined;
+  /** Nonzero while an outermost operation is being timed, and again while its hook runs. */
+  #slowOperationDepth = 0;
 
   readonly authority: AuthorityRepositories;
 
@@ -2179,6 +2437,7 @@ export class AuthorityDatabase implements Disposable {
     lifecycleHooks?: AuthorityLifecycleHooks,
     credentials?: CredentialStore,
     purpose: "stopped-startup-recovery" | "stopped-layout-source" | "stopped-layout-target" | "ordinary" | "profile-initialization" | "profile-onboarding-debug" | "stopped-restore-projection" | "stopped-span-root-repair" | "stopped-logout-settlement" | "stopped-logout-inspection" = "ordinary",
+    slowOperation?: SlowOperationHook,
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
@@ -2227,6 +2486,7 @@ export class AuthorityDatabase implements Disposable {
     this.#writeCommitHooks = writeCommitHooks;
     this.#terminalizationHooks = terminalizationHooks;
     this.#lifecycleHooks = lifecycleHooks;
+    this.#slowOperation = slowOperation;
     this.#path = options.path;
     this.#busyTimeoutMs = options.busyTimeoutMs;
     this.#database = new DatabaseSync(readOnlyNoMigrate || mayCreate ? options.path : existingDatabaseLocation(options.path), {
@@ -2265,6 +2525,7 @@ export class AuthorityDatabase implements Disposable {
       if (readOnlyNoMigrate) this.#validateReadOnlyNoMigrateDatabase(existingVersion);
       else this.#validateDatabase();
       readAppSettings(this.#database);
+      if (readIntPragma(this.#database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION) this.#changeReader = changeLogBaseline(this.#database);
       this.#database.exec("COMMIT");
       this.#credentialCommandIds = commandId => {
         if (purpose === "stopped-startup-recovery") return stoppedProfileOwnsCredentialCommand(this.#admission, "startup-recovery", commandId);
@@ -2297,10 +2558,11 @@ export class AuthorityDatabase implements Disposable {
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
     credentials?: CredentialStore,
+    slowOperation?: SlowOperationHook,
   ): AuthorityDatabase {
     admission.assertProfileRuntime();
     const options = AuthorityDatabaseOptionsSchema.parse(input);
-    const database = new AuthorityDatabase(admission, options, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks, credentials);
+    const database = new AuthorityDatabase(admission, options, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks, credentials, "ordinary", slowOperation);
     if (options.openMode !== "read-write") return database;
     try {
       database.resumeRunDeletionFiles();
@@ -2519,9 +2781,9 @@ export class AuthorityDatabase implements Disposable {
       if (database.prepare("PRAGMA foreign_key_check").all().length !== 0) throw new Error("flat-archive-integrity-refused");
       const meta = readMetaRow(database);
       if (meta.schema_version !== 6 || meta.installation_id !== undefined || meta.profile_id !== undefined) throw new Error("flat-backup-schema-refused");
-      const settings = readAppSettings(database, convertPersonPreferencesRow);
+      const settings = readAppSettings(database, convertSettingsRecordRow);
       const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
-        .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", convertPersonPreferencesRow("settings_snapshots", row))));
+        .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", convertSettingsRecordRow("settings_snapshots", row))));
       const expectedPaths = { stateRoot: root, artifactRoot: join(root, "artifacts"), browserProfileRoot: join(root, "browsers"),
         duoCredential: join(root, "credentials", "duo-webauthn.json"), reportsDir: join(workspace, "data", "reports"),
         downloadsDir: join(workspace, "data", "downloads"), onboardingDocsDir: join(workspace, "data", "onboarding"),
@@ -2537,17 +2799,17 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  static openStoppedStartupRecovery(admission: RuntimeAdmission, clock: Clock): AuthorityDatabase {
+  static openStoppedStartupRecovery(admission: RuntimeAdmission, clock: Clock, slowOperation?: SlowOperationHook): AuthorityDatabase {
     admission.assertStoppedStartupRecoveryDatabase(join(admission.stateRoot, "state.db"));
     return new AuthorityDatabase(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250,
-      migrationOwner: "startup-crash-recovery" }, clock, undefined, undefined, undefined, undefined, "stopped-startup-recovery");
+      migrationOwner: "startup-crash-recovery" }, clock, undefined, undefined, undefined, undefined, "stopped-startup-recovery", slowOperation);
   }
 
-  static openFixedLayoutSource(machine: RuntimeAdmission, admission: RuntimeAdmission, clock: Clock): AuthorityDatabase {
+  static openFixedLayoutSource(machine: RuntimeAdmission, admission: RuntimeAdmission, clock: Clock, slowOperation?: SlowOperationHook): AuthorityDatabase {
     admission.assertReadyStoppedProfileLayoutOwner(machine);
     return new AuthorityDatabase(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250,
       migrationOwner: "fixed-layout-source", openMode: "storage-doctor-read-only-no-migrate" }, clock,
-      undefined, undefined, undefined, undefined, "stopped-layout-source");
+      undefined, undefined, undefined, undefined, "stopped-layout-source", slowOperation);
   }
 
   static publishFixedLayoutActivation(admission: RuntimeAdmission): Readonly<{ state: "activated" | "already-activated"; configSnapshotId: string }> {
@@ -2593,14 +2855,14 @@ export class AuthorityDatabase implements Disposable {
     return result;
   }
 
-  static openStoppedRestoreProjection(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock): AuthorityDatabase {
+  static openStoppedRestoreProjection(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, slowOperation?: SlowOperationHook): AuthorityDatabase {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     admission.assertStoppedRestoreProjection(options.path);
     if (options.openMode !== "read-write") throw new Error("profile-restore-projection-mode-refused");
     const inspection = withDirectReaderAdmission(admission, () => inspectExistingDatabaseReadOnly(options.path, options.busyTimeoutMs));
     if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-restore-projection-schema-refused");
     admission.assertStoppedRestoreProjection(options.path);
-    return new AuthorityDatabase(admission, options, clock, undefined, undefined, undefined, undefined, "stopped-restore-projection");
+    return new AuthorityDatabase(admission, options, clock, undefined, undefined, undefined, undefined, "stopped-restore-projection", slowOperation);
   }
 
   static openStoppedSpanRootRepair(admission: RuntimeAdmission, input: unknown, operation: OfflineMaintenanceOperation, clock: Clock = systemClock): AuthorityDatabase {
@@ -2727,8 +2989,8 @@ export class AuthorityDatabase implements Disposable {
         const inspection = inspectNativeAuthority(database, version);
         machine.assertOfflineMaintenance(machine.maintenanceOperation());
         if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");
-        const record = readAuthorityUpgradeRecords(database).at(-1);
-        const continuation = record !== undefined && "startupLogout" in record ? record.startupLogout : undefined;
+        const journal = readAuthorityUpgradeJournal(database);
+        const continuation = journal.journal === "settled" ? journal.latestForward?.startupLogout : undefined;
         const file = continuation === undefined ? undefined : readPrivateFile(join(machine.stateRoot, "machine", "operations", `${continuation.operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
         const nativeContinuation = file !== undefined && canonicalJsonStringify(LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)))) === canonicalJsonStringify(continuation?.operation);
         const context = machine.readInstallationContext();
@@ -2784,11 +3046,12 @@ export class AuthorityDatabase implements Disposable {
       return result;
     }
     return withAuthorityDatabaseReadOnly(admission, join(admission.stateRoot, "state.db"), database => {
-      const inspection = inspectNativeAuthority(database), record = readAuthorityUpgradeRecords(database).at(-1);
-      if (record === undefined || !("startupLogout" in record) || record.startupLogout === undefined
+      const inspection = inspectNativeAuthority(database), journal = readAuthorityUpgradeJournal(database);
+      const record = journal.journal === "settled" ? journal.latestForward : undefined;
+      if (record?.startupLogout === undefined
         || canonicalJsonStringify(record.startupLogout.operation) !== canonicalJsonStringify(operation)) return undefined;
       const settlement = operation.settlement;
-      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || !UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(record.fromSchemaVersion)
+      if (record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || !UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(record.fromSchemaVersion)
         || settlement === undefined || record.startupLogout.postimage !== authorityContentFingerprint(database, record.recordKey)) throw new Error("profile-startup-logout-postimage-changed");
       const backup = verifyBackup(admission, record.backup.manifestPath);
       if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId
@@ -2854,6 +3117,7 @@ export class AuthorityDatabase implements Disposable {
       try {
         admission.assertStoppedProtectedSettingsUpgrade();
         if (inspectNativeAuthority(database).authorityContentFingerprint !== expectedFingerprint) throw new Error("evidence-schema-conversion-source-changed");
+        assertAuthorityUpgradeAppend(database, { type: "convert-evidence", id: conversion.id }, record.phase);
         database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
           .run(record.recordKey, record.upgradeId, record.phase, backup.manifest.sha256, canonicalJsonStringify(record), record.recordedAt);
         inspectNativeAuthority(database); admission.assertStoppedProtectedSettingsUpgrade();
@@ -2939,13 +3203,10 @@ export class AuthorityDatabase implements Disposable {
 
   readUpgradePhases() {
     return this.withAuthorityReadSnapshot(() => {
-      const phases = readAuthorityUpgradeRecords(this.#database).map(record => {
-        return { phase: record.phase, fromSchemaVersion: record.fromSchemaVersion,
-          toSchemaVersion: record.toSchemaVersion, recordedAt: record.recordedAt };
-      });
-      return phases.length === 0
-        ? { state: "absent" as const, reason: "journal-empty" as const }
-        : { state: "available" as const, phases };
+      const records = readAuthorityUpgradeRecords(this.#database);
+      if (authorityUpgradeJournalOf(records).journal === "empty") return { state: "absent" as const, reason: "journal-empty" as const };
+      const phases = records.map(({ phase, fromSchemaVersion, toSchemaVersion, recordedAt }) => ({ phase, fromSchemaVersion, toSchemaVersion, recordedAt }));
+      return { state: "available" as const, phases };
     });
   }
 
@@ -4475,6 +4736,7 @@ export class AuthorityDatabase implements Disposable {
         .run(CURRENT_AUTHORITY_SCHEMA_VERSION, now, this.#admission.profileBinding.installationId, this.#admission.profileBinding.profileId);
       const baseline = AuthorityUpgradeRecordSchema.parse({ recordKey: randomUUID(), upgradeId: "fresh", phase: "baseline",
         fromSchemaVersion: 0, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now });
+      assertAuthorityUpgradeAppend(this.#database, { type: "initialize" }, baseline.phase);
       this.#database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,NULL,?,?)")
         .run(baseline.recordKey, baseline.upgradeId, baseline.phase, canonicalJsonStringify(baseline), now);
       this.#database.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
@@ -4517,23 +4779,84 @@ export class AuthorityDatabase implements Disposable {
     return this.#clock.now().toISOString();
   }
 
-  /** Whole-store validation never runs under the write lock. */
+  /**
+   * Admits what other connections committed since this connection last validated, before a read or a projection write:
+   * the closure of the logged changes from schema 31, the whole-store check below it or after a schema move or log gap.
+   * Nothing here runs under the write lock.
+   */
   #validateExternalQuerySources(mode: "selector" | "mutation" = "selector", searchValidation: "all" | "progress" | "none" = "all"): void {
     if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return;
     const observed = readIntPragma(this.#database, "data_version");
-    if (observed === this.#validatedExternalDataVersion && observed === this.#snapshotExternalDataVersion) return;
+    const reader = this.#changeReader;
+    if (observed === this.#validatedExternalDataVersion && observed === this.#snapshotExternalDataVersion && reader?.failed === undefined) return;
     this.#validatedExternalDataVersion = undefined;
     try {
-      validateAuthorityRecordSchemas(this.#database, searchValidation === "all");
-      const violations = invariantViolations(this.#database);
-      if (violations.length > 0) throw new Error("current composite authority is invalid");
-      if (searchValidation !== "none") createRunSearchIndex(this.#database).validateCoverage();
+      if (reader === undefined) validateAuthorityStore(this.#database, searchValidation);
+      else this.#admitChanges(reader, searchValidation, observed);
     } catch (error) {
       if (mode === "mutation") throw error;
       throw new Error("run-search-index-rebuild-required", { cause: error });
     }
-    this.#validatedExternalDataVersion = searchValidation !== "none" && observed === this.#snapshotExternalDataVersion
-      && readIntPragma(this.#database, "data_version") === observed ? observed : undefined;
+    const stable = observed === this.#snapshotExternalDataVersion && readIntPragma(this.#database, "data_version") === observed;
+    if (stable && (reader === undefined ? searchValidation !== "none" : searchValidation === "all")) this.#validatedExternalDataVersion = observed;
+  }
+
+  #admitChanges(reader: ChangeLogReader, search: "all" | "progress" | "none", observed: number): void {
+    const database = this.#database, cookie = readIntPragma(database, "schema_version"), schemaMoved = cookie !== reader.schemaCookie;
+    // Entries may be missing while the schema differed, so a schema move is checked whole.
+    if (schemaMoved) reader.wholeStore = true;
+    const high = changeLogHighWater(database);
+    const entries = reader.wholeStore ? [] : readAuthorityChanges(database, reader.cursor);
+    if (!reader.wholeStore && !(entries.length === high - reader.cursor && entries.every((entry, index) => entry.seq === reader.cursor + 1 + index))) reader.wholeStore = true;
+    const singleton = readSingletonImage(database);
+    const check = reader.wholeStore
+      ? (value: typeof search) => { validateAuthorityStore(database, value); }
+      : (value: typeof search) => { validateAuthorityChanges(database, entries, singletonChangeKeys(reader.singleton, singleton), value); };
+    try { check(search); }
+    catch (error) {
+      // The refusal is rethrown either way; this only names which half failed.
+      reader.failed = "authority";
+      if (search !== "none") { try { check("none"); reader.failed = "projection-only"; } catch { /* the authority rows fail on their own */ } }
+      throw error;
+    }
+    if (schemaMoved) {
+      // After the rows: a bad row reports its own refusal. Any schema difference refuses even when every row is valid, now and on
+      // every later read, since the cookie is recorded only once the whole schema matches.
+      try { assertNativeSchema(database, CURRENT_AUTHORITY_SCHEMA_VERSION); }
+      catch (error) { reader.failed = "authority"; throw error; }
+      reader.schemaCookie = cookie;
+    }
+    if (search === "none") {
+      if (reader.failed === "authority") reader.failed = "projection-only";
+      reader.settled = { cursor: high, dataVersion: observed };
+      return;
+    }
+    if (search === "progress") return;
+    Object.assign(reader, { cursor: high, singleton, wholeStore: false, failed: undefined, settled: undefined });
+  }
+
+  /**
+   * Inside this connection's write, before COMMIT: when no peer committed since the reader was current, every entry above
+   * its cursor is this connection's own, so the cursor can follow its commit. Also prunes the log at most once a minute.
+   */
+  #prepareChangeLogCommit(mode: "authority" | "projection", searchValidation: "all" | "progress" | "none", insideDataVersion: number): (() => void) | undefined {
+    const reader = this.#changeReader;
+    if (reader === undefined) return undefined;
+    const nowMs = this.#clock.now().getTime();
+    if (mode === "authority" && this.#authorityDirty && (this.#lastChangePruneMs === undefined || nowMs - this.#lastChangePruneMs >= CHANGE_LOG_PRUNE_INTERVAL_MS)) {
+      this.#database.prepare(`DELETE FROM ${CHANGE_LOG_TABLE} WHERE seq<=?`).run(changeLogHighWater(this.#database) - CHANGE_LOG_RETAINED_ENTRIES);
+      this.#lastChangePruneMs = nowMs;
+    }
+    const restart = mode === "projection" && searchValidation === "none" ? reader.settled : undefined;
+    const current = restart === undefined ? reader.failed === undefined && !reader.wholeStore && insideDataVersion === this.#validatedExternalDataVersion
+      : insideDataVersion === restart.dataVersion;
+    const high = changeLogHighWater(this.#database), singleton = readSingletonImage(this.#database);
+    return () => {
+      // A restart rebuild replaced the whole projection, so it settles a projection-only failure at the position validated before the lock.
+      if (restart !== undefined) Object.assign(reader, { cursor: restart.cursor, failed: undefined, wholeStore: false, settled: undefined });
+      if (current) Object.assign(reader, { cursor: high, singleton });
+      if (restart !== undefined && current) this.#validatedExternalDataVersion = insideDataVersion;
+    };
   }
 
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result, searchValidation: "all" | "progress" | "none" = "all"): Result {
@@ -4563,63 +4886,110 @@ export class AuthorityDatabase implements Disposable {
           throw error;
         } finally { this.#transactionDepth -= 1; }
       }
-      this.#admitMutation();
-      const witnesses = new Map(outermostOperationProof()?.witnesses);
-      if (mode === "projection") this.#withReadSnapshot(() => { this.#validateExternalQuerySources("mutation", searchValidation); });
-      this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
-      try { this.#database.exec("BEGIN IMMEDIATE"); }
-      catch (error) {
-        if (error instanceof Error && "errcode" in error && error.errcode === 5) throw new AuthorityWriterBusyError({ cause: error });
-        throw error;
-      }
-      this.#transactionDepth = 1;
-      this.#transactionMode = mode;
-      this.#authorityDirty = false;
-      let result: Result;
+      const slow = this.#beginSlowOperation(mode === "authority" ? "authority-transaction" : "projection-transaction");
       try {
-        const search = createRunSearchIndex(this.#database);
-        const priorSearch = search.publication();
-        if (this.#logoutBatch !== undefined) {
-          const operation = this.#logoutBatch.admission.assertPendingLogoutSettlementDatabase(this.#path), settlement = operation.settlement;
-          const before = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint;
-          if (settlement === undefined || (before !== settlement.before && !(settlement.phase === "commit-intent" && before === settlement.after))) throw new Error("profile-logout-settlement-source-changed");
-        }
-        result = work();
-        if (this.#authorityDirty) {
-          const update = this.#database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(this.#now());
-          if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation singleton is missing");
-          search.publishChanges(this.getMeta().authorityGeneration, this.#now(), priorSearch);
-        }
-        revalidateOperationProof(witnesses);
         this.#admitMutation();
-        this.#assertOpen();
-        if (this.#logoutBatch !== undefined) {
-          const admission = this.#logoutBatch.admission, operation = admission.assertPendingLogoutSettlementDatabase(this.#path), settlement = operation.settlement;
-          if (settlement === undefined) throw new Error("profile-logout-settlement-unprepared");
-          const after = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint;
-          if (settlement.phase === "prepared") this.#publishPendingLogout(admission, LogoutOperationSchema.parse({ ...operation, settlement: { ...settlement, phase: "commit-intent", after } }));
-          else if (settlement.phase !== "commit-intent" || settlement.after !== after) throw new Error("profile-logout-settlement-postimage-changed");
-          this.#assertOpen();
+        const witnesses = new Map(outermostOperationProof()?.witnesses);
+        if (mode === "projection") this.#withReadSnapshot(() => { this.#validateExternalQuerySources("mutation", searchValidation); });
+        this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
+        try { this.#database.exec("BEGIN IMMEDIATE"); }
+        catch (error) {
+          if (error instanceof Error && "errcode" in error && error.errcode === 5) throw new AuthorityWriterBusyError({ cause: error });
+          throw error;
         }
-        this.#database.exec("COMMIT");
-        if (searchValidation === "none") this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
-      } catch (error) {
-        try { this.#database.exec("ROLLBACK"); }
-        catch (rollback) { this.#failNativeClosure([error, rollback]); }
-        this.#authorityCommitCallbacks.splice(0);
-        throw error;
-      } finally {
-        clearOperationProofSlots();
-        this.#transactionDepth = 0;
-        this.#transactionMode = undefined;
-        this.#transactionDelegationReads = undefined;
-        this.#snapshotExternalDataVersion = undefined;
+        this.#transactionDepth = 1;
+        this.#transactionMode = mode;
         this.#authorityDirty = false;
-      }
-      const callbacks = this.#authorityCommitCallbacks.splice(0);
-      for (const callback of callbacks) callback();
-      return result;
+        let result: Result;
+        try {
+          const search = createRunSearchIndex(this.#database);
+          const priorSearch = search.publication();
+          const insideDataVersion = readIntPragma(this.#database, "data_version");
+          if (this.#logoutBatch !== undefined) {
+            const operation = this.#logoutBatch.admission.assertPendingLogoutSettlementDatabase(this.#path), settlement = operation.settlement;
+            const before = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint;
+            if (settlement === undefined || (before !== settlement.before && !(settlement.phase === "commit-intent" && before === settlement.after))) throw new Error("profile-logout-settlement-source-changed");
+          }
+          result = work();
+          if (this.#authorityDirty) {
+            const update = this.#database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(this.#now());
+            if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation singleton is missing");
+            search.publishChanges(this.getMeta().authorityGeneration, this.#now(), priorSearch);
+          }
+          revalidateOperationProof(witnesses);
+          this.#admitMutation();
+          this.#assertOpen();
+          if (this.#logoutBatch !== undefined) {
+            const admission = this.#logoutBatch.admission, operation = admission.assertPendingLogoutSettlementDatabase(this.#path), settlement = operation.settlement;
+            if (settlement === undefined) throw new Error("profile-logout-settlement-unprepared");
+            const after = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint;
+            if (settlement.phase === "prepared") this.#publishPendingLogout(admission, LogoutOperationSchema.parse({ ...operation, settlement: { ...settlement, phase: "commit-intent", after } }));
+            else if (settlement.phase !== "commit-intent" || settlement.after !== after) throw new Error("profile-logout-settlement-postimage-changed");
+            this.#assertOpen();
+          }
+          const settleChangeLog = this.#prepareChangeLogCommit(mode, searchValidation, insideDataVersion);
+          this.#database.exec("COMMIT");
+          if (searchValidation === "none" && this.#changeReader === undefined) this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
+          settleChangeLog?.();
+        } catch (error) {
+          try { this.#database.exec("ROLLBACK"); }
+          catch (rollback) { this.#failNativeClosure([error, rollback]); }
+          this.#authorityCommitCallbacks.splice(0);
+          throw error;
+        } finally {
+          clearOperationProofSlots();
+          this.#transactionDepth = 0;
+          this.#transactionMode = undefined;
+          this.#transactionDelegationReads = undefined;
+          this.#snapshotExternalDataVersion = undefined;
+          this.#authorityDirty = false;
+          slow.settled();
+        }
+        const callbacks = this.#authorityCommitCallbacks.splice(0);
+        for (const callback of callbacks) callback();
+        return result;
+      } finally { slow.finish(); }
     });
+  }
+
+  /**
+   * Times one outermost operation. Nested work does not report on its own.
+   * The clock stops when the transaction settles, before commit callbacks. The hook runs only after those callbacks,
+   * so a hook transaction cannot take them or swallow their errors, and work the hook starts does not report.
+   */
+  #beginSlowOperation(name: string): { settled(): void; finish(): void } {
+    if (this.#slowOperation === undefined || this.#slowOperationDepth > 0) return { settled() {}, finish() {} };
+    const startedMs = this.#clock.monotonicMs();
+    this.#slowOperationDepth += 1;
+    let settled = false;
+    let finished = false;
+    let durationMs = 0;
+    return {
+      settled: () => {
+        if (settled) return;
+        settled = true;
+        durationMs = this.#clock.monotonicMs() - startedMs;
+        this.#slowOperationDepth -= 1;
+      },
+      finish: () => {
+        if (finished) return;
+        finished = true;
+        if (!settled) {
+          durationMs = this.#clock.monotonicMs() - startedMs;
+          this.#slowOperationDepth -= 1;
+          settled = true;
+        }
+        if (durationMs <= 50) return;
+        this.#slowOperationDepth += 1;
+        try {
+          this.#slowOperation?.({ name, durationMs });
+        } catch {
+          // A hook failure never replaces the transaction result or its error.
+        } finally {
+          this.#slowOperationDepth -= 1;
+        }
+      },
+    };
   }
 
   #readDelegationGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup> {
@@ -4653,30 +5023,34 @@ export class AuthorityDatabase implements Disposable {
       this.#assertOpen();
       if (this.#transactionDepth > 0) return read();
 
-      const witnesses = new Map(outermostOperationProof()?.witnesses);
-      this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
-      this.#database.exec("BEGIN");
-      this.#transactionDepth = 1;
-      this.#transactionMode = "read";
-      this.#delegationReadSnapshot = { waits: new Map(), memo: newDelegationAuthenticationMemo(), invocations: new Map() };
-      this.#authorityDirty = false;
+      const slow = this.#beginSlowOperation("read-snapshot");
       try {
-        const result = read();
-        revalidateOperationProof(witnesses);
-        this.#assertOpen();
-        this.#database.exec("COMMIT");
-        return result;
-      } catch (error) {
-        this.#database.exec("ROLLBACK");
-        throw error;
-      } finally {
-        clearOperationProofSlots();
-        this.#transactionDepth = 0;
-        this.#transactionMode = undefined;
-        this.#delegationReadSnapshot = undefined;
-        this.#snapshotExternalDataVersion = undefined;
+        const witnesses = new Map(outermostOperationProof()?.witnesses);
+        this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
+        this.#database.exec("BEGIN");
+        this.#transactionDepth = 1;
+        this.#transactionMode = "read";
+        this.#delegationReadSnapshot = { waits: new Map(), memo: newDelegationAuthenticationMemo(), invocations: new Map() };
         this.#authorityDirty = false;
-      }
+        try {
+          const result = read();
+          revalidateOperationProof(witnesses);
+          this.#assertOpen();
+          this.#database.exec("COMMIT");
+          return result;
+        } catch (error) {
+          this.#database.exec("ROLLBACK");
+          throw error;
+        } finally {
+          clearOperationProofSlots();
+          this.#transactionDepth = 0;
+          this.#transactionMode = undefined;
+          this.#delegationReadSnapshot = undefined;
+          this.#snapshotExternalDataVersion = undefined;
+          this.#authorityDirty = false;
+          slow.finish();
+        }
+      } finally { slow.finish(); }
     });
   }
 
@@ -5337,7 +5711,7 @@ export class AuthorityDatabase implements Disposable {
           const stored = commandFromRow(row);
           if (!("family" in stored)) return undefined;
           const request = CommandRequestSchema.parse(stored);
-          const state = z.enum(["admitted", "executing", "succeeded", "refused", "uncertain"]).parse(z.object({ state: z.string() }).parse(row).state);
+          const state = CommandRowStateSchema.parse(z.object({ state: z.string() }).parse(row).state);
           const audit = this.authority.commandAudits.findByCommand(request.commandId);
           return audit === undefined ? { request, state } : { request, state, result: audit.result };
         },
@@ -5568,6 +5942,8 @@ export class AuthorityDatabase implements Disposable {
       }),
       dependencies: Object.freeze({
         authenticateGroup: (manifest: DelegationManifest) => this.#readDelegationGroup(manifest),
+        snapshotMemo: (repositories: AuthorityRepositories) =>
+          repositories === this.authority && this.#transactionMode === "read" ? this.#delegationReadSnapshot?.memo : undefined,
         parents: (envelopes: readonly RunRecord["envelope"][]) => readQueueParents(this.authority, envelopes),
         groups: (parentRunId: string, selection: "current" | "retained" = "current") => {
           const parent = this.authority.runs.get(parentRunId);
@@ -6284,7 +6660,7 @@ export class AuthorityDatabase implements Disposable {
     const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
     const row = z.strictObject({ commandId: z.uuid(), hold: z.enum(["quit", "update", "shutdown", "logout"]) }).optional().parse(this.#database.prepare(`SELECT id AS commandId,
       CASE family WHEN 'application' THEN 'quit' ELSE json_extract(request_json,'$.request.reason') END AS hold FROM commands held
-      WHERE state IN ('executing','succeeded') AND ((${UNRELEASED_QUIT_HOLD_SQL}) OR (family='run-lifecycle'
+      WHERE state='succeeded' AND ((${UNRELEASED_QUIT_HOLD_SQL}) OR (family='run-lifecycle'
       AND json_extract(request_json,'$.operation')='application-admission'
       AND json_type(request_json,'$.request.reason')='text'
       AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation, generation, generation));
@@ -6294,7 +6670,7 @@ export class AuthorityDatabase implements Disposable {
   #quitAdmission(): string | undefined {
     const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
     return z.strictObject({ commandId: z.uuid() }).optional().parse(this.#database.prepare(`SELECT id AS commandId FROM commands held
-      WHERE state IN ('executing','succeeded') AND ${UNRELEASED_QUIT_HOLD_SQL} ORDER BY created_at,id LIMIT 1`).get(generation, generation))?.commandId;
+      WHERE state='succeeded' AND ${UNRELEASED_QUIT_HOLD_SQL} ORDER BY created_at,id LIMIT 1`).get(generation, generation))?.commandId;
   }
 
   #insertAdmissionCommand(repositories: AuthorityRepositories, request: z.infer<typeof ApplicationAdmissionRequestSchema>): void {
@@ -6390,7 +6766,7 @@ export class AuthorityDatabase implements Disposable {
       listPage: (input: Readonly<{ workflow?: string; offset: number; limit: number }>) => {
         const { workflow, offset, limit } = z.strictObject({ workflow: z.string().optional(),
           offset: z.number().int().nonnegative(), limit: z.number().int().min(1).max(1001) }).parse(input);
-        this.#validateExternalQuerySources();
+        this.#withReadSnapshot(() => { this.#validateExternalQuerySources(); });
         this.#database.exec(`CREATE TEMP TABLE IF NOT EXISTS canonical_run_page(position INTEGER PRIMARY KEY,run_id TEXT NOT NULL UNIQUE);
           CREATE TEMP TABLE IF NOT EXISTS canonical_run_page_state(id INTEGER PRIMARY KEY CHECK(id=1),generation INTEGER NOT NULL,
             data_version INTEGER NOT NULL,source_changes INTEGER NOT NULL,workflow TEXT);`);

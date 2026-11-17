@@ -296,7 +296,7 @@ it("plans one dry-run Emergency Contact PDF start against a header-only ocr-rost
     rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }] }] });
   library.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
   const wire = h.service.plan({ workflowId: descriptor.id, dryRun: true, selectedStepKeys: descriptor.timeline.map(step => step.key),
-    submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" } }],
+    submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" }, onbaseFiling: "file" }],
     workbookReferences: [{ entry: 1, libraryId: roster.libraryId, versionId: library.libraryVersion(roster.libraryId).version.id, sheetId: "people",
       expectedVersion: library.read(roster.libraryId).version }] });
   assert.equal(wire.refused.length, 0, JSON.stringify(wire.refused));

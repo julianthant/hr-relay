@@ -5,7 +5,8 @@ import type { RuntimeAdmission } from "../../storage/admission/admission.js";
 import type { AuthorityDatabase, AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { capturedInstantClock, localDatePart, type Clock } from "../../../rules/time/clock.js";
+import { capturedInstantClock, type Clock } from "../../../rules/time/clock.js";
+import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import { deriveStableUuid, lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -86,7 +87,7 @@ function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLoc
             now: clock.now().toISOString() }, lock));
           notify(result.lifecycle.state === "parked-write" ? "RUN_CRASH_WRITE_UNRESOLVED" : "RUN_INTERRUPTED_BY_CRASH", { runId: run.envelope.runId, version: run.version }, run.envelope.runId);
         } else if (workerId === undefined && run.lifecycle.state === "queued" && run.pause === undefined && run.claimGeneration === 0
-          && localDatePart(new Date(run.envelope.enqueuedAt)) < clock.todayLocal()) {
+          && searchPartitionDay(new Date(run.envelope.enqueuedAt)) < searchPartitionDay(clock.now())) {
           database.assertPristineQueuedRun(run.envelope.runId, run.version);
           requireLifecycleApplied(lifecycle.transition({ commandId: lifecycleCommandId("startup-stale-queue", { runId: run.envelope.runId, version: run.version }),
             runId: run.envelope.runId, expectedVersion: run.version,

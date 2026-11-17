@@ -1,7 +1,8 @@
 import { ActorIdSchema, NotificationIdSchema } from "../../../rules/identity/ids.js";
 import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
+import { bulkChildClass, type CommandRowState } from "../../../rules/commands/command-lifecycle.js";
 import type { BulkRunCommandAcceptanceRecord, BulkRunCommandOutcome, CommandRequest, CommandResult } from "../../../rules/commands/commands.js";
-import { localDatePart } from "../../../rules/time/clock.js";
+import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import type { RunExistence } from "../../../models/config/authority.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { FailureRecord } from "../../../models/trust/failure.js";
@@ -11,7 +12,7 @@ import { publicWriteCommand } from "../commands/write-command-target.js";
 
 type CommandNotice = Readonly<{
   request: CommandRequest;
-  state: "admitted" | "executing" | "succeeded" | "refused" | "uncertain";
+  state: CommandRowState;
   result?: CommandResult;
 }>;
 
@@ -28,7 +29,7 @@ export function createNotificationTargetQuery(deps: {
     const dayOf = (runId: string): string | undefined => {
       const current = deps.read(runId);
       if (current.state !== "present") return undefined;
-      return localDatePart(new Date((deps.host?.(current.run) ?? current.run).envelope.enqueuedAt));
+      return searchPartitionDay(new Date((deps.host?.(current.run) ?? current.run).envelope.enqueuedAt));
     };
     const refused = (reason: Extract<NotificationTarget, { kind: "refused" }>["reason"]): NotificationTarget => ({ kind: "refused", reason });
     try {
@@ -44,8 +45,8 @@ export function createNotificationTargetQuery(deps: {
       const current = deps.read(link.runId);
       if (current.state !== "present") return refused("run-unavailable");
       const host = deps.host?.(current.run);
-      if (host !== undefined) return NotificationTargetSchema.parse({ kind: "run", runId: host.envelope.runId, day: localDatePart(new Date(host.envelope.enqueuedAt)) });
-      const day = localDatePart(new Date(current.run.envelope.enqueuedAt));
+      if (host !== undefined) return NotificationTargetSchema.parse({ kind: "run", runId: host.envelope.runId, day: searchPartitionDay(new Date(host.envelope.enqueuedAt)) });
+      const day = searchPartitionDay(new Date(current.run.envelope.enqueuedAt));
       if (link.kind === "failure") {
         const failure = deps.failure(link.failureId);
         if (failure === undefined || failure.runId !== link.runId || current.run.lifecycle.state !== "terminal" || current.run.lifecycle.failureId !== link.failureId) return refused("failure-unavailable");
@@ -105,9 +106,11 @@ function bulkTarget(bulkCommandId: string, bulk: { acceptance: BulkRunCommandAcc
 function bulkChildOutcome(type: BulkRunCommandAcceptanceRecord["request"]["type"], request: CommandRequest, result: CommandResult): BulkRunCommandOutcome | undefined {
   if (request.family !== "run" || !("runId" in request.target) || result.commandId !== request.commandId) return undefined;
   const runId = request.target.runId, commandId = request.commandId;
-  if (result.state === "rejected" && result.code === "bulk-child-errored") return { outcome: "errored", runId, commandId, detail: result.message };
-  if (result.state === "conflict") return { outcome: "conflict", runId, commandId, currentVersion: result.currentVersion, detail: result.message };
-  if (result.state === "rejected") return { outcome: "refused", runId, commandId, code: result.code, detail: result.message };
-  if (result.state === "applied" || result.state === "already-applied") return { outcome: "applied", runId, commandId, replayed: false, detail: `${type} recorded` };
-  return undefined;
+  if (result.state === "pending" || result.state === "confirmation-required") return undefined;
+  switch (bulkChildClass(result)) {
+    case "applied": return { outcome: "applied", runId, commandId, replayed: false, detail: `${type} recorded` };
+    case "conflict": return result.state === "conflict" ? { outcome: "conflict", runId, commandId, currentVersion: result.currentVersion, detail: result.message } : undefined;
+    case "refused": return result.state === "rejected" ? { outcome: "refused", runId, commandId, code: result.code, detail: result.message } : undefined;
+    case "errored": return result.state === "rejected" ? { outcome: "errored", runId, commandId, detail: result.message } : undefined;
+  }
 }

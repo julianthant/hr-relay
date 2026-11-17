@@ -1,5 +1,6 @@
 import { AssistantActivityWireSchema, type AssistantActivityWire } from "../../models/dashboard/assistant.js";
 import { createActivityDatePartReader } from "../../models/dashboard/activity-volume.js";
+import { PACIFIC_TIME_ZONE } from "../../models/dashboard/search-calendar.js";
 import type { AssistantActionRecord } from "../../models/profiles/assistant-authorization.js";
 import { COMMAND_ASSISTANT_METADATA } from "../../rules/commands/commands.js";
 import type { Clock } from "../../rules/time/clock.js";
@@ -9,11 +10,10 @@ import { z } from "zod";
 export function createAssistantActivityQuery(options: Readonly<{
   database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot" | "getMeta">;
   clock: Clock;
-  timeZone: string;
   assertCurrent(): void;
   workflowLabel(workflowId: string): string;
 }>) {
-  const dayOf = createActivityDatePartReader(options.timeZone);
+  const dayOf = createActivityDatePartReader(PACIFIC_TIME_ZONE);
   const actionLabel = (action: AssistantActionRecord) => {
     const command = action.command;
     if (command.family === "start") return `Start ${options.workflowLabel(command.target.workflowId)}`;

@@ -26,7 +26,7 @@ export async function storageRecoveryFixture(version = 0) {
   }
   const input = { stateRoot: root, processLockRoot: join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot), environmentFile: join(root, ".env"), plan: false };
   return { root, path, clock, input, get admission() { return fixture.admission; },
-    backup: () => withOfflineMaintenance(fixture.admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, fixture.admission, operation, clock, input.processLockRoot).then(closure => backupStoppedAuthority(closure, fixture.admission, root, clock, input.processLockRoot, operation))),
+    backup: () => withOfflineMaintenance(fixture.admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, fixture.admission, operation, clock, input.processLockRoot).then(closure => backupStoppedAuthority(closure, fixture.admission, root, clock, input.processLockRoot, operation, "schema-migration"))),
     run: (plan = false) => withOfflineMaintenance(fixture.admission, operation => upgradeStorage(profileBrowserClosure, fixture.admission, { ...input, plan }, clock, operation)),
     dispose: async () => await fixture.close() };
 }

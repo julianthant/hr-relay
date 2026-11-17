@@ -3,12 +3,13 @@ import { I9CheckStartInput, I9CheckStartCanonicalInput, I9_CHECK_REFERENCE, i9Ch
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { PositiveIntSchema } from "../../rules/identity/ids.js";
+import { REFERENCE_CHECK } from "../../models/processing/workbooks/verify-person.js";
 import { i9CheckStartDocumentsDefinition } from "./steps/documents/step.js";
 import { i9CheckStartRosterReferenceDefinition } from "./steps/roster-reference/step.js";
 import { i9CheckStartRetentionDefinition } from "./steps/retention/step.js";
 
 export const i9CheckStartWorkflow = defineWorkflow({
-  id: "i9-check-start", requiredWorkbookFields: [...I9_CHECK_REFERENCE.fields], workbookReference: { id: I9_CHECK_REFERENCE.typeId, keyFieldId: "eid", mode: "keys", writableFields: [] }, version: 1, code: "ip",
+  id: "i9-check-start", requiredWorkbookFields: [...I9_CHECK_REFERENCE.fields], workbookReference: { id: I9_CHECK_REFERENCE.typeId, keyFieldId: "eid", mode: "keys", writableFields: [] }, workbookCheck: REFERENCE_CHECK, version: 1, code: "ip",
   label: "I-9 Check", icon: "ClipboardCheck", category: "separation",
   summary: "Reads attached I-9 PDFs, reviews their people, checks retention in UCPath and saves one results workbook with a row per approved person.",
   input: I9CheckStartInput, canonicalInput: I9CheckStartCanonicalInput, inputSubject: "document",

@@ -1,14 +1,15 @@
 import { z } from "zod";
 import { ActivityAssistantUsageSchema, type ActivityAssistantUsage } from "../../models/dashboard/activity.js";
 import { createActivityDatePartReader } from "../../models/dashboard/activity-volume.js";
+import { PACIFIC_TIME_ZONE } from "../../models/dashboard/search-calendar.js";
 import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 
-export function queryAssistantUsage(database: AuthorityDatabase, input: { from: string; to: string; generatedAt: string }, timeZone: string): ActivityAssistantUsage {
+export function queryAssistantUsage(database: AuthorityDatabase, input: { from: string; to: string; generatedAt: string }): ActivityAssistantUsage {
   const bounds = z.strictObject({ from: z.iso.date(), to: z.iso.date(), generatedAt: z.iso.datetime({ offset: true }) }).parse(input);
   if (bounds.from > bounds.to) throw new Error("assistant-usage-range-invalid");
   const days: string[] = [];
   for (let instant = Date.parse(bounds.from); instant <= Date.parse(bounds.to); instant += 86_400_000) days.push(new Date(instant).toISOString().slice(0, 10));
-  const dayOf = createActivityDatePartReader(timeZone);
+  const dayOf = createActivityDatePartReader(PACIFIC_TIME_ZONE);
   return database.withAuthorityReadSnapshot(() => {
     const messages = new Map(days.map(day => [day, { day, count: 0 }]));
     const actions = new Map(days.map(day => [day, { day, proposed: 0 }]));

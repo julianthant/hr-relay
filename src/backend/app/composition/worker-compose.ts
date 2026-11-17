@@ -33,7 +33,7 @@ import { selectRunRuntime } from "../../runs/settings/run-settings.js";
 import { createRunResourcesFactory, type BrowserProfileAuthority } from "./worker/run-resources.js";
 import { bindFailureCapture } from "../../runs/lifecycle/failure-resolution.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
-import { captureSelectedProfileStorage, RuntimeCustodyUncertainError } from "./storage-compose.js";
+import { captureSelectedProfileStorage, createSlowOperationEvents, RuntimeCustodyUncertainError } from "./storage-compose.js";
 import { withOperationProof } from "../../storage/configuration/credential-safe-file.js";
 import { assertProfileBrowserRoot } from "./profile-credential-inventory.js";
 import { type RuntimeAdmission } from "../../storage/admission/admission.js";
@@ -335,6 +335,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   const admission = issued;
   const assertCurrent = (): void => withOperationProof(() => admission.assertProfileRuntime());
   const assertBrowserRoot = (root: string): void => { assertCurrent(); assertProfileBrowserRoot(admission, root); };
+  const slowOperations = createSlowOperationEvents("worker");
   let opened: AuthorityDatabase | undefined;
   const bound = (() => {
     try {
@@ -342,7 +343,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       admission.assertAuthorityDatabase(authorityPath);
       try {
         opened = (input.openDatabase ?? ((options, openClock) => AuthorityDatabase.open(admission, options, openClock,
-          undefined, undefined, undefined, protectedAuthority)))(
+          undefined, undefined, undefined, protectedAuthority, slowOperations.hook)))(
           { path: authorityPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" }, clock);
       } catch (error) {
         appendEmergencyFault({ stateRoot, build, area: "worker-startup", reason: "database-unavailable",
@@ -387,6 +388,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   let removeStopListeners: (() => void) | undefined;
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build });
+  slowOperations.attach(debugEvents);
 
   try {
   importLocalDebugLog(stateRoot, database.authority.timelineEvents);

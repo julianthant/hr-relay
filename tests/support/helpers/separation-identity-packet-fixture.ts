@@ -1,4 +1,4 @@
-import { deriveJobRowFromCells } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
+import { jobRowFromCells } from "./ucpath-job-rows.js";
 import { type IdentityEvidencePacket, buildIdentityEvidencePacket } from "../../../src/rules/separations/identity-evidence.js";
 import { SeparationWritePlanSchema } from "../../../src/rules/separations/write-plan.js";
 import { uuidOf } from "./backend/dashboard-harness.js";
@@ -13,7 +13,7 @@ export function createSeparationIdentityPacketFixture() {
   const GATE_NOW = "2026-08-14T18:00:00.000Z";
 
   function packetWithPlan(): IdentityEvidencePacket {
-    const rows = [deriveJobRowFromCells([
+    const rows = [jobRowFromCells([
       "0", "07/01/2025", "Active", "SDCMP", "40012345", "000412",
       "HOUSING/DINING/HOSPITALITY", "004921", "STDT 2", "", "0.500000", "Student",
     ], 0)];
@@ -24,7 +24,7 @@ export function createSeparationIdentityPacketFixture() {
       emplIdSource: "name-resolved",
       documentEidConflicts: false,
       jobSummary: {
-        pageStateId: "ucpath.person-org.detail-ready",
+        pageStateId: "ucpath.workforce-job-summary.detail-ready",
         emplId: EID as never,
         displayedName: "Battistessa, Johnnie",
         jobRows: rows,

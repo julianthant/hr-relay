@@ -17,7 +17,7 @@ function setup(overrides: Partial<ChatGptAccountQueries> = {}) {
     startChatGptSignIn: async () => started,
     completeChatGptSignIn: async () => { connected = true; return { state: "completed", attemptId, account }; },
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }),
-    testChatGptOcr: async () => { calls.push("ocr"); return { state: "completed", model: "Synthetic OCR" }; },
+    signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }), testChatGptOcr: async () => { calls.push("ocr"); return { state: "completed", model: "Synthetic OCR" }; },
     ...overrides,
   };
   const identity = createServedChatGptAccountPort(client, { open: () => ({ navigate() {}, close() {} }) });

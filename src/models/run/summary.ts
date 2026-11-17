@@ -33,10 +33,6 @@ export const RunSummarySchema = z.strictObject({
   ]),
 });
 export type RunSummary = z.infer<typeof RunSummarySchema>;
-export const SummaryPublicationSchema = z.strictObject({
-  state: z.enum(["absent", "building", "published"]), generation: z.number().int().nonnegative(),
-  sourceGeneration: z.number().int().nonnegative(), rowCount: z.number().int().nonnegative(),
-});
 
 export const RunSummarySourceSchema = z.strictObject({
   run: RunRecordSchema, result: RunResultRecordSchema.nullable(), receipt: RunEvidenceReceiptSchema.nullable(),

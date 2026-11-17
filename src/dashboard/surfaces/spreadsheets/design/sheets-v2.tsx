@@ -78,15 +78,26 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
       if (result && result.state !== 'confirmed' && latest) toast({ tone: 'danger', title: "Couldn't save the columns", description: result.reason });
     });
   };
-  const add = async (document: EditableWorkbook) => {
+  const add = async (document: EditableWorkbook, tags: readonly string[]) => {
     const outcome = await importWorkbook(adapter, document);
     if (outcome.state === 'added') {
+      const created = outcome.libraryId;
+      if (tags.length && created) {
+        await adapter.refreshCatalog();
+        const entry = adapter.snapshot().catalog.find(item => item.libraryId === created);
+        if (!entry || !await settled(adapter.changeLibrary(entry, { kind: 'set-tags', tags: [...tags] }))) toast({ tone: 'danger', title: `Added ${outcome.name} without its tags`, description: 'Choose Edit tags on it to add them.' });
+      }
       toast({ tone: 'success', title: `Added ${outcome.name}`, description: unusableRowsNote(outcome.rowsWithoutEid) });
       return true;
     }
     toast({ tone: 'danger', title: outcome.state === 'pending' ? `Still confirming ${pendingImportName(adapter)}` : "Couldn't add the spreadsheet",
       description: outcome.state === 'pending' ? 'Choose Add to library again to check it. It is not added twice.' : outcome.reason });
     return false;
+  };
+  const addSharePoint = async (request: { url: string; name: string; tags: readonly string[] }) => {
+    const result = await adapter.importSharePoint({ source: 'sharepoint', url: request.url, name: request.name, ...(request.tags.length ? { tags: [...request.tags] } : {}) });
+    if (result.state === 'confirmed') { toast({ tone: 'success', title: `Added ${request.name}` }); return true; }
+    toast({ tone: 'danger', title: "Couldn't add the spreadsheet", description: result.message }); return false;
   };
   const checkPending = async (id: string) => {
     const result = await adapter.settleLibrary(id);
@@ -113,11 +124,17 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
         : <Grey className="text-[13px]">{sheets.length ? 'No spreadsheets match.' : 'No spreadsheets yet. Choose Import to add one.'}</Grey>}</div>
     </>}
     {dialog && target && <SheetDialog kind={dialog.kind} sheet={target} onClose={() => setDialog(undefined)} actions={{
-      rename: name => void change(target.id, { kind: 'rename', name }), link: url => void change(target.id, { kind: 'link', url }, `Linked ${target.name}`),
+      rename: name => void change(target.id, { kind: 'rename', name }),
+      clone: async name => {
+        const result = await adapter.cloneLibrary(target.id, { name });
+        if (result.state === 'confirmed') { toast({ tone: 'success', title: `Cloned ${target.name}` }); return undefined; }
+        return result.message;
+      },
+      link: url => void change(target.id, { kind: 'link', url }, `Linked ${target.name}`),
       tags: tags => void change(target.id, { kind: 'set-tags', tags: [...tags] }),
       rollback: versionId => void change(target.id, { kind: 'use-version', versionId }),
       remove: () => void change(target.id, { kind: 'remove' }).then(removed => { if (removed && openId === target.id) setOpenId(undefined); }),
     }} />}
-    {importing && <ImportDialog fields={fields} onClose={() => setImporting(false)} onAdd={add} />}
+    {importing && <ImportDialog fields={fields} onClose={() => setImporting(false)} onAdd={add} onAddSharePoint={addSharePoint} />}
   </section>;
 }

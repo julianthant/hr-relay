@@ -3,6 +3,7 @@ import { z } from "zod";
 import { taskId } from "../../../rules/identity/ids.js";
 import {
   EMPLOYMENT_SELECTION_REFUSAL_CODES,
+  EmploymentRequestSchema,
   SelectedEmploymentSchema,
 } from "../../../rules/separations/employment-selection.js";
 import { UcpathJobSummarySchema } from "../../ui/ucpath-job-summary.js";
@@ -19,6 +20,8 @@ export const SeparationsMatchActiveEmployment = defineTaskContract({
     documentNumber: z.string().min(1),
     /** The whole job-summary read, projected downstream and never re-scraped. */
     jobSummary: UcpathJobSummarySchema,
+    /** Which job the form names: its Student Title Code and comments. */
+    request: EmploymentRequestSchema,
   }),
   output: MatchActiveEmploymentOutputSchema,
   errorCodes: EMPLOYMENT_SELECTION_REFUSAL_CODES,

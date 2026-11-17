@@ -55,6 +55,7 @@ type RunCheckpointRecord,
 import { GateResultRecordSchema,type GateResultRecord,type OperatorGateResultRecord } from "../../../models/workflow/gates.js";
 import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
+import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
 import {
 ErrorCodeSchema,
 FingerprintSchema,
@@ -533,7 +534,7 @@ export function deriveRunEvidenceReceipt(
           if (upstream === undefined) throw new Error(`conditional gate ${id} lost dependency ${dependency}`);
           return [String(dependency), upstream.output.value];
         }));
-        if (!evaluateNodeCondition(node.when, { input: run.input.parsed.value, outputs })) {
+        if (!evaluateNodeCondition(node.when, { input: run.input.parsed.value, outputs, references: runWorkbookReferenceTypeIds(run.input.workbookReferences) })) {
           if (gateResultsByNode.has(id)) throw new Error(`inapplicable gate ${id} carries an operator result`);
           const decisionId = entryId("decision", `not-run.${id}`);
           const operand = node.when.of;

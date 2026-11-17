@@ -23,7 +23,7 @@ describe_m1("legacy workflow previews", () => {
     expect_m1(() => mockWorkflow_m1("missing")).toThrow("MOCK_WORKFLOW_UNKNOWN");
   });
   it_m1.each([
-    ["separations", ["kuali-extraction", "identity-check", "ucpath-job-summary", "kronos-search", "transaction-check", "ucpath-transaction", "kuali-finalization"]],
+    ["separations", ["kuali-extraction", "identity-check", "kronos-search", "identity-review", "transaction-check", "ucpath-transaction", "kuali-finalization"]],
     ["onboarding", ["crm-auth", "crm-search", "extraction", "pdf-download", "ucpath-auth", "person-search", "i9-creation", "transaction"]],
     ["kronos-pay-rule", ["csv-lookup", "determine-action", "kronos-auth", "update-pay-rule"]],
     ["oath-signature", ["crm-verify", "ucpath-auth", "transaction"]],

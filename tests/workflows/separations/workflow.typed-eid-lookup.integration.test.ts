@@ -11,7 +11,7 @@ import { buildNodeFailureRecord } from "../../../src/backend/runtime/execution/r
 import { createServerVerifiedArtifactReader } from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
-import { deriveJobRowFromCells } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
+import { jobRowFromCells } from "../../support/helpers/ucpath-job-rows.js";
 import { readJobSummaryTask } from "../../../src/backend/systems/ucpath/tasks/read-job-summary.js";
 import { verifyIdentityApprovalTask } from "../../../src/workflows/separations/tasks/verify-identity-approval.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
@@ -42,12 +42,12 @@ type Harness = Awaited<ReturnType<typeof sourceBoundHarness>>;
 /** The checked person found by a name search with a second candidate, or the person found for the entered ID under a different UCPath name. */
 function packetFor(observedAt: string, source: "name-resolved" | "operator-entered") {
   const eid = source === "operator-entered" ? TYPED : CHECKED;
-  const rows = [deriveJobRowFromCells(["0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
+  const rows = [jobRowFromCells(["0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
     "Housing Dining Hospitality", "004920", "STDT 3", "", "0.500000", "Student"], 0)];
   return buildIdentityEvidencePacket({
     documentNumber: "4510", documentName: "Hernandez, Jose Santos", documentEidText: "the separation document carried no EID",
     emplIdSource: source, documentEidConflicts: false,
-    jobSummary: { pageStateId: "ucpath.person-org.detail-ready", emplId: eid as never,
+    jobSummary: { pageStateId: "ucpath.workforce-job-summary.detail-ready", emplId: eid as never,
       displayedName: source === "operator-entered" ? "Okafor, Adaeze" : "Hernandez, Jose Santos",
       jobRows: rows, rowCount: rows.length, renderContext: { entry: "auto-detail", searchResultRows: 0, employmentInstances: "already-complete" },
       observedAt: observedAt as never },

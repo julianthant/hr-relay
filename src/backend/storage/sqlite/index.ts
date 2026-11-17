@@ -17,10 +17,6 @@ export {
   AuthorityBackupServiceOptionsSchema,
   verifyBackupManifestAtPath,
 } from "./backup-service.js";
-export {
-  AuthorityBootStore,
-  AuthorityMutationUnavailableError,
-} from "./authority-boot.js";
 export { AuthorityHealthPreflightRunner } from "./authority-health-runner.js";
 export {
   OfflineAuthorityRestoreService,
@@ -31,18 +27,13 @@ export {
   AuthorityBackupManifestSchema,
   AuthorityBackupRequestSchema,
   AuthorityBackupRunReportSchema,
-  AuthorityBootReportSchema,
   AuthorityCopyInspectionSchema,
   AuthorityInvariantResultSchema,
-  AuthorityPendingCountsSchema,
-  BackupHealthSchema,
   BackupVerificationSchema,
   OfflineRestoreReportSchema,
   OfflineRestoreRequestSchema,
-  RestoreCandidateSchema,
   SpanAuthorityRunRootSchema,
   StorageDoctorReportSchema,
-  StorageHealthCauseSchema,
 } from "./recovery-contracts.js";
 export {
   doctorAuthorityStorage,

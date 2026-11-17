@@ -43,9 +43,8 @@ describe("Run dialog footer and priority wording", () => {
     const dialog = await h.openDialog(h.stubClient({ submitStartPlan: async () => h.planResponse("5a000000-0000-4000-8000-000000000001") }));
     await dialog.type(h.TYPED);
     await dialog.press("Continue");
-    await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Confirm");
-    assert.match(dialog.text(), /PriorityOn/u);
+    assert.equal(dialog.stage(), "Options");
+    assert.match(dialog.text(), /Priority/u);
     assert.doesNotMatch(dialog.text(), /Interactive|Bulk/u);
   });
 });

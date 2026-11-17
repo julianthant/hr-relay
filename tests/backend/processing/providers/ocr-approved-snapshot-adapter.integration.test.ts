@@ -25,12 +25,13 @@ import { EmergencyContactMemberInputSchema } from "../../../../src/models/workfl
 import { EmergencyContactResultSchema, EmergencyContactMemberResultSchema } from "../../../../src/models/workflows/emergency-contact/result.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
+import { onbaseFilingFixture } from "../../../support/helpers/backend/onbase-filing-fixture.js";
 import { ocrProofReadDatabase } from "../../../support/helpers/backend/ocr-proof-reads.js";
 
 import { createDeterministicUcpathContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { UcpathContactPageSnapshotSchema, type UcpathContactPageSnapshot } from "../../../../src/models/ui/ucpath-emergency-contact.js";
-import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, RunTerminalEvidenceResultSchema, readRunPreviewResult } from "../../../../src/models/run/result.js";
+import { RunDelegatedDryRunPreviewResultSchema, RunTerminalEvidenceResultSchema, readRunPreviewResult } from "../../../../src/models/run/result.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import contactPage from "../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 
@@ -203,25 +204,29 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
     { employeeName: "Fixture, Cameron", contactName: "Drew Draft", correctedContactName: "Drew Corrected" },
   ];
   const selection = [2, 0];
-  const ports = new Map<string, ReturnType<typeof createDeterministicUcpathContactPage>>();
+  // Every UCPath session opens each employee's persisted page afresh; a dry run never saves, so the persisted page stays the original.
+  const ports = new Map<string, ReturnType<typeof createDeterministicUcpathContactPage>[]>();
   const captures = new Map<string, UcpathContactPageSnapshot[]>(), searched: string[] = [];
   const target = childWorkflowModuleOf("emergency-contact", "emergency-contact-member");
   const nativeMembers = new Map<string, { input: z.output<typeof EmergencyContactMemberInputSchema>; fingerprint: string }>();
   let released = false;
-  function contactDriver(eid: string) {
+  function contactDriver(session: Map<string, ReturnType<typeof createDeterministicUcpathContactPage>>, eid: string) {
     assert.equal(released, true, "contact acquisition must follow the native OCR release");
     const index = selection.find(index => String(10800000 + index) === eid); assert.ok(index !== undefined);
     const facts = reviewedPages[index]; assert.ok(facts);
-    let port = ports.get(eid);
+    let port = session.get(eid);
     if (port === undefined) {
       port = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
         displayedEid: eid, displayedName: facts.employeeName }) });
-      ports.set(eid, port);
+      session.set(eid, port);
+      ports.set(eid, [...ports.get(eid) ?? [], port]);
     }
     return createDeterministicUcpathPersonOrgDriver(undefined, undefined, port);
   }
-  const sessions = sessionFactoryHarness({ ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
+  const filing = await onbaseFilingFixture(3);
+  const sessions = sessionFactoryHarness({ onbase: filing.session(() => f.clock), ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
     const driver = createDeterministicUcpathPersonOrgDriver();
+    const session = new Map<string, ReturnType<typeof createDeterministicUcpathContactPage>>();
     let activeEid: string | undefined;
     return { ...driver,
       async searchPersonOrg(input) {
@@ -233,19 +238,19 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
           employeeStatus: "active", hdh: true, hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" };
         return SearchPersonOrgOutputSchema.parse({ results: [candidate], selection: { status: "resolved", selected: candidate, candidateEids: [candidate.emplId] } });
       },
-      async readEmergencyContacts(input) { activeEid = input.emplId; return contactDriver(input.emplId).readEmergencyContacts(input); },
-      async stageEmergencyContact(input, plan) { activeEid = input.emplId; return contactDriver(input.emplId).stageEmergencyContact(input, plan); },
-      async read(id) { if (id !== UCPATH_CONTACT_DISPLAYED_NAME) return driver.read(id); assert.ok(activeEid); return contactDriver(activeEid).read(id); },
+      async readEmergencyContacts(input) { activeEid = input.emplId; return contactDriver(session, input.emplId).readEmergencyContacts(input); },
+      async stageEmergencyContact(input, plan) { activeEid = input.emplId; return contactDriver(session, input.emplId).stageEmergencyContact(input, plan); },
+      async read(id) { if (id !== UCPATH_CONTACT_DISPLAYED_NAME) return driver.read(id); assert.ok(activeEid); return contactDriver(session, activeEid).read(id); },
     };
   }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
-  const f = await world.fixture({ coordinator: true, record: true, pageCount: 3, reviewedPages, operatorEvidence: true, dryRun: true, sessions,
+  const f = await world.fixture({ coordinator: true, record: true, pageCount: 3, reviewedPages, operatorEvidence: true, dryRun: true, sessions, documentBytes: filing.bytes,
     screenshotCapture: { capture: async context => {
       assert.equal(context.screenshot.state, "available");
       const member = nativeMembers.get(context.runId);
       if (member === undefined) { assert.notEqual(context.descriptorFingerprint, target.descriptor.contractFingerprint); return; }
       assert.equal(context.descriptorFingerprint, member.fingerprint);
       assert.ok(member.input.record.assertedEid);
-      const port = ports.get(member.input.record.assertedEid); assert.ok(port);
+      const port = ports.get(member.input.record.assertedEid)?.at(-1); assert.ok(port);
       const snapshot = await port.snapshot(); assert.equal(snapshot.displayedEid, member.input.record.assertedEid);
       const previous = captures.get(context.runId) ?? []; previous.push(snapshot); captures.set(context.runId, previous);
     } },
@@ -311,26 +316,32 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
     for (const member of members) {
       assert.equal(member.envelope.dryRun, true);
       const stored = f.database.authority.runResults.get(member.envelope.runId); assert.ok(stored);
-      assert.equal(RunDryRunPreviewResultSchema.parse(stored.result.value).externalCommit, "none");
+      // The member previews its Save and then its OnBase filing.
+      const memberPreview = RunDelegatedDryRunPreviewResultSchema.parse(stored.result.value);
+      assert.equal(memberPreview.externalCommit, "none");
+      assert.equal(memberPreview.steps.find(step => step.nodeId === "contact-preview")?.state, "transaction-preview");
+      assert.equal(memberPreview.steps.find(step => step.nodeId === "onbase-filing")?.state, "delegation-preview");
       assert.equal(EmergencyContactMemberResultSchema.safeParse(stored.result.value).success, false);
     }
     const all = [f.parentRun];
     for (let index = 0; index < all.length; index++) { const run = all[index]; assert.ok(run); all.push(...f.database.authority.runs.listChildren(run.envelope.runId)); }
     assert.equal(all.filter(run => run.envelope.workflow === "person-lookup").length, 3);
     assert.equal(all.filter(run => run.envelope.workflow === "i9-lookup").length, 0);
+    assert.equal(all.filter(run => run.envelope.workflow === "onbase").length, members.length);
     for (const run of all) {
       assert.equal(run.envelope.dryRun, true);
       const stored = f.database.authority.runResults.get(run.envelope.runId); assert.ok(stored);
-      assert.equal(readRunPreviewResult(stored) !== undefined, ["emergency-contact", "emergency-contact-member"].includes(run.envelope.workflow));
+      assert.equal(readRunPreviewResult(stored) !== undefined, ["emergency-contact", "emergency-contact-member", "onbase"].includes(run.envelope.workflow));
       assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
       assert.deepEqual(f.database.authority.writeIntents.countDryRunEvidenceByRun(run.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
     }
   });
   assert.equal(ports.size, 2);
+  assert.equal(filing.imports(), 0, "a dry run never clicks Import");
   for (const member of members) {
     const input = EmergencyContactMemberInputSchema.parse(member.input.parsed.value), desired = contactEffect(approvedEmergencyContact(input.record));
     assert.ok(input.record.assertedEid);
-    const port = ports.get(input.record.assertedEid); assert.ok(port);
+    const pages = ports.get(input.record.assertedEid) ?? [], port = pages[0]; assert.ok(port);
     assert.ok(port.actions.includes("demote-primary:0") && port.actions.includes("fill-fields:1") && port.actions.includes("fill-name:1"));
     assert.ok(port.actions.indexOf("demote-primary:0") < port.actions.indexOf("fill-fields:1"));
     assert.ok(port.actions.indexOf("fill-fields:1") < port.actions.indexOf("fill-name:1"));
@@ -340,7 +351,7 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
     assert.equal(final.observation, "staged"); assert.equal(final.rows[0]?.primary, false);
     const primaries = interpretContactPage(final, approvedEmergencyContact(input.record)).rows.filter(row => row.kind === "contact" && row.effect.primary);
     assert.equal(primaries.length, 1); assert.ok(primaries[0]?.kind === "contact"); assert.deepEqual(primaries[0].effect, desired);
-    assert.ok(!("save" in port) && !("commit" in port));
+    assert.ok(pages.every(page => !("save" in page) && !("commit" in page)));
   }
 
   const currentParent = f.database.authority.runs.get(f.parentRun.envelope.runId); assert.ok(currentParent?.appVersion);

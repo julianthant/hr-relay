@@ -196,6 +196,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     signal: AbortSignal;
     duoCeremony: DuoCeremonyGate;
     acquisitionRemainingMs?: () => number;
+    extendAcquisition?: () => void;
     claimStaleRequestRecovery?: () => boolean;
     replacesSessionId?: string;
   }>): Promise<WorkerBrowserResource> {
@@ -229,8 +230,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
     assertFastDuoReady(config, this.#options.duo);
     const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
-    const exclusiveLease = input.exclusive ? await this.#acquireExclusiveSession({ workerId, sessionId, system, instance,
-      signal: input.signal, assertCurrent, ...(input.replacesSessionId === undefined ? {} : { replacesSessionId: input.replacesSessionId }), ...(input.acquisitionRemainingMs === undefined ? {} : { remainingMs: input.acquisitionRemainingMs }) }) : undefined;
+    const exclusiveLease = input.exclusive ? await this.#acquireExclusiveSession({ workerId, workflowId: input.workflowId, sessionId, system, instance,
+      ...(input.extendAcquisition === undefined ? {} : { extendAcquisition: input.extendAcquisition }), signal: input.signal, assertCurrent, ...(input.replacesSessionId === undefined ? {} : { replacesSessionId: input.replacesSessionId }), ...(input.acquisitionRemainingMs === undefined ? {} : { remainingMs: input.acquisitionRemainingMs }) }) : undefined;
     let launchStarted = false;
     let reserved = false;
     let context: BrowserContext;
@@ -596,19 +597,25 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     );
   }
 
-  async #acquireExclusiveSession(input: Readonly<{ workerId: WorkerId; sessionId: string; system: BrowserSystemId; instance: RuntimeInstance;
-    signal: AbortSignal; assertCurrent: () => void; remainingMs?: () => number; replacesSessionId?: string }>): Promise<ExclusiveSessionLease> {
+  async #acquireExclusiveSession(input: Readonly<{ workerId: WorkerId; workflowId: WorkflowId; sessionId: string; system: BrowserSystemId; instance: RuntimeInstance;
+    signal: AbortSignal; assertCurrent: () => void; remainingMs?: () => number; extendAcquisition?: () => void; replacesSessionId?: string }>): Promise<ExclusiveSessionLease> {
     const entry = new URL(resolveSystemEntryUrl(this.#options.config, input.system, input.instance, `${input.system} identity lease`));
     const account = requireSecret("ucpathUserId", this.#options.protectedSecrets).trim().toLocaleLowerCase("en-US");
     if (account.length === 0) throw new Error("onbase-session-identity-unavailable");
     const identityKey = sha256Hex(canonicalJsonStringify({ application: new URL(".", entry).href, account }));
-    const deadline = this.#options.clock.monotonicMs() + this.#options.config.timeouts.sessionAcquireMs;
+    const { sessionAcquireMs } = this.#options.config.timeouts;
+    let deadline = this.#options.clock.monotonicMs() + sessionAcquireMs;
     for (;;) {
       input.signal.throwIfAborted(); input.assertCurrent();
       const outcome = this.#options.browserOwner.database.authority.exclusiveSessionLeases.acquire({ identityKey,
         workerId: input.workerId, sessionId: input.sessionId, now: this.#options.clock.now().toISOString(),
         ...(input.replacesSessionId === undefined ? {} : { replacesSessionId: input.replacesSessionId }) });
       if (outcome.state === "acquired") return outcome.lease;
+      // Another worker actively running this workflow keeps the wait alive.
+      if (outcome.lease.workerId !== input.workerId
+        && this.#options.browserOwner.database.authority.runs.listActiveOwners(input.workflowId).some(owner => owner.workerId === outcome.lease.workerId)) {
+        deadline = this.#options.clock.monotonicMs() + sessionAcquireMs; input.extendAcquisition?.();
+      }
       const remaining = Math.min(deadline - this.#options.clock.monotonicMs(), input.remainingMs?.() ?? Infinity);
       if (remaining <= 0) throw new OnbaseSessionHeldError();
       await new Promise<void>((resolve, reject) => {

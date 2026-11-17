@@ -2,10 +2,10 @@
 import { z } from "zod";
 import type { UcpathJobCell, UcpathJobRow } from "../../models/ui/ucpath-job-summary.js";
 
-export const JobStatusTierSchema = z.enum(["active", "inactive", "unknown"]);
+export const JobStatusTierSchema = z.enum(["active", "inactive", "unknown", "not-shown"]);
 export type JobStatusTier = z.infer<typeof JobStatusTierSchema>;
 
-/** The four things a whole grid can say about whether this person still holds a job; every arm is a first-class outcome, and none of them is an error. */
+/** The five things a whole read can say about whether this person still holds a job; every arm is a first-class outcome, and none of them is an error. */
 export const JobSummaryDispositionSchema = z.enum([
   /** Exactly one row is active — the ordinary separation shape. */
   "single-active-job",
@@ -15,13 +15,15 @@ export const JobSummaryDispositionSchema = z.enum([
   "concurrent-active-jobs",
   /** HR status falls outside the accepted vocabulary. */
   "indeterminate-status",
+  /** UCPath opened the person's only employment record directly, which shows no status; that sole record is the job. */
+  "sole-record",
 ]);
 export type JobSummaryDisposition = z.infer<typeof JobSummaryDispositionSchema>;
 
 export const ClassifiedJobRowSchema = z.strictObject({
   rowIndex: z.number().int().nonnegative(),
   emplRecord: z.string().min(1),
-  /** VERBATIM, exactly as UCPath rendered it — the operator reads this word. */
+  /** VERBATIM, exactly as UCPath rendered it — the operator reads this word — or why no status shows. */
   hrStatus: z.string().min(1),
   tier: JobStatusTierSchema,
   /** Preserve department text or the read's own absence reason. */
@@ -58,9 +60,10 @@ export const JobSummaryClassificationSchema = z.strictObject({
 export type JobSummaryClassification = z.infer<typeof JobSummaryClassificationSchema>;
 
 /** Check inactive first because it contains active. */
-function classifyJobStatus(hrStatus: string): JobStatusTier {
-  if (/inactive|terminated|separated/iu.test(hrStatus)) return "inactive";
-  if (/active/iu.test(hrStatus)) return "active";
+function classifyJobStatus(hrStatus: UcpathJobCell): JobStatusTier {
+  if (hrStatus.state === "absent") return "not-shown";
+  if (/inactive|terminated|separated/iu.test(hrStatus.value)) return "inactive";
+  if (/active/iu.test(hrStatus.value)) return "active";
   return "unknown";
 }
 
@@ -81,7 +84,7 @@ export function classifyJobSummary(
   const classified = rows.map((row) => ({
     rowIndex: row.rowIndex,
     emplRecord: row.emplRecord,
-    hrStatus: row.hrStatus,
+    hrStatus: row.hrStatus.state === "present" ? row.hrStatus.value : `(not shown: ${row.hrStatus.reason})`,
     tier: classifyJobStatus(row.hrStatus),
     department: cellText(row.department),
     jobTitle: cellText(row.jobTitle),
@@ -89,14 +92,17 @@ export function classifyJobSummary(
   }));
   const activeRowCount = classified.filter(({ tier }) => tier === "active").length;
   const inactiveRowCount = classified.filter(({ tier }) => tier === "inactive").length;
-  const unknownRowCount = classified.filter(({ tier }) => tier === "unknown").length;
-  const disposition: JobSummaryDisposition = unknownRowCount > 0
-    ? "indeterminate-status"
-    : activeRowCount === 0
-      ? "no-active-job"
-      : activeRowCount === 1
-        ? "single-active-job"
-        : "concurrent-active-jobs";
+  // A status that is not shown has no tier to count, so it counts with the unrecognized ones.
+  const unknownRowCount = classified.filter(({ tier }) => tier === "unknown" || tier === "not-shown").length;
+  const disposition: JobSummaryDisposition = classified.length === 1 && classified[0]?.tier === "not-shown"
+    ? "sole-record"
+    : unknownRowCount > 0
+      ? "indeterminate-status"
+      : activeRowCount === 0
+        ? "no-active-job"
+        : activeRowCount === 1
+          ? "single-active-job"
+          : "concurrent-active-jobs";
   const unreadableCells: string[] = [];
   for (const row of rows) {
     for (const [name, cell] of [

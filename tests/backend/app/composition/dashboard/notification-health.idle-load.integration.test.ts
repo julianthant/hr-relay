@@ -28,7 +28,7 @@ async function idleReads(backups: number, stalls = false): Promise<ReturnType<ty
     for (let index = 0; index < backups; index++) {
       f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: false, occurrence: index,
         observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), samples: [] }));
-      await service.request({ trigger: "operator", requiredGeneration: f.db.getMeta().authorityGeneration });
+      await service.request({ trigger: "schema-migration", requiredGeneration: f.db.getMeta().authorityGeneration });
       f.clock.advanceWall(1_000);
     }
     const stores = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");

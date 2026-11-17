@@ -24,7 +24,7 @@ describe("D resolution command authority", () => {
       const command = resolutionCommand();
       assert.equal(f.kernel.execute(command).state, "applied");
       assert.deepEqual(f.db.authority.failureResolution.read(f.record.runId, f.record.failureId)?.resolution,
-        { status: "resolved", version: 2, by: "local-operator", at: NOW, note: "Updated page control." });
+        { status: "resolved", version: 2, by: "local-operator", at: NOW });
       const audit = f.db.authority.commandAudits.findByCommand(command.commandId);
       assert.deepEqual(audit?.versionChanges, [{ target: { family: "failure-resolution", runId: f.record.runId, failureId: f.record.failureId }, before: 1, after: 2 }]);
       const reopen = resolutionCommand({ target: { ...command.target, expectedVersion: 2 }, payload: { action: "reopen" } });
@@ -34,7 +34,6 @@ describe("D resolution command authority", () => {
       assert.equal(JSON.stringify(f.db.authority.failures.get(f.record.failureId)), beforeFailure);
       const history = readTimelineRecords(f.db.authority.timelineEvents).records.filter(row => row.payload.kind === "failure-resolution");
       assert.deepEqual(history.map(row => row.payload.kind === "failure-resolution" && row.payload.action), ["resolve", "reopen"]);
-      assert.ok(history.every(row => !JSON.stringify(row).includes("Updated page control")));
     } finally { await f.dispose(); }
   });
   it("exact replay after lost acknowledgement and restart does not advance any authority; divergent identity refuses", async () => {
@@ -57,7 +56,7 @@ describe("D resolution command authority", () => {
         const kernel = resolutionKernel(second, f.clock);
         assert.equal(kernel.execute(command).state, "already-applied");
         assert.equal(snapshot(f), before);
-        const divergent = kernel.execute({ ...command, payload: { action: "resolve", note: "Different" } });
+        const divergent = kernel.execute({ ...command, payload: { action: "reopen" } });
         assert.equal(divergent.state, "rejected");
         if (divergent.state === "rejected") assert.equal(divergent.code, "command-divergent");
         assert.equal(snapshot(f), before);

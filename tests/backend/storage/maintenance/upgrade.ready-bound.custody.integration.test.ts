@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AUTHORITY_DERIVED_TABLES } from "../../../../src/models/config/authority.js";
 import { WorkerPoolRecordSchema } from "../../../../src/models/run/worker-pool.js";
 import { insertNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
@@ -99,7 +100,7 @@ it("confines the issued READY purpose and its verified backup copy to their exac
     assert.throws(() => AuthorityDatabase.initializeProfile(issued), { message: "profile-initialization-authority-required" });
     assert.throws(() => issued.verifiedReadOnlyCopy(f.path, digest(f.path)), { message: "profile-stopped-upgrade-copy-refused" });
     assert.throws(() => issued.stoppedStagedAuthority(join(f.stateRoot, `.restore-${randomUUID()}.sqlite.tmp`)), { message: "profile-stopped-upgrade-exclusive-refused" });
-    const backed = await prepareStoppedBackupClosure(profileBrowserClosure, issued, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, issued, f.stateRoot, systemClock, f.processLockRoot, restore));
+    const backed = await prepareStoppedBackupClosure(profileBrowserClosure, issued, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, issued, f.stateRoot, systemClock, f.processLockRoot, restore, "schema-migration"));
     const manifest = backed.manifests[0]; assert.ok(manifest);
     const verified = verifyStoppedBackupManifestAtPath(issued, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`));
     const copy = issued.verifiedReadOnlyCopy(verified.backupPath, verified.manifest.sha256);
@@ -162,7 +163,7 @@ it("automatically upgrades schema 25 with queued work intact", async () => {
     const before = rawEight(f.path, 25);
     assert.ok(before.runs.length > 0); assert.ok(before.artifacts.length > 0);
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
-    assert.deepEqual(tables(), [...migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION)].sort());
+    assert.deepEqual(tables(), [...migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION), ...AUTHORITY_DERIVED_TABLES].sort());
     const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "assistant_attachments", "assistant_conversations", "assistant_messages"].sort());
     for (const [table, rows] of Object.entries(before)) {
@@ -237,7 +238,7 @@ it("requires a real verified own backup before changing the ready source schema"
     assert.throws(() => AuthorityDatabase.upgradeStopped(owner, f.path, f.processLockRoot, systemClock, inspection.authorityContentFingerprint),
       { message: "upgrade-verified-backup-required" });
     assert.deepEqual(storageTree(f.stateRoot), before);
-    const backed = await prepareStoppedBackupClosure(profileBrowserClosure, owner, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, owner, f.stateRoot, systemClock, f.processLockRoot, restore));
+    const backed = await prepareStoppedBackupClosure(profileBrowserClosure, owner, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, owner, f.stateRoot, systemClock, f.processLockRoot, restore, "schema-migration"));
     const manifest = backed.manifests[0]; assert.ok(manifest);
     const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`));
     const backedBefore = storageTree(f.stateRoot);
@@ -261,7 +262,7 @@ it("refuses changed source content inside the real migration transaction and can
   const owner = await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts);
   try {
     const inspection = AuthorityDatabase.inspectStoppedUpgrade(owner, f.path, f.processLockRoot, systemClock);
-    const backed = await prepareStoppedBackupClosure(profileBrowserClosure, owner, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, owner, f.stateRoot, systemClock, f.processLockRoot, restore));
+    const backed = await prepareStoppedBackupClosure(profileBrowserClosure, owner, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, owner, f.stateRoot, systemClock, f.processLockRoot, restore, "schema-migration"));
     const manifest = backed.manifests[0]; assert.ok(manifest);
     const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`));
     const raw = new DatabaseSync(f.path);

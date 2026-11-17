@@ -262,22 +262,9 @@ matches a complete digit token, so an ordinary longer identifier containing the 
 
 ## 4. Crash recovery and UNKNOWN refusal
 
-`createWriteRecoveryService` handles unfinished `attempting` intents. Production worker startup parks unfinished attempts for operator action; the standalone recovery service is not composed into that startup path. Worker and expired-claim recovery must reconcile these intents before ordinary queue admission. [Execution and sessions](execution-and-sessions.md) describes that scheduling boundary.
+Production worker startup parks unfinished `attempting` intents for operator action before ordinary queue admission. [Execution and sessions](execution-and-sessions.md) describes that scheduling boundary.
 
-The recovery service rebuilds the exact commit input and binds the retained run configuration fingerprint around its read lease. Missing authority or incompatible semantic identity refuses before probing. A failed probe is not absence.
-
-| Recovery evidence | Result |
-| --- | --- |
-| `present` with valid proof and reconstructed output | Atomic backfill settlement, `proofSource: "recovery-probe"`, no second commit |
-| `present` with invalid proof or an old repeat receipt | Park with `present-proof-invalid` or `unknown` |
-| `ambiguous`, `unknown`, or a throwing probe | Park with a typed authority reason |
-| `absent` under `operator-only` | Park `operator-required` |
-| Qualifying stabilized absences, but not enough observations yet | Return `wait { notBefore, observationsNeeded }` |
-| Complete stabilized negative proof | Mark the same intent `retryable` and resume the run for a fresh generation |
-
-`evaluateNegativeSettlement` validates every counted absence against the fenced key, query, authoritative source, and source state. Each observation must fall after the propagation window and meet spacing constraints. Future, early, malformed, contradictory, or foreign-key observations cannot grant retry authority. Earlier observations are diagnostic only. Prior observations are held within the recovery episode and recollected after process loss.
-
-`wait` returns a scheduling instant rather than sleeping a worker. Inline same-owner recovery accepts valid positive proof but parks negative uncertainty; stabilized settlement belongs to the standalone recovery service.
+Inline same-owner recovery accepts valid positive proof but parks negative uncertainty. Parked-write checks retain read evidence without granting retry or settlement; typed operator resolution controls the held generation.
 
 Worker Remove and Retry do not reconcile a write. Before profile release or replacement, native
 authority refuses held Duo, a current owned claim or an unattributable attempting write. Another
@@ -311,7 +298,7 @@ A lost or crashed recheck claim returns claimed, validating, or running executio
 
 `requireWriteResolutionBinding` checks the consumed semantic surface. Exact contract-closure identity is sufficient. When the closure changes, the module checks workflow identity, descriptor version, transaction node, canonical-input schema, re-derived permanent key, and retained binding identity. Missing evidence, schema failure, and key drift remain distinct refusal categories. There is no force or waiver arm. Settling an intent does not re-plan its run onto a changed descriptor.
 
-`command-kernel.ts` refuses generic retry for parked writes and rejects cancellation over any `attempting` or `parked` intent in the entire cancellation cascade. Resolution must precede cancellation. Confirmed absence resumes to queued, so subsequent cancellation remains subject to the ordinary queue race.
+`command-kernel.ts` refuses generic retry for parked writes and rejects cancellation over any `parked` intent, or any `attempting` intent whose run holds no live claim, in the entire cancellation cascade. Resolution must precede cancellation. A run Cancel (Stop) over a claimed `attempting` intent only marks the cascade cancel-requested: that write finishes and settles once, then its run ends cancelled at its next boundary and the cascade settles after it; the settled write is never repeated. Confirmed absence resumes to queued, so subsequent cancellation remains subject to the ordinary queue race.
 
 ## 6. Settlement, history, and evidence receipts
 

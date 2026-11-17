@@ -47,7 +47,7 @@ describe("older typed Rerun backend prefill through mounted current form", () =>
         assert.equal(dialog.typedInput().value, ""); assert.equal(dialog.disabled("Continue"), true); assert.equal(request, undefined);
         await dialog.type("Example, Person, 01/15/2000, x");
       } else assert.equal(dialog.typedInput().value, "10000001");
-      await dialog.press("Continue"); await dialog.press("Continue");
+      await dialog.press("Continue"); await dialog.press("Start run");
       assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [kind === "padded-name"
         ? { mode: "match", lastName: "Example", firstName: "Person", dob: "01/15/2000", crmCheck: true, includeCrmDates: false }
         : { mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true, includeCrmDates: false }]);

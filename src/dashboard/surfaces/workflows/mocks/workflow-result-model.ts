@@ -49,7 +49,7 @@ export function mockFieldValue(run: MockRun, label: string): string {
 }
 const STEP_NODES: Readonly<Record<string, string>> = {
   searching: "Searching", "cross-verification": "Cross-verification", "active-status": "Active status", "crm-dates": "CRM dates",
-  "kuali-extraction": "Kuali extraction", "identity-check": "Identity check", "ucpath-job-summary": "Job summary", "kronos-search": "Kronos search", "ucpath-transaction": "UCPath transaction", "kuali-finalization": "Kuali finalization",
+  "kuali-extraction": "Kuali extraction", "identity-check": "Identity check", "kronos-search": "Kronos search", "identity-review": "Identity approval", "ucpath-transaction": "UCPath transaction", "kuali-finalization": "Kuali finalization",
   extraction: "CRM extraction", "pdf-download": "PDF download", "person-search": "Person search", "i9-creation": "I-9 creation", lookup: "Lookup",
   "csv-lookup": "CSV lookup", "determine-action": "Determine action", "update-pay-rule": "Update pay rule",
   "crm-verify": "CRM verify", "wait-signatures": "Wait signatures", submit: "File ticket", navigation: "Navigation", "fill-form": "Fill form", save: "Save",

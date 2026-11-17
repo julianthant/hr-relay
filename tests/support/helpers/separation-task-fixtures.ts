@@ -47,7 +47,7 @@ export function createSeparationTaskFixtures() {
     return {
       rowIndex: 0,
       emplRecord: "0",
-      hrStatus: "Active",
+      hrStatus: cell("Active"),
       businessUnit: "SDCMP",
       effectiveDate: cell("07/01/2025"),
       positionNumber: cell("40012345"),
@@ -64,7 +64,7 @@ export function createSeparationTaskFixtures() {
 
   function jobSummary(rows: readonly UcpathJobRow[] = [jobRow()], emplId = EID): UcpathJobSummary {
     return UcpathJobSummarySchema.parse({
-      pageStateId: "ucpath.person-org.detail-ready",
+      pageStateId: "ucpath.workforce-job-summary.detail-ready",
       emplId,
       displayedName: NAME,
       jobRows: [...rows],

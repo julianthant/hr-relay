@@ -1,0 +1,44 @@
+name: Development
+
+run-name: ${{ github.event.pull_request.title }}
+
+on:
+  pull_request:
+    branches: [development]
+    types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+    with:
+      kind: fast
+
+  development:
+    name: development
+    needs: checks
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Require every fast proof
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          PLAN: ${{ needs.checks.outputs.plan }}
+          RESULTS: ${{ needs.checks.outputs.results }}
+        run: |
+          test "$CHECKS_RESULT" = success
+          node --import tsx scripts/test/ci-plan.ts verify "$PLAN" "$RESULTS"

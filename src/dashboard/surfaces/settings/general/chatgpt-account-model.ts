@@ -22,6 +22,8 @@ export interface ChatGptAccountPort {
   readonly subscribe: (listener: () => void) => () => void;
   readonly signIn: (input: { readonly usePlan: boolean }) => Promise<void>;
   readonly cancelSignIn: () => Promise<void>;
+  /** Resolves to the catalog code of a refused or failed disconnect, and to undefined once the account is forgotten. */
+  readonly signOut: () => Promise<ErrorCatalogCode | undefined>;
 }
 
 export const CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage";
@@ -43,6 +45,7 @@ export function createPreviewChatGptAccountPort(): ChatGptAccountPort {
       return Promise.resolve();
     },
     cancelSignIn: () => { publish({ state: "signed-out" }); return Promise.resolve(); },
+    signOut: () => { publish({ state: "signed-out" }); return Promise.resolve(undefined); },
   };
 }
 
@@ -135,6 +138,12 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
         problem(state, code, account);
       }
     } catch { if (current(request)) problem(state, code); }
+  };
+  const reread = async (request: number) => {
+    try {
+      const account = await readWithDeadline(async () => (await client.chatGptAccount()).account, "CHATGPT_AUTH_UNAVAILABLE");
+      if (current(request) && account.state !== "signing-in") accept(account);
+    } catch { /* the failure code is already being reported; the row keeps the account it showed */ }
   };
   const complete = async (attemptId: string, expiresAt: string, request: number) => {
     completionController?.abort();
@@ -236,6 +245,22 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
         await complete(result.attemptId, result.expiresAt, request);
       } catch { await reconcileProblem(request); }
       finally { if (ownedPopup === popup) closePopup(); if (current(request)) { busy = false; notify(); } }
+    },
+    signOut: async () => {
+      if (disposed || busy || snapshot.state !== "connected") return undefined;
+      const request = ++epoch;
+      busy = true; notify();
+      try {
+        const result = await readWithDeadline(signal => client.signOutChatGpt(signal), "CHATGPT_AUTH_UNAVAILABLE");
+        if (!current(request)) return undefined;
+        if (result.state === "signed-out") { accept({ state: "signed-out" }); return undefined; }
+        // The account stays as it was shown; only an uncertain outcome is re-read so the row cannot lie.
+        if (result.state === "uncertain") await reread(request);
+        return result.code;
+      } catch {
+        await reread(request);
+        return "CHATGPT_AUTH_UNAVAILABLE";
+      } finally { if (current(request)) { busy = false; notify(); } }
     },
     cancelSignIn: async () => {
       const pending = snapshot.state === "unavailable" ? snapshot.account : snapshot;

@@ -34,7 +34,7 @@ describe("served Person Lookup Run and Rerun", () => {
     }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
     await dialog.press("Continue");
     assert.equal(dialog.typedInput().value, ""); assert.equal(dialog.disabled("Continue"), true); assert.equal(request, undefined);
-    await dialog.type("Example, Person, 01/15/2000, x"); await dialog.press("Continue"); await dialog.press("Continue");
+    await dialog.type("Example, Person, 01/15/2000, x"); await dialog.press("Continue"); await dialog.press("Start run");
     assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [{ mode: "match", lastName: "Example", firstName: "Person", dob: "01/15/2000", crmCheck: true, includeCrmDates: false }]);
   });
   it("fills a missing older control from current defaults without changing accepted identity", async () => {
@@ -49,7 +49,7 @@ describe("served Person Lookup Run and Rerun", () => {
       submitStartPlan: async options => { request = options; const parsed = StartPlanRequestSchema.parse(options); return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
     }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
     await dialog.press("Continue"); assert.equal(dialog.typedInput().value, "10000001");
-    await dialog.press("Continue"); await dialog.press("Continue");
+    await dialog.press("Continue"); await dialog.press("Start run");
     assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [{ mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true, includeCrmDates: false }]);
   });
   it("keeps the Run component and model independent of workflow-specific models", () => {
@@ -76,7 +76,7 @@ describe("served Person Lookup Run and Rerun", () => {
     assert.match(dialog.text(), /Identifiers to inspect/u); assert.match(dialog.text(), /Separate with a vertical bar/u);
     assert.match(dialog.text(), /Cross-check CRM records/u);
     assert.equal(dialog.typedInput().placeholder, "10000001|10000002");
-    await dialog.type("10000001|10000002"); await dialog.press("Continue"); await dialog.press("Continue");
+    await dialog.type("10000001|10000002"); await dialog.press("Continue"); await dialog.press("Start run");
     assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, ["10000001", "10000002"].map(emplId => ({ mode: "search", emplId, crmCheck: true, keepNonHdh: false, includeCrmDates: false })));
   });
   it("sends canonical Search inputs with merged duplicates through the existing planner", async () => {
@@ -85,13 +85,13 @@ describe("served Person Lookup Run and Rerun", () => {
     await dialog.type("10000001; 10000001; Example, Person");
     assert.ok(document.querySelector('textarea[aria-label="Employee IDs or names"]'));
     assert.match(dialog.text(), /Lookup mode/u); assert.match(dialog.text(), /CRM check/u);
-    await dialog.press("Continue"); await dialog.press("Continue");
+    await dialog.press("Continue"); await dialog.press("Start run");
     const planned = StartPlanRequestSchema.parse(request);
     assert.deepEqual(planned.submissions, [
       { mode: "search", emplId: "10000001", crmCheck: true, keepNonHdh: false, includeCrmDates: false },
       { mode: "search", name: "Example, Person", crmCheck: true, keepNonHdh: false, includeCrmDates: false },
     ]);
-    assert.deepEqual(planned.selectedStepKeys, ["searching", "cross-verify", "active-status"]);
+    assert.deepEqual(planned.selectedStepKeys, ["searching", "cross-verify", "active-status", "reference-check"]);
   });
   it("switches to Match defaults, rejects missing identifiers and masks confirmation", async () => {
     let request: unknown;
@@ -102,10 +102,10 @@ describe("served Person Lookup Run and Rerun", () => {
     assert.equal(/Enter employee IDs\./iu.test(dialog.text()), false);
     assert.equal(dialog.disabled("Continue"), true);
     await dialog.type("Example, Person, x, 123456789");
-    await dialog.press("Continue"); await dialog.press("Continue");
+    await dialog.press("Continue"); await dialog.press("Start run");
     const planned = StartPlanRequestSchema.parse(request);
     assert.deepEqual(planned.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "123456789", crmCheck: false, includeCrmDates: false }]);
-    assert.deepEqual(planned.selectedStepKeys, ["searching", "active-status"]);
+    assert.deepEqual(planned.selectedStepKeys, ["searching", "active-status", "reference-check"]);
     assert.equal(dialog.text().includes("123456789"), false);
   });
   it("keeps protected source input unavailable and never offers output values as its replacement", async () => {
@@ -137,7 +137,7 @@ describe("served Person Lookup Run and Rerun", () => {
     assert.equal(dialog.stage(), "Values"); assert.equal(planned.length, 0);
     await dialog.type("10000002");
     assert.equal(dialog.disabled("Continue"), false);
-    await dialog.press("Continue"); await dialog.press("Continue");
+    await dialog.press("Continue"); await dialog.press("Start run");
     assert.equal(planned.length, 1);
     assert.deepEqual(StartPlanRequestSchema.parse(planned[0]).submissions, [{ ...input, emplId: "10000002" }]);
   });
@@ -151,14 +151,16 @@ describe("served Person Lookup Run and Rerun", () => {
       sourceInput: { state: "available", value: input },
       steps: descriptor.timeline.map(step => ({ key: step.key, state: "completed", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "completed", reason: "checkpoint" })) })), values: [], transactions: [] });
     let request: unknown;
+    // The first Match plan names a different omission set, so Start stops on it and the edit below can proceed.
+    let firstPlan = 1;
     const dialog = await h.openDialog(h.stubClient({ rerunValues: async () => ({ state: "available", snapshot }),
       previewRerunWarnings: async options => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(options).source, warnings: [], warningDigest: h.HASH } }),
-      submitStartPlan: async options => { request = options; const parsed = StartPlanRequestSchema.parse(options); return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
+      submitStartPlan: async options => { request = options; const parsed = StartPlanRequestSchema.parse(options); return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), ...(firstPlan-- > 0 && input.mode === "match" ? { omittedSteps: ["kuali-finalization"] } : {}), rerun: { source: parsed.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: parsed.warningAcknowledgment } }); },
     }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
     await dialog.press("Continue");
     assert.equal(dialog.typedInput().value, input.mode === "match" ? "Example, Person, x, [masked]" : "emplId" in input ? input.emplId : "Example, Person");
     assert.equal(document.body.innerHTML.includes("123456789"), false);
-    await dialog.press("Continue"); await dialog.press("Continue");
+    await dialog.press("Continue"); await dialog.press("Start run");
     const planned = StartPlanRequestSchema.parse(request);
     assert.deepEqual(planned.submissions, [input]);
     assert.equal(planned.rerunSource?.runId, source.runId);
@@ -176,7 +178,7 @@ describe("served Person Lookup Run and Rerun", () => {
       await act(async () => match.click());
       assert.equal(dialog.disabled("Continue"), true);
       await dialog.type("Changed, Person, 01/15/2000, x");
-      await dialog.press("Continue"); await dialog.press("Continue");
+      await dialog.press("Continue"); await dialog.press("Start run");
       assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [{ mode: "match", lastName: "Changed", firstName: "Person", dob: "01/15/2000", crmCheck: false, includeCrmDates: false }]);
       assert.deepEqual(snapshot.sourceInput, { state: "available", value: input });
     }
