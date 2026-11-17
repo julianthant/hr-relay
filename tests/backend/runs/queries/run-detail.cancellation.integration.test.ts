@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
-import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
-import { createOperatorProjection } from "../../../../../src/backend/app/composition/dashboard/queue.js";
-import { createOperatorRunDetail } from "../../../../../src/backend/app/composition/dashboard/run-detail.js";
-import { buildRunDetail } from "../../../../../src/backend/runs/queries/run-detail.js";
-import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
-import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
-import { childExecutionModules, childExecutionRoot } from "../../../../support/fixtures/child-execution-workflows.js";
-import { plan1ControlledFailureStores, plan1Leaf } from "../../../../support/fixtures/plan1-operation-workflows.js";
-import { createDelegationExecutionWorld } from "../../../../support/helpers/backend/delegation-execution-world.js";
+import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
+import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";
+import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
+import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
+import { childExecutionModules, childExecutionRoot } from "../../../support/fixtures/child-execution-workflows.js";
+import { plan1ControlledFailureStores, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { createDelegationExecutionWorld } from "../../../support/helpers/backend/delegation-execution-world.js";
 
 const world = createDelegationExecutionWorld({ root: plan1Leaf, modules: childExecutionModules });
 afterEach(world.cleanup);

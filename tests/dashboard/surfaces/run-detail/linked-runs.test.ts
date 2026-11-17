@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LogPanel } from "../../../../src/dashboard/surfaces/run-detail/log-panel.js";
-import { linkedRunEntries } from "../../../../src/dashboard/surfaces/run-detail/linked-runs.js";
+import { linkedRunEntries } from "../../../../src/dashboard/surfaces/run-detail/log-panel-model.js";
 
 type Row = Parameters<typeof linkedRunEntries>[0];
 const wire = (runId: string, workflowId: string, label: string, status: "done" | "running" | "failed") =>
