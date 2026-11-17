@@ -307,7 +307,7 @@ describe("native authority backup", () => {
       const f = prepared.get(fault);
       if (f === undefined) throw new Error("backup-suspect-fixture-owner-missing");
       f.database.authority.runtimeConfig.initialize(f.configSnapshot);
-      const report=await f.service.request({trigger:"operator",requiredGeneration:f.database.getMeta().authorityGeneration});
+      const report=await f.service.request({trigger:"schema-migration",requiredGeneration:f.database.getMeta().authorityGeneration});
       const manifest=report.manifests[0],manifestPath=join(f.directory,`${manifest.backupFileName}.manifest.json`);
       const companions=["-wal","-shm"].map(suffix=>({suffix,bytes:readFileSync(`${f.path}${suffix}`)}));f.database.close();
       for(const row of companions)writeFileSync(`${f.path}${row.suffix}`,row.bytes,{mode:0o600});
