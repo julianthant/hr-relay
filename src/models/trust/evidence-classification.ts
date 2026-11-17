@@ -503,7 +503,7 @@ function ocrReviewCheckpointLeaves(scope: EvidenceValueScope, prefix: string): u
   return [
     ...ocrManifestLeaves(scope, `${prefix}accounting.manifest.`),
     ...ocrRosterReferenceLeaves(scope, `${prefix}roster.`),
-    ...open(scope, ...["formType", "accounting.formType", "pages", "grouping.formType",
+    ...open(scope, ...["formType", "accounting.formType", "accounting.manualEntry", "pages", "grouping.formType",
       "grouping.unidentified", "grouping.otherForms", "grouping.dataless"].map(path => `${prefix}${path}`)),
     ...ocrPrivateLeaves(scope, ...["sourceRunId", "accounting.readingId", "accounting.outcomes",
       "grouping.subjects", "records"].map(path => `${prefix}${path}`)),
@@ -631,7 +631,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...contactPlannedOutputLeaves(workflowResult("emergency-contact-member-contact-plan")),
   ...["emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."), ...ocrRosterLeaves(workflowInput(id), "roster."),
-    ...open(workflowInput(id), "reading.kind", "onbaseFiling"), ...ocrPrivateLeaves(workflowInput(id), "fileName", "readingId", "reading.actorId", "reading.assertions"),
+    ...open(workflowInput(id), "reading.kind", "onbaseFiling", "extractWithOcr"), ...ocrPrivateLeaves(workflowInput(id), "fileName", "readingId", "reading.actorId", "reading.assertions"),
   ]),
   ...[workflowResult("emergency-contact"), workflowResult("emergency-contact-members"), taskOutput("workflow:emergency-contact/read-result")].flatMap(scope => [
     ...approvedOcrReferenceLeaves(scope, "approval."), ...ocrPrivateLeaves(scope, "members"),
@@ -690,7 +690,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...["ocr", "ocr-source-pages"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."),
     ...ocrRosterLeaves(workflowInput(id), "roster."),
-    ...open(workflowInput(id), "approval", "formType", "reading.kind"),
+    ...open(workflowInput(id), "approval", "formType", "reading.kind", "extractWithOcr"),
     ...ocrPrivateLeaves(workflowInput(id), "sourceRunId", "fileName", "readingId", "reading.actorId", "reading.assertions"),
   ]),
   ...["ocr-page", "ocr-page-reading"].flatMap(id => [

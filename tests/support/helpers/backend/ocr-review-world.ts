@@ -52,6 +52,7 @@ import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/
 import { I9LookupError, type I9LookupInput } from "../../../../src/models/systems/i9/read-section2-signer.js";
 import { sessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { i9PageSubmission } from "../../fixtures/i9-check-start.js";
+import type { ProviderAdapter } from "../../../../src/workflow-kit/providers.js";
 
 interface ReviewedPageFacts {
   readonly employeeName: string;
@@ -64,7 +65,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
   return {
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; onbaseFiling?: "file" | "skip"; record?: boolean; release?: boolean; pageCount?: number;
-      retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule; ocr?: WorkflowModule;
+      retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; extractWithOcr?: boolean; parent?: WorkflowModule; ocr?: WorkflowModule;
       lookupNames?: readonly string[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; holdPages?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
       failManualPageOnce?: number; stopAfterPageFailure?: boolean;
       signerLookup?: Readonly<{ firstNames: readonly string[]; failOnce?: string }>;
@@ -99,6 +100,11 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       let failedSigner = false;
       const signerReads: string[] = [];
       const pageReads: number[] = [];
+      let ocrCalls = 0;
+      const refuseOcr: ProviderAdapter<"ocr.extract"> = { capability: "ocr.extract", async invoke() {
+        ocrCalls++;
+        throw new Error("Unexpected OCR provider request in the manual-entry fixture.");
+      } };
       const sessions = options.signerLookup === undefined ? options.sessions : sessionFactoryHarness({ i9: () => ({
         ...createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: READ_AT }),
         async readSection2Signer(input: I9LookupInput) {
@@ -166,7 +172,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         { workbooks, resources: (reader, run) => { const claim = runClaim(run); assert.ok(claim); const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
           const needsPlanEvidence = notes !== undefined && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction");
           return { ...(!needsPlanEvidence ? {} : { taskNotes: notes }), providers: { configSnapshots: database.authority.configSnapshots,
-          idFactory: { next: () => randomUUID() }, adapters: { ...(options.checks === undefined ? {} : { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
+          idFactory: { next: () => randomUUID() }, adapters: { "ocr.extract": refuseOcr, ...(options.checks === undefined ? {} : { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
             references: { runId: run.envelope.runId, write: () => { throw new Error("the reference check must not write a reference"); }, verifyPerson: command => runWorkbooks.verifyPerson(run, command) } }) }),
             "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({clock,
             reader: options.approvedReader === undefined
@@ -222,7 +228,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         };
         const result: Awaited<ReturnType<typeof canonical.execute>> = { run: database.authority.runs.get(parentRun.envelope.runId), outcomes: [] };
         return { harness, database, path, clock, admission, artifacts, artifactReader, sources, canonical, run, parentRun, result, approval,
-          reading, corrected, pageBytes, command, root, resolve, stores, signerReads, pageReads, readResult: () => {
+          reading, corrected, pageBytes, command, root, resolve, stores, signerReads, pageReads, ocrCalls: () => ocrCalls, readResult: () => {
             const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
               "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);
             return ReadOcrResult.output.parse(checkpoint.output.value);
@@ -260,9 +266,12 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       const { reading, corrected } = first;
       const request = OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
         formType, roster: null, approval: options.release === true ? "release" : "review-only",
-        reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
+        ...(options.extractWithOcr === undefined ? {} : { extractWithOcr: options.extractWithOcr }),
+        reading: options.extractWithOcr === false ? { kind: "subscription" }
+          : { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
       assert.ok(roster);
-      const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading, onbaseFiling: options.onbaseFiling ?? "file" }), { dryRun: options.dryRun ?? false,
+      const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading,
+        ...(options.extractWithOcr === undefined ? {} : { extractWithOcr: options.extractWithOcr }), onbaseFiling: options.onbaseFiling ?? "file" }), { dryRun: options.dryRun ?? false,
           ...(options.retainedProducer === true || root.descriptor.workbookReference?.id !== "ocr-roster" ? {} : {
             workbookReferences: [{ entry: 1, libraryId: roster.libraryId,
               versionId: database.authority.workbooks.libraryState(roster.libraryId).selectedVersionId,
@@ -357,7 +366,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
           } }, ocrApproval: { expectedRevision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: snapshot.selectedRecordIds } } };
       };
       return { harness, database, path, clock, admission, artifacts, artifactReader, sources, canonical, run, parentRun, result, approval,
-        reading, corrected, pageBytes, command, root, resolve, stores, signerReads, pageReads, readResult: () => {
+        reading, corrected, pageBytes, command, root, resolve, stores, signerReads, pageReads, ocrCalls: () => ocrCalls, readResult: () => {
           const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
             "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);
           return ReadOcrResult.output.parse(checkpoint.output.value);

@@ -7,7 +7,7 @@ import { EidSchema, FingerprintSchema, IsoInstantSchema, RunIdSchema, StableReco
 import { matchRosterSubjects, RosterRowFactsSchema, RosterSubjectMatchSchema } from "../../../rules/matching/roster-match.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { OcrPageAccountingSchema, OcrPageOutcomeSchema, type OcrPageReading } from "./page-accounting.js";
+import { OcrPageAccountingSchema, OcrReadPageAccountingSchema, OcrManualEntryAccountingSchema, OcrPageOutcomeSchema, type OcrPageReading } from "./page-accounting.js";
 import { OcrWorkbookRosterEvidenceSchema } from "./roster.js";
 
 const OcrArtifactRosterEvidenceSchema = z.strictObject({
@@ -46,7 +46,7 @@ export const OcrReviewRecordSeedSchema = z.strictObject({
 
 const OcrPageDispositionSchema = z.strictObject({
   sourcePage: z.number().int().positive(),
-  disposition: z.enum(["record", "blank", "boilerplate", "unrelated", "wrong-form", "failed", "cancelled", "blocked"]),
+  disposition: z.enum(["record", "blank", "boilerplate", "unrelated", "wrong-form", "failed", "cancelled", "blocked", "manual-entry"]),
 });
 
 function fieldText(record: AdmittedRecord, path: string): string | null {
@@ -64,7 +64,9 @@ function subjectName(record: AdmittedRecord, formType: OcrFormType): string | nu
 function deriveReview(input: OcrReviewSeedInput) {
   const { accounting, roster } = input;
   const { formType } = accounting;
-  const pages = accounting.outcomes.map((outcome, index) => OcrPageDispositionSchema.parse({
+  const pages = "manualEntry" in accounting ? accounting.manifest.pages.map(page => OcrPageDispositionSchema.parse({
+    sourcePage: page.sourcePage, disposition: "manual-entry",
+  })) : accounting.outcomes.map((outcome, index) => OcrPageDispositionSchema.parse({
     sourcePage: index + 1,
     disposition: outcome.state !== "done" ? outcome.state : outcome.output.extraction.record !== null ? "record"
       : ["blank", "boilerplate", "unrelated"].includes(outcome.output.extraction.pageKind) ? outcome.output.extraction.pageKind : "wrong-form",
@@ -129,8 +131,9 @@ const { rows: _workbookRows, ...workbookRosterRef } = OcrWorkbookRosterEvidenceS
 const { rows: _artifactRows, ...artifactRosterRef } = OcrArtifactRosterEvidenceSchema.shape;
 const { fields: _fields, ...recordRef } = OcrReviewRecordSeedSchema.shape;
 export const OcrReviewCheckpointSchema = z.strictObject({ ...OcrReviewSeedSchema.shape,
-  accounting: z.strictObject({ ...OcrPageAccountingSchema.shape,
+  accounting: z.union([z.strictObject({ ...OcrReadPageAccountingSchema.shape,
     outcomes: z.array(z.discriminatedUnion("state", [z.strictObject({ ...doneRef, extractionId: FingerprintSchema }), ...unreadPages])).min(1) }),
+  OcrManualEntryAccountingSchema]),
   roster: z.union([z.strictObject(workbookRosterRef), z.strictObject(artifactRosterRef)]).nullable(),
   records: z.array(z.strictObject(recordRef)),
 });
@@ -147,7 +150,7 @@ export function compactOcrReviewSeed({ roster, accounting, records, ...seed }: O
 export function hydrateOcrReviewSeed(checkpoint: OcrReviewCheckpoint, reading: (extractionId: string) => OcrPageReading | undefined,
   roster: OcrReviewSeed["roster"]): OcrReviewSeed {
   const { sourceRunId, accounting } = checkpoint;
-  const seed = buildOcrReviewSeed({ ...(sourceRunId === undefined ? {} : { sourceRunId }), roster, accounting: { ...accounting,
+  const seed = buildOcrReviewSeed({ ...(sourceRunId === undefined ? {} : { sourceRunId }), roster, accounting: "manualEntry" in accounting ? accounting : { ...accounting,
     outcomes: accounting.outcomes.map(outcome => {
       if (outcome.state !== "done") return outcome;
       const output = reading(outcome.extractionId);

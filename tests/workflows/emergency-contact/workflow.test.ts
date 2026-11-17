@@ -93,9 +93,10 @@ it("refuses a run input without an OnBase pick: the pick has no default", () => 
   assert.equal(EmergencyContactInputSchema.safeParse({ ...input, onbaseFiling: "maybe" }).success, false);
 });
 
-it("declares File to OnBase as a required launch field with two choices", () => {
+it("declares the required OnBase pick and default-on OCR launch field", () => {
   assert.deepEqual(descriptor.surfaces.uploadRun?.fields, [{ kind: "select", field: "onbaseFiling", label: "File to OnBase", required: true,
-    options: [{ value: "file", label: "File" }, { value: "skip", label: "Do not file" }] }]);
+    options: [{ value: "file", label: "File" }, { value: "skip", label: "Do not file" }] },
+  { kind: "boolean", field: "extractWithOcr", label: "Extract with OCR", initial: true }]);
 });
 
 it("titles an Emergency Contact run by its PDF name, else the generic PDF title", () => {
