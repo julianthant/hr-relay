@@ -8,8 +8,9 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
-/** Steps a current authority back to schema 30: the change log, its run references, its triggers and indexes did not exist. */
+/** Steps a current authority back to schema 30: the change log, its run references, its triggers and indexes did not exist. Schema 32 changed no table, index or trigger. */
 export function removeSchema31ChangeLog(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 32) database.exec("UPDATE database_states SET schema_version=31; PRAGMA user_version=31");
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 31);
   const objects = z.array(z.object({ type: z.string(), name: z.string() })).parse(database.prepare("SELECT type,name FROM sqlite_schema").all())
     .filter(({ name }) => CHANGE_LOG_OBJECTS.includes(name));
@@ -30,7 +31,7 @@ function removeSchema30WorkbookPinTags(database: DatabaseSync): void {
 
 /** Steps a current authority back to schema 29: library states and recorded actions carried no pin or tags. */
 export function restoreSchema29WorkbookPinTags(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 31) removeSchema31ChangeLog(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 31) removeSchema31ChangeLog(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 30);
   removeSchema30WorkbookPinTags(database);
   database.exec("UPDATE database_states SET schema_version=29; PRAGMA user_version=29");
