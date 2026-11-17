@@ -6,8 +6,7 @@ import { afterEach, describe, it } from "vitest";
 import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { PersonPreferencesContext, type PersonPreferencesPort } from "../../../../src/dashboard/lib/person-preferences.js";
 import type { InboxWiring } from "../../../../src/dashboard/state/inbox-wiring-adapter.js";
-import { useNotificationRailModel, type NotificationReads } from "../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
-import { useNotificationAlert } from "../../../../src/dashboard/surfaces/notifications/notifications-view.js";
+import { useNotificationAlert, useNotificationRailModel, type NotificationReads } from "../../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
 import type { NotificationItem, NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 import { NEUTRAL_PERSON_PREFERENCES, resolvePersonPreferences, type PersonPreferences } from "../../../../src/models/config/person-preferences.js";
 

@@ -7,8 +7,8 @@ import type { NavbarData, NavbarSearchResult } from "./search/navbar-view-model.
 import type { PaletteAction } from "./search/search-palette-model.js";
 import { shortcutLabel, useShortcutPreferences } from "../settings/navigation/keyboard-preferences-model.js";
 import { RailSearch } from "./search/navbar-view.js";
-import { NotificationBell, NotificationPing, NotificationsPanel, useNotificationAlert } from "../notifications/notifications-view.js";
-import { useNotificationRailModel, type NotificationReads } from "../notifications/notification-rail-model.js";
+import { NotificationBell, NotificationPing, NotificationsPanel } from "../notifications/notifications-view.js";
+import { useNotificationAlert, useNotificationRailModel, type NotificationReads } from "../notifications/notification-rail-model.js";
 import type { NotificationDestination, NotificationsState } from "../notifications/notifications-view-model.js";
 import type { WorkflowCountWire } from "./shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
