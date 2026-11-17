@@ -271,7 +271,10 @@ it("keeps operator prose and samples free of task names, failure codes and Socia
       spec.steps.map(entry => [entry.title, entry.description.map(line => line.text), entry.checks.map(line => line.text), entry.blocks.map(block =>
         block.kind === "card" ? [block.title, block.rows.map(row => [row.label, row.value])]
           : block.kind === "decision" ? [block.label, block.outcomes.map(outcome => [outcome.label, outcome.then])]
-            : block.kind === "starts" ? [block.title, block.each] : block.target)]),
+            : block.kind === "starts" ? [block.title, block.each]
+              : block.kind === "pick" ? [block.title, block.columns, block.rows.map(row => row.cells), block.other?.label, block.other?.placeholder,
+                block.question.title, block.question.context]
+                : block.target)]),
       Object.values(spec.sources).map(source => [source.origin, source.detail, source.reads.map(read => [read.page, read.field])]),
     ]);
     assert.doesNotMatch(text, /\b\d{3}[- ]?\d{2}[- ]?\d{4}\b|Battistessa|Johnnie|workflow:|read-people|read-requests|match-outcome|lookup-source/u);
