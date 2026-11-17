@@ -1,5 +1,5 @@
 import { WorkflowStepReviewSchema, type WorkflowStepReview } from "../models/workflow/review-spec.js";
-import { assertSchemaOffersCollectionPath } from "../models/validation/contract-boundary.js";
+import { assertSchemaOffersCollectionPath, contractCollectionFieldOptions } from "../models/validation/contract-boundary.js";
 import { deepFreeze } from "../rules/validation/immutability.js";
 import type { StableRecordId } from "../rules/identity/ids.js";
 import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
@@ -1241,6 +1241,16 @@ export function compileWorkflow<
           if (operatorField.sources.some(source => !page.nodeIds.some(nodeId => nodeId === source.nodeId))) {
             throw new Error(`workflow ${definition.id} review field ${field.id} reads outside page ${page.id}`);
           }
+        } else if ("inputField" in field) {
+          assertSchemaOffersCollectionPath(definition.input, field.inputField, `workflow ${definition.id} review input field ${field.id}`);
+        } else if ("taskFields" in field) {
+          for (const reference of field.taskFields) {
+            assertOwnNode(reference.nodeId);
+            if (!page.nodeIds.some(id => id === reference.nodeId)) throw new Error(`workflow ${definition.id} review field ${field.id} reads outside page ${page.id}`);
+            const node = ownNodes.find(candidate => candidate.id === reference.nodeId);
+            if (node?.kind !== "task") throw new Error(`workflow ${definition.id} review field ${field.id} requires a task source ${reference.nodeId}`);
+            assertSchemaOffersCollectionPath(node.uses[reference.kind], reference.fieldPath, `workflow ${definition.id} review task field ${field.id}`);
+          }
         } else {
           const transactionSource = (nodeId: string) => {
             assertOwnNode(nodeId);
@@ -1274,6 +1284,24 @@ export function compileWorkflow<
         if (!review.branchLabels.some(label => label.nodeId === node.id && label.outcome === outcome)) {
           throw new Error(`workflow ${definition.id} review omits branch outcome ${node.id}/${outcome}`);
         }
+      }
+    }
+    const decisions = review.decisions ?? [];
+    assertUnique(decisions.map(decision => decision.id), "decision id");
+    for (const decision of decisions) {
+      const owner = `workflow ${definition.id} review decision ${decision.id}`;
+      [decision.reads.nodeId, ...decision.nodeIds].forEach(assertOwnNode);
+      const node = ownNodes.find(candidate => candidate.id === decision.reads.nodeId);
+      if (node?.kind !== "task") throw new Error(`${owner} requires a task source ${decision.reads.nodeId}`);
+      const values = contractCollectionFieldOptions(node.uses.output, decision.reads.fieldPath, owner);
+      if (values === undefined) throw new Error(`${owner} reads ${decision.reads.fieldPath}, which holds no closed set of values`);
+      assertUnique(decision.outcomes.map(outcome => outcome.value), `decision ${decision.id} outcome`);
+      for (const outcome of decision.outcomes) {
+        if (!values.includes(outcome.value)) throw new Error(`${owner} names ${outcome.value}, which ${decision.reads.fieldPath} never holds`);
+        if (outcome.stops === true && outcome.then === undefined) throw new Error(`${owner} stops at ${outcome.value} without saying what the run does`);
+      }
+      if (!decision.outcomes.some(outcome => outcome.value === decision.initial && outcome.stops !== true)) {
+        throw new Error(`${owner} starts at ${decision.initial}, which is not one of its continuing outcomes`);
       }
     }
   }

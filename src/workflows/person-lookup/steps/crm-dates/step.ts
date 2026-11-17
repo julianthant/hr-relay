@@ -27,7 +27,7 @@ export const CRM_DATES_STEP = Object.freeze({
         title: "CRM onboarding record",
         mode: "Read only",
         nodeIds: ["crm-dates"],
-        lines: [{ id: "read-dates", kind: "read", text: "Read employment and oath dates for the selected CRM identity.", nodeIds: ["crm-dates"] }],
+        lines: [],
         fields: [
           {
             id: "employment-date",
