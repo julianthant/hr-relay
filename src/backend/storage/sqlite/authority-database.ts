@@ -14,7 +14,7 @@ import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
 import { existsSync,statSync } from "node:fs";
 import { basename,dirname,join } from "node:path";
-import { DatabaseSync,backup as sqliteBackup,type SQLInputValue } from "node:sqlite";
+import { DatabaseSync,backup as sqliteBackup,type SQLInputValue,type SQLTagStore } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ArtifactRefSchema,type ArtifactRef } from "../../../models/artifacts/artifacts.js";
@@ -2363,12 +2363,16 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
       return Object.freeze([...references.values()].sort((a, b) => a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0).map(reference => Object.freeze(reference)));
 }
 
+/** The WAL file is cut back to this size whenever a checkpoint lets it restart: two automatic checkpoints' worth of 4 KiB pages. */
+export const AUTHORITY_WAL_SIZE_LIMIT_BYTES = 8 * 1024 * 1024;
+
 export function configureWritableConnection(database: DatabaseSync, busyTimeoutMs: number): void {
   database.exec("PRAGMA foreign_keys = ON");
   // Enable secure deletion so freed SQLite pages do not retain deleted run bytes.
   database.exec("PRAGMA secure_delete = ON");
   database.exec("PRAGMA journal_mode = WAL");
   database.exec("PRAGMA synchronous = FULL");
+  database.exec(`PRAGMA journal_size_limit = ${String(AUTHORITY_WAL_SIZE_LIMIT_BYTES)}`);
   database.exec(`PRAGMA busy_timeout = ${String(busyTimeoutMs)}`);
 }
 
@@ -2381,6 +2385,10 @@ export class AuthorityDatabase implements Disposable {
   #busyTimeoutMs: number;
   #credentialCommandIds: (commandId: string) => boolean;
   #closed = false;
+  /** An ordinary read-write connection keeps planner statistics: it optimizes when it opens and again when it closes. */
+  #keepsPlannerStatistics = false;
+  /** Statements reused across reads: only lookups a read repeats per row, each used with get(), never iterate(). */
+  #statements: SQLTagStore;
   #openedFileIdentity: DirectoryIdentity | undefined;
   #coldLogout: Readonly<{ machine: RuntimeAdmission; operationId: string; admission: RuntimeAdmission; restore: OfflineMaintenanceOperation;
     sourcePath: string; owner: RuntimeAdmission; inspection: ReturnType<RuntimeAdmission["capturePendingLogoutSnapshot"]> }> | undefined;
@@ -2487,6 +2495,7 @@ export class AuthorityDatabase implements Disposable {
       allowUnknownNamedParameters: false,
       defensive: true,
     });
+    this.#statements = this.#database.createTagStore(8);
 
     const admittedDataVersion = readIntPragma(this.#database, "data_version");
     try {
@@ -2506,6 +2515,11 @@ export class AuthorityDatabase implements Disposable {
         if (!existed && purpose !== "stopped-restore-projection") this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#configureConnection();
         if (existed && purpose === "ordinary") this.#initializeSchema(existingVersion, options.migrationOwner);
+        // After any upgrade and before the change-log baseline below, which records the schema cookie that the first statistics move.
+        if (purpose === "ordinary") {
+          this.#database.exec("PRAGMA optimize=0x10002");
+          this.#keepsPlannerStatistics = true;
+        }
       }
       this.#database.exec("BEGIN");
       if (readOnlyNoMigrate) this.#validateReadOnlyNoMigrateDatabase(existingVersion);
@@ -3598,9 +3612,15 @@ export class AuthorityDatabase implements Disposable {
   close(): void {
     if (this.#closed) return;
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");
+    let optimizeFailure: { error: unknown } | undefined;
+    if (this.#keepsPlannerStatistics) {
+      try { this.#database.exec("PRAGMA optimize"); }
+      catch (error) { optimizeFailure = { error }; }
+    }
     try { this.#database.close(); }
-    catch (error) { this.#failNativeClosure([error]); }
+    catch (error) { this.#failNativeClosure(optimizeFailure === undefined ? [error] : [optimizeFailure.error, error]); }
     this.#closed = true;
+    if (optimizeFailure !== undefined) throw new Error("authority-close-optimize-failed", { cause: optimizeFailure.error });
   }
 
   [Symbol.dispose](): void {
@@ -5061,7 +5081,7 @@ export class AuthorityDatabase implements Disposable {
       return row === undefined ? undefined : schema.parse(commandFromRow(row));
     }
     if (table === "runs") {
-      const row = this.#database.prepare("SELECT * FROM runs WHERE id = ?").get(recordKey);
+      const row = this.#statements.get`SELECT * FROM runs WHERE id = ${recordKey}`;
       if (row === undefined) return undefined;
       const record = runRecordFromRow(row);
       return Object.is(schema, RunRecordSchema) ? structuredClone(record) as z.output<Schema> : schema.parse(record);
@@ -6744,7 +6764,7 @@ export class AuthorityDatabase implements Disposable {
       get: (runId: string) => this.#readRunRow(runId),
       search: (input: unknown) => this.withAuthorityReadSnapshot(() => {
         this.#validateExternalQuerySources();
-        return createRunSearchIndex(this.#database).search(input, this.getMeta().authorityGeneration);
+        return createRunSearchIndex(this.#database, this.#statements).search(input, this.getMeta().authorityGeneration);
       }),
 
       listPage: (input: Readonly<{ workflow?: string; offset: number; limit: number }>) => {
