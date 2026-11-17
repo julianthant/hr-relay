@@ -4,120 +4,87 @@ The [Conventions](../AGENTS.md#conventions) own branch naming. The [root Git ins
 
 ## Branch protection
 
-`staging` requires a pull request and passing checks on a branch that is up to date with `staging`,
-with no human approving review, so green pull requests auto-merge with a merge commit. Both
-branches block force pushes and branch deletion. Merge commits only; squash and rebase merging are
-disabled; linear history is not required. `main` does not auto-merge: the operator merges the
-release pull request.
+`development` requires the `development` check and accepts feature, fix, chore and Dependabot
+pull requests. Feature, fix and chore branches start from `origin/development` and open one pull
+request into `development`. Auto-merge uses merge commits, with no up-to-date rule.
+`staging` receives one pull request from `development` per coherent batch, with the `staging`
+check and no up-to-date rule. A red full check is repaired through a pull request into `development`.
+`main` receives `staging` or `hotfix/*` and requires the operator's release go. Branches block
+force pushes and deletion; squash and rebase merging are disabled. Drafts cannot merge.
 
 | Branch | Required CI check names |
 | --- | --- |
-| `staging` | `static`, `privacy`, `unit`, `integration`, `architecture` |
-| `main` | the `staging` checks, plus `release` |
+| `development` | `development` |
+| `staging` | `staging` |
+| `main` | `production` |
 
-The expensive `release-batch` job runs only on PRs from `staging` into `main`, after the other checks.
-The required top-level `release` summary also runs for other heads targeting `main` and fails their
-head validation, so omitted expensive work cannot satisfy main protection for an invalid source.
-Valid Markdown-only omissions pass after proof validation; manual releases validate routine proofs
-without a PR source-head restriction.
-The expensive job’s isolated macOS runner builds the web bundle, runs coverage alone, then
-performance. The [release instructions](../AGENTS.md#pr-and-release-flow) own promotion and branch synchronization.
+Push roadmap-only commits (`docs/roadmap/**`) straight to `development`.
+The [release instructions](../AGENTS.md#pr-and-release-flow) own production promotion and synchronization.
+Cursor Bugbot reviews pushes and only comments. The [PR flow](../AGENTS.md#pr-and-release-flow)
+owns reviewer/coder responsibility, repairs and escalation. `needs-human` identifies work requiring
+the operator; red required checks prevent merging.
 
-## Merge train and automatic fixes
+## Workflows and checks
 
-Push roadmap-only commits (`docs/roadmap/**`) straight to `staging` to skip staging CI and the merge train.
-`.github/workflows/merge-train.yml` runs on other pushes to `staging`, and CI calls it as its final job.
-It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then merges
-`staging` into every open, non-draft, same-repository PR by `julianthant` into `staging` that lacks it, whatever its
-labels or auto-merge state, so every update starts CI on the latest `staging`; per-PR supersession cancels the older run. Auto-merge then lands whichever PR passes first. A PR it cannot update gets
-`merge-conflict`. If GitHub's update reports a conflict, the train attempts a merge in a temporary
-worktree. Conflicts exclusively in `scripts/build/generated-outputs.ts`'s registered outputs are
-resolved by running the generators against the combined sources. Catalog conflicts must be wholly
-inside the generated section of `stores.md`; conflicts in authored text refuse. Generator failure
-or any authored conflict prevents a push. Before an ordinary fast-forward push, the train rechecks
-the PR's eligibility and expected head; a moved head is left to its owner. Successful updates clear
-`merge-conflict`. The workflow uses the `TRAIN_TOKEN`
-secret (fine-grained, this repository, Contents and Pull requests read/write), because pushes made
-with the default token do not start CI.
+`Development` (`development.yml`), `Staging` (`staging.yml`) and `Production` (`production.yml`)
+share the test jobs in `checks.yml`, with kind `fast`, `portable` and `release` respectively.
+Development and Staging run on pull requests to their named branches. Production runs on pull
+requests into `main`, operator manual starts with a required title, and pushes to `main` for
+CodeQL only. Pull request runs are titled with their pull request title.
 
-The merge train uses a blob-filtered full-history checkout, retaining ancestry and fetching
-historical file contents on demand within its five-minute job budget.
+A Development run starts at most ten runner jobs: names and plan together, lint, static (typecheck
+and build), privacy, three unit shards, two architecture shards and the `development` gate.
+It starts no integration, perf, smoke or macOS job. Drafts keep names, plan and gate, static,
+privacy and selected unit shards only. Path filters may omit test suites, including all suites
+for Markdown-only changes. The fast gate folds unit and architecture proofs into its result;
+it requires successful selected shards, exactly skipped omitted work and all mandatory checks.
 
-Cursor Bugbot reviews every push and only comments. The
-[PR flow](../AGENTS.md#pr-and-release-flow) routes reviewer/coder responsibility and owns repairs
-and escalation. A `needs-human` label
-identifies work requiring the operator. Red required checks prevent a merge.
+Staging runs the full portable check: three unit shards, two architecture shards, thirty
+integration shards, lint, static, privacy, perf and smoke. Ready Staging and Production pull
+requests include perf and smoke even for Markdown-only changes. Both jobs install Chromium,
+build the dashboard and use tmpfs; smoke runs `npm run test:smoke`, perf runs `npm run test:perf`.
+Draft Staging and Production pull requests run lint, static, privacy and affected unit shards.
+Manual releases omit perf and smoke and select all routine and native suites.
+No workflow runs coverage; `npm run test:coverage` stays local with unchanged floors.
 
-CI takes Node from `package.json` engines and caches npm. The [check rules](../AGENTS.md#checks)
-own runner placement and release authorization. Native proofs and the padded-receipt storage
-upgrade run in separate single-worker invocations, preserving their
-existing deadlines under duration-based assignment. Native integration jobs first verify the
-full-Chromium installation through `scripts/test/chromium-preflight.ts` by opening a blank page
-and observing the owned browser process exit. This one-time setup has no retries; timed proofs still use fresh profiles and their existing
-deadlines. A full staging run uses two
-Ubuntu unit shards, two architecture shards and fourteen integration shards, plus static and
-privacy, within twenty Ubuntu runners. On operator-started full releases, use all five macOS
-runners for native files. The release runner starts after
-the routine suites finish. Windows native files use five `windows-latest` runners, or one for
-unit-only selection, with the
-same serial/storage separation and native membership. Windows uses explicit Bash with native
-Windows Node/npm, the runner temp directory and Windows Chromium installation. Before checkout,
-it disables Git automatic line-ending conversion to preserve fixture bytes and shell scripts.
+Production retains its five macOS native shards on full releases, selected native unit and
+integration proofs, and isolated single-worker serial and storage groups. Native integration
+first verifies full Chromium through `scripts/test/chromium-preflight.ts`; setup has no retries.
+CI takes Node from `.node-version`, caches npm and preserves test timeouts, RAM and time-scale
+budgets. The [check rules](../AGENTS.md#checks) own placement and release authorization.
+Security jobs run only in Production: CodeQL on main pull requests and pushes, and
+`npm audit --omit=dev --audit-level=high` on main pull requests. CodeQL default setup must be off.
 
-`ci.yml` runs only for staging pull requests and calls portable-only `ci-checks.yml`. Its existing
-merge-train call follows the five required summaries. `release.yml` runs only for main pull requests or operator manual releases and
-alone calls `release-checks.yml`, which owns portable, macOS/Windows native and
-release-batch jobs. Staging never references or loads a release/native workflow call.
+The `staging` gate needs `names` and `checks`; `production` needs `checks`, `codeql` and
+`dependencies` and refuses a pull request head other than `staging` or `hotfix/*`.
+Gates fail for any failed or cancelled dependency. Shared proof verification rejects missing
+outcomes and requires exactly skipped results for legitimate omissions. The Development caller
+runs its own `development` gate with the shared plan and job results;
+the fast kind skips the shared `unit` job and suite summaries. Other kinds retain both.
 
-Both event entries use per-PR/manual-branch supersession with a workflow/PR-or-ref concurrency
-group and `cancel-in-progress: true`. New pushes cancel older runs for that same key. Each entry
-queues one complete reusable check call in the shared `ci-runners` job-level FIFO with `queue: max`
-and `cancel-in-progress: false`. That admitted call holds all proofs, selected batch and timing
-publication until its callee finishes; the callees never reacquire admission. GitHub orders waiting
-calls by arrival, accepts at most 100 pending calls, and cancels extra arrivals on overflow.
+Each pull request has its own workflow/PR concurrency key; a newer push cancels its older run.
+Development has no shared runner lane, so four ten-job runs fit the forty runner slots side by
+side. Staging admits its complete reusable call through the `ci-runners` FIFO; Production uses
+`release-runners`. Each queues with `queue: max` and `cancel-in-progress: false`, holding proofs,
+perf, smoke and timing publication until the call finishes. Callees never reacquire admission.
+GitHub admits at most 100 pending calls and cancels extra arrivals on overflow.
 
-CI-invoked merge train is outside the admitted call, after the five top summaries, while remaining
-inside parent per-PR supersession. The standalone staging-push train remains separate. Batch
-repair pushes to avoid redundant CI work.
+`scripts/test/ci-plan.ts` owns selection, proof, publication and timing-history policy. Timing
+discovery enumerates registered IDs for `staging.yml` and `production.yml`,
+orders successful histories newest first and excludes the current run. Unregistered workflows
+are not queried. A valid absence of retained reports selects the committed seed; unexpected API
+failures and failed downloads fail CI. All shards use the same immutable `ci-balancing` input.
+Portable and release plans publish timings; fast plans reuse those timings without a publication job.
+After proofs pass, the shared final job merges portable/native duration reports into inherited
+timings and publishes `ci-timings`. Failed or cancelled proofs and empty plans never publish.
+Report names include OS and selection group; the slower measurement wins for a file seen on
+both platforms. Omitted suites retain their prior measurements. Unmeasured files use the positive
+measured median, or one second without measurements. The [test reference](reference/guards-and-tests.md#2-vitest-selection-and-commands)
+owns membership, timing seeds and selection details.
 
-`scripts/test/ci-plan.ts` owns typed selection/proof/timing-history policy. Both timed callees
-retain explicit test budgets. Their final `unit` runs unless cancelled and validates every mandatory
-proof, selected batch and timing publication, excluding downstream train to avoid a cycle.
-Cancellation stops that inner checkout/install work. The always-running outer
-required `unit` additionally requires the called pipeline and its inner unit output to succeed,
-so cancelled, skipped, failed or missing results cannot merge. Required names stay `static`,
-`privacy`, `unit`, `integration` and `architecture` on staging, plus `release` on main.
-Other cancelled summaries and the train may stop.
-
-Run static, privacy and affected portable unit, integration and architecture suites for ready PRs
-into `staging`. For PRs from `staging` into `main`, add selected native proofs and release.
-Path filters select affected suites. Draft pushes run static, privacy and
-affected unit files; becoming ready starts full applicable validation. Only the operator may start
-a manual full-release dispatch; it selects all routine suites, including native proofs. Other PR heads targeting `main` omit
-native proofs and expensive release work; their required release summary fails. Drafts cannot merge. Protected-branch pushes do not
-repeat CI; Markdown-only PRs run static and privacy. A deliberately omitted suite has a successful
-summary, while failed change detection or any failed/cancelled selected group fails its summary.
-Markdown-only release PRs omit coverage and perf.
-
-Timing discovery enumerates registered workflow IDs for the exact `ci.yml` and `release.yml` paths,
-then orders their successful histories together, newest first, excluding the current run. An
-unregistered new release workflow is not queried. Unexpected API failures fail CI; a valid absence
-of retained reports selects the committed seed. Every admitted run downloads the newest retained
-eligible `ci-timings` artifact before selecting files. Its immutable `ci-balancing` artifact gives every shard identical duration inputs.
-After mandatory proof validation succeeds, each workflow merges its portable/native file reports
-into inherited timings and publishes `ci-timings` for the next run. Report names include the runner OS and selection group;
-when both platforms report one file, the slower duration wins independently of artifact order.
-Measurements for omitted suites remain intact.
-Without a retained artifact, CI explicitly uses the committed `scripts/test/ci-durations.json` seed;
-unmeasured files use the positive measured median, or one second without measurements. Invalid
-reports or failed downloads fail CI. The [check rules](../AGENTS.md#checks) own timing-seed maintenance. The
-[test reference](reference/guards-and-tests.md#2-vitest-selection-and-commands) owns file
-membership and selection details.
-
-Playwright browser caches use `~/Library/Caches/ms-playwright` on macOS and
-`~/AppData/Local/ms-playwright` on Windows, keyed by runner OS, architecture, browser set and
-`package-lock.json` digest (plus the image on macOS). An exact macOS hit skips installation;
-Windows checks installation on every native integration job. A miss installs the required browsers. There are no partial-key restores. CI never uploads HR evidence.
+Playwright caches are keyed by runner OS, architecture, browser set and lockfile digest, plus the
+image on macOS. Exact macOS hits skip installation; misses install browsers without partial-key
+restores. CI never uploads HR evidence.
 
 ## Privacy check
 

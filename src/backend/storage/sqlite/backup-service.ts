@@ -25,7 +25,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { type Clock, systemClock } from "../../../rules/time/clock.js";
-import { inspectAuthorityBackupReadOnly, type AuthorityBackupSourceReadOnly } from "./backup-inspection.js";
+import { inspectAuthorityBackupReadOnly, type AuthorityBackupSourceReadOnly, type BackupCopyInspection } from "./backup-inspection.js";
+import { inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import {
@@ -40,10 +41,10 @@ import {
 
 export const AuthorityBackupServiceOptionsSchema = z.strictObject({
   directory: z.string().min(1),
-  purpose: z.literal("clean-shutdown").optional(),
+  purpose: z.enum(["clean-shutdown", "in-session"]).optional(),
 });
 
-type AuthorityBackupSource = Pick<
+export type AuthorityBackupSource = Pick<
   AuthorityBackupSourceReadOnly,
   "getMeta" | "getSourceDatabaseIdentity" | "onlineBackupTo"
 >;
@@ -116,9 +117,22 @@ export function parseBackupManifestFile(manifestPath: string): AuthorityBackupMa
   return parseCurrentBackupManifest(JSON.parse(readFileSync(manifestPath, "utf8")));
 }
 
-export async function verifyBackupManifestAtPath(
+type BackupCopyInspector = (copyAdmission: RuntimeAdmission, backupPath: string, schemaVersion: number) => BackupCopyInspection | Promise<BackupCopyInspection>;
+
+export function verifyBackupManifestAtPath(admissionInput: RuntimeAdmission, manifestPathInput: string): Promise<VerifiedBackup> {
+  return verifyManifest(admissionInput, manifestPathInput, (copy, backupPath, schemaVersion) => inspectAuthorityBackupReadOnly(copy, backupPath, schemaVersion));
+}
+
+/** verifyBackupManifestAtPath with the full inspection on a worker thread, for a caller that must keep the event loop running. */
+export function verifyBackupManifestOffThread(admissionInput: RuntimeAdmission, manifestPathInput: string,
+  options: Readonly<{ signal?: AbortSignal }>): Promise<VerifiedBackup> {
+  return verifyManifest(admissionInput, manifestPathInput, (copy, backupPath, schemaVersion) => inspectAuthorityBackupOffThread(copy, backupPath, schemaVersion, options));
+}
+
+async function verifyManifest(
   admissionInput: RuntimeAdmission,
   manifestPathInput: string,
+  inspect: BackupCopyInspector,
 ): Promise<VerifiedBackup> {
   const admission = requireRuntimeAdmission(admissionInput);
   const manifestPath = resolve(z.string().min(1).parse(manifestPathInput));
@@ -133,8 +147,12 @@ export async function verifyBackupManifestAtPath(
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);
   await verifyBackupBytesAtPath(backupPath, manifest);
   const copyAdmission = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
-  let inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>;
-  try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, backupPath, manifest.schemaVersion); }
+  let inspection: BackupCopyInspection;
+  try {
+    // A synchronous inspection and its release run in one turn.
+    const inspected = inspect(copyAdmission, backupPath, manifest.schemaVersion);
+    inspection = inspected instanceof Promise ? await inspected : inspected;
+  }
   finally { copyAdmission.release(); }
   removeReadOnlyInspectionCompanions(backupPath);
   assertBackupInspection(manifest, inspection, expected);
@@ -228,22 +246,29 @@ function verifyStoppedManifest(manifestPath: string, expected: AuthorityBackupEx
   return result;
 }
 
+function backupSuffix(purpose: "clean-shutdown" | "in-session" | undefined): string {
+  if (purpose === "clean-shutdown") return ".shutdown";
+  return purpose === "in-session" ? ".session" : "";
+}
+
 export class AuthorityBackupService {
   #admission: RuntimeAdmission;
   #source: AuthorityBackupSource;
   #directory: string;
-  #cleanShutdown: boolean;
+  #purpose: "clean-shutdown" | "in-session" | undefined;
+  #signal: AbortSignal | undefined;
   #clock: Clock;
   #inFlight: Promise<AuthorityBackupRunReport> | undefined;
   #requiredGeneration = 0;
   #coalescedRequests = 0;
 
-  constructor(admissionInput: RuntimeAdmission, source: AuthorityBackupSource, input: unknown, clock: Clock = systemClock) {
+  constructor(admissionInput: RuntimeAdmission, source: AuthorityBackupSource, input: unknown, clock: Clock = systemClock, signal?: AbortSignal) {
     this.#admission = requireRuntimeAdmission(admissionInput);
     const options = AuthorityBackupServiceOptionsSchema.parse(input);
     this.#source = source;
     this.#directory = resolve(options.directory);
-    this.#cleanShutdown = options.purpose === "clean-shutdown";
+    this.#purpose = options.purpose;
+    this.#signal = signal;
     this.#admission.assertStateRoot(this.#directory);
     this.#clock = clock;
   }
@@ -320,9 +345,15 @@ export class AuthorityBackupService {
     try {
       await this.#source.onlineBackupTo(temporaryBackupPath);
       this.#admission.assertAuthorityBackupWrite(this.#directory);
-      const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, await sha256File(temporaryBackupPath));
+      const inspectedDigest = await sha256File(temporaryBackupPath);
+      const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, inspectedDigest);
       let inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>;
-      try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath, this.#source.getMeta().schemaVersion); }
+      try {
+        const schemaVersion = this.#source.getMeta().schemaVersion;
+        inspection = this.#purpose === "in-session"
+          ? await inspectAuthorityBackupOffThread(copyAdmission, temporaryBackupPath, schemaVersion, { ...(this.#signal === undefined ? {} : { signal: this.#signal }) })
+          : inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath, schemaVersion);
+      }
       finally { copyAdmission.release(); }
       assertExpectedBackupSource(expected, inspection);
       removeReadOnlyInspectionCompanions(temporaryBackupPath);
@@ -331,12 +362,11 @@ export class AuthorityBackupService {
       const createdAt = this.#clock.now().toISOString();
       const compactTime = createdAt.replaceAll(/[^0-9]/g, "");
       const stem = `authority-g${String(inspection.authorityGeneration)}-${compactTime}-${token}`;
-      const backupFileName = `${stem}${this.#cleanShutdown ? ".shutdown" : ""}.sqlite`;
+      const backupFileName = `${stem}${backupSuffix(this.#purpose)}.sqlite`;
       const finalBackupPath = join(this.#directory, backupFileName);
       renameSync(temporaryBackupPath, finalBackupPath);
       finalPaths.push(finalBackupPath);
       const stats = statSync(finalBackupPath);
-      const digest = await sha256File(finalBackupPath);
       this.#admission.assertAuthorityBackupWrite(this.#directory);
       fsyncPath(this.#directory);
       const verification = {
@@ -369,18 +399,22 @@ export class AuthorityBackupService {
         authorityContentFingerprint: inspection.authorityContentFingerprint,
         createdAt,
         byteSize: stats.size,
-        sha256: digest,
+        sha256: inspectedDigest,
         verification,
       });
-      const manifestFileName = `${backupFileName}.manifest.json`;
-      finalManifestPath = join(this.#directory, manifestFileName);
-      writeFileSync(temporaryManifestPath, `${canonicalJsonStringify(manifest)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
+      // The one read of the final bytes: they must still be the bytes that were inspected.
+      await verifyBackupBytesAtPath(finalBackupPath, manifest);
+      const manifestFileName = `${backupFileName}.manifest.json`, manifestText = `${canonicalJsonStringify(manifest)}\n`;
+      writeFileSync(temporaryManifestPath, manifestText, { encoding: "utf8", mode: 0o600, flag: "wx" });
       fsyncPath(temporaryManifestPath);
+      if (readFileSync(temporaryManifestPath, "utf8") !== manifestText) throw new Error("backup-manifest-readback-mismatch");
+      this.#admission.assertAuthorityBackupWrite(this.#directory);
+      // A backup counts only once its manifest exists, so it is published last.
+      finalManifestPath = join(this.#directory, manifestFileName);
       renameSync(temporaryManifestPath, finalManifestPath);
       finalPaths.push(finalManifestPath);
       fsyncPath(this.#directory);
-      if (expected.kind === "profile") await verifyBackupManifestAtPath(this.#admission, finalManifestPath);
-      else verifyStoppedBackupManifestAtPath(this.#admission, finalManifestPath);
+      if (expected.kind !== "profile") verifyStoppedBackupManifestAtPath(this.#admission, finalManifestPath);
       result = manifest;
     } catch (error) { primary = { error }; }
     if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw primary.error;

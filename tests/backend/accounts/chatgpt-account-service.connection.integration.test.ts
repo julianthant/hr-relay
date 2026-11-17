@@ -23,7 +23,6 @@ it("checks the remote authenticated catalog only on explicit invocation without 
     assert.equal(new Headers(catalog?.init.headers).get("authorization"), "Bearer synthetic-access-1");
     assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 0);
     assert.equal(f.calls.filter(call => call.url.endsWith("/oauth/token")).length, 1);
-    assert.equal(f.service.captureAssistantModelPolicy(), undefined);
   } finally { await f.cleanup(); }
 });
 
@@ -140,7 +139,7 @@ it("caches known failures but refresh failure never falls back to cached success
     assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 2);
     await f.service.signOut();
     const signedOut = await f.service.readStatus();
-    assert.deepEqual(signedOut.account, { state: "signed-out", account: { email: "synthetic@example.com" } });
+    assert.deepEqual(signedOut.account, { state: "signed-out" });
     assert.deepEqual(signedOut.usage, { state: "unavailable", reason: "signed-out" });
     await f.connected();
     f.setModels({ models: [] });
@@ -173,7 +172,7 @@ it("does not cache abandoned checks and never settles an old account after sign-
     f.setModelsHook(async () => { entered.resolve(); await release.promise; return Response.json({ models: [] }); });
     const read = f.service.readStatus(), rejected = assert.rejects(read, { code: "CHATGPT_CONNECTION_CANCELLED" });
     await entered.promise; await f.service.signOut(); release.resolve(); await rejected;
-    assert.deepEqual((await f.service.readStatus()).account, { state: "signed-out", account: { email: "synthetic@example.com" } });
+    assert.deepEqual((await f.service.readStatus()).account, { state: "signed-out" });
   } finally { release.resolve(); await f.cleanup(); }
 });
 

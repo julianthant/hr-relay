@@ -259,11 +259,6 @@ export function ocrForm(formType: OcrFormType): OcrFormSpec {
   return OCR_FORMS[formType];
 }
 
-/** Emergency Contact review checks the extracted contacts. The operator does not add a record there. */
-export function ocrReviewAddsRecords(formType: OcrFormType): boolean {
-  return formType !== "emergency-contact";
-}
-
 /** Whether this field's box exists on a page of the given kind. */
 export function fieldOnPageKind(field: OcrFieldSpec, pageKind: OcrPageKind): boolean {
   return field.onPageKinds === null || field.onPageKinds.includes(pageKind);

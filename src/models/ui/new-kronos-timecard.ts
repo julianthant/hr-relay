@@ -83,40 +83,6 @@ export const NEW_KRONOS_TIMECARD_DISPLAYED_EID = ObservationIdSchema.parse(
 export const NEW_KRONOS_SEARCH_QUERY_LABEL = "Search by Employee Name or ID";
 /** The literal no-results sentinel. */
 export const NEW_KRONOS_NO_RESULTS_SENTINEL = "There are no items to display.";
-/** Preserve the complete observed menu; this operation uses only Timecard. */
-export const NEW_KRONOS_GO_TO_OPTIONS = Object.freeze([
-  "Timecard",
-  "Schedule",
-  "People",
-  "Reports",
-] as const);
-/** Retain the observed options; this operation applies an explicit custom range. */
-export const NEW_KRONOS_PERIOD_OPTIONS = Object.freeze([
-  "Previous Pay Period",
-  "Current Pay Period",
-  "Next Pay Period",
-  "Previous Schedule Period",
-  "Current Schedule Period",
-  "Next Schedule Period",
-  "Next Schedule Period + 1",
-  "Next Schedule Period + 2",
-  "Today",
-  "Yesterday",
-  "Tomorrow",
-  "Week to Date",
-  "Month to Date",
-  "Last Week",
-  "Yesterday, Today, Tomorrow",
-  "Yesterday Plus 6 Days",
-  "Yesterday Minus 13 Days",
-  "Last 7 Days",
-  "Last 30 Days",
-  "Current Week",
-  "Last 4 Weeks",
-  "Last 3 Months",
-  "Last 90 Days",
-  "Last 4 Quarters",
-] as const);
 
 /** One candidate the search panel rendered, off the row's own accessible name. */
 export const NewKronosSearchCandidateSchema = z.strictObject({

@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { z } from "zod";
 import { isDirectExecution } from "./scope-files.js";
@@ -39,13 +39,18 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/configuration/credential-store.storage-restore-drill.integration.test.ts",
   "tests/backend/storage/admission/process-identity.integration.test.ts",
   "tests/backend/storage/maintenance/existing-data-backup.flat-storage.integration.test.ts",
+  "tests/backend/storage/maintenance/profile-inventory.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
-  "tests/backend/storage/maintenance/upgrade.ready-bound.integration.test.ts",
+  "tests/backend/storage/maintenance/upgrade.ready-bound.custody.integration.test.ts",
+  "tests/backend/storage/maintenance/upgrade.ready-bound.schema-matrix.integration.test.ts",
+  "tests/backend/storage/maintenance/upgrade.ready-bound.workbook-schema-18.integration.test.ts",
+  "tests/backend/storage/maintenance/upgrade.ready-bound.workbook-schema-24.integration.test.ts",
   "tests/backend/storage/sqlite/authority-database.incomplete-inventory.integration.test.ts",
   "tests/backend/storage/sqlite/authority-database.storage-restore-drill.integration.test.ts",
   "tests/backend/storage/sqlite/backup-inspection.integration.test.ts",
   "tests/backend/storage/sqlite/backup-service.test.ts",
+  "tests/backend/storage/sqlite/migrations.assistant-numbering.integration.test.ts",
   "tests/backend/storage/sqlite/migrations.native-baseline.integration.test.ts",
   "tests/backend/storage/sqlite/offline-restore.browser-inventory.integration.test.ts",
   "tests/backend/storage/sqlite/offline-restore.browser-root-predecessor.integration.test.ts",
@@ -69,6 +74,39 @@ export const SERIAL_FILES: readonly string[] = [
 export const SERIAL_STORAGE_FILES: readonly string[] = [
   "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
+  "tests/backend/storage/maintenance/profile-inventory.integration.test.ts",
+];
+
+// Native files that passed on Linux (ci-pipeline-07 report): Ubuntu shards run them too; the macOS native shards still run them.
+export const LINUX_NATIVE_FILES: readonly string[] = [
+  "tests/backend/app/composition/storage-compose.predecessor-logout.integration.test.ts",
+  "tests/backend/storage/maintenance/evidence-schema-upgrade.integration.test.ts",
+  "tests/backend/storage/maintenance/protected-settings-upgrade.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.integration.test.ts",
+  "tests/backend/profiles/profile-session.incomplete-publication.integration.test.ts",
+  "tests/backend/profiles/profile-session.credential-migration.integration.test.ts",
+  "tests/backend/runs/lifecycle/run-record-service.storage-restore-drill.integration.test.ts",
+  "tests/backend/storage/admission/admission.assistant-populated-schema7.integration.test.ts",
+  "tests/backend/storage/admission/admission.profile-upgrade.integration.test.ts",
+  "tests/backend/storage/admission/installation.logical-publication.integration.test.ts",
+  "tests/backend/storage/admission/lifetime-lock.handle-proof.integration.test.ts",
+  "tests/backend/storage/configuration/chatgpt-credential-repository.maintenance.integration.test.ts",
+  "tests/backend/storage/configuration/credential-key-custody.integration.test.ts",
+  "tests/backend/storage/configuration/credential-store.storage-restore-drill.integration.test.ts",
+  "tests/backend/storage/admission/process-identity.integration.test.ts",
+  "tests/backend/storage/maintenance/upgrade.ready-bound.custody.integration.test.ts",
+  "tests/backend/storage/maintenance/upgrade.ready-bound.schema-matrix.integration.test.ts",
+  "tests/backend/storage/maintenance/upgrade.ready-bound.workbook-schema-18.integration.test.ts",
+  "tests/backend/storage/maintenance/upgrade.ready-bound.workbook-schema-24.integration.test.ts",
+  "tests/backend/storage/sqlite/authority-database.incomplete-inventory.integration.test.ts",
+  "tests/backend/storage/sqlite/authority-database.storage-restore-drill.integration.test.ts",
+  "tests/backend/storage/sqlite/backup-inspection.integration.test.ts",
+  "tests/backend/storage/sqlite/migrations.native-baseline.integration.test.ts",
+  "tests/backend/storage/sqlite/profile-local-databases.readonly-binding.integration.test.ts",
+  "tests/backend/storage/sqlite/readonly-authority-snapshot.integration.test.ts",
+  "tests/backend/storage/maintenance/fixed-layout.test.ts",
 ];
 
 export type CiProject = "unit" | "integration" | "architecture";
@@ -99,7 +137,7 @@ export function selectCiFiles(listing: readonly string[], project: CiProject, ru
   if (missing.length > 0) throw new Error(`CI file lists name files Vitest does not list: ${missing.join(", ")}`);
   const known = Object.values(durations).filter(seconds => seconds > 0).sort((a, b) => a - b);
   const seconds = (file: string) => Math.max(0.1, durations[file] ?? known[Math.floor(known.length / 2)] ?? 1);
-  if (runner === "ubuntu") return balance(listed.filter(file => !native.includes(file)), jobs, seconds)[job - 1] ?? [];
+  if (runner === "ubuntu") return balance(listed.filter(file => !native.includes(file) || LINUX_NATIVE_FILES.includes(file)), jobs, seconds)[job - 1] ?? [];
   // Serial proofs run alone; other files share two workers, so they count half their time.
   const bin = balance(native, jobs, file => isSingleWorker(file) ? seconds(file) : seconds(file) / 2)[job - 1] ?? [];
   const selected = runner === "serial" ? SERIAL_FILES : runner === "storage" ? SERIAL_STORAGE_FILES
@@ -131,7 +169,9 @@ if (isDirectExecution(import.meta.url)) {
     const reports = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter(file => file.endsWith(".json"))
       .map(file => JSON.parse(readFileSync(join(dir, file), "utf8")) as unknown);
     const merged = { ...ciDurationsSchema.parse(JSON.parse(readFileSync(DURATIONS_PATH, "utf8"))), ...durationsFromReports(reports) };
-    writeFileSync(DURATIONS_PATH, JSON.stringify(Object.fromEntries(Object.entries(merged).sort(([a], [b]) => a.localeCompare(b))), null, 2) + "\n");
+    writeFileSync(DURATIONS_PATH, JSON.stringify(Object.fromEntries(Object.entries(merged)
+      .filter(([file]) => statSync(file, { throwIfNoEntry: false })?.isFile())
+      .sort(([a], [b]) => a.localeCompare(b))), null, 2) + "\n");
   } else {
     const [project, runner, listing, slice] = args as [CiProject, CiRunner, string, string];
     const [job, jobs] = slice.split("/").map(Number) as [number, number];

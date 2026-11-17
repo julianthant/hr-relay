@@ -1,4 +1,5 @@
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
+import { commandAttemptView } from "../app/commands/command-outcome.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
 import { PersonPreferencesSchema, NEUTRAL_PERSON_PREFERENCES, resolvePersonPreferences } from "../../models/config/person-preferences.js";
 import { deriveSettingsPatchFingerprint, mergeSettingsPatch, type SettingsPatch } from "../../models/config/settings.js";
@@ -56,7 +57,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
         } });
       if (started !== generation) return false;
       if (outcome.kind !== "confirmed" || readback === undefined) {
-        fail(outcome.kind === "confirmed" ? operatorFailureSentence("COMMAND_OUTCOME_UNCERTAIN") : outcome.feedback.text, outcome.kind === "uncertain");
+        fail(outcome.kind === "confirmed" ? operatorFailureSentence("COMMAND_OUTCOME_UNCERTAIN") : outcome.feedback.text, commandAttemptView(outcome).view === "unknown");
         return false;
       }
       document = readback;

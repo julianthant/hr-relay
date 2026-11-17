@@ -5,6 +5,11 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 
 const ArtifactReferenceContainerSchema = z.record(z.string(), z.unknown());
 
+/** An object the record schema accepts unchanged: Object.prototype as its prototype and no symbol keys. Any other object still goes through the schema. */
+function isStringKeyedPlainObject(value: object): value is Record<string, unknown> {
+  return Object.getPrototypeOf(value) === Object.prototype && Object.getOwnPropertySymbols(value).length === 0;
+}
+
 /** Returns a one-walk matcher: the digests of the candidates a value names by artifact id, sha256, digest or sourceSha256 anywhere inside it. */
 export function deletionArtifactReferenceMatcher(candidates: Iterable<ArtifactRef>): (value: unknown) => ReadonlySet<string> {
   const byId = new Map<string, string[]>(), byDigest = new Set<string>();
@@ -42,15 +47,21 @@ export function artifactReferencesIn(input: unknown): readonly ArtifactRef[] {
   };
   const visit = (value: unknown): void => {
     if (value === null || typeof value !== "object") return;
-    const full = ArtifactRefSchema.safeParse(value);
-    if (full.success) add(full.data);
-    const attachment = DiagnosticAttachmentSchema.safeParse(value);
-    if (attachment.success) add(ArtifactRefSchema.parse({ id: attachment.data.artifactId, sha256: attachment.data.digest,
-      bytes: attachment.data.byteLength, mediaType: attachment.data.mediaType }));
+    // Both schemas require a string sha256 or digest, so a node without one cannot parse and is not tried.
+    if (typeof Reflect.get(value, "sha256") === "string") {
+      const full = ArtifactRefSchema.safeParse(value);
+      if (full.success) add(full.data);
+    }
+    if (typeof Reflect.get(value, "digest") === "string") {
+      const attachment = DiagnosticAttachmentSchema.safeParse(value);
+      if (attachment.success) add(ArtifactRefSchema.parse({ id: attachment.data.artifactId, sha256: attachment.data.digest,
+        bytes: attachment.data.byteLength, mediaType: attachment.data.mediaType }));
+    }
     if (Array.isArray(value)) { for (const member of value) visit(member); return; }
-    const record = ArtifactReferenceContainerSchema.parse(value);
+    const record = isStringKeyedPlainObject(value) ? value : ArtifactReferenceContainerSchema.parse(value);
     if (typeof record.preparationJson === "string") visit(JSON.parse(record.preparationJson));
-    for (const member of Object.values(record)) visit(member);
+    // The record schema drops an own "__proto__" key, so it is never visited.
+    for (const [key, member] of Object.entries(record)) if (key !== "__proto__") visit(member);
   };
   visit(input);
   return [...references.values()];

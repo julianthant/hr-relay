@@ -451,12 +451,11 @@ retain the cancelled outcome and reason.
 ## 7. Verification owners
 
 Tests mirror implementation under `tests/backend/runtime/` and `tests/backend/storage/sqlite/`.
-`tests/architecture/runtime/` owns `authentication-proof-not-url`, `driver-lease-boundary`,
-`single-flight-login`, `fresh-session-boundary`, `bounded-task-deadline`, `duo-ceremony-lease`,
-`multi-worker-overlap`, and `worker-teardown-soak` in their named `.test.ts` files.
+`tests/architecture/runtime/` owns runtime boundary checks.
 `tests/fast-duo/src/sign-count.test.ts` checks cross-profile counter arithmetic.
-`tests/backend/app/composition/dashboard/compose.worker-pool-parallel-proof.integration.test.ts`
-and `compose.worker-browser-control-process.integration.test.ts` exercise real children.
+`tests/backend/app/composition/dashboard/compose.worker-processes.integration.test.ts`
+exercises concurrent real children, IPC stop, crash settlement and signal escalation.
+`tests/backend/app/composition/dashboard/compose.worker-pool.integration.test.ts` checks pool controls.
 A test's presence does not establish a current pass or external availability.
 
 ### 7.1 Concurrency evidence
@@ -542,8 +541,8 @@ or inconsistent roster authority refuses admission; leases never reconstruct mem
 ### 11.1 Process effects and retirement
 
 `createWorkerPoolRuntimeExecutor` freezes requests and validates acknowledgements against the
-original member. `src/backend/runtime/workers/worker-supervisor.ts` launches argv without a shell
-and requires the child's own lease birth before acknowledgement. The dashboard
+original member. `src/backend/app/composition/dashboard/worker-process.ts` launches argv without a shell;
+`src/backend/runtime/workers/worker-pool.ts` validates the child's ready message before acknowledging startup. The dashboard
 uses `scripts/dev/secure-env-bootstrap.ts` with `cli`; `workerCliArgv` adds the exact admitted
 member and launch-command identity.
 
@@ -580,8 +579,8 @@ During shutdown, final exit observation is bounded by `WORKER_EXIT_OBSERVATION_T
 
 `src/backend/runs/commands/command-kernel.ts` admits `plan-worker-count`, `spawn-worker`,
 `pause-worker`, `resume-worker`, `refresh-browser`, and `reopen-browser` into
-`worker_controls` before asynchronous effects. `src/backend/storage/sqlite/worker-control.ts`
-binds every record to the exact stored command and any admitted roster. Fresh ordinary targeted
+`worker_controls` before asynchronous effects. `src/models/run/worker-control.ts`
+defines worker browser observations and the control refusal error. Fresh ordinary targeted
 controls also capture their authenticated member and full process lifetime at admission, after the
 exact control reservation. Worker cards project them only for that member and lifetime. Historical
 records without this binding remain unavailable; reads and replay never attach current identity.
@@ -779,11 +778,10 @@ zero-size pools never recover. Pending grants and controls retain their original
 crash; durable authenticated effect milestones may finish settlement, while missing evidence never
 causes a second spawn or replays an uncertain write.
 
-`worker-browser-channel.ts` uses SQLite as the cross-process channel and polls at 50 ms within
-the request's expiry. `worker-browser-control.ts` consumes only ready requests for its exact
-worker lifetime, between whole runs. Kernel admission and child execution both refuse busy
-workers with `worker-browser-busy`. A busy refusal queues no deferred browser effect.
-The claim transaction blocks while that lifetime has an unaudited browser control.
+`src/backend/runtime/workers/worker-pool.ts` sends browser controls over the owned child's IPC
+channel. `src/backend/runtime/workers/worker-browser-control.ts` executes refresh and reopen
+requests against that worker's session owner. Busy workers refuse with `worker-browser-busy`;
+a busy refusal queues no deferred browser effect.
 
 Refresh uses the selected resource's neutral reset and authentication proof, retaining the
 session id. Reopen proves closure and opens a replacement with a new session id, the same profile,
@@ -810,15 +808,23 @@ membership. Free workers share
 the workflow's unclaimed items, including workers that become free or are added in Sessions later.
 Created workers remain in the pool, idle after their work finishes.
 
-Enqueue can commit before startup. Its response remains `applied` or `already-applied` with the
-queued run targets when startup fails. `workerStartup` carries `RUN_QUEUED_WORKER_UNAVAILABLE`,
-the retained child command when available, and a distinct `refused` or `unknown` startup state.
-The native control phase determines whether an admitted effect remains uncertain. The dashboard
-closes the confirmed submission and shows the queued-run warning; it does not invite another Start.
-Exact replay reconciles retained children without repeating failed or uncertain effects or replacing
-a member that later crashed or was removed. A capacity shortfall on replay without retained startup
-evidence reports unknown startup and requires reconciliation.
-`src/backend/runs/commands/command-service.ts` serializes enqueue and startup per workflow.
+Start replies once its enqueue commits; its capacity step runs after the reply, so the response
+never waits for preflight or a member's ready handshake. A startup that then fails leaves the
+workflow with failed worker cards or no worker, which the dashboard's sticky queued-run notice reports,
+and reaches the supervisor fault log through the capacity's detached-failure report. While any capacity
+step for a workflow is unsettled, that workflow's members that are not live are served as starting and
+its queued rows carry no no-worker flag, so the notice appears only once startup has settled as failed.
+The worker pool owns the detached step: stopping the pool for shutdown or logout closes starts, aborting a
+pending worker preflight and refusing any later member start, and waits for the step to settle before
+it returns.
+Resume, Retry and Recover, single or bulk, still wait for capacity. Their response remains `applied` or
+`already-applied` with the queued run targets when startup fails, and `workerStartup` carries
+`RUN_QUEUED_WORKER_UNAVAILABLE`, the retained child command when available, and a distinct `refused`
+or `unknown` startup state. The native control phase determines whether an admitted effect remains
+uncertain. Exact replay asks for capacity again; it reconciles retained children without repeating
+failed or uncertain effects or replacing a member that later crashed or was removed.
+`src/backend/runs/commands/command-service.ts` runs one capacity step at a time per workflow and
+admits one Start at a time per workflow, in separate lanes.
 
 ## Not built yet
 

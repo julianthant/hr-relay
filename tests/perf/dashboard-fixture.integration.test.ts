@@ -14,12 +14,12 @@ process.env.TZ = "UTC";
 
 let fixture: PerfFixture;
 
-beforeAll(() => {
-  fixture = seedDashboardPerfFixture();
+beforeAll(async () => {
+  fixture = await seedDashboardPerfFixture();
 });
 
-afterAll(() => {
-  fixture.close();
+afterAll(async () => {
+  await fixture.close();
 });
 
 describe("the §7.4 dashboard perf fixture", () => {

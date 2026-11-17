@@ -8,6 +8,7 @@ import { encodeEditableWorkbook, type SavedWorkbook, type WorkbookType } from '.
 import type { WorkbookCompatibility, WorkbookLibraryEntry, WorkbookLibraryAction, WorkbookLibraryActionResult } from '../../models/dashboard/workbook-library.js';
 import { canonicalJsonStringify } from '../../rules/validation/canonical-json.js';
 import { spreadsheetSaveMatches, type SpreadsheetSaveResult } from '../surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { draftHasUnsavedWork, draftHoldsSave, draftTransition, isDraftRefusal, type DraftEvent, type SpreadsheetDraft } from './spreadsheet-draft.js';
 import { cellText, type EditableWorkbook } from '../../rules/spreadsheets/workbook-io.js';
 import { NOT_MAPPED, type RegisteredSpreadsheet } from '../surfaces/spreadsheets/spreadsheet-mock-model.js';
 import { spreadsheetEditorField } from '../surfaces/spreadsheets/spreadsheet-fields-model.js';
@@ -15,8 +16,6 @@ import { spreadsheetEditorField } from '../surfaces/spreadsheets/spreadsheet-fie
 type WorkbookLibraryQueries = Pick<DashboardClient, 'workbookList' | 'workbookOpen' | 'workbookRevision' | 'workbookCreate' | 'workbookSave' | 'workbookHistory'
   | 'workbookCatalog' | 'workbookCompatibility' | 'workbookLibraryAction' | 'workbookLibraryActionStatus' | 'workbookLibraryVersion' | 'workbookTypes' | 'workbookPutType'>;
 export type LibraryChangeResult = Readonly<{ state: 'confirmed' }> | Readonly<{ state: 'refused' | 'uncertain' | 'recorded'; message: string }>;
-type SaveIntent = { draft: EditableWorkbook; expectedVersion: number; libraryId?: string; error?: unknown };
-type Draft = { document: EditableWorkbook; dirty: boolean; opened?: SavedWorkbook; intent?: SaveIntent; saving?: Promise<SpreadsheetSaveResult> };
 type Snapshot = { files: readonly RegisteredSpreadsheet[]; loading: boolean; refreshing: boolean; opening?: string; openError: string; error: string;
   catalog: readonly WorkbookLibraryEntry[]; compatibility?: WorkbookCompatibility; types: readonly WorkbookType[]; typesError: string; catalogLoading: boolean; catalogRefreshing: boolean; catalogError: string; pendingLibraries: readonly string[]; pendingTypes: readonly WorkbookType[] };
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -35,7 +34,7 @@ function libraryRow(id: string, document: EditableWorkbook, addedAt?: string, ve
 export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
   let snapshot: Snapshot = { files: [], loading: true, refreshing: false, openError: '', error: '', catalog: [], types: [], typesError: '', catalogLoading: true, catalogRefreshing: false, catalogError: '', pendingLibraries: [], pendingTypes: [] };
   const listeners = new Set<() => void>();
-  const drafts = new Map<string, Draft>();
+  const drafts = new Map<string, SpreadsheetDraft>();
   const aliases = new Map<string, string>();
   const origins = new Map<string, { version: number; status: "Attached" | "Generated" | "Updated" }>();
   let readAuthority: object = client;
@@ -54,8 +53,19 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
     const origin = origins.get(libraryId);
     return origin && origin.version === row.version ? { ...row, status: origin.status } : row;
   };
-  const rowFor = (key: string, draft: Draft) => withOrigin(libraryRow(key, draft.document, draft.opened?.createdAt, draft.opened?.version), draft.opened?.libraryId ?? key);
-  const updateRow = (key: string, draft: Draft) => { const row = rowFor(key, draft); publish({ files: snapshot.files.some(file => file.id === key) ? snapshot.files.map(file => file.id === key ? row : file) : [row, ...snapshot.files] }); };
+  const rowFor = (key: string, draft: SpreadsheetDraft) => withOrigin(libraryRow(key, draft.document, draft.opened?.createdAt, draft.opened?.version), draft.opened?.libraryId ?? key);
+  const updateRow = (key: string, draft: SpreadsheetDraft) => { const row = rowFor(key, draft); publish({ files: snapshot.files.some(file => file.id === key) ? snapshot.files.map(file => file.id === key ? row : file) : [row, ...snapshot.files] }); };
+  const move = (key: string, event: DraftEvent) => {
+    const next = draftTransition(drafts.get(key), event);
+    if (isDraftRefusal(next)) return next;
+    if (next === undefined) drafts.delete(key); else drafts.set(key, next);
+    return next;
+  };
+  const step = (key: string, event: DraftEvent): SpreadsheetDraft => {
+    const next = move(key, event);
+    if (next === undefined || isDraftRefusal(next)) throw new Error('SPREADSHEET_DRAFT_UNAVAILABLE');
+    return next;
+  };
   const adapter = {
     subscribe(this: void, listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     snapshot: () => snapshot,
@@ -137,7 +147,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         publish({ catalog, compatibility, ...(typesRead.status === 'rejected' ? { typesError: ERROR_CATALOG.DASHBOARD_READ_FAILED.text } : { types: typesRead.value, typesError: '' }),
           catalogLoading: false, catalogRefreshing: false, catalogError: '', pendingLibraries: pendingLibraryIds() });
         const draft = drafts.get(keyFor(libraryId));
-        if (draft && !draft.dirty) { adapter.close(libraryId); if (!record.result.removed) await adapter.open(libraryId); }
+        if (draft && draftTransition(draft, { type: 'library-settled' }) === undefined) { adapter.close(libraryId); if (!record.result.removed) await adapter.open(libraryId); }
         await adapter.list();
         return matches ? { state: 'confirmed' } : { state: 'recorded', message: 'The change was recorded. The library has changed again; review its current version.' };
       } catch (error) { return { state: 'uncertain', message: `The library change is unconfirmed. ${message(error)}` }; }
@@ -148,7 +158,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
       if (snapshot.catalogLoading || snapshot.catalogRefreshing || snapshot.catalogError || current?.state.revision !== entry.state.revision || current.version !== entry.version) return { state: 'refused', message: 'The library changed. Refresh it and review the action again.' };
       const draft = drafts.get(keyFor(entry.libraryId));
       const changesData = change.kind === 'link' || change.kind === 'unlink' || change.kind === 'sync' || change.kind === 'use-version' || change.kind === 'remove' || change.kind === 'rename' || change.kind === 'metadata' || change.kind === 'create-version' && change.useNow;
-      if (changesData && draft && (draft.dirty || draft.intent || draft.saving)) return { state: 'refused', message: 'Save or close the open draft before changing the version in use.' };
+      if (changesData && draft && (draftHasUnsavedWork(draft) || draftHoldsSave(draft))) return { state: 'refused', message: 'Save or close the open draft before changing the version in use.' };
       const action: WorkbookLibraryAction = { operationId: crypto.randomUUID(), expectedRevision: entry.state.revision, expectedVersion: entry.version, change };
       libraryIntents.set(entry.libraryId, action);
       publish({ pendingLibraries: pendingLibraryIds() });
@@ -169,7 +179,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
     },
     async saveValuesVersion(id: string, name: string, document: EditableWorkbook): Promise<LibraryChangeResult> {
       const draft = drafts.get(keyFor(id)), libraryId = draft?.opened?.libraryId;
-      if (!libraryId || draft.intent || draft.saving) return { state: 'refused', message: 'Check the current save result before saving a new version.' };
+      if (!libraryId || draftHoldsSave(draft)) return { state: 'refused', message: 'Check the current save result before saving a new version.' };
       const pending = libraryIntents.get(libraryId);
       if (pending) return pending.change.kind === 'create-version' && pending.change.from.kind === 'values' && pending.change.name === name
         ? adapter.settleLibrary(libraryId) : { state: 'refused', message: 'Check the pending library change before saving a new version.' };
@@ -202,7 +212,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         const opened = await readWithDeadline(() => client.workbookOpen(id), "DASHBOARD_READ_FAILED");
         if (request !== opening) return;
         readReady = true;
-        if (!drafts.has(key)) { drafts.set(key, { document: opened.workbook, dirty: false, opened }); publish({ openError: '', opening: undefined }); }
+        if (!drafts.has(key)) { move(key, { type: 'opened', opened }); publish({ openError: '', opening: undefined }); }
       } catch { if (request === opening) publish({ openError: ERROR_CATALOG.DASHBOARD_READ_FAILED.text, opening: undefined }); }
     },
     async history(id: string) {
@@ -223,8 +233,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
     },
     close(id: string) {
       const key = keyFor(id), draft = drafts.get(key);
-      if (!draft || draft.intent || draft.saving) return;
-      drafts.delete(key);
+      if (!draft || isDraftRefusal(move(key, { type: 'closed' }))) return;
       const opened = draft.opened;
       if (opened) {
         aliases.delete(opened.libraryId);
@@ -237,24 +246,22 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
       publish({ loading: false, refreshing: false, opening: undefined });
     },
     create(document: EditableWorkbook) {
-      const key = crypto.randomUUID(); const draft = { document, dirty: true }; drafts.set(key, draft); updateRow(key, draft); return key;
+      const key = crypto.randomUUID(); updateRow(key, step(key, { type: 'created', document })); return key;
     },
     change(id: string, document: EditableWorkbook, dirty: boolean) {
-      const key = keyFor(id), draft = drafts.get(key);
-      if (!draft) throw new Error('SPREADSHEET_DRAFT_UNAVAILABLE');
-      draft.document = document;
-      draft.dirty = dirty || !!draft.intent || !draft.opened || !spreadsheetSaveMatches(document, { state: 'confirmed', version: draft.opened.version, readback: draft.opened.workbook });
-      updateRow(key, draft);
+      const key = keyFor(id);
+      updateRow(key, step(key, { type: 'changed', document, dirty }));
     },
     async save(id: string, document: EditableWorkbook): Promise<SpreadsheetSaveResult> {
       const key = keyFor(id), draft = drafts.get(key);
       if (!draft) return { state: 'refused', reason: 'Open a workbook before saving.' };
-      if (pendingLibraryIds().includes(draft.opened?.libraryId ?? id)) return { state: 'refused', reason: 'Check the pending library change before saving this spreadsheet.' };
-      if (draft.saving) return draft.saving;
-      if (!readReady && !draft.intent) return { state: 'refused', reason: ERROR_CATALOG.DASHBOARD_READ_FAILED.text };
-      const intent: SaveIntent = draft.intent ?? { draft: structuredClone(document), libraryId: draft.opened?.libraryId, expectedVersion: draft.opened?.version ?? 0 };
-      const recovering = draft.intent !== undefined;
-      draft.intent = intent;
+      const started = Promise.withResolvers<SpreadsheetSaveResult>();
+      const next = move(key, { type: 'save-started', document, saving: started.promise, readReady, libraryPending: pendingLibraryIds().includes(draft.opened?.libraryId ?? id) });
+      if (isDraftRefusal(next)) return { state: 'refused', reason: next.refusal === 'library-pending' ? 'Check the pending library change before saving this spreadsheet.' : ERROR_CATALOG.DASHBOARD_READ_FAILED.text };
+      if (next?.phase !== 'saving' && next?.phase !== 'settling') throw new Error('SPREADSHEET_DRAFT_UNAVAILABLE');
+      if (next === draft || next.phase === 'settling') return next.saving;
+      const { intent, saving } = next;
+      const recovering = draft.phase === 'unconfirmed';
       const execute = async (): Promise<SpreadsheetSaveResult> => {
         let receipt: SavedWorkbook | undefined;
         let rejection: SpreadsheetSaveResult | undefined;
@@ -268,10 +275,11 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
             }
           }
         }
-        if (rejection) { draft.intent = undefined; return rejection; }
+        if (rejection) { move(key, { type: 'rejected' }); return rejection; }
         const libraryId = receipt?.libraryId ?? intent.libraryId;
         if (!libraryId) {
           await adapter.list();
+          move(key, { type: 'unknown' });
           return { state: 'uncertain', reason: `Save outcome is uncertain. The new workbook identity could not be confirmed.${intent.error === undefined ? '' : ` ${message(intent.error)}`}` };
         }
         intent.libraryId = libraryId;
@@ -279,19 +287,18 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
           const opened = await readWithDeadline(() => client.workbookOpen(libraryId), "DASHBOARD_READ_FAILED");
           const expected = { ...intent.draft, libraryId };
           const result: SpreadsheetSaveResult = { state: 'confirmed', version: opened.version, readback: opened.workbook };
-          if (opened.libraryId !== libraryId || opened.version !== intent.expectedVersion + 1 || !spreadsheetSaveMatches(expected, result)) return { state: 'uncertain', reason: 'The library readback does not match the saved draft.' };
-          draft.opened = opened; draft.intent = undefined;
-          if (draft.document.libraryId === undefined) draft.document = { ...draft.document, libraryId };
-          aliases.set(libraryId, key); updateRow(key, draft);
-          if (!spreadsheetSaveMatches(draft.document, result)) return { state: 'uncertain', reason: 'The original save was confirmed. The current draft still has unsaved changes.' };
-          draft.dirty = false;
+          if (opened.libraryId !== libraryId || opened.version !== intent.expectedVersion + 1 || !spreadsheetSaveMatches(expected, result)) { move(key, { type: 'readback-mismatch' }); return { state: 'uncertain', reason: 'The library readback does not match the saved draft.' }; }
+          const confirmed = step(key, { type: 'confirmed', opened, refreshes: !snapshot.catalogLoading });
+          aliases.set(libraryId, key); updateRow(key, confirmed);
+          if (confirmed.phase === 'edited') return { state: 'uncertain', reason: 'The original save was confirmed. The current draft still has unsaved changes.' };
           return result;
-        } catch (error) { intent.error = error; return { state: 'uncertain', reason: `Save outcome is uncertain. ${message(error)} Check the library before saving again.` }; }
+        } catch (error) { intent.error = error; move(key, { type: 'unknown' }); return { state: 'uncertain', reason: `Save outcome is uncertain. ${message(error)} Check the library before saving again.` }; }
       };
-      draft.saving = execute();
+      const settling = () => { const current = drafts.get(key); return current?.phase === 'settling' && current.saving === saving; };
+      started.resolve(execute());
       publish();
-      try { const result = await draft.saving; if (result.state === 'confirmed' && !snapshot.catalogLoading) await adapter.refreshCatalog(); return result; }
-      finally { draft.saving = undefined; publish(); }
+      try { const result = await saving; if (settling()) await adapter.refreshCatalog(); return result; }
+      finally { if (settling()) move(key, { type: 'released' }); publish(); }
     },
   };
   return adapter;
