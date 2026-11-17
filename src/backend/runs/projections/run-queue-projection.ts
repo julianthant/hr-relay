@@ -152,6 +152,7 @@ export interface RunQueueProjectionDeps {
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
     batchMemberRetryAvailable?(run: RunRecord): boolean;
+    aggregateMemberRetryAvailable?(run: RunRecord): boolean;
     queueParents(envelopes: readonly RunRecord["envelope"][]): ReadonlyMap<string, QueueParent | null>;
     delegationWait?(runId: string): DelegationWaitState | null;
     reviewAvailable?(runId: string): boolean;
@@ -1364,6 +1365,7 @@ export class RunQueueProjection {
 
         hasReviewPanel: descriptor?.capabilities?.review ?? false,
         batchMemberRetryAvailable: this.#deps.authority.batchMemberRetryAvailable?.(authority) === true,
+        aggregateMemberRetryAvailable: this.#deps.authority.aggregateMemberRetryAvailable?.(authority) === true,
       }),
       rowRevision: authority.version,
     };
