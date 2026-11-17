@@ -94,6 +94,7 @@ describe("Person Lookup task implementations", () => {
         "workflow:crm-doc-download/read-worksheet-archives",
         "workflow:emergency-contact-member/read-approved-contact",
         "workflow:emergency-contact-member/read-contact-plan",
+        "workflow:emergency-contact-member/read-reference-stop",
         "workflow:emergency-contact/read-result",
         "workflow:i9-check-start/read-people",
         "workflow:i9-check-start/read-publication",

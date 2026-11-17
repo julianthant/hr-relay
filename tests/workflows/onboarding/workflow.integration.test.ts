@@ -126,7 +126,7 @@ describe("onboarding workflow", () => {
   it("preserves proof identities, shared ingress and every safety prerequisite", () => {
     assert.deepEqual(registration.proofs.map(proof => [proof.definition.id, proof.definition.code, proof.order]), [
       ["onboarding-crm-data", "onc", 15], ["onboarding-ucpath-search", "onu", 16],
-      ["onboarding-i9-search", "onis", 17], ["onboarding-hire-writes", "onhw", 18], ["onboarding-reference-check", "onrc", 19],
+      ["onboarding-i9-search", "onis", 17], ["onboarding-hire-writes", "onhw", 18], ["onboarding-reference-check", "onrc", 38],
     ]);
     const entryIds = ["roster-choice", "crm-source", "hire-plan", "ucpath-source", "hire-subject", "i9-lookup-child", "i9-lookup", "i9-profile-plan"];
     const proofSizes = [3, 5, 7, 8];

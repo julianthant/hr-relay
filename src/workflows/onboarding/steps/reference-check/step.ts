@@ -67,7 +67,7 @@ export const onboardingReferenceCheckDefinition = defineStep({
     { nodeId: REFERENCE_STOP_NODE, purpose: "Ask before the first save only in a live run whose picked spreadsheets do not confirm the person." },
     { nodeId: REFERENCE_CHECK_REVIEW_GATE, purpose: "Have the operator continue anyway, or cancel the run, before anything is saved." },
   ],
-  proof: { id: "onboarding-reference-check", order: 19,
+  proof: { id: "onboarding-reference-check", order: 38,
     build: (parent: WorkflowDefinition<typeof OnboardingInput>) => ({ ...inheritStepProof(parent), code: "onrc",
       label: REFERENCE_CHECK_STEP.label, summary: "Reviews one hire and checks the reviewed Employee ID against the picked reference spreadsheets.",
       steps: (author: WorkflowAuthor<typeof OnboardingInput>) => {
