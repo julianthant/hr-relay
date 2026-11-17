@@ -69,6 +69,8 @@
     "src/workflows/separations/steps/kuali-finalization/step.ts",
     "src/workflows/separations/steps/reference-check/step.ts",
     "src/workflows/separations/steps/ucpath-transaction/step.ts",
+    "src/workflows/onboarding/steps/hire-review/step.ts",
+    "src/workflows/onboarding/steps/ucpath-search/step.ts",
     "src/workflows/work-study/steps/ucpath-auth/step.ts",
     "src/workflows/work-study/workflow.ts"
   ],

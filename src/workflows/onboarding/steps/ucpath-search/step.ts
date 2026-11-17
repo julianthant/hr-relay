@@ -19,16 +19,42 @@ const group = Object.freeze({
       {
         id: "person-match",
         title: "Smart HR person search",
-        mode: "Read only",
-        nodeIds: ["ucpath-source", "hire-subject"],
+        mode: "Fill form",
+        nodeIds: ["ucpath-source"],
         lines: [
           { id: "search-duplicates", kind: "action", text: "Search UCPath for a matching person using the validated hire identity.", nodeIds: ["ucpath-source"] },
-          { id: "classify-match", kind: "check", text: "Resolve a new hire or an existing person from the returned candidates.", nodeIds: ["hire-subject"] }
+          { id: "search", kind: "click", target: "Search", nodeIds: ["ucpath-source"] },
         ],
-        fields: []
+        fields: [
+          ...[["first-name", "First name", "firstName", "Bea"], ["last-name", "Last name", "lastName", "Morrow"],
+            ["date-of-birth", "Date of birth", "dob", "01/14/2000"]].map(([id, label, path, example]) => ({ id, label, example,
+            taskFields: [{ nodeId: "ucpath-source", kind: "input" as const, fieldPath: path }],
+            source: { origin: "Validated hire identity", detail: `${label} from the hire plan, formatted for UCPath.`,
+              read: { stepKey: "crm-data", page: "CRM onboarding record", field: label }, chain: [] } })),
+        ],
+      },
+      {
+        id: "person-results", title: "Smart HR person search results", mode: "Read only", nodeIds: ["ucpath-source", "hire-subject"],
+        when: [{ "hire-match": ["existing-person", "review-required"] }],
+        lines: [{ id: "classify-match", kind: "check", text: "Resolve a new hire or an existing person from the returned candidates.", nodeIds: ["hire-subject"] }],
+        fields: [
+          { id: "candidate-name", label: "Candidate name", example: "Morrow, Bea",
+            taskFields: [{ nodeId: "ucpath-source", kind: "output", fieldPath: "hits.name" }], when: [{ "hire-match": ["existing-person", "review-required"] }],
+            source: { origin: "UCPath", detail: "A possible match returned by Smart HR and checked independently in Person Organizational Summary.", chain: [] } },
+          { id: "candidate-employee-id", label: "Candidate Employee ID", example: "10000001",
+            taskFields: [{ nodeId: "ucpath-source", kind: "output", fieldPath: "hits.emplId" }], when: [{ "hire-match": ["existing-person", "review-required"] }],
+            source: { origin: "UCPath", detail: "The Employee ID retained with a possible match for the operator's hire review.", chain: [] } },
+        ]
       }
     ],
-    branchLabels: []
+    branchLabels: [],
+    decisions: [{ id: "hire-match", label: "UCPath identity", reads: { nodeId: "hire-subject", fieldPath: "state" },
+      nodeIds: ["ucpath-source", "hire-subject"], initial: { by: "mode", values: { rehire: "review-required" }, otherwise: "new-hire" },
+      outcomes: [
+        { value: "new-hire", label: "No existing person", then: "Looks up the I-9 profile before asking you to approve a new hire.", when: [{ mode: ["new-hire"] }] },
+        { value: "existing-person", label: "Existing person confirmed", then: "Skips I-9 lookup and asks you to approve the existing person's hire.", when: [{ mode: ["new-hire"] }] },
+        { value: "review-required", label: "Identity needs review", then: "Keeps the candidates for your hire review; only a new-hire run with no confirmed person looks up I-9." },
+      ] }],
   } as const
 });
 const entries = defineStepEntries(group);

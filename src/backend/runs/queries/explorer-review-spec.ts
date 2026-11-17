@@ -207,7 +207,12 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
   };
   const nodeGate = (id: string): When | undefined => {
     const { shape } = nodeWire(id);
-    return run.conditionGate(shape.kind === "task" || shape.kind === "gate" ? shape.condition : undefined);
+    const branches = nodes.flatMap((node): When[] => {
+      if (node.shape.kind !== "branch") return [];
+      const selected = node.shape.cases.filter(branch => branch.nodes.includes(id)).map(branch => branch.name);
+      return selected.length === 0 ? [] : [[{ [node.id]: selected }]];
+    });
+    return both(known, run.conditionGate(shape.kind === "task" || shape.kind === "gate" ? shape.condition : undefined), ...branches);
   };
   const previewsOnDryRun = (node: ExplorerNodeWire): boolean => node.shape.kind === "transaction" && node.shape.dryRun === "stop-after-prepare" && known.has(DRY_RUN);
   const runtimeNode = (id: string): RuntimeNode => {
@@ -227,7 +232,20 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
   };
   const decisionReads = new Map<string, { decision: string; values: readonly string[] }>();
   const sources: Spec["sources"] = {};
-  const systemOf = (stepKey: string) => descriptor.timeline.find(group => group.key === stepKey)?.system;
+  const stepSystems = new Map(descriptor.timeline.map(group => {
+    const systems = new Set<NonNullable<Step["system"]>>();
+    for (const member of group.nodes) {
+      const node = nodeWire(member.id);
+      for (const task of node.tasks) if (task.binding.state === "bound" && task.binding.driverSystem !== undefined) systems.add(task.binding.driverSystem);
+      if (node.shape.kind !== "child-run") continue;
+      const target = node.shape.targetWorkflowId;
+      const child = modules.find(candidate => candidate.descriptor.id === target);
+      if (child === undefined) throw new Error(`workflow ${descriptor.id} delegates to ${target}, which is absent from the catalog`);
+      for (const store of child.stores) if (store.kind === "browser") systems.add(store.driver.system);
+    }
+    return [group.key, group.system ?? (systems.size === 1 ? [...systems][0] : undefined)] as const;
+  }));
+  const systemOf = (stepKey: string) => stepSystems.get(stepKey);
 
   const steps = descriptor.timeline.map((group, index): Step => {
     const review = reviews.get(group.key);
@@ -247,8 +265,8 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
       }
       return undefined;
     };
-    const byDecision = (references: readonly { nodeId: string; kind: "input" | "output"; fieldPath: string }[], display: OperatorFieldDisplay | undefined, sample: string | undefined): ExplorerSpecValue | undefined => {
-      if (display === undefined || sample === undefined) return sample;
+    const byDecision = (references: readonly { nodeId: string; kind: "input" | "output"; fieldPath: string }[], display: OperatorFieldDisplay | undefined, sample: ExplorerSpecValue | undefined): ExplorerSpecValue | undefined => {
+      if (display === undefined || typeof sample !== "string") return sample;
       for (const reference of references) {
         const read = reference.kind === "output" ? decisionReads.get(`${reference.nodeId}/${reference.fieldPath}`) : undefined;
         if (read === undefined) continue;
@@ -272,22 +290,25 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
           const operator = group.operatorFields?.find(candidate => candidate.label === field.operatorField && candidate.visibility !== "logs");
           if (operator === undefined) throw new Error(`workflow ${descriptor.id} review field ${field.id} has no visible operator field ${field.operatorField}`);
           const sample = operator.example ?? outputSample(operator.sources, operator.display);
-          return row(operator.label, byDecision(operator.sources, operator.display, sample), field.when);
+          return row(operator.label, byDecision(operator.sources, operator.display, sample), both(known, field.when, either(known, operator.sources.map(source => nodeGate(source.nodeId)))));
         }
         if ("inputField" in field) return row(field.label, field.example, both(known, field.when, run.inputGate(field.inputField)));
-        if ("constant" in field) return row(field.label, field.example ?? sampleText(field.constant.value, undefined), field.when);
+        if ("constant" in field) return row(field.label, field.example ?? sampleText(field.constant.value, undefined), both(known, field.when, either(known, field.constant.nodeIds.map(nodeGate))));
         const references = "taskFields" in field ? field.taskFields : field.transactionFields;
         const display = "display" in field ? field.display : undefined;
-        return row(field.label, byDecision(references, display, field.example ?? outputSample(references, display)), field.when);
+        return row(field.label, byDecision(references, display, field.example ?? outputSample(references, display)), both(known, field.when, either(known, references.map(reference => nodeGate(reference.nodeId)))));
       });
       blocks.push({ kind: "card", id: page.id, title: page.title, mode: page.mode === "Fill form" ? "fill" : "read", ...gated(pageGate), rows });
       for (const line of page.lines) {
-        const when = both(known, pageGate, line.when);
+        const when = both(known, pageGate, line.when, either(known, line.nodeIds.map(nodeGate)));
         if (line.kind === "click") blocks.push({ kind: "click", target: line.target, ...gated(when) });
         else (line.kind === "check" ? checks : description).push({ text: line.text, ...gated(when) });
       }
     }
 
+    for (const { nodeId, when, ...pick } of review?.picks ?? []) {
+      blocks.push({ kind: "pick", ...pick, ...gated(both(known, when, nodeGate(nodeId))) });
+    }
     const decisions: { block: Decision; nodeIds: readonly string[] }[] = [];
     const continuing = (value: string, label: string, when?: When): Outcome => ({ value, label, then: continueText(index), stops: false, ...gated(when) });
     for (const decision of review?.decisions ?? []) {
@@ -297,26 +318,37 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
           const label = outcome.label ?? display?.cases.find(entry => String(entry.value) === outcome.value)?.text;
           if (label === undefined) throw new Error(`workflow ${descriptor.id} review decision ${decision.id} outcome ${outcome.value} has no label`);
           return { value: outcome.value, label, then: outcome.then ?? continueText(index), stops: outcome.stops === true, ...gated(outcome.when) };
-        }) } });
+        }).concat(decision.cancellation === undefined ? [] : [{ value: "cancelled", label: decision.cancellation.label,
+          then: decision.cancellation.then, stops: true }]) } });
     }
     for (const member of group.nodes) {
       const node = nodeWire(member.id);
       const point = (initial: ExplorerSpecValue, outcomes: Outcome[]) => decisions.push({ nodeIds: [node.id],
-        block: { kind: "decision", id: node.id, label: node.label, initial, ...gated(nodeGate(node.id)), outcomes } });
+        block: { kind: "decision", id: node.id, label: review?.branches?.find(branch => branch.nodeId === node.id)?.label ?? node.label,
+          initial, ...gated(nodeGate(node.id)), outcomes } });
       const { shape } = node;
+      if (shape.kind === "child-run") {
+        const child = modules.find(candidate => candidate.descriptor.id === shape.targetWorkflowId);
+        if (child === undefined) throw new Error(`workflow ${descriptor.id} delegates to ${shape.targetWorkflowId}, which is absent from the catalog`);
+        blocks.push({ kind: "starts", workflowId: child.descriptor.id, title: child.descriptor.label, each: shape.cardinality === "many",
+          ...gated(both(known, nodeGate(node.id), review?.starts?.find(start => start.nodeId === node.id)?.when)) });
+      }
       if (shape.kind === "branch") {
-        point(shape.cases[0]?.name ?? "", shape.cases.map(branch => {
+        point(review?.branches?.find(branch => branch.nodeId === node.id)?.initial ?? shape.cases[0]?.name ?? "", shape.cases.map(branch => {
           const label = review?.branchLabels.find(candidate => candidate.nodeId === node.id && candidate.outcome === branch.name)?.label;
           if (label === undefined) throw new Error(`workflow ${descriptor.id} review branch ${node.id}/${branch.name} has no label`);
           return continuing(branch.name, label);
         }));
       } else if (shape.kind === "gate" && shape.resolvedBy === "operator") {
-        point("waits", [{ value: "waits", label: "Waits for you", then: "Waits for you to resolve it in Logs, then continues.", stops: false }]);
+        if (!decisions.some(decision => decision.nodeIds.includes(node.id))) {
+          point("waits", [{ value: "waits", label: "Waits for you", then: "Waits for you to resolve it in Logs, then continues.", stops: false }]);
+        }
       } else if (shape.kind === "transaction") {
         const live = previewsOnDryRun(node) ? LIVE : undefined;
         point(live === undefined ? "saved" : { by: DRY_RUN, values: { true: DRY_RUN }, otherwise: "saved" }, [continuing("saved", "Saved", live),
-          { value: "unconfirmed", label: "Save unconfirmed", then: "Parks the write for your review in Logs and does not retry it.", stops: false, ...gated(live) },
-          ...(live === undefined ? [] : [{ value: DRY_RUN, label: "Dry run", then: "Prepares the change without saving it, then continues.", stops: false, ...gated(DRY) }])]);
+          { value: "unconfirmed", label: "Save unconfirmed", then: "Parks the write for your review in Logs and does not retry it.", stops: true, ...gated(live) },
+          ...(live === undefined ? [] : [{ value: DRY_RUN, label: "Dry run", then: "Prepares the change without saving it, then continues.", stops: false, ...gated(DRY) }]),
+          { value: "already-present", label: "Already filed", then: "Uses the independently verified existing change without saving it again, then continues.", stops: false, ...gated(live) }]);
       } else if (shape.kind === "child-run" && shape.await === "terminal" && shape.onChildFailed !== "allow-partial") {
         point("succeeded", [continuing("succeeded", "Delegated work succeeds"), shape.onChildFailed === "fail-parent"
           ? { value: "child-failed", label: "Delegated work fails", then: STOPS, stops: true }
@@ -346,7 +378,8 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
       blocks.push(block);
       known.set(block.id, block.outcomes.map(outcome => outcome.value));
     }
-    return { id: group.key, title: group.label, ...(group.system === undefined ? {} : { system: group.system }), ...gated(stepGate), description, checks, blocks };
+    const system = systemOf(group.key);
+    return { id: group.key, title: group.label, ...(system === undefined ? {} : { system }), ...gated(stepGate), description, checks, blocks };
   });
 
   const sessions = new Map<string, (When | undefined)[]>();

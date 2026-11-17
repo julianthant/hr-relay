@@ -74,7 +74,7 @@ it("lists only outcomes that change the flow, ask the operator or stop the run",
   const save = decision(onbase, "import-document");
   assert.deepEqual(save.initial, { by: "dry-run", values: { true: "dry-run" }, otherwise: "saved" });
   assert.deepEqual(save.outcomes.slice(0, 3).map(outcome => [outcome.value, outcome.stops, outcome.when]),
-    [["saved", false, [{ "dry-run": ["false"] }]], ["unconfirmed", false, [{ "dry-run": ["false"] }]], ["dry-run", false, [{ "dry-run": ["true"] }]]]);
+    [["saved", false, [{ "dry-run": ["false"] }]], ["unconfirmed", true, [{ "dry-run": ["false"] }]], ["dry-run", false, [{ "dry-run": ["true"] }]]]);
   const onboarding = workflow("onboarding").reviewSpec;
   assert.deepEqual(decision(onboarding, "i9-route").outcomes.map(outcome => outcome.value), ["create", "existing"]);
 });

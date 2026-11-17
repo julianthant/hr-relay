@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import { BrowserSystemIdSchema } from "../../rules/identity/ids.js";
+import { ReviewPickContentSchema, ReviewValueSchema } from "../workflow/review-spec.js";
 
 const TextSchema = z.string().min(1);
 const IdSchema = z.string().min(1);
@@ -14,25 +15,25 @@ export const ExplorerSpecWhenSchema = z.array(ExplorerSpecConditionSchema).min(1
 const Gate = { when: ExplorerSpecWhenSchema.optional() };
 export type ExplorerSpecGate = Readonly<{ when?: z.infer<typeof ExplorerSpecWhenSchema> }>;
 /** A value that follows an option or decision: `values[by]`, else `otherwise`. */
-export const ExplorerSpecValueSchema = z.union([TextSchema,
-  z.strictObject({ by: IdSchema, values: z.record(TextSchema, TextSchema), otherwise: TextSchema })]);
-export type ExplorerSpecValue = z.infer<typeof ExplorerSpecValueSchema>;
+export type ExplorerSpecValue = z.infer<typeof ReviewValueSchema>;
 const SystemSchema = z.union([BrowserSystemIdSchema, z.literal("local")]);
 const TextLineSchema = z.strictObject({ text: TextSchema, ...Gate });
 
 export const ExplorerSpecOutcomeSchema = z.strictObject({ value: TextSchema, label: TextSchema, then: TextSchema, stops: z.boolean(), ...Gate });
 const BlockSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("card"), id: IdSchema, title: TextSchema, mode: z.enum(["fill", "read"]), ...Gate,
-    rows: z.array(z.strictObject({ id: IdSchema, label: TextSchema, value: ExplorerSpecValueSchema.optional(), source: IdSchema, ...Gate })) }),
+    rows: z.array(z.strictObject({ id: IdSchema, label: TextSchema, value: ReviewValueSchema.optional(), source: IdSchema, ...Gate })) }),
   z.strictObject({ kind: z.literal("click"), target: TextSchema, ...Gate }),
-  z.strictObject({ kind: z.literal("decision"), id: IdSchema, label: TextSchema, initial: ExplorerSpecValueSchema, ...Gate,
+  z.strictObject({ kind: z.literal("starts"), workflowId: IdSchema, title: TextSchema, each: z.boolean(), ...Gate }),
+  ReviewPickContentSchema.extend({ kind: z.literal("pick"), ...Gate }),
+  z.strictObject({ kind: z.literal("decision"), id: IdSchema, label: TextSchema, initial: ReviewValueSchema, ...Gate,
     outcomes: z.array(ExplorerSpecOutcomeSchema).min(1) }),
 ]);
 
 export const ExplorerReviewSpecSchema = z.strictObject({
   unlistedFailure: z.literal("Anything not listed stops the run with a failure card."),
   options: z.array(z.strictObject({ id: IdSchema, label: TextSchema, ...Gate,
-    choices: z.array(z.strictObject({ value: TextSchema, label: TextSchema })).min(2), initial: ExplorerSpecValueSchema })),
+    choices: z.array(z.strictObject({ value: TextSchema, label: TextSchema })).min(2), initial: ReviewValueSchema })),
   /** One chip per system the chosen run signs in to before it starts, delegated runs included. */
   sessions: z.array(z.strictObject({ system: BrowserSystemIdSchema, ...Gate })),
   steps: z.array(z.strictObject({ id: IdSchema, title: TextSchema, system: SystemSchema.optional(), ...Gate,
@@ -76,6 +77,9 @@ export const ExplorerReviewSpecSchema = z.strictObject({
     for (const [blockIndex, block] of step.blocks.entries()) {
       const blockPath = [...path, "blocks", blockIndex];
       if (block.kind !== "decision") checkGate(block, blockPath, own);
+      if (block.kind === "pick") for (const [rowIndex, row] of block.rows.entries()) {
+        if (row.cells.length !== block.columns.length) issue([...blockPath, "rows", rowIndex], "pick row width differs from its columns");
+      }
       if (block.kind === "card") for (const [rowIndex, row] of block.rows.entries()) {
         checkGate(row, [...blockPath, "rows", rowIndex], own);
         checkValue(row.value, [...blockPath, "rows", rowIndex, "value"]);
