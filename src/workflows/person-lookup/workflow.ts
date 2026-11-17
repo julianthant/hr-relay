@@ -99,7 +99,7 @@ export const personLookupWorkflow = defineWorkflow({
   role: defineWorkflowRole({ kind: "composition" }),
   // The reference check reads the Employee ID the search resolved, so it shows under Search for person.
   rows: [
-    { key: "searching", label: "Search for person", members: [{ step: "searching" }, { step: "reference-check" }] }, //TMPTARGET
+    { key: "searching", label: "Search for person", members: [{ step: "searching" }, { step: "reference-check" }], target: { step: "searching" } },
     { key: "cross-verify", label: "Cross-check identity", members: [{ step: "cross-verify" }], target: { step: "cross-verify" } },
     { key: "active-status", label: "Read employment status", members: [{ step: "active-status" }], target: { step: "active-status" } },
     { key: "crm-dates", label: "Read CRM dates", members: [{ step: "crm-dates" }], target: { step: "crm-dates" } },

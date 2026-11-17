@@ -1,7 +1,9 @@
 import { SearchPersonMatch } from "../../../../models/systems/ucpath/search-person-match.js";
-import { SearchPersonOrg } from "../../../../models/systems/ucpath/search-person-org.js";
+import { SearchPersonOrg, UcpathCandidateSchema } from "../../../../models/systems/ucpath/search-person-org.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { PERSON_LOOKUP_EXAMPLE_EID, PersonLookupInput } from "../../../../models/workflows/person-lookup/input.js";
 import { ReadResolvedIdentity } from "../../../../models/workflows/person-lookup/read-resolved-identity.js";
+import { typedSearchMatch, typedSearchPerson, typedSearchIdentity } from "../../../../rules/matching/person-lookup.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
@@ -15,10 +17,38 @@ export const lookupMethodDisplay = {
   ]
 } as const;
 
+export const SEARCHING_NODE = "searching";
+export const MATCHING_NODE = "matching";
+export const SEARCH_IDENTITY_NODE = "search-identity";
+
+const SearchFactsSchema = UcpathCandidateSchema.pick({ emplId: true, name: true, department: true, jobTitle: true, hrStatus: true, employeeStatus: true, hdh: true });
+const selectedLeaf = (path: string) => ({ nodeId: SEARCH_IDENTITY_NODE, path: `selected.${path}` });
+
+/** The typed UCPath person stands for the search in either mode: the mode's own read is built from it and the identity resolved over it. */
+export const SEARCHING_MANUAL: StepManualDeclaration = {
+  form: {
+    fields: [
+      { key: "emplId", label: "Employee ID", kind: "eid", replaces: selectedLeaf("emplId") },
+      { key: "name", label: "Name", kind: "text", replaces: selectedLeaf("name") },
+      { key: "department", label: "Department", kind: "text", replaces: selectedLeaf("department") },
+      { key: "jobTitle", label: "Job title", kind: "text", replaces: selectedLeaf("jobTitle") },
+      { key: "hrStatus", label: "HR status", kind: "text", replaces: selectedLeaf("hrStatus") },
+      { key: "employeeStatus", label: "Employee status", kind: "enum", values: ["active", "inactive", "terminated", "unknown"], replaces: selectedLeaf("employeeStatus") },
+      { key: "hdh", label: "HDH employee", kind: "boolean", replaces: selectedLeaf("hdh") },
+    ],
+  },
+  produces: {
+    [SEARCHING_NODE]: ({ facts, scope }) => typedSearchPerson(PersonLookupInput.parse(scope.input), SearchFactsSchema.parse(facts)),
+    [MATCHING_NODE]: ({ facts }) => typedSearchMatch(SearchFactsSchema.parse(facts)),
+    [SEARCH_IDENTITY_NODE]: ({ facts, scope }) => typedSearchIdentity(PersonLookupInput.parse(scope.input), SearchFactsSchema.parse(facts)),
+  },
+};
+
 export const SEARCHING_STEP = Object.freeze({
   ...defineWorkflowStep({ key: "searching", label: "Search for person" }),
   description: "Search UCPath by employee ID or name and read the matching person records.",
   system: "ucpath",
+  manual: SEARCHING_MANUAL,
   operatorFields: [
     ...[["emplId", "Employee ID", PERSON_LOOKUP_EXAMPLE_EID], ["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["jobTitle", "Job title", "Fictional analyst"], ["hrStatus", "HR status", "Active"]].map(([path, label, example]) => ({
       label, example, sources: [
@@ -118,23 +148,17 @@ export const SEARCHING_STEP = Object.freeze({
 
 const searchingEntries = defineStepEntries(SEARCHING_STEP);
 
-export const SEARCHING_NODE = "searching";
-
 export const searchingNode = searchingEntries.task(SEARCHING_NODE, SearchPersonOrg, {
   label: "Search for person",
   replay: "checkpoint",
   when: { kind: "equals", of: { from: "input", path: "mode" }, value: "search" }
 });
 
-export const MATCHING_NODE = "matching";
-
 export const matchingNode = searchingEntries.task(MATCHING_NODE, SearchPersonMatch, {
   label: "Match person",
   replay: "checkpoint",
   when: { kind: "equals", of: { from: "input", path: "mode" }, value: "match" }
 });
-
-export const SEARCH_IDENTITY_NODE = "search-identity";
 
 export const searchIdentityNode = searchingEntries.task(SEARCH_IDENTITY_NODE, ReadResolvedIdentity, {
   label: "Resolve UCPath identity",

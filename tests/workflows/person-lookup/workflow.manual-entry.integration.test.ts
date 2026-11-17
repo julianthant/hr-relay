@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { createOperatorProjection, createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/operator.js";
 import { buildRunDetail, buildRunSection } from "../../../src/backend/runs/queries/run-detail.js";
+import { projectStartRows } from "../../../src/backend/runs/start/step-selection.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import type { StepOmissions } from "../../../src/models/workflow/step-omission.js";
 import { PersonLookupResultSchema } from "../../../src/models/workflows/person-lookup/result.js";
@@ -156,5 +157,111 @@ describe("Person Lookup Cross-check identity typed by hand", () => {
     assert.equal(typed.checkpoint("crm-identity"), undefined);
     assert.deepEqual(served(f, typed.run.envelope.runId).members("cross-verify")?.map(([, state, reason]) => [state, reason]),
       [["skipped", "condition-false"], ["skipped", "condition-false"], ["skipped", "condition-false"], ["skipped", "condition-false"]]);
+  });
+});
+
+describe("Person Lookup Search for person typed by hand", () => {
+  const PERSON = { emplId: REFERENCE_PERSON.emplId, name: "Typed, Robin", department: "Typed Department", jobTitle: "Typed Title",
+    hrStatus: "Leave of Absence", employeeStatus: "inactive", hdh: false };
+  const SELECTED = ["emplId", "name", "department", "jobTitle", "hrStatus", "employeeStatus", "hdh"].map(path => `selected.${path}`);
+
+  it("uses the typed person in the CRM check and the result in Search mode, and records each as typed by hand", async () => {
+    const f = await world.fixture();
+    const typed = await typedRun(f, ["searching"], [{ step: "searching", facts: PERSON }]);
+    const { activeStatus } = typed.result;
+    assert.deepEqual([activeStatus.state, activeStatus.reason, activeStatus.hdh], ["inactive", "UCPath reports Leave of Absence", false]);
+    assert.deepEqual([activeStatus.details.eid, activeStatus.details.name, activeStatus.details.department, activeStatus.details.hrStatus, activeStatus.details.ucpath],
+      [PERSON.emplId, PERSON.name, PERSON.department, PERSON.hrStatus, "Found"]);
+    // The CRM search still ran under the typed Employee ID and found its record.
+    assert.equal(activeStatus.details.crm, "Found");
+    const identity = typed.checkpoint("search-identity");
+    assert.deepEqual((identity?.output.value as { selected: unknown }).selected,
+      { ...PERSON, startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" });
+    const leaves = typedLeaves(identity);
+    assert.equal(leaves.step, "searching");
+    for (const path of SELECTED) assert.ok(leaves.operator.includes(path), path);
+    assert.equal(typedLeaves(typed.checkpoint("searching")).step, "searching");
+    // The CRM check resolved over the typed person: no UCPath read span is credited for the typed leaves.
+    const crmIdentity = typed.checkpoint("crm-identity");
+    const selectedOrigins = crmIdentity?.observationOrigins?.filter(entry => entry.path[0] === "selected") ?? [];
+    assert.equal(selectedOrigins.length, SELECTED.length + 4);
+    assert.deepEqual([...new Set(selectedOrigins.map(entry => entry.origin.nodeId))], ["crm-identity"]);
+    assert.equal(typed.checkpoint("matching"), undefined);
+    assert.deepEqual(typed.stored.dependencies.filter(entry => entry.state === "asserted").map(entry => entry.nodeId), ["search-identity"]);
+    assert.deepEqual(served(f, typed.run.envelope.runId).members("searching"), [
+      ["searching", "skipped", "operator-asserted"], ["matching", "skipped", "condition-false"], ["search-identity", "skipped", "operator-asserted"],
+    ]);
+  });
+
+  it("takes the typed Employee ID as the person when the search is by name", async () => {
+    const f = await world.fixture();
+    const settled = await f.run({ name: "Someone, Else" }, [], except("searching"), [{ step: "searching", facts: PERSON }]);
+    const stored = f.database.authority.runResults.get(settled.run.envelope.runId);
+    assert.ok(stored);
+    const { activeStatus } = PersonLookupResultSchema.parse(stored.result.value);
+    assert.deepEqual([activeStatus.state, activeStatus.details.eid, activeStatus.details.name, activeStatus.details.crm], ["inactive", PERSON.emplId, PERSON.name, "Found"]);
+  });
+
+  it("records the typed person as the Match mode identity without reading UCPath", async () => {
+    const f = await world.fixture();
+    const settled = await f.run({ mode: "match", lastName: "Nobody", firstName: "Here", dob: "01/15/2000", includeCrmDates: false }, [], except("searching", "crm-dates"), [{ step: "searching", facts: PERSON }]);
+    assert.equal(settled.run.lifecycle.state, "terminal");
+    const rows = (nodeId: string) => f.database.authority.runCheckpoints.listByAttempt(settled.run.envelope.workflow, settled.run.envelope.itemId, nodeId, settled.run.envelope.attempt)
+      .filter(row => row.runId === settled.run.envelope.runId);
+    assert.deepEqual(rows("searching"), []);
+    assert.deepEqual(rows("matching").at(-1)?.output.value, { hits: [{ emplId: PERSON.emplId, name: PERSON.name }], confirmed: [{ emplId: PERSON.emplId, name: PERSON.name }], dropped: [] });
+    const identity = rows("search-identity").at(-1);
+    assert.equal((identity?.output.value as { selected: { name: string } }).selected.name, PERSON.name);
+    assert.equal(typedLeaves(identity).step, "searching");
+  });
+
+  it("refuses a typed Employee ID that is not the one searched", async () => {
+    const f = await world.fixture();
+    const settled = await f.run(SEARCH, [], except("searching"), [{ step: "searching", facts: { ...PERSON, emplId: "10000002" } }]);
+    assert.deepEqual(f.database.authority.failures.listByRun(settled.run.envelope.runId).map(failure => failure.summary),
+      ["The typed Employee ID 10000002 is not the searched Employee ID 10000001"]);
+  });
+});
+
+describe("Person Lookup Start run rows", () => {
+  it("serves the four rows as switches with the typed fields of each, Read CRM dates on by default", async () => {
+    const f = await world.fixture();
+    const rows = projectStartRows(f.descriptor).map(row => ({ key: row.key, label: row.label, kind: row.kind, on: row.includedByDefault,
+      members: row.members.map(member => member.step), target: row.target?.step, selection: row.selection?.inputField,
+      fields: row.manual?.form.fields.map(field => [field.key, field.kind, field.optional === true, field.replaces === undefined ? null : `${field.replaces.nodeId}.${field.replaces.path}`]) }));
+    assert.deepEqual(rows, [
+      { key: "searching", label: "Search for person", kind: "switch", on: true, members: ["searching", "reference-check"], target: "searching", selection: undefined, fields: [
+        ["emplId", "eid", false, "search-identity.selected.emplId"], ["name", "text", false, "search-identity.selected.name"],
+        ["department", "text", false, "search-identity.selected.department"], ["jobTitle", "text", false, "search-identity.selected.jobTitle"],
+        ["hrStatus", "text", false, "search-identity.selected.hrStatus"], ["employeeStatus", "enum", false, "search-identity.selected.employeeStatus"],
+        ["hdh", "boolean", false, "search-identity.selected.hdh"]] },
+      { key: "cross-verify", label: "Cross-check identity", kind: "switch", on: true, members: ["cross-verify"], target: "cross-verify", selection: "crmCheck", fields: [
+        ["name", "text", false, "crm-identity.crmIdentity.name"], ["firstDayOfService", "us-date", false, "crm-identity.crmIdentity.firstDayOfService"]] },
+      { key: "active-status", label: "Read employment status", kind: "switch", on: true, members: ["active-status"], target: "active-status", selection: undefined, fields: [
+        ["state", "enum", false, "active-status.state"], ["hrStatus", "text", true, "active-status.details.hrStatus"],
+        ["startDate", "us-date", true, "active-status.details.startDate"], ["endDate", "us-date", true, "active-status.details.endDate"],
+        ["terminationReason", "text", true, "active-status.details.terminationReason"], ["ucpath", "enum", false, "active-status.details.ucpath"]] },
+      { key: "crm-dates", label: "Read CRM dates", kind: "switch", on: true, members: ["crm-dates"], target: "crm-dates", selection: "includeCrmDates", fields: [
+        ["employmentDate", "iso-date", false, "crm-dates.employmentDate"], ["oathDate", "iso-date", false, "crm-dates.oathDate"]] },
+    ]);
+    const enums = projectStartRows(f.descriptor).flatMap(row => row.manual?.form.fields.flatMap(field => field.kind === "enum" ? [[row.key, field.key, field.values]] : []) ?? []);
+    assert.deepEqual(enums, [["searching", "employeeStatus", ["active", "inactive", "terminated", "unknown"]], ["active-status", "state", ["active", "inactive"]],
+      ["active-status", "ucpath", ["Found", "Not found"]]]);
+  });
+
+  it("with every switch on reads every step as today and records nothing as typed by hand", async () => {
+    const f = await world.fixture();
+    const typed = await typedRun(f, []);
+    const wire = served(f, typed.run.envelope.runId);
+    assert.deepEqual(STEPS.map(step => [step, wire.members(step)]), [
+      ["searching", [["searching", "done", undefined], ["matching", "skipped", "condition-false"], ["search-identity", "done", undefined]]],
+      ["cross-verify", [["cross-verify", "done", undefined], ["crm-identity", "done", undefined], ["crm-selected-record", "done", undefined], ["crm-results", "skipped", "condition-false"]]],
+      ["active-status", [["crm-only-recovery", "skipped", "condition-false"], ["active-status", "done", undefined]]],
+      ["crm-dates", [["crm-dates", "done", undefined]]],
+      ["reference-check", [["reference-check", "skipped", "condition-false"]]],
+    ]);
+    assert.equal(wire.omittedSteps, undefined);
+    assert.equal(typed.run.envelope.stepOmissions, undefined);
+    assert.equal(typed.result.crmDates.state, "included");
   });
 });

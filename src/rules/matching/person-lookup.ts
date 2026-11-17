@@ -2,6 +2,8 @@ import { selectPreferredUcpathCandidate } from "./ucpath-person.js";
 import { PersonLookupNotFoundError, PersonLookupMultipleMatchesError, PersonLookupMatchMultipleMatchesError, PersonLookupEmploymentStatusError, PersonLookupIdentityError } from "../../models/workflows/person-lookup/errors.js";
 import type { z } from "zod";
 import type { EidSchema } from "../identity/ids.js";
+import type { SearchPersonOrgOutput, UcpathCandidate } from "../../models/systems/ucpath/search-person-org.js";
+import type { SearchPersonMatchOutputSchema } from "../../models/systems/ucpath/search-person-match.js";
 import { ReadResolvedIdentity, type ResolvedIdentity } from "../../models/workflows/person-lookup/read-resolved-identity.js";
 import { ReadActiveStatus, type ActiveStatusOutcome } from "../../models/workflows/person-lookup/read-active-status.js";
 import { personLookupSearchText } from "../../models/workflows/person-lookup/input.js";
@@ -108,4 +110,34 @@ export function typedCrmIdentity(input: z.output<typeof ReadResolvedIdentity.inp
     candidateEids: identity.candidateEids.length === 0 ? [knownEid] : identity.candidateEids,
     recoveryEid: input.mode === "search" && state === "crm-only" ? knownEid : null,
     method: state === "crm-only" ? "crm-only" : identity.method };
+}
+
+type TypedSearchPerson = Pick<UcpathCandidate, "emplId" | "name" | "department" | "jobTitle" | "hrStatus" | "employeeStatus" | "hdh">;
+
+/** The candidate the operator typed; the dates UCPath would show stay empty (they are typed under Read employment status). */
+function typedCandidate(input: z.output<typeof ReadResolvedIdentity.input>["input"], typed: TypedSearchPerson): UcpathCandidate {
+  if (input.mode === "search" && "emplId" in input && input.emplId !== typed.emplId) {
+    throw new Error(`The typed Employee ID ${typed.emplId} is not the searched Employee ID ${input.emplId}`);
+  }
+  return { ...typed, startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" };
+}
+
+/** Search mode's read when the operator types the person: one result, selected. */
+export function typedSearchPerson(input: z.output<typeof ReadResolvedIdentity.input>["input"], typed: TypedSearchPerson): SearchPersonOrgOutput {
+  const candidate = typedCandidate(input, typed);
+  return { results: [candidate], selection: { status: "resolved", selected: candidate, candidateEids: [candidate.emplId] } };
+}
+
+/** Match mode's read when the operator types the person: one confirmed hit. */
+export function typedSearchMatch(typed: TypedSearchPerson): z.output<typeof SearchPersonMatchOutputSchema> {
+  const hit = { emplId: typed.emplId, name: typed.name };
+  return { hits: [hit], confirmed: [hit], dropped: [] };
+}
+
+/** Today's resolution over the mode's typed read, with the typed person selected in either mode. */
+export function typedSearchIdentity(input: z.output<typeof ReadResolvedIdentity.input>["input"], typed: TypedSearchPerson): ResolvedIdentity {
+  const resolved = input.mode === "match"
+    ? resolvePersonLookupIdentity({ input, match: typedSearchMatch(typed) })
+    : resolvePersonLookupIdentity({ input, person: typedSearchPerson(input, typed) });
+  return { ...resolved, selected: typedCandidate(input, typed) };
 }
