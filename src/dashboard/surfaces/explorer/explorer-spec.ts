@@ -1,5 +1,4 @@
 import type { ExplorerReviewSpec, ExplorerSpecGate, ExplorerSpecValue } from "../../../models/dashboard/explorer-review-spec.js";
-import type { FieldSource } from "../../../models/workflow/explorer-preview.js";
 import { SYSTEM_NAME } from "../shared/status/system-chip-model.js";
 
 export type SpecStep = ExplorerReviewSpec["steps"][number];
@@ -10,6 +9,13 @@ export type SpecOutcome = SpecDecision["outcomes"][number];
 export type SpecCard = Extract<SpecBlock, { kind: "card" }>;
 export type SpecRow = SpecCard["rows"][number];
 export type SpecValues = Readonly<Record<string, string>>;
+
+/** What the source drawer shows for one fill value. */
+export interface FieldSource {
+  readonly origin: string;
+  readonly detail: string;
+  readonly reads: readonly { readonly system: string; readonly page: string; readonly field: string; readonly step: number }[];
+}
 
 export class ExplorerSpecError extends Error { override name = "ExplorerSpecError"; }
 

@@ -344,10 +344,11 @@ async function readFrozenGrid(assertCurrent: () => void, page: Page, tab: "work-
       && Array.from(rightTable.rows).every((row) => pattern.test((row.cells[0]?.textContent ?? "").replace(/\s+/gu, " ").trim()));
   }, ids, { timeout: GRID_RENDER_MS });
   assertCurrent();
+  // This callback crosses into the browser: a named inner function acquires tsx's __name helper, which exists only in the Node realm.
   const grid = await page.evaluate(({ left, right }) => {
-    const rowsOf = (id: string) => Array.from((document.getElementById(id) as HTMLTableElement | null)?.rows ?? [])
-      .map((row) => Array.from(row.cells).map((cellElement) => (cellElement.textContent ?? "").replace(/\s+/gu, " ").trim()));
-    return { left: rowsOf(left), right: rowsOf(right) };
+    const [leftRows, rightRows] = [left, right].map((id) => Array.from((document.getElementById(id) as HTMLTableElement | null)?.rows ?? [])
+      .map((row) => Array.from(row.cells).map((cellElement) => (cellElement.textContent ?? "").replace(/\s+/gu, " ").trim())));
+    return { left: leftRows, right: rightRows };
   }, ids);
   assertCurrent();
   return FrozenGridSchema.parse(grid);

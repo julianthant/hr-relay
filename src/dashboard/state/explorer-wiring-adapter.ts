@@ -14,7 +14,7 @@ export type ExplorerWiringState =
 const unavailableExplorerClient = {};
 
 /** The served review spec of one workflow, at the version the bootstrap catalog registers. `retry` reads it again. */
-export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplorer"> | undefined, workflowId: string | undefined, version?: number): Readonly<{ state: ExplorerWiringState; retry: () => void }> {
+export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplorer"> | undefined, workflowId: string | undefined, version?: number): Readonly<{ state: ExplorerWiringState; retry: () => void; workflows: WorkflowExplorerWire["workflows"] | undefined }> {
   const resource = useSettingsRead<WorkflowExplorerWire>(client ?? unavailableExplorerClient, `explorer:${workflowId ?? "none"}:${version ?? "current"}`);
   const result = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
   const retry = useCallback(() => {
@@ -36,5 +36,5 @@ export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplore
     return result.state === "failed" && projected.state === "ready"
       ? { state: "refused", failure: createErrorCatalogFailure("DASHBOARD_READ_FAILED", {}), evidence: result.error, previous: projected.spec } : projected;
   })();
-  return { state, retry };
+  return { state, retry, workflows: result.value?.workflows };
 }

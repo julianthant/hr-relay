@@ -1,15 +1,18 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { CheckCheck, LockKeyhole, MousePointer2, Monitor } from "lucide-react";
+import { CheckCheck, LockKeyhole, Monitor, Workflow } from "lucide-react";
 import type { ExplorerReviewSpec } from "../../../models/dashboard/explorer-review-spec.js";
-import { PageHeading, Select } from "../../ds/ui.js";
+import { dsFocus, PageHeading, Select } from "../../ds/ui.js";
 import { FieldRow, FieldRows } from "../shared/steps/field-row.js";
+import { ClickLine } from "../shared/steps/click-line.js";
 import { NoteLine } from "../shared/steps/note-line.js";
 import { PageCard } from "../shared/steps/page-card.js";
+import { PickTableView } from "../shared/steps/pick-table-view.js";
 import { StepFrame } from "../shared/steps/step-frame.js";
 import { ExplorerSource } from "./explorer-source.js";
+import type { ExplorerPickerEntry } from "./explorer-picker-model.js";
 import { fieldSource, resolveExplorer, rowValue, systemName, visible, type SpecCard, type SpecDecision, type SpecRow, type SpecValues } from "./explorer-spec.js";
 
-type ExplorerWorkflowOption = Readonly<{ id: string; title: string; disabled?: boolean }>;
+type ExplorerWorkflowOption = Pick<ExplorerPickerEntry, "id" | "title"> & Partial<Pick<ExplorerPickerEntry, "depth">>;
 
 // The step number sits in a circle beside the title; a rail joins the circles.
 const STEP = "border-b last:border-b-0 [--spacing-log-time:2.75rem]";
@@ -20,7 +23,7 @@ function Decision({ decision, values, onChoose }: { decision: SpecDecision; valu
   const outcomes = visible(decision.outcomes, values);
   const outcome = outcomes.find(item => item.value === values[decision.id]) ?? outcomes[0];
   return <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-    <Select aria-label={decision.label} className="w-60" value={outcome.value} onChange={event => onChoose(event.target.value)}>
+    <Select aria-label={decision.label} className="w-80 max-w-full" value={outcome.value} onChange={event => onChoose(event.target.value)}>
       {outcomes.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
     </Select>
     {!outcome.stops && <span className="text-body text-ui-secondary">{outcome.then}</span>}
@@ -36,12 +39,27 @@ function Card({ card, values, onSource }: { card: SpecCard; values: SpecValues; 
   </PageCard>;
 }
 
+function Pick({ pick }: { pick: Extract<SpecBlock, { kind: "pick" }> }) {
+  const [chosen, setChosen] = useState<string>();
+  const [typed, setTyped] = useState("");
+  return <PickTableView title={pick.title} columns={pick.columns.map((label, index) => ({ id: `column-${index}`, label }))}
+    rows={pick.rows.map((row, index) => ({ id: `row-${index}`, label: row.cells[0], cells: row.cells.map((value, cell) => ({ value, attention: row.warning === true && cell > 0 })) }))}
+    typed={pick.other === undefined ? undefined : { id: "typed", label: pick.other.label, placeholder: pick.other.placeholder, value: typed }}
+    chosen={chosen} onChoose={setChosen} onText={value => { setTyped(value); setChosen("typed"); }} />;
+}
+
+/** One line naming the workflow a step starts; choosing it shows that workflow's steps. */
+function Starts({ block, onWorkflow }: { block: Extract<SpecBlock, { kind: "starts" }>; onWorkflow: (id: string) => void }) {
+  return <p className="m-0 flex items-center gap-3 text-body text-ui-secondary"><Workflow aria-hidden className="size-3.5 shrink-0 text-ui-muted" />
+    <span>{block.each} starts <button type="button" className={`rounded-sm font-medium text-ui-info hover:underline ${dsFocus}`} onClick={() => onWorkflow(block.workflowId)}>{block.title}</button></span></p>;
+}
+
 /** The Explorer page: heading with the workflow picker, then the spec or the state that stands in for it. */
 export function ExplorerPage({ workflowId, workflows, onWorkflow, children }: { workflowId: string; workflows: readonly ExplorerWorkflowOption[]; onWorkflow: (id: string) => void; children: ReactNode }) {
   return <section aria-label="Workflow explorer preview" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
     <PageHeading title="Explorer" description="Browse workflows, their steps and field sources." className="settings-heading-actions" actions={
       <Select aria-label="Explorer workflow" className="settings-heading-select" value={workflowId} onChange={event => { if (event.target.value !== workflowId) onWorkflow(event.target.value); }}>
-        {workflows.map(workflow => <option key={workflow.id} value={workflow.id} disabled={workflow.disabled}>{workflow.title}</option>)}
+        {workflows.map(workflow => <option key={workflow.id} value={workflow.id}>{`${"\u2003".repeat(workflow.depth ?? 0)}${workflow.title}`}</option>)}
       </Select>
     } />
     {children}
@@ -68,7 +86,7 @@ export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { 
 
   return <ExplorerPage workflowId={workflowId} workflows={workflows} onWorkflow={onWorkflow}>
     {options.length > 0 && <section aria-labelledby="run-options" className="mb-4 mt-6">
-      <h2 id="run-options" className="m-0 mb-4 text-heading">Run options</h2>
+      <h2 id="run-options" className="m-0 mb-4 text-section">Run options</h2>
       <div className="grid grid-cols-4 gap-4">{options.map(option => <div key={option.id} className="flex min-w-0 flex-col gap-1.5">
         <span id={`option-${option.id}`} className="text-body font-medium text-ui-secondary">{option.label}</span>
         <Select aria-labelledby={`option-${option.id}`} value={values[option.id]} onChange={event => choose(option.id, event.target.value)}>
@@ -87,7 +105,9 @@ export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { 
           {visible(step.description, values).slice(0, 1).map(line => <p key={line.text} className="m-0 text-body text-ui-secondary">{line.text}</p>)}
           {visible(step.checks, values).map(line => <NoteLine key={line.text} message={line.text} icon={<CheckCheck aria-hidden className="size-3.5 self-start translate-y-0.5 text-ui-positive" />} />)}
           {visible(step.blocks, values).map((block, position) => {
-            if (block.kind === "click") return <p key={`click:${position}`} className="m-0 flex items-center gap-3 text-body text-ui-secondary"><MousePointer2 aria-hidden className="size-3.5 shrink-0 text-ui-muted" /><span>Clicks <span className="font-medium text-ui-primary">{block.target}</span></span></p>;
+            if (block.kind === "click") return <ClickLine key={`click:${position}`} label={`Clicks ${block.target}`} />;
+            if (block.kind === "starts") return <Starts key={`starts:${position}`} block={block} onWorkflow={onWorkflow} />;
+            if (block.kind === "pick") return <Pick key={`pick:${position}`} pick={block} />;
             if (block.kind === "decision") return <Decision key={block.id} decision={block} values={values} onChoose={outcome => decide(block.id, outcome)} />;
             return <Card key={block.id} card={block} values={values} onSource={openSource(step.id, block.title)} />;
           })}
