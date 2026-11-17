@@ -14,6 +14,7 @@ export type PdfRunDraft = { files: readonly Pdf[]; asOf: string; reviewer: strin
 export type PdfRunPicks = Readonly<Record<string, string>>;
 class WrongPdfType extends Error { constructor() { super("Choose valid PDF files."); } }
 const refused = () => new Error(formatErrorCatalogFailure(createErrorCatalogFailure("OCR_SOURCE_REFUSED", {})).text);
+const uploadFailed = () => formatErrorCatalogFailure(createErrorCatalogFailure("OCR_UPLOAD_FAILED", {})).text;
 
 /** The declared launch fields of a PDF workflow. The Run dialog offers choices only, so any other declared kind is refused. */
 export function pdfRunLaunchFields(surface: UploadRunSurface) {
@@ -47,14 +48,16 @@ export function usePdfRunInput(client: DashboardClient, binding: DashboardComman
   const [picks, setPicks] = useState<PdfRunPicks>({});
   const [loading, setLoading] = useState(false), [error, setError] = useState<string | null>(null);
   const current = useRef<AbortController | null>(null);
+  /** The files of an upload that failed, kept so Retry can send them again. */
+  const failed = useRef<{ surface: UploadRunSurface; files: readonly File[] } | null>(null);
   const authority = useRef(binding); authority.current = binding;
-  const reset = useCallback(() => { current.current?.abort(); current.current = null; setLoading(false); setDraft(null); setPicks({}); setError(null); }, []);
+  const reset = useCallback(() => { current.current?.abort(); current.current = null; failed.current = null; setLoading(false); setDraft(null); setPicks({}); setError(null); }, []);
   useEffect(() => () => { current.current?.abort(); current.current = null; }, []);
   useEffect(reset, [client, binding?.scope, reset]);
   const choose = useCallback(async (surface: UploadRunSurface, files: readonly File[]) => {
     const owner = authority.current;
     if (owner === undefined || owner.scope.client !== client || surface.pdfInput === undefined || current.current !== null) return;
-    const operation = new AbortController(); current.current = operation; setLoading(true); setError(null);
+    const operation = new AbortController(); current.current = operation; failed.current = null; setLoading(true); setError(null);
     try {
       const uploaded: Pdf[] = [];
       for (const file of files) {
@@ -71,10 +74,13 @@ export function usePdfRunInput(client: DashboardClient, binding: DashboardComman
       if (new Set(combined.map(file => file.source.artifact.sha256)).size !== combined.length) throw refused();
       setDraft({ files: combined, asOf: previous?.asOf ?? owner.authority.today, reviewer: previous?.reviewer ?? owner.authority.epoch.bootstrap.actor.label });
     } catch (cause) {
-      if (current.current === operation && !operation.signal.aborted) setError(cause instanceof DashboardClientError || cause instanceof WrongPdfType ? cause.message : refused().message);
+      if (current.current === operation && !operation.signal.aborted) {
+        if (cause instanceof DashboardClientError) failed.current = { surface, files };
+        setError(cause instanceof DashboardClientError ? uploadFailed() : cause instanceof WrongPdfType ? cause.message : refused().message);
+      }
     } finally { if (current.current === operation) { current.current = null; setLoading(false); } }
   }, [client]);
-  return { draft, picks, pick: (field: string, value: string) => setPicks(previous => ({ ...previous, [field]: value })), loading, error, reset, choose, remove: (index: number) => {
+  return { draft, picks, pick: (field: string, value: string) => setPicks(previous => ({ ...previous, [field]: value })), loading, error, reset, choose, retryable: error !== null && failed.current !== null, retry: () => { const last = failed.current; if (last !== null) void choose(last.surface, last.files); }, remove: (index: number) => {
     setError(null);
     setDraft(previous => previous === null ? null : { ...previous, files: previous.files.filter((_file, position) => position !== index) });
   } };
