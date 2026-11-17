@@ -26,8 +26,10 @@ function Decision({ decision, values, onChoose }: { decision: SpecDecision; valu
 }
 
 function Card({ card, values, onSource }: { card: SpecCard; values: SpecValues; onSource: (row: SpecRow, trigger: HTMLButtonElement) => void }) {
+  const rows = visible(card.rows, values);
+  if (rows.length === 0) return null;
   return <PageCard title={card.title} mode={card.mode === "fill" ? "Fill" : "Read"}>
-    <FieldRows padded>{visible(card.rows, values).map(row => <FieldRow key={row.id} kind={card.mode} label={row.label} value={rowValue(row, values)}
+    <FieldRows padded>{rows.map(row => <FieldRow key={row.id} kind={card.mode} label={row.label} value={rowValue(row, values)}
       onSource={card.mode === "fill" ? trigger => onSource(row, trigger) : undefined} />)}</FieldRows>
   </PageCard>;
 }
