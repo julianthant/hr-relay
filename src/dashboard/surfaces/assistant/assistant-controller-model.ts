@@ -6,7 +6,7 @@ import { systemClock } from '../../../rules/time/clock.js';
 import { ChatGptAccountContext, useChatGptAccount } from '../settings/general/chatgpt-account-model.js';
 import { useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { AssistantQueries } from '../../client/index.js';
-import type { AssistantReceipt, AssistantResult } from '../../../models/dashboard/assistant.js';
+import type { AssistantReceipt, AssistantResult, AssistantStageResult } from '../../../models/dashboard/assistant.js';
 import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel, type AssistantModelPreference } from "../../../models/config/assistant-model-preference.js";
 import { ASSISTANT_FAILURES, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelCatalog, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 import { ASSISTANT_UNKNOWN_NOTICE, assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
@@ -111,7 +111,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     if (current()) owner.preferenceChanged?.(actual, true);
     return { kind: "saved", view: actual };
   }
-  async function respond(requestId: number, prompt: string) {
+  async function respond(requestId: number, prompt: string, staged?: readonly string[]) {
     const request = { requestId, prompt, abort: new AbortController(), binding };
     outstanding = request;
     const current = () => !retired && outstanding === request && !request.abort.signal.aborted && binding === request.binding;
@@ -152,7 +152,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         return;
       }
       const envelope = await client.assistantRespond({ conversationId, expectedRevision: history?.revision() ?? 1, messageId,
-        message: prompt, ...(binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }) }, request.abort.signal);
+        message: prompt, ...(binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }), ...(staged?.length ? { attachments: staged } : {}) }, request.abort.signal);
       if (envelope.receipt !== undefined) history?.receipt(envelope.receipt);
       if (!current()) return;
       if (envelope.kind === 'delivery') {
@@ -215,6 +215,11 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       pendingDecision = undefined; retired = true;
       decision?.abort.abort(); listeners.clear();
     },
+    /** Stages one picked file under this chat so a later send can name it; nothing reaches the model before then. */
+    async stage(file: Readonly<{ name: string; mediaType: string; bytes: Uint8Array }>): Promise<AssistantStageResult> {
+      if (client.assistantStageAttachment === undefined) throw new Error(ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE);
+      return client.assistantStageAttachment(conversationId, file);
+    },
     /** A picker choice: saved without a chat turn; the executor's feedback reports a refusal or unknown result. */
     async choose(preference: AssistantModelPreference) {
       if (retired) return;
@@ -245,7 +250,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       if (action.type === 'edit' || action.type === 'new-chat' || action.type === 'cancel') abort();
       const previous = state;
       publish(assistantReducer(state, action));
-      if (state !== previous && state.turn.state === 'waiting' && (action.type === 'send' || action.type === 'retry')) void respond(state.turn.requestId, state.turn.prompt);
+      if (state !== previous && state.turn.state === 'waiting' && (action.type === 'send' || action.type === 'retry')) void respond(state.turn.requestId, state.turn.prompt, state.turn.staged);
     },
   });
 }
@@ -297,7 +302,7 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
     client.assistantModels(request.signal).then(catalog => { if (!request.signal.aborted) setModels(catalog.models); }, () => { if (!request.signal.aborted) setModels(undefined); });
     return () => request.abort();
   }, [accountAvailable, sessions.client]);
-  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => { void controller.choose(preference); }, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
+  return { state, canCompose: accountAvailable, models, chooseModel: (preference: AssistantModelPreference) => { void controller.choose(preference); }, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, stageAttachment: controller.stage, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
     accountAction: (account.state === 'loading' ? undefined : account.state === 'connected' || account.state === 'unavailable' ? 'settings' : 'sign-in'),
     accountHeading: account.state === 'connected' ? 'ChatGPT plan usage unavailable' : 'ChatGPT connection unavailable',

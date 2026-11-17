@@ -24,9 +24,13 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
   const focusMessageOnClose = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [attaching, setAttaching] = useState(false);
-  async function attach(load: () => Promise<AssistantFile | null | void>) {
+  const sources = useRef(new Map<string, File>());
+  async function attach(load: () => Promise<AssistantFile | null | void>, source?: File, replaces?: string) {
     setAttaching(true); setError(null);
-    try { const file = await load(); if (file) composer.setFiles(files => [...files.filter(existing => existing.id !== file.id), file]); }
+    try {
+      const file = await load();
+      if (file) { if (source) sources.current.set(file.id, source); composer.setFiles(files => [...files.filter(existing => existing.id !== file.id && existing.id !== replaces), file]); }
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not attach the file. Try again.'); }
     finally { setAttaching(false); composer.textarea.current?.focus(); }
   }
@@ -46,7 +50,11 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
   }
   return <div className="hub-composer-wrap">
     <InputGroup aria-label="Message composer" onSubmit={event => { event.preventDefault(); void composer.send(); }}>
-      {composer.files.map(file => <div key={file.id} className="hub-attachment"><Paperclip aria-hidden /><span>{file.name}</span><button className="hub-icon" type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => composer.setFiles(files => files.filter(existing => existing.id !== file.id))}><X aria-hidden /></button></div>)}
+      {composer.files.map(file => <div key={file.id} className="hub-attachment" data-stage={file.stage?.state}><Paperclip aria-hidden /><span>{file.name}</span>
+        {file.stage?.state === 'spreadsheet' && <small className="hub-caption">Added to Spreadsheets only. Not sent to the assistant.</small>}
+        {file.stage?.state === 'failed' && <><small className="hub-attachment-failure" role="alert">{file.stage.message}</small>
+          {sources.current.has(file.id) && onAttachFile && <button className="hub-btn" type="button" disabled={attaching} onClick={() => { const source = sources.current.get(file.id)!; void attach(() => onAttachFile(source), source, file.id); }}>Retry</button>}</>}
+        <button className="hub-icon" type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => composer.setFiles(files => files.filter(existing => existing.id !== file.id))}><X aria-hidden /></button></div>)}
       <label className="hub-sr-only" htmlFor={id}>Message Relay</label>
       <InputGroupTextarea id={id} name="message" autoFocus={autoFocus} ref={composer.textarea} autoComplete="off" rows={1} placeholder="Ask Relay…" value={composer.text} disabled={disabled}
         onChange={event => { composer.setText(event.target.value); onEdit?.(event.target.value); }} onKeyDown={event => {
@@ -79,7 +87,7 @@ export function ComposerInput({ onSend, onAttachFile, disabled = false, initialT
     </InputGroup>
     <input type="file" hidden ref={composer.fileInput} onChange={event => {
       const file = event.target.files?.[0]; event.target.value = '';
-      if (file) void attach(() => onAttachFile ? onAttachFile(file) : readAssistantAttachment(file));
+      if (file) void attach(() => onAttachFile ? onAttachFile(file) : readAssistantAttachment(file), file);
     }} />
     {error ? <p className="hub-composer-error" role="alert">{error}</p> : null}
   </div>;
