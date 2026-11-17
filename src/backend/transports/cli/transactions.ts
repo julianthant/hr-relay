@@ -5,7 +5,7 @@ import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.
 import { createTransactionHistory } from "../../storage/sqlite/transaction-history.js";
 import { PERSON_STORE_SIGN_IN_REQUIRED, readPersonStore, readStore, selectPersonStores } from "./person-stores.js";
 
-export const TRANSACTION_COMMAND_HELP = `${TRANSACTION_EXPORT_HELP}On an installation, each ready person's report is written beside PATH as NAME.<profile-id>.EXT.\n`;
+export const TRANSACTION_COMMAND_HELP = `${TRANSACTION_EXPORT_HELP}On an installation, the signed-in person's report is written beside PATH as NAME.<profile-id>.EXT; other ready people are not checked because they are signed out.\n`;
 
 type ExportRequest = Extract<ReturnType<typeof parseTransactionExportArgs>, { kind: "export" }>["request"];
 
