@@ -125,8 +125,8 @@ describe("workflow descriptor registry", () => {
     expect(separations?.timeline.map(({ key, label }) => [key, label])).toEqual([
       ["kuali-extraction", "Kuali extraction"],
       ["identity-check", "Identity check"],
-      ["job-summary", "Job summary"],
       ["kronos-timecard", "Kronos timecard"],
+      ["identity-review", "Identity approval"],
       ["reference-check", "Check reference spreadsheets"],
       ["ucpath-transaction", "UCPath transaction"],
       ["kuali-finalization", "Kuali finalization"],

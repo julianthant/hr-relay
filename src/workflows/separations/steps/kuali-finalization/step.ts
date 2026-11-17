@@ -131,7 +131,7 @@ const KUALI_FINALIZATION_DISPLAY = {
               origin: "Matched department option",
               detail: "The Kuali option matched to the active UCPath department.",
               chain: [],
-              read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Kuali department option" }
+              read: { stepKey: "identity-check", page: "Person Organizational Summary detail", field: "Kuali department option" }
             }
           },
           {
@@ -148,7 +148,7 @@ const KUALI_FINALIZATION_DISPLAY = {
               origin: "UCPath employment",
               detail: "The payroll title read from the selected active job.",
               chain: [],
-              read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Payroll title" }
+              read: { stepKey: "identity-check", page: "Person Organizational Summary detail", field: "Payroll title" }
             }
           },
           {

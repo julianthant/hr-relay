@@ -71,7 +71,7 @@ describe("THE run/queue projection", () => {
 });
 
 describe("settled run presentation retains skip reasons and measured timing", () => {
-  it("renders a conditionally-skipped node as SKIPPED with its closed reason, never as cancelled", async () => {
+  it("leaves a conditionally-skipped node off the served timeline, never as cancelled", async () => {
     const w = await world();
     seedExitRunShape(w);
 
@@ -79,10 +79,8 @@ describe("settled run presentation retains skip reasons and measured timing", ()
       { runReader: w.runReader, stateRoot: w.stateRoot, timeline: w.timeline, projection: w.projection, authority: w.authority, descriptors: { resolve: () => undefined } },
       uuidOf(1),
     );
-    const crmDates = detail.timeline.events.find((event) => event.label === "crm-dates");
-    assert.ok(crmDates, "the skipped node must still appear on the timeline");
-    assert.equal(crmDates.state, "skipped");
-    assert.deepEqual(crmDates.notRun, { state: "present", reason: "condition-false" });
+    // A branch this run did not take is not a step of this run.
+    assert.equal(detail.timeline.events.some((event) => event.label === "crm-dates"), false);
 
     // "Cancelled" names an act someone took; nobody acted on this run.
     assert.deepEqual(detail.timeline.events.filter((event) => event.state === "cancelled"), []);

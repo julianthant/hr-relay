@@ -14,7 +14,7 @@ import { createMountedRerunWorld } from "../../../support/helpers/dashboard/moun
 
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
-const { setup, mount, cleanup, press, checkbox, button, fill, field, text, unmount } = createMountedRerunWorld(profiles.create);
+const { setup, mount, cleanup, press, reachChecks, checkbox, button, fill, field, text, unmount } = createMountedRerunWorld(profiles.create);
 afterEach(async () => { vi.restoreAllMocks(); await cleanup(); });
 
 for (const rerun of [false, true]) {
@@ -95,7 +95,7 @@ for (const rerun of [false, true]) {
       if (++previews > 1) await gate.promise;
       return h.client.submitStartPlan(request);
     } });
-    await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
+    await reachChecks("Start dry run"); await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
     assert.equal(previews, 2); assert.equal(h.finalCommands.length, 1);
     await act(async () => gate.resolve());
     assert.equal(text().includes("Run not started"), false);
@@ -109,9 +109,9 @@ for (const rerun of [false, true]) {
       return h.client.submitStartPlan(request);
     } };
     const replaceBinding = await review(h, client);
-    await act(async () => button("Start dry run").click());
+    await reachChecks("Start dry run"); await act(async () => button("Start dry run").click());
     if (replacement === "draft") {
-      await press("Back");
+      await press("Back"); await press("Back");
       const box = rerun ? field("Employee ID") : document.querySelector("textarea");
       assert.ok(box instanceof HTMLInputElement || box instanceof HTMLTextAreaElement);
       await fill(box, "10812346");
