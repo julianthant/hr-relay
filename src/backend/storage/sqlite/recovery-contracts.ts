@@ -209,21 +209,6 @@ export const SpanAuthorityReadSnapshotSchema = z.strictObject({
   resolutions: z.array(SpanAuthorityRunResolutionSchema).readonly(),
 });
 
-export const AuthorityBootReportSchema = z.discriminatedUnion("state", [
-  z.strictObject({
-    state: z.literal("healthy"),
-    checkedAt: IsoInstantSchema,
-    mutationAvailability: z.literal("available"),
-    inspection: AuthorityCopyInspectionSchema,
-  }),
-  z.strictObject({
-    state: z.literal("degraded-read-only"),
-    checkedAt: IsoInstantSchema,
-    mutationAvailability: z.literal("blocked"),
-    cause: StorageHealthCauseSchema,
-  }),
-]);
-
 const DoctorAuthoritySchema = z.discriminatedUnion("state", [
   z.strictObject({ state: HealthyAuthorityStateSchema, inspection: AuthorityCopyInspectionSchema }),
   DegradedDoctorAuthoritySchema,
@@ -270,6 +255,5 @@ export type AuthorityBackupRunReport = z.infer<typeof AuthorityBackupRunReportSc
 export type SpanAuthorityRunResolution = z.infer<typeof SpanAuthorityRunResolutionSchema>;
 export type SpanAuthorityRunRoot = z.infer<typeof SpanAuthorityRunRootSchema>;
 export type SpanAuthorityReadSnapshot = z.infer<typeof SpanAuthorityReadSnapshotSchema>;
-export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;
 export type StorageDoctorReport = z.infer<typeof StorageDoctorReportSchema>;
 export type OfflineRestoreReport = z.infer<typeof OfflineRestoreReportSchema>;
