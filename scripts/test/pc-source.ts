@@ -73,7 +73,7 @@ const identity = (files: Entry[]) => createHash("sha256").update(JSON.stringify(
 
 export function buildPcSource(root: string, run: string, requestedBase?: string): PcSource {
   const published = git(root, ["ls-remote", "origin", "refs/heads/*", "refs/tags/*"]).trim().split("\n").map(line => line.split("\t"));
-  const baseCommit = requestedBase ?? published.find(([, ref]) => ref === "refs/heads/staging")?.[0];
+  const baseCommit = requestedBase ?? published.find(([, ref]) => ref === "refs/heads/development")?.[0];
   assert(baseCommit && /^[a-f0-9]{40}$/u.test(baseCommit), "Invalid PC source base");
   assert(published.some(([oid]) => oid === baseCommit), "PC source base is not advertised on origin");
   git(root, ["fetch", "--quiet", "--no-write-fetch-head", "origin", baseCommit]);

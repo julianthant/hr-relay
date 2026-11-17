@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { it } from "vitest";
+import { it, vi } from "vitest";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 import type { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import type { EvidenceSchemaAdmission } from "../../../../src/models/storage/evidence-schema-admission.js";
 import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -11,6 +12,14 @@ import { predecessorSeparationsRerun } from "../../../support/helpers/backend/pr
 import { RETIRED_INPUT_GENERATIONS } from "../../../../src/models/storage/evidence-schema-admission.js";
 import { NAME_DOMAIN_CANONICAL_INPUT_HASH, PRE_INITIALS_CANONICAL_INPUT_HASH } from "../../../support/fixtures/storage/pre-initials-separations.js";
 
+// Catch any fixture composition that accidentally falls back to elapsed system time.
+vi.mock("../../../../src/rules/time/clock.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../../../src/rules/time/clock.js")>();
+  let elapsedMs = 0;
+  return { ...actual, systemClock: { ...actual.systemClock, monotonicMs: () => elapsedMs += 51 } };
+});
+
+const CLOCK = manualClock(new Date("2026-08-14T10:00:00.000Z"));
 const tables = ["runs", "run_results", "run_checkpoints", "write_intents", "write_attempts", "gate_results", "run_delegations", "commands", "command_audits", "run_receipts", "timeline_events", "delegation_dependencies", "run_failures", "run_requests"] as const;
 const retiredHashes = RETIRED_INPUT_GENERATIONS.separations ?? [];
 
@@ -48,10 +57,9 @@ it("admits a store written by the pre-initials build as retired history without 
     const { deriveSchemaHash } = await import("../../../../src/models/validation/schema-bound-value.js");
     const { separationsDescriptor: descriptor } = await import("../../../support/helpers/registered-workflows.js");
     const { AuthorityEvidenceSchemaUpgradeRecordSchema } = await import("../../../../src/models/config/authority.js");
-    const { systemClock } = await import("../../../../src/rules/time/clock.js");
     const lifetime = await RuntimeLifetimeLock.acquire(0);
     try {
-      const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null });
+      const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, CLOCK);
       if (process.platform === "win32") {
         await startup();
         assert.deepEqual(frozenRows(f.path), before); assert.equal(journal(f.path, "retired-input-generation").length, 0); return;
@@ -69,12 +77,12 @@ it("admits a store written by the pre-initials build as retired history without 
       assert.deepEqual(journal(f.path, "retired-input-generation"), rows);
       assert.deepEqual(readdirSync(join(f.stateRoot, "backups", "authority")).sort(), backups); assert.deepEqual(frozenRows(f.path), before);
       const machine = acquireEntrypointAdmission(f.workspace, "exclusive", lifetime);
-      const runtime = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock });
+      const runtime = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: CLOCK });
       try {
-        const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
+        const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: CLOCK.now().toISOString() });
         assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("retired-evidence-sign-in-refused");
         const admission = machine.admitProfile(active.profileId);
-        const database = AuthorityDatabase.open(admission, { path: f.path, migrationOwner: "retired-evidence-readback", busyTimeoutMs: 250 }, systemClock,
+        const database = AuthorityDatabase.open(admission, { path: f.path, migrationOwner: "retired-evidence-readback", busyTimeoutMs: 250 }, CLOCK,
           undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: admission.stateRoot }));
         try {
           const owner = { kind: "run-input" as const, id: f.run.envelope.runId }, fresh = await assertGenerationMoved();
@@ -82,7 +90,7 @@ it("admits a store written by the pre-initials build as retired history without 
           assert.equal(database.evidenceSchemaHash(owner, f.run.input, stored, fresh), stored);
           assert.throws(() => database.evidenceSchemaHash(owner, { ...f.run.input, parsed: { ...f.run.input.parsed, protectedBindings: [] } }, stored, fresh), /source-changed/u);
           assert.throws(() => admission.assertEvidenceSchemaConversion({ ...record, evidenceSchemaMac: "0".repeat(64) }), /seal-invalid/u);
-          assert.throws(() => createReceiptService({ database, runReader: testRunService(database, systemClock), descriptors: [descriptor] }).ensureReceipt(f.run.envelope.runId), /canonical-input/u);
+          assert.throws(() => createReceiptService({ database, runReader: testRunService(database, CLOCK), descriptors: [descriptor] }).ensureReceipt(f.run.envelope.runId), /canonical-input/u);
           assert.deepEqual(frozenRows(f.path), before);
         } finally { database.close(); admission.release(); }
       } finally { await runtime.close(); machine.release(); }
@@ -98,7 +106,7 @@ it("refuses a stored Separations run under an unlisted input hash", async () => 
     const { separationsDescriptor } = await import("../../../support/helpers/registered-workflows.js");
     const { RunRecordSchema } = await import("../../../../src/models/run/record.js");
     const unlisted = RunRecordSchema.parse({ ...f.run, input: { ...f.run.input, parsed: { ...f.run.input.parsed, schemaHash: "e".repeat(64) } } });
-    assert.throws(() => collectEvidenceSchemaAdmissions({ descriptors: [separationsDescriptor], runs: [unlisted], writes: [], checkpoints: [] }), /evidence-schema-source-selector-refused/u);
+    assert.throws(() => collectEvidenceSchemaAdmissions({ descriptors: [separationsDescriptor], runs: [unlisted], writes: [], checkpoints: [] }), /timekeeperInitials/u);
   } finally { await f.cleanup(); }
 });
 
@@ -113,7 +121,7 @@ async function startupOnce(f: PredecessorStore) {
   const { RuntimeLifetimeLock } = await import("../../../../src/backend/storage/admission/lifetime-lock.js");
   const { initializeRegisteredPersonStores } = await import("../../../../src/backend/app/composition/storage-compose.js");
   const lifetime = await RuntimeLifetimeLock.acquire(0);
-  try { await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }); } finally { await lifetime.close(); }
+  try { await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, CLOCK); } finally { await lifetime.close(); }
 }
 
 async function parseRecord(row: string | undefined) {
@@ -128,16 +136,15 @@ async function readBack(f: PredecessorStore, check: (database: AuthorityDatabase
   const { composeProfileRuntime } = await import("../../../../src/backend/app/composition/storage-compose.js");
   const { AuthorityDatabase } = await import("../../../../src/backend/storage/sqlite/authority-database.js");
   const { createCredentialStore } = await import("../../../../src/backend/storage/configuration/credential-store.js");
-  const { systemClock } = await import("../../../../src/rules/time/clock.js");
   const lifetime = await RuntimeLifetimeLock.acquire(0);
   try {
     const machine = acquireEntrypointAdmission(f.workspace, "exclusive", lifetime);
-    const runtime = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock });
+    const runtime = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: CLOCK });
     try {
-      const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
+      const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: CLOCK.now().toISOString() });
       assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("retired-evidence-sign-in-refused");
       const admission = machine.admitProfile(active.profileId);
-      const database = AuthorityDatabase.open(admission, { path: f.path, migrationOwner: "retired-evidence-readback", busyTimeoutMs: 250 }, systemClock,
+      const database = AuthorityDatabase.open(admission, { path: f.path, migrationOwner: "retired-evidence-readback", busyTimeoutMs: 250 }, CLOCK,
         undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: admission.stateRoot }));
       try { await check(database, admission); } finally { database.close(); admission.release(); }
     } finally { await runtime.close(); machine.release(); }

@@ -2,9 +2,7 @@ import { useRef, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
-  CheckCircle2,
   ChevronsUp,
-  CircleSlash,
   ClipboardList,
   PauseCircle,
   Pause,
@@ -19,13 +17,11 @@ import { runDisplayId } from "../status/run-display-model.js";
 import { cn } from "../../../lib/utils.js";
 import { IconActionButton } from "./icon-action-button.js";
 import {
-  bannerPills,
   commandResultDetail,
   commandResultTitle,
   type CommandResultFeedEntry,
   intentPill,
   outcomeAction,
-  parkResolutions,
 } from "./actions-model.js";
 import {
   BareButton,
@@ -38,7 +34,6 @@ import {
   dsIcon,
   dsMotion,
   dsRadius,
-  dsText,
 } from "../../../ds/ui.js";
 import {
   actionsAt,
@@ -150,100 +145,6 @@ export function FooterActions({
         );
       })}
     </span>
-  );
-}
-
-
-
-export function DataActions({ actions, target, onAction = NOOP_ACTION }: { actions: readonly ActionDescriptorWire[]; target: ActionTarget; onAction?: DashboardActionHandler }) {
-  return <div className="flex gap-[var(--ds-space-snug)]">{actionsAt(actions, "data").map((action) => <BareButton key={action.key} className={intentPill(action.intent, "md")} onClick={() => onAction(action, target)}>{action.label}</BareButton>)}</div>;
-}
-
-export function BannerActions({
-  actions,
-  target,
-  onAction = NOOP_ACTION,
-}: {
-  actions: readonly ActionDescriptorWire[];
-  target: ActionTarget;
-  onAction?: DashboardActionHandler;
-}) {
-  const pills = bannerPills(actions);
-  if (pills.length === 0) return null;
-  return (
-    <div className="mt-[var(--ds-space-base)] flex flex-wrap gap-[var(--ds-space-snug)]">
-      {pills.map((a) => (
-        <BareButton
-          key={a.key}
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onAction(a, target);
-          }}
-          className={intentPill(a.intent, "md")}
-        >
-          {a.label}
-        </BareButton>
-      ))}
-    </div>
-  );
-}
-
-/** Park resolution reports observed outcomes only; never resume or resubmit an unknown write. */
-export function ParkResolutions({
-  actions,
-  target,
-  onAction = NOOP_ACTION,
-}: {
-  actions: readonly ActionDescriptorWire[];
-  target: ActionTarget;
-  onAction?: DashboardActionHandler;
-}) {
-  const options = parkResolutions(actions);
-  if (options.length === 0) return null;
-  return (
-    // Measure the detail column, not viewport width; context rails change the space controls share.
-    <div className="mt-[var(--ds-space-base)] grid gap-[var(--ds-space-snug)] @min-[35rem]:grid-cols-2">
-      {options.map((a) => {
-        const present = a.kind === "command" && a.command === "recheck-write";
-        const Icon = present ? CheckCircle2 : CircleSlash;
-        return (
-          <BareButton
-            key={a.key}
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAction(a, target);
-            }}
-            className={cn(
-              "flex cursor-pointer flex-col items-start border text-left",
-              "gap-[var(--ds-space-hair)] px-[var(--ds-space-base)] py-[var(--ds-space-snug)]",
-              dsRadius.md,
-              dsFocus,
-              dsMotion.fast,
-              "hover:brightness-125",
-              present
-                ? "border-[color:var(--ds-border-strong)] bg-[var(--ds-control-bg)]"
-                : "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
-            )}
-          >
-            <span
-              className={cn(
-                dsText.body,
-                "inline-flex items-center gap-[var(--ds-space-snug)] font-semibold",
-                present ? "text-[color:var(--ds-control-fg)]" : "text-[color:var(--ds-danger)]",
-              )}
-            >
-              <Icon aria-hidden className={dsIcon.sm} />
-              {a.label}
-            </span>
-            {a.detail !== undefined && (
-              <span className={cn(dsText.meta, "leading-snug text-[color:var(--ds-fg-muted)]")}>{a.detail}</span>
-            )}
-          </BareButton>
-        );
-      })}
-    </div>
   );
 }
 

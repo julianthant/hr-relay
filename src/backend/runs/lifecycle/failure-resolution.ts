@@ -7,8 +7,6 @@ import type { AuthorityRepositories } from "../../storage/sqlite/authority-datab
 import { rejectCommandRequest } from "../commands/command-refusal.js";
 import { lifecycleCommandId } from "./run-record-service.js";
 
-export { failureResolutionCapability } from "../../../models/trust/failure-resolution.js";
-
 /** The command kernel owns the surrounding annotation/journal/audit/event transaction. */
 export function executeFailureResolution(
   repositories: AuthorityRepositories, request: FailureResolutionCommand, now: string,

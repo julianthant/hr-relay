@@ -1,4 +1,5 @@
 import type { createSpreadsheetWiringAdapter } from '../../../state/spreadsheet-wiring-adapter.js';
+import { draftHasUnsavedWork } from '../../../state/spreadsheet-draft.js';
 import type { SpreadsheetSaveResult } from '../spreadsheet-editor-model.js';
 import type { EditableWorkbook } from '../../../../rules/spreadsheets/workbook-io.js';
 import { withMapping } from './sheets-v2-model.js';
@@ -39,11 +40,11 @@ export function editMapping(adapter: Adapter, id: string, worksheet: string, pat
     let result: SpreadsheetSaveResult | undefined;
     for (let attempt = 0; attempt < 5; attempt++) {
       const latest = adapter.draft(id);
-      if (!latest || (!latest.dirty && !latest.intent)) break; // an earlier turn already saved this edit
+      if (!latest || !draftHasUnsavedWork(latest)) break; // an earlier turn already saved this edit
       result = await adapter.save(id, latest.document);
       const after = adapter.draft(id);
       // Recovering an earlier save leaves newer edits unsent: send them next.
-      if (result.state !== 'uncertain' || !after || after.intent || !after.dirty) break;
+      if (result.state !== 'uncertain' || after?.phase !== 'edited') break;
     }
     return { result, latest: mine === writes.edits };
   });
@@ -55,7 +56,7 @@ export function editMapping(adapter: Adapter, id: string, worksheet: string, pat
 export async function closeDraft(adapter: Adapter, id: string, discard: boolean): Promise<boolean> {
   await writesOf(adapter).queue;
   const draft = adapter.draft(id);
-  if (draft && !discard && (draft.dirty || draft.intent)) return false;
+  if (draft && !discard && draftHasUnsavedWork(draft)) return false;
   adapter.close(id);
   return true;
 }

@@ -15,14 +15,13 @@ REBUILD_COVERAGE_EXCLUSIONS,
 REBUILD_COVERAGE_FLOORS,
 REBUILD_INTEGRATION_TEST_EXCLUDE,
 REBUILD_INTEGRATION_TEST_INCLUDE,
-REBUILD_LOCAL_TEST_EXCLUDE,
-REBUILD_LOCAL_TEST_INCLUDE,
 REBUILD_PERF_TEST_EXCLUDE,
 REBUILD_PERF_TEST_INCLUDE,
 REBUILD_TEST_PROJECTS,
 REBUILD_TEST_REPORTERS,
 REBUILD_UNIT_TEST_EXCLUDE,
 REBUILD_UNIT_TEST_INCLUDE,
+nativeRunExcludes,
 } from "../../../vitest.config.js";
 import { REPO_ROOT,walkFiles } from "../support/helpers/guard-files.js";
 import {
@@ -65,8 +64,6 @@ interface ArchitectureProjectInputs {
   readonly architectureExclude: readonly string[];
   readonly perfInclude: readonly string[];
   readonly perfExclude: readonly string[];
-  readonly localInclude: readonly string[];
-  readonly localExclude: readonly string[];
   readonly reporters: readonly string[];
 }
 
@@ -124,8 +121,6 @@ export function architectureProjectViolations({
   architectureExclude,
   perfInclude,
   perfExclude,
-  localInclude,
-  localExclude,
   reporters,
 }: ArchitectureProjectInputs): string[] {
   const violations: string[] = [];
@@ -142,18 +137,21 @@ export function architectureProjectViolations({
   }
   if (JSON.stringify(unitExclude) !== JSON.stringify([
     "tests/**/*.integration.test.ts",
-    "tests/**/*.local.test.ts",
     "tests/architecture/**",
     "tests/mocks/**",
     "tests/perf/**",
+    ...nativeRunExcludes(process.env.RELAY_TEST_NATIVE),
   ])) {
-    violations.push("unit project must exclude integration suffixes, operator-machine markers, architecture, mocks, and perf");
+    violations.push("unit project must exclude integration suffixes, architecture, mocks, perf, and local native files unless RELAY_TEST_NATIVE=1");
   }
   if (JSON.stringify(integrationInclude) !== JSON.stringify(["tests/**/*.integration.test.ts"])) {
     violations.push("integration project must include every recursive tests/**/*.integration.test.ts file");
   }
-  if (JSON.stringify(integrationExclude) !== JSON.stringify(["tests/**/*.local.integration.test.ts", "tests/perf/**"])) {
-    violations.push("integration project must exclude operator-machine markers and tests/perf/**");
+  if (JSON.stringify(integrationExclude) !== JSON.stringify([
+    "tests/perf/**",
+    ...nativeRunExcludes(process.env.RELAY_TEST_NATIVE),
+  ])) {
+    violations.push("integration project must exclude tests/perf/** and local native files unless RELAY_TEST_NATIVE=1");
   }
   if (
     JSON.stringify(architectureInclude) !==
@@ -163,28 +161,20 @@ export function architectureProjectViolations({
       "architecture project must include every recursive tests/architecture/**/*.test.ts file",
     );
   }
-  if (JSON.stringify(architectureExclude) !== JSON.stringify(["tests/**/*.local.test.ts", "tests/**/*.local.integration.test.ts"])) {
-    violations.push("architecture project must exclude only operator-machine markers");
+  if (JSON.stringify(architectureExclude) !== JSON.stringify([])) {
+    violations.push("architecture project must not exclude tests");
   }
   if (JSON.stringify(perfInclude) !== JSON.stringify(["tests/perf/**/*.test.ts"])) {
     violations.push("perf project must include every tests/perf/**/*.test.ts file");
   }
-  if (JSON.stringify(perfExclude) !== JSON.stringify(["tests/**/*.local.test.ts", "tests/**/*.local.integration.test.ts"])) {
-    violations.push("perf project must exclude only operator-machine markers");
-  }
-  if (JSON.stringify(localInclude) !== JSON.stringify(["tests/**/*.local.test.ts", "tests/**/*.local.integration.test.ts"])) {
-    violations.push("local project must include only operator-machine marker files");
-  }
-  if (JSON.stringify(localExclude) !== JSON.stringify(["tests/mocks/**"])) {
-    violations.push("local project must exclude mocks");
+  if (JSON.stringify(perfExclude) !== JSON.stringify([])) {
+    violations.push("perf project must not exclude tests");
   }
   if (JSON.stringify(reporters) !== JSON.stringify(["verbose"])) {
     violations.push("every Vitest entry point must use the single verbose streaming reporter from config");
   }
   return violations;
 }
-
-const OPERATOR_LOCAL_TEST = /(?:^|\/)[^/]+\.local(?:\.integration)?\.test\.tsx?$/u;
 
 export function testProjectTopologyViolations(
   root: string,
@@ -199,27 +189,17 @@ export function testProjectTopologyViolations(
   });
   const mocks = all.filter((path) => path.startsWith("tests/mocks/"));
   const runtime = all.filter((path) => !path.startsWith("tests/mocks/"));
-  const cloud = projects.filter((project) => project.name !== "local");
+  const optedOut = new Set(nativeRunExcludes(process.env.RELAY_TEST_NATIVE));
   const violations = projectOwnershipViolations(
-    runtime.filter((path) => !OPERATOR_LOCAL_TEST.test(path)),
-    cloud.map((project) => ({
+    runtime.filter((path) => !optedOut.has(path)),
+    projects.map((project) => ({
       ...project,
-      files: project.files.filter((path) => !path.startsWith("tests/mocks/") && !OPERATOR_LOCAL_TEST.test(path)),
+      files: project.files.filter((path) => !path.startsWith("tests/mocks/")),
     })),
   );
   for (const path of mocks) {
     const owners = projects.filter(({ files }) => files.includes(path)).map(({ name }) => name);
     if (owners.length > 0) violations.push(`${path}: expected no Vitest projects, found ${owners.join(", ")}`);
-  }
-  const localProject = projects.find((project) => project.name === "local");
-  for (const path of runtime.filter((file) => OPERATOR_LOCAL_TEST.test(file))) {
-    const owners = projects.filter(({ files }) => files.includes(path)).map(({ name }) => name);
-    if (owners.length !== 1 || owners[0] !== "local") {
-      violations.push(`${path}: expected the local project, found ${owners.join(", ") || "none"}`);
-    }
-  }
-  for (const path of localProject?.files ?? []) {
-    if (!OPERATOR_LOCAL_TEST.test(path)) violations.push(`${path}: local project collected a cloud test`);
   }
   return violations;
 }
@@ -287,7 +267,7 @@ describe("reviewed architecture guard manifest", () => {
     }
   });
 
-  it("keeps five exact projects with complete architecture and single test ownership", () => {
+  it("keeps four exact projects with complete architecture and single test ownership", () => {
     const actual = {
       command: packageJson.scripts[inventory.testScript] ?? "",
       unitInclude: REBUILD_UNIT_TEST_INCLUDE,
@@ -298,16 +278,10 @@ describe("reviewed architecture guard manifest", () => {
       architectureExclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
       perfInclude: REBUILD_PERF_TEST_INCLUDE,
       perfExclude: REBUILD_PERF_TEST_EXCLUDE,
-      localInclude: REBUILD_LOCAL_TEST_INCLUDE,
-      localExclude: REBUILD_LOCAL_TEST_EXCLUDE,
       reporters: REBUILD_TEST_REPORTERS,
     };
     assert.deepEqual(architectureProjectViolations(actual), []);
-    assert.equal(
-      packageJson.scripts["test:local"],
-      "vitest run --project local --passWithNoTests=true",
-    );
-    assert.deepEqual(REBUILD_TEST_PROJECTS.map(({ name }) => name), ["unit", "integration", "architecture", "perf", "local"]);
+    assert.deepEqual(REBUILD_TEST_PROJECTS.map(({ name }) => name), ["unit", "integration", "architecture", "perf"]);
     assert.deepEqual(configuredTestProjects(vitestConfig), REBUILD_TEST_PROJECTS);
     assert.deepEqual(configuredTestReporters(vitestConfig), REBUILD_TEST_REPORTERS);
     assert.deepEqual(testProjectTopologyViolations(REPO_ROOT), []);
@@ -326,12 +300,8 @@ describe("reviewed architecture guard manifest", () => {
       { ...actual, architectureInclude: ["tests/architecture/tooling/guard-manifest.test.ts"] },
       { ...actual, architectureInclude: ["tests/architecture/*.test.ts"] },
       { ...actual, architectureExclude: ["tests/architecture/runtime-isolation.test.ts"] },
-      { ...actual, architectureExclude: [] },
       { ...actual, perfInclude: ["tests/perf/**/*.integration.test.ts"] },
       { ...actual, perfExclude: ["tests/perf/**"] },
-      { ...actual, perfExclude: [] },
-      { ...actual, localInclude: ["tests/**/*.test.ts"] },
-      { ...actual, localExclude: [] },
       { ...actual, reporters: ["dot"] },
     ]) {
       assert.ok(architectureProjectViolations(bypass).length > 0, JSON.stringify(bypass));
@@ -375,14 +345,6 @@ describe("reviewed architecture guard manifest", () => {
         testProjectTopologyViolations(root, narrowed).join("\n"),
         /live\.combined\.test\.ts: expected exactly one Vitest project, found none/u,
       );
-      writeFixture(root, "tests/models/owned.local.test.ts", "export {};\n");
-      writeFixture(root, "tests/models/owned.local.integration.test.ts", "export {};\n");
-      assert.deepEqual(testProjectTopologyViolations(root).filter((violation) => violation.includes(".local.")), []);
-      const localLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
-        ? { ...project, exclude: project.exclude.filter((pattern) => pattern !== "tests/**/*.local.test.ts") }
-        : project);
-      assert.match(testProjectTopologyViolations(root, localLeak).join("\n"),
-        /tests\/models\/owned\.local\.test\.ts: expected the local project, found unit, local/u);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -448,7 +410,7 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runs/lifecycle/run-record-service.ts",
       "src/backend/runs/lifecycle/run-result.ts",
       "src/backend/runs/settings/run-settings.ts",
-      "src/backend/runs/projections/run-summary.ts",
+      "src/rules/runs/summary-derivation.ts",
       "src/backend/runs/provenance/task-provenance.ts",
       "src/backend/runs/lifecycle/terminal-authorization.ts",
       "src/backend/runs/provenance/test-data-usage.ts",
@@ -463,13 +425,9 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runtime/execution/run-failure.ts",
       "src/backend/runtime/workers/worker-loop.ts",
       "src/backend/runtime/workers/worker-sessions.ts",
-      "src/backend/runtime/writes/write-recovery.ts",
+      "src/**/*recovery*.ts",
       "src/backend/runtime/writes/write-resolution-binding.ts",
       "src/backend/runtime/writes/write-sequencer.ts",
-      "src/backend/runs/archive/archive-runtime-version-changes.ts",
-      "src/backend/runs/lifecycle/archive-terminal-runs.ts",
-      "src/backend/runs/archive/archive-version-changes.ts",
-      "src/backend/storage/sqlite/run-lifecycle-storage.ts",
     ];
     const thresholds = vitestConfig.test?.coverage?.thresholds as Record<string, unknown> | undefined;
     assert.ok(thresholds);
@@ -493,7 +451,7 @@ describe("reviewed architecture guard manifest", () => {
       try {
         const fixture = rebuildRatchetFixture(name);
         for (const [path, content] of Object.entries(fixture.files)) writeFixture(root, path, content);
-        const result = auditRebuildRatchetArm(name, root);
+        const result = auditRebuildRatchetArm(name, root, []);
         assert.equal(result.state, "active", `${name} fixture did not activate its scanner`);
         assert.ok(result.files.length > 0, `${name} fixture resolved no files`);
         assert.match(result.violations.join("\n"), fixture.expected, `${name} fixture bypassed its executable arm`);
@@ -630,6 +588,18 @@ describe("reviewed architecture guard manifest", () => {
     } finally {rmSync(root,{recursive:true,force:true});}
   });
 
+  it("rejects source files without a classified root", () => {
+    const root = join(tmpdir(), `hrauto-unclassified-layers-${process.pid}-${Date.now()}`);
+    try {
+      writeFixture(root, "src/unclassified/value.ts", "export const value = true;\n");
+      writeFixture(root, "src/unclassified.ts", "export const value = true;\n");
+      assert.deepEqual([...auditRebuildRatchetArm("control-layering", root, []).violations].sort(), [
+        "unclassified.ts: unclassified source root",
+        "unclassified/value.ts: unclassified source root",
+      ]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("classifies backend responsibilities and refuses lower-to-higher imports",()=>{
     const root=join(tmpdir(),`hrauto-backend-layers-${process.pid}-${Date.now()}`);
     try {
@@ -639,32 +609,85 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root,"src/backend/workbooks/library.ts","export const library = true;\n");
       writeFixture(root,"src/backend/systems/browser-shared/adapter.ts","export const adapter = true;\n");
       writeFixture(root,"src/backend/app/worker/compose.ts","export const compose = true;\n");
-      writeFixture(root,"src/base/pure.ts","export const pure = true;\n");
-      writeFixture(root,"src/domain/value.ts","export const value = true;\n");
-      writeFixture(root,"src/validation/pure.ts","export const pure = true;\n");
-      assert.deepEqual(auditRebuildRatchetArm("control-layering",root).violations,[]);
+      writeFixture(root,"src/models/value.ts","export const value = true;\n");
+      writeFixture(root,"src/rules/pure.ts","export const pure = true;\n");
+      writeFixture(root,"src/workflow-kit/task.ts","export const task = true;\n");
+      writeFixture(root,"src/workflows/workflow.ts","export const workflow = true;\n");
+      writeFixture(root,"src/dashboard/view.tsx","export const view = true;\n");
+      writeFixture(root,"src/cli.ts","export const cli = true;\n");
+      assert.deepEqual(auditRebuildRatchetArm("control-layering",root,[]).violations,[]);
       writeFixture(root,"src/backend/storage/repository.ts",'import { boot } from "../app/boot.js"; export const repository = boot;\n');
       writeFixture(root,"src/backend/systems/browser-shared/adapter.ts",'import { engine } from "../../runtime/engine.js"; export const adapter = engine;\n');
       writeFixture(root,"src/backend/runtime/engine.ts",'import type { compose } from "../app/worker/compose.js"; export type Engine = typeof compose;\n');
       writeFixture(root,"src/backend/workbooks/library.ts",'import { engine } from "../runtime/engine.js"; import { compose } from "../app/worker/compose.js"; export const library = [engine, compose];\n');
-      writeFixture(root,"src/base/pure.ts",'import { boot } from "../backend/app/boot.js"; export const pure = boot;\n');
-      writeFixture(root,"src/domain/value.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Value = typeof engine;\n');
-      writeFixture(root,"src/validation/pure.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Pure = typeof engine;\n');
+      writeFixture(root,"src/models/value.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Value = typeof engine;\n');
+      writeFixture(root,"src/rules/pure.ts",'import { boot } from "../backend/app/boot.js"; export const pure = boot;\n');
+      writeFixture(root,"src/workflow-kit/task.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Task = typeof engine;\n');
       writeFixture(root,"src/backend/accounts/account-service.ts",'import { boot } from "../app/boot.js"; import { engine } from "../runtime/engine.js"; export const service = { boot, engine };\n');
       writeFixture(root,"src/backend/misc/helper.ts","export const helper = true;\n");
-      const issues=auditRebuildRatchetArm("control-layering",root).violations.join("\n");
+      const issues=auditRebuildRatchetArm("control-layering",root,[]).violations.join("\n");
       assert.match(issues,/backend\/storage\/repository\.ts: layer inversion imports backend\/app\/boot\.ts/u);
       assert.match(issues,/backend\/systems\/browser-shared\/adapter\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/runtime\/engine\.ts: layer inversion imports backend\/app\/worker\/compose\.ts/u);
       assert.match(issues,/backend\/workbooks\/library\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/workbooks\/library\.ts: layer inversion imports backend\/app\/worker\/compose\.ts/u);
-      assert.match(issues,/base\/pure\.ts: layer inversion imports backend\/app\/boot\.ts/u);
-      assert.match(issues,/domain\/value\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
-      assert.match(issues,/validation\/pure\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/models\/value\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/rules\/pure\.ts: layer inversion imports backend\/app\/boot\.ts/u);
+      assert.match(issues,/workflow-kit\/task\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/accounts\/account-service\.ts: layer inversion imports backend\/app\/boot\.ts/u);
       assert.match(issues,/backend\/accounts\/account-service\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/misc\/helper\.ts: unclassified backend responsibility/u);
     } finally {rmSync(root,{recursive:true,force:true});}
+  });
+
+  it("ratchets exact layering import pairs and rejects stale entries", () => {
+    const root = join(tmpdir(), `hrauto-layering-ratchet-${process.pid}-${Date.now()}`);
+    const source = "models/value.ts";
+    const target = "workflow-kit/task.ts";
+    const ratchet = [[source, target]] as const;
+    const importTask = 'import type { Task } from "../workflow-kit/task.js"; export type Value = Task;\n';
+    try {
+      writeFixture(root, `src/${source}`, importTask);
+      writeFixture(root, `src/${target}`, "export type Task = string;\n");
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, []);
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, []).violations, [
+        "models/value.ts: layer inversion imports workflow-kit/task.ts",
+      ]);
+      writeFixture(root, "src/models/other.ts", importTask);
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, [
+        "models/other.ts: layer inversion imports workflow-kit/task.ts",
+      ]);
+      rmSync(join(root, "src/models/other.ts"));
+      writeFixture(root, "src/workflow-kit/other.ts", "export type Task = string;\n");
+      writeFixture(root, `src/${source}`, importTask.replace("task.js", "other.js"));
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, [
+        "models/value.ts: layer inversion imports workflow-kit/other.ts",
+        "stale layering ratchet: models/value.ts -> workflow-kit/task.ts",
+      ]);
+      writeFixture(root, `src/${source}`, "export type Value = string;\n");
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, [
+        "stale layering ratchet: models/value.ts -> workflow-kit/task.ts",
+      ]);
+      rmSync(join(root, `src/${source}`));
+      assert.deepEqual(auditRebuildRatchetArm("control-layering", root, ratchet).violations, [
+        "stale layering ratchet: models/value.ts -> workflow-kit/task.ts",
+      ]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("checks workflow, dashboard and CLI layers as dependency targets", () => {
+    for (const target of ["workflows/workflow.ts", "dashboard/view.tsx", "cli.ts"]) {
+      const root = join(tmpdir(), `hrauto-layer-target-${process.pid}-${Date.now()}`);
+      try {
+        writeFixture(root, `src/${target}`, "export type Value = string;\n");
+        writeFixture(root, "src/models/value.ts", "export type Value = string;\n");
+        assert.deepEqual(auditRebuildRatchetArm("control-layering", root, []).violations, []);
+        writeFixture(root, "src/models/value.ts", `export type { Value } from "../${target.replace(/\.tsx?$/u, ".js")}";\n`);
+        assert.deepEqual(auditRebuildRatchetArm("control-layering", root, []).violations, [
+          `models/value.ts: layer inversion imports ${target}`,
+        ]);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    }
   });
 
   it("keeps fail-loud catch scanning semantic across multi-statement and nested handlers", () => {

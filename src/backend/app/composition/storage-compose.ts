@@ -1,6 +1,7 @@
 import { acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { createCredentialSecretSource, readAdmittedProfileIdentity } from "../../runtime/settings/settings-runtime.js";
 import { assertMaintenanceCustodyAvailable, StorageMaintenanceCustodyUnavailableError } from "../../storage/maintenance/custody-availability.js";
+import { createSessionBackups } from "../../storage/maintenance/session-backups.js";
 import { hasPendingShutdownBackupRetirement, resumeShutdownBackupRetirement } from "../../storage/maintenance/clean-shutdown-backups.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
@@ -23,16 +24,20 @@ import { readPrivateFile } from "../../storage/configuration/credential-safe-fil
 import { assertCredentialStoreOwner,createCredentialStore,type CredentialStoreHooks } from "../../storage/configuration/credential-store.js";
 import { prepareStoppedBackupClosure,probeRestoreProfileBrowsersClosed,ProfileRestoreBrowserCustodyUnprovedError,type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
 import { assertStoppedProfileResourcesClosed } from "../../storage/maintenance/profile-custody.js";
+import { fsyncPath,writePrivateStage } from "../../storage/private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../storage/sqlite/migrations.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { composeProfileSettings } from "./dashboard/settings.js";
 import { assertProfileBrowserRoot,composeProfileClosureInventory } from "./profile-credential-inventory.js";
 
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync,readdirSync,readFileSync } from "node:fs";
-import { appendEmergencyFault } from "../../logs/emergency-faults.js";
-import { join,resolve } from "node:path";
+import { once } from "node:events";
+import { closeSync,existsSync,mkdirSync,openSync,readdirSync,readFileSync,renameSync,rmSync } from "node:fs";
+import { createDebugEventWriter } from "../../logs/debug-events.js";
+import { appendEmergencyFault, withEmergencyTimelineWriter } from "../../logs/emergency-faults.js";
+import { dirname,join,resolve } from "node:path";
 import { z } from "zod";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
@@ -43,6 +48,7 @@ import { systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { createRunQueueProjection } from "../../runs/projections/run-queue-projection.js";
 import { OfflineSpanRootRepairService,type SpanRootRepairReport } from "../../runs/recovery/span-root-repair.js";
+import { findRunHolder } from "../../transports/cli/person-stores.js";
 import { createNativeBrowserProbe } from "../../runtime/browser/native-browser.js";
 import { requireStoppedPool, type WorkerPool } from "../../runtime/workers/worker-pool.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
@@ -112,6 +118,33 @@ function causedByUnresolvedWrites(error: unknown): boolean {
 }
 
 const buildVersion = () => z.object({ version: z.string() }).parse(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"))).version;
+
+/** Buffers events that fire before a debug writer exists, then emits one storage row per slow operation. */
+export function createSlowOperationEvents(category: "http" | "worker") {
+  const pending: Array<Readonly<{ name: string; durationMs: number }>> = [];
+  let emit: ((input: unknown) => unknown) | undefined;
+  const deliver = (operation: Readonly<{ name: string; durationMs: number }>): void => {
+    try {
+      emit?.({ category, phase: "settled", area: "storage", reason: "slow-operation", code: operation.name,
+        durationMs: operation.durationMs, correlationId: randomUUID() });
+    } catch { /* a debug row never changes the storage operation */ }
+  };
+  return Object.freeze({
+    hook(operation: Readonly<{ name: string; durationMs: number }>) {
+      if (emit === undefined) pending.push(operation);
+      else deliver(operation);
+    },
+    attach(debugEvents: { emit(input: unknown): unknown }) {
+      emit = input => debugEvents.emit(input);
+      for (const operation of pending.splice(0)) deliver(operation);
+    },
+  });
+}
+
+function attachStorageSlowOperations(slow: ReturnType<typeof createSlowOperationEvents>, database: AuthorityDatabase, clock: Clock, stateRoot: string): void {
+  const build = buildVersion();
+  slow.attach(createDebugEventWriter({ repository: withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build }), clock, build }));
+}
 
 /** Error text can carry input, so the boot log gets a leading kebab-case token plus closed cause rows (class, code, SQLite result code, frames). */
 function logRefusalReason(stateRoot: string, refusal: Error & { code: string }, area: string, clock: Clock): void {
@@ -244,7 +277,9 @@ async function recoverRegisteredPersonCrash(workspace: string, lifetime: Runtime
     let database: AuthorityDatabase | undefined, primary: { error: unknown } | undefined;
     try {
       await probeRestoreProfileBrowsersClosed(admission, join(workspace, rebuildRuntimeIsolation.processLockRoot), machine.maintenanceOperation(), clock, profileBrowserClosure);
-      database = AuthorityDatabase.openStoppedStartupRecovery(admission, clock);
+      const slowOperations = createSlowOperationEvents("http");
+      database = AuthorityDatabase.openStoppedStartupRecovery(admission, clock, slowOperations.hook);
+      attachStorageSlowOperations(slowOperations, database, clock, admission.stateRoot);
       const lifecycle = new RunRecordService({ database, clock, ids: { uuid: randomUUID },
         publishQueued: () => { throw new Error("startup-crash-recovery-cannot-enqueue"); } });
       reconcileStoppedStartupCrash({ machine, admission, database, lifecycle, clock, lock: lifetime });
@@ -255,17 +290,26 @@ async function recoverRegisteredPersonCrash(workspace: string, lifetime: Runtime
   });
 }
 
+/** The storage command a detached quit-time backup finisher runs: `storage finish-shutdown-backup <workspace> <profileId>...`. */
+export const FINISH_SHUTDOWN_BACKUP = "finish-shutdown-backup";
+
+export type ShutdownBackup = (workspace: string, lifetime: RuntimeLifetimeLock, clock: Clock) => Promise<void>;
+
+function shutdownBackupPeople(machine: RuntimeAdmission, lifetime: RuntimeLifetimeLock) {
+  // A person held at startup was never opened this run and keeps their pre-upgrade backup; their store may still be at an older schema.
+  const held = heldPeople.get(lifetime);
+  return machine.readProfileRegistry().profiles.filter(profile => profile.lifecycle === "ready" && profile.credentialState === "saved" && held?.has(profile.profileId) !== true);
+}
+
+/** `only` limits the backup to the people a stopping dashboard handed to its finisher. */
 export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, lifetime: RuntimeLifetimeLock,
-  clock: Clock = systemClock): Promise<void> {
+  clock: Clock = systemClock, only?: ReadonlySet<string>): Promise<void> {
   lifetime.assertHeld();
   if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) throw new Error("shutdown-backup-installation-missing");
   try {
     await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
       const operation = machine.maintenanceOperation(); operation.consume();
-      const registry = machine.readProfileRegistry();
-      // A person held at startup was never opened this run and keeps their pre-upgrade backup; their store may still be at an older schema.
-      const held = heldPeople.get(lifetime);
-      const ready = registry.profiles.filter(profile => profile.lifecycle === "ready" && profile.credentialState === "saved" && held?.has(profile.profileId) !== true);
+      const ready = shutdownBackupPeople(machine, lifetime).filter(profile => only === undefined || only.has(profile.profileId));
       if (ready.length !== 0) assertMaintenanceCustodyAvailable("backup");
       for (const row of ready) {
         if (hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", row.profileId))) {
@@ -277,16 +321,81 @@ export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, l
         const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
         const closure = await prepareStoppedBackupClosure(profileBrowserClosure, admission, operation, clock, processLockRoot);
         const { backupStoppedAuthority } = await import("../../storage/maintenance/upgrade.js");
-        await backupStoppedAuthority(closure, admission, admission.stateRoot, clock, processLockRoot, operation, "graceful-drain");
+        const report = await backupStoppedAuthority(closure, admission, admission.stateRoot, clock, processLockRoot, operation, "graceful-drain");
+        const manifest = report.manifests.at(-1); if (manifest === undefined) throw new Error("shutdown-backup-result-missing");
+        const backupPath = join(admission.stateRoot, "backups", "authority", manifest.backupFileName);
         assertStoppedProfileResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         const { retainCleanShutdownBackups } = await import("../../storage/maintenance/clean-shutdown-backups.js");
-        await retainCleanShutdownBackups(admission, clock);
+        await retainCleanShutdownBackups(admission, clock, { manifestPath: `${backupPath}.manifest.json`, backupPath, manifest });
       }
     });
   } catch (error) {
     if (error instanceof StorageMaintenanceCustodyUnavailableError && error.constructor === StorageMaintenanceCustodyUnavailableError && error.cause === undefined && !hasUnprovedSourceClosure(error)) throw error;
     throw new AutomaticShutdownBackupError(error);
   }
+}
+
+const pendingShutdownBackupPath = (workspace: string) => join(workspace, rebuildRuntimeIsolation.stateRoot, "shutdown-backup.pending.json");
+
+/** Records the people whose quit-time backup is unfinished; whoever next holds the lifetime lock completes it. */
+export function writePendingShutdownBackup(workspace: string, people: readonly string[]): void {
+  const path = pendingShutdownBackupPath(workspace), directory = dirname(path), stage = `${path}.stage`;
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  rmSync(stage, { force: true });
+  writePrivateStage(stage, Buffer.from(JSON.stringify({ people })));
+  renameSync(stage, path);
+  fsyncPath(directory);
+}
+
+/** A quit adds its people to any record a finisher or start has not completed yet, so no earlier quit's people are dropped. */
+export function addPendingShutdownBackup(workspace: string, people: readonly string[]): void {
+  writePendingShutdownBackup(workspace, [...new Set([...readPendingShutdownBackup(workspace) ?? [], ...people])]);
+}
+
+/** Whether a quit-time backup is unfinished: its finisher, or a start completing it, may hold the lifetime lock. */
+export function hasPendingShutdownBackup(workspace: string): boolean {
+  return existsSync(pendingShutdownBackupPath(workspace));
+}
+
+export function readPendingShutdownBackup(workspace: string): ReadonlySet<string> | undefined {
+  const path = pendingShutdownBackupPath(workspace);
+  if (!existsSync(path)) return undefined;
+  return new Set(z.strictObject({ people: z.array(z.uuid()).min(1) }).parse(JSON.parse(readFileSync(path, "utf8"))).people);
+}
+
+export function removePendingShutdownBackup(workspace: string): void {
+  rmSync(pendingShutdownBackupPath(workspace), { force: true });
+  fsyncPath(dirname(pendingShutdownBackupPath(workspace)));
+}
+
+/**
+ * The quit-time backup of the stopped store runs in a detached process so the dashboard exits at once. The finisher takes the
+ * lifetime lock this process releases, so it never runs beside a dashboard; a killed finisher leaves no manifest, so nothing counts.
+ */
+export function detachedShutdownBackup(launch: Readonly<{ command: string; prefixArgs: readonly string[]; environment: NodeJS.ProcessEnv; cwd: string }>,
+  spawnProcess: typeof spawn = spawn): ShutdownBackup {
+  return async (workspace, lifetime) => {
+    lifetime.assertHeld();
+    if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) throw new Error("shutdown-backup-installation-missing");
+    try {
+      const people = await withStoppedMachineStorage(workspace, lifetime, machine => Promise.resolve(shutdownBackupPeople(machine, lifetime).map(profile => profile.profileId)));
+      if (people.length === 0) return;
+      assertMaintenanceCustodyAvailable("backup");
+      addPendingShutdownBackup(workspace, people);
+      const logDirectory = join(workspace, rebuildRuntimeIsolation.stateRoot, "logs");
+      mkdirSync(logDirectory, { recursive: true, mode: 0o700 });
+      const log = openSync(join(logDirectory, "shutdown-backup.log"), "a", 0o600);
+      try {
+        const child = spawnProcess(launch.command, [...launch.prefixArgs, "storage", FINISH_SHUTDOWN_BACKUP, workspace, ...people],
+          { cwd: launch.cwd, env: launch.environment, detached: true, stdio: ["ignore", log, log] });
+        await once(child, "spawn");
+        child.unref();
+      } finally { closeSync(log); }
+    } catch (error) {
+      if (error instanceof StorageMaintenanceCustodyUnavailableError && error.constructor === StorageMaintenanceCustodyUnavailableError && error.cause === undefined && !hasUnprovedSourceClosure(error)) throw error;
+      throw new AutomaticShutdownBackupError(error);
+    }
+  };
 }
 
 export class AutomaticShutdownBackupError extends Error {
@@ -404,6 +513,23 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
       catch (error) { throw retainAuthoritySourceClosure(recoveryFailure === undefined ? [error] : [recoveryFailure.error, error], { admission: { recoveryMachine, recovery } }); }
       if (recoveryFailure !== undefined) throw recoveryFailure.error;
     }
+    const reenrolCommits = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? [] : machine.readDuoReenrolCommitProfileIds());
+    if (reenrolCommits.length !== 0) {
+      const commitMachine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
+      let commits: ReturnType<typeof createProfileSession> | undefined;
+      let commitFailure: { error: unknown } | undefined;
+      try {
+        commits = createProfileSession({ machineRoot: commitMachine.stateRoot, admission: commitMachine, clock });
+        for (const unproved of commits.reconcileDuoReenrolCommits()) {
+          held.set(unproved.profileId, unproved.error);
+          logHeldPerson(workspace, unproved.error, "profile-startup-duo-reenrol", clock);
+        }
+      } catch (error) { commitFailure = { error }; }
+      if (commitFailure !== undefined && hasUnprovedSourceClosure(commitFailure.error)) throw retainAuthoritySourceClosure([commitFailure.error], { admission: { commitMachine, commits } });
+      try { commits?.close(); commitMachine.release(); }
+      catch (error) { throw retainAuthoritySourceClosure(commitFailure === undefined ? [error] : [commitFailure.error, error], { admission: { commitMachine, commits } }); }
+      if (commitFailure !== undefined) throw commitFailure.error;
+    }
     registered = await withStoppedMachineStorage(workspace, lifetime, async machine => {
       if (machine.requiresFlatStoreMigration()) return [];
       const pending = new Set(machine.readPendingLogoutProfileIds());
@@ -520,7 +646,9 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
           const backup = await backupStoppedAuthority(closure, admission, admission.stateRoot, clock, processLockRoot, operation, "schema-migration");
           const manifest = backup.manifests[0];
           if (backup.manifests.length !== 1 || manifest === undefined || manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("fixed-layout-current-backup-required");
-          const database = AuthorityDatabase.openFixedLayoutSource(machine, admission, clock);
+          const slowOperations = createSlowOperationEvents("http");
+          const database = AuthorityDatabase.openFixedLayoutSource(machine, admission, clock, slowOperations.hook);
+          attachStorageSlowOperations(slowOperations, database, clock, admission.stateRoot);
           let primary: { error: unknown } | undefined;
           try {
             const saved = readBootSettings(database.authority), priorActive = database.authority.runtimeConfig.get();
@@ -645,7 +773,7 @@ export function composeProfileActivity(input: Readonly<{
             if (runtime === undefined) throw new Error("application-runtime-unavailable");
             repositories.runs.holdAdmission({ commandId: randomUUID(), runtimeGeneration: runtime.generation, reason: "shutdown" });
           }
-          for (const run of input.database.readProfileResourceCustody().runs) {
+          for (const run of input.database.readApplicationActivity().runs) {
             if (run.lifecycle.state === "terminal" || run.lifecycle.state === "parked-write") continue;
             requireLifecycleApplied(input.lifecycle.pause({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version }));
           }
@@ -755,9 +883,12 @@ export function composeSelectedProfileStorage(input: Readonly<{
     assertProfileBrowserRoot(admission, resolved.config.paths.browserProfileRoot);
     return resolved;
   };
+  const slowOperations = createSlowOperationEvents("http");
   const database = AuthorityDatabase.open(admission, {
     path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "selected-profile-runtime",
-  }, input.clock, undefined, undefined, undefined, input.credentials);
+  }, input.clock, undefined, undefined, undefined, input.credentials, slowOperations.hook);
+  attachStorageSlowOperations(slowOperations, database, input.clock, stateRoot);
+  const sessionBackups = createSessionBackups({ admission, database, clock: input.clock, directory: join(stateRoot, "backups", "authority") });
   try {
     database.withAuthorityTransaction(repositories => {
       assertCurrent();
@@ -794,8 +925,10 @@ export function composeSelectedProfileStorage(input: Readonly<{
         return account.revalidateAuthority(captured, admission);
       },
     });
-    return Object.freeze({ admission, profileEpoch: selected.epoch, credentials: input.credentials, database, account, accountAuthority, settings, protectedSecrets, assertCurrent, resolveSettings });
+    return Object.freeze({ admission, profileEpoch: selected.epoch, credentials: input.credentials, database, account, accountAuthority, settings, protectedSecrets, assertCurrent, resolveSettings, sessionBackups,
+      attachSlowOperations: (debugEvents: { emit(input: unknown): unknown }) => { slowOperations.attach(debugEvents); } });
   } catch (error) {
+    sessionBackups.requestCancellation();
     try { database.close(); }
     catch (closeError) { throw new RuntimeCustodyUncertainError([error, closeError]); }
     throw error;
@@ -828,9 +961,16 @@ export function composeProfileRuntime(input: Readonly<{
   const contextFor = (expected?: RuntimeAdmission): Context => {
     const selected = captureSelectedProfileStorage(machine), entry = resources.get(selected.profileId)?.ordinary;
     if (entry === undefined || expected !== undefined && expected !== entry.admission) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-    if (entry.state !== "open" || entry.preparation !== undefined) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
-    entry.context ??= composeSelectedProfileStorage({ machineAdmission: machine, admission: entry.admission, credentials: entry.credentials,
-      hostFacts: input.hostFacts, clock: input.clock, assertOrdinaryOwner: () => { if (entry.state !== "open") throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE"); } });
+    if (entry.state !== "open" || entry.preparation !== undefined || session.duoReenrolCommitHeld(selected.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    if (entry.context === undefined) {
+      const created = composeSelectedProfileStorage({ machineAdmission: machine, admission: entry.admission, credentials: entry.credentials,
+        hostFacts: input.hostFacts, clock: input.clock, assertOrdinaryOwner: () => {
+          if (entry.state !== "open" || session.duoReenrolCommitHeld(selected.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+        } });
+      entry.context = created;
+      (entry.commandActivities ??= new Set()).add({ hasUnquiescedWork: () => created.sessionBackups.hasUnquiescedWork(),
+        requestCancellation: () => { created.sessionBackups.requestCancellation(); }, awaitCancellation: () => created.sessionBackups.awaitCancellation() });
+    }
     return entry.context;
   };
   const initializeOwners = (profileId: string, expected: RuntimeAdmission): Owned => {
@@ -943,6 +1083,18 @@ export function composeProfileRuntime(input: Readonly<{
   };
   const session = createProfileSession({ machineRoot: machine.stateRoot, admission: machine, clock: input.clock,
     ...(input.onboardingDuo === undefined ? {} : { onboardingDuo: input.onboardingDuo }),
+    idleFence: { withIdleProfile: (profileId, body) => {
+      const entry = resources.get(profileId)?.ordinary;
+      if (entry === undefined || entry.state !== "open" || entry.preparation !== undefined) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+      const owned = initializeOwners(profileId, entry.admission), context = owned.context, activity = owned.activity;
+      if (context === undefined || activity === undefined) throw new RuntimeCustodyUncertainError([new Error("profile-resource-custody-unavailable")]);
+      // The proof and body's hold share one write transaction, so no claim, enqueue or lease commits between them. The swap runs
+      // after this commits, synchronously and under the hold, which every session, context and guarded transaction refuses.
+      return context.database.withAuthorityTransaction(() => {
+        if (activity.hasUnquiescedWork(profileId)) throw new ProfileSessionRefusedError("PROFILE_DUO_REENROL_BUSY");
+        return body();
+      });
+    } },
     credentialsFor: (admission, purpose) => {
       const profileId = admission.profileBinding.profileId, entry = resources.get(profileId) ?? {};
       const current = entry[purpose];
@@ -1084,6 +1236,7 @@ export function composeProfileRuntime(input: Readonly<{
         const lifetime = machine.lifetime;
         if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("profile-logout-controller-required");
         await lifetime.awaitOwnedChildrenClosed();
+        await entry.context!.account.signOut();
         await entry.context!.account.close();
         entry.admission.assertProfileRuntime();
         const current = machine.readProfileRegistry();
@@ -1194,7 +1347,7 @@ const STORAGE_USAGE = [
   "       storage upgrade [--plan] [--machine-control] [--timeline-from <verified-copy-directory>] [--json]",
   "       storage cancel-queued-runs --plan [--json]",
   "       storage cancel-queued-runs --capture <digest> --apply [--json]",
-  "       storage repair-span-root --run <run-id> [--json]",
+  "       storage repair-span-root --run <run-id> [--person <profile-id>] [--json]",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces); exit 0 only when",
   "           authority, recovery inspection, credentials and span reconciliation are healthy; backup is reported, not gated",
   "  backup   write ONE verified authority backup + manifest under the state root's backups/authority;",
@@ -1203,7 +1356,8 @@ const STORAGE_USAGE = [
   "           stopped and the manifest is never chosen for you",
   "  repair-span-root  append one marked SQLite run.queued root reconstructed from exact",
   "           run/session/start-plan authority; existing span bytes stay unchanged and",
-  "           the runtime must be stopped",
+  "           the runtime must be stopped; on an installation the repair runs in the store",
+  "           of the signed-in person, which must hold the run, and --person must name them",
 ].join("\n");
 
 function formatAge(ageMs: number): string {
@@ -1350,11 +1504,14 @@ function rebuildStagedProjections(
     const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission);
     let staged: AuthorityDatabase;
     try {
+      const slowOperations = createSlowOperationEvents("http");
       staged = AuthorityDatabase.openStoppedRestoreProjection(
         stagedAdmission,
         { path: stagedPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-storage-restore" },
         clock,
+        slowOperations.hook,
       );
+      attachStorageSlowOperations(slowOperations, staged, clock, stateRoot);
     } catch (error) {
       stagedAdmission.release();
       throw error;
@@ -1415,42 +1572,68 @@ async function repairSpanRootCommand(
   _repoRoot: string,
   admission: RuntimeAdmission,
 ): Promise<StorageCommandOutcome> {
-  const runIndex = rest.indexOf("--run");
-  const runId = runIndex === -1 ? undefined : rest[runIndex + 1];
-  if (runId === undefined || runId.startsWith("--")) {
+  const value = (flag: string): string | undefined => {
+    const found = rest.includes(flag) ? rest[rest.indexOf(flag) + 1] : undefined;
+    return found === undefined || found.startsWith("--") ? undefined : found;
+  };
+  const runId = value("--run"), person = value("--person"), json = rest.includes("--json");
+  if (runId === undefined) {
     return {
       output: `storage repair-span-root requires one exact run id: --run <run-id>\n${STORAGE_USAGE}`,
       exitCode: 2,
     };
   }
+  if (rest.includes("--person") && (person === undefined || !admission.isInstallation())) {
+    return {
+      output: `storage repair-span-root --person names one person of an installation: --person <profile-id>\n${STORAGE_USAGE}`,
+      exitCode: 2,
+    };
+  }
+  const refused = (error: unknown): StorageCommandOutcome => ({
+    output: [
+      `span root repair REFUSED — ${messageChain(error)}`,
+      "rerun doctor before deciding the next action; an exact repeat reuses the retained marked event without another append",
+    ].join("\n"),
+    exitCode: 1,
+  });
+  // Each person keeps their own store under the machine root, so the machine admission repairs under the admission of the person who holds the run.
+  let holder: string | undefined;
+  if (admission.isInstallation()) {
+    try { holder = findRunHolder(admission, runId, person); }
+    catch (error) {
+      if (hasUnprovedSourceClosure(error)) throw error;
+      return refused(error);
+    }
+  }
   const operation = admission.acquireOfflineMaintenance();
+  let owner: RuntimeAdmission | undefined;
   try {
-    const json = rest.includes("--json");
-    const stateRoot = admission.stateRoot;
+    owner = holder === undefined ? admission : admission.admitStoppedProfile(holder, operation);
+    const stateRoot = owner.stateRoot;
     const authorityPath = join(stateRoot, "state.db");
     const processLockRoot = join(offlineMaintenanceWorkspace(operation), isolation.processLockRoot);
-    const service = new OfflineSpanRootRepairService(profileBrowserClosure, admission, {
+    const service = new OfflineSpanRootRepairService(profileBrowserClosure, owner, {
       stateRoot,
       authorityPath,
       processLockRoot,
       busyTimeoutMs: 5000,
     }, clock);
     const report = await service.repair({ runId }, operation);
+    if (owner !== admission) owner.release();
     return {
-      output: json ? JSON.stringify(report, null, 2) : formatSpanRootRepairReport(report),
+      output: holder === undefined
+        ? json ? JSON.stringify(report, null, 2) : formatSpanRootRepairReport(report)
+        : json ? JSON.stringify({ profileId: holder, report }, null, 2) : `person ${holder}\n${formatSpanRootRepairReport(report)}`,
       exitCode: 0,
     };
   } catch (error) {
-    if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission, restore: operation });
-    try { if (isOfflineMaintenanceOperationActive(operation)) operation.release(); }
-    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission, restore: operation }); }
-    return {
-      output: [
-        `span root repair REFUSED — ${messageChain(error)}`,
-        "rerun doctor before deciding the next action; an exact repeat reuses the retained marked event without another append",
-      ].join("\n"),
-      exitCode: 1,
-    };
+    const custody = { admission: owner ?? admission, restore: operation };
+    if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], custody);
+    try {
+      if (isOfflineMaintenanceOperationActive(operation)) operation.release();
+      if (owner !== admission) owner?.release();
+    } catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], custody); }
+    return refused(error);
   }
 }
 

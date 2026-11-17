@@ -80,31 +80,6 @@ export function workerBrowserView(card: WorkerCardWire): Readonly<{
 }
 
 
-/** The claimed run's already-served queue pipeline is the worker's step authority. */
-export function workerTimelineView(
-  card: WorkerCardWire,
-  queueSurfaces: readonly QueueSurfaceWire[],
-): Readonly<{ state: "present"; steps: QueueSurfaceWire["pipeline"] }>
-  | Readonly<{ state: "absent"; reason: string }> {
-  const currentRun = card.currentRun;
-  if (currentRun.state === "absent") return { state: "absent", reason: currentRun.reason };
-  const row = queueSurfaces.find((surface) => String(surface.runId) === String(currentRun.runId));
-  if (row === undefined) return { state: "absent", reason: "Run timeline is not served on this day" };
-  if (row.pipeline.length === 0) return { state: "absent", reason: "No steps are served for this run" };
-  return { state: "present", steps: row.pipeline };
-}
-
-export const WORKER_TIMELINE_TONE: Record<QueueSurfaceWire["pipeline"][number]["state"], string> = {
-  done: "border-[color:var(--ds-success-mark)] bg-[var(--ds-success-mark)]",
-  active: "border-[color:var(--ds-status-running-mark)] bg-[var(--ds-status-running-mark)]",
-  pending: "border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-1)]",
-  failed: "border-[color:var(--ds-danger)] bg-[var(--ds-danger)]",
-  blocked: "border-[color:var(--ds-status-waiting-mark)] bg-[var(--ds-status-waiting-mark)]",
-  skipped: "border-[color:var(--ds-border-subtle)] bg-[var(--ds-surface-1)]",
-  cancelled: "border-[color:var(--ds-status-cancelled-mark)] bg-[var(--ds-status-cancelled-mark)]",
-};
-
-
 /** Separate desired pool declarations from served live leases; terminal records do not count as capacity. */
 export type WorkerPoolFacts =
   | Readonly<{ state: "declared"; desiredWorkers: number; version: number; activeWorkers: number }>

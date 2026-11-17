@@ -54,13 +54,11 @@ describe("architecture project empty collection", () => {
     );
   });
 
-  it("keeps the membership guard in architecture and limits exclusions to operator-machine markers", () => {
+  it("keeps the membership guard in architecture without exclusions", () => {
     const architecture = namedArchitectureProject(vitestConfig);
     assert.deepEqual(architecture?.include, ["tests/architecture/**/*.test.ts"]);
-    assert.deepEqual(architecture?.exclude, [
-      "tests/**/*.local.test.ts",
-      "tests/**/*.local.integration.test.ts",
-    ]);
+    const excludedPatterns: readonly string[] = [];
+    assert.deepEqual(architecture?.exclude, excludedPatterns);
     assert.equal(
       architecture?.exclude?.some((pattern) => pattern.includes("guard-manifest")),
       false,

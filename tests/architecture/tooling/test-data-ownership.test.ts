@@ -23,7 +23,7 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/helpers/credential-persistence-fixtures.ts",
   "tests/support/helpers/credential-source-retention.ts",
   "tests/support/helpers/synthetic-database-admission.ts",
-  "tests/support/fixtures/integration/activity-person-pseudonym-fixtures.ts",
+  "tests/support/fixtures/integration/separations-run-fixtures.ts",
   "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts",
   "tests/support/helpers/integration/storage-recovery-fixture.ts",
 
@@ -33,7 +33,8 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/helpers/backend/dashboard-harness.ts",
   "tests/support/helpers/backend/settings-authority-world.ts",
   "tests/support/helpers/backend/http-route-harness.ts",
-  "tests/support/helpers/storage/native-authority/retained-database-fixture.ts",
+  "tests/support/helpers/dashboard/assistant-history-server.ts",
+  "tests/support/helpers/assistant-m1-history-fixture.ts",
   "tests/support/fixtures/storage/historical-flat-profile-fixture.ts",
   "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts",
   "tests/support/fixtures/storage/retained-historical-data.ts",
@@ -44,7 +45,6 @@ const SHARED_ROOTS = ["tests/support/fixtures", "tests/support/helpers"];
 const CROSS_TIER_ROOTS = ["tests", "scripts", "src"];
 /** Seams a shared fixture may never touch at import time. */
 const FORBIDDEN_SHARED_IMPORTS: readonly RegExp[] = [
-  /src\/control\/test-data\.js$/u,
   /src\/backend\/storage\/configuration\/credential-store\.js$/u,
   /secure-env-bootstrap/u,
   /^dotenv/u,
@@ -79,7 +79,7 @@ const DEFERRED_CAPABILITIES = [
   { importer: 'tests/support/helpers/backend/dashboard-port-world.ts', module: 'src/backend/storage/configuration/credential-store.js', symbol: 'createCredentialStore' },
   { importer: "tests/support/helpers/credential-persistence-fixtures.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/synthetic-database-admission.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
-  { importer: "tests/support/fixtures/integration/activity-person-pseudonym-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/fixtures/integration/separations-run-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/integration/storage-recovery-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/admission-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
@@ -88,7 +88,8 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/helpers/backend/settings-authority-world.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/fixtures/preflight/corpus.ts", module: "playwright", symbol: "chromium" },
   { importer: "tests/support/helpers/backend/http-route-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
-  { importer: "tests/support/helpers/storage/native-authority/retained-database-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/dashboard/assistant-history-server.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/support/helpers/assistant-m1-history-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/storage/historical-run-schema.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/storage/older-build-authority.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/storage/historical-flat-profile-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },

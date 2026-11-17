@@ -45,12 +45,12 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 | Thing | Name |
 | --- | --- |
 | Ticket ID | `<feature>-NN` |
-| Feature branch | `feature/<feature>`: from `origin/staging`, one PR into `staging` |
+| Feature branch | `feature/<feature>`: from `origin/development`, one PR into `development` |
 | Ticket branch | `task/<feature>/<lane>`: from its feature branch, merged back with `--no-ff`, no PR |
-| Standalone fix | `fix/<area>-<symptom>`: one ticket, one PR into `staging` |
-| Chore | `chore/<area>-<change>`: tooling, tests or docs with no product change; one PR into `staging` |
+| Standalone fix | `fix/<area>-<symptom>`: from `origin/development`, one ticket, one PR into `development` |
+| Chore | `chore/<area>-<change>`: tooling, tests or docs with no product change; from `origin/development`, one PR into `development` |
+| Hotfix | `hotfix/<area>-<symptom>`: from `main`, one PR into `main` titled `Hotfix: <what it fixes>`; the same commits reach `development` through a `fix/*` PR |
 | Design | `design/<area>`: mock with real components for operator approval, never merged |
-| Scratch | `scratch/<lane>-<n>`: focused CI feedback or a red probe, never merged, removed after use |
 | Worktree | `.worktrees/<feature>.<lane>`; the feature's own checkout is `.worktrees/<feature>` |
 | PR title | `<Area>: <what the operator gets>` |
 | Spec | `.work/specs/<feature>.md` |
@@ -58,7 +58,7 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 
 - Use no other branch prefix. Run `npm run names:check` before the first push and before opening a
   PR.
-- Keep the main checkout on a clean `staging` and work only in `.worktrees/`. A ticket lives on one
+- Keep the main checkout on a clean `development` and work only in `.worktrees/`. A ticket lives on one
   machine with its tests; work moves between machines only as pushed branches.
 - Leave no stash behind at the end of a session: commit to the ticket branch.
 - Merge a ticket branch into its feature branch only after the reviewer clears its SHA, then remove
@@ -68,14 +68,17 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 
 ## Git
 
-- Keep `main` as released production and `staging` as operator-preview integration.
+- Keep `main` as released production, `staging` as operator-preview integration, and `development`
+  as the feature integration base.
 
 ### PR and release flow
 
 - The `dev-auto` (orchestrator), `duo` (coder and reviewer pair) and `ship` (publish to merge)
   skills hold the lane, review-loop and PR procedure. Load the one your ticket names.
-- Changes reach `staging` only through a PR. Never push directly to `main` or `staging`. Merge the
-  latest base into your branch; never rebase or force-push. Never merge a PR by hand.
+- Feature, fix and chore branches start from `origin/development` and reach `development` through a PR.
+  Push `docs/roadmap/**` straight to `development`. `staging` receives PRs from `development` only,
+  one coherent batch at a time. Never push directly to `main` or `staging`. Merge the latest base
+  into your branch; never rebase or force-push. Never merge a PR by hand.
 - Workflow behavior PRs wait for a live dry run and operator sign-off. Required check names live
   in [repository governance](docs/repository-governance.md).
 - Refer repairs requiring workflow/CI configuration edits, HR write-path changes, weakened guards
@@ -86,26 +89,32 @@ the [codebase map](docs/reference/codebase-structure.md) for owners, and the
 
 ## Checks
 
-- Follow the ticket's test path: focused GitHub feedback by default, or an orchestrator-granted
-  local slot, never both. CI-path lanes run typecheck and lint serially; tests wait for the named
-  runner. Pause local tests during operator live runs. Run full suites only in a granted slot; PR
+- Run tests only in an orchestrator-granted local slot. CI-path lanes run typecheck and lint
+  serially. Pause local tests during operator live runs. Run full suites only in a granted slot; PR
   CI supplies the feature's full run. Run native proofs on platform-matching machines.
+- Before clearing a push, pass the whole architecture suite and the unit and integration tests
+  affected by the diff against `origin/development`. On the main Mac, run `npm run test:pc` without
+  file arguments. On a backend host, run `npx vitest run --project architecture`, then
+  `npx vitest run --project unit --project integration --changed=origin/development` in the ticket's
+  checkout under its assigned test slot.
 - Before review/push, complete typecheck, lint/static checks and source generators whose inputs
   changed; report unrun tests for the reviewer and CI. Never commit a failure caused by the change;
   a demonstrated base failure may proceed with its evidence recorded.
 - Docs-only changes need link, whitespace and affected generated-output checks and any tests that
   parse the edited documents; prose alone needs no runtime suite.
-- Staging PRs run portable Ubuntu unit, integration and architecture suites plus static and
-  privacy. Keep `NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` out of Ubuntu shards,
-  retaining release coverage. Add new native proofs to `scripts/test/ci-files.ts`.
-- Only the operator starts full-release CI; agents never dispatch or rerun CI workflows. The
-  [focused-test script](docs/reference/guards-and-tests.md#focused-tests-in-github-actions) is
-  scratch feedback, not a release or merge proof.
-- Native proofs run in CI only for operator-started releases. Release checks build the
-  web bundle, run coverage alone, then perf; coverage already selects unit, integration and
-  architecture, so do not rerun those full suites for unchanged inputs.
-- PC feedback never blocks a repair push or replaces the published head's PR CI; never run
-  macOS-native proofs there. Keep machine slot details in `.work/operations.md`.
+- Development PRs run the fast Ubuntu plan: names and plan, lint, static, privacy, three unit
+  shards, two architecture shards and the `development` gate, at most ten jobs. Drafts run static,
+  privacy and selected unit shards, with names, plan and gate. Staging PRs from `development` run
+  portable Ubuntu unit, integration and architecture suites plus static, privacy, perf and smoke.
+  Keep `NATIVE_FILES`, `SERIAL_FILES` and `SERIAL_STORAGE_FILES` out of Ubuntu shards,
+  retaining release coverage. Local unit and integration runs skip those files unless
+  `RELAY_TEST_NATIVE=1`. Add new native proofs to `scripts/test/ci-files.ts`.
+- Only the operator starts full-release CI; agents never dispatch or rerun CI workflows.
+- Native proofs run in CI only for operator-started releases. Release checks run the selected
+  unit, integration and architecture suites, including native proofs; ready pull requests also
+  build the web bundle for perf and smoke, while manual releases skip those jobs.
+- Keep the published head's PR CI as the merge proof. Never run macOS-native proofs
+  on the PC. Keep machine slot details in `.work/operations.md`.
 - Refresh `scripts/test/ci-durations.json` when job end times spread more than a minute. Generate
   derived files through their source, never by hand.
 - Before local coverage, verify free memory, no swap pressure and no listener on the runtime

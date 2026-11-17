@@ -108,7 +108,7 @@ export function personLookupLogSnapshot(scenario: PersonLookupLogScenario): RunL
   const failure = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: {
     runId: RUN, failureId: id(800), native: nativeOf("cross-verify", 700), traceId: TRACE, attempt: 1, workflowId: "person-lookup", nodeId: "cross-verify", taskId: "crm/read-onboarding-record",
     display: { title: "Step could not be completed", observation: "The step stopped unexpectedly. Open Details to review the recorded error." },
-    resolution: { capability: { state: "available" }, capture: { runId: RUN, failureId: id(800), resolution: { status: "unresolved", version: 1 } } },
+    resolution: { capture: { runId: RUN, failureId: id(800), resolution: { status: "unresolved", version: 1 } } },
     fingerprint: "e".repeat(64), code: "PERSON_LOOKUP_CRM_CHECK_FAILED", summary, transient: false, writeState: "not-attempted",
     subject: { state: "present", expected: { kind: "eid", digest: "1".repeat(64), displayRedacted: "••••0001" }, observed: { kind: "eid", digest: "2".repeat(64), displayRedacted: "••••0002" } },
     action: { operation: "read", sequence: 3 }, causeChain: [{ code: "PERSON_LOOKUP_CRM_CHECK_FAILED", summary, role: "primary", transient: false }],

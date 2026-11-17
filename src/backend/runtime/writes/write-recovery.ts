@@ -9,32 +9,18 @@ import { ParkedWriteCheckResultSchema, type ParkedWriteCheckTarget, type ParkedW
 import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 import type { ParkedWriteCheckAcknowledgement } from "../../../rules/commands/commands.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { valueFreeProtectedData, retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
-import { isFreshOccurrenceProof } from "../gates/repeat-proof.js";
 
-import { z } from "zod";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
-import type { JsonValue } from "../../../rules/validation/canonical-json.js";
-import type { Clock } from "../../../rules/time/clock.js";
-import type { AnyCommitTaskContract } from "../../../models/task/task-contract.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import {
   ActorIdSchema,
-  IsoInstantSchema,
   PositiveIntSchema,
-  WriteIntentIdSchema,
 } from "../../../rules/identity/ids.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { idempotencyKeyDigestReference } from "../../../rules/redaction/redaction.js";
 import {
   WriteIntentRecordSchema,
-  evaluateNegativeSettlement,
-  deriveWriteAuthorityReason,
-  NegativeSettlementPolicySchema,
-  RecoveryProbeVerdictSchema,
   type WriteIntentRecord,
-  type WriteAuthorityReason,
 } from "../../../rules/write-safety/write-safety.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import {
@@ -46,26 +32,20 @@ import {
 } from "./write-resolution-binding.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { rejectCommandRequest } from "../../runs/commands/command-refusal.js";
+import { lifecycleCommandId, type RunContinuationPort } from "../../runs/lifecycle/run-record-service.js";
 import type {
   WriteResolutionContext,
   WriteResolutionExecutor,
   WorkflowDescriptorResolver,
 } from "../../runs/commands/command-kernel.js";
 import {
-  buildCommittedSettlement,
-  executeSequencedWriteCommit,
   type ProbeReadDeps,
-  type RuntimeProbeVerdict,
   type TransactionSessionHost,
   type WriteSequencerAuthority,
   type WriteSequencerHooks,
 } from "./write-sequencer.js";
 import type { RunConfigFingerprintBinding } from "../workers/worker-sessions.js";
-import { applyWriteTransition, ResolvedParkedWriteAbsenceInputSchema, type WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
-import { WriteParkCodeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
-import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
-import type { TaskLogger } from "../../../workflow-kit/task.js";
-import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
+import { applyWriteTransition, ResolvedParkedWriteAbsenceInputSchema } from "../../storage/sqlite/write-commit-contracts.js";
 
 /** Exact retained authority; this read never changes the run, attempt or intent. */
 export function requireParkedWriteCheckTarget(repositories: Pick<AuthorityRepositories, "runs" | "writeIntents" | "writeAttempts" | "runCheckpoints" | "gateResults">,
@@ -156,348 +136,15 @@ export async function checkParkedWrite(input: Readonly<{
     ...(findingsIdentity === undefined ? {} : { findingsIdentity }) };
 }
 
-/* ── the typed recovery decision ─────────────────────────────────────────── */
-
-export const WriteRecoveryDecisionSchema = z.discriminatedUnion("state", [
-  z.strictObject({
-    state: z.literal("backfilled"),
-    writeIntentId: WriteIntentIdSchema,
-    generation: z.number().int().positive(),
-  }),
-  z.strictObject({
-    state: z.literal("safe-to-retry"),
-    writeIntentId: WriteIntentIdSchema,
-    generation: z.number().int().positive(),
-  }),
-  z.strictObject({
-    state: z.literal("wait"),
-    writeIntentId: WriteIntentIdSchema,
-    generation: z.number().int().positive(),
-    notBefore: IsoInstantSchema,
-    observationsNeeded: z.number().int().positive(),
-  }),
-  z.strictObject({
-    state: z.literal("parked"),
-    writeIntentId: WriteIntentIdSchema,
-    generation: z.number().int().positive(),
-    code: WriteParkCodeSchema,
-    message: z.string().min(1),
-  }),
-]);
-export type WriteRecoveryDecision = z.infer<typeof WriteRecoveryDecisionSchema>;
-
-import { lifecycleCommandId, type RunContinuationPort } from "../../runs/lifecycle/run-record-service.js";
-
-export type WriteRecoveryAuthority = Omit<WriteSequencerAuthority, "authority" | "withAuthorityTransaction"> & {
-  readonly authority: AuthorityRepositories;
-  withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
-};
-
-export interface WriteRecoveryDependencies {
-  readonly continuation: RunContinuationPort;
-  readonly stores: TaskStoreRegistry;
-  readonly authority: WriteRecoveryAuthority;
-  // Recovery outside a worker claim window binds the target run's retained config fingerprint itself.
-  readonly sessions: Pick<TransactionSessionHost, "withDriver" | "closeAll"> & RunConfigFingerprintBinding;
-  readonly clock: Clock;
-  readonly ids: IdFactory;
-  readonly scheduler: MonotonicDeadlineScheduler;
-  readonly taskDeadlineMs: number;
-  readonly operator: unknown;
-  readonly log: TaskLogger;
-  readonly hooks?: WriteSequencerHooks;
-}
-
-export interface WriteRecoveryInput {
-  readonly descriptor: AnyWorkflowDescriptor;
-  readonly writeIntentId: string;
-  // Pre-settlement absence observations are held in this recovery episode, never synthesized.
-  readonly priorVerdicts?: readonly unknown[];
-  readonly signal: AbortSignal;
-}
-
-export interface WriteRecoveryService {
-  recover(input: WriteRecoveryInput): Promise<WriteRecoveryDecision>;
-}
-
-type AttemptingIntent = Extract<WriteIntentRecord, { status: "attempting" }>;
-
-/* ── the recovery service ────────────────────────────────────────────────── */
-
-export function createWriteRecoveryService(deps: WriteRecoveryDependencies): WriteRecoveryService {
-  const operator = ActorIdSchema.parse(deps.operator);
-  const instant = () => IsoInstantSchema.parse(deps.clock.now().toISOString());
-  const probeDeps: ProbeReadDeps = {
-    stores: deps.stores,
-    sessions: deps.sessions,
-    clock: deps.clock,
-    scheduler: deps.scheduler,
-    taskDeadlineMs: deps.taskDeadlineMs,
-    log: deps.log,
-  };
-
-  function park(
-    intent: AttemptingIntent,
-    code: WriteIntentParkCode,
-    message: string,
-    authorityReason: WriteAuthorityReason,
-  ): WriteRecoveryDecision {
-    deps.authority.withAuthorityTransaction((repositories) => {
-      repositories.writeIntents.parkAttempt({
-        writeIntentId: intent.writeIntentId,
-        generation: intent.generation,
-        expectedVersion: intent.version,
-        code,
-        message,
-        authorityReason,
-        now: instant(),
-      });
-    });
-    return WriteRecoveryDecisionSchema.parse({
-      state: "parked",
-      writeIntentId: intent.writeIntentId,
-      generation: intent.generation,
-      code,
-      message,
-    });
-  }
-
-  async function recover(input: WriteRecoveryInput): Promise<WriteRecoveryDecision> {
-    const intent = deps.authority.authority.writeIntents.get(input.writeIntentId);
-    if (intent === undefined) throw new Error(`write intent ${input.writeIntentId} does not exist`);
-    if (intent.status !== "attempting") {
-      throw new Error(
-        `write intent ${input.writeIntentId} is ${intent.status}; §4 recovery owns only unfinished `
-        + "attempting intents — parked intents take the typed operator resolutions",
-      );
-    }
-    const run = deps.authority.authority.runs.get(intent.runId);
-    if (run === undefined) {
-      throw new Error(`write intent ${input.writeIntentId} names run ${intent.runId}, which does not exist`);
-    }
-    const protectedReason: typeof deriveWriteAuthorityReason = (code, kind, detail) => {
-      const bindings = retainedRunProtectedBindings(run);
-      if (bindings.length === 0) return deriveWriteAuthorityReason(code, kind, detail);
-      const parsed: unknown = kind === "exception" || kind === "session" ? "protected detail withheld" : JSON.parse(detail);
-      return deriveWriteAuthorityReason(code, kind, canonicalJsonStringify({ protectedBindings: bindings,
-        evidence: valueFreeProtectedData(parsed, bindings) }));
-    };
-
-    const { node } = requireWriteResolutionBinding({
-      arm: "recovery-probe",
-      descriptor: input.descriptor,
-      run,
-      intent,
-      repositories: deps.authority.authority,
-    });
-    const commitContract: AnyCommitTaskContract = node.commit.uses;
-    const commitInput = rebuildCommitInput(
-      deps.authority.authority,
-      input.descriptor,
-      node,
-      run,
-      intent,
-    );
-    const instanceSelection = run.envelope.resolvedInstance[intent.system];
-    if (instanceSelection === undefined) {
-      throw new Error(`run ${intent.runId} resolved no ${intent.system} instance; recovery cannot probe`);
-    }
-
-
-    let verdict: RuntimeProbeVerdict;
-    try {
-      verdict = await executeRecoveryProbe({ operation: "diagnostic-recovery", repositories: deps.authority.authority,
-        run, intent, node, descriptor: input.descriptor, commitInput, signal: input.signal,
-        probe: probeDeps, sessions: deps.sessions });
-    } catch (error) {
-      if (error instanceof RecoveryActivityError || error instanceof WorkerSessionClosureUnprovedError
-        || error instanceof BrowserSessionClosureUnprovedError || error instanceof DuoCeremonyReleaseFailedError) throw error;
-      input.signal.throwIfAborted();
-      return park(
-        intent,
-        "unknown",
-        `recovery probe threw for ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))}; `
-          + "the target state is unknown and only a typed resolution may release it",
-        protectedReason(
-          "recovery-probe-exception",
-          "exception",
-          error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`,
-        ),
-      );
-    }
-
-    if (intent.occurrence !== undefined && verdict.state !== "present") {
-      return park(intent, "unknown", "Generic business-key evidence cannot identify the new write occurrence",
-        protectedReason("recovery-probe-unknown", "probe", canonicalJsonStringify(verdict)));
-    }
-    if (verdict.state === "present") {
-      const completion = commitContract.writeSafety.completion;
-      let proofValue: JsonValue;
-      let outputValue: JsonValue;
-      try {
-        const proofRaw: unknown = Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]);
-        const proof = completion.proofSchema.parse(proofRaw);
-        const outputRaw: unknown = Reflect.apply(completion.outputFromProof, undefined, [proof]);
-        proofValue = JsonValueSchema.parse(proof);
-        outputValue = JsonValueSchema.parse(commitContract.output.parse(outputRaw));
-      } catch (error) {
-        return park(
-          intent,
-          "present-proof-invalid",
-          `recovery probe found ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))} present, but its `
-          + "proof does not satisfy the declared completion schema; a present we cannot validate is indeterminate, not done",
-          protectedReason(
-            "recovery-present-proof-schema-failure",
-            "exception",
-            error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`,
-          ),
-        );
-      }
-      if (!isFreshOccurrenceProof(intent, run.envelope, {
-        schemaHash: deriveSchemaHash(completion.proofSchema, "output"), value: proofValue,
-      })) {
-        return park(intent, "unknown", "Earlier receipt cannot settle the new write occurrence",
-          protectedReason("recovery-probe-unknown", "proof", canonicalJsonStringify(proofValue)));
-      }
-      if (run.lifecycle.state !== "parked-write") {
-        throw new Error(
-          `run ${intent.runId} is ${run.lifecycle.state}; positive-recovery backfill requires the `
-          + "sweep's parked-write routing first — an unclaimable non-parked run stays unclaimable",
-        );
-      }
-      const settlement = buildCommittedSettlement({
-        descriptor: input.descriptor,
-        nodeId: String(node.id),
-        run,
-        intent,
-        commitContract,
-        operator,
-        implFingerprint: taskImplFingerprint(commitContract),
-        proofSource: "recovery-probe",
-        proofValue,
-        outputValue,
-        confirmedAt: instant(),
-        ids: deps.ids,
-      });
-      executeSequencedWriteCommit(
-        deps.authority,
-        {
-          run: { runId: run.envelope.runId, expectedVersion: run.version },
-          checkpoint: settlement.checkpoint,
-          commit: settlement.commit,
-        },
-        { kind: "resume-queued", startAt: String(node.id), port: deps.continuation,
-          commandId: lifecycleCommandId("positive-recovery", { writeIntentId: intent.writeIntentId, generation: intent.generation }) },
-        deps.hooks,
-      );
-      return WriteRecoveryDecisionSchema.parse({
-        state: "backfilled",
-        writeIntentId: intent.writeIntentId,
-        generation: intent.generation,
-      });
-    }
-
-    if (verdict.state === "ambiguous") {
-      return park(intent, "ambiguous",
-        `recovery probe found ${String(verdict.matches)} matches for ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))}; `
-        + "verify in the target system, then use the typed resolutions",
-      protectedReason("recovery-probe-ambiguous", "probe", canonicalJsonStringify(verdict)));
-    }
-    if (verdict.state === "unknown") {
-      return park(intent, "unknown",
-        `recovery probe is indeterminate for ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))}; `
-        + "verify in the target system, then use the typed resolutions",
-      protectedReason("recovery-probe-unknown", "probe", canonicalJsonStringify(verdict)));
-    }
-
-    // One absence observation is diagnostic; retry authority requires the declared stabilized evidence.
-    const policy = NegativeSettlementPolicySchema.parse(commitContract.writeSafety.idempotency.recoveryAbsence);
-    const priorVerdicts = (input.priorVerdicts ?? []).map((prior) => RecoveryProbeVerdictSchema.parse(prior));
-    const observation = RecoveryProbeVerdictSchema.parse({ state: "absent", evidence: verdict.evidence });
-    const evaluation = evaluateNegativeSettlement({
-      writeIntentId: intent.writeIntentId,
-      generation: intent.generation,
-      idempotencyKeyDigest: intent.idempotencyKeyDigest,
-      authoritativeSource: verdict.evidence.source,
-      authoritativeSourceState: verdict.evidence.sourceState,
-      queryDigest: verdict.evidence.queryDigest,
-      fencedAt: intent.fencedAt,
-      policy,
-      verdicts: [...priorVerdicts, observation],
-    }, deps.clock);
-
-    if (evaluation.state === "safe-to-retry") {
-      deps.authority.withAuthorityTransaction((repositories) => {
-        repositories.writeIntents.settleRetryable({
-          writeIntentId: intent.writeIntentId,
-          generation: intent.generation,
-          expectedVersion: intent.version,
-          settlement: evaluation,
-          now: instant(),
-        });
-        const current = repositories.runs.get(run.envelope.runId);
-        if (current === undefined) throw new Error(`run ${run.envelope.runId} disappeared during settlement`);
-        if (current.lifecycle.state !== "parked-write") {
-          throw new Error(
-            `run ${run.envelope.runId} is ${current.lifecycle.state}; a safe-to-retry settlement resumes only `
-            + "a parked-write run",
-          );
-        }
-        const resumed = deps.continuation.transition({
-          commandId: lifecycleCommandId("recovery-absent", { writeIntentId: intent.writeIntentId, generation: intent.generation }),
-          lifecycle: { state: "queued" }, writeResolution: {kind:"recovery",writeIntentId:intent.writeIntentId,generation:intent.generation,writeAttemptId:intent.currentAttemptId,bindingProofDigest:intent.bindingProofDigest,decision:"absent"},
-          runId: run.envelope.runId,
-          expectedVersion: current.version,
-          startAt: node.id,
-        });
-        if (resumed.state !== "applied") {
-          throw new Error(`resuming run ${run.envelope.runId} after retry settlement failed: ${resumed.state}`);
-        }
-      });
-      return WriteRecoveryDecisionSchema.parse({
-        state: "safe-to-retry",
-        writeIntentId: intent.writeIntentId,
-        generation: intent.generation,
-      });
-    }
-    if (evaluation.state === "wait") {
-
-      return WriteRecoveryDecisionSchema.parse({
-        state: "wait",
-        writeIntentId: intent.writeIntentId,
-        generation: intent.generation,
-        notBefore: evaluation.notBefore,
-        observationsNeeded: evaluation.observationsNeeded,
-      });
-    }
-    const code: WriteIntentParkCode = evaluation.code === "operator-only"
-      ? "operator-required"
-      : evaluation.code === "ambiguous"
-        ? "ambiguous"
-        : "unknown";
-    return park(
-      intent,
-      code,
-      `negative settlement parked ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))} `
-        + `(${evaluation.code}); only the declared settlement policy or a typed operator resolution may release it`,
-      protectedReason(
-        `negative-settlement-${evaluation.code}`,
-        "settlement",
-        canonicalJsonStringify(evaluation),
-      ),
-    );
-  }
-
-  return Object.freeze({ recover });
-}
-
 /* ── the kernel's typed operator resolutions (ref write-safety ) ───────────────── */
 
 export interface WriteResolutionDependencies {
   readonly continuation: RunContinuationPort;
   readonly descriptors: WorkflowDescriptorResolver;
   // Use the kernel's AuthorityDatabase connection so resolution composes inside its transaction as a savepoint.
-  readonly authority: WriteRecoveryAuthority & {
+  readonly authority: Omit<WriteSequencerAuthority, "authority" | "withAuthorityTransaction"> & {
+    readonly authority: AuthorityRepositories;
+    withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
     settleResolvedParkedAbsence(input: unknown): WriteIntentRecord;
   };
   readonly ids: IdFactory;

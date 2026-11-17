@@ -1,5 +1,6 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -7,9 +8,74 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
+/** Steps a current authority back to schema 30: the change log, its run references, its triggers and indexes did not exist. */
+export function removeSchema31ChangeLog(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 31);
+  const objects = z.array(z.object({ type: z.string(), name: z.string() })).parse(database.prepare("SELECT type,name FROM sqlite_schema").all())
+    .filter(({ name }) => CHANGE_LOG_OBJECTS.includes(name));
+  for (const type of ["trigger", "index", "table"]) for (const object of objects) if (object.type === type) database.exec(`DROP ${type} ${object.name}`);
+  database.exec("DELETE FROM sqlite_sequence WHERE name='authority_changes'; UPDATE database_states SET schema_version=30; PRAGMA user_version=30");
+}
+
+/** Removes schema 30's pin and tags from every library state and recorded action result; the schema version is left to the caller. */
+function removeSchema30WorkbookPinTags(database: DatabaseSync): void {
+  const guard = SQLITE_MIGRATIONS.find(migration => migration.version === 30)?.statements
+    .find(statement => statement.startsWith("CREATE TRIGGER workbook_library_actions_update"));
+  assert.ok(guard);
+  database.exec(`DROP TRIGGER workbook_library_actions_update;
+    UPDATE workbook_library_state SET payload_json=json_remove(payload_json,'$.pinned','$.tags');
+    UPDATE workbook_library_actions SET payload_json=json_remove(payload_json,'$.result.pinned','$.result.tags');
+    ${guard}`);
+}
+
+/** Steps a current authority back to schema 29: library states and recorded actions carried no pin or tags. */
+export function restoreSchema29WorkbookPinTags(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 31) removeSchema31ChangeLog(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 30);
+  removeSchema30WorkbookPinTags(database);
+  database.exec("UPDATE database_states SET schema_version=29; PRAGMA user_version=29");
+}
+
+/** Steps an empty current authority back to schema 28: the empty operator grant table still existed. */
+export function restoreSchema28AssistantGrants(database: DatabaseSync): void {
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 30) restoreSchema29WorkbookPinTags(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 29);
+  const ddl = SQLITE_MIGRATIONS.find(migration => migration.version === 8)?.statements.join("\n");
+  const table = ddl?.match(/CREATE TABLE assistant_grants \([\s\S]*?\n\) STRICT;/u)?.[0], trigger = ddl?.match(/CREATE TRIGGER assistant_grants_revision[\s\S]*?END;/u)?.[0];
+  assert.ok(table && trigger);
+  database.exec(`${table}\n${trigger}`);
+  database.exec("UPDATE database_states SET schema_version=28; PRAGMA user_version=28");
+}
+
+/** Steps an empty schema-28 authority back to schema 27: the attachments table did not exist yet. */
+export function removeEmptySchema28Attachments(database: DatabaseSync): void {
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 29) restoreSchema28AssistantGrants(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 28);
+  assert.equal(database.prepare("SELECT count(*) AS count FROM assistant_attachments").get()?.count, 0);
+  database.exec("DROP TABLE assistant_attachments");
+  database.exec("UPDATE database_states SET schema_version=27; PRAGMA user_version=27");
+}
+
+/** Steps a schema-27 authority back to schema 26: schema 27 converts stored efforts in place and keeps the same layout. */
+export function regressSchema27EffortScale(database: DatabaseSync): void {
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 28) removeEmptySchema28Attachments(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 27);
+  database.exec("UPDATE database_states SET schema_version=26; PRAGMA user_version=26");
+}
+
+/** Steps an empty current authority back to schema 25: the two assistant history tables did not exist yet. */
+export function removeEmptySchema26AssistantHistory(database: DatabaseSync): void {
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 27) regressSchema27EffortScale(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 26);
+  for (const table of ["assistant_messages", "assistant_conversations"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
+  database.exec("DROP TABLE assistant_messages; DROP TABLE assistant_conversations");
+  database.exec("UPDATE database_states SET schema_version=25; PRAGMA user_version=25");
+}
+
 /** Returns a current store to the schema-22 worker custody DDL, keeping each worker slot in its predecessor row shape; the schema version is left to the caller. */
 export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  removeSchema30WorkbookPinTags(database);
   // Rebuilding worker_slots briefly orphans the Duo and exclusive-session leases that reference it; the caller's transaction checks them at commit.
   database.exec("PRAGMA defer_foreign_keys=ON");
   const slots = z.array(z.object({ id: z.string(), workflow: z.string(), ordinal: z.number(), pool_index: z.number(), retired_at: z.string().nullable(),
@@ -24,7 +90,8 @@ export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): voi
   } finally { reference.close(); }
   const current = objects(database);
   const changed = (key: string) => current.get(key)?.sql !== prior.get(key)?.sql;
-  for (const [key, object] of current) if (changed(key) && object.type === "table") database.exec(`DROP TABLE ${object.name}`);
+  // Newest tables first, so a child table goes before the parent its foreign keys name.
+  for (const [key, object] of [...current].reverse()) if (changed(key) && object.type === "table") database.exec(`DROP TABLE ${object.name}`);
   for (const [key, object] of objects(database)) if (changed(key)) database.exec(`DROP ${object.type.toUpperCase()} ${object.name}`);
   for (const type of ["table", "index", "trigger"]) {
     for (const [key, object] of prior) if (object.type === type && !objects(database).has(key)) database.exec(object.sql);
@@ -55,7 +122,7 @@ export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
 }
 
 export function restoreSchema19RunSettlementFixture(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === CURRENT_AUTHORITY_SCHEMA_VERSION) restoreSchema20CompletionFixture(database);
+  if (database.prepare("PRAGMA user_version").get()?.user_version !== 20) restoreSchema20CompletionFixture(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 20);
   assert.equal(database.prepare("SELECT count(*) AS count FROM (SELECT run_id FROM run_results GROUP BY run_id HAVING count(*)>1)").get()?.count, 0);
   database.exec("DROP TRIGGER runs_completion_immutable");

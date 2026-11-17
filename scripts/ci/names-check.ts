@@ -216,29 +216,28 @@ function currentBranch(): string {
 }
 
 function branchProblem(branch: string, origin: readonly string[]): string | undefined {
-  if (branch === "main" || branch === "staging") return undefined;
+  if (branch === "main" || branch === "staging" || branch === "development") return undefined;
   if (matches("dependabot/.+", branch) && !branch.endsWith("/") && !/[\s]/u.test(branch)) return undefined;
   if (matches(`feature/${KEBAB}`, branch)) return undefined;
   if (matches(`design/${KEBAB}`, branch)) return undefined;
   if (matches(`fix/${KEBAB}-${KEBAB}`, branch)) return undefined;
   if (matches(`chore/${KEBAB}-${KEBAB}`, branch)) return undefined;
-  if (matches(`scratch/${KEBAB}-[0-9]+`, branch)) return undefined;
+  if (matches(`hotfix/${KEBAB}-${KEBAB}`, branch)) return undefined;
   if (matches(`task/${KEBAB}/${KEBAB}`, branch)) return undefined;
   // An origin task branch keeps an older lane segment. A new lane stays kebab-case.
   const legacy = new RegExp(`^task/(${KEBAB})/([A-Za-z0-9][A-Za-z0-9._-]*)$`, "u").exec(branch);
   if (legacy && origin.includes(branch)) return undefined;
-  return report(branch, "branch name is outside main, staging, dependabot/*, feature/<kebab>, task/<kebab>/<kebab>, fix/<kebab>-<kebab>, chore/<kebab>-<kebab>, design/<kebab>, and scratch/<kebab>-<digits>");
+  return report(branch, "branch name is outside main, staging, development, dependabot/*, feature/<kebab>, task/<kebab>/<kebab>, fix/<kebab>-<kebab>, chore/<kebab>-<kebab>, hotfix/<kebab>-<kebab>, and design/<kebab>");
 }
 
-function stagingHeadProblem(branch: string): string | undefined {
+function developmentHeadProblem(branch: string): string | undefined {
   if (branchProblem(branch, []) === undefined && (branch.startsWith("dependabot/") || branch.startsWith("feature/") || branch.startsWith("fix/") || branch.startsWith("chore/"))) {
     return undefined;
   }
-  return report(branch, "a staging pull request head must be feature/*, fix/*, chore/*, or dependabot/*");
+  return report(branch, "a development pull request head must be feature/*, fix/*, chore/*, or dependabot/*");
 }
 
-function titleProblem(title: string, branch: string): string | undefined {
-  if (branchProblem(branch, []) === undefined && branch.startsWith("dependabot/")) return undefined;
+function titleProblem(title: string): string | undefined {
   const shown = JSON.stringify(title);
   const match = /^(\S(?:.*\S)?): (\S(?:.*\S)?)$/u.exec(title);
   const area = match?.[1] ?? "";
@@ -344,13 +343,16 @@ function main(): void {
     const origin = request.originSet || request.branch !== undefined ? request.originBranches : originBranchNames();
     const problem = branchProblem(branch, origin);
     if (problem) reject(problem);
-    if (request.base === "staging") {
-      const head = stagingHeadProblem(branch);
+    if (request.base === "development") {
+      const head = developmentHeadProblem(branch);
       if (head) reject(head);
+    }
+    if (request.base === "staging" && branch !== "development") {
+      reject(report(branch, "a staging pull request head must be development"));
     }
   }
   if (request.titleSet) {
-    const problem = titleProblem(request.title ?? "", branch ?? "");
+    const problem = titleProblem(request.title ?? "");
     if (problem) reject(problem);
   }
   if (request.worktree !== undefined) {

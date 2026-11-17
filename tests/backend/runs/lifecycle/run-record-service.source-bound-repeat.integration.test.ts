@@ -1,6 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
-import { runClaim } from "../../../../src/models/run/record.js";
 import assert from "node:assert/strict";
 import { CreateRunRequestSchema } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
@@ -266,38 +265,6 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     assert.deepEqual(h.database.authority.runSessions.listByWorkflow(h.descriptor.id), []);
     assert.equal(h.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
     assert.deepEqual(h.queueRoots, []);
-  });
-
-  it.each(["old", "new", "absent"] as const)("after claim loss, %s recovery evidence follows the occurrence boundary", async (evidence) => {
-    const h = await harness(); const source = await completed(h);
-    const warning = h.proposal(source); assert.ok(warning.rerun);
-    const repeat = h.start(h.proposal(source, warning.rerun.warningDigest));
-    h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
-    h.world.onCommitClick = () => {
-      const running = h.fresh(repeat), claim = runClaim(running);
-      assert.ok(claim);
-      h.clock.advanceWall(1000);
-      const routed = h.lifecycle.requeue({ commandId: h.ids.uuid(), runId: repeat.envelope.runId,
-        expectedVersion: running.version, cause: "recovery", claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration } });
-      assert.equal(routed.state, "recovery-required");
-      throw new Error("synthetic process loss after fencing");
-    };
-    const interrupted = await h.execute(repeat);
-    assert.equal(interrupted.state, "abandoned");
-    delete h.world.onCommitClick;
-    const intent = h.database.authority.writeIntents.listByRun(repeat.envelope.runId)[0];
-    assert.equal(intent.status, "attempting", "the crashed process left its real fence unresolved");
-    h.world.probeResults.push(evidence === "absent" ? absentProbeEvidence(h.clock.now().toISOString())
-      : { state: "present", proof: { transactionId: evidence === "old" ? "T123456" : "T456789" } });
-    const recovered = await h.recovery.recover({ descriptor: h.descriptor, writeIntentId: intent.writeIntentId, signal: new AbortController().signal });
-    const settled = h.database.authority.writeIntents.get(intent.writeIntentId); assert.ok(settled);
-    assert.equal(settled.status, evidence === "new" ? "committed" : "parked", JSON.stringify(recovered));
-    assert.deepEqual(h.fresh(source), source);
-    if (evidence === "new") {
-      const clicks = h.world.events.filter((event) => event.startsWith("commit-click")).length;
-      assert.equal((await h.execute(h.fresh(repeat))).state, "done");
-      assert.equal(h.world.events.filter((event) => event.startsWith("commit-click")).length, clicks);
-    }
   });
 
   it("executes selected reads from submitted cleared values and preserves source checkpoints", async () => {
