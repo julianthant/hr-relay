@@ -11,7 +11,8 @@ import type { DashboardActionHandler } from "../../shared/actions/actions.js";
 import { LogPanel } from "../log-panel.js";
 import type { LogDecisionHandler } from "./log-feed.js";
 import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
-import { answeredRow, type LogDecision } from "./log-decision-model.js";
+import { answeredRow, isCancelOption, type LogDecision } from "./log-decision-model.js";
+import type { ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
 import type { LogStep } from "./log-feed-model.js";
 import { decisionScenarios, previewScenarios } from "./log-fixture.js";
 import { selectedLogPresentation, selectedLogSample, type LogSelection } from "./log-selection-model.js";
@@ -29,6 +30,11 @@ import { batchMemberRetryAction } from "../../../app/commands/command-dispatch.j
 type ServedNavigation = Readonly<{ reviewOpen?: boolean; reviewFocus?: DelegatedRecordRef; onReview?: () => void; onLogs?: () => void; onAction?: DashboardActionHandler }>;
 
 /** Rerun sits in the Logs footer when the row serves a rerun action. */
+function withoutConfirm(action: ActionDescriptorWire): ActionDescriptorWire {
+  const { confirm: _confirm, ...direct } = action;
+  return direct;
+}
+
 function rerunFooterButton(selection: LogSelection | undefined, onAction?: DashboardActionHandler) {
   const action = selection?.row.actions.find(candidate => candidate.kind === "navigation" && candidate.navigate.kind === "rerun");
   if (selection === undefined || action === undefined || onAction === undefined) return undefined;
@@ -62,13 +68,14 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     && (resource.command === undefined || resource.command.state === "refused") && onAction !== undefined;
   const target = useMemo(() => ({ runId: selection.row.runId, expectedVersion: selection.row.rowRevision }), [selection.row.runId, selection.row.rowRevision]);
   const cancel = selection.row.actions.find(action => action.kind === "command" && action.command === "cancel");
-  const cancelRun = cancel !== undefined && onAction !== undefined ? () => onAction(cancel, target) : undefined;
+  // A decision card's Cancel run is the operator's answer: it sends the row's cancel at once; the queue card keeps its confirm.
+  const cancelRun = cancel !== undefined && onAction !== undefined ? () => onAction(withoutConfirm(cancel), target) : undefined;
   // A run control sends the queue row's own descriptor; every other option goes through the served-decision dispatch.
   const decide = useCallback<LogDecisionHandler>((id, option, answer) => {
     if (option.send.via !== "row-action") { resource.onDecision?.(id, option, answer); return; }
     const key = option.send.actionKey;
     const action = selection.row.actions.find(candidate => candidate.key === key);
-    if (action !== undefined) onAction?.(action, target);
+    if (action !== undefined) onAction?.(isCancelOption(option) ? withoutConfirm(action) : action, target);
   }, [resource, selection.row.actions, onAction, target]);
   const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <Notice tone="danger" title={logsReadFailedTitle} description={resource.error} /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, logsReadFailedTitle]);
   const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Notice tone="danger" title={logsUnavailableTitle} description={resource.error} /> : undefined : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, resource.error]);
