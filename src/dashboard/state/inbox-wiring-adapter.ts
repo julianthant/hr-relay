@@ -146,9 +146,8 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       current.current.fresh = false;
       readEpoch.current++;
       refresh(value => value + 1);
-      const row = publication.notification, policy = notificationPolicy(row);
+      const row = publication.notification;
       if (row.kind === "backfill-gap") { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE") }); return; }
-      if (policy === undefined) return;
       if (row.state === "snoozed") return;
       void client.notificationTarget(row.notificationId).then(target => {
         if (current.current.request !== request) return;

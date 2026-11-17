@@ -154,6 +154,13 @@ it("refuses a stale target without marking it read", async () => {
   await act(async () => { h.value.open(item, (target, _opened, reject) => { if (target.kind === "refused") reject("Exact refusal"); }, () => assert.fail("must not open"), message => { refused = message; }); await new Promise(resolve => setTimeout(resolve, 0)); });
   assert.equal(refused, "Exact refusal"); assert.equal(h.commands.length, 0);
 });
+it("checks the target of a published notice that has no source policy and says so when it is refused", async () => {
+  const h = await harness(); const bare = row("run-failed", { title: "Run failed", context: { state: "unavailable" }, sourceEvent: { state: "unavailable" } });
+  assert.equal(notificationPolicy(bare), undefined); h.setRows([bare]); h.refuseTarget();
+  await act(async () => { h.listeners[0](publication(bare)); await new Promise(resolve => setTimeout(resolve, 0)); });
+  assert(h.requests.some(path => path.endsWith("/target")));
+  assert.match(h.value.notice, /no longer available/);
+});
 it("refuses foreign actor and wrong revision in shared notification readback", async () => {
   const h = await harness();
   const request = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "notification", type: "notification-read", target: { notificationId: id, actorId: "local-operator", expectedVersion: 1 } });
