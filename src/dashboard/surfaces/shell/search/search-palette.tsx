@@ -2,6 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import { Circle, CircleAlert, CircleCheck, Clock, FileSpreadsheet, LoaderCircle, Play, Settings, Table2, Workflow, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Skeleton } from "../../../ds/ui.js";
 import { dsLayer } from "../../../ds/theme/tokens.js";
 import { cn } from "../../../lib/utils.js";
 import { PALETTE_FILTERS, paletteRowValue, paletteSections, type PaletteAction, type PaletteFilter, type PaletteRow, type PaletteSheet } from "./search-palette-model.js";
@@ -19,9 +20,9 @@ function RowIcon({ row }: { row: PaletteRow }) {
 }
 
 /** Search Relay: quick actions, runs, workflows and spreadsheets in one palette. The input is its first row. */
-export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMatched, workflows, sheets, startKey, onAction, onWorkflow, onRun, notice, onCloseAutoFocus }: {
+export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMatched, loading = false, workflows, sheets, startKey, onAction, onWorkflow, onRun, notice, onCloseAutoFocus }: {
   open: boolean; onOpenChange: (open: boolean) => void; query: string; onQuery: (query: string) => void;
-  runs: readonly NavbarSearchResult[]; /** The served search already matched the query. */ runsMatched?: boolean; workflows: readonly { id: string; label: string }[]; sheets: readonly PaletteSheet[]; startKey?: string;
+  runs: readonly NavbarSearchResult[]; /** The served search already matched the query. */ runsMatched?: boolean; /** The served search has not answered yet. */ loading?: boolean; workflows: readonly { id: string; label: string }[]; sheets: readonly PaletteSheet[]; startKey?: string;
   onAction: (action: PaletteAction) => void; onWorkflow: (id: string) => void; onRun: (result: NavbarSearchResult) => void; notice: string;
   onCloseAutoFocus: (event: Event) => void;
 }) {
@@ -53,7 +54,7 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
         <Command ref={watchSelection} shouldFilter={false} loop label="Search Relay" className="flex min-h-0 flex-1 flex-col">
           <Command.Input autoFocus aria-label="Search Relay" placeholder="Search Relay" value={query} onValueChange={onQuery} className="search-palette-input" />
           <Command.List label="Results" className="search-palette-list">
-            {sections.length === 0 && <p role="status" className="search-palette-empty">No matches</p>}
+            {sections.length === 0 && !loading && <p role="status" className="search-palette-empty">No matches</p>}
             {sections.map(section => <Command.Group key={section.id} aria-label={section.label}>
               <div aria-hidden className="search-palette-label">{section.label}</div>
               {section.rows.map(row => <Command.Item key={paletteRowValue(row)} value={paletteRowValue(row)} className="search-palette-row" onSelect={() => choose(row)}>
@@ -62,6 +63,10 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
                 {(row.kind === "run" || row.kind === "sheet") && <span className="search-palette-row-tag">{row.tag}</span>}
               </Command.Item>)}
             </Command.Group>)}
+            {loading && <div role="status" aria-label="Loading runs" className="search-palette-skeletons">
+              <div aria-hidden className="search-palette-label">Runs</div>
+              {[0, 1, 2].map(index => <div key={index} aria-hidden className="search-palette-row search-palette-skeleton-row"><Skeleton className="size-4 shrink-0 rounded-full" /><Skeleton className="h-3 flex-1" /><Skeleton className="h-3 w-16" /></div>)}
+            </div>}
           </Command.List>
         </Command>
         {notice && <p role="status" className="search-palette-notice">{notice}</p>}

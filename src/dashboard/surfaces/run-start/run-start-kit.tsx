@@ -20,7 +20,6 @@ import {
   Input,
   IconButton,
   MetaLine,
-  Refusal,
   Select,
   SegmentedChoice,
   Switch,
@@ -33,6 +32,7 @@ import {
 import { fmtClock } from "../shared/status/format.js";
 import type { StartPlanResponse } from "../../client/index.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
+import { FailureNotice } from "../../ds/primitives/failure-notice.js";
 import { RunList, RunListRow, RunSection } from "../../ds/primitives/run-list.js";
 import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../ds/primitives/dropdown-menu.js";
 import { typedInputMode, typedInputDefaults, inputRunFieldLabel, inputRunDelimiterHint, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft } from "./run-start-model.js";
@@ -169,27 +169,26 @@ function PlanRowCard({ row }: { row: StartPlanResponse["planned"][number] }) {
   );
 }
 
-/** Keep the server’s refusal code and sentence verbatim so the operator can act on both. */
-export function PlanRefusals({ refused, sources }: { refused: StartPlanResponse["refused"]; sources?: RunInputPreview["entries"] }) {
-  if (refused.length === 0) return null;
-  return (
-    <ul className="flex flex-col gap-[var(--ds-space-snug)]">
-      {refused.map((entry) => (
-        <li key={`${String(entry.entry)}-${entry.code}`}>
-          <Refusal
-            title={`Entry ${String(entry.entry)}${sources?.find(source => source.index + 1 === entry.entry) ? ` (${sources.find(source => source.index + 1 === entry.entry)?.sourceText})` : ""} was not planned`}
-            code={entry.code}
-            outcome="nothing is enqueued for it"
-          >
-            {entry.message}
-          </Refusal>
-        </li>
-      ))}
-    </ul>
-  );
+/** The failed spreadsheet list, drawn under its own heading with no empty card. */
+function ReferenceFailure({ onRefresh }: { onRefresh: () => void }) {
+  return <FailureNotice sentence="Relay could not load your spreadsheets." stillWorks="Your typed entries are kept." action={{ label: "Retry", onClick: onRefresh }} />;
 }
 
-
+/** The one plain sentence for the first refused entry of a plan, shown in the dialog's notice slot; no code, trace id or server text. */
+export function planRefusalNotice(refused: StartPlanResponse["refused"], sources?: RunInputPreview["entries"]): { sentence: string; goesToQueue: boolean } | null {
+  const entry = refused[0];
+  if (entry === undefined) return null;
+  const source = sources?.find(candidate => candidate.index + 1 === entry.entry)?.sourceText;
+  const name = source ?? (refused.length > 1 || entry.entry > 1 ? `Entry ${String(entry.entry)}` : "This item");
+  if (entry.code === "active-run-exists") {
+    if (entry.message.includes("already in this plan")) return { sentence: `${name} is listed twice. Remove the repeat.`, goesToQueue: false };
+    return { sentence: `${name} already has a run in progress. Find it in the queue or wait for it to finish.`, goesToQueue: true };
+  }
+  if (entry.code === "input-invalid") return { sentence: `Relay could not use ${name}. Fix it, then try again.`, goesToQueue: false };
+  if (entry.code === "dry-run-unsupported") return { sentence: "This workflow cannot do a dry run. Turn Dry run off to start it.", goesToQueue: false };
+  if (entry.code === "preflight-failed") return { sentence: "A check failed for this run. Go back to Checks to fix it.", goesToQueue: false };
+  return { sentence: "Relay cannot run this right now. Try again later.", goesToQueue: false };
+}
 
 export interface StageSpec {
   key: string;
@@ -373,11 +372,14 @@ export function TypedInput({
   onText,
   preview,
   inputRef,
+  autoFocus = true,
   draft = {},
   onValue,
   rowInput,
 }: {
   rowInput?: ReactNode;
+  /** Focus the box on mount; Rerun leaves focus to the dialog, which puts it on Close. */
+  autoFocus?: boolean;
   surface: InputRunSurface;
   workflowId: string;
   text: string;
@@ -403,7 +405,7 @@ export function TypedInput({
   const entryText = (entries: RunInputPreview["entries"]) => entries.map(entry => entry.sourceText).join(separator);
   const inputLabel = mode?.inputLabel ?? inputRunFieldLabel(surface.parser);
   const hint = (mode?.hint ?? inputRunDelimiterHint(surface.parser)).replace(/semicolon or a new line\./u, "semicolon or Shift+Enter.");
-  const box = <Textarea key={workflowId} ref={inputRef} autoFocus rows={4} value={text} aria-label={inputLabel}
+  const box = <Textarea key={workflowId} ref={inputRef} autoFocus={autoFocus} rows={4} value={text} aria-label={inputLabel}
       placeholder={mode?.placeholder ?? (inputRunFieldLabel(surface.parser) === "Kuali ID" ? surface.placeholder.replaceAll("Kuali document numbers", "Kuali IDs") : surface.placeholder)}
       onChange={event => onText(event.target.value)}
       onBlur={() => {
@@ -436,7 +438,7 @@ export function TypedInput({
     {rowInput === undefined ? <RunSection title="Input" description={`${inputLabel}. ${hint}`}>{box}{preview.problem !== null && <p role="alert" className="m-0 text-caption text-ui-danger">{preview.problem}</p>}</RunSection>
       : <>{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>}
     {rowInput === undefined && preview.entries.length > 0 && <RunList title="Parsed input" label="Parsed input" aside={`${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`}>
-      {preview.entries.map(entry => <RunListRow key={entry.index} title={<span className="font-mono">{entry.sourceText}</span>}>
+      {preview.entries.map(entry => <RunListRow key={entry.index} title={<span className={cn("font-mono", preview.problem !== null && "text-ui-danger")}>{entry.sourceText}</span>}>
         {editableParser !== undefined && <IconButton size="xs" label={`Remove ${entry.sourceText}`} icon={<X aria-hidden className={dsIcon.md} />}
           onClick={() => {
             onText(entryText(preview.entries.filter(candidate => candidate.index !== entry.index)));
@@ -477,8 +479,8 @@ export function RunReferenceRows({ checkRows, requiredLabel, sheets, chosenLibra
   }, [chosenSheetId, worksheetsState, worksheets, onWorksheet]);
   const current = worksheets.find(sheet => sheet.sheetId === chosenSheetId)?.sheetName;
   return <div className="flex min-w-0 flex-col gap-3">
-    {catalogError && <Banner tone="danger" title="Reference data unavailable">{catalogError}<Button onClick={onRefresh}>Refresh</Button></Banner>}
-    <RunList title="Reference spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${requiredLabel}.`}>
+    {catalogError ? <RunSection title="Reference spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${requiredLabel}.`}><ReferenceFailure onRefresh={onRefresh} /></RunSection>
+    : <><RunList title="Reference spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${requiredLabel}.`}>
       {chosen && <RunListRow title={chosen.name} description={missingSheet ? "Previous worksheet unavailable; choose again" : current ?? (worksheetsState === "loading" ? "Loading worksheets…" : undefined)}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="outline" disabled={busy || worksheetsState !== "ready"} aria-label={`${chosen.name} worksheet, ${current ?? "none chosen"}`} className="ds-menu-trigger w-[150px] min-w-0 justify-between" iconAfter={<ChevronDown aria-hidden />}><span className="min-w-0 truncate">{current ?? "Choose worksheet"}</span></Button></DropdownMenuTrigger>
@@ -495,10 +497,10 @@ export function RunReferenceRows({ checkRows, requiredLabel, sheets, chosenLibra
         <IconButton size="xs" label={`Remove ${chosen.name}`} icon={<X aria-hidden className={dsIcon.md} />} onClick={onRemove} />
       </RunListRow>}
       {checkRows}
-    </RunList>
+    </RunList></>}
     {worksheetsState === "error" && <p role="alert" className="m-0 text-caption text-ui-danger">{worksheetsError}</p>}
     {chosen && worksheetsState === "ready" && worksheets.length === 0 && <p role="status" className="m-0 text-caption text-ui-muted">No worksheets in this version have {requiredLabel}.</p>}
-    <div><DropdownMenu onOpenChange={open => { if (open) setQuery(""); }}>
+    {!catalogError && <div><DropdownMenu onOpenChange={open => { if (open) setQuery(""); }}>
       <DropdownMenuTrigger asChild><Button variant="outline" disabled={busy} className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden />}>{chosen ? "Change spreadsheet" : "Add spreadsheet"}</Button></DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[320px] max-h-[320px] overflow-y-auto">
         <div className="ds-menu-search-row" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}>
@@ -513,7 +515,7 @@ export function RunReferenceRows({ checkRows, requiredLabel, sheets, chosenLibra
           </DropdownMenuItem>;
         })}
       </DropdownMenuContent>
-    </DropdownMenu></div>
+    </DropdownMenu></div>}
   </div>;
 }
 
@@ -560,8 +562,8 @@ export function RunCheckCard({ sheets, busy, catalogError, onRefresh, ...callbac
   const available = needle === "" ? unpicked.filter(sheet => sheet.pinned)
     : unpicked.filter(sheet => [sheet.name, ...sheet.worksheets.map(worksheet => worksheet.sheetName)].some(name => name.toLowerCase().includes(needle))).toSorted((a, b) => a.name.localeCompare(b.name));
   return <div className="flex min-w-0 flex-col gap-3">
-    {catalogError && <Banner tone="danger" title="Reference data unavailable">{catalogError}<Button onClick={onRefresh}>Refresh</Button></Banner>}
-    <RunList title="Reference spreadsheets" description="Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.">
+    {catalogError ? <RunSection title="Reference spreadsheets" description="Spreadsheets this run also looks the person up in. Needs Employee ID. Optional."><ReferenceFailure onRefresh={onRefresh} /></RunSection>
+    : <><RunList title="Reference spreadsheets" description="Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.">
       <RunCheckRows sheets={sheets} busy={busy} {...callbacks} />
     </RunList>
     <div><DropdownMenu onOpenChange={open => { if (open) setQuery(""); }}>
@@ -576,6 +578,6 @@ export function RunCheckCard({ sheets, busy, catalogError, onRefresh, ...callbac
           <DropdownMenuItemCopy title={sheet.name} description={sheet.worksheets.map(worksheet => worksheet.sheetName).join(", ")} />
         </DropdownMenuItem>)}
       </DropdownMenuContent>
-    </DropdownMenu></div>
+    </DropdownMenu></div></>}
   </div>;
 }

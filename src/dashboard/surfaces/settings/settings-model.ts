@@ -30,7 +30,6 @@ export type SettingsNavIcon =
   | "capabilities"
   | "keyboard"
   | "unrendered"
-  | "subscription"
   | "spreadsheets"
   | "explorer"
   | "activity";
@@ -52,6 +51,7 @@ const EDITOR_SECTIONS = new Set(["general", "display", "performance", "paths", "
 const FOLDED_EDITOR_SECTIONS = new Set(["display", "annual-dates"]);
 const SETTINGS_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   display: "general",
+  subscription: "general",
   "annual-dates": "general",
   "runtime-isolation": "general",
   paths: "general",
@@ -129,7 +129,6 @@ export function buildSettingsNav(
   groups.push({ id: "personal", heading: "Personal", entries: [
     clientEntry("general", "General", "general"),
     clientEntry("account", "Account", "credentials"),
-    clientEntry("subscription", "Subscription", "subscription"),
   ] });
   const advanced = editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
     .map(section => servedEntry(section.id, section.label)) ?? [];

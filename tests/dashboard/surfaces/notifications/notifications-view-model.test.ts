@@ -16,7 +16,7 @@ describe("frontend notification state", () => {
     assert.equal(itemSource(item), "Onboarding");
     assert.equal(itemPreview(item), "UCPath could not be reached. Check the connection and review the run evidence.");
     assert.equal(itemPreview({ ...item, subject: "Synthetic run" }), "Synthetic run · UCPath could not be reached. Check the connection and review the run evidence.");
-    assert.equal(itemPreview({ ...item, subject: "Notification context unavailable" }), "Notification context unavailable · UCPath could not be reached. Check the connection and review the run evidence.");
+    assert.equal(itemPreview({ ...item, subject: "" }), "UCPath could not be reached. Check the connection and review the run evidence.");
   });
   it("retires history gaps, with urgency independent of read state", () => {
     const state = notificationsSample("normal");

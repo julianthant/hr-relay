@@ -1,5 +1,5 @@
 import { Check, CircleAlert, TriangleAlert } from "lucide-react";
-import { Banner, Button, Spinner } from "../../ds/ui.js";
+import { Button, Spinner } from "../../ds/ui.js";
 import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
 import type { RunCheckRow, RunChecksState } from "./run-checks-model.js";
 
@@ -13,7 +13,7 @@ function RowEnd({ item, onFix }: { item: RunCheckRow; onFix: (item: RunCheckRow)
 }
 
 /** The Checks stage: what this run needs, every check a row with problems first. */
-export function RunChecksStage({ checks, onFix, onRecheck }: { checks: RunChecksState; onFix: (item: RunCheckRow) => void; onRecheck: () => void }) {
+export function RunChecksStage({ checks, onFix }: { checks: RunChecksState; onFix: (item: RunCheckRow) => void }) {
   const rows = checks.state === "ready" ? checks.rows : [];
   const ready = rows.filter(row => row.verdict === "pass").length;
   return <section aria-label="Checks" className="flex flex-col gap-[var(--ds-space-cozy)]">
@@ -25,7 +25,6 @@ export function RunChecksStage({ checks, onFix, onRecheck }: { checks: RunChecks
       <p className="text-body text-ui-secondary">What this run needs. Problems come first.</p>
     </div>
     {checks.state === "checking" && <p role="status" className={STATUS}><Spinner label="Checking" className="size-4" />Checking</p>}
-    {checks.state === "unavailable" && <Banner tone="danger" title="Checks unavailable">{checks.message}<Button variant="secondary" onClick={onRecheck}>Check again</Button></Banner>}
     {checks.state === "ready" && <RunList label="Check results">{rows.map(item =>
       <RunListRow key={item.check} title={<span data-run-check={item.check} tabIndex={-1} className="outline-none">{item.title}</span>} description={item.description}><RowEnd item={item} onFix={onFix} /></RunListRow>)}</RunList>}
   </section>;

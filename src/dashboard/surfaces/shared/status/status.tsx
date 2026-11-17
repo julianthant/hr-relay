@@ -30,11 +30,14 @@ export function StatusBadge({
   pauseControl,
   cancelledBy,
   interrupt,
+  meaning: servedMeaning,
 }: {
   status: ProposedStatus;
   cancelledBy?: QueueSurfaceWire["cancelledBy"];
   pauseControl?: QueueSurfaceWire["pauseControl"];
   interrupt?: StepInterruptWire;
+  /** The served reason for this exact status, overriding the general meaning. */
+  meaning?: string;
   outcome?: QueueBusinessOutcome;
   label?: string;
   age?: string;
@@ -44,9 +47,9 @@ export function StatusBadge({
   const completedOutcome = (status === "verifiedDone" || status === "doneWarnings") ? outcome : undefined;
   const tone = completedOutcome ? DS_STATUS[completedOutcome.tone === "success" ? "verifiedDone" : completedOutcome.tone === "warning" ? "doneWarnings" : "cancelled"] : undefined;
   const pause = pauseControl?.state === "paused" ? "paused" : pauseControl?.state === "pause-pending" ? "requested" : undefined;
-  const meaning = status === "cancelled" && cancelledBy !== undefined && cancelledBy !== "operator"
+  const meaning = servedMeaning ?? (status === "cancelled" && cancelledBy !== undefined && cancelledBy !== "operator"
     ? ERROR_CATALOG[RELAY_CANCELLATION[cancelledBy]].text
-    : pause === "paused" ? undefined : stepInterruptLabel(interrupt);
+    : pause === "paused" ? undefined : stepInterruptLabel(interrupt));
   return <StatusPill status={status} pause={pause} className={tone && cn(tone.chip, tone.text)} label={completedOutcome?.label ?? label} age={age} size="sm" hideIcon={pause === "paused" ? false : hideIcon} presentation={presentation}
     {...(meaning === undefined ? {} : { meaning })} />;
 }

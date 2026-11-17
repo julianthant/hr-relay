@@ -13,6 +13,7 @@ import { RunOptionsLayout } from "./run-launch-layout.js";
 import type { MockDraft, MockRun } from "../workflows/mocks/workflow-mock-model.js";
 import { RunWorkflowPicker } from "./run-start-picker.js";
 import { RunChecksStage } from "./run-checks.js";
+import { FailureNotice } from "../../ds/primitives/failure-notice.js";
 import { runChecksBlocked, useRunChecks, type RunCheckRow } from "./run-checks-model.js";
 
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -23,8 +24,8 @@ import * as launchDraft from "./run-launch-draft-model.js";
 import type { LaunchDraft } from "./run-launch-draft-model.js";
 import { runDialogControls, useRunDialogMachine, visibleRunDialog, type AuthorityCheck, type LaunchGates, type LaunchRecovery, type RunDialogEvent, type RunDialogPrimaryInput, type RunDialogStep } from "./run-dialog-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Keyboard, Lock, Play } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowRight, Check, Keyboard, ListChecks, Play } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { useToasts, BareButton, Badge, Banner, Button, Checkbox, Switch, Dialog, SegmentedChoice, DialogBody, DialogContent, DialogFooter, EmptyState, Field, Input, KeyValueList, MetaLine, Table, THead, TBody, TR, TH, TD, Skeleton, Well, dsFg, dsFocus, dsIcon, dsText } from "../../ds/ui.js";
 
@@ -34,7 +35,7 @@ import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 
 import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
-import { TypedInput, PlanRefusals, StepOmissionFactsForm, RunReferenceRows, RunCheckRows, RunCheckCard, type CheckSheet } from "./run-start-kit.js";
+import { TypedInput, planRefusalNotice, StepOmissionFactsForm, RunReferenceRows, RunCheckRows, RunCheckCard, type CheckSheet } from "./run-start-kit.js";
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-model.js";
 import { foldStepOmissionFacts, forcedStepOmissions, initialStepOmissionDraft, omittedStepViews, startRequestFingerprint, previewRunInput, launchWorkbookReferences, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
@@ -588,12 +589,12 @@ export function RunStartDialog({
   const subjectCount = preview.entries.length;
   const multiSubject = subjectCount > 1;
   const multiSubjectOmissionReason = `Omitting a step describes one subject; this run would create ${String(subjectCount)}.`;
+  const missingFactLabels = omissionRows.flatMap(row => row.fold.state === "invalid"
+    ? row.form.fields.filter(field => field.key in row.fold.errors).map(field => field.label) : []);
   const stepsBlockedReason = customizeSteps && multiSubject && omissionRows.length > 0
     ? `${multiSubjectOmissionReason} Include every step, or type one value.`
     : customizeSteps && stepOmissions === null
-    ? omissionRows.length === 1
-      ? "Fill in the facts the omitted step asks for."
-      : "Fill in the facts every omitted step asks for."
+    ? `Fill in ${missingFactLabels.join(", ")}.`
     : null;
   /** A plan retaining different omissions describes another run; refuse its token. */
   const sentOmittedSteps = customizeSteps && stepOmissions !== null ? stepOmissions.map(({ step }) => step) : [];
@@ -676,6 +677,15 @@ export function RunStartDialog({
       onRemove={() => update(current => launchDraft.removeReference(current, typeId))}
       onRefresh={() => void library.adapter.refreshCatalog()} />;
   })}</>;
+  /** The one thing that stops the operator, in the slot pinned under the stage tabs: a refused plan, unavailable checks or a failed PDF. */
+  const planRefusal = onLastStage && plan !== null ? planRefusalNotice(plan.refused, preview.entries) : null;
+  const notice: { sentence: string; stillWorks: string; action?: { label: string; onClick: () => void; icon?: ReactNode } } | null = planRefusal !== null
+    ? { sentence: planRefusal.sentence, stillWorks: "Nothing was started.", ...(planRefusal.goesToQueue ? { action: { label: "Go to queue", icon: <ListChecks aria-hidden className={dsIcon.md} />, onClick: () => closeAndReset(false) } } : {}) }
+    : currentStage === "Checks" && checks.state.state === "unavailable"
+    ? { sentence: checks.state.message, stillWorks: "Your choices are kept.", action: { label: "Check again", onClick: checks.recheck } }
+    : currentStage === "Input" && pdfSurface !== undefined && pdfInput.error !== null
+    ? { sentence: pdfInput.error, stillWorks: "Your other PDFs are kept.", ...(pdfInput.retryable ? { action: { label: "Retry", onClick: pdfInput.retry } } : {}) }
+    : null;
   const gates: LaunchGates = {
     next: nextStage, inputBlocked: blockedReason !== null, stepsBlocked: stepsBlockedReason !== null, optionsBlocked: optionsBlockedReason !== null,
     rerunInputBlocked: rerunInputBlocked || (declaredInput && isRerun && preview.submissions.length !== 1),
@@ -694,7 +704,7 @@ export function RunStartDialog({
     catch (caught) { setRequestProblem(caught instanceof Error ? caught.message : String(caught)); return; }
     if ("refused" in step && step.refused === "blocked" && currentStage === "Steps" && stepsBlockedReason !== null) update(launchDraft.attemptFacts);
   };
-  startRef.current = () => press(controls.primary.event);
+  startRef.current = () => { if (planRefusal === null) press(controls.primary.event); };
   /** What a workflow's last stage still shows before Start: its chosen references and typed dates. */
   const lastStageFacts = [
     ...(typedDeclaration === undefined ? [] : typedDateControls(typedDeclaration, typedInputMode(typedDeclaration, typedValues)?.value ?? "").flatMap(control => {
@@ -754,6 +764,7 @@ export function RunStartDialog({
                 </li>;
               })}
             </ol>
+            {notice !== null && <div className="shrink-0 border-b border-ui-stroke px-5 py-3"><FailureNotice {...notice} /></div>}
           <DialogBody key={currentStage} className="launch-content @container">
             {isRerun && snapshot === null && sourceError === null && <p role="status">Loading source…</p>}
             {sourceError !== null && <Banner tone="danger" title="Rerun unavailable">{sourceError}</Banner>}
@@ -770,14 +781,14 @@ export function RunStartDialog({
             )}
 
             {currentStage === "Steps" && <section className="flex flex-col gap-1">
-              <div className="flex items-baseline justify-between gap-3">
+              <div className="flex max-w-[var(--ds-w-body-content)] items-baseline justify-between gap-3 pr-[var(--ds-row-pad-x)]">
               <h3 className="text-heading font-semibold">Steps</h3>
               {workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} of {workflow.steps.length} included</span>}
               </div>
               <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Replace reading steps with manual values. Form actions stay included."}</p>
             </section>}
 
-            {currentStage === "Checks" && <RunChecksStage checks={checks.state} onFix={fixCheck} onRecheck={checks.recheck} />}
+            {currentStage === "Checks" && <RunChecksStage checks={checks.state} onFix={fixCheck} />}
 
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
               {(currentStage === "Input" || currentStage === "Values") && (
@@ -785,7 +796,6 @@ export function RunStartDialog({
                   {pdfSurface !== undefined ? <>
                     <WorkflowPdfInput files={pdfInput.draft?.files.map(file => ({ name: file.source.fileName, size: file.source.artifact.bytes })) ?? []}
                       busy={busy || pdfInput.loading} onChoose={files => { void pdfInput.choose(pdfSurface, files); }} onRemove={pdfInput.remove} />
-                    {pdfInput.error !== null && <Banner tone="danger" title="PDF selection refused">{pdfInput.error}</Banner>}
                   </> : inputRun.state === "present" ? (
                     !declaredInput && isRerun && rerunInputText === undefined && snapshot?.values.some(candidate => candidate.state === "available" && candidate.targetStepKey === undefined && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) ? null : <TypedInput
                       surface={inputRun.surface}
@@ -794,6 +804,7 @@ export function RunStartDialog({
                       onText={next => update(current => launchDraft.changeText(current, next))}
                       preview={preview}
                       inputRef={typedInputRef}
+                      autoFocus={!isRerun}
                       draft={typedValues}
                       rowInput={rowCapability === undefined ? undefined : <>
                         {referenceControls([rowCapability.typeId], true)}
@@ -865,7 +876,7 @@ export function RunStartDialog({
                     const step = snapshot?.steps.find((candidate) => candidate.nodes.some((node) => node.nodeId === entry.nodeId));
                     if (step === undefined) throw new Error("RERUN_WARNING_STEP_UNAVAILABLE");
                     return <Well key={`${entry.nodeId}:${entry.writeIntentId}`}>
-                      <KeyValueList items={[{ key: "Step", value: stepLabel(step.key) }, { key: "System", value: entry.system }]} />
+                      <KeyValueList items={[{ key: "Step", value: <span className="font-[family-name:var(--ds-font-body)]">{stepLabel(step.key)}</span> }, { key: "System", value: <span className="font-[family-name:var(--ds-font-body)]">{SYSTEM_NAME[entry.system]}</span> }]} />
                     </Well>;
                   })}
                 </section>
@@ -877,7 +888,7 @@ export function RunStartDialog({
                     {!isRerun && <RunListRow title="Customize steps" description="Choose optional steps."><Switch hideLabel label="Customize steps" checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     {supportsDryRun && <RunListRow title="Dry run" description={dryRunDescription}><Switch hideLabel label="Dry run" checked={dryRun} onCheckedChange={next => update(current => launchDraft.changeDryRun(current, next === true))} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     {launchFields.map(field => <RunListRow key={field.field} title={field.label}><div className="w-[250px]"><SegmentedChoice hideLabel label={field.label} value={pdfInput.picks[field.field] ?? ""} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></div></RunListRow>)}
-                    <RunListRow title="Screenshots" description="Required by this workflow."><span className="inline-flex items-center gap-1.5 text-[12px] text-ui-secondary"><Lock aria-hidden className="size-3" />Always on</span></RunListRow>
+                    <RunListRow title="Screenshots" description="Required by this workflow."><span className="text-[12px] text-ui-secondary">Always on</span></RunListRow>
                   </>} />
               )}
 
@@ -921,7 +932,6 @@ export function RunStartDialog({
                         + "Go back and plan the run again — this plan would start a different run."}
                     </Banner>
                   )}
-                  <PlanRefusals refused={plan.refused} sources={rowCapability === undefined ? undefined : preview.entries} />
                 </section>
               )}
             </div>
@@ -946,6 +956,7 @@ export function RunStartDialog({
                   : currentStage === "Checks" && gates.checksBlocked
                   ? checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : "Checks are unavailable."
                   : undefined,
+                planRefusal === null ? undefined : planRefusal.sentence.replace(/\. .*$/u, "."),
               ].filter((item): item is string => item !== undefined)}
             />
           }
@@ -964,7 +975,7 @@ export function RunStartDialog({
               variant="primary"
               {...(onLastStage ? { icon: <Play aria-hidden className={dsIcon.md} /> } : { iconAfter: <ArrowRight aria-hidden className="size-[14px]" /> })}
               loading={controls.primary.loading}
-              disabled={!controls.primary.enabled}
+              disabled={!controls.primary.enabled || planRefusal !== null}
               onClick={() => press(controls.primary.event)}
             >
               {controls.primary.label}
