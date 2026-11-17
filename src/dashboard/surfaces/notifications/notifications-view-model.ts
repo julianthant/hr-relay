@@ -15,6 +15,8 @@ export type NotificationItem = Readonly<{
   tone: "danger" | "warning" | "positive" | "info"; age: string;
   read: boolean; action: string; destination: NotificationDestination;
   kind?: NotificationKind;
+  /** Repeats folded into this notice; shown only above one. */
+  count?: number;
   /** Priority: still needs the operator. Resolved items fall into their day group. */
   priority?: boolean;
   /** Day group label once out of Priority: Today, Yesterday, a weekday or a date. */

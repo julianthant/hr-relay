@@ -27,7 +27,7 @@ const policies = {
   "bulk-incomplete": { trigger: "command", tone: "warning", detail: "Some items in this batch were not done. Open it to see each one." },
 } as const satisfies Readonly<Record<NotificationTriggerEvent["kind"], { trigger: string; tone: NotificationItem["tone"]; detail: string }>>;
 
-export const inboxMessage = (code: "DASHBOARD_READ_FAILED" | "NOTIFICATION_SOURCE_UNAVAILABLE" | "NOTIFICATION_HISTORY_INCOMPLETE" | "NOTIFICATION_OBSERVATION_FAILED" | "NOTIFICATION_RECEIPT_MISSING" | "NOTIFICATION_CONTEXT_UNAVAILABLE" | "NOTIFICATION_COMMAND_PENDING" | "NOTIFICATION_TARGET_UNAVAILABLE" | "NOTIFICATION_REFRESH_PENDING") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
+export const inboxMessage = (code: "DASHBOARD_READ_FAILED" | "NOTIFICATION_SOURCE_UNAVAILABLE" | "NOTIFICATION_HISTORY_INCOMPLETE" | "NOTIFICATION_OBSERVATION_FAILED" | "NOTIFICATION_RECEIPT_MISSING" | "NOTIFICATION_COMMAND_PENDING" | "NOTIFICATION_TARGET_UNAVAILABLE" | "NOTIFICATION_REFRESH_PENDING") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 export function notificationPolicy(row: NotificationWire) {
   const source = row.sourceEvent;
@@ -78,9 +78,10 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
       kind: command ? "command" as const : row.link?.kind === "storage" ? "storage" as const : "run" as const,
       // Notices the server marks as commands carry their own priority; error and warning notices still need the operator.
       priority: command ? row.priority : tone === "danger" || tone === "warning",
-      subject: context.state === "available" ? context.subject : context.state === "unavailable" ? inboxMessage("NOTIFICATION_CONTEXT_UNAVAILABLE") : "",
+      subject: context.state === "available" ? context.subject : "",
       workflow: context.state === "available" || context.state === "workflow-only" ? context.workflow : "",
-      detail: notificationDetail(row) ?? inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"),
+      detail: notificationDetail(row) ?? "",
+      ...(row.kind === "notification" && row.count > 1 ? { count: row.count } : {}),
       age: elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed} min ago` : elapsed < 1440 ? `${Math.floor(elapsed / 60)} hr ago` : `${Math.floor(elapsed / 1440)} days ago`,
       day: notificationDay(row.occurredAt, nowIso),
       read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
@@ -93,9 +94,6 @@ export function inboxProjection(rows: readonly NotificationWire[], nowIso: strin
   const items: NotificationItem[] = [];
   for (const row of rows) {
     if (row.kind === "backfill-gap") { notices.add(inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE")); continue; }
-    const run = row.kind === "notification" && row.link?.kind !== "storage";
-    const unavailable = run ? row.context.state === "unavailable" || notificationDetail(row) === undefined : notificationPolicy(row) === undefined;
-    if (unavailable) notices.add(inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"));
     items.push(notificationItem(row, nowIso));
   }
   const needsYou = items.filter(item => !item.read && (item.tone === "danger" || item.tone === "warning")).length;
@@ -149,9 +147,8 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       readEpoch.current++;
       refresh(value => value + 1);
       const row = publication.notification, policy = notificationPolicy(row);
-      if (row.kind === "backfill-gap" || policy === undefined) {
-        setPublicationNotice({ request, text: inboxMessage(row.kind === "backfill-gap" ? "NOTIFICATION_HISTORY_INCOMPLETE" : "NOTIFICATION_SOURCE_UNAVAILABLE") }); return;
-      }
+      if (row.kind === "backfill-gap") { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE") }); return; }
+      if (policy === undefined) return;
       if (row.state === "snoozed") return;
       void client.notificationTarget(row.notificationId).then(target => {
         if (current.current.request !== request) return;
@@ -164,26 +161,36 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
     const row = rowsRef.current?.find(row => row.notificationId === id);
     if (row?.kind !== "notification" || row.actorId !== request.scope.actorId) { setCommandNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return false; }
     const owner = current.current.binding;
-    const retained = owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
-      && ("members" in attempt.request.target ? attempt.request.target.members.some(member => member.notificationId === id) : attempt.request.target.notificationId === id) && attempt.request.target.actorId === request.scope.actorId
-      && attemptUnresolved(attempt));
-    if (retained !== undefined) { setCommandNotice({ request, text: retained.outcome !== undefined && "feedback" in retained.outcome ? retained.outcome.feedback.text : inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
-    const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.nowIso, requestedBy: request.scope.actorId,
-      source: "dashboard", family: "notification", type: `notification-${action}`, target: { notificationId: id, actorId: request.scope.actorId, expectedVersion: row.revision } });
+    const members = row.group?.members ?? [{ notificationId: id, revision: row.revision }];
+    for (const member of members) {
+      const retained = owner.executor.retainedAttempts().find(attempt => !("targets" in attempt.request) && attempt.request.family === "notification"
+        && ("members" in attempt.request.target ? attempt.request.target.members.some(entry => entry.notificationId === member.notificationId) : attempt.request.target.notificationId === member.notificationId) && attempt.request.target.actorId === request.scope.actorId
+        && attemptUnresolved(attempt));
+      if (retained !== undefined) { setCommandNotice({ request, text: retained.outcome !== undefined && "feedback" in retained.outcome ? retained.outcome.feedback.text : inboxMessage("NOTIFICATION_COMMAND_PENDING") }); return false; }
+    }
     setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") });
-    const outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
-      publish: outcome => {
-        if (current.current.request !== request) return;
-        if (outcome.kind === "confirmed") {
-          const confirmed = NotificationWireSchema.parse(outcome.readback);
-          const next = rowsRef.current?.map(row => row.notificationId === confirmed.notificationId ? confirmed : row);
-          rowsRef.current = next;
-          if (next !== undefined) setSettled(previous => previous?.request === request ? { ...previous, rows: next } : previous);
-          setCommandNotice({ request, text: "" });
-          if (!current.current.fresh) { readEpoch.current++; refresh(value => value + 1); }
-        }
-        else { setCommandNotice({ request, text: outcome.feedback.text }); owner.feedback(outcome); if (outcome.kind === "conflict") { current.current.fresh = false; refresh(value => value + 1); } }
-      } });
+    let outcome: Awaited<ReturnType<typeof owner.executor.execute>> | undefined;
+    // A group acts on every durable member it holds; the authoritative snapshot is read again afterwards.
+    for (const member of members) {
+      const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.nowIso, requestedBy: request.scope.actorId,
+        source: "dashboard", family: "notification", type: `notification-${action}`, target: { notificationId: member.notificationId, actorId: request.scope.actorId, expectedVersion: member.revision } });
+      outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
+        publish: outcome => {
+          if (current.current.request !== request) return;
+          if (outcome.kind === "confirmed") {
+            const confirmed = NotificationWireSchema.parse(outcome.readback);
+            const next = rowsRef.current?.map(row => row.notificationId === confirmed.notificationId ? confirmed : row);
+            rowsRef.current = next;
+            if (next !== undefined) setSettled(previous => previous?.request === request ? { ...previous, rows: next } : previous);
+            setCommandNotice({ request, text: "" });
+            if (!current.current.fresh) { readEpoch.current++; refresh(value => value + 1); }
+          }
+          else { setCommandNotice({ request, text: outcome.feedback.text }); owner.feedback(outcome); if (outcome.kind === "conflict") { current.current.fresh = false; refresh(value => value + 1); } }
+        } });
+      if (outcome.kind !== "confirmed") break;
+    }
+    if (outcome === undefined) return false;
+    if (members.length > 1 && current.current.request === request) { current.current.fresh = false; readEpoch.current++; refresh(value => value + 1); }
     const replacement = current.current;
     if (replacement.request !== request && replacement.request.enabled && replacement.request.client === client
       && replacement.binding.scope.client === owner.scope.client && replacement.binding.scope.actorId === owner.scope.actorId

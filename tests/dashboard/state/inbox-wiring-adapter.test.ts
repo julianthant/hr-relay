@@ -110,8 +110,9 @@ it("shows retained failed-run workflow and reason without unavailable text or an
 
   const unavailable = inboxProjection([retained, row("run-failed", { notificationId: failureId, summary, context: { state: "unavailable" } })], now);
   assert(unavailable.state.state === "ready");
-  assert.equal(unavailable.state.items[1].subject, "Notification context unavailable");
-  assert.match(unavailable.notice, /source evidence is unavailable/);
+  assert.equal(unavailable.state.items[1].subject, "");
+  assert.equal(unavailable.state.items[1].detail, summary);
+  assert.equal(unavailable.notice, "");
 });
 it("withholds raw subject-mismatch summaries when source evidence is unavailable", () => {
   const projected = projectNotificationTrigger({ kind: "subject-mismatch", runId, workflowId: "person-lookup", failureId, failureFingerprint: "f".repeat(64) });
