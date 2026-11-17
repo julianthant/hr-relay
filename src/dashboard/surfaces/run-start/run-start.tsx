@@ -243,7 +243,7 @@ export function RunStartDialog({
   const selectedWorkflowRef = useRef(previewSelection?.workflowId ?? workflowId);
   useEffect(() => { selectedWorkflowRef.current = previewSelection?.workflowId ?? workflowId; }, [previewSelection, workflowId]);
   const [currentStage, setCurrentStage] = useViewState("launchStage", "Input");
-  const [draft, setDraft] = useState(() => launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId))));
+  const [draft, setDraft] = useState(() => launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId)), commandBinding?.authority.today));
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const update = useCallback((change: (current: LaunchDraft) => LaunchDraft) => {
@@ -419,9 +419,9 @@ export function RunStartDialog({
   const selectWorkflow = useCallback((next: string, preserveStage = false) => {
     resetPdfs();
     setWorkflowId(next);
-    update(current => launchDraft.changeWorkflow(current, workflows.find(entry => entry.workflowId === next)));
+    update(current => launchDraft.changeWorkflow(current, workflows.find(entry => entry.workflowId === next), commandBinding?.authority.today));
     if (!preserveStage) { setCurrentStage("Input"); setCustomizeSteps(false); }
-  }, [workflows, update, setCurrentStage, setCustomizeSteps, setWorkflowId, resetPdfs]);
+  }, [workflows, update, setCurrentStage, setCustomizeSteps, setWorkflowId, resetPdfs, commandBinding?.authority.today]);
 
   // Opening lands on the panel you are standing in, every time — including the
   // second time, which is why this keys on `open` rather than running once.

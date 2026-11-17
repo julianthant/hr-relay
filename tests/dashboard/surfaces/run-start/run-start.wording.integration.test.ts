@@ -40,7 +40,7 @@ describe("Start run wording and defaults match the approved mock", () => {
     assert.equal(priority()?.checked, true);
     await h.cleanup();
     const several = await h.openDialog(h.stubClient({}));
-    await several.type(`${h.TYPED}; 10873699`);
+    await several.type(`${h.TYPED}; 10000001`);
     await several.press("Continue");
     assert.equal(priority()?.checked, false);
     await several.choosePriority("interactive");
