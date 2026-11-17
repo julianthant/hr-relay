@@ -311,11 +311,14 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
           return continuing(branch.name, label);
         }));
       } else if (shape.kind === "gate" && shape.resolvedBy === "operator") {
-        point("waits", [{ value: "waits", label: "Waits for you", then: "Waits for you to resolve it in Logs, then continues.", stops: false }]);
+        if (!decisions.some(decision => decision.nodeIds.includes(node.id))) {
+          point("waits", [{ value: "waits", label: "Waits for you", then: "Waits for you to resolve it in Logs, then continues.", stops: false }]);
+        }
       } else if (shape.kind === "transaction") {
         const live = previewsOnDryRun(node) ? LIVE : undefined;
         point(live === undefined ? "saved" : { by: DRY_RUN, values: { true: DRY_RUN }, otherwise: "saved" }, [continuing("saved", "Saved", live),
-          { value: "unconfirmed", label: "Save unconfirmed", then: "Parks the write for your review in Logs and does not retry it.", stops: false, ...gated(live) },
+          { value: "already-present", label: "Already present", then: "Uses the verified existing change without saving it again, then continues.", stops: false },
+          { value: "unconfirmed", label: "Save unconfirmed", then: "Parks the write for your review in Logs and does not retry it.", stops: true, ...gated(live) },
           ...(live === undefined ? [] : [{ value: DRY_RUN, label: "Dry run", then: "Prepares the change without saving it, then continues.", stops: false, ...gated(DRY) }])]);
       } else if (shape.kind === "child-run" && shape.await === "terminal" && shape.onChildFailed !== "allow-partial") {
         point("succeeded", [continuing("succeeded", "Delegated work succeeds"), shape.onChildFailed === "fail-parent"

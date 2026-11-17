@@ -49,7 +49,7 @@ const KRONOS_TIMECARD_DISPLAY = {
     { label: "Kronos employee", example: "Quillan, Petra A.", sources: [{ nodeId: "timecard-search", kind: "output", fieldPath: "matched.displayName" }] },
     { label: "Last day worked", example: "4/25/2031", sources: [{ nodeId: "dates", kind: "output", fieldPath: "lastDayWorked" }] },
     { label: "Separation date", example: "4/26/2031", sources: [{ nodeId: "dates", kind: "output", fieldPath: "separationDate" }] },
-    { label: "Termination effective date", example: "4/26/2031", sources: [{ nodeId: "dates", kind: "output", fieldPath: "terminationEffectiveDate" }] },
+    { label: "Termination effective date", example: "4/27/2031", sources: [{ nodeId: "dates", kind: "output", fieldPath: "terminationEffectiveDate" }] },
   ],
   review: {
     pages: [
@@ -58,7 +58,10 @@ const KRONOS_TIMECARD_DISPLAY = {
         title: "Employee Search",
         mode: "Read only",
         nodeIds: ["timecard-search"],
-        lines: [{ id: "find-employee", kind: "action", text: "Find and verify the employee in Kronos.", nodeIds: ["timecard-search"] }],
+        lines: [
+          { id: "find-employee", kind: "action", text: "Find and verify the employee in Kronos.", nodeIds: ["timecard-search"] },
+          { id: "search", kind: "click", target: "Search", nodeIds: ["timecard-search"] },
+        ],
         fields: [
           {
             id: "kronos-employee",
