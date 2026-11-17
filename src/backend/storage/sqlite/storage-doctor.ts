@@ -17,12 +17,12 @@ type SpanEventWire,
 } from "../../../models/events/types.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { withOperationProof } from "../configuration/credential-safe-file.js";
 import { observeCredentialPresence } from "../configuration/credential-store.js";
 import { hasUnprovedSourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
-import { storageHealthCauseFromError } from "./authority-boot.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { verifyBackupManifestAtPath } from "./backup-service.js";
 import { isAuthoritySourceChanged, withActiveAuthorityObservation, type AuthorityImageOwner } from "./readonly-authority-snapshot.js";
@@ -32,6 +32,7 @@ BackupHealthSchema,ProtectedSettingsInspectionSchema,RestoreCandidateSchema,
 SpanAuthorityReconciliationSchema,
 StorageHealthCauseSchema,
 type RestoreCandidate,
+type StorageHealthCause,
 } from "../../../models/storage/storage-status.js";
 import {
 SpanAuthorityRunRootSchema,
@@ -52,6 +53,26 @@ export const StorageDoctorOptionsSchema = z.strictObject({
   backupDirectory: z.string().min(1),
   busyTimeoutMs: z.number().int().positive(),
 });
+
+/** Tested in order against the one-line message: the first match names the cause, and no match is `authority-unavailable`. */
+export const STORAGE_HEALTH_CAUSE_RULES = deepFreeze([
+  { pattern: /empty|missing/i, code: "authority-empty" },
+  { pattern: /not a database|file is not a database|not the HR authority store/i, code: "authority-not-sqlite" },
+  { pattern: /newer than supported/i, code: "authority-schema-newer" },
+  { pattern: /strict record schema validation|failed native record validation|config-snapshot-fingerprint-mismatch/i, code: "authority-record-invalid" },
+  { pattern: /schema|tables do not match registry|user_version/i, code: "authority-schema-mismatch" },
+  { pattern: /migration owner/i, code: "authority-migration-locked" },
+  { pattern: /foreign-key/i, code: "authority-foreign-key" },
+  { pattern: /invariant/i, code: "authority-invariant" },
+  { pattern: /database is locked|database table is locked/i, code: "authority-locked" },
+  { pattern: /malformed|corrupt|quick_check/i, code: "authority-corrupt" },
+] as const satisfies readonly { pattern: RegExp; code: StorageHealthCause["code"] }[]);
+
+export function storageHealthCauseOf(error: unknown): StorageHealthCause {
+  const summary = (error instanceof Error ? error.message : String(error)).replace(/\s+/gu, " ").trim();
+  const code = STORAGE_HEALTH_CAUSE_RULES.find(rule => rule.pattern.test(summary))?.code ?? "authority-unavailable";
+  return StorageHealthCauseSchema.parse({ code, summary });
+}
 
 function errnoCode(error: unknown): string {
   if (typeof error !== "object" || error === null) return "unknown-error";
@@ -494,7 +515,7 @@ function reconcileSpanAuthority(
       return current;
     });
   } catch (error) {
-    if (isAuthoritySourceChanged(error) || storageHealthCauseFromError(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
+    if (isAuthoritySourceChanged(error) || storageHealthCauseOf(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
@@ -518,7 +539,7 @@ function reconcileSpanAuthority(
       busyTimeoutMs,
     );
   } catch (error) {
-    if (isAuthoritySourceChanged(error) || storageHealthCauseFromError(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
+    if (isAuthoritySourceChanged(error) || storageHealthCauseOf(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
@@ -611,7 +632,7 @@ function sameAuthorityIdentity(left: AuthorityReadIdentity, right: AuthorityRead
 
 type AuthorityIdentityRead = Readonly<
   | { state: "available"; identity: AuthorityReadIdentity }
-  | { state: "unavailable"; cause: ReturnType<typeof storageHealthCauseFromError> }
+  | { state: "unavailable"; cause: StorageHealthCause }
 >;
 
 function inspectAuthorityIdentity(
@@ -628,7 +649,7 @@ function inspectAuthorityIdentity(
     };
   } catch (error) {
     if (isAuthoritySourceChanged(error)) throw new StorageDoctorObservationChangedError({ cause: error });
-    return { state: "unavailable", cause: storageHealthCauseFromError(error) };
+    return { state: "unavailable", cause: storageHealthCauseOf(error) };
   }
 }
 
@@ -816,11 +837,11 @@ async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unkno
     }
     const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
     let authorityInspection: AuthorityCopyInspection | undefined;
-    let authorityCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
+    let authorityCause: StorageHealthCause | undefined;
     try {
       authorityInspection = AuthorityDatabase.inspectExistingReadOnly(admission, authorityPath, options.busyTimeoutMs, !readiness);
     } catch (error) {
-      authorityCause = storageHealthCauseFromError(error);
+      authorityCause = storageHealthCauseOf(error);
       if (isAuthoritySourceChanged(error) || authorityCause.code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     }
     const initialAuthorityRead: AuthorityIdentityRead = authorityInspection === undefined

@@ -41,7 +41,9 @@ import { SpanEventWireSchema } from "../../../src/models/events/types.js";
 import { TimelineEventRecordSchema } from "../../../src/models/events/timeline.js";
 import { RUN_RECORD_JSON_SQL } from "../../../src/backend/storage/sqlite/run-record-row.js";
 import { AuthorityDatabase as RealAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { AuthorityBackupService, AuthorityBootStore, AuthorityDatabase, AuthorityHealthPreflightRunner, AuthorityMutationUnavailableError, OfflineAuthorityRestoreService, OfflineRestoreFailure, SpanAuthorityRunRootSchema, doctorAuthorityStorage, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/index.js";
+import { storageHealthCauseOf } from "../../../src/backend/storage/sqlite/storage-doctor.js";
+import type { StorageHealthCause } from "../../../src/models/storage/storage-status.js";
+import { AuthorityBackupService, AuthorityDatabase, AuthorityHealthPreflightRunner, OfflineAuthorityRestoreService, OfflineRestoreFailure, SpanAuthorityRunRootSchema, doctorAuthorityStorage, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/index.js";
 import { plantOldBuildArtifact } from "../../support/helpers/storage/old-build-artifact.js";
 import {
   QUEUED_RUN,
@@ -59,7 +61,6 @@ const roots: string[] = [];
 const profiles = new Map<string, Awaited<ReturnType<typeof createBoundProfileFixture>>>();
 const initialGenerations = new Map<string, number>();
 const databases: AuthorityDatabase[] = [];
-const bootStores: AuthorityBootStore[] = [];
 const CLOCK = manualClock(new Date(NOW));
 const PASSIVE_DEADLINE_SCHEDULER: MonotonicDeadlineScheduler = Object.freeze({
   schedule: () => Object.freeze({ cancel: () => undefined }),
@@ -423,10 +424,12 @@ function restoreMissingTriggers(raw: DatabaseSync, triggers: ReturnType<ReturnTy
   }
 }
 
-function openBootStore(path: string): AuthorityBootStore {
-  const store = AuthorityBootStore.open(admissionFor(path), databaseOptions(path), CLOCK);
-  bootStores.push(store);
-  return store;
+/** The health cause the classifier gives the error a read-only inspection of the file throws. */
+function inspectionCause(path: string): StorageHealthCause {
+  let failure: { error: unknown } | undefined;
+  try { AuthorityDatabase.inspectExistingReadOnly(admissionFor(path), path); } catch (error) { failure = { error }; }
+  if (failure === undefined) throw new Error(`expected ${path} to fail read-only inspection`);
+  return storageHealthCauseOf(failure.error);
 }
 
 function backupDirectory(root: string): string {
@@ -550,7 +553,6 @@ async function createBackup(database: AuthorityDatabase, directory: string) {
 afterEach(async () => {
   timelineFixturePaths.clear();
   timelineFixtureOwners.clear();
-  for (const store of bootStores.splice(0)) store.close();
   for (const database of databases.splice(0)) {
     try { releaseSeededWriteOwners(database, CLOCK.now().toISOString()); }
     catch (error) { if (!(error instanceof Error) || error.message !== "database is not open") throw error; }
@@ -1636,14 +1638,9 @@ describe("fail-closed degraded boot and read-only doctor", () => {
           /completion|strict|schema|native record validation/,
           `${arm.name}/${name}`,
         );
-        const store = openBootStore(path);
-        const report = store.report();
-        assert.equal(report.state, "degraded-read-only", `${arm.name}/${name}`);
-        if (report.state !== "degraded-read-only") throw new Error("expected degraded terminal authority");
-        assert.ok(["authority-invariant", "authority-record-invalid"].includes(report.cause.code), `${arm.name}/${name}: ${report.cause.code}`);
-        assert.match(report.cause.summary, /completion|strict|schema|native record validation/);
-        store.close();
-        bootStores.splice(bootStores.indexOf(store), 1);
+        const cause = inspectionCause(path);
+        assert.ok(["authority-invariant", "authority-record-invalid"].includes(cause.code), `${arm.name}/${name}: ${cause.code}`);
+        assert.match(cause.summary, /completion|strict|schema|native record validation/);
         corruptTerminalRun(path, arm.runId, originalRun);
         assertBaseline();
       }
@@ -1675,8 +1672,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
         }
       } finally { restoreMissingTriggers(raw,triggers); raw.close(); }
       assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(admissionFor(path), path), /run-completion|native record validation|strict|schema/);
-      const report = openBootStore(path).report();
-      assert.equal(report.state, "degraded-read-only");
     }
     const path = join(await testRoot(), "state.db"); const database = openDatabase(path); database.close();
     const raw = new DatabaseSync(path);
@@ -1684,7 +1679,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     finally { raw.close(); }
   });
 
-  it("opens corrupt, truncated, newer, foreign-key-invalid, invariant-invalid, and record-invalid files degraded", async () => {
+  it("classifies corrupt, truncated, newer, foreign-key-invalid, invariant-invalid, and record-invalid files without modifying them", async () => {
     const root = await testRoot(), path = join(root, "state.db");
     openDatabase(path).close();
     const baseline = readFileSync(path);
@@ -1736,22 +1731,9 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       assert.deepEqual(readFileSync(path), baseline);
       corrupt();
       assertClosedCompanions();
-      const before = readFileSync(path), store = openBootStore(path);
-      try {
-        const report = store.report();
-        assert.equal(report.state, "degraded-read-only", path);
-        if (report.state !== "degraded-read-only") throw new Error("expected degraded report");
-        assert.equal(report.cause.code, expectedCode, path);
-        for (const operation of ["enqueue", "claim", "commit", "control"] as const) {
-          assert.throws(
-            () => store.requireWritable(operation),
-            (error: unknown) => error instanceof AuthorityMutationUnavailableError
-              && error.operation === operation
-              && error.health.code === expectedCode,
-          );
-        }
-        assert.deepEqual(readFileSync(path), before, `${path} was modified during degraded boot`);
-      } finally { store.close(); }
+      const before = readFileSync(path);
+      assert.equal(inspectionCause(path).code, expectedCode, path);
+      assert.deepEqual(readFileSync(path), before, `${path} was modified during inspection`);
       assertClosedCompanions();
     }
     const doctorPath = path;
