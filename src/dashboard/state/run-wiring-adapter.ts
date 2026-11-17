@@ -22,6 +22,7 @@ import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-mod
 import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
 import { fmtActionClock, fmtElapsed } from "../surfaces/shared/status/format.js";
 import { plainStepLabel } from "./log-display.js";
+import { REPLACED_READING, typedValuesEntry, usesTypedEntry } from "../surfaces/run-detail/logs/typed-values-model.js";
 import { SYSTEM_NAME } from "../surfaces/shared/status/system-chip-model.js";
 import { ucpathFoundPresentation, type UcpathFoundDecision, type UcpathFoundPresentation } from "../surfaces/run-detail/logs/ucpath-found-model.js";
 import { workbookReferenceChoiceId, workbookReferenceLogDecision, workbookReferenceMatchesReplay, workbookReferenceTimelineEvent, workbookWriteLogStep, workbookWriteMatchesReplay, type WorkbookReferenceChoice, type WorkbookWrite } from "../surfaces/run-detail/logs/workbook-write-model.js";
@@ -430,8 +431,10 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     groupable.add(event.noteId);
     order.set(event.noteId, requireNative(event.native).order); node.set(event.noteId, requireNative(event.native).nodeId);
     const state = { failed: "Failed", blocked: "Waiting", cancelled: "Cancelled", skipped: "Skipped" }[event.state];
+    const replacedReading = event.state === "skipped" && event.notRun.state === "present" && event.notRun.reason === "operator-asserted"
+      && detail.timeline.steps?.some(category => category.key === event.categoryKey && category.typedValues !== undefined) === true;
     steps.push({ id: event.noteId, time, title: plainStepLabel(event.label), entries: [{ kind: "note", id: event.noteId, time,
-      message: reasoned(state, event.notRun.state === "present" ? event.notRun.reason : undefined) }] });
+      message: replacedReading ? REPLACED_READING : reasoned(state, event.notRun.state === "present" ? event.notRun.reason : undefined) }] });
   }
   if (new Set(steps.map(step => step.id)).size !== steps.length) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_DUPLICATE");
   const orderOf = (id: string): number => {
@@ -457,7 +460,14 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     } else grouped.push({ ...step, title: category?.label ?? step.title, ...(system === undefined ? {} : { system }) });
     previousKey = key;
   }
-  const named = grouped.map(({ system: raw, ...step }): LogStep => {
+  const withTyped = grouped.map((step): LogStep => {
+    const category = categoryOf.get(node.get(step.id));
+    if (category?.typedValues === undefined && category?.usesTyped === undefined) return step;
+    const lead = [...category.typedValues === undefined ? [] : [typedValuesEntry(step.id, step.time, category.typedValues)],
+      ...category.usesTyped === undefined ? [] : [usesTypedEntry(step.id, step.time, category.usesTyped)]];
+    return { ...step, entries: [...lead, ...step.entries] };
+  });
+  const named = withTyped.map(({ system: raw, ...step }): LogStep => {
     const system = systemName(raw);
     return system === undefined ? step : { ...step, system, entries: step.entries.map(entry => entryWithSystem(entry, system)) };
   });
