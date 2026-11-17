@@ -12,7 +12,7 @@ const manifest = OCR_SOURCE_MANIFEST_EXAMPLE;
 export const ReadOcrReviewSeed = defineTaskContract({
   id: taskId("workflow:ocr/read-review-seed"), title: "Build source-bound review", effect: "read",
   input: OcrReviewSeedInputSchema.omit({ accounting: true }).extend({ manifest: OcrSourceManifestSchema,
-    readingId: ItemIdSchema, formType: OcrFormTypeSchema, outcomes: z.array(OcrPageOutcomeSchema).min(1) }),
+    readingId: ItemIdSchema, formType: OcrFormTypeSchema, extractWithOcr: z.boolean().optional(), outcomes: z.array(OcrPageOutcomeSchema) }),
   output: OcrReviewCheckpointSchema, errorCodes: ["INCONSISTENT_INPUTS"],
   subject: { kind: "none", reason: "retains source evidence and identity proposals without confirming a person" },
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: [],

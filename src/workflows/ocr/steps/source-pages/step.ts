@@ -83,6 +83,7 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
   const review = task({ id: "build-review", contract: ReadOcrReviewSeed, replay: "always-rerun" }, [rendered, source, pages],
     ({ input, outputs }) => ({
       ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: input.roster, formType: input.formType,
+      ...(input.extractWithOcr === undefined ? {} : { extractWithOcr: input.extractWithOcr }),
       manifest: buildOcrSourceManifest(input.document, outputs["render-pages"]), readingId: input.readingId, outcomes: [...outputs["read-pages"]]
     }));
   const identities = delegate({

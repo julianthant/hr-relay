@@ -5,7 +5,7 @@ import type {
   SearchPersonOrgOutput,
 } from "../systems/ucpath/search-person-org.js";
 import { EidSchema } from "../../rules/identity/ids.js";
-import type { Eid } from "../../rules/identity/ids.js";
+import type { Eid, LocalDate } from "../../rules/identity/ids.js";
 import type { SystemDriver } from "./driver.js";
 import type { UcpathJobSummaryRead } from "./ucpath-job-summary.js";
 
@@ -80,8 +80,8 @@ export type UcpathPersonOrgDriver = SystemDriver<
   searchPersonOrg(
     input: z.output<typeof SearchPersonOrgInputSchema>,
   ): Promise<SearchPersonOrgOutput>;
-    /* Keep the rich read separate to preserve the shipped operation hash. */
-  readJobSummary(input: Readonly<{ emplId: Eid }>): Promise<UcpathJobSummaryRead>;
+  /** Reads Workforce Job Summary, every employee record as of `asOf`. */
+  readJobSummary(input: Readonly<{ emplId: Eid; asOf?: LocalDate }>): Promise<UcpathJobSummaryRead>;
 }>;
 
 export function parseUcpathPersonOrgEid(input: string): Eid {

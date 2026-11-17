@@ -1,13 +1,13 @@
-/** Bind the displayed subject before trusting employment-grid cells. */
+/** Workforce Job Summary for one EID: every employee record, each as of `asOf` (the latest row when omitted). */
 import { z } from "zod";
-import { EidSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
+import { EidSchema, LocalDateSchema, ObservationIdSchema, taskId } from "../../../rules/identity/ids.js";
 import {
   UCPATH_JOB_SUMMARY_PAGE_STATE,
   UcpathJobSummarySchema,
 } from "../../ui/ucpath-job-summary.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../task/task-contract.js";
 
-export const ReadJobSummaryInputSchema = z.strictObject({ emplId: EidSchema });
+export const ReadJobSummaryInputSchema = z.strictObject({ emplId: EidSchema, asOf: LocalDateSchema.optional() });
 export const ReadJobSummaryOutputSchema = UcpathJobSummarySchema;
 export type ReadJobSummaryOutput = z.infer<typeof ReadJobSummaryOutputSchema>;
 
@@ -27,7 +27,7 @@ export const UcpathReadJobSummary = defineTaskContract({
   subject: {
     kind: "person",
     expected: { fromInput: ContractFieldPathSchema.parse("emplId"), identity: "eid" },
-    observe: ObservationIdSchema.parse("ucpath.person-org.displayed-eid"),
+    observe: ObservationIdSchema.parse("ucpath.workforce-job-summary.displayed-eid"),
     match: "normalized-exact-eid",
     requiredAt: "before-subject-read",
   },
@@ -48,7 +48,7 @@ export const UcpathReadJobSummary = defineTaskContract({
     jobRows: [{
       rowIndex: 0,
       emplRecord: "0",
-      hrStatus: "Active",
+      hrStatus: { state: "present", value: "Active" },
       businessUnit: "SDCMP",
       effectiveDate: { state: "present", value: "07/01/2025" },
       positionNumber: { state: "present", value: "40012345" },
