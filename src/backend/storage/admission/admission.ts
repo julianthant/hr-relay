@@ -11,7 +11,7 @@ import { DuoCredentialRecordSchema } from "../../../models/config/duo-credential
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { assertFinishedProfileOnboarding,LogoutOperationSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,type LogoutOperation,type ProfileDatabaseBinding,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason,type SignUpOperation } from "../../../models/profiles/profile.js";
+import { assertFinishedProfileOnboarding,LogoutOperationSchema,ProfileOperationSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,type DuoReenrolOperation,type LogoutOperation,type ProfileDatabaseBinding,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason,type SignUpOperation } from "../../../models/profiles/profile.js";
 import { systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
@@ -132,7 +132,7 @@ type AdmissionScope = "profile-layout" | "profile-maintenance" | "flat-backup" |
   | "verified-copy" | "synthetic-verified-copy" | "synthetic"
   | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-pending-logout-inventory" | "stopped-control-inventory" | "stopped-incomplete-profile-inventory";
 
-type ReadyProfileUpgrade = Readonly<{ purpose: "manual" | "startup" | "layout"; sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25; copyPath?: string;
+type ReadyProfileUpgrade = Readonly<{ purpose: "manual" | "startup" | "layout"; sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30; copyPath?: string;
   capture: ReturnType<InstallationLease["captureStoppedProfileUpgrade"]>;
   qualification: { current: Readonly<{ kind: "inspection" }> | Readonly<{ kind: "qualified"; sourceFingerprint: string }> | Readonly<{ kind: "revoked" }> } }>;
 
@@ -162,7 +162,7 @@ export class RuntimeAdmission {
   readonly #profileParent: RuntimeAdmission | undefined;
   readonly #pendingLogout: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }> | undefined;
   #automaticRestore: AuthorityRestoreInput | undefined;
-  #repairSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | undefined;
+  #repairSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | undefined;
   readonly #readyUpgrade: ReadyProfileUpgrade | undefined;
   #protectedSettingsUpgrade: { readonly kind: "inspection" } | { readonly kind: "backed"; readonly assertCurrent: () => Readonly<{ sourceFingerprint: string; backupSha256: string }> } | { readonly kind: "revoked" } | undefined;
   readonly #flatBackup: Readonly<{ sourcePath: string; processLockRoot: string }> | undefined;
@@ -265,7 +265,7 @@ export class RuntimeAdmission {
     const path = join(root, "state.db");
     const binding = { installationId: this.locator.installationId, profileId: id };
     const observed = readProfileDatabaseBinding(path);
-    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== 11 && observed.schemaVersion !== 12 && observed.schemaVersion !== 13 && observed.schemaVersion !== 14 && observed.schemaVersion !== 15 && observed.schemaVersion !== 16 && observed.schemaVersion !== 17 && observed.schemaVersion !== 18 && observed.schemaVersion !== 19 && observed.schemaVersion !== 20 && observed.schemaVersion !== 21 && observed.schemaVersion !== 22 && observed.schemaVersion !== 23 && observed.schemaVersion !== 24 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION)) throw new Error("profile-stopped-upgrade-bound-required");
+    if (observed.state !== "bound" || observed.schemaVersion === 7 || (!UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(observed.schemaVersion) && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION)) throw new Error("profile-stopped-upgrade-bound-required");
     if (purpose === "layout" && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("fixed-layout-current-schema-required");
     assertCanonicalProfileBinding(path, binding);
     if (observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) assertMaintenanceCustodyAvailable("schema-upgrade");
@@ -478,7 +478,7 @@ export class RuntimeAdmission {
     if (this.#profileBinding === undefined) throw new Error("authority-backup-profile-binding-required");
     return Object.freeze({ kind: "profile", binding: this.#profileBinding });
   }
-  profileMaintenanceSchemaVersion(): 6 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 {
+  profileMaintenanceSchemaVersion(): 6 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 {
     if (this.#repairSchemaVersion !== undefined) { this.assertLive(); return this.#repairSchemaVersion; }
     this.assertLive();
     if (this.#flatBackup !== undefined) return 6;
@@ -490,7 +490,7 @@ export class RuntimeAdmission {
       if (observed.state !== "unbound" || observed.schemaVersion !== 6) throw new Error("existing-data-owner-source-changed");
       return 6;
     }
-    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== 11 && observed.schemaVersion !== 12 && observed.schemaVersion !== 13 && observed.schemaVersion !== 14 && observed.schemaVersion !== 15 && observed.schemaVersion !== 16 && observed.schemaVersion !== 17 && observed.schemaVersion !== 18 && observed.schemaVersion !== 19 && observed.schemaVersion !== 20 && observed.schemaVersion !== 21 && observed.schemaVersion !== 22 && observed.schemaVersion !== 23 && observed.schemaVersion !== 24 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || observed.binding.installationId !== this.profileBinding.installationId
+    if (observed.state !== "bound" || observed.schemaVersion === 7 || (!UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(observed.schemaVersion) && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || observed.binding.installationId !== this.profileBinding.installationId
       || observed.binding.profileId !== this.profileBinding.profileId) throw new Error("profile-stopped-upgrade-binding-changed");
     return observed.schemaVersion;
   }
@@ -612,19 +612,23 @@ export class RuntimeAdmission {
       return;
     }
     const operation = this.#browserRegistrySignup(profileId, signup);
-    if (operation.phase !== "applying" || operation.onboarding?.abort !== undefined) throw new Error("browser-registry-signup-unavailable");
+    if (operation.kind === "sign-up" ? operation.phase !== "applying" || operation.onboarding?.abort !== undefined
+      : operation.commit !== undefined || operation.abort !== undefined) throw new Error("browser-registry-signup-unavailable");
   }
   assertBrowserRegistryCleanup(profileId: string, signup: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): string {
     return canonicalJsonStringify(this.#browserRegistrySignup(profileId, signup));
   }
-  #browserRegistrySignup(profileId: string, signup: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): SignUpOperation {
+  /** The sign-up or Duo re-enrolment draft a setup browser root belongs to. */
+  #browserRegistrySignup(profileId: string, signup: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): SignUpOperation | DuoReenrolOperation {
     this.#assertMachineRuntime();
     const file = readPrivateFile(join(this.#stateRoot, "machine", "operations", `${z.uuid().parse(signup.operationId)}.json`), { label: "lock", maxBytes: 1_048_576 });
     if (file === undefined) throw new Error("browser-registry-signup-unavailable");
-    const operation = SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+    const operation = ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+    if (operation.kind === "logout") throw new Error("browser-registry-signup-unavailable");
+    const draft = operation.kind === "sign-up" ? operation.onboarding : operation.draft;
     if (operation.profileId !== profileId || operation.operationId !== signup.operationId
-      || !(operation.phase === "applying" || operation.phase === "publishing")
-      || operation.onboarding?.accountId !== signup.accountId || operation.onboarding.generation !== signup.providerGeneration) throw new Error("browser-registry-signup-unavailable");
+      || operation.kind === "sign-up" && !(operation.phase === "applying" || operation.phase === "publishing")
+      || draft?.accountId !== signup.accountId || draft.generation !== signup.providerGeneration) throw new Error("browser-registry-signup-unavailable");
     return operation;
   }
   hasCapturedAuthorityRestore(): boolean {
@@ -704,8 +708,21 @@ export class RuntimeAdmission {
     return readdirSync(directory).filter(name => name.endsWith(".json")).flatMap(name => {
       const file = readPrivateFile(join(directory, name), { label: "lock", maxBytes: 1_048_576 });
       if (file === undefined) throw new Error("profile-logout-operation-missing");
-      const operation = z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+      const operation = ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
       return operation.kind === "logout" && operation.phase !== "complete" ? [operation.profileId] : [];
+    });
+  }
+  /** Profiles whose Duo re-enrolment recorded a commit intent that boot must reconcile before any session. */
+  readDuoReenrolCommitProfileIds(): readonly string[] {
+    this.assertReadable();
+    if (this.#scope !== "installation") throw new Error("profile-duo-reenrol-machine-required");
+    const directory = join(this.#stateRoot, "machine", "operations");
+    if (!existsSync(directory)) return [];
+    return readdirSync(directory).filter(name => name.endsWith(".json")).flatMap(name => {
+      const file = readPrivateFile(join(directory, name), { label: "lock", maxBytes: 1_048_576 });
+      if (file === undefined) throw new Error("profile-duo-reenrol-operation-missing");
+      const operation = ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+      return operation.kind === "duo-reenrol" && operation.commit !== undefined ? [operation.profileId] : [];
     });
   }
   async captureStartupRegistrationProofs(): Promise<readonly StartupRegistrationProof[]> {
@@ -717,7 +734,7 @@ export class RuntimeAdmission {
     for (const name of readdirSync(directory).filter(name => name.endsWith(".json"))) {
       const file = readPrivateFile(join(directory, name), { label: "lock", maxBytes: 1_048_576 });
       if (file === undefined) throw new Error("profile-startup-registration-operation-missing");
-      const operation = z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+      const operation = ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
       if (operation.kind !== "sign-up" || operation.onboarding?.finish === undefined) continue;
       const captured = captureStoppedStartupCredentialPublication(this, operation), frame = captured.records.protected;
       if (frame === undefined) throw new Error("profile-startup-registration-credentials-missing");
@@ -751,7 +768,7 @@ export class RuntimeAdmission {
       const operations = existsSync(path) ? readdirSync(path).filter(name => name.endsWith(".json")).flatMap(name => {
         const file = readPrivateFile(join(path, name), { label: "lock", maxBytes: 1_048_576 });
         if (file === undefined) throw new Error("profile-operation-authority-unavailable");
-        const parsed = z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+        const parsed = ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
         return [parsed];
       }) : [];
       const pending = operations.filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === id);
@@ -795,9 +812,11 @@ export class RuntimeAdmission {
           const currentOperations = existsSync(path) ? readdirSync(path).filter(name => name.endsWith(".json")).map(name => {
             const file = readPrivateFile(join(path, name), { label: "lock", maxBytes: 1_048_576 });
             if (file === undefined) throw new Error("profile-storage-claim-changed");
-            return z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+            return ProfileOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
           }) : [];
+          // An open Duo re-enrolment keeps its profile's storage usable; only a repair of that profile waits for a recorded commit.
           if (currentOperations.some(operation => operation.kind === "logout" ? operation.phase !== "complete"
+            : operation.kind === "duo-reenrol" ? purpose === "repair" && operation.profileId === id && operation.commit !== undefined
             : phase === "runtime" && (purpose !== "repair" || operation.profileId === id))
             || (phase === "setup" ? current.activeProfileId !== null && current.activeProfileId !== id
               : registered?.lifecycle !== "ready" || registered.credentialState !== "saved" || registered.registration.onboardingCompletion === undefined)) {
@@ -1048,7 +1067,7 @@ export class RuntimeAdmission {
     if (maintenance !== undefined) { this.assertOfflineMaintenance(maintenance); verifyStoppedClaim(); }
     else claim.verify(publication ? "custody" : "issue");
     const root = join(this.#stateRoot, "profiles", claim.profileId);
-    let repairSchema: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | undefined;
+    let repairSchema: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | undefined;
     this.assertStateRoot(root);
     if (claim.phase === "setup" && !publication) {
       ensureChildDirectory(this.#stateRoot, join(this.#stateRoot, "profiles"), "profiles", 0o700, 0o700);
@@ -1060,7 +1079,7 @@ export class RuntimeAdmission {
       }
     } else if (repair) {
       assertProfileRestoreDatabaseBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
-      repairSchema = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25)]).parse(readProfileDatabaseBinding(join(root, "state.db")).schemaVersion);
+      repairSchema = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(30)]).parse(readProfileDatabaseBinding(join(root, "state.db")).schemaVersion);
     }
     else if (!publication && claim.phase === "runtime") assertLiveProfileDatabaseBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
     else if (!publication) assertCanonicalProfileBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });

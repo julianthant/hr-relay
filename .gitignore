@@ -49,6 +49,9 @@ dist/
 # Mock scene runner scratch: failure screenshots and traces.
 tests/mocks/.output/
 
+# Dashboard smoke scratch: failure screenshots and traces.
+tests/smoke/.output/
+
 # OS
 .DS_Store
 Thumbs.db

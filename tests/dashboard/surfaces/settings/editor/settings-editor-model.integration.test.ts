@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
-import { SettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
+import { afterEach,describe,it,vi } from "vitest";
+import { SettingsCommandRequestSchema, DashboardCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import { mountSettingsHarness,settingsAction,syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
 
+import { CommandExecutor, type CommandOutcome } from "../../../../../src/dashboard/app/commands/command-executor.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
+
 const cleanups: (() => void | Promise<void>)[] = [];
-afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.restoreAllMocks(); });
 async function setup(section?: string) {
   const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
   const mounted = await mountSettingsHarness(authority, section); cleanups.push(mounted.close); return { ...mounted, authority };
@@ -108,4 +111,36 @@ for (const family of ["ordinary", "protected"] as const) {
     await settingsAction(() => control().retry());
     assert.deepEqual(h.commands, [original, original]);
   });
+}
+
+const retentionCases: readonly { name: string; retained: boolean; outcome: (commandId: string) => CommandOutcome }[] = [
+  { name: "uncertain", retained: true, outcome: commandId => ({ commandId, kind: "uncertain", feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_OUTCOME_UNCERTAIN", {})) }) },
+  { name: "refused/locked", retained: true, outcome: commandId => ({ commandId, kind: "refused", reason: "locked", feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})) }) },
+  { name: "refused", retained: false, outcome: commandId => ({ commandId, kind: "refused", feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})) }) },
+  { name: "confirmed", retained: false, outcome: commandId => ({ commandId, kind: "confirmed", readback: {} }) },
+  { name: "conflict", retained: false, outcome: commandId => ({ commandId, kind: "conflict", feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_CONFLICT", {})) }) },
+  { name: "confirmation-required", retained: false, outcome: commandId => ({ commandId, kind: "confirmation-required", warningDigest: "a".repeat(64), feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})) }) },
+  { name: "failed", retained: false, outcome: commandId => ({ commandId, kind: "failed", feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_DISPATCH_FAILED", {})) }) },
+];
+
+for (const family of ["ordinary", "protected"] as const) {
+  for (const scenario of retentionCases) {
+    it(`${family} pending draft is ${scenario.retained ? "kept" : "released"} after ${scenario.name}`, async () => {
+      const h = await setup();
+      vi.spyOn(CommandExecutor.prototype, "execute").mockImplementation(async (input, options) => {
+        const command = DashboardCommandRequestSchema.parse(input);
+        const outcome = scenario.outcome(command.commandId);
+        options.publish?.(outcome);
+        return outcome;
+      });
+      const control = () => family === "ordinary" ? h.controller() : h.controller().protectedEditor;
+      const update = (value: string) => family === "ordinary" ? h.controller().update("actor.label", value) : h.controller().protectedEditor.update("ucpathUserId", value);
+      const draft = () => family === "ordinary" ? h.controller().draft["actor.label"] : h.controller().protectedEditor.draft.ucpathUserId;
+      await settingsAction(() => update("Original draft"));
+      await settingsAction(() => control().submit());
+      assert.equal(control().locked, scenario.retained);
+      await settingsAction(() => update("Next draft"));
+      assert.deepEqual(draft(), { kind: "set", raw: scenario.retained ? "Original draft" : "Next draft" });
+    });
+  }
 }

@@ -5,13 +5,13 @@ import { dirname, isAbsolute, join, matchesGlob, relative, resolve } from "node:
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./ci-files.js";
+import { LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./ci-files.js";
 import { isDirectExecution } from "./scope-files.js";
 import { buildPcSource } from "./pc-source.js";
 import type { PcSource } from "./pc-source.js";
 
 const projects = ["--project", "unit", "--project", "integration", "--project", "architecture"];
-const nativeFiles = new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES]);
+const nativeFiles = new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES].filter(file => !LINUX_NATIVE_FILES.includes(file)));
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 export const pcDurationScript = "process.stdout.write(String(Number(process.hrtime.bigint() - BigInt(process.argv[1])) / 1e6))";
 
@@ -43,6 +43,13 @@ export function readPcTiming(line: string, runId: string): PcTiming | undefined 
   return event.timing;
 }
 
+export function pcListingArgs(patterns: readonly string[]): string[][] {
+  return patterns.length > 0 ? [[...projects]] : [
+    ["--project", "architecture"],
+    ["--project", "unit", "--project", "integration", "--changed=origin/staging"],
+  ];
+}
+
 export function selectPcFiles(listed: readonly string[], patterns: readonly string[]) {
   const normalized = listed.map(file => file.replaceAll("\\", "/").replace(/^\.\//u, ""));
   for (const pattern of patterns) {
@@ -55,8 +62,12 @@ export function selectPcFiles(listed: readonly string[], patterns: readonly stri
   return { files: selected.filter(file => !nativeFiles.has(file)), skipped: selected.filter(file => nativeFiles.has(file)) };
 }
 
-async function command(program: string, args: string[], cwd: string, log?: string, input?: Buffer): Promise<number> {
-  const child = spawn(program, args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
+export function pcVitestEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...env, RELAY_TEST_NATIVE: "1" };
+}
+
+async function command(program: string, args: string[], cwd: string, log?: string, input?: Buffer, env?: NodeJS.ProcessEnv): Promise<number> {
+  const child = spawn(program, args, { cwd, stdio: ["pipe", "pipe", "pipe"], ...(env ? { env } : {}) });
   child.stdout.on("data", (chunk: Buffer) => { process.stdout.write(chunk); if (log) appendFileSync(log, chunk); });
   child.stderr.on("data", (chunk: Buffer) => { process.stderr.write(chunk); if (log) appendFileSync(log, chunk); });
   return new Promise((resolveExit, reject) => {
@@ -67,8 +78,8 @@ async function command(program: string, args: string[], cwd: string, log?: strin
   });
 }
 
-async function checked(program: string, args: string[], cwd: string, log?: string, input?: Buffer) {
-  const code = await command(program, args, cwd, log, input);
+async function checked(program: string, args: string[], cwd: string, log?: string, input?: Buffer, env?: NodeJS.ProcessEnv) {
+  const code = await command(program, args, cwd, log, input, env);
   if (code !== 0) throw new Error(`${program} exited ${code}`);
 }
 
@@ -93,7 +104,7 @@ async function remote(slot: string): Promise<number> {
   if (!required || Number(process.versions.node.split(".")[0]) < Number(required[1])) {
     throw new Error(`PC Node ${process.versions.node} does not satisfy ${manifest.engines.node}`);
   }
-  const ci = readFileSync(".github/workflows/ci-checks.yml", "utf8");
+  const ci = readFileSync(".github/workflows/checks.yml", "utf8");
   for (const key of ["RELAY_TEST_RAM_MB", "RELAY_TEST_TIME_SCALE"]) {
     const value = new RegExp(`^  ${key}: "([0-9.]+)"$`, "mu").exec(ci)?.[1];
     if (!value || !Number.isFinite(Number(value)) || Number(value) <= 0) throw new Error(`Missing CI test environment: ${key}`);
@@ -110,7 +121,7 @@ async function remote(slot: string): Promise<number> {
       await measurePcPhase("build", record, () => checked("npm", ["run", "web:build"], cwd));
     } else record({ phase: "build", startedAt: new Date().toISOString(), durationMs: 0, outcome: "skipped" });
     process.stdout.write(`test:pc slot=${slot} files=${request.files.length} node=${process.versions.node} tmpfs=${temp}\n`);
-    return await measurePcPhase("test", record, () => command("npx", ["--no-install", "vitest", "run", ...projects, "--maxWorkers=2", "--passWithNoTests=false", ...request.files], cwd));
+    return await measurePcPhase("test", record, () => command("npx", ["--no-install", "vitest", "run", ...projects, "--maxWorkers=2", "--passWithNoTests=false", ...request.files], cwd, undefined, undefined, pcVitestEnv(process.env)));
   } finally {
     await measurePcPhase("cleanup", record, () => checked("rm", ["-rf", "--", temp], cwd));
     writeFileSync(join(slot, "completed"), "done\n");
@@ -196,11 +207,16 @@ async function mac(patterns: string[]): Promise<number> {
   const record = (timing: PcTiming) => { result.timings.push(timing); };
   process.stdout.write(`test:pc result: ${join(run, "result.json")}\n`);
   try {
-    const listing = join(run, "listed.json");
-    await measurePcPhase("listing", record, () => checked(process.execPath, ["node_modules/vitest/vitest.mjs", "list", ...projects, "--filesOnly", `--json=${listing}`,
-      ...(patterns.length === 0 ? ["--changed=origin/staging"] : [])], root, log));
-    const listed = z.array(z.object({ file: z.string() })).parse(JSON.parse(readFileSync(listing, "utf8")))
-      .map(({ file }) => relative(root, file).replaceAll("\\", "/"));
+    const listed = await measurePcPhase("listing", record, async () => {
+      const files: string[] = [];
+      for (const [index, args] of pcListingArgs(patterns).entries()) {
+        const listing = join(run, `listed-${index}.json`);
+        await checked(process.execPath, ["node_modules/vitest/vitest.mjs", "list", ...args, "--filesOnly", `--json=${listing}`], root, log, undefined, pcVitestEnv(process.env));
+        files.push(...z.array(z.object({ file: z.string() })).parse(JSON.parse(readFileSync(listing, "utf8")))
+          .map(({ file }) => relative(root, file).replaceAll("\\", "/")));
+      }
+      return files;
+    });
     const selected = selectPcFiles(listed, patterns.map(pattern => isAbsolute(pattern) ? relative(root, pattern) : pattern.replace(/^\.\//u, "")));
     result.files = selected.files;
     if (selected.skipped.length) process.stdout.write(`test:pc skipping ${selected.skipped.length} native file(s); GitHub CI owns them.\n`);

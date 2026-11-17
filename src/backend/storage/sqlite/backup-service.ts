@@ -320,7 +320,8 @@ export class AuthorityBackupService {
     try {
       await this.#source.onlineBackupTo(temporaryBackupPath);
       this.#admission.assertAuthorityBackupWrite(this.#directory);
-      const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, await sha256File(temporaryBackupPath));
+      const inspectedDigest = await sha256File(temporaryBackupPath);
+      const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, inspectedDigest);
       let inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>;
       try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath, this.#source.getMeta().schemaVersion); }
       finally { copyAdmission.release(); }
@@ -336,7 +337,6 @@ export class AuthorityBackupService {
       renameSync(temporaryBackupPath, finalBackupPath);
       finalPaths.push(finalBackupPath);
       const stats = statSync(finalBackupPath);
-      const digest = await sha256File(finalBackupPath);
       this.#admission.assertAuthorityBackupWrite(this.#directory);
       fsyncPath(this.#directory);
       const verification = {
@@ -369,18 +369,22 @@ export class AuthorityBackupService {
         authorityContentFingerprint: inspection.authorityContentFingerprint,
         createdAt,
         byteSize: stats.size,
-        sha256: digest,
+        sha256: inspectedDigest,
         verification,
       });
-      const manifestFileName = `${backupFileName}.manifest.json`;
-      finalManifestPath = join(this.#directory, manifestFileName);
-      writeFileSync(temporaryManifestPath, `${canonicalJsonStringify(manifest)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
+      // The one read of the final bytes: they must still be the bytes that were inspected.
+      await verifyBackupBytesAtPath(finalBackupPath, manifest);
+      const manifestFileName = `${backupFileName}.manifest.json`, manifestText = `${canonicalJsonStringify(manifest)}\n`;
+      writeFileSync(temporaryManifestPath, manifestText, { encoding: "utf8", mode: 0o600, flag: "wx" });
       fsyncPath(temporaryManifestPath);
+      if (readFileSync(temporaryManifestPath, "utf8") !== manifestText) throw new Error("backup-manifest-readback-mismatch");
+      this.#admission.assertAuthorityBackupWrite(this.#directory);
+      // A backup counts only once its manifest exists, so it is published last.
+      finalManifestPath = join(this.#directory, manifestFileName);
       renameSync(temporaryManifestPath, finalManifestPath);
       finalPaths.push(finalManifestPath);
       fsyncPath(this.#directory);
-      if (expected.kind === "profile") await verifyBackupManifestAtPath(this.#admission, finalManifestPath);
-      else verifyStoppedBackupManifestAtPath(this.#admission, finalManifestPath);
+      if (expected.kind !== "profile") verifyStoppedBackupManifestAtPath(this.#admission, finalManifestPath);
       result = manifest;
     } catch (error) { primary = { error }; }
     if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw primary.error;

@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { expect, it } from 'vitest';
 import { SQLITE_MIGRATIONS } from '../../../../src/backend/storage/sqlite/migrations.js';
-import { createWorkbookLibraryRepository } from '../../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION } from '../../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, bindRunWorkbookReference } from '../../../../src/models/dashboard/workbooks.js';
 import { deriveSchemaHash } from '../../../../src/models/validation/schema-bound-value.js';
 
@@ -15,7 +15,7 @@ function source() {
 function apply(database: DatabaseSync) {
   const migration = SQLITE_MIGRATIONS.find(migration => migration.version === 18);
   if (migration === undefined) throw new Error('current migration missing');
-  for (const sql of migration.statements) database.exec(sql);
+  for (const sql of [...migration.statements, ...WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.statements]) database.exec(sql);
 }
 
 it('initializes the empty named catalogue without changing a numeric workbook revision', () => {
