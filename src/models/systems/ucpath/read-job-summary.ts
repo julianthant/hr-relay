@@ -20,12 +20,14 @@ export const UcpathReadJobSummary = defineTaskContract({
   errorCodes: [
     /** UCPath reported no matching values for this EID. */
     "employee-not-found",
+    /** The detail page displayed a DIFFERENT person than the run asked for. */
+    "subject-mismatch",
     "unexpected-page-state",
   ],
   subject: {
     kind: "person",
     expected: { fromInput: ContractFieldPathSchema.parse("emplId"), identity: "eid" },
-    observe: ObservationIdSchema.parse("ucpath.workforce-job-summary.searched-eid"),
+    observe: ObservationIdSchema.parse("ucpath.workforce-job-summary.displayed-eid"),
     match: "normalized-exact-eid",
     requiredAt: "before-subject-read",
   },

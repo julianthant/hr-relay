@@ -101,9 +101,9 @@ function parkAtIdentityGate(h: Harness, queued: RunRecord) {
   return parked.run;
 }
 
-type Outcome = "unknown-id" | "rejected";
+type Outcome = "unknown-id" | "other-person-opened" | "rejected";
 
-/** The replacement fails as the executor fails it, from the real task: UCPath's no-record page, or the operator's Reject of the person found. */
+/** The replacement fails as the executor fails it, from the real task: UCPath's no-record page, a detail page for another person, or the operator's Reject of the person found. */
 async function failReplacement(h: Harness, queued: RunRecord, outcome: Outcome) {
   const nodeId = outcome === "rejected" ? APPROVAL_NODE : JOB_SUMMARY_NODE;
   const { run } = claimRunning(h, queued, nodeId);
@@ -116,8 +116,9 @@ async function failReplacement(h: Harness, queued: RunRecord, outcome: Outcome) 
     : { emplId: TYPED };
   const ctx = { signal: new AbortController().signal, log: { debug() {}, info() {}, warn() {} }, recordData() {},
     captureScreenshot: async () => {}, fail: taskFailer(task.contract as never),
-    driver: { system: "ucpath", readJobSummary: async ({ emplId }: { emplId: string }) =>
-      ({ state: "employee-not-found", emplId, observedMarker: "No matching values were found." }) } };
+    driver: { system: "ucpath", readJobSummary: async ({ emplId }: { emplId: string }) => outcome === "unknown-id"
+      ? { state: "employee-not-found", emplId, observedMarker: "No matching values were found." }
+      : { state: "subject-mismatch", observedEid: CHECKED, expectedEid: emplId } } };
   const error = await (task.impl as { run: (input: unknown) => Promise<unknown> }).run({ input, ctx }).then(() => undefined, (thrown: unknown) => thrown);
   assert.ok(error instanceof Error && error.message.includes(`••••${TYPED.slice(-4)}`) && !error.message.includes(TYPED), String(error));
   const failure = buildNodeFailureRecord({ run, failureId: h.ids.uuid(), nodeId: NodeIdSchema.parse(nodeId), taskId: task.contract.id,
@@ -144,6 +145,7 @@ function typedPaths(value: unknown, path = ""): string[] {
 
 it.each<Readonly<{ outcome: Outcome; code: string; prefilled: boolean }>>([
   { outcome: "unknown-id", code: "employee-not-found", prefilled: true },
+  { outcome: "other-person-opened", code: "subject-mismatch", prefilled: false },
   { outcome: "rejected", code: "identity-approval-rejected", prefilled: false },
 ])("a typed Employee ID lookup ending $outcome serves the full ID only in its own Run data and the rejected-value correction", async ({ outcome, code, prefilled }) => {
   const h = await sourceBoundHarness(separationsDescriptor, undefined, undefined, protectedSecretSource({ profileName: "Synthetic Timekeeper" }));

@@ -205,7 +205,7 @@ describe("readWorkforceJobSummaryWithPagePort", () => {
   it("drills every employee record from a fresh search when each detail page shows only its own record", async () => {
     const { port, calls } = scriptedPage(
       { kind: "grid", rows: [resultRow(0, "0", "Active"), resultRow(1, "1", "Terminated")] },
-      [{ displayedName: NAME, ...recordZero }, { displayedName: NAME, ...recordOne }],
+      [{ displayedEid: EID, displayedName: NAME, ...recordZero }, { displayedEid: EID, displayedName: NAME, ...recordOne }],
     );
     const read = await readWorkforceJobSummaryWithPagePort(port, { emplId: EID, asOf: LocalDateSchema.parse("2026-06-16") }, OBSERVED_AT);
     assert.deepEqual(calls, [`search ${EID}`, "drill 0", "read", `search ${EID}`, "drill 1", "read"]);
@@ -223,7 +223,7 @@ describe("readWorkforceJobSummaryWithPagePort", () => {
     const both = merge(recordZero, recordOne);
     const { port, calls } = scriptedPage(
       { kind: "grid", rows: [resultRow(0, "0", "Active"), resultRow(1, "1", "Active")] },
-      [{ displayedName: NAME, ...both }, { displayedName: NAME, ...both }],
+      [{ displayedEid: EID, displayedName: NAME, ...both }, { displayedEid: EID, displayedName: NAME, ...both }],
     );
     const read = await readWorkforceJobSummaryWithPagePort(port, { emplId: EID }, OBSERVED_AT);
     assert.deepEqual(calls, [`search ${EID}`, "drill 0", "read"]);
@@ -234,7 +234,7 @@ describe("readWorkforceJobSummaryWithPagePort", () => {
   it("refuses when a listed record never shows rows on its detail page", async () => {
     const { port } = scriptedPage(
       { kind: "grid", rows: [resultRow(0, "0", "Active"), resultRow(1, "1", "Active")] },
-      [{ displayedName: NAME, ...recordZero }, { displayedName: NAME, ...recordZero }],
+      [{ displayedEid: EID, displayedName: NAME, ...recordZero }, { displayedEid: EID, displayedName: NAME, ...recordZero }],
     );
     await assert.rejects(readWorkforceJobSummaryWithPagePort(port, { emplId: EID }, OBSERVED_AT), /showed no rows for empl record\(s\) 1/u);
   });
@@ -242,7 +242,7 @@ describe("readWorkforceJobSummaryWithPagePort", () => {
   it("refuses when two detail pages for one EID display different names", async () => {
     const { port } = scriptedPage(
       { kind: "grid", rows: [resultRow(0, "0", "Active"), resultRow(1, "1", "Active")] },
-      [{ displayedName: NAME, ...recordZero }, { displayedName: "Someone Else", ...recordOne }],
+      [{ displayedEid: EID, displayedName: NAME, ...recordZero }, { displayedEid: EID, displayedName: "Someone Else", ...recordOne }],
     );
     await assert.rejects(readWorkforceJobSummaryWithPagePort(port, { emplId: EID }, OBSERVED_AT), /displayed different names/u);
   });
@@ -253,7 +253,7 @@ describe("readWorkforceJobSummaryWithPagePort", () => {
   });
 
   it("reads a single auto-opened record with its status not shown", async () => {
-    const { port, calls } = scriptedPage({ kind: "detail" }, [{ displayedName: NAME, ...recordZero }]);
+    const { port, calls } = scriptedPage({ kind: "detail" }, [{ displayedEid: EID, displayedName: NAME, ...recordZero }]);
     const read = await readWorkforceJobSummaryWithPagePort(port, { emplId: EID, asOf: LocalDateSchema.parse("2026-03-01") }, OBSERVED_AT);
     assert.deepEqual(calls, [`search ${EID}`, "read"]);
     assert.ok(read.state === "read");
@@ -265,5 +265,25 @@ describe("readWorkforceJobSummaryWithPagePort", () => {
       reason: "Workforce Job Summary opened the only employment record directly, and its detail page shows no status",
     });
     assert.deepEqual([row.effectiveDate, row.jobTitle], [{ state: "present", value: "01/31/2025" }, { state: "present", value: "STDT 2" }]);
+  });
+
+  it("refuses a detail page that shows another person's Empl ID, on the auto-opened and the drilled path", async () => {
+    const other = EidSchema.parse("10800004");
+    const single = scriptedPage({ kind: "detail" }, [{ displayedEid: other, displayedName: NAME, ...recordZero }]);
+    assert.deepEqual(await readWorkforceJobSummaryWithPagePort(single.port, { emplId: EID }, OBSERVED_AT), {
+      state: "subject-mismatch", expectedEid: EID, observedEid: other,
+    });
+    const drilled = scriptedPage(
+      { kind: "grid", rows: [resultRow(0, "0", "Active"), resultRow(1, "1", "Active")] },
+      [{ displayedEid: EID, displayedName: NAME, ...recordZero }, { displayedEid: other, displayedName: NAME, ...recordOne }],
+    );
+    assert.deepEqual(await readWorkforceJobSummaryWithPagePort(drilled.port, { emplId: EID }, OBSERVED_AT), {
+      state: "subject-mismatch", expectedEid: EID, observedEid: other,
+    });
+  });
+
+  it("refuses a detail header whose Empl ID is not an EID", async () => {
+    const { port } = scriptedPage({ kind: "detail" }, [{ displayedEid: "Pending", displayedName: NAME, ...recordZero }]);
+    await assert.rejects(readWorkforceJobSummaryWithPagePort(port, { emplId: EID }, OBSERVED_AT), /Empl ID that is not an EID/u);
   });
 });

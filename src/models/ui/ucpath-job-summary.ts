@@ -79,5 +79,10 @@ export const UcpathJobSummaryReadSchema = z.discriminatedUnion("state", [
     /** The positive no-results marker the page rendered, verbatim. */
     observedMarker: z.string().min(1),
   }),
+  z.strictObject({
+    state: z.literal("subject-mismatch"),
+    expectedEid: EidSchema,
+    observedEid: EidSchema,
+  }),
 ]);
 export type UcpathJobSummaryRead = z.infer<typeof UcpathJobSummaryReadSchema>;

@@ -3,7 +3,8 @@ import { deepFreeze } from "../../../../rules/validation/immutability.js";
 
 /**
  * Workforce Job Summary (WF_JOB_SUMMARY) anchors, taken from the page facts the old dashboard verified live
- * (search and Fluid results grid 2026-06-24, detail header 2026-06-18, frozen job grids 2026-08-20, campus discovery 2026-06-22).
+ * (search and Fluid results grid 2026-06-24, detail header 2026-06-18, frozen job grids 2026-08-20, campus discovery 2026-06-22);
+ * the detail header's Empl ID was verified live by Relay on 2026-11-17.
  * The page is a Fluid component with no content iframe, so every anchor is page-scoped.
  */
 export const UCPATH_WORKFORCE_JOB_SUMMARY_UI = deepFreeze({
@@ -22,6 +23,8 @@ export const UCPATH_WORKFORCE_JOB_SUMMARY_UI = deepFreeze({
   resultJobCode: (row: Locator) => row.locator("span[id^=\"PTS_CFG_CL_RSLT_NUI_SRCH11$\"]"),
   resultPayrollStatus: (row: Locator) => row.locator("span[id^=\"PTS_CFG_CL_RSLT_NUI_SRCH13$\"]"),
   personName: (page: Page) => page.locator("#DERIVED_NAME_DISPLAY_NAME"),
+  /** The detail header's Empl ID, in the same header table as the name (verified live 2026-11-17, multi-record subject). */
+  displayedEmplId: (page: Page) => page.locator("#PER_ORG_ASGN_VW_EMPLID"),
   /** The detail tabs render as links styled as tabs on some loads, so match either role. */
   workLocationTab: (page: Page) => page.getByRole("tab", { name: "Work Location" })
     .or(page.getByRole("link", { name: "Work Location", exact: true })).first(),

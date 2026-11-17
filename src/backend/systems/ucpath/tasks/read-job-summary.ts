@@ -22,6 +22,14 @@ export const readJobSummaryTask = defineTask(ucpathDriver, UcpathReadJobSummary,
       );
     }
 
+    if (read.state === "subject-mismatch") {
+      return ctx.fail(
+        "subject-mismatch",
+        `UCPath opened the Workforce Job Summary detail for EID ${maskedEid(read.observedEid)} while the run asked for `
+        + `${maskedEid(read.expectedEid)}; refusing to read one person's employment grid as another's.`,
+      );
+    }
+
     const output = ReadJobSummaryOutputSchema.parse(read.summary);
     if (output.emplId !== input.emplId) {
       return ctx.fail(

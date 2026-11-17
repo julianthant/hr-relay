@@ -43,6 +43,8 @@ export const FrozenGridSchema = z.strictObject({
 export type FrozenGrid = z.infer<typeof FrozenGridSchema>;
 
 export const WorkforceJobSummaryDetailSchema = z.strictObject({
+  /** The header's Empl ID, verbatim; the read proves it equals the searched EID. */
+  displayedEid: z.string().min(1),
   displayedName: z.string().min(1),
   workLocation: FrozenGridSchema,
   jobInformation: FrozenGridSchema,
@@ -237,18 +239,28 @@ export async function readWorkforceJobSummaryWithPagePort(
 
   const gridRows: JobSummaryGridRow[] = [];
   const names = new Set<string>();
-  const addDetail = (detail: WorkforceJobSummaryDetail) => {
+  /** Adds one detail page's rows, or returns the refusal when the page shows another person. */
+  const addDetail = (detail: WorkforceJobSummaryDetail): UcpathJobSummaryRead | undefined => {
+    const observed = EidSchema.safeParse(detail.displayedEid.trim());
+    if (!observed.success) {
+      throw new Error("Workforce Job Summary detail header shows an Empl ID that is not an EID");
+    }
+    if (observed.data !== emplId) {
+      return UcpathJobSummaryReadSchema.parse({ state: "subject-mismatch", expectedEid: emplId, observedEid: observed.data });
+    }
     names.add(detail.displayedName);
     const seen = new Set(gridRows.map(({ emplRecord }) => emplRecord));
     for (const row of pairJobSummaryGrid(detail.workLocation, detail.jobInformation)) {
       if (!seen.has(row.emplRecord)) gridRows.push(row);
     }
+    return undefined;
   };
 
   let statusByRecord: ReadonlyMap<string, string>;
   let searchResultRows: number;
   if (outcome.kind === "detail") {
-    addDetail(await pagePort.readDetail());
+    const refused = addDetail(await pagePort.readDetail());
+    if (refused !== undefined) return refused;
     searchResultRows = 0;
     statusByRecord = new Map();
   } else {
@@ -268,7 +280,8 @@ export async function readWorkforceJobSummaryWithPagePort(
       }
       first = false;
       await pagePort.drill(result.rowIndex);
-      addDetail(await pagePort.readDetail());
+      const refused = addDetail(await pagePort.readDetail());
+      if (refused !== undefined) return refused;
     }
     const missing = [...results.keys()].filter((record) => !gridRows.some(({ emplRecord }) => emplRecord === record));
     if (missing.length > 0) {
@@ -416,13 +429,14 @@ function createPlaywrightWorkforceJobSummaryPage(assertCurrent: () => void, page
     },
     async readDetail() {
       await waitForDetail();
+      const displayedEid = await readText(assertCurrent, ui.displayedEmplId(page), "displayed Empl ID");
       const displayedName = await readText(assertCurrent, ui.personName(page), "displayed name");
       await openTab(ui.workLocationTab(page), "ucpath.workforce-job-summary.work-location-tab");
       const workLocation = await readFrozenGrid(assertCurrent, page, "work-location");
       await openTab(ui.jobInformationTab(page), "ucpath.workforce-job-summary.job-information-tab");
       const jobInformation = await readFrozenGrid(assertCurrent, page, "job-information");
       recordBrowserAction("read", "ucpath.workforce-job-summary.job-grid");
-      return WorkforceJobSummaryDetailSchema.parse({ displayedName, workLocation, jobInformation });
+      return WorkforceJobSummaryDetailSchema.parse({ displayedEid, displayedName, workLocation, jobInformation });
     },
   };
 }
