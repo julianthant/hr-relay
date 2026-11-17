@@ -1,6 +1,7 @@
 import { wireError } from "./failure-status.js";
+import { z } from "zod";
 import { ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, AssistantModelPreferenceViewSchema, AssistantRequestSchema, AssistantRespondEnvelopeSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
-  AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryViewSchema, AssistantStageResultSchema } from "../../../../models/dashboard/assistant.js";
+  AssistantActivityWireSchema, AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryViewSchema, AssistantStageResultSchema } from "../../../../models/dashboard/assistant.js";
 import type { AssistantService } from "../../../assistant/service.js";
 import type { DashboardApp } from "./api-types.js";
 import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "./operator-mutation-ingress.js";
@@ -70,6 +71,15 @@ export function registerAssistantRoutes(app: DashboardApp, service: AssistantSer
     } catch { return c.json({ kind: "result", result: { state: "refused", code: "ASSISTANT_INVALID", message: ASSISTANT_FAILURES.ASSISTANT_INVALID } }, 400); }
   });
   const HISTORY_UNAVAILABLE = ["ASSISTANT_HISTORY_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE, false] as const;
+  app.get("/api/v1/assistant/activity", c => {
+    c.header("Cache-Control", "no-store");
+    const input = z.strictObject({ search: z.string().max(200).optional() }).safeParse(c.req.query());
+    if (!input.success) return c.json(wireError("ASSISTANT_INVALID", ASSISTANT_FAILURES.ASSISTANT_INVALID, false), 400);
+    try {
+      if (service?.activity === undefined) return c.json(wireError(...HISTORY_UNAVAILABLE), 503);
+      return c.json(AssistantActivityWireSchema.parse(service.activity(input.data.search)));
+    } catch { return c.json(wireError(...HISTORY_UNAVAILABLE), 503); }
+  });
   app.use("/api/v1/assistant/history", operatorMutationIngressGuard);
   app.get("/api/v1/assistant/history", c => {
     c.header("Cache-Control", "no-store");

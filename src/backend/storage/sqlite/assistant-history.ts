@@ -230,6 +230,16 @@ export function createAssistantHistoryRepository(ports: Ports) {
 
   return Object.freeze({
     apply,
+    activityMetadata(now: string) {
+      const instant = Iso.parse(now);
+      const { id, kind, delivery, code, actionId, createdAt, updatedAt } = AssistantMessageRecordSchema.shape;
+      const metadata = z.strictObject({ id, kind, delivery, code, actionId, createdAt, updatedAt });
+      return ports.read(() => database.prepare(`SELECT m.id, m.kind, m.delivery, m.code, m.action_id AS actionId,
+        m.created_at AS createdAt, m.updated_at AS updatedAt FROM assistant_messages m
+        JOIN assistant_conversations c ON c.id=m.conversation_id
+        WHERE c.profile_id=? AND c.expires_at>? ORDER BY m.created_at, m.id`)
+        .all(ports.profileId(), instant).map(row => metadata.parse(row)));
+    },
     list(now: string): AssistantHistoryView {
       return ports.read(() => {
         const chats = database.prepare("SELECT * FROM assistant_conversations WHERE profile_id=? AND expires_at>? ORDER BY created_at DESC, id")

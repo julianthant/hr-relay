@@ -16,6 +16,7 @@ import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.j
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
 import { createAssistantService } from "../../../assistant/service.js";
+import { createAssistantActivityQuery } from "../../../assistant/activity.js";
 import { createAssistantPlugins } from "../../../assistant/plugins/registry.js";
 import { createAssistantProposals } from "../../../assistant/proposals.js";
 import { assistantWorkflowFacts, loadAssistantWorkflowFacts, type AssistantWorkflowFacts } from "../../../assistant/plugins/workflows/facts.js";
@@ -268,6 +269,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     search: () => shell.search, notifications: () => notifications,
     workbooks: () => workbookLibrary, attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });
   const assistant = createAssistantService({ debugEvents, account: { ...chatGptAccount, ...context.accountAuthority },
+    activity: createAssistantActivityQuery({ database, clock, timeZone, assertCurrent, workflowLabel: workflowId => {
+      const descriptor = descriptors.resolve(workflowId);
+      if (descriptor === undefined) throw new Error(`assistant-activity-workflow-missing:${workflowId}`);
+      return descriptor.label;
+    } }),
     assertComposition: assertCurrent, actorId: resolved.config.actor.id, facts: assistantFacts,
     owner: () => { assertCurrent(); return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch }; },
     plugins: () => [...createAssistantPlugins(assistantPluginDeps), assistantProposals.plugin],
