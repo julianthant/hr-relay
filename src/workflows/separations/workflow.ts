@@ -245,7 +245,7 @@ export const separationsWorkflow = defineWorkflow({
     const { approval } = identity, { employment, departmentOption } = jobs, { dates } = timecard;
     const { receipt, clearPending, fileTermination } = termination, { finalizeKuali } = finalization;
     return {
-      steps: [...extraction.steps, ...identity.steps, ...timecard.steps, ...reference.steps, ...termination.steps, ...finalization.steps],
+      steps: [...extraction.steps, ...jobs.steps, ...timecard.steps, ...identity.steps, ...reference.steps, ...termination.steps, ...finalization.steps],
       result: result(
         SeparationsResultSchema,
         [approval, employment, departmentOption, dates, receipt, clearPending, fileTermination, finalizeKuali],

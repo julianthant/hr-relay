@@ -56,9 +56,9 @@ const contracts: Record<MockWorkflowId, Contract> = {
   ], result: [["Employee ID", "10000001"], ["Employee", "Jordan Lee"], ["Department", "HDH"], ["HR status", "Active"]] },
   separations: { runnable: true, methods: ["typed"], inputLabel: "Kuali ID", placeholder: "48216, 48220", example: "48216", dryRun: true, steps: [
     step("kuali-extraction", "Read Kuali document", "Kuali", "Read the RRSS separation document and its employee and separation dates."),
-    step("identity-check", "Verify employee identity", "UCPath", "Verify the supplied Employee ID or resolve the name before continuing."),
-    step("ucpath-job-summary", "Read job summary", "UCPath", "Read Workforce Job Summary and resolve the department before the timecard check."),
+    step("identity-check", "Verify employee identity", "UCPath", "Verify the supplied Employee ID or resolve the name, then read Workforce Job Summary and resolve the department."),
     step("kronos-search", "Read timecard", "New Kronos", "Read the HDH employee's timecard and reconcile the last day worked."),
+    step("identity-review", "Approve identity", undefined, "Compare the document with UCPath and wait for approval when they do not agree."),
     step("transaction-check", "Check pending termination", "UCPath", "Check for a pending termination before preparing another transaction."),
     step("ucpath-transaction", "Submit termination", "UCPath", "File and verify the Smart HR termination transaction.", true),
     step("kuali-finalization", "Finalize Kuali document", "Kuali", "Finalize the RRSS document after the UCPath termination is verified.", true),
