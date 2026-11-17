@@ -198,6 +198,41 @@ export const AuthorityRestoreJournalSchema = z.strictObject({ schemaVersion: z.l
   installationId: z.uuid(), source: RuntimeLocatorSchema, restoreAdmissionId: z.uuid(),
   restore: AuthorityRestoreInputSchema,
   invalidation: z.strictObject({ priorDocument: ProfileRegistryDocumentSchema, document: ProfileRegistryDocumentSchema, continuity: ProfileContinuitySchema }).optional() });
+export type AuthorityRestoreJournal = z.infer<typeof AuthorityRestoreJournalSchema>;
+/** Where a pending restore stands: the journal says whether settlement began, the staged file whether the rename ran. */
+export type AuthorityRestoreStage = "staged" | "renamed" | "settling";
+export const AUTHORITY_RESTORE_EVENTS = ["begin", "rename", "record-invalidation", "unlink", "resume"] as const;
+export type AuthorityRestoreEvent = (typeof AUTHORITY_RESTORE_EVENTS)[number];
+export type AuthorityRestoreTransition =
+  | Readonly<{ state: AuthorityRestoreStage | "absent" }>
+  | Readonly<{ refused: "restore-pending" | "not-restoring" }>;
+
+export function authorityRestoreStageOf(journal: Pick<AuthorityRestoreJournal, "invalidation">, stagedFilePresent: boolean): AuthorityRestoreStage {
+  if (journal.invalidation === undefined) return stagedFilePresent ? "staged" : "renamed";
+  // Settlement records the invalidation only after the rename, so a staged file beside it is not this operation's.
+  if (stagedFilePresent) throw new Error("restore-recovery-file-changed");
+  return "settling";
+}
+
+const AUTHORITY_RESTORE_NEXT: Readonly<Record<AuthorityRestoreStage | "absent", Partial<Record<AuthorityRestoreEvent, AuthorityRestoreStage | "absent">>>> = {
+  absent: { begin: "staged" },
+  staged: { rename: "renamed", resume: "staged" },
+  renamed: { "record-invalidation": "settling", resume: "renamed" },
+  settling: { unlink: "absent", resume: "settling" },
+};
+
+/** Resume continues from the stage it finds; every other event moves one stage forward or is refused. */
+export function authorityRestoreTransition(stage: AuthorityRestoreStage | "absent", event: AuthorityRestoreEvent): AuthorityRestoreTransition {
+  const next = AUTHORITY_RESTORE_NEXT[stage][event];
+  if (next !== undefined) return { state: next };
+  return { refused: event === "begin" ? "restore-pending" : "not-restoring" };
+}
+
+/** Reads the pending restore journal outside the installation lease; an absent file is no pending restore. */
+export function readAuthorityRestoreJournal(workspace: string): AuthorityRestoreJournal | undefined {
+  const file = readPrivateFile(join(workspace, ".tracker", "control", "journal.json"), { label: "lock", maxBytes: 16 * 1024 * 1024 });
+  return file === undefined ? undefined : AuthorityRestoreJournalSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+}
 export type AuthorityRestoreInput = z.infer<typeof AuthorityRestoreInputSchema>;
 export type AuthorityRestoreVerification = Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>;
 export type AuthorityRestoreVerifier = () => AuthorityRestoreVerification;
@@ -2258,6 +2293,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         const continuityPath = join(control, "profile-registry.json"), registryPath = join(locator.stateRoot, "machine", "profiles.json");
         const continuity = readStrict(continuityPath, ProfileContinuitySchema);
         if (pending.invalidation === undefined) {
+          if ("refused" in authorityRestoreTransition(authorityRestoreStageOf(pending, existsSync(parsed.stagedPath)), "record-invalidation")) fail("profile-restore-invalidation-uncertain");
           const document = readMachineRegistry(control, locator, false);
           if (canonicalJsonStringify(continuity) !== canonicalJsonStringify(parsed.profile.continuity)) fail("profile-restore-control-changed");
           const next = advanceProfileRegistryDocument(document, { sessionGeneration: document.sessionGeneration + 1 });
@@ -2285,6 +2321,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           schemaVersion: 1, installationId: locator.installationId, profileId: parsed.profile.binding.profileId,
           operationId: parsed.operationId, backupTime: parsed.backupTime, restoredAt: parsed.restoredAt,
           authorityGeneration: parsed.authorityGeneration, manifestFileName: basename(parsed.manifestPath) });
+        if ("refused" in authorityRestoreTransition(authorityRestoreStageOf(pending, existsSync(parsed.stagedPath)), "unlink")) fail("profile-restore-invalidation-missing");
         unlinkSync(join(control, "journal.json")); fsyncPath(control);
       });
     },
