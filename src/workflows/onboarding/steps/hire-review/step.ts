@@ -20,6 +20,7 @@ import { onboardingMasterResults } from "../../../../rules/onboarding/master-res
 import { buildCrmData } from "../crm-data/step.js";
 import { buildUcpathSearch } from "../ucpath-search/step.js";
 import { buildI9Search } from "../i9-search/step.js";
+import { buildReferenceCheck } from "../reference-check/step.js";
 
 const review = Object.freeze({ ...defineWorkflowStep({ key: "hire-review", label: "Review UCPath hire findings" }), system: "ucpath" as const,
   operatorFields: [
@@ -586,9 +587,12 @@ export function buildHireReview(author: WorkflowAuthor<typeof OnboardingInput>, 
   return { findings, approval, steps: [[review, [findings, approval]]] as const };
 }
 
+/** `reference` is the composition's reference-check review; each path's first save waits for it so a stop comes before anything is saved. */
 export function buildHireWrites(author: WorkflowAuthor<typeof OnboardingInput>, crm: ReturnType<typeof buildCrmData>,
-  ucpath: ReturnType<typeof buildUcpathSearch>, i9: ReturnType<typeof buildI9Search>, reviewed: ReturnType<typeof buildHireReview>) {
+  ucpath: ReturnType<typeof buildUcpathSearch>, i9: ReturnType<typeof buildI9Search>, reviewed: ReturnType<typeof buildHireReview>,
+  reference?: ReturnType<typeof buildReferenceCheck>) {
   const { findings, approval } = reviewed;
+  const firstSave = reference === undefined ? [] : [reference.review];
   const plan = author.task(entries.task("write-plan", OnboardingReadWritePlan, { replay: "always-rerun" }), [crm.plan, ucpath.matches, ucpath.subject, i9.lookup, findings, approval], ({ input, outputs }) => ({
     mode: input.mode, plan: outputs["hire-plan"], match: outputs["ucpath-source"], subject: outputs["hire-subject"], lookup: outputs["i9-lookup"],
     findings: outputs["hire-findings"], approval: outputs[ONBOARDING_WRITE_REVIEW_GATE],
@@ -602,7 +606,7 @@ export function buildHireWrites(author: WorkflowAuthor<typeof OnboardingInput>, 
     plan: outputs["hire-plan"], lookup: outputs["i9-lookup"].state === "checked" ? { state: "not-required" as const, subjectState: "review-required" as const } : outputs["i9-lookup"],
   }));
   const profile = author.transaction(entries.transaction("i9-profile-save", { label: "Save I-9 profile", prepare: I9StageProfile, commit: I9CreateProfile,
-    dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000 }), [plan, approval], {
+    dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000 }), [plan, approval, ...firstSave], {
     prepareBind: ({ outputs }) => I9ProfileTargetSchema.parse(outputs["write-plan"].i9),
     commitBind: ({ outputs }) => I9ProfileTargetSchema.parse(outputs["write-plan"].i9),
   });
@@ -632,7 +636,7 @@ export function buildHireWrites(author: WorkflowAuthor<typeof OnboardingInput>, 
   const master = author.task(masterEntries.task("master-results", ReadWorkbookResult, { replay: "always-rerun" }), [plan, receipt, remote], ({ outputs }) =>
     onboardingMasterResults(outputs["write-plan"], outputs["hire-receipt"], outputs["i9-remote-create"].output.receipt));
   const concurrentHire = author.transaction(hireEntries.transaction("concurrent-hire-create", { label: "Submit the reviewed concurrent hire", prepare: UcpathStageHire, commit: UcpathCreateHire,
-    dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000 }), [plan, approval, notRequired], {
+    dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000 }), [plan, approval, notRequired, ...firstSave], {
     prepareBind: ({ outputs }) => ({ ...outputs["write-plan"].hire, comments: outputs["write-plan"].comments, profileId: null }),
     commitBind: ({ outputs }) => ({ ...outputs["write-plan"].hire, comments: outputs["write-plan"].comments, profileId: null }),
   });
@@ -679,9 +683,9 @@ export const onboardingHireWritesDefinition = defineStep({
     build: (parent: WorkflowDefinition<typeof OnboardingInput>) => ({ ...inheritStepProof(parent), code: "onhw", label: "Onboarding writes", summary: parent.summary,
       steps: (author: WorkflowAuthor<typeof OnboardingInput>) => {
         const crm = buildCrmData(author), ucpath = buildUcpathSearch(author, crm), i9 = buildI9Search(author, crm, ucpath);
-        const reviewed = buildHireReview(author, crm, ucpath, i9);
-        const writes = buildHireWrites(author, crm, ucpath, i9, reviewed);
-        return { steps: [...crm.steps, ...ucpath.steps, ...i9.steps, ...reviewed.steps, ...writes.steps], result: writes.result };
+        const reviewed = buildHireReview(author, crm, ucpath, i9), reference = buildReferenceCheck(author, crm, reviewed);
+        const writes = buildHireWrites(author, crm, ucpath, i9, reviewed, reference);
+        return { steps: [...crm.steps, ...ucpath.steps, ...i9.steps, ...reviewed.steps, ...reference.steps, ...writes.steps], result: writes.result };
       },
     }),
   },

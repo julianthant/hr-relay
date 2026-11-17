@@ -94,6 +94,7 @@ describe("Person Lookup task implementations", () => {
         "workflow:crm-doc-download/read-worksheet-archives",
         "workflow:emergency-contact-member/read-approved-contact",
         "workflow:emergency-contact-member/read-contact-plan",
+        "workflow:emergency-contact-member/read-reference-stop",
         "workflow:emergency-contact/read-result",
         "workflow:i9-check-start/read-people",
         "workflow:i9-check-start/read-publication",
@@ -112,6 +113,7 @@ describe("Person Lookup task implementations", () => {
         "workflow:onboarding/read-hire-plan",
         "workflow:onboarding/read-i9-lookup",
         "workflow:onboarding/read-i9-profile-plan",
+        "workflow:onboarding/read-reference-stop",
         "workflow:onboarding/read-write-plan",
 
         "workflow:person-lookup/read-active-status",
