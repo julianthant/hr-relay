@@ -319,7 +319,9 @@ export function authenticateDescendantHome(repositories: AuthorityRepositories, 
     if (parent === undefined) throw new Error("delegation-parent-unavailable");
     const selected = delegationGroupForChild(repositories,parent.envelope.runId,member.envelope.runId);
     if (index === 0 && !selected.group.children.some(entry => entry.child.envelope.runId === member.envelope.runId)) throw new Error("delegation-dispatch-membership-unavailable");
-    if (parent.cancelRequested === true && selected.manifest.policy.cascadeCancel !== "independent") return false;
+    // A queued child that carries its own cancel request is claimed only to settle cancelled before any step.
+    if (parent.cancelRequested === true && selected.manifest.policy.cascadeCancel !== "independent"
+      && (member.cancelRequested !== true || runClaim(member) !== undefined)) return false;
   }
   return true;
 }

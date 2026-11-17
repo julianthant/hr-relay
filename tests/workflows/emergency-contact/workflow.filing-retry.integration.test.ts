@@ -141,10 +141,9 @@ it("Stop on the parent while the retried filing is running cancels it before any
   assert.equal(stopped.filing.envelope.runId, running.envelope.runId, "no further filing is admitted");
   assert.ok(stopped.filing.lifecycle.state === "terminal" && stopped.filing.lifecycle.outcome === "cancelled");
   assert.deepEqual(f.database.authority.writeIntents.listByRun(running.envelope.runId), []);
-  // The person and the run are marked for cancellation and no worker claims them again; a second Stop settles them.
+  // The person and the run carry the same Stop and settle cancelled without a second one.
   assert.deepEqual([stopped.waiting, f.current()].map(run => [run.lifecycle.state, run.cancelRequested]), [["queued", true], ["queued", true]]);
-  await assert.rejects(f.raw.step(f.parentRun, signal()));
-  assert.equal(stop().state, "applied");
+  for (let steps = 0; f.current().lifecycle.state !== "terminal"; steps++) { assert.ok(steps < 4, "the run must settle"); await f.raw.step(f.parentRun, signal()); }
   for (const run of [people(f).waiting, f.current()]) assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled", `${run.envelope.workflow} ${JSON.stringify(run.lifecycle)}`);
   assert.equal(served(f, people(f).filing), false);
   assert.equal(f.filing.imports(), 0);

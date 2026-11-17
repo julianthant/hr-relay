@@ -392,8 +392,10 @@ settles. Retry is accepted while the run is active or paused; a paused run conti
 The member itself is never retried once its Save was issued. An Import with an unsure result parks
 the filing for the Saved / Not saved decision; the line reads Blocked, no Retry is served and the
 Import is not clicked again. Stop on the run cancels the waiting member and a filing that is queued
-or running again. A run with a failed filing does not settle until the filing is retried or the run
-is stopped.
+or running again: a running filing that has not fenced its Import ends with no Import, then the
+member and the run settle cancelled from that one Stop. While the Import is fenced, or its result is
+unsure, Stop is refused and the Import is never clicked again. A run with a failed filing does not
+settle until the filing is retried or the run is stopped.
 
 ### 2.1 Preview terminal result
 
