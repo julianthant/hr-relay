@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import "./analytics-charts.css";
+import { countScale } from "./analytics-model.js";
 
 const AXIS = "text-[12px] leading-4 tabular-nums text-ui-secondary";
 
@@ -95,12 +96,6 @@ export function StackedBars({ label, days, series, unit, height = 160, header, f
         </div>
       </div>)}
     </div>} />;
-}
-
-/** Counts in multiples of 6 so four ticks fall on whole numbers. */
-export function countScale(max: number) {
-  const top = Math.max(6, Math.ceil(max / 6) * 6);
-  return { top, ticks: [top, top * 2 / 3, top / 3, 0].map(value => ({ value, label: String(value) })) };
 }
 
 /** Consecutive measured days; a missing day breaks the line instead of plotting zero. */

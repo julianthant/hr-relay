@@ -9,7 +9,8 @@ const at = (minute: number): string => `${FIXTURE_DAY}T${String(9 + Math.floor(m
 export const FIXTURE_ACTIVITY_RANGE = { from: "2026-07-01", to: FIXTURE_DAY } as const;
 export const FIXTURE_ACTIVITY_UNAVAILABLE_RANGE = { from: "2026-07-02", to: FIXTURE_DAY } as const;
 const FIXTURE_ACTIVITY_TIME_ZONE = "America/Los_Angeles";
-const ASSISTANT_DAYS = Array.from({ length: 31 }, (_, index) => `2026-07-${String(index + 1).padStart(2, "0")}`);
+const ASSISTANT_DAYS = Array.from({ length: (Date.parse(FIXTURE_ACTIVITY_RANGE.to) - Date.parse(FIXTURE_ACTIVITY_RANGE.from)) / 86_400_000 + 1 },
+  (_, index) => new Date(Date.parse(FIXTURE_ACTIVITY_RANGE.from) + index * 86_400_000).toISOString().slice(0, 10));
 const FIXTURE_ACTIVITY_DAYS = [
   { day: "2026-07-29", runs: 3 },
   { day: "2026-07-30", runs: 4 },

@@ -2,9 +2,9 @@ import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-rea
 import { Fragment, useState, type CSSProperties } from "react";
 import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
 import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, SegmentedChoice, dsIcon } from "../../ds/ui.js";
-import { ChartHeading, KeyFigures, LineChart, StackedBars, countScale } from "./analytics-charts.js";
+import { ChartHeading, KeyFigures, LineChart, StackedBars } from "./analytics-charts.js";
 import type { ActivityDateRange } from "./activity-model.js";
-import { analyticsBuckets, analyticsClock, analyticsPeriodLabel, bucketCounts, finished, shiftDate, shiftRange, type AnalyticsData, type AnalyticsWorkflow } from "./analytics-model.js";
+import { analyticsBuckets, analyticsClock, analyticsPeriodLabel, bucketCounts, countScale, finished, shiftDate, shiftRange, type AnalyticsData, type AnalyticsWorkflow } from "./analytics-model.js";
 
 const QUICK = [{ value: "7d", label: "7d" }, { value: "30d", label: "30d" }, { value: "90d", label: "90d" }] as const;
 type Quick = (typeof QUICK)[number]["value"];
