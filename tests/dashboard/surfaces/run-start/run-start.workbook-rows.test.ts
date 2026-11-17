@@ -101,7 +101,7 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
   await press(h.buttons().some(button => h.buttonName(button) === "Start live run") ? "Start live run" : "Start run");
   assert.ok(planned, document.body.textContent ?? "Planner was not called");
   assert.deepEqual(planned.selectedStepKeys, workflow.steps.filter(step => step.includedByDefault).map(step => step.key));
-  assert.equal(planned.selectedStepKeys.length, 7, "Onboarding defaults include all seven steps");
+  assert.equal(planned.selectedStepKeys.length, 8, "Onboarding defaults include all eight steps, with the reference check");
 });
 
 it("uses saved rows only, requires a common explicit mode and preserves duplicate physical entry/refusal correspondence", async () => {
