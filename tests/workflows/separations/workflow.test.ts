@@ -162,6 +162,12 @@ describe("workflow definition public equivalence characterization", () => {
             ]
           },
           {
+            key: "reference-check", label: "Check reference spreadsheets", nodes: [
+              { id: "reference-check", label: "Check reference spreadsheets" }, { id: "reference-stop", label: "Decide whether to ask before filing" },
+              { id: "reference-check-review", label: "Review the reference spreadsheets" },
+            ]
+          },
+          {
             key: "ucpath-transaction", label: "UCPath transaction", nodes: [
               { id: "pending-set", label: "Read Exact Pending Set" }, { id: "clear-pending", label: "Clear Pending Terminations" },
               { id: "file-termination", label: "File Termination" }, { id: "receipt", label: "Termination Receipt" },
