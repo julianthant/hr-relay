@@ -104,3 +104,13 @@ it("refuses malformed persisted preferences instead of publishing them as defaul
   await assert.rejects(ready(a.owner)); assert.equal(a.owner.snapshot().state, "failed");
   assert.equal(await a.owner.change({ "preferences.theme": { set: "light" } }), false); assert.equal(w.writes(), 0); a.close();
 });
+it("stores the send shortcut per person and serves it back after a renderer restart", async () => {
+  const w = world();
+  const a = w.select("A"); await ready(a.owner);
+  assert.equal(a.owner.snapshot().value.sendShortcut, "enter");
+  assert.equal(await a.owner.change({ "preferences.sendShortcut": { set: "mod-enter" } }), true); a.close(); a.owner.clear();
+  const b = w.select("B"); await ready(b.owner);
+  assert.equal(b.owner.snapshot().value.sendShortcut, "enter"); b.close();
+  const restarted = w.select("A"); await ready(restarted.owner);
+  assert.equal(restarted.owner.snapshot().value.sendShortcut, "mod-enter"); restarted.close();
+});
