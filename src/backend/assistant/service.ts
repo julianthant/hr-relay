@@ -9,7 +9,7 @@ import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.j
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import type { RunRecord } from "../../models/run/record.js";
 import { z } from "zod";
-import { AssistantHistoryOperationSchema, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, AssistantModelPreferenceViewSchema, AssistantModelCatalogSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
+import { AssistantHistoryOperationSchema, type AssistantActivityWire, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, AssistantModelPreferenceViewSchema, AssistantModelCatalogSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
   ASSISTANT_ATTACHMENT_TYPES, ASSISTANT_ATTACHMENT_UPLOAD_MS, type AssistantStageResult, ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_CONTEXT_TEXT_MAX_BYTES, type AssistantAttachmentRecord, type AssistantUserContentPart, assistantInputMedia,
   type AssistantActionDecision, type AssistantActionResult, type AssistantFailureCode, type AssistantResult, type AssistantInputItem } from "../../models/dashboard/assistant.js";
 import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
@@ -27,6 +27,7 @@ import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 import { ASSISTANT_PROVIDER_EFFORTS, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
 
 export interface AssistantServiceOptions {
+  readonly activity?: { read(this: void, search?: string): AssistantActivityWire };
   readonly debugEvents?: { emit(event: Omit<z.input<typeof DebugEventSchema>, "build" | "pid">): void };
   readonly readModelPreference?: () => AssistantModelPreferenceView;
   readonly account: Pick<ChatGptAccountService, "inferAssistant" | "listAssistantModels" | "readAuthority" | "revalidateAuthority">;
@@ -73,6 +74,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
       { category: "http", area: "assistant-proposal", reason: "action-decision", code: "ASSISTANT_PROPOSAL_REFUSED" });
   };
   return Object.freeze({
+    activity: options.activity?.read,
     /** The signed-in account's model catalog, for the composer's model picker. */
     async models(signal: AbortSignal) {
       options.assertComposition?.();
@@ -354,7 +356,7 @@ function selectedRunReference(subjectRef: string): { runId: string; revision: nu
   if (match === null || !z.uuid().safeParse(match[1]).success || !Number.isSafeInteger(revision)) throw new AssistantProtocolError("assistant-selected-run-invalid");
   return { runId: match[1], revision };
 }
-export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'stage' | 'models' | 'modelPreference' | 'historyView' | 'conversation' | 'history'>>;
+export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'activity' | 'decide' | 'stage' | 'models' | 'modelPreference' | 'historyView' | 'conversation' | 'history'>>;
 
 export interface AssistantM1ServiceOptions extends Omit<AssistantServiceOptions, "plugins" | "history" | "decideAction" | "debugEvents"> {
   readonly history: () => AssistantM1HistoryRepository;
