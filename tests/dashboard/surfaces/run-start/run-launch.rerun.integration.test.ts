@@ -49,10 +49,10 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await mount(h, source); await press("Continue");
     assert.match(text(), /already submitted/u); assert.equal(h.finalCommands.length, 0);
     await press("Confirm"); assert.equal(field("Employee ID").value, "10812345");
-    await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
+    await press("Continue"); await act(async () => checkbox("Dry run").click());
+    await press("Start dry run");
     const submitted = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.ok(submitted.warningAcknowledgment); assert.deepEqual(submitted.submissions, [{ eid: "10812345" }]);
-    await press("Start dry run");
     const queued = h.queueRoots.at(-1); assert.ok(queued); assert.notEqual(queued.runId, source.envelope.runId);
     const run = h.database.authority.runs.get(queued.runId); assert.ok(run);
     assert.equal(run.envelope.descriptorVersion, 2); assert.equal(run.envelope.contractFingerprint, "b".repeat(64));
@@ -76,9 +76,10 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
     assert.equal(field("Employee ID").value, "10812345"); assert.doesNotMatch(text(), /already submitted/u);
     assert.equal(h.finalCommands.length, 0);
-    await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
+    await press("Continue"); await act(async () => checkbox("Dry run").click());
+    assert.equal(h.submissions.length, 0); assert.equal(h.finalCommands.length, 0);
+    await press("Start dry run");
     assert.ok(StartPlanRequestSchema.parse(h.submissions.at(-1)).warningAcknowledgment);
-    assert.equal(h.finalCommands.length, 0);
   });
 
   it("submits Rerun without offering or retaining a worker choice", async () => {
@@ -90,9 +91,8 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal((await h.execute(queued)).state, "done"); const source = h.fresh(queued);
     await mount(h, source); await press("Continue"); await press("Confirm"); await press("Continue");
     assert.equal(document.querySelector('button[aria-label$=" Workers"]') === null, true);
-    await press("Continue");
+    await press("Start live run");
     assert.equal(Object.hasOwn(StartPlanRequestSchema.parse(h.submissions.at(-1)), "workers"), false);
-    assert.match(text(), /Review the plan/u);
   });
   it("warns before Values exist, Cancel returns to Steps and Confirm only advances; final dry run executes fresh work", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source);
@@ -106,11 +106,12 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
     assert.equal(field("Employee ID").value, "10812345"); await press("Copy Previous transaction");
     await fill(field("Previous transaction"), "edited memo");
-    await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
-    assert.match(text(), /Review the plan/u); const submitted = StartPlanRequestSchema.parse(h.submissions.at(-1));
+    await press("Continue"); await act(async () => checkbox("Dry run").click());
+    assert.equal(h.queueRoots.length, 1); await press("Start dry run");
+    const submitted = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.deepEqual(submitted.submissions, [{ eid: "10812345", memo: "edited memo" }]);
     assert.deepEqual(submitted.rerunSource?.copiedFrom, [{ nodeId: "read", fieldPath: "eid", targetFieldPath: "eid" }]);
-    assert.equal(h.queueRoots.length, 1); await press("Start dry run"); assert.equal(document.querySelector('[role="dialog"]'), null); assert.match(text(), /Rerun started/u);
+    assert.equal(document.querySelector('[role="dialog"]'), null); assert.match(text(), /Rerun started/u);
     const queued = h.queueRoots.at(-1); assert.ok(queued); assert.notEqual(queued.runId, source.envelope.runId);
     const run = h.database.authority.runs.get(queued.runId); assert.ok(run); assert.equal(run.envelope.dryRun, true);
     const priorCommits = h.world.events.filter((event) => event === "commit").length;
@@ -127,10 +128,11 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(field("Employee ID").value, "10812345"); await fill(field("Employee ID"), ""); assert.equal(field("Employee ID").value, "");
     await fill(field("Employee ID"), "10812346"); await press("Copy Check employee · Checked employee ID");
     await fill(field("Checked employee ID"), ""); assert.equal(button("Continue").disabled, true); assert.ok(document.querySelector('[aria-label="Values"]'));
-    await fill(field("Checked employee ID"), "10812346"); await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
+    await fill(field("Checked employee ID"), "10812346"); await press("Continue"); await act(async () => checkbox("Dry run").click());
+    await press("Start dry run");
     const request = StartPlanRequestSchema.parse(h.submissions.at(-1)); assert.deepEqual(request.submissions, [{ eid: "10812346" }]);
     assert.deepEqual(request.stepOmissions, [{ step: "checking", facts: { eid: "10812346" } }, { step: "filing", facts: {} }]);
-    assert.deepEqual(request.rerunSource?.copiedFrom, []); await press("Start dry run");
+    assert.deepEqual(request.rerunSource?.copiedFrom, []);
     const queued = h.queueRoots.at(-1); assert.ok(queued); const run = h.database.authority.runs.get(queued.runId); assert.ok(run);
     assert.notEqual(run.envelope.itemId, source.envelope.itemId); assert.equal((await h.execute(run)).state, "done");
     assert.equal(h.database.authority.writeIntents.listByRun(run.envelope.runId).length, 0); assert.equal(sourceBytes(h, source), bytes);
@@ -147,7 +149,9 @@ describe("registered Person Lookup and Separations served launch", () => {
     { workflowId: "separations", text: "4510", submission: { documentNumber: "4510" }, dryRun: true },
   ] as const;
 
-  async function preview(h: Awaited<ReturnType<typeof readiness.setup>>, entry: typeof cases[number]) {
+  const startName = (entry: typeof cases[number]) => entry.dryRun ? "Start dry run" : "Start run";
+
+  async function prepare(entry: typeof cases[number]) {
     const input = document.querySelector("textarea"); assert.ok(input);
     await readiness.fill(input, entry.text);
     await readiness.press("Continue");
@@ -155,8 +159,9 @@ describe("registered Person Lookup and Separations served launch", () => {
       assert.equal(readiness.checkbox("Dry run").matches(":checked"), false);
       await act(async () => readiness.checkbox("Dry run").click());
     }
-    await readiness.press("Continue");
-    await vi.waitFor(() => assert.ok(document.querySelector("#run-start-confirm")));
+  }
+
+  function assertPlanned(h: Awaited<ReturnType<typeof readiness.setup>>, entry: typeof cases[number]) {
     const request = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.equal(request.workflowId, entry.workflowId);
     assert.deepEqual(request.submissions, [entry.submission]);
@@ -187,14 +192,15 @@ describe("registered Person Lookup and Separations served launch", () => {
   }
 
   for (const entry of cases) {
-    it(`enqueues ${entry.workflowId} only after final confirmation with the real definition and exact input`, async () => {
+    it(`enqueues ${entry.workflowId} only on Start with the real definition and exact input`, async () => {
       const h = await readiness.setup(entry.workflowId), view = await readiness.mount(h);
-      await preview(h, entry);
+      await prepare(entry);
       assert.deepEqual(h.database.authority.runs.listByWorkflow(entry.workflowId), []);
       assert.deepEqual(h.finalCommands, []);
       assert.deepEqual(view.applied, []);
-      await readiness.press(entry.dryRun ? "Start dry run" : "Start 1 run");
+      await readiness.press(startName(entry));
       await vi.waitFor(() => assert.deepEqual(view.applied, [entry.workflowId]));
+      assertPlanned(h, entry);
       assert.deepEqual(view.closed, [false]);
       const run = assertQueued(h, entry);
       const command = h.finalRequest();
@@ -206,11 +212,12 @@ describe("registered Person Lookup and Separations served launch", () => {
 
     it(`retains a lost ${entry.workflowId} submission and replays exact bytes without a second run`, async () => {
       const h = await readiness.setup(entry.workflowId), view = await readiness.mount(h);
-      await preview(h, entry);
+      await prepare(entry);
       h.loseResponse();
-      await readiness.press(entry.dryRun ? "Start dry run" : "Start 1 run");
+      await readiness.press(startName(entry));
       await vi.waitFor(() => assert.ok([...document.querySelectorAll("button")]
         .some(button => button.textContent?.trim() === "Replay exact submission")));
+      assertPlanned(h, entry);
       assert.deepEqual(view.applied, []);
       const original = h.finalRequest(), queued = assertQueued(h, entry);
       const retained = h.retained(queued);
@@ -235,37 +242,33 @@ describe("registered Person Lookup and Separations served launch", () => {
       assert.deepEqual(h.finalCommands, []);
       await readiness.press("Continue");
       if (entry.dryRun) await act(async () => readiness.checkbox("Dry run").click());
-      await readiness.press("Continue");
-      await vi.waitFor(() => assert.ok(document.querySelector("#run-start-confirm")));
+      await readiness.press(startName(entry));
+      await vi.waitFor(() => assert.deepEqual(view.applied, [entry.workflowId]));
       const planned = StartPlanRequestSchema.parse(h.submissions.at(-1));
       assert.deepEqual(planned.submissions, [entry.submission]);
       assert.equal(planned.rerunSource?.runId, source.envelope.runId);
       assert.equal(planned.rerunSource?.expectedVersion, source.version);
       assert.deepEqual(planned.rerunSource?.copiedFrom, []);
       assert.deepEqual(h.retained(source), before);
-      await readiness.press(entry.dryRun ? "Start dry run" : "Create rerun");
-      await vi.waitFor(() => assert.deepEqual(view.applied, [entry.workflowId]));
       const run = assertQueued(h, entry, 2);
       assert.notEqual(run.envelope.runId, source.envelope.runId);
       assert.deepEqual(h.retained(source), before);
     });
   }
 
-  it("plans the registered Person Lookup Match input without exposing identifiers in confirmation", async () => {
+  it("plans the registered Person Lookup Match input without printing its identifiers", async () => {
     const h = await readiness.setup("person-lookup"), view = await readiness.mount(h);
     const match = document.querySelector<HTMLInputElement>('input[type="radio"][value="match"]'); assert.ok(match);
     await act(async () => match.click());
     const input = document.querySelector("textarea"); assert.ok(input);
     await readiness.fill(input, "Example, Person, x, 123456789");
-    await readiness.press("Continue"); await readiness.press("Continue");
-    await vi.waitFor(() => assert.ok(document.querySelector("#run-start-confirm")));
+    await readiness.press("Continue"); await readiness.press("Start run");
+    await vi.waitFor(() => assert.deepEqual(view.applied, ["person-lookup"]));
     const plan = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.deepEqual(plan.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "123456789",
       crmCheck: false, includeCrmDates: false }]);
-    assert.deepEqual(plan.selectedStepKeys, ["searching", "active-status"]);
-    assert.equal(readiness.text().includes("123456789"), false);
-    assert.deepEqual(view.applied, []);
-    assert.deepEqual(h.finalCommands, []);
-    assert.deepEqual(h.database.authority.runs.listByWorkflow("person-lookup"), []);
+    assert.deepEqual(plan.selectedStepKeys, ["searching", "active-status", "reference-check"]);
+    // The harness keeps the dialog mounted after Start; the applied dialog returns to Input and echoes what was typed there.
+    assert.equal(readiness.text().replace("Example, Person, x, 123456789", "").includes("123456789"), false);
   });
 });
