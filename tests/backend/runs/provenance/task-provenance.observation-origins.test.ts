@@ -107,6 +107,33 @@ it("forwards a dependency's native origin from its complete checkpoint instead o
  expect(points[0].origins).toEqual([{ path: [], origin: resolveObservationOrigin(identity, { field: "results" }, [0, "name"]) }]);
  expect(() => create({ ...checkpoint, observationOrigins: undefined }).recordData(point)).toThrow(/observation alias source checkpoint.*origin/u);
 });
+it("keeps the consuming task's own origin, never a read span, for a leaf forwarded from an operator-typed dependency", () => {
+ const value = SearchPersonOrg.example;
+ const assertedAt = "2026-08-02T18:00:00.000Z";
+ const asserted = RunCheckpointRecordSchema.parse({ workflowId: execution.workflowId, itemId: "33333333-3333-4333-8333-333333333333",
+   nodeId: execution.nodeId, runId: execution.runId, attempt: 1, claimGeneration: 2, output: { schemaHash: deriveSchemaHash(SearchPersonOrg.output, "output"), value },
+   descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint, implFingerprint: "a".repeat(64),
+   provenance: jsonLeafPaths(value).map(path => ({ path, source: "operator", observedAt: assertedAt, originalObservedAt: assertedAt })),
+   assertion: { step: "searching", assertedAt }, writtenAt: assertedAt });
+ const points: RecordedDataPoint[] = [];
+ const consumer = { ...execution, nodeId: "search-identity", taskId: ReadResolvedIdentity.id };
+ const consumerSpan = "pl-180000-aaaa/search-identity#4.1";
+ const createTyped = () => createTaskProvenanceCollector({ descriptor: personLookupDescriptor, execution: consumer, observationSpanPath: consumerSpan,
+   canonicalInput: PersonLookupInput.parse({ name: "Fictional Person" }), upstreamEvidence: { checkpoints: [asserted], skippedTasks: ["matching"] },
+   clock: manualClock(new Date(assertedAt)), onRecord: batch => points.push(...batch.points) });
+ const fromTyped = (field: string, recorded: unknown, aliases: NonNullable<DataPoint["aliases"]>) => createTyped().recordData({ direction: "read", field, value: recorded as DataPoint["value"], aliases });
+ // An operator-typed source is still checked: a contradicting value or overlapping targets refuse.
+ expect(() => fromTyped("selected", "Someone Else", [{ path: [], source: { kind: "dependency", nodeId: "searching", path: ["results", 0, "name"] } }])).toThrow(/contradicts its exact source/u);
+ expect(() => fromTyped("selected", { name: value.results[0].name }, [{ path: [], source: { kind: "dependency", nodeId: "searching", path: ["results", 0] } }])).toThrow(/contradicts its exact source/u);
+ expect(() => fromTyped("selected", value.results[0], [{ path: [], source: { kind: "dependency", nodeId: "searching", path: ["results", 0] } },
+   { path: ["name"], source: { kind: "dependency", nodeId: "searching", path: ["results", 0, "name"] } }])).toThrow(/targets overlap/u);
+ expect(points).toEqual([]);
+ fromTyped("selected", value.results[0].name, [{ path: [], source: { kind: "dependency", nodeId: "searching", path: ["results", 0, "name"] } }]);
+ expect(points[0].origins).toBeUndefined();
+ const origin = resolveObservationOrigin({ ...consumer, spanPath: consumerSpan }, points[0], []);
+ expect(origin).toEqual({ runId: execution.runId, attempt: 1, spanPath: consumerSpan, nodeId: "search-identity", taskId: ReadResolvedIdentity.id, field: "selected", path: [] });
+ expect(origin.spanPath).not.toBe(spanPath);
+});
 it("rejects string indices for arrays and numeric indices for objects instead of coercing alias addresses", () => {
  for(const [value,path]of [[[{name:"A"}],["0"]],[{"0":{name:"A"}},[0]]] as const){
   const c=collector();c.recordData({direction:"read",field:"results",value});

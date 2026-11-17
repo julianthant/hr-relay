@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
+import { valueLeafSchemaExact } from "../../../src/models/workflow/rerun-values.js";
 import {
   planStepOmissions,
   stepManualFieldFitsLeaf,
@@ -122,5 +123,23 @@ describe("representation check", () => {
       [text, z.union([z.string().transform((value) => value.toUpperCase()), z.string()])], [text, z.unknown().refine(() => true)],
       [text, z.xor([z.string(), z.literal("blocked")])],
     ] as const) assert.equal(stepManualFieldFitsLeaf(field, leaf), false, `${field.kind} ${JSON.stringify(leaf._zod.def.type)}`);
+  });
+});
+
+describe("replaced leaf under a discriminated union", () => {
+  const shared = { day: z.iso.date().nullable() };
+  const arms = z.discriminatedUnion("state", [z.strictObject({ ...shared, state: z.literal("read") }), z.strictObject({ ...shared, state: z.literal("missing") })]);
+
+  it("lands on the leaf every option shares", () => {
+    assert.equal(valueLeafSchemaExact(arms, ["day"]), shared.day);
+  });
+
+  it("refuses a leaf the options do not share, a checked union and a plain union", () => {
+    const apart = z.discriminatedUnion("state", [z.strictObject({ day: z.iso.date(), state: z.literal("read") }), z.strictObject({ day: z.iso.date(), state: z.literal("missing") })]);
+    const partial = z.discriminatedUnion("state", [z.strictObject({ ...shared, state: z.literal("read") }), z.strictObject({ state: z.literal("missing") })]);
+    for (const [schema, path] of [
+      [arms, ["state"]], [apart, ["day"]], [partial, ["day"]], [arms.refine(() => true), ["day"]],
+      [z.union([z.strictObject(shared), z.strictObject(shared)]), ["day"]],
+    ] as const) assert.equal(valueLeafSchemaExact(schema, path), undefined, path.join("."));
   });
 });

@@ -11,9 +11,11 @@ export const readResolvedIdentityTask = defineTask(ReadResolvedIdentity, {
     const aliases = new Map<string, NonNullable<DataPoint["aliases"]>>();
     if (output.selected !== null) {
       const index = input.person?.results.indexOf(output.selected) ?? -1;
-      const path = output.selected === input.person?.selection.selected ? ["selection", "selected"] : index < 0 ? undefined : ["results", index];
-      if (path === undefined) throw new Error("observation alias selected dependency unavailable");
-      aliases.set("selected", [{ path: [], source: { kind: "dependency", nodeId: "searching", path } }]);
+      // Match mode reads no UCPath person: one it resolves over is the UCPath identity's own selected person.
+      const source = input.input.mode === "match" ? { nodeId: "search-identity", path: ["selected"] }
+        : { nodeId: "searching", path: output.selected === input.person?.selection.selected ? ["selection", "selected"] : index < 0 ? undefined : ["results", index] };
+      if (source.path === undefined || input.input.mode === "match" && output.selected !== input.person?.selection.selected) throw new Error("observation alias selected dependency unavailable");
+      aliases.set("selected", [{ path: [], source: { kind: "dependency", nodeId: source.nodeId, path: source.path } }]);
     }
     if (input.crm?.state === "checked") {
       if (output.crmRecord !== null) {
