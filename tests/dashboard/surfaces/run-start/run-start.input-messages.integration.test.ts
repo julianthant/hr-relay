@@ -80,4 +80,24 @@ describe("typed input refusals read as one plain sentence and keep their parsed 
       await h.cleanup();
     }
   });
+
+  it("words each list hint the same way and accepts the separators it names", async () => {
+    const hints: Array<[string, boolean, RegExp, string]> = [
+      ["person-lookup", false, /Separate people with a semicolon or Shift\+Enter\./u, "10000001"],
+      ["person-lookup", true, /Separate people with a semicolon or Shift\+Enter\./u, "Lee, Jordan, x, 123-45-6789"],
+      ["separations", false, /Separate values with a semicolon or Shift\+Enter\./u, "4502"],
+      ["work-study", false, /Separate values with a semicolon or Shift\+Enter\./u, "10000001"],
+    ];
+    for (const [id, match, hint, one] of hints) {
+      for (const separator of ["; ", "\n"]) {
+        const dialog = await open(id);
+        if (match) await pickMatch();
+        assert.match(dialog.text(), hint, `${id} hint`);
+        const second = one === "4502" ? "4510" : one === "10000001" ? "10000002" : "Kim, Alex, 01/01/2000, x";
+        await dialog.type(`${one}${separator}${second}`);
+        assert.match(dialog.text(), /Parsed input2 runs/u, `${id} ${JSON.stringify(separator)}`);
+        await h.cleanup();
+      }
+    }
+  });
 });

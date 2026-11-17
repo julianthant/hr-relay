@@ -152,7 +152,7 @@ function parseTypedEntries(surface: TypedInputSurface, text: string, draft: Type
   }
   const parser = mode.parser;
   if (parser.kind === "entries") return parseInputRunText(parser.spec, text).map(entry => JsonValueSchema.parse({ ...toRawSubmission(entry), ...named, ...options }));
-  return text.split(parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
+  return splitTupleEntries(text, parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
     const fields = entry.split(",").map(field => field.trim());
     const fail = (sentence?: string) => new Error(sentence ?? formatErrorCatalogFailure(createErrorCatalogFailure(parser.missingIdentifiersCode, {})).text);
     if (fields.length < parser.identifiers.length + 1 || fields.some(field => field === "")) throw fail(parser.shapeRefusal);
@@ -214,7 +214,7 @@ function refusedRows(surface: InputRunSurface, text: string, draft: TypedInputDr
   const parser = typed?.modes.find(candidate => candidate.value === chosen)?.parser;
   const texts = parser === undefined ? splitEntries(surface.parser, text)
     : parser.kind === "entries" ? splitEntries(parser.spec, text)
-      : text.split(parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
+      : splitTupleEntries(text, parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
         const fields = entry.split(",").map(field => field.trim());
         return fields.length > parser.identifiers.length && fields.at(-1)?.toLowerCase() !== parser.missing.toLowerCase() && fields.at(-1) !== ""
           ? [...fields.slice(0, -1), "[masked]"].join(", ") : fields.join(", ");
@@ -225,6 +225,11 @@ function refusedRows(surface: InputRunSurface, text: string, draft: TypedInputDr
 export function inputRunFieldLabel(parser: InputParserSpec): string {
   const noun = inputRunValueNoun(parser);
   return noun === "Kuali document numbers" ? "Kuali ID" : noun.charAt(0).toUpperCase() + noun.slice(1);
+}
+
+/** Name-tuple entries end at the declared delimiter or a new line, as the hint says. */
+function splitTupleEntries(text: string, delimiter: string): string[] {
+  return text.split(delimiter).flatMap(part => part.split("\n"));
 }
 
 export function inputRunDelimiterHint(parser: InputParserSpec): string {
