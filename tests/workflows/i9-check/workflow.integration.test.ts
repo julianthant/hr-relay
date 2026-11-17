@@ -34,7 +34,7 @@ it("i9-check/person — admits I-9 only as a declared child and limits it to rea
   expect(workflowProjections(descriptor).systems).toEqual(["ucpath"]);
   expect(descriptorRuntimeNodes(descriptor).every(node => node.kind === "task")).toBe(true);
   expect(workflowProjections(descriptor).contracts.every(contract => contract.effect === "read")).toBe(true);
-  expect(descriptor.timeline.map(step => step.key)).toEqual(["person-match", "person-lookup", "roster-match"]);
+  expect(descriptor.timeline.map(step => step.key)).toEqual(["person-match", "person-lookup", "roster-match", "reference-check"]);
   const { fixtureWorkflow } = createSearchWorkflowDefinitionFixtures();
   const parent = composeWorkflowModule(compileFixtureWorkflow(fixtureWorkflow("i9-fixture-parent", ({ delegate, result }) => {
     const child = delegate({ id: "check", target: { id: WorkflowIdSchema.parse("i9-check"), input: I9CheckInput, result: ReadRetentionRow.output },

@@ -6,6 +6,7 @@ import { authenticateWorkbookReferenceChoice, authenticateWorkbookReferenceExecu
 import type { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor, workflowDryRunSupport, workflowPlanning, workflowProjections, workflowTerminalResultExecution } from "../../../workflow-kit/workflow.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
+import { parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData, valueFreeProtectedInput } from "../../../models/write-safety/protected-input.js";
 import { readRunPreviewResult, delegationDependencyRecord, delegationEvidenceOutput } from "../../../models/run/result.js";
@@ -262,6 +263,9 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
         const systems = workflowProjections(target).systems;
         const inherited = Object.fromEntries(Object.entries(parent.envelope.requestedInstance ?? {}).filter(([system]) => systems.includes(system)));
         const resolvedInstance = resolveInstances(target, inherited);
+        // A child that declares the parent's second check runs it on the parent's own picks; the required references stay with the parent.
+        const checkReferences = target.workbookCheck === undefined ? []
+          : (parent.input.workbookReferences ?? []).filter(bound => parseRunWorkbookReference(bound).request.typeId === target.workbookCheck?.id);
         const children = plan.children.map((planned, index) => {
           const { input, bindings, matchKey, canonicalItemId } = canonicalDelegationChild(context, target, planned.input, schemaReader);
           for (const approval of approvals) {
@@ -294,7 +298,8 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
             ...(parent.envelope.browserMode === undefined ? {} : { browserMode: parent.envelope.browserMode }),
             ...(parent.envelope.captureBrowserScreenshots === undefined ? {} : { captureBrowserScreenshots: parent.envelope.captureBrowserScreenshots }),
             parent: { runId: parent.envelope.runId, edgeId: plan.edgeId, tracePrefix: parent.envelope.traceId },
-            input: { raw: valueFreeProtectedInput(input, bindings), parsed: { schemaHash: invocation.target.canonicalInputSchemaHash, value: input, protectedBindings: bindings }, ingressSchemaHash: invocation.target.inputSchemaHash },
+            input: { raw: valueFreeProtectedInput(input, bindings), parsed: { schemaHash: invocation.target.canonicalInputSchemaHash, value: input, protectedBindings: bindings }, ingressSchemaHash: invocation.target.inputSchemaHash,
+              ...(checkReferences.length === 0 ? {} : { workbookReferences: checkReferences }) },
             ...(parent.appVersion === undefined ? {} : { appVersion: parent.appVersion }), runtimeConfig: selectRunRuntime(repositories) },
           { ...protectedSubjectDisplay(bindings, () => {
             const planning = workflowPlanning(target);
