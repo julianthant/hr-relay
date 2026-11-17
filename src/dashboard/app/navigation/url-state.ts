@@ -46,6 +46,8 @@ export interface AppRouteState {
  * `?settings=keyboard` is the Help → Keyboard destination; an EMPTY value */
   readonly settings?: string;
   readonly settingsTarget?: string;
+  /** Settings opened by a Run dialog Fix button; the dialog waits hidden behind it and Settings offers "Back to run". */
+  readonly settingsFrom?: "run";
 }
 
 /** Preserve the raw date identity so the date boundary can explain and recover invalid links. */
@@ -120,6 +122,7 @@ export function parseRoute(search: string): AppRouteState {
     route.settings = settings;
     const target = params.get("settingsTarget");
     if (target !== null && target.length > 0 && target.length <= 200) route.settingsTarget = target;
+    if (params.get("settingsFrom") === "run" && route.start) route.settingsFrom = "run";
   }
   return route;
 }
@@ -158,6 +161,7 @@ export function routeToSearch(route: AppRouteState): string {
   if (route.settings !== undefined) {
     params.set("settings", route.settings);
     if (route.settingsTarget !== undefined) params.set("settingsTarget", route.settingsTarget);
+    if (route.settingsFrom !== undefined) params.set("settingsFrom", route.settingsFrom);
   }
   if (route.view !== undefined) {
     const encoded = JSON.stringify(route.view);
@@ -188,7 +192,7 @@ export function routeForCrossDateSearchResult(
     archiveDashboard: undefined,
     archiveWorkflow: undefined, archiveBrowse: undefined, archiveBrowseInvalid: undefined,
     activity: undefined,
-    settings: undefined, settingsTarget: undefined,
+    settings: undefined, settingsTarget: undefined, settingsFrom: undefined,
   };
 }
 
@@ -234,5 +238,5 @@ export function shellViewOf(takeover: ActiveTakeover): ShellViewSelection {
 export function routeWithoutTakeovers(route: AppRouteState): AppRouteState {
   return { ...route, intake: undefined, explore: undefined, archive: undefined, archiveView: undefined,
     archiveDashboard: undefined, archiveWorkflow: undefined, archiveBrowse: undefined, archiveBrowseInvalid: undefined,
-    activity: undefined, settings: undefined, settingsTarget: undefined, catalog: undefined, catalogView: undefined };
+    activity: undefined, settings: undefined, settingsTarget: undefined, settingsFrom: undefined, catalog: undefined, catalogView: undefined };
 }

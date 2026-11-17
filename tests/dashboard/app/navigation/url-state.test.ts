@@ -319,6 +319,16 @@ describe_m5("Settings field search", () => {
     assert_m5.equal(parseRoute_m5(`?settings=general&settingsTarget=${"a".repeat(201)}`).settingsTarget, undefined);
     assert_m5.ok(!routeToSearch_m5({ start: false, settingsTarget: "ocr.backoffBaseMs" }).includes("settingsTarget"));
   });
+
+  it_m5("marks Settings opened from a Run dialog Fix only while that dialog is open", () => {
+    const route = parseRoute_m5("?start=1&settings=account&settingsFrom=run");
+    assert_m5.equal(route.settingsFrom, "run");
+    assert_m5.equal(routeToSearch_m5(route), "?start=1&settings=account&settingsFrom=run");
+    assert_m5.equal(parseRoute_m5("?settings=account&settingsFrom=run").settingsFrom, undefined);
+    assert_m5.equal(parseRoute_m5("?start=1&settings=account&settingsFrom=other").settingsFrom, undefined);
+    assert_m5.equal(routeWithoutTakeovers_m5(route).settingsFrom, undefined);
+    assert_m5.equal(routeWithoutTakeovers_m5(route).start, true, "leaving Settings returns to the open dialog");
+  });
 });
 }
 

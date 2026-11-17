@@ -14,9 +14,9 @@ export function runStartStages(
   customizeSteps: boolean,
   rerun = false,
 ): readonly RunStartStageSpec[] {
-  const labels: RunStartStage[] = rerun ? ["Steps", "Values", "Options"] : customizeSteps
-      ? ["Input", "Options", "Steps"]
-      : ["Input", "Options"];
+  const labels: RunStartStage[] = rerun ? ["Steps", "Values", "Options", "Checks"] : customizeSteps
+      ? ["Input", "Options", "Steps", "Checks"]
+      : ["Input", "Options", "Checks"];
   return Object.freeze(labels.map((label, index) => Object.freeze({ label, number: index + 1 })));
 }
 
