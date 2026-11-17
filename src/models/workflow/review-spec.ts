@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { NodeIdSchema } from "../../rules/identity/ids.js";
+import { NodeIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { OperatorFieldDisplaySchema } from "./presentation.js";
 
@@ -52,7 +52,7 @@ export const WorkflowReviewPageSchema = z.strictObject({
   fields: z.array(WorkflowReviewFieldSchema),
 });
 /**
- * One decision point the step's run takes from one closed output of a task in the step. Each outcome names a value that output
+ * One decision point the step's run takes from a closed task output or operator gate result. Each outcome names a value that output
  * can hold; its label defaults to the operator field display of that output, and `then` says what the run does next
  * (omitted only for an outcome that simply continues).
  */
@@ -63,6 +63,8 @@ export const WorkflowReviewDecisionSchema = z.strictObject({
   /** The step's nodes whose declared failures stop the run at this decision point. */
   nodeIds: z.array(NodeIdSchema).min(1),
   initial: z.string().min(1),
+  /** Cancelling the run is an operator action, not a stored gate result. */
+  cancellation: z.strictObject({ label: ReviewTextSchema, then: ReviewTextSchema }).optional(),
   ...Gate,
   outcomes: z.array(z.strictObject({ value: z.string().min(1), label: ReviewTextSchema.optional(), then: ReviewTextSchema.optional(),
     stops: z.literal(true).optional(), ...Gate })).min(1),
@@ -73,6 +75,9 @@ export const WorkflowStepReviewSchema = z.strictObject({
   pages: z.array(WorkflowReviewPageSchema),
   branchLabels: z.array(z.strictObject({ nodeId: NodeIdSchema, outcome: ReviewTextSchema, label: ReviewTextSchema })),
   decisions: z.array(WorkflowReviewDecisionSchema).optional(),
+  starts: z.array(z.strictObject({ nodeId: NodeIdSchema, each: ReviewTextSchema, ...Gate })).optional(),
+  optionsFrom: z.array(z.strictObject({ workflowId: WorkflowIdSchema, fields: z.array(ContractFieldPathSchema).min(1) })).optional(),
+  outcomes: z.array(z.strictObject({ nodeId: NodeIdSchema, value: z.string().min(1), then: ReviewTextSchema, stops: z.boolean().optional() })).optional(),
 });
 type ReadonlyReview<Value> = Value extends readonly (infer Item)[] ? readonly ReadonlyReview<Item>[]
   : Value extends object ? { readonly [Key in keyof Value]: ReadonlyReview<Value[Key]> } : Value;
