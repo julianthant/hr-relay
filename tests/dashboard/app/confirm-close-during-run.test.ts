@@ -9,7 +9,7 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 function fakeWindow() {
   const listeners = new Set<(event: BeforeUnloadEvent) => void>();
   const target: BeforeUnloadTarget = { addEventListener: (_type, listener) => { listeners.add(listener); }, removeEventListener: (_type, listener) => { listeners.delete(listener); } };
-  const unload = () => { const event = new Event("beforeunload", { cancelable: true }); for (const listener of listeners) listener(event as BeforeUnloadEvent); return event.defaultPrevented; };
+  const unload = () => { const event = new Event("beforeunload", { cancelable: true }); for (const listener of listeners) listener(event); return event.defaultPrevented; };
   return { target, unload, count: () => listeners.size };
 }
 function Probe(props: { mode: "active-run" | "always" | "never"; active: boolean; target: BeforeUnloadTarget }) { useConfirmCloseDuringRun(props.mode, props.active, props.target); return null; }
