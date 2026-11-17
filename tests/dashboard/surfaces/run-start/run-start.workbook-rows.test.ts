@@ -55,7 +55,7 @@ async function mode(value: string) { const radio = document.querySelector<HTMLIn
 async function select(index: number) { const checkbox = checkboxRows()[index]; assert.ok(checkbox); await act(async () => checkbox.click()); }
 async function chooseCurrent() { await h.chooseReference('Roster', 'Reviewed', 'First'); }
 function proposal(request: StartPlanRequest, partial = false) {
-  return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), workflowId: descriptorId,
+  return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), workflowId: descriptorId, priority: request.priority,
     ...(request.rerunSource ? { rerun: { source: request.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: request.warningAcknowledgment } } : {}),
     planned: request.submissions.flatMap((_, index) => partial && index === 1 ? [] : [{ logicalKey: `entry-${index}`, title: `Row ${index + 1}`, matchKey: `row-${index}`,
       workbookReferences: (request.workbookReferences ?? []).filter(reference => reference.entry === index + 1).map(reference => ({ libraryId: reference.libraryId, version: 1, versionId: reference.versionId, versionName: "Reviewed", worksheets: entry.worksheets.filter(sheet => sheet.id === reference.sheetId).map(sheet => ({ sheetId: sheet.id, name: sheet.name })), type: entry.type,

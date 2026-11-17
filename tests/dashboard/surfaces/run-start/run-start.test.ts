@@ -154,7 +154,7 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
   it("drops the plan when a run control moves under it", async () => {
 
     const dialog = await openDialog(stubClient({
-      submitStartPlan: async () => ({ ...planResponse("5a000000-0000-4000-8000-000000000001"), refused: [{ entry: 2, code: "input-invalid", message: "Bad row." }] }),
+      submitStartPlan: async () => ({ ...planResponse("5a000000-0000-4000-8000-000000000001"), priority: "bulk", refused: [{ entry: 2, code: "input-invalid", message: "Bad row." }] }),
     }));
     await dialog.type(`${TYPED}\n10873699`);
     await dialog.press("Continue");
@@ -163,7 +163,7 @@ describe("a plan outlives nothing that shaped it, in the dialog", () => {
     assert.ok(planIsDrawn(), "the plan never rendered");
 
     await dialog.press("Back");
-    await dialog.choosePriority("bulk");
+    await dialog.choosePriority("interactive");
     await dialog.press("Continue");
 
     assert.ok(!planIsDrawn(), "the plan survived a control that re-fingerprints the request");
