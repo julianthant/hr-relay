@@ -2,7 +2,7 @@ import type { QueueBusinessOutcome } from "../shared/status/status-model.js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
 import { Fragment, memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Pause, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Pause, RotateCcw, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import {
   BareButton,
@@ -64,6 +64,8 @@ import {
   type QueueItemGroup,
   queueDisplayGroups,
   useAttentionAnnounce,
+  isStarting,
+  STARTING_LABEL,
 } from "./queue-model.js";
 
 /** ── the queue's client-owned view state (ref frontend-backend-integration ) ─────────────────────── */
@@ -238,20 +240,27 @@ function HeaderChips({
         outcome={outcome}
         cancelledBy={surface.cancelledBy}
         presentation="queue"
+        {...(isStarting(surface) ? { label: STARTING_LABEL } : {})}
         hideIcon={status !== "running" && status !== "waiting" && status !== "failed"}
         {...(gateAge === undefined ? {} : { age: gateAge })}
       />
-      {surface.surfaceKind === "operation" && (
-        <span
-          data-queue-member-count
-          title={`${(rollup ?? surface.memberRollup).terminal} of ${(rollup ?? surface.memberRollup).total} finished; ${(rollup ?? surface.memberRollup).failed} failed`}
-          aria-label={`${(rollup ?? surface.memberRollup).terminal} of ${(rollup ?? surface.memberRollup).total} finished; ${(rollup ?? surface.memberRollup).failed} failed`}
-          className={cn(dsText.meta, dsText.nums, dsRadius.sm, dsBorder.base,
-            "inline-flex h-[var(--ds-h-xs)] min-w-[var(--ds-w-queue-counter)] items-center justify-center whitespace-nowrap border bg-[var(--ds-surface-2)] px-[var(--ds-space-tight)] text-[color:var(--ds-fg-secondary)]")}
-        >
-          {(rollup ?? surface.memberRollup).terminal}/{(rollup ?? surface.memberRollup).total}
-        </span>
-      )}
+      {surface.surfaceKind === "operation" && (() => {
+        const counts = rollup ?? surface.memberRollup;
+        // A failed person is settled but not finished well: the counter counts only the others.
+        const finished = counts.terminal - counts.failed;
+        const words = `${finished} of ${counts.total} finished; ${counts.failed} failed`;
+        return (
+          <span
+            data-queue-member-count
+            title={words}
+            aria-label={words}
+            className={cn(dsText.meta, dsText.nums, dsRadius.sm, dsBorder.base,
+              "inline-flex h-[var(--ds-h-xs)] min-w-[var(--ds-w-queue-counter)] items-center justify-center whitespace-nowrap border bg-[var(--ds-surface-2)] px-[var(--ds-space-tight)] text-[color:var(--ds-fg-secondary)]")}
+          >
+            {finished}/{counts.total}
+          </span>
+        );
+      })()}
     </>
   );
 }
@@ -276,6 +285,10 @@ const SUBLINE_TONE: Record<ProposedStatus, string> = {
   cancelled: "text-[color:var(--ds-fg-muted)]",
 };
 
+/** A parked write's outcome is unknown: the server withholds these until it is answered. */
+const PARKED_WITHHELD: ReadonlySet<string> = new Set(["rerun", "delete", "cancel", "cancel-tree"]);
+const PARKED_NOTE = "Rerun, Delete and Cancel are off until the parked write is answered. Open this run and answer it in the parked write panel.";
+
 /** One provenance line; unusually long aliases yield before the clock and controls. */
 function RowFooterLine({
   surface,
@@ -285,6 +298,7 @@ function RowFooterLine({
   itemGroup,
   onSelect,
   onPreviewAction,
+  retryFailed = [],
 }: {
   surface: QueueSurfaceWire;
   itemGroup?: QueueItemGroup;
@@ -293,6 +307,8 @@ function RowFooterLine({
   onAction?: DashboardActionHandler;
   nowIso: string;
   onPreviewAction?: (action: 'retry' | 'delete') => void;
+  /** One served retry per failed member of a group card. */
+  retryFailed?: readonly (() => void)[];
 }) {
   // Settled durations need a served end; never substitute now for an unmeasured terminal run.
   const timing = isTerminalQueueStatus(surface.status) && surface.endedAt.state === "absent"
@@ -335,6 +351,9 @@ function RowFooterLine({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">
+        {retryFailed.length > 0 && <IconActionButton tone="primary" icon={<RotateCcw aria-hidden className={dsIcon.md} />}
+          label={`Retry ${retryFailed.length} failed`} title={`Retry the ${retryFailed.length} failed ${retryFailed.length === 1 ? "person" : "people"} only`}
+          onClick={event => { event.stopPropagation(); retryFailed.forEach(run => run()); }} />}
         <FooterActions
           actions={actions}
           target={{ runId: surface.runId, expectedVersion: surface.rowRevision }}
@@ -731,6 +750,10 @@ export function QueueRow({
   /** The batch footer's Pause all / Stop all: one command per member still running. */
   const batchAll = (command: "pause" | "cancel") => (batch?.members ?? []).filter(member => !isTerminalQueueStatus(member.status)).flatMap(member =>
     actionsOf(member).filter(action => action.kind === "command" && action.command === command).map(action => () => onAction?.(action, { runId: member.runId, expectedVersion: member.rowRevision })));
+  /** A group card retries only its failed people, each through the retry the server served on that member. */
+  const retryFailed = surface.surfaceKind === "operation" ? members.flatMap(member => actionsOf(member)
+    .filter(action => action.kind === "command" && action.key === "retry-member")
+    .map(action => () => onAction?.(action, { runId: member.runId, expectedVersion: member.rowRevision }))) : [];
   const bulkKey = batch?.key ?? surface.runId;
   const batchTiming = batch === undefined ? undefined : runTiming(batch, state.nowIso, isTerminalQueueStatus);
   const batchWarnings = batch?.members.flatMap(member => member.warnings.state === "present" ? [member.warnings] : []) ?? [];
@@ -801,7 +824,7 @@ export function QueueRow({
                     "min-w-0 truncate font-normal text-[color:var(--ds-fg-list)]",
                   )}
                   // A renamed row’s subject identity outranks a tooltip repeating its truncated custom name.
-                  {...(titleTooltip === undefined ? {} : { title: titleTooltip })}
+                  title={titleTooltip ?? title}
                 />
                 {/* Name workflow ownership only when the surface mixes workflows. */}
                 {surface.workflowId !== state.panelWorkflowId && (
@@ -821,8 +844,8 @@ export function QueueRow({
                     <AlertTriangle aria-hidden className={dsIcon.sm} />{batchWarnings.reduce((total, warning) => total + warning.count, 0)}
                   </span>}
                   <StatusBadge status={status} presentation="queue" />
-                  <span data-queue-member-count className={rowChip("neutral")} title="Finished people on this day">
-                    {queueMemberRollup(batch, []).terminal}/{batch.members.length}
+                  <span data-queue-member-count className={rowChip("neutral")} title="People finished without failing on this day">
+                    {queueMemberRollup(batch, []).terminal - queueMemberRollup(batch, []).failed}/{batch.members.length}
                   </span>
                 </> : <HeaderChips outcome={outcome} surface={surface} status={status} nowIso={state.nowIso}
                   rollup={surface.surfaceKind === "operation" ? queueMemberRollup(surface, members) : undefined} />}
@@ -849,10 +872,10 @@ export function QueueRow({
                 className={cn(
                   dsText.meta,
                   "flex min-w-0 flex-wrap items-center gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)]",
-                  SUBLINE_TONE[status],
+                  SUBLINE_TONE[batch === undefined && isStarting(surface) ? "running" : status],
                 )}
               >
-                <span className="min-w-0 flex-1 truncate">{subline}</span>
+                <span className="line-clamp-2 min-w-0 flex-1 break-words" title={subline}>{subline}</span>
                 {status === "running" && !isOperation && surface.pipeline.length > 0 && <span className="shrink-0 text-[color:var(--ds-fg-muted)]">
                   {surface.pipeline.filter((step) => step.state === "done").length} / {surface.pipeline.length} steps
                 </span>}
@@ -873,6 +896,9 @@ export function QueueRow({
               </div>
             )}
 
+            {status === "parked" && batch === undefined && !actions.some(action => PARKED_WITHHELD.has(action.key)) && (
+              <div data-queue-parked-note className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{PARKED_NOTE}</div>
+            )}
 
             {memberSurface !== undefined && (
               <div className="flex flex-col gap-[var(--ds-space-base)]">
@@ -940,6 +966,7 @@ export function QueueRow({
             nowIso={state.nowIso}
             itemGroup={itemGroup}
             onSelect={handlers.onSelect}
+            retryFailed={retryFailed}
           />}
         </div>
     </div>

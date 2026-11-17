@@ -1,6 +1,5 @@
 import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Fragment, useState, type CSSProperties } from "react";
-import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
 import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, SegmentedChoice, dsIcon } from "../../ds/ui.js";
 import { ChartHeading, KeyFigures, LineChart, StackedBars } from "./analytics-charts.js";
 import type { ActivityDateRange } from "./activity-model.js";
@@ -38,7 +37,7 @@ export function AnalyticsToolbar({ range, today, onRange, workflows, workflow, o
   </>;
 }
 
-/** Runs, Workflows, Time, Why runs failed, and the assistant's Messages, Tools used and Actions, for the selected period, on served data. */
+/** Runs, Workflows, Time, and the assistant's Messages, Tools used and Actions, for the selected period, on served data. */
 export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns }: {
   data: AnalyticsData; range: ActivityDateRange; workflow: string; onRange: (range: ActivityDateRange) => void; onOpenRuns?: (workflowId: string) => void;
 }) {
@@ -52,7 +51,6 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns }
   const longest = Math.max(0, ...timeSeries.flatMap(line => line.values.flatMap(value => value === null ? [] : [value])));
   const top = Math.max(60, Math.ceil(longest / 60) * 60);
   const typical = workflow === "all" ? data.typicalSeconds : shown[0]?.typicalSeconds ?? null;
-  const reasons = data.reasons.filter(reason => workflow === "all" || shown.some(row => row.label === reason.workflow));
   const messages = bucketCounts(buckets, data.assistant.messages), proposed = bucketCounts(buckets, data.assistant.actions.map(row => ({ date: row.date, count: row.proposed })));
   const messageTotal = messages.reduce((n, value) => n + value, 0), proposedTotal = proposed.reduce((n, value) => n + value, 0);
   const noun = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
@@ -97,9 +95,6 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns }
       <LineChart label="Typical time per day" days={days} series={timeSeries} ticks={[top, top / 2, 0].map(value => ({ value, label: value === 0 ? "0" : `${value / 60}m` }))} top={top} format={analyticsClock}
         summary={index => (buckets[index]?.step ?? 1) === 1 ? "Typical time" : "Average of daily typical times"}
         header={<ChartHeading label="Typical time" value={analyticsClock(typical)} />} />
-    </BodySection>}
-    {reasons.length > 0 && <BodySection title="Why runs failed" description="Failed runs in this period.">
-      <RunList label="Why runs failed">{reasons.map(reason => <RunListRow key={`${reason.workflow}:${reason.label}`} title={reason.label} description={reason.workflow}><span className="text-[13px] tabular-nums">{reason.runs}</span></RunListRow>)}</RunList>
     </BodySection>}
     <BodySection title="Messages" description="Messages sent to the assistant each day.">
       {messageTotal === 0 ? <p className="m-0 text-body text-ui-secondary">No messages in this period</p> :

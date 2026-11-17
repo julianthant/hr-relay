@@ -99,6 +99,9 @@ it('clears only the submitted composer version on a valid reply and retains newe
   await send('Edit then revert'); await act(async () => composer.setText('Changed')); await act(async () => composer.setText('Edit then revert'));
   await act(async () => replies[3].resolve({ state: 'answered', text: 'Answer' })); assert.equal(composer.text, 'Edit then revert');
   await send('Failed'); await act(async () => replies[4].reject(new Error('Synthetic transport failure'))); assert.equal(composer.text, 'Failed');
+  assert.equal(controller.state.turn.state, 'failed');
+  await act(async () => controller.onAction({ type: 'retry' })); assert.equal(replies.length, 6);
+  await act(async () => controller.onAction({ type: 'cancel' }));
   assert.equal(controller.state.turn.state, 'unknown');
   const unknownBeforeCancel = controller.onAction, beforeCancelDispatch = replies.length, nextCancelFiles = composer.files;
   await act(async () => unknownBeforeCancel({ type: 'send' }));
@@ -107,7 +110,7 @@ it('clears only the submitted composer version on a valid reply and retains newe
   await render('new-chat-after-transport-uncertainty');
   await act(async () => composer.setFiles(nextCancelFiles));
   await send('Cancelled'); await act(async () => controller.onAction({ type: 'cancel' }));
-  await act(async () => replies[5].resolve({ state: 'answered', text: 'Late' })); assert.equal(composer.text, 'Cancelled');
+  await act(async () => replies[6].resolve({ state: 'answered', text: 'Late' })); assert.equal(composer.text, 'Cancelled');
   assert.equal(controller.state.turn.state, 'unknown');
   const beforeAuthorityDispatch = replies.length, authorityFiles = composer.files;
   await act(async () => controller.onAction({ type: 'send' }));
@@ -116,7 +119,7 @@ it('clears only the submitted composer version on a valid reply and retains newe
   await render('authority-change-case');
   await act(async () => composer.setFiles(authorityFiles));
   await send('Old authority'); await render("authority-change-case", 2);
-  await act(async () => replies[6].resolve({ state: 'answered', text: 'Late authority' })); assert.equal(composer.text, 'Old authority');
+  await act(async () => replies[7].resolve({ state: 'answered', text: 'Late authority' })); assert.equal(composer.text, 'Old authority');
   assert.equal(controller.state.turn.state, 'unknown');
   const beforeTypedDispatch = replies.length, typedFiles = composer.files;
   await act(async () => controller.onAction({ type: 'send' }));
@@ -125,7 +128,7 @@ it('clears only the submitted composer version on a valid reply and retains newe
   await render('typed-authority-change-case');
   await act(async () => composer.setFiles(typedFiles));
   await send('Old chat'); await render("typed-authority-change-case", 2); await act(async () => composer.setText('Other chat draft'));
-  await act(async () => replies[7].resolve({ state: 'answered', text: 'Late chat' })); assert.equal(composer.text, 'Other chat draft');
+  await act(async () => replies[8].resolve({ state: 'answered', text: 'Late chat' })); assert.equal(composer.text, 'Other chat draft');
 });
 
 it('gives the automatic chat title only after the first reply settles, never racing the send', async () => {
@@ -303,7 +306,7 @@ it.each([
   retain.mockRestore(); server.close();
 });
 
-it('shows the one unknown line after a lost response without replay', async () => {
+it('shows one retryable failure after a lost chat response', async () => {
   vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
   let current!: ReturnType<typeof useAssistantController>, calls = 0;
   const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { calls++; throw Error('lost workflow proposal response'); } });
@@ -316,10 +319,34 @@ it('shows the one unknown line after a lost response without replay', async () =
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));
   await act(async () => { current.onAction({ type: 'edit', value: 'start selected workflow' }); current.onAction({ type: 'send' }); });
-  assert.equal(current.state.turn.state, 'unknown');
-  assert.deepEqual([...document.querySelectorAll('[role="alert"]')].map(node => node.textContent), [ASSISTANT_UNKNOWN_NOTICE]);
-  await act(async () => { current.onAction({ type: 'retry' }); current.onAction({ type: 'send' }); current.onAction({ type: 'confirm' }); });
+  assert.equal(current.state.turn.state, 'failed');
+  assert.match(document.body.textContent ?? '', /Reply unavailable\. Your request is kept\./u);
+  assert.equal(document.body.textContent?.includes('lost workflow proposal response'), false);
+  await act(async () => { current.onAction({ type: 'confirm' }); });
   assert.equal(calls, 1);
+  await act(async () => { [...document.querySelectorAll('button')].find(button => button.textContent === 'Retry')?.click(); });
+  assert.equal(calls, 2);
+});
+
+it('shows a refused reply as one failure notice whose Retry sends the kept prompt again', async () => {
+  vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
+  let current!: ReturnType<typeof useAssistantController>, calls = 0;
+  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { calls++; return { state: 'refused', code: 'ASSISTANT_RESPONSE_FAILED', message: 'raw server text' }; } });
+  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
+  const account = { ...preview, mode: 'live' as const }, producer = createSetupAssistantProducer();
+  function Harness() {
+    current = useAssistantController(client, 'current', undefined, false);
+    return createElement(ShellAssistantPanel, { producer, served: current, accountClient: { async chatGptAccount() { return chatGptStatusFixture({ state: 'signed-out' as const }); } } });
+  }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));
+  await act(async () => { current.onAction({ type: 'edit', value: 'start selected workflow' }); current.onAction({ type: 'send' }); });
+  assert.equal(current.state.turn.state, 'idle');
+  assert.match(document.body.textContent ?? '', /The assistant could not reply\. Send your message again\./u);
+  assert.equal(document.body.textContent?.includes('raw server text'), false);
+  await act(async () => { [...document.querySelectorAll('button')].find(button => button.textContent === 'Retry')?.click(); });
+  assert.equal(calls, 2);
+  assert.equal(current.state.messages.filter(message => message.role === 'operator' && message.text === 'start selected workflow').length, 2);
 });
 
 it('disables Cancel and Confirm once a refused decision leaves the issued card stale', async () => {
@@ -379,4 +406,17 @@ it.each([
   assert.notEqual(current.state.turn.state, 'proposal', 'readback never restores a Confirm');
   assert.equal(current.state.messages.some(message => message.text === 'The reply was not saved. Do not resend it; ask again as a new message.'), false);
   server.close();
+});
+
+it('shows a failed activity read as one notice, not "No activity today", and Retry reads again', async () => {
+  const { AssistantServedActivity } = await import('../../../../src/dashboard/surfaces/shell/assistant-mock-thread.js');
+  let reads = 0;
+  const read = async () => { reads++; if (reads === 1) throw Error('activity raw failure'); return { rows: [] } as never; };
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(AssistantServedActivity, { query: '', read })));
+  assert.match(host.textContent ?? '', /Activity did not load\./u);
+  assert.equal(host.textContent?.includes('No activity today'), false);
+  assert.equal(host.textContent?.includes('activity raw failure'), false);
+  await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Retry')?.click(); });
+  assert.equal(reads, 2); assert.match(host.textContent ?? '', /No activity today/u);
 });

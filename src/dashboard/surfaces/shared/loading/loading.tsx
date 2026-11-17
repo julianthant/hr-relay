@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { DsBodyScope, Field, FormGroup, Panel, PanelBody, PanelHeader, ResultRow, SectionLabel, Skeleton, Table, TBody, TD, TH, THead, TR, dsText } from "../../../ds/ui.js";
+import { DsBodyScope, Field, FormGroup, Panel, PanelBody, PanelHeader, ResultRow, SectionLabel, Skeleton, Table, TBody, TD, TH, THead, TR, dsBorder, dsRadius, dsSurface, dsText } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 
 export function LoadingRegion({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
@@ -10,8 +10,9 @@ export function SkeletonText({ className }: { className?: string }) {
   return <span aria-hidden className={cn("flex h-[1lh] max-w-full items-center", className)}><Skeleton className="h-[.7em] w-full rounded-sm" /></span>;
 }
 
-export function SettingsRowsSkeleton({ rows = 3, wide = false, presentation = "field", copy }: { rows?: number; wide?: boolean; presentation?: "field" | "result" | "disclosure"; copy?: readonly { label: string; description?: string }[] }) {
+export function SettingsRowsSkeleton({ rows = 3, wide = false, presentation = "field", copy, singleLine = [] }: { rows?: number; singleLine?: readonly number[]; wide?: boolean; presentation?: "field" | "result" | "disclosure"; copy?: readonly { label: string; description?: string }[] }) {
   return <>{Array.from({ length: rows }, (_, index) => {
+    if (singleLine.includes(index)) return <div key={index} className="settings-compact-row"><ResultRow controlWidth={wide ? "wide" : "standard"} label={<SkeletonText className={index % 2 ? "w-36" : "w-44"} />} value={<SkeletonText className="w-20" />} /></div>;
     const label = copy?.[index]?.label ?? <SkeletonText className={index % 2 ? "w-36" : "w-44"} />;
     const description = copy?.[index]?.description ?? <SkeletonText className="w-60" />;
     if (presentation === "result") return <ResultRow key={index} controlWidth={wide ? "wide" : "standard"} label={label} description={description} value={<SkeletonText className="w-20" />} />;
@@ -22,16 +23,42 @@ export function SettingsRowsSkeleton({ rows = 3, wide = false, presentation = "f
   })}</>;
 }
 
-export function QueueSkeleton({ label }: { label?: string }) {
-  return <Panel className="min-h-0"><PanelHeader title={label ?? <SkeletonText className="w-32" />} />
-    <PanelBody className="overflow-hidden p-3"><LoadingRegion label="Loading queue" className="flex flex-col gap-4">
-      <div className="flex items-center gap-2"><SkeletonText className="w-24 text-caption" /><Skeleton className="size-5 rounded-full" /><div className="h-px flex-1 bg-ui-stroke" /></div>
-      {Array.from({ length: 3 }, (_, index) => <div key={index} className="overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel">
-        <div className="flex flex-col gap-3 p-3"><div className="flex items-center justify-between gap-3"><SkeletonText className="w-3/5 text-heading" /><Skeleton className="h-6 w-16" /></div><SkeletonText className="w-4/5 text-body" /></div>
-        <div className="flex items-center gap-2 border-t border-ui-stroke bg-ui-table px-3 py-2"><SkeletonText className="w-12 text-caption" /><SkeletonText className="w-20 text-caption" /><SkeletonText className="ml-auto w-12 text-caption" /><Skeleton className="size-4" /></div>
-      </div>)}
-    </LoadingRegion></PanelBody>
-  </Panel>;
+/** One queue band label, drawn exactly as the loaded queue draws it: caps word, count pill, rule. */
+function QueueBandSkeleton({ label }: { label: string }) {
+  return <div className={cn(dsText.caps, "mx-[var(--ds-space-cozy)] mt-[var(--ds-space-loose)] mb-[var(--ds-space-snug)] flex items-center gap-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]")}>
+    {label}<Skeleton className="h-[var(--ds-h-xs)] w-6 rounded-full" /><span aria-hidden className="h-px flex-1 bg-[var(--ds-border-subtle)]" />
+  </div>;
+}
+
+/** One queue card with the loaded card's padding, title row, optional subline and footer. */
+function QueueCardSkeleton({ subline }: { subline: boolean }) {
+  return <div className="flex items-start gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pt-[var(--ds-space-snug)] first:pt-[var(--ds-space-cozy)]">
+    <div className={cn("flex min-w-0 flex-1 flex-col overflow-hidden border", dsRadius.lg, dsBorder.base, dsSurface.card)}>
+      <div className="flex min-w-0 flex-col gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pb-[var(--ds-space-cozy)] pt-[var(--ds-space-queue-top)]">
+        <div className="flex min-w-0 items-center gap-x-[var(--ds-space-base)]"><SkeletonText className={cn(dsText.title, "w-1/2 flex-none")} /><Skeleton className="ml-auto h-[var(--ds-h-xs)] w-16" /></div>
+        {subline && <SkeletonText className={cn(dsText.meta, "w-3/4")} />}
+      </div>
+      <div className="flex items-center gap-[var(--ds-space-base)] border-t border-[color:var(--ds-border-subtle)] bg-[var(--ds-recess-bg)] px-[var(--ds-space-cozy)] py-[var(--ds-space-tight)]">
+        <div className="flex min-h-[var(--ds-h-sm)] min-w-0 flex-1 items-center gap-[var(--ds-space-base)]"><SkeletonText className={cn(dsText.meta, "w-12 flex-none")} /><SkeletonText className={cn(dsText.meta, "w-20 flex-none")} /><SkeletonText className={cn(dsText.meta, "w-24 flex-none")} /></div>
+        <Skeleton className="size-4" />
+      </div>
+    </div>
+  </div>;
+}
+
+/** The queue while it loads: the loaded queue's bands and cards, no heading of its own. */
+export function QueueSkeleton() {
+  return <section aria-label="Queue" className={cn("flex min-h-0 flex-col overflow-hidden border", dsRadius.lg, dsBorder.base, dsSurface.card)}>
+    <LoadingRegion label="Loading queue" className="min-h-0 flex-1 overflow-hidden pb-3">
+      <QueueBandSkeleton label="Needs you" /><QueueCardSkeleton subline /><QueueCardSkeleton subline={false} />
+      <QueueBandSkeleton label="Active" /><QueueCardSkeleton subline /><QueueCardSkeleton subline={false} />
+    </LoadingRegion>
+  </section>;
+}
+
+/** The loaded feed's padding, for log rows drawn outside the feed. */
+export function LogFeedPadding({ children }: { children: ReactNode }) {
+  return <div className="min-w-0 flex-1 px-4 pb-6 pt-5">{children}</div>;
 }
 
 export function LogSkeleton() {
@@ -46,8 +73,21 @@ export function LogSkeleton() {
   </LoadingRegion>;
 }
 
+/** The pipeline stage strip while a run's logs load: four stage labels over their bars, as the loaded strip draws them. */
+export function LogTimelineSkeleton() {
+  return <nav aria-hidden className="shrink-0 border-b border-ui-stroke bg-ui-panel px-4 py-2">
+    <ol className="m-0 flex list-none gap-1 p-0">{Array.from({ length: 4 }, (_, index) => <li key={index} className="min-w-0 flex-1"><span className="flex w-full flex-col gap-1 px-0.5 py-1">
+      <span className="flex items-center gap-1.5 text-caption"><Skeleton className="size-1.5 rounded-full" /><SkeletonText className="w-16 text-caption" /></span><Skeleton className="h-2.5 w-full" />
+    </span></li>)}</ol>
+  </nav>;
+}
+
+/** The run panel while the queue loads: the loaded panel's header, stage strip and padded feed. */
 export function RunPanelSkeleton() {
-  return <Panel className="min-h-0"><PanelHeader title={<SkeletonText className="w-60" />} /><PanelBody className="overflow-hidden px-4 pb-6 pt-5"><LogSkeleton /></PanelBody></Panel>;
+  return <section aria-label="Selected run logs" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel">
+    <header className="shrink-0 border-b border-ui-stroke bg-ui-table px-4 py-3"><div className="flex min-h-6 min-w-0 items-center"><SkeletonText className="w-60 text-heading" /></div></header>
+    <LogTimelineSkeleton /><div className="min-h-0 flex-1 overflow-hidden"><LogFeedPadding><LogSkeleton /></LogFeedPadding></div>
+  </section>;
 }
 
 export function DashboardSkeleton({ settings = false, settingsContent }: { settings?: boolean; settingsContent?: ReactNode }) {

@@ -8,7 +8,6 @@ export interface AnalyticsWorkflow {
 export interface AnalyticsData {
   running: number; typicalSeconds: number | null;
   workflows: readonly AnalyticsWorkflow[];
-  reasons: readonly { label: string; workflow: string; runs: number }[];
   /** Per-day assistant use for the report's days, in order. Tool calls and approvals are not recorded, so no series exists for them. */
   assistant: { messages: readonly { date: string; count: number }[]; actions: readonly { date: string; proposed: number }[] };
 }

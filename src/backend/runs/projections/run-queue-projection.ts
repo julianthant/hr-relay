@@ -8,7 +8,7 @@ import { displayScalar } from "../queries/data.js";
 import type { WorkerMemberView } from "../../runtime/workers/worker-pool.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
-import { notificationDisplayContext } from "../queries/notification-display.js";
+import { notificationListProjection } from "./notification-list.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
@@ -21,8 +21,6 @@ import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js
 import {
   DashboardDayWireSchema,
   WorkerCardUnavailableReasonSchema,
-  notificationWireOf,
-  notificationSourceEventOf,
   QUEUE_NOT_STARTING_NO_WORKER,
   QueueSurfaceWireSchema,
   TERMINAL_QUEUE_STATUSES,
@@ -1584,16 +1582,17 @@ export class RunQueueProjection {
         plannedBy: pool.plannedBy,
         plannedAt: pool.plannedAt,
       })),
-      notifications: this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID)
-        .map((record) => notificationWireOf(record, this.#deps.clock.nowMs(), notificationDisplayContext(record, {
+      notifications: notificationListProjection(this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID), this.#deps.clock.nowMs(), {
+        display: {
           read: id => this.#deps.reader.read(id),
           descriptor: id => this.#deps.descriptors.resolve(id),
           receipt: id => this.#deps.authority.getReceipt(id),
           presentation: this.#deps,
           checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
           command: id => this.#deps.authority.command?.(id),
-        }), notificationSourceEventOf(record, this.#deps.authority.latestNotificationSource?.(record.notificationId))))
-        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || String(a.notificationId).localeCompare(String(b.notificationId))),
+        },
+        source: id => this.#deps.authority.latestNotificationSource?.(id),
+      }),
     });
   }
 
