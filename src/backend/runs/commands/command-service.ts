@@ -201,16 +201,14 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
           results.push({ outcome: "errored", runId: target.runId, commandId, detail: errorText(error) });
           break;
         }
-        if (result.state === "pending" || result.state === "confirmation-required") {
-          results.push({ outcome: "errored", runId: target.runId, commandId, detail: "Command has no terminal outcome; retain its original identity." });
-          break;
-        }
-        if (result.state === "rejected" && bulkChildClass(result) === "errored") {
-          results.push({ outcome: "errored", runId: target.runId, commandId, detail: result.message });
+        const outcomeClass = bulkChildClass(result);
+        if (outcomeClass === "errored") {
+          results.push({ outcome: "errored", runId: target.runId, commandId,
+            detail: result.state === "rejected" ? result.message : "Command has no terminal outcome; retain its original identity." });
           break;
         }
         results.push(
-          result.state === "conflict"
+          outcomeClass === "conflict" && result.state === "conflict"
             ? {
               outcome: "conflict",
               runId: target.runId,
@@ -218,7 +216,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
               currentVersion: result.currentVersion,
               detail: result.message,
             }
-            : result.state === "rejected"
+            : outcomeClass === "refused" && result.state === "rejected"
               ? { outcome: "refused", runId: target.runId, commandId, code: result.code, detail: result.message }
               : {
                 outcome: "applied",

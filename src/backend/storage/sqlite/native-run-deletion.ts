@@ -11,11 +11,11 @@ import { DiagnosticBundleSchema } from "../../../models/trust/diagnostic.js";
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import type { ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { type PredecessorRunRecord } from "../../../models/run/record.js";
-import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, WORKER_CUSTODY_SCHEMA_VERSION } from "./migrations.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, COMMAND_ROW_STATE_SCHEMA_VERSION, WORKER_CUSTODY_SCHEMA_VERSION } from "./migrations.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { predecessorRunRecordFromRow, runRecordFromRow } from "./run-record-row.js";
 import { timelineEventFromRow } from "./timeline-repository.js";
-import { commandFromRow } from "./command-record-row.js";
+import { commandFromRow, convertPredecessorCommandRowState } from "./command-record-row.js";
 import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessorCommandFromRow, predecessorCustodyRunRow } from "./worker-custody-predecessor.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { DeletionFilesSchema, deletedRunFromRow, type DeletionFileSchema } from "./deleted-run-row.js";
@@ -61,7 +61,9 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
   // Below the custody schema, worker lifetimes and worker history are read only through the predecessor reader.
   const predecessorCustody = schemaVersion < WORKER_CUSTODY_SCHEMA_VERSION;
   const readRun = predecessorCustody ? (raw: unknown) => strictRun(predecessorCustodyRunRow(raw)) : strictRun;
-  const readCommand = predecessorCustody ? predecessorCommandFromRow : commandFromRow;
+  // Below the command-row schema, a command row is read as the image migration 32 gives it.
+  const commandRow = (raw: unknown) => schemaVersion < COMMAND_ROW_STATE_SCHEMA_VERSION ? convertPredecessorCommandRowState("commands", raw) : raw;
+  const readCommand = (raw: unknown) => (predecessorCustody ? predecessorCommandFromRow : commandFromRow)(commandRow(raw));
   const isHistory = (raw: unknown) => predecessorCustody && isPredecessorWorkerHistory(raw);
   const runId = run.envelope.runId;
   const cascade = new Set<string>(request.cascadeRunIds);
