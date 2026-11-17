@@ -9,10 +9,10 @@ import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.j
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import type { RunRecord } from "../../models/run/record.js";
 import { z } from "zod";
-import { AssistantHistoryOperationSchema, type AssistantActivityWire, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, AssistantModelPreferenceViewSchema, AssistantModelCatalogSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
+import { AssistantHistoryOperationSchema, type AssistantActivityWire, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, AssistantModelPreferenceViewSchema, AssistantModelCatalogSchema, type AssistantModelCatalog, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
   ASSISTANT_ATTACHMENT_TYPES, ASSISTANT_ATTACHMENT_UPLOAD_MS, type AssistantStageResult, ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_CONTEXT_TEXT_MAX_BYTES, type AssistantAttachmentRecord, type AssistantUserContentPart, assistantInputMedia,
   type AssistantActionDecision, type AssistantActionResult, type AssistantFailureCode, type AssistantResult, type AssistantInputItem } from "../../models/dashboard/assistant.js";
-import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
+import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountAuthority, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../runs/commands/refusals.js";
 import { PreflightAdmissionRefusal } from "../../rules/preflight/preflight-admission.js";
@@ -70,6 +70,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
   const live = new Map<string, AbortController>();
   const now = () => options.clock.now().toISOString();
   let staging = false;
+  let catalogRead: Readonly<{ catalog: AssistantModelCatalog; authority: ChatGptAccountAuthority }> | undefined;
   const actionRefused = (error: unknown) => {
     if (options.debugEvents !== undefined) emitFaultWithCauses(options.debugEvents, undefined, error,
       { category: "http", area: "assistant-proposal", reason: "action-decision", code: "ASSISTANT_PROPOSAL_REFUSED" });
@@ -81,11 +82,15 @@ export function createAssistantService(options: AssistantServiceOptions) {
   return Object.freeze({
     activity: options.activity?.read,
     /** The signed-in account's model catalog, for the composer's model picker. */
+    /** Remembered while the account authority it was read under stays current; a failed read is never remembered. */
     async models(signal: AbortSignal) {
       options.assertComposition?.();
-      const { catalog } = await options.account.listAssistantModels(signal);
+      if (catalogRead !== undefined && options.account.revalidateAuthority(catalogRead.authority)) return catalogRead.catalog;
+      const { catalog, authority } = await options.account.listAssistantModels(signal);
       options.assertComposition?.();
-      return AssistantModelCatalogSchema.parse(catalog);
+      const parsed = AssistantModelCatalogSchema.parse(catalog);
+      catalogRead = { catalog: parsed, authority };
+      return parsed;
     },
     modelPreference() {
       if (options.readModelPreference === undefined) throw new Error("assistant-model-preference-unavailable");
