@@ -31,8 +31,6 @@ export const EMPLOYMENT_SELECTION_REFUSAL_CODES = [
   "requested-title-conflict",
   /** The job the form names is no longer active. */
   "requested-employment-inactive",
-  /** More than one active job carries the title the form names. */
-  "requested-title-ambiguous",
   /** No row carries the title the form names, and no single student job stands in for it. */
   "requested-title-not-found",
 ] as const;
@@ -159,12 +157,19 @@ function tierOf(classification: JobSummaryClassification, row: UcpathJobRow) {
   return classified.tier;
 }
 
-/** The form names a title: that job wins over "the one active row", among active rows only, because a termination is never filed twice. */
+/** The form names a title: it must name the person's one open job; several open jobs refuse, because the termination's pending-transaction sweep and duplicate check are scoped to the person, not to one empl record. */
 function selectByTitle(
   rows: readonly UcpathJobRow[],
   classification: JobSummaryClassification,
   code: string,
 ): { row: UcpathJobRow } | Refusal {
+  const openJobs = new Set(rows.filter((row) => tierOf(classification, row) !== "inactive").map(jobKey));
+  if (openJobs.size > 1) {
+    return refuse("concurrent-active-employments", `the form names job ${code}, and UCPath shows `
+      + `${String(openJobs.size)} jobs that are not terminated (${describeRows(rows)}). The termination's `
+      + "pending-transaction and duplicate checks cover the whole person, not one job, so this run separates "
+      + "only a person with one open job.");
+  }
   const matches = rows.filter((row) => row.jobCode.state === "present" && normalizeJobCode(row.jobCode.value) === code);
   if (matches.length > 0) {
     const open = matches.filter((row) => tierOf(classification, row) !== "inactive");
@@ -173,10 +178,6 @@ function selectByTitle(
       return refuse("requested-employment-inactive", `the form names job ${code}, and UCPath shows that job is no `
         + `longer active (${describeRows(matches)}). Its termination may already be filed; this run files no second `
         + "one and ends no other job.");
-    }
-    if (open.length > 1) {
-      return refuse("requested-title-ambiguous", `the form names job ${code}, and UCPath shows more than one `
-        + `such job (${describeRows(open)}). The form does not say which position ends.`);
     }
     return statusChecked(only, classification, rows);
   }

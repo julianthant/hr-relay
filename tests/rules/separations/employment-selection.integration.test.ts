@@ -117,8 +117,25 @@ describe("the EMPLOYMENT selection by the Kuali student title", () => {
     rowIndex: 1, emplRecord: "1", positionNumber: cell("40067890"), jobCode: cell("004920"), jobTitle: cell("STDT 3"),
   });
 
-  it("picks the concurrent active job whose code the form's Student Title Code names", () => {
-    const selection = selectSeparationEmployment([stdt2, stdt3], titled("4920 - STDT 3"));
+  it("refuses concurrent open jobs even when the form names one: transaction checks are person-scoped", () => {
+    for (const rows of [
+      [stdt2, stdt3],
+      [stdt2, { ...stdt3, jobCode: cell("004921"), jobTitle: cell("STDT 2") }],
+      [stdt2, row({ rowIndex: 1, emplRecord: "1", positionNumber: cell("40067890"), jobCode: cell("004444"), jobTitle: cell("CASHIER") })],
+    ]) {
+      const selection = selectSeparationEmployment(rows, titled("4920 - STDT 3"));
+      assert.equal(selection.state, "refused");
+      if (selection.state !== "refused") continue;
+      assert.equal(selection.code, "concurrent-active-employments");
+      assert.match(selection.reason, /004920/u);
+    }
+  });
+
+  it("picks the open job the form names over a terminated one", () => {
+    const selection = selectSeparationEmployment(
+      [{ ...stdt2, hrStatus: cell("Terminated") }, stdt3],
+      titled("4920 - STDT 3"),
+    );
     assert.equal(selection.state, "selected");
     if (selection.state !== "selected") return;
     assert.equal(selection.employment.emplRecord, "1");
@@ -127,7 +144,10 @@ describe("the EMPLOYMENT selection by the Kuali student title", () => {
   });
 
   it("takes the comment's STDT level when the title code is blank, and refuses when the two disagree", () => {
-    const fromComment = selectSeparationEmployment([stdt2, stdt3], titled("- - -", "Last shift as STDT 3."));
+    const fromComment = selectSeparationEmployment(
+      [{ ...stdt2, hrStatus: cell("Terminated") }, stdt3],
+      titled("- - -", "Last shift as STDT 3."),
+    );
     assert.equal(fromComment.state, "selected");
     if (fromComment.state === "selected") assert.equal(fromComment.employment.emplRecord, "1");
 
@@ -160,20 +180,12 @@ describe("the EMPLOYMENT selection by the Kuali student title", () => {
     if (selection.state === "selected") assert.equal(selection.employment.emplRecord, "1");
   });
 
-  it("refuses two active jobs with the named title: the form does not say which position", () => {
-    const selection = selectSeparationEmployment(
-      [stdt2, { ...stdt3, jobCode: cell("004921"), jobTitle: cell("STDT 2") }],
-      titled("4921 - STDT 2"),
-    );
-    assert.equal(selection.state, "refused");
-    if (selection.state === "refused") assert.equal(selection.code, "requested-title-ambiguous");
-  });
-
-  it("falls back to the one active student job when the named title is not among the rows", () => {
-    const nonStudent = row({
+  it("falls back to the one open student job when the named title is not among the rows", () => {
+    const formerJob = row({
       rowIndex: 1, emplRecord: "1", positionNumber: cell("40067890"), jobCode: cell("004444"), jobTitle: cell("CASHIER"),
+      hrStatus: cell("Terminated"),
     });
-    const selection = selectSeparationEmployment([stdt2, nonStudent], titled("4919 - STDT 4"));
+    const selection = selectSeparationEmployment([stdt2, formerJob], titled("4919 - STDT 4"));
     assert.equal(selection.state, "selected");
     if (selection.state === "selected") assert.equal(selection.employment.emplRecord, "0");
   });
@@ -188,7 +200,11 @@ describe("the EMPLOYMENT selection by the Kuali student title", () => {
   });
 
   it("refuses when the named title matches no row and no single student job remains", () => {
-    const selection = selectSeparationEmployment([stdt2, stdt3], titled("4919 - STDT 4"));
+    const cashier = row({ jobCode: cell("004444"), jobTitle: cell("CASHIER") });
+    const selection = selectSeparationEmployment(
+      [cashier, { ...stdt3, hrStatus: cell("Terminated") }],
+      titled("4919 - STDT 4"),
+    );
     assert.equal(selection.state, "refused");
     if (selection.state !== "refused") return;
     assert.equal(selection.code, "requested-title-not-found");
