@@ -538,7 +538,8 @@ describe("task screenshot persistence before checkpoint", () => {
         const warnings = notes.filter(note => note.level === "warn");
         assert.equal(warnings.length, 1);
         assert.equal(warnings[0]?.message, "Screenshot capture unavailable.");
-        assert.deepEqual(warnings[0]?.fields?.map(field => ({ key: field.key, value: field.value })), [{ key: "code", value: "BROWSER_SCREENSHOT_CAPTURE_FAILED" }, { key: "boundary", value: "step" }, { key: "reason", value: failure === "unavailable" ? "secret-controls-present" : failure === "persist" ? "TypeError" : "Error" }]);
+        assert.deepEqual(warnings[0]?.fields?.map(field => ({ key: field.key, value: field.value })), [{ key: "code", value: "BROWSER_SCREENSHOT_CAPTURE_FAILED" }, { key: "boundary", value: "step" },
+          ...["reason", "captureFailure"].map(key => ({ key, value: failure === "unavailable" ? "secret-controls-present" : failure === "persist" ? "TypeError" : "Error" }))]);
         assert.doesNotMatch(JSON.stringify(warnings), /private/);
         const section = buildRunLogsSection({ timeline: database.authority.timelineEvents, projection: { runLogSnapshot: () => ({ entries: [] }) }, descriptors: { resolve: () => undefined } } as unknown as RunDetailQueryDeps,
           claimed.run.envelope.runId, undefined, settledRun);

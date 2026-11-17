@@ -157,6 +157,16 @@ describe("worker composition helpers", () => {
     assert.deepEqual(JSON.parse(lines[0] ?? ""), { ts: NOW, level: "info", message: "Employment status", status: "active", "HDH department": "No" });
     assert.doesNotMatch(lines[0] ?? "", /Engineering|Lovelace|page text/u);
   });
+
+  it("keeps a refused screenshot's value-free capture failure on worker stdout", () => {
+    const clock = manualClock(new Date(NOW));
+    const lines: string[] = [];
+    lineTaskLogger((line) => lines.push(line), clock).warn("Screenshot capture unavailable.", {
+      code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", boundary: "step", reason: "verification-failed", captureFailure: "page-capture-page-screenshot-timeouterror",
+    });
+    assert.deepEqual(JSON.parse(lines[0] ?? ""), { ts: NOW, level: "warn", message: "Screenshot capture unavailable.",
+      code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", boundary: "step", captureFailure: "page-capture-page-screenshot-timeouterror" });
+  });
 });
 
 

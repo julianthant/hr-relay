@@ -26,8 +26,8 @@ import {
 const SYSTEM = "new-kronos" as const;
 
 const NEW_KRONOS_APP_HOST = "ucsd-sso.prd.mykronos.com";
-/** The application route every authenticated WFD page sits under. */
-const NEW_KRONOS_APP_PATH = "/wfd";
+/** The routes authenticated WFD pages sit under; Go To -> Timecard lands on /timekeeping#/timecard. */
+const NEW_KRONOS_APP_PATHS = ["/wfd", "/timekeeping"] as const;
 // The WFD application issues kronosAuthToken on its exact domain; a redirect URL alone is not proof.
 const NEW_KRONOS_SESSION_COOKIE = "kronosAuthToken";
 const NEW_KRONOS_COOKIE_DOMAIN = "ucsd-sso.prd.mykronos.com";
@@ -45,7 +45,7 @@ function isAuthenticatedNewKronosUrl(rawUrl: string): boolean {
   if (url === null) return false;
   const path = url.pathname;
   return url.protocol === "https:" && url.host === NEW_KRONOS_APP_HOST
-    && (path === NEW_KRONOS_APP_PATH || path.startsWith(`${NEW_KRONOS_APP_PATH}/`));
+    && NEW_KRONOS_APP_PATHS.some(root => path === root || path.startsWith(`${root}/`));
 }
 
 
