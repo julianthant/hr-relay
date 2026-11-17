@@ -1,17 +1,55 @@
+import { z } from "zod";
+import { CrmDiscoveryOutputSchema } from "../../../../models/systems/crm/search-onboarding-records.js";
 import { SearchPersonOrg } from "../../../../models/systems/ucpath/search-person-org.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { PersonLookupInput } from "../../../../models/workflows/person-lookup/input.js";
 import { ActiveStatusOutcomeSchema, ReadActiveStatus } from "../../../../models/workflows/person-lookup/read-active-status.js";
-import { derivePersonLookupOutcome } from "../../../../rules/matching/person-lookup.js";
+import { ResolvedIdentitySchema } from "../../../../models/workflows/person-lookup/read-resolved-identity.js";
+import { derivePersonLookupOutcome, typedPersonLookupOutcome } from "../../../../rules/matching/person-lookup.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep, requireFact } from "../../../../workflow-kit/workflow.js";
 import { buildCrossVerify } from "../cross-verify/step.js";
 import { buildSearching } from "../searching/step.js";
 
+export const RECOVERY_NODE = "crm-only-recovery";
+export const ACTIVE_STATUS_NODE = "active-status";
+
+const ActiveStatusFactsSchema = z.strictObject({
+  state: z.enum(["active", "inactive"]), hrStatus: z.string().nullable(), startDate: z.string().nullable(), endDate: z.string().nullable(),
+  terminationReason: z.string().nullable(), ucpath: z.enum(["Found", "Not found"]),
+});
+
+/** Typed employment status for the person this run resolved; the UCPath recovery search does not run. */
+export const ACTIVE_STATUS_MANUAL: StepManualDeclaration = {
+  form: {
+    fields: [
+      { key: "state", label: "Status", kind: "enum", values: ["active", "inactive"], replaces: { nodeId: ACTIVE_STATUS_NODE, path: "state" } },
+      { key: "hrStatus", label: "HR status", kind: "text", optional: true, replaces: { nodeId: ACTIVE_STATUS_NODE, path: "details.hrStatus" } },
+      { key: "startDate", label: "Start date", kind: "us-date", optional: true, replaces: { nodeId: ACTIVE_STATUS_NODE, path: "details.startDate" } },
+      { key: "endDate", label: "End date", kind: "us-date", optional: true, replaces: { nodeId: ACTIVE_STATUS_NODE, path: "details.endDate" } },
+      { key: "terminationReason", label: "Termination reason", kind: "text", optional: true, replaces: { nodeId: ACTIVE_STATUS_NODE, path: "details.terminationReason" } },
+      { key: "ucpath", label: "Found in UCPath", kind: "enum", values: ["Found", "Not found"], replaces: { nodeId: ACTIVE_STATUS_NODE, path: "details.ucpath" } },
+    ],
+  },
+  produces: {
+    [ACTIVE_STATUS_NODE]: ({ facts, scope }) => {
+      const identity = ResolvedIdentitySchema.parse(scope.outputs["crm-identity"] ?? scope.outputs["search-identity"]);
+      const verifiedCrm = scope.outputs["crm-selected-record"];
+      return typedPersonLookupOutcome({
+        input: PersonLookupInput.parse(scope.input), identity,
+        ...(verifiedCrm === undefined ? {} : { verifiedCrm: CrmDiscoveryOutputSchema.parse(verifiedCrm) }),
+      }, ActiveStatusFactsSchema.parse(facts));
+    },
+  },
+  skips: [RECOVERY_NODE],
+};
+
 export const ACTIVE_STATUS_STEP = Object.freeze({
   ...defineWorkflowStep({ key: "active-status", label: "Read employment status" }),
   description: "Determine employment status and read department and termination details when applicable.",
   system: "local",
+  manual: ACTIVE_STATUS_MANUAL,
   operatorFields: [
     {
       label: "Employment status", example: "Active", display: {
@@ -115,14 +153,10 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
 
 const activeStatusEntries = defineStepEntries(ACTIVE_STATUS_STEP);
 
-export const RECOVERY_NODE = "crm-only-recovery";
-
 export const recoveryNode = activeStatusEntries.task(RECOVERY_NODE, SearchPersonOrg, {
   replay: "checkpoint",
   when: { kind: "is-present", of: { from: "node", nodeId: "crm-identity", path: "recoveryEid" } }
 });
-
-export const ACTIVE_STATUS_NODE = "active-status";
 
 export const activeStatusNode = activeStatusEntries.task(ACTIVE_STATUS_NODE, ReadActiveStatus, {
   replay: "always-rerun",

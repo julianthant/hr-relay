@@ -1,6 +1,7 @@
 import { selectPreferredUcpathCandidate } from "./ucpath-person.js";
 import { PersonLookupNotFoundError, PersonLookupMultipleMatchesError, PersonLookupMatchMultipleMatchesError, PersonLookupEmploymentStatusError, PersonLookupIdentityError } from "../../models/workflows/person-lookup/errors.js";
 import type { z } from "zod";
+import type { EidSchema } from "../identity/ids.js";
 import { ReadResolvedIdentity, type ResolvedIdentity } from "../../models/workflows/person-lookup/read-resolved-identity.js";
 import { ReadActiveStatus, type ActiveStatusOutcome } from "../../models/workflows/person-lookup/read-active-status.js";
 import { personLookupSearchText } from "../../models/workflows/person-lookup/input.js";
@@ -78,4 +79,33 @@ export function derivePersonLookupOutcome({ input, identity: originalIdentity, v
       foundInUcpath: input.mode === "match" ? (match?.confirmed.length ?? 0) > 0 : null,
       matchedEid: input.mode === "match" ? matched?.emplId ?? null : null, matchedName: input.mode === "match" ? matched?.name ?? null : null,
     } };
+}
+
+/** The employment status the operator typed, over the run's own identity reads; only `foundInUcpath` is derived from a typed field. */
+export function typedPersonLookupOutcome(read: z.output<typeof ReadActiveStatus.input>, typed: Readonly<{
+  state: "active" | "inactive"; hrStatus: string | null; startDate: string | null; endDate: string | null; terminationReason: string | null; ucpath: "Found" | "Not found";
+}>): ActiveStatusOutcome {
+  const base = derivePersonLookupOutcome(read);
+  return { ...base, state: typed.state, reason: "", code: read.identity.crmErrorCode,
+    details: { ...base.details, hrStatus: typed.hrStatus, startDate: typed.startDate, endDate: typed.endDate, terminationReason: typed.terminationReason,
+      ucpath: typed.ucpath, foundInUcpath: typed.ucpath === "Found" } };
+}
+
+/** The one Employee ID this run's UCPath identity knows, the key a CRM check is made under; undefined when there is none. */
+export function personLookupKnownEid(input: z.output<typeof ReadResolvedIdentity.input>["input"], identity: ResolvedIdentity): z.output<typeof EidSchema> | undefined {
+  return input.mode === "search" && "emplId" in input ? input.emplId : identity.candidateEids.length === 1 ? identity.candidateEids[0] : undefined;
+}
+
+/**
+ * The cross-checked identity when the operator types the CRM record's name and start date: today's resolution of
+ * the UCPath identity with that record found under the known Employee ID. No CRM record is read.
+ */
+export function typedCrmIdentity(input: z.output<typeof ReadResolvedIdentity.input>["input"], identity: ResolvedIdentity, knownEid: z.output<typeof EidSchema>,
+  typed: Readonly<{ name: string; firstDayOfService: string }>): ResolvedIdentity {
+  const state = identity.state === "not-found" ? "crm-only" : identity.state;
+  return { ...identity, crmIdentity: { emplId: knownEid, name: typed.name, department: null, firstDayOfService: typed.firstDayOfService },
+    crmRecord: null, unselectedCrmRecords: null, crmErrorCode: null, crmState: "Found", state,
+    candidateEids: identity.candidateEids.length === 0 ? [knownEid] : identity.candidateEids,
+    recoveryEid: input.mode === "search" && state === "crm-only" ? knownEid : null,
+    method: state === "crm-only" ? "crm-only" : identity.method };
 }

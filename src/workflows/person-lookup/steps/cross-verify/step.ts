@@ -4,8 +4,10 @@ import { CrmSearchOnboardingRecords } from "../../../../models/systems/crm/searc
 import { CrmVerifyOnboardingRecord } from "../../../../models/systems/crm/verify-onboarding-record.js";
 import { SearchPersonMatch } from "../../../../models/systems/ucpath/search-person-match.js";
 import { SearchPersonOrg } from "../../../../models/systems/ucpath/search-person-org.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { PERSON_LOOKUP_EXAMPLE_EID, PersonLookupInput, personLookupTitle } from "../../../../models/workflows/person-lookup/input.js";
-import { ReadResolvedIdentity } from "../../../../models/workflows/person-lookup/read-resolved-identity.js";
+import { ReadResolvedIdentity, ResolvedIdentitySchema } from "../../../../models/workflows/person-lookup/read-resolved-identity.js";
+import { personLookupKnownEid, typedCrmIdentity } from "../../../../rules/matching/person-lookup.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep, requireFact } from "../../../../workflow-kit/workflow.js";
@@ -16,11 +18,35 @@ export function crmQuery(input: z.output<typeof PersonLookupInput>, person?: z.o
   return { ...(name === undefined ? {} : { name }), ...("emplId" in input ? { eid: input.emplId } : input.mode === "match" ? { eid: match?.confirmed[0]?.emplId } : {}) };
 }
 
+export const CROSS_VERIFY_NODE = "cross-verify";
+export const CRM_IDENTITY_NODE = "crm-identity";
+
+const CrossVerifyFactsSchema = z.strictObject({ name: z.string().min(1), firstDayOfService: z.string().min(1) });
+
+/** Typed CRM name and start date for the Employee ID the UCPath search resolved; CRM is not searched. */
+export const CROSS_VERIFY_MANUAL: StepManualDeclaration = {
+  form: {
+    fields: [
+      { key: "name", label: "CRM name", kind: "text", replaces: { nodeId: CRM_IDENTITY_NODE, path: "crmIdentity.name" } },
+      { key: "firstDayOfService", label: "Start date", kind: "us-date", replaces: { nodeId: CRM_IDENTITY_NODE, path: "crmIdentity.firstDayOfService" } },
+    ],
+  },
+  produces: {
+    [CRM_IDENTITY_NODE]: ({ facts, scope }) => {
+      const input = PersonLookupInput.parse(scope.input);
+      const identity = ResolvedIdentitySchema.parse(scope.outputs["search-identity"]);
+      return typedCrmIdentity(input, identity, requireFact(personLookupKnownEid(input, identity), "search-identity", "candidateEids"), CrossVerifyFactsSchema.parse(facts));
+    },
+  },
+  skips: [CROSS_VERIFY_NODE],
+};
+
 export const CROSS_VERIFY_STEP = Object.freeze({
   ...defineWorkflowStep({ key: "cross-verify", label: "Cross-check identity" }),
   description: "Compare the person’s name, department and employee ID with CRM records.",
   system: "crm",
   selection: { inputField: "crmCheck", selectedWhen: true },
+  manual: CROSS_VERIFY_MANUAL,
   operatorFields: [
     ...[["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["emplId", "Employee ID", PERSON_LOOKUP_EXAMPLE_EID], ["firstDayOfService", "Start date", "3/14/2031"]].map(([path, label, example]) => ({
       label, example, sources: [
@@ -103,15 +129,11 @@ export const CROSS_VERIFY_STEP = Object.freeze({
 
 const crossVerifyEntries = defineStepEntries(CROSS_VERIFY_STEP);
 
-export const CROSS_VERIFY_NODE = "cross-verify";
-
 export const crossVerifyNode = crossVerifyEntries.task(CROSS_VERIFY_NODE, CrmSearchOnboardingRecords, {
   label: "Cross-check identity",
   replay: "checkpoint",
   when: { kind: "is-true", of: { from: "node", nodeId: "search-identity", path: "shouldCheckCrm" } }
 });
-
-export const CRM_IDENTITY_NODE = "crm-identity";
 
 export const crmIdentityNode = crossVerifyEntries.task(CRM_IDENTITY_NODE, ReadResolvedIdentity, {
   label: "Resolve cross-checked identity",
@@ -141,7 +163,7 @@ export function buildCrossVerify(author: WorkflowAuthor<typeof PersonLookupInput
   const selectedRecord = task(selectedRecordNode, [identity], ({ outputs }) => {
     const record = requireFact(outputs["crm-identity"]?.crmRecord, "crm-identity", "crmRecord"); return record;
   });
-  const crmResults = task(crmResultsNode, [initial, crossVerify, identity, searching, matching], ({ input, outputs }) => ({
+  const crmResults = task(crmResultsNode, [initial, identity, searching, matching], ({ input, outputs }) => ({
     query: crmQuery(input, outputs.searching, outputs.matching), records: requireFact(outputs["crm-identity"]?.unselectedCrmRecords, "crm-identity", "unselectedCrmRecords"),
   }));
   return {

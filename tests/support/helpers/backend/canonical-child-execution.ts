@@ -18,6 +18,7 @@ import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/e
 import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import type { ProtectedInputBinding } from "../../../../src/models/write-safety/protected-input.js";
+import type { StepOmissions } from "../../../../src/models/workflow/step-omission.js";
 import { ActorIdSchema, FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
@@ -108,7 +109,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   return {
     kernel, lifecycle, childRuns, step, plans,
     start(descriptor: AnyWorkflowDescriptor, input: unknown, startOptions: Readonly<{ dryRun: boolean; protectedSubmissionBindings?: readonly ProtectedInputBinding[];
-      workbookReferences?: readonly z.infer<typeof WorkbookActiveSelectionSchema>[]; selectedStepKeys?: readonly string[] }>) {
+      workbookReferences?: readonly z.infer<typeof WorkbookActiveSelectionSchema>[]; selectedStepKeys?: readonly string[]; stepOmissions?: StepOmissions }>) {
       const active = database.authority.runtimeConfig.get();
       assert.ok(active);
       const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors: { resolve },
@@ -118,7 +119,8 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
         ...(startOptions.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: startOptions.protectedSubmissionBindings }) });
       const plan = planner.plan({ workflowId: descriptor.id, submissions: [input], dryRun: startOptions.dryRun,
         ...(startOptions.workbookReferences === undefined ? {} : { workbookReferences: startOptions.workbookReferences }),
-        selectedStepKeys: startOptions.selectedStepKeys ?? descriptor.timeline.map(step => step.key) });
+        selectedStepKeys: startOptions.selectedStepKeys ?? descriptor.timeline.map(step => step.key),
+        ...(startOptions.stepOmissions === undefined ? {} : { stepOmissions: startOptions.stepOmissions }) });
       assert.equal(plan.planned.length, 1, JSON.stringify(plan.refused));
       assert.equal(plan.refused.length, 0);
       plans.push(plan);
