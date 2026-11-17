@@ -66,7 +66,7 @@ import { lstatSync } from "node:fs";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { recoverFixedLayoutPublication,withDefaultLayoutSource,type FixedLayoutPublication } from "../../storage/admission/installation.js";
 import { file as layoutFile,hash as layoutHash } from "../../storage/maintenance/existing-data-backup-files.js";
-import { activateFixedLayoutProfiles,assertFixedLayoutSourceFence,createFixedLayoutDirectory,fixedLayoutEntries,FixedLayoutIntentSchema,FixedLayoutRefusedError,fixedLayoutOutputPaths,readFixedLayoutIntent,type FixedLayoutActivation } from "../../storage/maintenance/fixed-layout.js";
+import { activateFixedLayoutProfiles,assertFixedLayoutSourceFence,createFixedLayoutDirectory,fixedLayoutEntries,FixedLayoutIntentSchema,FixedLayoutRefusedError,fixedLayoutOutputPaths,fixedLayoutUnfinished,readFixedLayoutIntent,type FixedLayoutActivation } from "../../storage/maintenance/fixed-layout.js";
 import { bindErrorOrigin,causeChainToken,serializeErrorCauses } from "../../../models/failures/error-origins.js";
 
 
@@ -620,9 +620,10 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
   if (sourceWorkspace === targetWorkspace) throw new Error("fixed-layout-source-target-equal");
   lifetime.assertHeld();
   const journal = readFixedLayoutIntent(targetWorkspace);
-  if (journal !== undefined && journal.phase !== "complete" && journal.sourceWorkspace !== sourceWorkspace) throw new Error("fixed-layout-recovery-source-foreign");
+  const unfinished = fixedLayoutUnfinished(journal?.phase ?? "absent");
+  if (unfinished && journal?.sourceWorkspace !== sourceWorkspace) throw new Error("fixed-layout-recovery-source-foreign");
   let publication: FixedLayoutPublication | undefined;
-  if (journal !== undefined && journal.phase !== "complete") {
+  if (unfinished) {
     assertMaintenanceCustodyAvailable("layout-migration");
     publication = recoverFixedLayoutPublication(targetWorkspace, lifetime);
   }
