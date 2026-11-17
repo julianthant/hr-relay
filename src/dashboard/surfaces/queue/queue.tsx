@@ -66,6 +66,9 @@ import {
   useAttentionAnnounce,
   isStarting,
   STARTING_LABEL,
+  NEEDS_DUO_LABEL,
+  NEEDS_DUO_MEANING,
+  isNeedsDuo,
 } from "./queue-model.js";
 
 /** ── the queue's client-owned view state (ref frontend-backend-integration ) ─────────────────────── */
@@ -240,7 +243,7 @@ function HeaderChips({
         outcome={outcome}
         cancelledBy={surface.cancelledBy}
         presentation="queue"
-        {...(isStarting(surface) ? { label: STARTING_LABEL } : {})}
+        {...(isNeedsDuo(surface) ? { label: NEEDS_DUO_LABEL, meaning: NEEDS_DUO_MEANING } : isStarting(surface) ? { label: STARTING_LABEL } : {})}
         hideIcon={status !== "running" && status !== "waiting" && status !== "failed"}
         {...(gateAge === undefined ? {} : { age: gateAge })}
       />

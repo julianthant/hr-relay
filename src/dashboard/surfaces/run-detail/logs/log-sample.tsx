@@ -6,7 +6,7 @@ import { MemberRunControls } from "./log-member-controls.js";
 import type { DelegatedRecordRef } from "../../../../models/workflow/delegated-record.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import type { WorkflowSource } from "../../../app/workflow-sources.js";
-import { Badge, Button, FailureNotice, IconButton, Notice } from "../../../ds/ui.js";
+import { Badge, Banner, Button, FailureNotice, IconButton, Notice } from "../../../ds/ui.js";
 import type { DashboardActionHandler } from "../../shared/actions/actions.js";
 import { LogPanel } from "../log-panel.js";
 import { linkedRunEntries } from "../linked-runs-model.js";
@@ -24,7 +24,7 @@ import { useDashboardClient, useDashboardCommandBinding } from "../../../state/c
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
 import { LogFeedPadding, LogSkeleton, LogTimelineSkeleton } from "../../shared/loading/loading.js";
 import { RunStateChips } from "../run-state-chips.js";
-import { queueRowTitle } from "../../queue/queue-model.js";
+import { isNeedsDuo, queueRowTitle } from "../../queue/queue-model.js";
 import { RunReview } from "../review/review.js";
 import { ReviewDialog } from "../review/review-dialog.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
@@ -115,7 +115,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
       {batchRetry !== undefined && <IconButton size="md" label={batchRetry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onBatchMemberRetry === undefined} onClick={resource.onBatchMemberRetry} />}
       {retry !== undefined && onAction !== undefined && <IconButton size="md" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,retry,onAction,retryEnabled,retryRun,feedback]);
   return <><LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
-    status={status} navigation={resource.snapshot === undefined && resource.state === "loading" ? <LogTimelineSkeleton /> : undefined}
+    status={status} navigation={resource.snapshot === undefined && resource.state === "loading" ? <LogTimelineSkeleton /> : isNeedsDuo(selection.row) ? <div className="px-3 py-2"><Banner tone="info" title="Approve the Duo sign-in"><span>Open Duo on your phone and approve the sign-in. The run continues once you do.</span></Banner></div> : undefined}
     onReview={reviewAvailable ? onReview : undefined}
     toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} footerActions={footerActions}
     content={content}
