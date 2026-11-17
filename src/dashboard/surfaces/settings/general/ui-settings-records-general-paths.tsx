@@ -2,7 +2,7 @@ import { Form } from "@heroui/react";
 import { useRef,useState,type ReactNode } from "react";
 import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
-import {BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Switch,dsText, Notice, ResultRow } from "../../../ds/ui.js";
+import {BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Select,Switch,dsText, Notice, ResultRow } from "../../../ds/ui.js";
 import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
 import { formatSetting,settingInput,type SettingsDraftOperation } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
@@ -12,6 +12,7 @@ import { SettingsSectionSkeleton } from "../settings-loading.js";
 import type { DeleteAccountPresentation } from "./delete-account-model.js";
 import { BrowserWindowRow } from "./browser-window-row.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
+import { GENERAL_RUN_GROUPS,type GeneralChoice } from "./general-groups-model.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
@@ -42,12 +43,23 @@ function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: Edita
       || (event.target instanceof HTMLElement && event.target.closest('[role="dialog"]'))) return;
     event.preventDefault(); editor.reset(leaf.path);
   }}>
-    <Field orientation="horizontal" controlWidth={wide ? "wide" : "standard"} label={title} description={description} error={error} required={leaf.input === "date"} disabled={editor.locked}>
+    <Field orientation="horizontal" controlWidth={wide ? "wide" : "standard"} label={title} description={description} error={error} disabled={editor.locked}>
       <div className="settings-compact-control">{leaf.input === "date"
-        ? <DateInput name={leaf.path} label={title} value={raw} onChange={value => editor.update(leaf.path, value)} valueFormat="us" hideLabel required disabled={editor.locked} />
+        ? <DateInput name={leaf.path} label={title} value={raw} onChange={value => editor.update(leaf.path, value)} valueFormat="us" hideLabel disabled={editor.locked} />
         : <Input type="text" name={leaf.path} autoComplete="off" value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value)} />}
       </div>
     </Field>
+    {editor.save.state === "conflict" && editor.draft[leaf.path] !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
+  </div>;
+}
+
+function ChoiceRow({ editor, leaf, choices }: { editor: Editor; leaf: EditableSettingsLeafWire; choices: readonly GeneralChoice[] }) {
+  const raw = rawValue(leaf, editor.draft[leaf.path]);
+  const title = settingTitle(leaf);
+  return <div data-settings-path={leaf.path} className="settings-compact-row">
+    <ResultRow label={title} description={settingNote(leaf)} value={<Select aria-label={title} value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value)}>
+      {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+    </Select>} />
     {editor.save.state === "conflict" && editor.draft[leaf.path] !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
   </div>;
 }
@@ -81,6 +93,13 @@ function GeneralContent({ editor, year, appearance }: { editor: Editor; year: nu
   </FormGroup></BodySection>;
 }
 
+function RunGroups({ editor }: { editor: Editor }) {
+  return <>{GENERAL_RUN_GROUPS.map(group => <BodySection key={group.title} title={group.title}><FormGroup label={group.title}>
+    {group.rows.map(row => { const leaf = servedLeaf(editor, row.path); return row.choices === undefined
+      ? <ScalarRow key={row.path} editor={editor} leaf={leaf} /> : <ChoiceRow key={row.path} editor={editor} leaf={leaf} choices={row.choices} />; })}
+  </FormGroup></BodySection>)}</>;
+}
+
 export function CompactSettingsSection({ editor, appearance }: { editor: Editor; appearance?: ReactNode }) {
   return <section className="settings-compact-page">
     <PageHeading title="General" />
@@ -98,7 +117,7 @@ function CompactSettingsForm({ editor, appearance }: { editor: Editor; appearanc
       {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
       {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
-      <div className="ds-body-stack"><GeneralContent editor={editor} year={document.currentFiscalYear} appearance={appearance} /></div>
+      <div className="ds-body-stack"><GeneralContent editor={editor} year={document.currentFiscalYear} appearance={appearance} /><RunGroups editor={editor} /></div>
     </Form>;
 }
 

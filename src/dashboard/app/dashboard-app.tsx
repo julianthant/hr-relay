@@ -1,6 +1,7 @@
 import { runStartRefusalToast } from "./commands/command-result.js";
 import { attemptUnresolved, commandAttemptView } from "./commands/command-outcome.js";
 import { createPersonPreferences, type PersonPreferencesOwner } from "../state/person-preferences-model.js";
+import { useConfirmCloseDuringRun } from "./confirm-close-during-run.js";
 import { PersonPreferencesContext, usePersonPreferences } from "../lib/person-preferences.js";
 import { PROFILE_ONBOARDING_STATE } from "../../models/profiles/public-profile.js";
 import { PreflightOcrContext, createServedPreflightOcrPort } from "../surfaces/settings/preflight/preflight-ocr-model.js";
@@ -549,6 +550,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     return preferences.connect(client, { ...binding, scope: commandScope, authority: { ...binding.authority, epoch: authorityEpoch } }, () => currentPreferenceBinding.current);
   }, [preferences, client, authorityEpoch, commandScope]);
   const preferenceState = usePersonPreferences();
+  useConfirmCloseDuringRun(preferenceState.value.confirmCloseDuringRun, (application?.targets.length ?? 0) > 0);
   useEffect(() => { if (preferenceState.problem) toast({ tone: "warning", title: "Settings weren't saved", description: preferenceState.problem }); }, [preferenceState.problem, toast]);
 
   const appAttempts = executor.retainedAttempts().filter(attempt => attempt.scope.actorId === commandScope.actorId
