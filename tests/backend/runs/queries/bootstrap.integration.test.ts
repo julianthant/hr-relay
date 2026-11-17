@@ -106,10 +106,10 @@ describe("bootstrap start-surface block", () => {
         "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "reference-check": [], "crm-dates": ["crm"] },
         separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "kronos-timecard": ["new-kronos"], "identity-review": [], "reference-check": [], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
         "crm-doc-download": { "search-records": ["crm"], reference: [], "read-idocs": ["crm"], "package-worksheets": [] },
-        onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "hire-review": ["ucpath"],
+        onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "hire-review": ["ucpath"], "reference-check": [],
           "i9-creation": ["i9"], "ucpath-hire": ["ucpath"], "master-results": [] },
         "emergency-contact": { "read-document": [], members: [] },
-        "emergency-contact-member": { "contact-plan": ["ucpath"], "contact-preview": ["ucpath"] },
+        "emergency-contact-member": { "contact-plan": ["ucpath"], "reference-check": [], "contact-preview": ["ucpath"] },
         "i9-check-start": { documents: [], "roster-reference": [], retention: [] },
         "work-study": { "ucpath-auth": ["ucpath"], "reference-check": [], transaction: ["ucpath"] },
       };
@@ -129,7 +129,7 @@ describe("bootstrap start-surface block", () => {
                 fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
           spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
           ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
-          ...(["person-lookup", "separations", "work-study"].includes(String(descriptor.id)) ? { workbookCheck: { id: "reference-check", keyFieldId: "eid" } } : {}),
+          ...(["person-lookup", "separations", "onboarding", "work-study", "i9-check-start", "emergency-contact", "emergency-contact-member"].includes(String(descriptor.id)) ? { workbookCheck: { id: "reference-check", keyFieldId: "eid" } } : {}),
           steps: projectStartSteps(descriptor).map((step) => ({
             key: step.key,
             label: step.label,

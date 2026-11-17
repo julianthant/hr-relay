@@ -68,7 +68,7 @@ export function buildContactPlan(author: WorkflowAuthor<typeof EmergencyContactM
     ({ ...input, record: outputs["approved-record"].record }));
   const contacts = author.task({ id: "read-contacts", label: "Read complete saved contact set", contract: UcpathReadEmergencyContacts, replay: "always-rerun" }, [mapped, approved], ({ outputs }) => ({ emplId: outputs["map-contact"].emplId, expectedName: outputs["map-contact"].expectedName }));
   const plan = author.task({ id: "contact-plan", label: "Declare ordered primary changes", contract: PlanApprovedEmergencyContact, replay: "always-rerun" }, [mapped, contacts], ({ outputs }) => ({ contact: outputs["map-contact"], contacts: outputs["read-contacts"].contacts }));
-  return { plan, steps: [[CONTACT_PLAN_STEP, [approved, mapped, contacts, plan]]] as const };
+  return { plan, mapped, steps: [[CONTACT_PLAN_STEP, [approved, mapped, contacts, plan]]] as const };
 }
 export const contactPlanDefinition = defineStep({ group: CONTACT_PLAN_STEP, build: buildContactPlan,
   proof: { id: "emergency-contact-member-contact-plan", order: 28,

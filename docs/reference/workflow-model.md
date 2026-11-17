@@ -67,6 +67,8 @@ and name fields; the I-9 PDF parent requires Action History fields.
 the one key field a picked worksheet must map. A run may pick none. A start selection names the
 declaration it answers with `typeId`; an absent `typeId` means the required reference. Check picks
 are captured by their key field only and retained with the run's other references.
+A delegated child whose target declares `workbookCheck` receives the parent's check picks, never
+its required reference, so each person child checks its own Employee ID.
 `workbooks/verify-person` looks the found Employee ID up in each picked check worksheet at its
 retained version and returns, per spreadsheet, `found`, `not-found` or `name-differs` with the row
 number. The name is compared when the worksheet maps a name column and the run found a name; a

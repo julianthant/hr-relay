@@ -5,11 +5,11 @@ import {
 } from "../../../models/workflows/separations/match-active-employment.js";
 import { selectSeparationEmployment } from "../../../rules/separations/employment-selection.js";
 
-/** The employment fold's refusal, executed. The gate still shows every row (match-identity carries the classification); this node only decides single-employment existence. */
+/** The employment fold's refusal, executed. The gate still shows every row (match-identity carries the classification); this node decides which employment the form names. */
 export const matchActiveEmploymentTask = defineTask(SeparationsMatchActiveEmployment, {
   sessions: [],
   async run({ input, ctx }) {
-    const selection = selectSeparationEmployment(input.jobSummary.jobRows);
+    const selection = selectSeparationEmployment(input.jobSummary.jobRows, input.request);
     if (selection.state === "refused") {
       return ctx.fail(
         selection.code,
