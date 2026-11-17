@@ -470,7 +470,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     const previous = grouped.at(-1);
     if (previous !== undefined && key === previousKey && groupable.has(previous.id) && groupable.has(step.id)) {
       grouped[grouped.length - 1] = { ...previous, entries: [...previous.entries, ...step.entries] };
-    } else grouped.push({ ...step, title: category?.label ?? step.title, ...(system === undefined ? {} : { system }) });
+    } else grouped.push({ ...step, title: category === undefined ? step.title : plainStepLabel(category.label), ...(system === undefined ? {} : { system }) });
     previousKey = key;
   }
   const named = grouped.map(({ system: raw, ...step }): LogStep => {
@@ -481,7 +481,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     const members = new Set<string | undefined>(category.members.map(member => member.nodeId));
     const first = grouped.find(step => members.has(node.get(step.id)));
     if (category.key === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_IDENTITY_MISSING");
-    return { id: category.key, label: category.label, state: category.state === "replayed" ? "completed" : TIMELINE_STATE[category.state],
+    return { id: category.key, label: plainStepLabel(category.label), state: category.state === "replayed" ? "completed" : TIMELINE_STATE[category.state],
       ...(first === undefined ? {} : { stepId: first.id, time: first.time }),
       ...(category.durationSec === undefined ? {} : { durationLabel: fmtElapsed(category.durationSec) }),
       substeps: category.members.map(member => {
