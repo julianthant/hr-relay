@@ -40,7 +40,7 @@ describe("step proof derivation", () => {
     expect(definition.canonicalInput).toBe(SeparationsIdentityCheckCanonicalInput);
     expect(definition.input).not.toBe(separationsWorkflow.input);
     expect(definition.steps.map(([group, entries]) => [group.key, entries.map(entry => entry.id)]))
-      .toEqual([["job-summary", ["job-summary"]], ["identity-check", ["name-search", "comparison", "identity-approval", "approval"]]]);
+      .toEqual([["identity-check", ["name-search", "job-summary"]], ["identity-review", ["comparison", "identity-approval", "approval"]]]);
     expect(definition.result.references.map(entry => entry.id)).toEqual(["approval"]);
     const approval = definition.steps.flatMap(([, entries]) => entries).find(entry => entry.id === "approval");
     expect(approval?.references.map(entry => entry.id)).toEqual(["comparison", "identity-approval"]);
