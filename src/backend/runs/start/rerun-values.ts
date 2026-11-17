@@ -117,6 +117,8 @@ function unitKey(nodeId: string, phase?: "prepare" | "commit"): string { return 
 
 /** One child run's states per node, and per phase of a transaction node, from what it recorded; display only, so nothing here refuses the source. */
 function childUnitFacts(repositories: AuthorityDatabase["authority"], descriptor: AnyWorkflowDescriptor, run: RunRecord): ReadonlyMap<string, NodeFact> {
+  // A child run of an older descriptor reports every current step unfinished, as an older source does.
+  if (run.envelope.descriptorVersion !== descriptor.version || run.envelope.contractFingerprint !== descriptor.contractFingerprint) return new Map();
   const runId = run.envelope.runId;
   const checkpoints = new Map(repositories.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId)
     .filter((checkpoint) => checkpoint.runId === runId).map((checkpoint) => [checkpoint.nodeId, checkpoint]));
@@ -266,7 +268,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           fact = { nodeId: node.id, state: "unfinished", reason: "incomplete-execution" };
         } else if (checkpoint !== undefined) fact = { nodeId: node.id, state: "completed", reason: "checkpoint" };
         else if (gates.some(({ gateId }) => String(gateId) === String(node.id))) fact = { nodeId: node.id, state: "completed", reason: "gate-result" };
-        else if (delegationSettled(repositories, request.runId, node)) fact = { nodeId: node.id, state: "completed", reason: "delegation-settled" };
+        else if (!older && delegationSettled(repositories, request.runId, node)) fact = { nodeId: node.id, state: "completed", reason: "delegation-settled" };
         else fact = { nodeId: node.id, state: "unfinished", reason: "not-recorded" };
         facts.set(node.id, fact);
       }
@@ -341,7 +343,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           const known = latest.get(member.envelope.itemId);
           if (known === undefined || member.envelope.attempt > known.envelope.attempt) latest.set(member.envelope.itemId, member);
         }
-        return { workflow, steps: leastAdvancedSteps(child, [...latest.values()].map((member) => childUnitFacts(repositories, child, member))) };
+        return { workflow, steps: leastAdvancedSteps(child, older ? [] : [...latest.values()].map((member) => childUnitFacts(repositories, child, member))) };
       });
       // The source's typed facts refill a step it had typed, its own or a child's a row targets; they stay typed by hand.
       const typed = (run.envelope.stepOmissions ?? []).filter((entry) => (entry.workflow === undefined

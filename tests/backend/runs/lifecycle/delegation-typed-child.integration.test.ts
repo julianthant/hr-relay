@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
+import { z } from "zod";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -34,12 +35,14 @@ const READ_TYPED: StepManualDeclaration = {
 };
 
 /** The child reads then finishes; the parent releases one member, two for mode "repeat", and an ok and a failing one for "confirmed". */
-function workflows(nested = false) {
+/** `evolved` is version 2 of the child and parent: the child's result gains an optional field. */
+function workflows(nested = false, evolved = false) {
+  const version = evolved ? 2 : 1, Result = evolved ? Plan1Output.extend({ note: z.string().optional() }) : Plan1Output;
   const leaf = compileWorkflow(defineWorkflow({ ...common, id: "fixture-typed-child-leaf", code: "ftl", steps: ({ task, result }) => {
     const read = task({ id: "read", contract: plan1Contract, replay: "checkpoint" }, [], ({ input }) => input);
     return { steps: [[{ key: "reading", label: "Reading" }, [read]]], result: result(Plan1Output, [read], ({ outputs }) => outputs.read) };
   } }));
-  const child = compileWorkflow(defineWorkflow({ ...common, id: CHILD, code: "ftc", steps: ({ task, delegate, group, result }) => {
+  const child = compileWorkflow(defineWorkflow({ ...common, version, id: CHILD, code: "ftc", steps: ({ task, delegate, group, result }) => {
     const read = task({ id: "read", contract: plan1Contract, replay: "checkpoint" }, [], ({ input }) => input);
     const finish = nested ? delegate({ id: "finish", target: { id: leaf.descriptor.id, input: Plan1Input, result: Plan1Output }, edgeId: "leaf",
       cardinality: "many", await: "terminal", join: "all",
@@ -47,16 +50,16 @@ function workflows(nested = false) {
       bind: ({ input }) => [input], deriveChildItemId: (_input, identity) => identity.canonicalItemId,
     }) : task({ id: "finish", contract: plan1Contract, replay: "checkpoint" }, [read], ({ input }) => input);
     return { steps: [[group({ key: "reading", label: "Reading" }, { manual: READ_TYPED }), [read]], [{ key: "finish", label: "Finish" }, [finish]]],
-      result: result(Plan1Output, nested ? [read] : [read, finish], ({ outputs }) => outputs.read) };
+      result: result(Result, nested ? [read] : [read, finish], ({ outputs }) => outputs.read) };
   } }));
-  const parent = compileWorkflow(defineWorkflow({ ...common, id: "fixture-typed-child-parent", code: "ftp",
+  const parent = compileWorkflow(defineWorkflow({ ...common, version, id: "fixture-typed-child-parent", code: "ftp",
     rows: [
       { key: "members", label: "Members", members: [{ step: "members" }] },
       { key: "member-read", label: "Member read", members: [{ workflow: CHILD, step: "reading" }], target: { workflow: CHILD, step: "reading" } },
       { key: "member-finish", label: "Member finish", members: [{ workflow: CHILD, step: "finish" }] },
     ],
     steps: ({ delegate, result }) => {
-      const members = delegate({ id: "members", target: { id: CHILD, input: Plan1Input, result: Plan1Output }, edgeId: "members",
+      const members = delegate({ id: "members", target: { id: CHILD, input: Plan1Input, result: Result }, edgeId: "members",
         cardinality: "many", await: "terminal", join: "all",
         policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" } }, [], {
         bind: ({ input }) => input.mode === "repeat" || input.mode === "confirmed"
@@ -212,4 +215,21 @@ it("refuses the Rerun source when a retained delegation no longer authenticates"
   assert.ok(source);
   assert.deepEqual(readRerunValues({ reader: execution.lifecycle, database, descriptors: { resolve: () => parent } }, { runId: source.envelope.runId, expectedVersion: source.version }),
     { state: "refused", code: "source-invalid" });
+});
+
+it("keeps a completed delegated source available on Rerun after the parent and child descriptors change, with every current step unfinished", async () => {
+  const { database, execution, parent } = await harness();
+  const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
+  const { run } = await execution.execute(root, world.SIGNAL);
+  assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
+  const evolved = workflows(false, true).parent.descriptor;
+  assert.notEqual(evolved.contractFingerprint, parent.contractFingerprint);
+  const before = database.authority.runs.get(root.envelope.runId);
+  assert.ok(before);
+  const response = readRerunValues({ reader: execution.lifecycle, database, descriptors: { resolve: () => evolved } }, { runId: before.envelope.runId, expectedVersion: before.version });
+  assert.equal(response.state, "available", JSON.stringify(response));
+  assert.deepEqual(stepStates(response.snapshot.steps), [["members", "unfinished"]]);
+  assert.deepEqual(response.snapshot.steps[0]?.nodes, [{ nodeId: "members", state: "unfinished", reason: "not-recorded" }]);
+  assert.deepEqual(response.snapshot.children?.map(({ workflow, steps }) => [workflow, stepStates(steps)]), [[CHILD, [["reading", "unfinished"], ["finish", "unfinished"]]]]);
+  assert.deepEqual(database.authority.runs.get(root.envelope.runId), before);
 });
