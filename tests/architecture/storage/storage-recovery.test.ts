@@ -2130,6 +2130,7 @@ describe("offline exact-backup restore", () => {
     const database = openDatabase(authorityPath);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
+    const context = admissionFor(root).readInstallationContext(); assert.ok(context);
     let stagedPath = "";
     const removed: string[] = [];
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
@@ -2157,7 +2158,6 @@ describe("offline exact-backup restore", () => {
     assert.match(failure.message, /restore settlement is unproved; durable operation and staging evidence retained/u);
     assert.equal(existsSync(stagedPath), true);
     assert.deepEqual(removed.filter(path => path.startsWith(stagedPath)), []);
-    const context = admissionFor(root).readInstallationContext(); assert.ok(context);
     assert.equal(readAuthorityRestoreJournal(context.workspace)?.restore.stagedPath, stagedPath);
   });
 
