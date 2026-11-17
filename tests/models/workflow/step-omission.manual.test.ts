@@ -102,7 +102,7 @@ describe("representation check", () => {
 
   it("accepts a leaf whose every check the field's own constraints imply", () => {
     for (const [field, leaf] of [
-      [text, z.string()], [text, z.string().min(1)], [text, z.string().optional()], [text, z.union([z.number(), z.string()])],
+      [text, z.string()], [text, z.string().min(1)], [text, z.string().optional()], [text, z.union([z.string(), z.number()])],
       [usDate, z.string().regex(/^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/u)], [usDate, UsDateFactSchema], [usDate, z.string().length(10)],
       [isoDate, z.iso.date()], [isoDate, z.string().max(10)], [eid, EidSchema], [eid, z.string().min(8).max(8)],
       [integer, z.number()], [integer, z.number().int()], [integer, z.number().int().min(3)], [integer, z.number().int().positive()],
@@ -117,6 +117,9 @@ describe("representation check", () => {
       [usDate, z.string().regex(/^\d{2}\/\d{2}\/\d{4}$/u)], [usDate, z.iso.date()], [isoDate, UsDateFactSchema], [eid, z.string().regex(/^108\d{5}$/u)],
       [integer, z.number().int().max(10)], [integer, z.number().int().min(4)], [{ ...integer, min: undefined }, z.number().int().min(0)], [integer, z.string()],
       [list, z.array(z.string()).min(1)], [list, z.array(z.string().min(2))], [list, z.string()],
+      [text, z.string().optional().refine(() => true)], [text, z.string().nullable().refine(() => true)], [text, z.string().default("x").refine(() => true)],
+      [text, z.union([z.string(), z.number()]).refine(() => true)], [text, z.union([z.number(), z.string()])],
+      [text, z.union([z.string().transform((value) => value.toUpperCase()), z.string()])], [text, z.unknown().refine(() => true)],
     ] as const) assert.equal(stepManualFieldFitsLeaf(field, leaf), false, `${field.kind} ${JSON.stringify(leaf._zod.def.type)}`);
   });
 });

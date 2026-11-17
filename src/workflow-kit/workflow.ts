@@ -40,7 +40,7 @@ import {
 } from "../models/run/result.js";
 import { StartRowDeclarationSchema, StepLockReasonSchema, StepOmissionFormSchema, stepManualFieldFitsLeaf, stepManualFiniteFacts } from "../models/workflow/step-omission.js";
 import type { StartRowDeclaration, StepLockReason, StepManualDeclaration, StepOmissionSpec } from "../models/workflow/step-omission.js";
-import { valueLeafSchemas, valuePathAccepts } from "../models/workflow/rerun-values.js";
+import { schemaAcceptsUnchanged, valueLeafSchemaExact, valueLeafSchemas } from "../models/workflow/rerun-values.js";
 import { SecretNameSchema } from "../models/config/secret-names.js";
 import { deriveSchemaHash } from "../models/validation/schema-bound-value.js";
 import { assertAuditedCanonicalInput, canonicalInputSamples } from "../models/workflow/canonical-input.js";
@@ -864,15 +864,16 @@ function deriveStepOmissions(
       if (node.kind !== "task") throw new Error(`${fieldOwner} replaces a value of ${node.kind} node "${field.replaces.nodeId}"`);
       const leaves = valueLeafSchemas(node.uses.output, field.replaces.path.split("."));
       if (leaves.length === 0) throw new Error(`${fieldOwner} replaces "${field.replaces.path}", which node "${field.replaces.nodeId}"'s output does not offer`);
+      const target = `"${field.replaces.nodeId}.${field.replaces.path}"`;
+      const leaf = valueLeafSchemaExact(node.uses.output, field.replaces.path.split("."));
+      if (leaf === undefined) throw new Error(`${fieldOwner} replaces ${target}, which a union, check or transform above it keeps from being proven`);
       const finite = stepManualFiniteFacts(field);
-      const refused = finite?.find((fact) => !valuePathAccepts(node.uses.output, field.replaces?.path ?? "", fact));
-      if (refused !== undefined) {
-        throw new Error(`${fieldOwner} stores ${JSON.stringify(refused)}, which "${field.replaces.nodeId}.${field.replaces.path}" does not accept unchanged`);
+      const refused = finite?.find((fact) => !schemaAcceptsUnchanged(leaf, fact));
+      if (refused !== undefined) throw new Error(`${fieldOwner} stores ${JSON.stringify(refused)}, which ${target} does not accept unchanged`);
+      if (finite === undefined && !stepManualFieldFitsLeaf(field, leaf)) {
+        throw new Error(`${fieldOwner} stores ${field.kind} facts, which ${target} does not provably accept unchanged`);
       }
-      if (finite === undefined && !leaves.some((leaf) => stepManualFieldFitsLeaf(field, leaf))) {
-        throw new Error(`${fieldOwner} stores ${field.kind} facts, which "${field.replaces.nodeId}.${field.replaces.path}" does not provably accept unchanged`);
-      }
-      if (field.optional === true && !leaves.some((leaf) => z.core.safeParse(leaf, null).success || z.core.safeParse(leaf, undefined).success)) {
+      if (field.optional === true && !schemaAcceptsUnchanged(leaf, null) && !z.core.safeParse(leaf, undefined).success) {
         throw new Error(`${fieldOwner} is optional, but "${field.replaces.nodeId}.${field.replaces.path}" accepts neither null nor absence`);
       }
     }

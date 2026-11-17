@@ -133,15 +133,22 @@ function integerLeafTakes(min: number | undefined, leaf: z.core.$ZodNumber): boo
 
 /**
  * True when the leaf provably takes every non-null fact an infinite-kind field accepts, unchanged: a plain
- * string, number or array whose every check the field's own constraints imply. Anything not established
- * (a transform, a refinement, a catch, a narrower bound or another format) is refused.
+ * string, number or array whose every check the field's own constraints imply, under check-free wrappers or as a
+ * check-free union's first option. Anything not established (a transform, a refinement, a catch, a narrower bound,
+ * another format, or a union that only a later option could satisfy) is refused.
  */
 export function stepManualFieldFitsLeaf(field: StepOmissionField, leaf: z.core.$ZodType): boolean {
+  const own = leaf instanceof z.core.$ZodString || leaf instanceof z.core.$ZodNumber || leaf instanceof z.core.$ZodArray;
+  if (!own && (leaf._zod.def.checks ?? []).length > 0) return false;
   if (leaf instanceof z.core.$ZodOptional || leaf instanceof z.core.$ZodNullable || leaf instanceof z.core.$ZodReadonly
     || leaf instanceof z.core.$ZodNonOptional || leaf instanceof z.core.$ZodDefault) {
     return stepManualFieldFitsLeaf(field, leaf._zod.def.innerType);
   }
-  if (leaf instanceof z.core.$ZodUnion) return leaf._zod.def.options.some((option) => stepManualFieldFitsLeaf(field, option));
+  // The first option that parses wins, so only a first option that takes every fact proves the union.
+  if (leaf instanceof z.core.$ZodUnion) {
+    const [first] = leaf._zod.def.options;
+    return first !== undefined && stepManualFieldFitsLeaf(field, first);
+  }
   if (leaf instanceof z.core.$ZodUnknown || leaf instanceof z.core.$ZodAny) return true;
   if (field.kind === "integer") return leaf instanceof z.core.$ZodNumber && integerLeafTakes(field.min, leaf);
   if (field.kind === "text-list") {

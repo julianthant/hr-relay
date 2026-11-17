@@ -40,6 +40,8 @@ interface Options {
   readonly rerunValues?: readonly RerunValueMappingSpec[];
   /** check publishes instead of reading */
   readonly publishCheck?: boolean;
+  /** read's output gains an `odd` value under this schema */
+  readonly oddLeaf?: z.ZodType;
 }
 
 /** reading: search -> read -> check (or a publishing check); saving: save (a transaction) -> receipt; extra: a selection step with one read. */
@@ -57,7 +59,9 @@ function fixture(options: Options = {}) {
     ...(options.rerunValues === undefined ? {} : { rerunValues: options.rerunValues }),
     steps: ({ task, transaction, group, result }) => {
       const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }));
-      const read = task({ id: "read", contract: plan1Contract, replay: "checkpoint" }, [search], ({ input }) => input);
+      const readContract = options.oddLeaf === undefined ? plan1Contract : defineTaskContract({ ...plan1Definition,
+        output: z.strictObject({ ...Plan1Output.shape, odd: options.oddLeaf }), example: { ...plan1Definition.example, odd: "XXXXX" } });
+      const read = task({ id: "read", contract: readContract, replay: "checkpoint" }, [search], ({ input }) => input);
       const check = options.publishCheck === true
         ? task({ id: "check", contract: publishContract, replay: "checkpoint", dryRun: "stop-before-publish" }, [read], ({ input }) => input)
         : task({ id: "check", contract: plan1Contract, replay: "checkpoint" }, [read], ({ input }) => input);
@@ -133,6 +137,17 @@ describe("manual entry definition checks", () => {
       /field "eid" stores text facts, which "read\.eid" does not provably accept unchanged/u);
     assert.throws(() => fixture({ reading: { ...READ_TYPED, form: { fields: [{ ...VALUE, optional: true }] } } }),
       /field "disposition" is optional, but "read\.disposition" accepts neither null nor absence/u);
+  });
+
+  it("refuses a leaf whose wrapper or union could refuse or rewrite a typed value", () => {
+    const odd: StepManualDeclaration = { ...READ_TYPED, form: { fields: [{ key: "odd", label: "Odd", kind: "text", replaces: { nodeId: "read", path: "odd" } }] },
+      produces: { read: ({ facts, scope }) => ({ eid: (scope.input as { emplId: string }).emplId, disposition: "typed", providerState: "typed", odd: facts.odd }) } };
+    for (const oddLeaf of [
+      z.string().optional().refine((value) => typeof value === "string" && value.length >= 5),
+      z.union([z.string(), z.number()]).refine((value) => typeof value === "string" && value.length >= 5),
+      z.union([z.string().transform((value) => value.toUpperCase()), z.string()]),
+    ]) assert.throws(() => fixture({ oddLeaf, reading: odd }), /field "odd" stores text facts, which "read\.odd" does not provably accept unchanged/u);
+    assert.equal(fixture({ oddLeaf: z.union([z.string(), z.number()]), reading: odd }).stepOmissions.length, 1);
   });
 
   it("accepts a replaced path with an array index segment", () => {

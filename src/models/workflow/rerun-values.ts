@@ -43,10 +43,28 @@ export function valueLeafSchemas(schema: z.core.$ZodType, path: readonly string[
   return valueLeafSchemas(child, rest);
 }
 
-/** True when some schema at the path accepts the value and parses it to the same canonical JSON. */
-export function valuePathAccepts(schema: z.core.$ZodType, path: string, value: JsonValue): boolean {
-  return valueLeafSchemas(schema, path.split(".")).some((leaf) => {
-    const parsed = z.core.safeParse(leaf, value);
-    return parsed.success && canonicalJsonStringify(parsed.data) === canonicalJsonStringify(value);
-  });
+/**
+ * The one schema a value path lands on when nothing above it can refuse or rewrite that value: objects, arrays
+ * and check-free optional, nullable, readonly, nonoptional and default wrappers. A union, check, catch or
+ * transform on the way gives undefined.
+ */
+export function valueLeafSchemaExact(schema: z.core.$ZodType, path: readonly string[]): z.core.$ZodType | undefined {
+  if (path.length === 0) return schema;
+  if ((schema._zod.def.checks ?? []).length > 0) return undefined;
+  if (schema instanceof z.core.$ZodOptional || schema instanceof z.core.$ZodNullable || schema instanceof z.core.$ZodReadonly
+    || schema instanceof z.core.$ZodNonOptional || schema instanceof z.core.$ZodDefault) {
+    return valueLeafSchemaExact(schema._zod.def.innerType, path);
+  }
+  const [key, ...rest] = path;
+  if (key === undefined) return undefined;
+  if (schema instanceof z.core.$ZodArray) return /^(?:0|[1-9][0-9]*)$/u.test(key) ? valueLeafSchemaExact(schema._zod.def.element, rest) : undefined;
+  if (!(schema instanceof z.core.$ZodObject)) return undefined;
+  const shape: Readonly<Record<string, z.core.$ZodType>> = schema._zod.def.shape;
+  return Object.hasOwn(shape, key) ? valueLeafSchemaExact(shape[key] as z.core.$ZodType, rest) : undefined;
+}
+
+/** True when the schema itself accepts the value and parses it to the same canonical JSON. */
+export function schemaAcceptsUnchanged(schema: z.core.$ZodType, value: JsonValue): boolean {
+  const parsed = z.core.safeParse(schema, value);
+  return parsed.success && canonicalJsonStringify(parsed.data) === canonicalJsonStringify(value);
 }
