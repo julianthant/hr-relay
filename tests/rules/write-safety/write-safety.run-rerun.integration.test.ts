@@ -26,7 +26,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.ok(document.querySelector('[aria-label="Values"]')); await press("Continue"); await press("Start dry run");
     const second = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.notEqual(first.warningAcknowledgment, second.warningAcknowledgment); assert.deepEqual(second.submissions[0], { eid: "10812346" });
-    assert.ok(button("Start dry run")); assert.equal(h.finalCommands.length, 0);
+    assert.equal(typeof second.warningAcknowledgment, "string", "the confirmed warning rides the second plan"); assert.equal(h.finalCommands.length, 1, "a clean plan with the confirmed warning submits at once");
   });
 
 });
