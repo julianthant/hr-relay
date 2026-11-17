@@ -83,8 +83,8 @@ it("stops Work Study before PayPath when the operator cancels an unconfirmed ref
 it("names Onboarding's delegated I-9 workflow and follows every retained lookup result", async () => {
   const { reviewSpec: spec } = await served("onboarding");
   const [starts] = blocks(spec, "i9-search", "starts");
-  assert.deepEqual(starts, { kind: "starts", workflowId: "i9-lookup", title: "I-9 Lookup", each: true,
-    when: [{ mode: ["new-hire"], "hire-match": ["new-hire", "review-required"] }] });
+  assert.deepEqual(starts, { kind: "starts", workflowId: "i9-lookup", title: "I-9 Lookup", each: "Each person",
+    when: [{ mode: ["new-hire"], "hire-match": ["new-hire", "review-required"], "i9-lookup-result": ["checked"] }] });
   const [lookup] = blocks(spec, "i9-search", "decision"); assert.ok(lookup);
   assert.deepEqual(lookup.outcomes.slice(0, 2).map(outcome => [outcome.value, outcome.label]), [["checked", "Lookup completed"], ["not-required", "Lookup not required"]]);
   const status = blocks(spec, "i9-search", "decision").find(decision => decision.id === "i9-status"); assert.ok(status);
@@ -112,6 +112,15 @@ it("names Onboarding's delegated I-9 workflow and follows every retained lookup 
   const skipped = walk(spec, {}, { "hire-match": "review-required", "i9-lookup-result": "not-required" });
   const approval = blocks(spec, "hire-review", "decision").find(block => block.id === "hire-approval"); assert.ok(approval);
   assert.equal(visible(approval.outcomes, skipped.values).some(outcome => outcome.value === "new-hire"), false);
+  assert.equal(skipped.values["i9-lookup-child"], undefined);
+  assert.deepEqual(visible(blocks(spec, "i9-search", "starts"), skipped.values), []);
+  const child = blocks(spec, "i9-search", "decision").find(block => block.id === "i9-lookup-child"); assert.ok(child);
+  assert.equal(child.label, "I-9 Lookup result");
+  const failedChild = walk(spec, {}, { "i9-lookup-child": "child-failed" });
+  assert.equal(failedChild.stop?.value, "child-failed");
+  assert.equal(failedChild.steps.at(-1)?.id, "i9-search");
+  assert.equal(failedChild.values["hire-approval"], undefined);
+  assert.equal(walk(spec, { mode: "rehire" }).values["i9-lookup-child"], undefined);
   assert.equal(visible(blocks(spec, "i9-search", "starts"), walk(spec, { mode: "rehire" }).values).length, 0);
 });
 
@@ -159,7 +168,7 @@ it("serves complete page cards with fictional examples and traceable sources on 
       ...entry.blocks.flatMap(block => block.kind === "card" ? [block.title, ...block.rows.map(row => row.label)]
         : block.kind === "decision" ? [block.label, ...block.outcomes.flatMap(outcome => [outcome.label, outcome.then])]
         : block.kind === "click" ? [block.target]
-        : block.kind === "starts" ? [block.title]
+        : block.kind === "starts" ? [block.title, block.each]
         : [block.title, ...block.columns, ...block.rows.flatMap(row => row.cells), block.question.title, block.question.context,
           ...(block.other === undefined ? [] : [block.other.label, block.other.placeholder])])]).join(" ");
     assert.doesNotMatch(visibleText, /(?:workflow:|[A-Z]{2,}_[A-Z_]{2,}|Fixture|nodeId|taskId|write-plan)/u);

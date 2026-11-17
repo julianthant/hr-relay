@@ -25,7 +25,7 @@ const BlockSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("card"), id: IdSchema, title: TextSchema, mode: z.enum(["fill", "read"]), ...Gate,
     rows: z.array(z.strictObject({ id: IdSchema, label: TextSchema, value: ReviewValueSchema.optional(), source: IdSchema, ...Gate })) }),
   z.strictObject({ kind: z.literal("click"), target: TextSchema, ...Gate }),
-  z.strictObject({ kind: z.literal("starts"), workflowId: IdSchema, title: TextSchema, each: z.boolean(), ...Gate }),
+  z.strictObject({ kind: z.literal("starts"), workflowId: IdSchema, title: TextSchema, each: TextSchema, ...Gate }),
   ReviewPickContentSchema.extend({ kind: z.literal("pick"), ...Gate }),
   z.strictObject({ kind: z.literal("decision"), id: IdSchema, label: TextSchema, initial: ReviewValueSchema, ...Gate,
     outcomes: z.array(ExplorerSpecOutcomeSchema).min(1) }),

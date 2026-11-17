@@ -32,7 +32,8 @@ const group = Object.freeze({
         source: { origin: "I-9 Lookup", detail: "The status retained from the exact successful child lookup; a failed child never proves profile absence.", chain: [] } }],
       when: [{ "i9-lookup-result": ["checked"] }],
     }], branchLabels: [],
-    starts: [{ nodeId: "i9-lookup-child", when: [{ mode: ["new-hire"], "hire-match": ["new-hire", "review-required"] }] }],
+    starts: [{ nodeId: "i9-lookup-child", each: "Each person", when: [{ mode: ["new-hire"], "hire-match": ["new-hire", "review-required"], "i9-lookup-result": ["checked"] }] }],
+    outcomes: [{ nodeId: "i9-lookup-child", value: "child-failed", then: "The I-9 lookup did not establish a verified result; the run stops before hire approval.", stops: true }],
     decisions: [
       { id: "i9-lookup-result", label: "I-9 lookup", reads: { nodeId: "i9-lookup", fieldPath: "state" },
         nodeIds: ["i9-lookup"], initial: { by: "hire-match", values: { "existing-person": "not-required", "review-required": "not-required" }, otherwise: "checked" }, outcomes: [

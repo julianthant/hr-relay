@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { NodeIdSchema } from "../../rules/identity/ids.js";
+import { NodeIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { OperatorFieldDisplaySchema } from "./presentation.js";
 
@@ -55,7 +55,7 @@ export const WorkflowReviewPageSchema = z.strictObject({
   fields: z.array(WorkflowReviewFieldSchema),
 });
 /**
- * One decision point the step's run takes from a task output or operator gate result. Each outcome names a value that output
+ * One decision point the step's run takes from a closed task output or operator gate result. Each outcome names a value that output
  * can hold; its label defaults to the operator field display of that output, and `then` says what the run does next
  * (omitted only for an outcome that simply continues).
  */
@@ -86,7 +86,9 @@ export const WorkflowStepReviewSchema = z.strictObject({
   branchLabels: z.array(z.strictObject({ nodeId: NodeIdSchema, outcome: ReviewTextSchema, label: ReviewTextSchema })),
   branches: z.array(z.strictObject({ nodeId: NodeIdSchema, label: ReviewTextSchema.optional(), initial: ReviewValueSchema })).optional(),
   decisions: z.array(WorkflowReviewDecisionSchema).optional(),
-  starts: z.array(z.strictObject({ nodeId: NodeIdSchema, ...Gate })).optional(),
+  starts: z.array(z.strictObject({ nodeId: NodeIdSchema, each: ReviewTextSchema, ...Gate })).optional(),
+  optionsFrom: z.array(z.strictObject({ workflowId: WorkflowIdSchema, fields: z.array(ContractFieldPathSchema).min(1) })).optional(),
+  outcomes: z.array(z.strictObject({ nodeId: NodeIdSchema, value: z.string().min(1), then: ReviewTextSchema, stops: z.boolean().optional() })).optional(),
   picks: z.array(ReviewPickContentSchema.extend({ nodeId: NodeIdSchema, ...Gate })).optional(),
 });
 type ReadonlyReview<Value> = Value extends readonly (infer Item)[] ? readonly ReadonlyReview<Item>[]

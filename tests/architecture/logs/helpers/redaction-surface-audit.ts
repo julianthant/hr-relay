@@ -972,7 +972,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
       "steps[].blocks[].outcomes[].then", "steps[].blocks[].outcomes[].value", "steps[].blocks[].outcomes[].when[]", "steps[].blocks[].rows[].id", "steps[].blocks[].rows[].label", "steps[].blocks[].rows[].source",
       "steps[].blocks[].rows[].value", "steps[].blocks[].rows[].value.by", "steps[].blocks[].rows[].value.otherwise", "steps[].blocks[].rows[].value.values", "steps[].blocks[].rows[].when[]", "steps[].blocks[].target",
       "steps[].blocks[].title", "steps[].blocks[].when[]", "steps[].checks[].text", "steps[].checks[].when[]", "steps[].description[].text", "steps[].description[].when[]",
-      "steps[].blocks[].workflowId", "steps[].blocks[].columns[]", "steps[].blocks[].rows[].cells[]", "steps[].blocks[].other.label", "steps[].blocks[].other.placeholder",
+      "steps[].blocks[].workflowId", "steps[].blocks[].each", "steps[].blocks[].columns[]", "steps[].blocks[].rows[].cells[]", "steps[].blocks[].other.label", "steps[].blocks[].other.placeholder",
       "steps[].blocks[].question.title", "steps[].blocks[].question.context",
       "steps[].id", "steps[].title", "steps[].when[]",
     ].map(path => ({ surface: "wire/workflow-explorer", path: `workflows[].reviewSpec.${path}`, origin: "repository-authored" })),

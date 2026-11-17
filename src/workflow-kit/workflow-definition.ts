@@ -1296,6 +1296,11 @@ export function compileWorkflow<
         throw new Error(`workflow ${definition.id} review branch ${branch.nodeId} starts at unknown outcome ${initial}`);
       }
     }
+    assertUnique((review.outcomes ?? []).map(outcome => `${outcome.nodeId}/${outcome.value}`), "review outcome");
+    for (const outcome of review.outcomes ?? []) assertOwnNode(outcome.nodeId);
+    for (const source of review.optionsFrom ?? []) for (const field of source.fields) {
+      assertSchemaOffersCollectionPath(definition.input, field, `workflow ${definition.id} inherited review option`);
+    }
     const decisions = review.decisions ?? [];
     assertUnique((review.picks ?? []).map(pick => pick.nodeId), "review pick");
     for (const pick of review.picks ?? []) {

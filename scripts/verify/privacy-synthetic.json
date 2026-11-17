@@ -62,6 +62,7 @@
     "src/models/workflows/work-study/input.ts",
     "src/models/workflows/work-study/read-transaction-plan.ts",
     "src/workflows/person-lookup/workflow.ts",
+    "src/workflows/onbase/steps/import-document/step.ts",
     "src/workflows/separations/steps/identity-check/step.ts",
     "src/workflows/separations/steps/kronos-timecard/step.ts",
     "src/workflows/separations/steps/kuali-extraction/step.ts",
