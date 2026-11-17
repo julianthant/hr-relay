@@ -55,8 +55,8 @@ describe("start step selection", () => {
       [
         ["kuali-extraction", "required"],
         ["identity-check", "required"],
-        ["job-summary", "required"],
         ["kronos-timecard", "omittable"],
+        ["identity-review", "required"],
         ["reference-check", "required"],
         ["ucpath-transaction", "omittable"],
         ["kuali-finalization", "omittable"],

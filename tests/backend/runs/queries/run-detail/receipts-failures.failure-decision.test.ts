@@ -17,8 +17,8 @@ function corrected(prefill?: string) {
       expectedVersion: 3, retry: { kind: "command", command: "retry", key: "check-again", label: "Check again", intent: "neutral", placement: ["banner"], expectedVersion: 3,
         confirm: { title: "Check again", confirmLabel: "Check again", tone: "neutral" } },
       confirm: { title: "Enter EID", confirmLabel: "Enter EID", tone: "neutral" },
-      request: { workflowId: "separations", dryRun: true, browserMode: "headless", captureBrowserScreenshots: false, submissions: [{}], selectedStepKeys: ["job-summary"],
-        rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["job-summary"], failureCorrection: { failureId: FAILURE, inputField: "operatorEmployeeId" } } },
+      request: { workflowId: "separations", dryRun: true, browserMode: "headless", captureBrowserScreenshots: false, submissions: [{}], selectedStepKeys: ["identity-check"],
+        rerunSource: { runId: RUN, expectedVersion: 3, intent: "rerun", selectedStepKeys: ["identity-check"], failureCorrection: { failureId: FAILURE, inputField: "operatorEmployeeId" } } },
     } });
 }
 

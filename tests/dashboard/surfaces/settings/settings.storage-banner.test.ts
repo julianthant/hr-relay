@@ -3,10 +3,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,it } from "vitest";
 import { StorageNotice } from "../../../../src/dashboard/surfaces/settings/settings.js";
-import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { StorageAuthoritySummarySchema } from "../../../../src/models/storage/storage-status.js";
 
 function storage(authority: "healthy" | "unavailable") {
-  return StorageHealthSummaryWireSchema.parse({ authority });
+  return StorageAuthoritySummarySchema.parse({ authority });
 }
 
 describe("the app-wide storage notice", () => {

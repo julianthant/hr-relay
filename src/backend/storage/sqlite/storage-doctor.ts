@@ -17,27 +17,33 @@ type SpanEventWire,
 } from "../../../models/events/types.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { withOperationProof } from "../configuration/credential-safe-file.js";
 import { observeCredentialPresence } from "../configuration/credential-store.js";
 import { hasUnprovedSourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
-import { storageHealthCauseFromError } from "./authority-boot.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { verifyBackupManifestAtPath } from "./backup-service.js";
 import { isAuthoritySourceChanged, withActiveAuthorityObservation, type AuthorityImageOwner } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import {
-BackupHealthSchema,ProtectedSettingsInspectionSchema,RestoreCandidateSchema,
+ProtectedSettingsInspectionSchema,RestoreCandidateSchema,
 SpanAuthorityReconciliationSchema,
+StorageHealthCauseSchema,
+type RestoreCandidate,
+type StorageHealthCause,
+} from "../../../models/storage/storage-status.js";
+import {
 SpanAuthorityRunRootSchema,
 StorageDoctorReportSchema,
-StorageHealthCauseSchema,
 type AuthorityCopyInspection,
-type RestoreCandidate,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot,type StorageDoctorReport
+type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot,type StorageDoctorReport
 } from "./recovery-contracts.js";
 import { validateSamePersonRestoreCandidate } from "./same-person-restore-candidate.js";
-import { inspectRestoreEligibility,inspectStorageRecovery } from "./storage-recovery-status.js";
+import { inspectStorageRecovery,recoveryInspectionOf } from "./storage-recovery-status.js";
+import { backupHealthOf } from "../../../rules/storage/backup-health.js";
+import { restoreEligibilityOf, type RestoreEligibility, type RestoreEligibilityFacts } from "../../../rules/storage/restore-eligibility.js";
 import { TimelineRecordError } from "./timeline-repository.js";
 import { inspectAuthorityUpgradeStatus } from "./upgrade-status.js";
 import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
@@ -47,9 +53,28 @@ export const StorageDoctorOptionsSchema = z.strictObject({
   stateRoot: z.string().min(1),
   authorityPath: z.string().min(1),
   backupDirectory: z.string().min(1),
-  maxBackupAgeMs: z.number().int().positive().optional(),
   busyTimeoutMs: z.number().int().positive(),
 });
+
+/** Tested in order against the one-line message: the first match names the cause, and no match is `authority-unavailable`. */
+export const STORAGE_HEALTH_CAUSE_RULES = deepFreeze([
+  { pattern: /empty|missing/i, code: "authority-empty" },
+  { pattern: /not a database|file is not a database|not the HR authority store/i, code: "authority-not-sqlite" },
+  { pattern: /newer than supported/i, code: "authority-schema-newer" },
+  { pattern: /strict record schema validation|failed native record validation|config-snapshot-fingerprint-mismatch/i, code: "authority-record-invalid" },
+  { pattern: /schema|tables do not match registry|user_version/i, code: "authority-schema-mismatch" },
+  { pattern: /migration owner/i, code: "authority-migration-locked" },
+  { pattern: /foreign-key/i, code: "authority-foreign-key" },
+  { pattern: /invariant/i, code: "authority-invariant" },
+  { pattern: /database is locked|database table is locked/i, code: "authority-locked" },
+  { pattern: /malformed|corrupt|quick_check/i, code: "authority-corrupt" },
+] as const satisfies readonly { pattern: RegExp; code: StorageHealthCause["code"] }[]);
+
+export function storageHealthCauseOf(error: unknown): StorageHealthCause {
+  const summary = (error instanceof Error ? error.message : String(error)).replace(/\s+/gu, " ").trim();
+  const code = STORAGE_HEALTH_CAUSE_RULES.find(rule => rule.pattern.test(summary))?.code ?? "authority-unavailable";
+  return StorageHealthCauseSchema.parse({ code, summary });
+}
 
 function errnoCode(error: unknown): string {
   if (typeof error !== "object" || error === null) return "unknown-error";
@@ -492,7 +517,7 @@ function reconcileSpanAuthority(
       return current;
     });
   } catch (error) {
-    if (isAuthoritySourceChanged(error) || storageHealthCauseFromError(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
+    if (isAuthoritySourceChanged(error) || storageHealthCauseOf(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
@@ -516,7 +541,7 @@ function reconcileSpanAuthority(
       busyTimeoutMs,
     );
   } catch (error) {
-    if (isAuthoritySourceChanged(error) || storageHealthCauseFromError(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
+    if (isAuthoritySourceChanged(error) || storageHealthCauseOf(error).code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
@@ -537,14 +562,14 @@ function reconcileSpanAuthority(
     }) };
   }
   if (corpus.state === "missing" && snapshot.malformedRecords.length === 0
-    && (snapshot.liveRunCount > 0 || snapshot.archivedRunCount > 0)) {
+    && snapshot.liveRunCount > 0) {
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
         cause: {
           code: "span-stream-invalid",
           summary: "span corpus directory spans is missing while authority holds "
-            + `${String(snapshot.liveRunCount)} live and ${String(snapshot.archivedRunCount)} archived run(s)`,
+            + `${String(snapshot.liveRunCount)} live run(s)`,
         },
       }),
       authorityIdentity: {
@@ -555,10 +580,6 @@ function reconcileSpanAuthority(
   }
   const resolutions = snapshot.resolutions;
   const liveRunCount = resolutions.filter(({ state }) => state === "live").length;
-  const archived = resolutions.flatMap((resolution) => resolution.state === "archived"
-    ? [{ runId: resolution.runId, archivedAt: resolution.archivedAt }]
-    : []);
-
   const deleted = resolutions.flatMap((resolution) => resolution.state === "deleted"
     ? [{
       runId: resolution.runId,
@@ -585,8 +606,8 @@ function reconcileSpanAuthority(
   return {
     tombstoneOrdinalFindings: snapshot.tombstoneOrdinalFindings,
     reconciliation: SpanAuthorityReconciliationSchema.parse(problems.length === 0
-      ? { state: "reconciled", streamRunCount: corpus.roots.length, liveRunCount, archived, deleted }
-      : { state: "degraded", streamRunCount: corpus.roots.length, liveRunCount, archived, deleted, problems }),
+      ? { state: "reconciled", streamRunCount: corpus.roots.length, liveRunCount, deleted }
+      : { state: "degraded", streamRunCount: corpus.roots.length, liveRunCount, deleted, problems }),
     authorityIdentity: {
       authorityGeneration: snapshot.authorityGeneration,
       authorityContentFingerprint: snapshot.authorityContentFingerprint,
@@ -613,7 +634,7 @@ function sameAuthorityIdentity(left: AuthorityReadIdentity, right: AuthorityRead
 
 type AuthorityIdentityRead = Readonly<
   | { state: "available"; identity: AuthorityReadIdentity }
-  | { state: "unavailable"; cause: ReturnType<typeof storageHealthCauseFromError> }
+  | { state: "unavailable"; cause: StorageHealthCause }
 >;
 
 function inspectAuthorityIdentity(
@@ -630,7 +651,7 @@ function inspectAuthorityIdentity(
     };
   } catch (error) {
     if (isAuthoritySourceChanged(error)) throw new StorageDoctorObservationChangedError({ cause: error });
-    return { state: "unavailable", cause: storageHealthCauseFromError(error) };
+    return { state: "unavailable", cause: storageHealthCauseOf(error) };
   }
 }
 
@@ -670,14 +691,14 @@ export const SpanAuthorityHealthSummarySchema = z.strictObject({
 });
 export type SpanAuthorityHealthSummary = z.infer<typeof SpanAuthorityHealthSummarySchema>;
 
-/** One health judgment consumed by preflight and the CLI; archived evidence is accounted evidence. */
+/** One health judgment consumed by preflight and the CLI; deleted evidence is accounted evidence. */
 export function summarizeSpanAuthorityReconciliation(input: unknown): SpanAuthorityHealthSummary {
   const reconciliation = SpanAuthorityReconciliationSchema.parse(input);
   if (reconciliation.state === "reconciled") {
     return SpanAuthorityHealthSummarySchema.parse({
       state: "healthy",
       summary: `span/authority identities reconcile (${String(reconciliation.liveRunCount)} current, `
-        + `${String(reconciliation.archived.length)} archived, ${String(reconciliation.deleted.length)} deleted)`,
+        + `${String(reconciliation.deleted.length)} deleted)`,
     });
   }
   if (reconciliation.state === "degraded") {
@@ -693,6 +714,12 @@ export function summarizeSpanAuthorityReconciliation(input: unknown): SpanAuthor
   });
 }
 
+
+/** One verified candidate's eligibility, decided only while the admission that inspected it is live. */
+export function candidateRestoreEligibility(admission: RuntimeAdmission, facts: RestoreEligibilityFacts): RestoreEligibility {
+  admission.assertLive();
+  return restoreEligibilityOf(facts);
+}
 
 type CandidateWithMtime = Readonly<{
   candidate: RestoreCandidate;
@@ -728,17 +755,13 @@ async function inspectCandidates(
             state: "known" as const,
             value: Math.max(0, authorityInspection.authorityGeneration - verified.manifest.authorityGeneration),
           };
-      let restoreEligibility = inspectRestoreEligibility(admission,{ schemaVersion: verified.manifest.schemaVersion,
-        backupPath: verified.backupPath,
-        backupSha256: verified.manifest.sha256, stateRoot, authorityAvailable: authorityInspection !== undefined });
-      if (restoreEligibility.state === "eligible") {
-        try {
-          validateSamePersonRestoreCandidate({ admission, activeAuthorityPath: join(stateRoot, "state.db"),
-            verifiedBackup: verified });
-        } catch {
-          restoreEligibility = { state: "unavailable", reason: "Backup does not prove the current person and installation." };
-        }
-      }
+      const restoreEligibility = candidateRestoreEligibility(admission, { schemaVersion: verified.manifest.schemaVersion,
+        authorityAvailable: authorityInspection !== undefined, samePersonValid: () => {
+          try {
+            validateSamePersonRestoreCandidate({ admission, activeAuthorityPath: join(stateRoot, "state.db"), verifiedBackup: verified });
+            return true;
+          } catch { return false; }
+        } });
       candidates.push({
         modifiedMs,
         candidate: RestoreCandidateSchema.parse({
@@ -818,11 +841,11 @@ async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unkno
     }
     const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
     let authorityInspection: AuthorityCopyInspection | undefined;
-    let authorityCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
+    let authorityCause: StorageHealthCause | undefined;
     try {
       authorityInspection = AuthorityDatabase.inspectExistingReadOnly(admission, authorityPath, options.busyTimeoutMs, !readiness);
     } catch (error) {
-      authorityCause = storageHealthCauseFromError(error);
+      authorityCause = storageHealthCauseOf(error);
       if (isAuthoritySourceChanged(error) || authorityCause.code === "authority-locked") throw new StorageDoctorObservationChangedError({ cause: error });
     }
     const initialAuthorityRead: AuthorityIdentityRead = authorityInspection === undefined
@@ -845,40 +868,8 @@ async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unkno
       ))
       .sort((left, right) => Date.parse(right.candidate.createdAt) - Date.parse(left.candidate.createdAt))[0];
 
-    let backup: z.infer<typeof BackupHealthSchema>;
-    if (candidateInspectionFailed) {
-      backup = BackupHealthSchema.parse({ state: "invalid", cause: { code: "backup-invalid",
-        summary: "Backup directory inspection is unavailable; no restore selection can be established." } });
-    } else if (first?.candidate.state === "invalid") {
-      backup = BackupHealthSchema.parse({ state: "invalid", cause: first.candidate.cause });
-    } else if (latestVerified === undefined) {
-      backup = BackupHealthSchema.parse({
-        state: candidates.length === 0 ? "missing" : "invalid",
-        cause: StorageHealthCauseSchema.parse({
-          code: candidates.length === 0 ? "backup-missing" : "backup-invalid",
-          summary: candidates.length === 0
-            ? `no authority backup manifests exist in ${basename(backupDirectory)}`
-            : `no verified compatible authority backup exists in ${basename(backupDirectory)}`,
-        }),
-      });
-    } else {
-      const generationGap = latestVerified.candidate.generationGap;
-      const stale = (options.maxBackupAgeMs !== undefined && latestVerified.candidate.ageMs > options.maxBackupAgeMs)
-        || generationGap.state === "known" && generationGap.value > 0;
-      const gapSummary = generationGap.state === "known"
-        ? String(generationGap.value)
-        : generationGap.reason;
-      backup = BackupHealthSchema.parse(stale
-        ? {
-            state: "stale",
-            latest: latestVerified.candidate,
-            cause: StorageHealthCauseSchema.parse({
-              code: "backup-stale",
-              summary: `latest verified backup is ${String(latestVerified.candidate.ageMs)}ms old with authority generation gap ${gapSummary}`,
-            }),
-          }
-        : { state: "current", latest: latestVerified.candidate });
-    }
+    const backup = backupHealthOf({ inspectionFailed: candidateInspectionFailed, newest: first?.candidate,
+      latestVerified: latestVerified?.candidate, manifestCount: candidates.length, directoryName: basename(backupDirectory) });
 
     if (authorityInspection === undefined && authorityCause === undefined) {
       throw new Error("authority doctor produced neither an inspection nor a failure cause");
@@ -923,8 +914,7 @@ async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unkno
     if (readiness) return StorageReadinessReportSchema.parse({ authority, spanAuthority, protectedSettings, authorityUpgrades });
     const finalRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
     const recovery = initialRecovery.identity === finalRecovery.identity ? finalRecovery.report
-      : { state: "unavailable", findings: finalRecovery.report.state === "clear" ? [] : finalRecovery.report.findings,
-        cause: { code: "authority-unavailable", summary: "Recovery evidence changed during inspection. Run the doctor again before deciding recovery." } };
+      : recoveryInspectionOf({ inspection: "changed", findings: finalRecovery.report.state === "clear" ? [] : finalRecovery.report.findings });
     return StorageDoctorReportSchema.parse({
       recovery,
       authorityUpgrades,
