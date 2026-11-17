@@ -601,7 +601,12 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...["work-study", "work-study-transaction"].flatMap(id => [
     ...workStudyPlanLeaves(workflowResult(id), "plan."), ...open(workflowResult(id), "state"), ...workStudyProofLeaves(workflowResult(id), "receipt."),
   ]),
-  ...["work-study", "work-study-ucpath-auth", "work-study-transaction"].flatMap(id => [...person(workflowInput(id), "emplId"), ...open(workflowInput(id), "effectiveDate")]),
+  ...["work-study", "work-study-ucpath-auth", "work-study-transaction", "work-study-reference-check"].flatMap(id => [...person(workflowInput(id), "emplId"), ...open(workflowInput(id), "effectiveDate")]),
+  /* The reference review stores only that the operator continued; whether to ask is a flag. */
+  ...["work-study", "work-study-reference-check", "separations", "separations-reference-check"].flatMap(id => open(gateResult(id, "reference-check-review"), "decision")),
+  ...["work-study", "separations"].flatMap(store => open(taskOutput(`workflow:${store}/read-reference-stop`), "ask")),
+  ...["work-study-reference-check", "separations-reference-check"].flatMap(id => open(workflowResult(id), "check", "check.state", "check.result", "check.checks")),
+  ...person(workflowInput("separations-reference-check"), "emplId", "employeeName"),
   ...approvedOcrRecordLeaves(taskOutput("ocr/read-approved-record"), "record."),
   ...approvedOcrSnapshotLeaves(taskOutput("ocr/read-approved-snapshot")),
   ...approvedOcrSnapshotLeaves(workflowResult("emergency-contact-read-document")),
