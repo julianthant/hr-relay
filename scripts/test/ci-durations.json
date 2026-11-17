@@ -445,7 +445,6 @@
   "tests/backend/runtime/writes/receipt-derivation-binding.integration.test.ts": 0.1,
   "tests/backend/runtime/writes/recovery-activity.integration.test.ts": 22.3,
   "tests/backend/runtime/writes/write-recovery.committed-refusal.integration.test.ts": 1.5,
-  "tests/backend/runtime/writes/write-recovery.integration.test.ts": 25.4,
   "tests/backend/runtime/writes/write-recovery.parked-check.integration.test.ts": 69.6,
   "tests/backend/runtime/writes/write-resolution-binding.integration.test.ts": 17,
   "tests/backend/runtime/writes/write-sequencer.beat-budget-expiry-and-cas-races-discard.integration.test.ts": 1.2,
