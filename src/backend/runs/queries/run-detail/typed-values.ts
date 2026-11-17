@@ -1,5 +1,6 @@
 // Values a run was started with in place of a step's reading: each typed step's group, its marks, and the steps that read them.
-import type { JsonValue } from "../../../../rules/validation/canonical-json.js";
+import { JsonValueSchema, type JsonValue } from "../../../../rules/validation/canonical-json.js";
+import { retainedRunProtectedBindings } from "../../../../models/write-safety/protected-input.js";
 import type { RunRecord } from "../../../../models/run/record.js";
 import type { StepOmissionEntry, StepOmissionField } from "../../../../models/workflow/step-omission.js";
 import {
@@ -56,6 +57,26 @@ function displayTypedValue(entry: TypedEntry, key: string, value: JsonValue | un
   );
 }
 
+/** The run's retained protected input values; a binding whose value is not a non-empty string is corrupt. */
+function protectedValuesOf(run: RunRecord): readonly string[] {
+  return retainedRunProtectedBindings(run).map(({ inputPath }) => {
+    let current: unknown = run.input.parsed.value;
+    for (const key of inputPath.split(".")) {
+      current = current !== null && typeof current === "object" && Object.hasOwn(current, key) ? Reflect.get(current, key) : undefined;
+    }
+    if (typeof current !== "string" || current.length === 0) {
+      throw new ProjectionDegradedError(`run ${run.envelope.runId} binds protected input "${inputPath}" but retains no value for it`);
+    }
+    return current;
+  });
+}
+
+function containsProtected(value: JsonValue, protectedValues: readonly string[]): boolean {
+  if (typeof value === "string") return protectedValues.some((secret) => value.includes(secret));
+  if (value === null || typeof value !== "object") return false;
+  return Object.values(value).some((child) => containsProtected(JsonValueSchema.parse(child), protectedValues));
+}
+
 function copiedKeys(run: RunRecord, step: string): ReadonlySet<string> {
   return new Set((run.envelope.sourceBound?.source.copiedFrom ?? [])
     .filter((coordinate) => coordinate.targetStepKey === step)
@@ -74,6 +95,7 @@ export function projectTypedSteps(run: RunRecord, descriptor: AnyWorkflowDescrip
   if (descriptor === undefined) {
     throw new ProjectionDegradedError(`run ${run.envelope.runId} was started with typed values, but workflow "${run.envelope.workflow}" has no descriptor to read them against`);
   }
+  const protectedValues = protectedValuesOf(run);
   for (const entry of entries) {
     const fields = currentFields(descriptor, entry.step);
     const copied = copiedKeys(run, entry.step);
@@ -81,12 +103,11 @@ export function projectTypedSteps(run: RunRecord, descriptor: AnyWorkflowDescrip
       typedValues: {
         title: "Operator-entered values",
         reading: "Not run, typed by hand",
-        fields: orderedKeys(entry, fields).map((key) => ({
-          key,
-          label: labelOf(entry, fields, key),
-          value: displayTypedValue(entry, key, entry.facts[key]),
-          mark: markOf(copied, key),
-        })),
+        fields: orderedKeys(entry, fields).map((key) => {
+          const value = displayTypedValue(entry, key, entry.facts[key]);
+          const shown = containsProtected(JsonValueSchema.parse(entry.facts[key]), protectedValues) ? { withheld: true as const } : { value };
+          return { key, label: labelOf(entry, fields, key), ...shown, mark: markOf(copied, key) };
+        }),
       },
     });
   }

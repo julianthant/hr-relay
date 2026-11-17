@@ -33,10 +33,15 @@ function sourceBoundOf(copiedFrom: CopiedFrom) {
 
 const COPIED_LAST_DAY = { nodeId: "dates", fieldPath: "lastDayWorked", targetFieldPath: "lastDayWorked", targetStepKey: TIMECARD };
 
+/** The fixture run's input emplId, bound here as a protected test-data value. */
+const PROTECTED_EID = "10873698";
+const PROTECTED_BINDING = { kind: "test-data-local", inputPath: "emplId", name: "personLookupCanaryEid", sourceId: uuidOf(88) } as const;
+
 function separationsRun(w: DashboardWorld, input: Readonly<{
   entry?: StepOmissionEntry;
   copiedFrom?: CopiedFrom;
   dryRun?: boolean;
+  protectedEid?: true;
 }> = {}): void {
   const seed = { seed: 1, workflow: "separations", descriptor: separationsDescriptor, lifecycle: TERMINAL_DONE, ...(input.dryRun === undefined ? {} : { dryRun: input.dryRun }) };
   queuedEventOf(w, seed);
@@ -49,6 +54,9 @@ function separationsRun(w: DashboardWorld, input: Readonly<{
       ...(input.entry === undefined ? {} : { stepOmissions: [input.entry] }),
       ...(input.copiedFrom === undefined ? {} : { sourceBound: sourceBoundOf(input.copiedFrom) }),
     },
+    ...(input.protectedEid === undefined ? {} : {
+      input: { ...record.input, parsed: { ...record.input.parsed, protectedBindings: [PROTECTED_BINDING] } },
+    }),
   }));
   if (input.entry === undefined) {
     taskEventsOf(w, 1, "timecard-search", "done");
@@ -158,6 +166,24 @@ describe("run detail of a run started with typed values", () => {
     separationsRun(w, { entry: { ...TYPED, facts: { ...TYPED.facts, lastDayWorked: { kind: "protected-store", ref: "slot-1" } } } });
 
     assert.throws(() => buildRunDetail(detailDeps(w), uuidOf(1)), /typed value "lastDayWorked" of step "kronos-timecard" is not a typed scalar or text list; it is not served/u);
+  });
+
+  it("withholds a typed value that is or contains one of the run's protected inputs", async () => {
+    const w = await world();
+    separationsRun(w, { protectedEid: true, entry: {
+      step: TIMECARD,
+      facts: { lastDayWorked: LAST_DAY, separationDate: PROTECTED_EID, notes: ["card", `see ${PROTECTED_EID}`] },
+      labels: { lastDayWorked: "Last day worked", separationDate: "Separation date", notes: "Notes" },
+    } });
+
+    const detail = buildRunDetail(detailDeps(w), uuidOf(1));
+    assert.deepEqual(detail.timeline.steps?.find((entry) => entry.key === TIMECARD)?.typedValues?.fields, [
+      { key: "lastDayWorked", label: "Last day worked", value: LAST_DAY, mark: "Typed by hand" },
+      { key: "separationDate", label: "Separation date", withheld: true, mark: "Typed by hand" },
+      { key: "notes", label: "Notes", withheld: true, mark: "Typed by hand" },
+    ]);
+    const typed = JSON.stringify(detail.timeline.steps?.map((step) => [step.typedValues, step.usesTyped]));
+    assert.equal(typed.includes(PROTECTED_EID), false);
   });
 
   it("serves a run with nothing typed exactly as it does without the typed projection", async () => {

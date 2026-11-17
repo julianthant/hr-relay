@@ -197,12 +197,11 @@ export type TypedValueMark = z.infer<typeof TypedValueMarkSchema>;
 export const TimelineTypedValuesWireSchema = z.strictObject({
   title: z.literal("Operator-entered values"),
   reading: z.literal("Not run, typed by hand"),
-  fields: z.array(z.strictObject({
-    key: z.string().min(1),
-    label: z.string().min(1),
-    value: z.string().min(1),
-    mark: TypedValueMarkSchema,
-  })),
+  fields: z.array(z.union([
+    z.strictObject({ key: z.string().min(1), label: z.string().min(1), value: z.string().min(1), mark: TypedValueMarkSchema }),
+    /** A value holding one of the run's protected inputs is named, never shown. */
+    z.strictObject({ key: z.string().min(1), label: z.string().min(1), withheld: z.literal(true), mark: TypedValueMarkSchema }),
+  ])),
 });
 export type TimelineTypedValuesWire = z.infer<typeof TimelineTypedValuesWireSchema>;
 
