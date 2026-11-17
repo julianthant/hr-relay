@@ -332,7 +332,8 @@ describe("served start rows", () => {
     "work-study": [["ucpath-auth", "locked", "guard-read"], ["transaction", "locked", "form-action"]],
     "i9-check-start": [["documents", "locked", null], ["roster-reference", "locked", null], ["retention", "locked", "form-action"]],
     "crm-doc-download": [["search-records", "locked", null], ["reference", "locked", "approval"], ["read-idocs", "locked", null], ["package-worksheets", "locked", null]],
-    "emergency-contact": [["read-emergency-contact", "locked", null], ["match-extracted-people", "locked", null], ["save-emergency-contact", "locked", null]],
+    "emergency-contact": [["read-emergency-contact", "locked", null], ["match-extracted-people", "locked", null], ["review-extracted-records", "locked", "approval"],
+      ["read-existing-contacts", "locked", "bound-read"], ["fill-emergency-contact", "locked", "form-action"], ["save-emergency-contact", "locked", "form-action"]],
   };
 
   it("serves one row per step with its kind and lock reason for every public workflow", () => {
