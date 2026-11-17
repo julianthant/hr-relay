@@ -97,7 +97,8 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
     const button = h.buttons().find(button => h.buttonName(button) === name); assert.ok(button, name);
     await act(async () => button.click());
   };
-  await press("Continue"); await press(h.buttons().some(button => h.buttonName(button) === "Start live run") ? "Start live run" : "Start run");
+  await press("Continue"); await press("Continue"); for (let wait = 0; wait < 6; wait += 1) await h.settle();
+  await press(h.buttons().some(button => h.buttonName(button) === "Start live run") ? "Start live run" : "Start run");
   assert.ok(planned, document.body.textContent ?? "Planner was not called");
   assert.deepEqual(planned.selectedStepKeys, workflow.steps.filter(step => step.includedByDefault).map(step => step.key));
   assert.equal(planned.selectedStepKeys.length, 7, "Onboarding defaults include all seven steps");

@@ -18,12 +18,14 @@ describe("the Run dialog has no Confirm stage", () => {
       submitStartPlan: async request => { plans.push(request); return h.planResponse(PLAN_ID); },
       executeCommand: async () => h.APPLIED,
     }));
-    assert.deepEqual(stageNames(), ["Input", "Options"]);
+    assert.deepEqual(stageNames(), ["Input", "Options", "Checks"]);
     await dialog.type(h.TYPED);
     await dialog.press("Continue");
     assert.equal(dialog.stage(), "Options");
     assert.ok(!dialog.text().includes("Preview plan"));
+    assert.ok(!dialog.text().includes("Enter to start"), "Start lives on Checks, not Options");
     await dialog.press("Start run");
+    assert.equal(dialog.stage(), "Checks");
     assert.equal(plans.length, 1);
     assert.deepEqual(h.closed, [false], "a clean plan submits in the same press");
   });
@@ -37,7 +39,7 @@ describe("the Run dialog has no Confirm stage", () => {
     await dialog.type(`${h.TYPED}\n10873699`);
     await dialog.press("Continue");
     await dialog.press("Start run");
-    assert.equal(dialog.stage(), "Options", "a stopped plan stays on the last stage");
+    assert.equal(dialog.stage(), "Checks", "a stopped plan stays on the last stage");
     assert.ok(dialog.text().includes("No such person."));
     assert.ok(!dialog.text().includes(versionTag(h.WORKFLOWS[0].version)), "the version line is retired");
     assert.ok(!dialog.text().includes("ready to queue"));

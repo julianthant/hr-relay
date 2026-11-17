@@ -10,7 +10,7 @@ import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
-const { setup, text, button, press, checkbox, field, fill, mount, cleanup, unmount } = createMountedRerunWorld(profileFixtures.create);
+const { setup, text, button, press, reachChecks, checkbox, field, fill, mount, cleanup, unmount } = createMountedRerunWorld(profileFixtures.create);
 afterEach(cleanup);
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
@@ -39,7 +39,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const client = { ...h.client, executeCommand: async (input: unknown) => { const result = await h.client.executeCommand(input); await pending; return result; } };
     await mount(h, source, client); await press("Continue"); await press("Confirm"); assert.equal(field("Employee ID").value, "10812345");
     await press("Continue"); await act(async () => checkbox("Dry run").click());
-    await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
+    await reachChecks("Start dry run"); await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
     assert.equal(h.finalCommands.length, 1); assert.equal(h.queueRoots.length, 2);
     await press("Cancel"); await press("Rerun source"); await act(async () => release());
     assert.ok(!text().includes("Start applied")); assert.match(text(), /needs readback/u);
@@ -76,7 +76,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       const replaceBinding = await mount(h, source, client);
       await press("Continue"); await press("Confirm"); await press("Continue");
       await act(async () => checkbox("Dry run").click());
-      await act(async () => button("Start dry run").click()); assert.equal(h.finalCommands.length, 1);
+      await reachChecks("Start dry run"); await act(async () => button("Start dry run").click()); assert.equal(h.finalCommands.length, 1);
       if (replacement === "day ABA") await replaceBinding(client, { requestKey: 1, nowIso: "2026-08-01T17:00:00.000Z" });
       await replaceBinding(replacement === "client" ? { ...client } : client,
         { actorId: replacement === "actor" ? "other-operator" : "local-operator", requestKey: replacement === "day ABA" ? 2 : 0 });
@@ -93,8 +93,8 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const client = { ...h.client, executeCommand: async (input: unknown) => { const reply = await h.client.executeCommand(input); await pending; return reply; } };
     await mount(h, source, client); await press("Continue"); await press("Confirm"); await press("Continue");
     await act(async () => checkbox("Dry run").click());
-    await act(async () => button("Start dry run").click());
-    await press("Back"); await fill(field("Employee ID"), "10812346");
+    await reachChecks("Start dry run"); await act(async () => button("Start dry run").click());
+    await press("Back"); await press("Back"); await fill(field("Employee ID"), "10812346");
     const finish = release; assert.ok(finish); await act(async () => finish());
     assert.equal(document.querySelector('[role="dialog"]') !== null, true); assert.equal(text().includes("Rerun started"), false);
     assert.equal(window.sessionStorage.length, 1); assert.equal(h.finalCommands.length, 1);
