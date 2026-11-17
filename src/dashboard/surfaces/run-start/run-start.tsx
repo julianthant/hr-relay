@@ -196,7 +196,7 @@ export function RunStartDialog({
   /** Settings is open from a Fix button: the dialog stays mounted with everything typed, but is not drawn. */
   hidden?: boolean;
   /** Opens the Settings section that fixes a failed check, over this dialog. */
-  onFixCheck?: (section: string) => void;
+  onFixCheck?: (section: string, target?: string) => void;
   /** Shared registration and explicit launch capabilities from the app boundary. */
   catalog: readonly WorkflowCatalogEntry[];
   /** the Workflow Panel the operator is standing in — the dialog's default */
@@ -507,7 +507,7 @@ export function RunStartDialog({
   const fixCheck = (item: RunCheckRow) => {
     if (item.fix === undefined || onFixCheck === undefined) return;
     fixedCheck.current = { check: item.check, reread: false };
-    onFixCheck(item.fix.section);
+    onFixCheck(item.fix.section, item.fix.target);
   };
   useEffect(() => {
     const fixed = fixedCheck.current;
@@ -1015,7 +1015,7 @@ export function RunStartSurfaces({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   hidden?: boolean;
-  onFixCheck?: (section: string) => void;
+  onFixCheck?: (section: string, target?: string) => void;
   catalog: readonly WorkflowCatalogEntry[];
   panelWorkflowId: string;
   actorId: string;

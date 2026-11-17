@@ -1,3 +1,5 @@
+import { CURRENT_FISCAL_TARGET, runCheckForTarget } from "./preflight/preflight-remedy-model.js";
+import { CHECK_COPY } from "./preflight/preflight-check-copy.js";
 import { ArrowUp,Check,CircleAlert,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Sparkles,Table2,X } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
@@ -105,7 +107,7 @@ function SearchResultLink({ result, active, onSelect }: { result: SettingsSearch
 
 export function SettingsPage({
   section,
-  searchTarget,
+  searchTarget: requestedTarget,
   dataContent,
   appearance,
   deleteAccount,
@@ -156,6 +158,10 @@ export function SettingsPage({
   const searchResults = useRef<HTMLDivElement>(null);
   const index = useMemo(() => settingsSearchIndex(groups, settingsDocument), [groups, settingsDocument]);
   const results = useMemo(() => searchSettings(index, navQuery), [index, navQuery]);
+  const searchTarget = requestedTarget === CURRENT_FISCAL_TARGET && settingsDocument !== undefined
+    ? `annualDates.FY${String(settingsDocument.currentFiscalYear)}.jobEndDate` : requestedTarget;
+  const openedForCheck = backToRun ? runCheckForTarget(requestedTarget) : undefined;
+  const openedForCheckName = openedForCheck === undefined ? undefined : CHECK_COPY[openedForCheck]?.name;
   const selectedResult = index.find(result => result.target === searchTarget && result.entry.id === activeId);
   const target = selectedResult?.target;
   const searchContext = useMemo(() => ({ target, visit: searchVisit }), [target, searchVisit]);
@@ -170,7 +176,7 @@ export function SettingsPage({
     return () => { element.removeEventListener("scroll", remember); };
   }, [activeId, searchTarget, searchVisit]);
   useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
-  useEffect(() => { if (backToRun) content.current?.focus(); }, [backToRun]);
+  useEffect(() => { if (backToRun && requestedTarget === undefined) content.current?.focus(); }, [backToRun, requestedTarget]);
   const settingsEntries = groups.filter(group => group.id === "personal" || group.id === "advanced").flatMap(group => group.entries);
   const activeSettingsEditorSection = activeId !== undefined && (settingsEntries.some(entry => entry.id === activeId) || activeId === "performance");
   const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount;
@@ -250,6 +256,7 @@ export function SettingsPage({
 
       <div id="dashboard-settings-content" data-settings-target={target} tabIndex={-1} ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
         <SettingsSearchTargetContext.Provider value={searchContext}><DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
+        {openedForCheckName !== undefined && <Banner tone="info" title={`Opened for the ${openedForCheckName} check`}>Change the highlighted setting, then press Back to run.</Banner>}
         {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && <Notice tone="warning" title="Setting unavailable" description="Not on the selected page." />}
         {editor.editor.state === "failed" && !isDataSection && activeId !== "spreadsheets" && (
           <FailureNotice sentence="Relay could not read your settings." stillWorks="Nothing was changed."

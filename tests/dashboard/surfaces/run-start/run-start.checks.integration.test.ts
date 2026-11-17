@@ -85,15 +85,26 @@ describe("the Run dialog's Checks step", () => {
   });
 
   it("gives a fixable failed check a button named for it, and an unfixable one only a message", async () => {
-    const fixes: string[] = [];
+    const fixes: (readonly [string, string | undefined])[] = [];
     const { client } = served(h.readiness([FIXABLE, UNFIXABLE, PASSING]));
     const dialog = await h.openDialog(client);
-    await dialog.rerender({ onFixCheck: section => fixes.push(section) });
+    await dialog.rerender({ onFixCheck: (section, target) => fixes.push([section, target]) });
     await reachChecks(dialog);
     assert.equal(dialog.text().includes("Failed"), true);
     assert.equal(h.buttons().filter(button => button.hasAttribute("data-run-check-fix")).length, 1, "only the fixable check has a button");
     await dialog.press("Add password");
-    assert.deepEqual(fixes, ["account"]);
+    assert.deepEqual(fixes, [["account", "protected.ucpathPassword"]]);
+  });
+
+  it("says on a failed check with no Fix button that Settings cannot fix it and what to do", async () => {
+    const files = { check: "filesystem.health", status: "fail", summary: "Relay is out of disk space." } as const;
+    const address = { check: "endpoint.crm.prod", status: "fail", summary: "The CRM address is invalid." } as const;
+    const { client } = served(h.readiness([files, address, PASSING]));
+    const dialog = await h.openDialog(client);
+    await reachChecks(dialog);
+    assert.equal(h.buttons().filter(button => button.hasAttribute("data-run-check-fix")).length, 0);
+    assert.match(dialog.text(), /Cannot be fixed in Settings\. Free up disk space, then check again\. Relay is out of disk space\./u);
+    assert.match(dialog.text(), /Cannot be fixed in Settings\. Relay cannot use this system's address, and this run cannot start until it can\. The CRM address is invalid\./u);
   });
 
   it("holds the list's place while checking: one Checking indicator over eight placeholder rows", async () => {
