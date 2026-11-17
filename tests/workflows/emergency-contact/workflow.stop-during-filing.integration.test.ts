@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterAll, afterEach, beforeEach, it } from "vitest";
+import { availableSections } from "../../../src/backend/runs/queries/run-detail/availability.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
 import { createEmergencyContactRetryWorld } from "../../support/helpers/backend/emergency-contact-retry-world.js";
 
@@ -63,6 +64,24 @@ it("one Stop while the Import is fenced lets the Import finish once, then the pe
   assert.deepEqual(f.database.authority.writeIntents.listByRun(filing.envelope.runId).map(intent => intent.status), ["committed"], "the Import settles once");
   for (const run of [filing, waiting, f.current()]) assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled", `${run.envelope.workflow} ${JSON.stringify(run.lifecycle)}`);
   assert.deepEqual(tree(f).filter(run => run.lifecycle.state !== "terminal").map(run => run.envelope.workflow), [], "nothing is left queued");
+  assert.equal(f.filing.imports(), 1);
+  assert.deepEqual(saves(f), [1, 1]);
+});
+
+it("one Stop while the Import is fenced, then an unsure result, parks the filing for Saved / Not saved without another Import", async () => {
+  let stopped: ReturnType<typeof stop> | undefined;
+  // Read by the fake page right after the Import click; the acknowledgement is then lost.
+  f.filing.next.page = { get lostClick() { stopped ??= stop(f); return true; } };
+  const stepped = await f.raw.step(f.parentRun, signal());
+  assert.equal(stopped?.state, "applied");
+  const parked = f.current(stepped.run.envelope.runId);
+  assert.equal(parked.envelope.workflow, "onbase");
+  assert.equal(parked.lifecycle.state, "parked-write", JSON.stringify(stepped.outcome));
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(parked.envelope.runId).map(intent => intent.status), ["parked"]);
+  assert.ok(availableSections(undefined, parked).includes("parked-write"), "the filing serves its Saved / Not saved section");
+  assert.equal(stop(f).state, "rejected", "Stop over the parked Import stays refused");
+  await assert.rejects(f.raw.step(f.parentRun, signal()), "nothing is left to run while the decision is open");
+  assert.equal(f.current(parked.envelope.runId).lifecycle.state, "parked-write");
   assert.equal(f.filing.imports(), 1);
   assert.deepEqual(saves(f), [1, 1]);
 });

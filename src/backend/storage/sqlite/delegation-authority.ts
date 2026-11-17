@@ -320,11 +320,11 @@ export function authenticateDescendantHome(repositories: AuthorityRepositories, 
     const selected = delegationGroupForChild(repositories,parent.envelope.runId,member.envelope.runId);
     if (index === 0 && !selected.group.children.some(entry => entry.child.envelope.runId === member.envelope.runId)) throw new Error("delegation-dispatch-membership-unavailable");
     // A child carrying its own cancel request stays in its home only to settle: queued, it is claimed to end cancelled before any step;
-    // claimed, it keeps its claim while this attempt's fenced write finishes and settles once, then ends cancelled at its next boundary.
+    // claimed, it keeps its claim while this attempt's fenced write settles once (committed, or parked UNKNOWN), then ends at its next boundary.
     if (parent.cancelRequested === true && selected.manifest.policy.cascadeCancel !== "independent"
       && (member.cancelRequested !== true || runClaim(member) !== undefined
         && !repositories.writeIntents.listByRun(member.envelope.runId).some(intent => intent.runAttempt === member.envelope.attempt
-          && (intent.status === "attempting" || intent.status === "committed")))) return false;
+          && (intent.status === "attempting" || intent.status === "committed" || intent.status === "parked")))) return false;
   }
   return true;
 }
