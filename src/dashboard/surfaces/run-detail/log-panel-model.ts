@@ -1,8 +1,6 @@
 /** Tab and terminal copy for the run-detail composition. */
 import type { z } from "zod";
 import { fmtClock } from "../shared/status/format.js";
-import { dsStatusOf, statusText } from "../shared/status/status-model.js";
-import type { LinkedRunWire, QueueSurfaceWire } from "../queue/queue-model.js";
 import type { RunDetailWireSchema } from "../../../models/dashboard/run-detail.js";
 import type { RunDetailSectionSchema } from "../../../models/dashboard/primitives.js";
 
@@ -45,15 +43,6 @@ export function terminalOutcomeText(
 ): string {
   const rehearsal = outcome.rehearsal === true ? "dry run · " : "";
   return `${rehearsal}${outcome.result} · ${fmtClock(outcome.completedAt)}`;
-}
-
-export type LinkedRunEntry = Readonly<{ name: string; workflow: string; status: string; relation: "Parent" | "Child"; target: LinkedRunWire }>;
-
-/** The served parent first, then the runs it delegated to; the wire carries nothing else. */
-export function linkedRunEntries(row: Pick<QueueSurfaceWire, "parent" | "linkedRuns">): readonly LinkedRunEntry[] {
-  const entry = (target: LinkedRunWire, relation: LinkedRunEntry["relation"], name: string): LinkedRunEntry =>
-    ({ name, workflow: target.label, status: statusText(dsStatusOf(target.status)), relation, target });
-  return [...row.parent === null ? [] : [entry(row.parent, "Parent", row.parent.title)], ...row.linkedRuns.map(link => entry(link, "Child", link.label))];
 }
 
 export { timelineAxisTotals, timelineHasOrphanGate, timelineSegmentUnmeasured } from "./timeline/timeline-model.js";

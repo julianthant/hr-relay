@@ -6,7 +6,7 @@ import { LogTimeline } from "./logs/log-timeline.js";
 import { LogActionButton } from "./logs/log-action-button.js";
 import { LogHeaderCompact } from "./logs/log-header-compact.js";
 import { LinkedRunsButton } from "./linked-runs.js";
-import type { LinkedRunEntry } from "./log-panel-model.js";
+import type { LinkedRunEntry } from "./linked-runs-model.js";
 import type { LinkedRunWire } from "../queue/queue-model.js";
 import { runHeaderAction } from "./run-header-model.js";
 import type { LogTimelineStage } from "./logs/log-timeline-model.js";

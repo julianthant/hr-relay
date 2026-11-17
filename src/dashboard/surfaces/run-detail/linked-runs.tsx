@@ -3,7 +3,7 @@ import { ArrowUpRight, GitBranch } from "lucide-react";
 import { IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import type { LinkedRunWire } from "../queue/queue-model.js";
-import type { LinkedRunEntry } from "./log-panel-model.js";
+import type { LinkedRunEntry } from "./linked-runs-model.js";
 
 /** The Logs header's icon button with its count; it renders nothing for a run with no linked run. */
 export function LinkedRunsButton({ entries, onOpen }: { entries: readonly LinkedRunEntry[]; onOpen?: (target: LinkedRunWire) => void }) {
