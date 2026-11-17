@@ -12,7 +12,7 @@ const retry = RunDecisionWireSchema.parse({ type: "failed-retryable", title: "A 
   options: [{ id: "retry", label: "Retry step", hint: "Nothing was written, so the step can run again.", send: { via: "action", actionKey: "retry-failed-step" } }] });
 const noRetry = RunDecisionWireSchema.parse({ type: "failed-retryable", title: "A step failed", options: [] });
 const base: LogDecision = { title: "Read timecard", state: "failed", message: "The page did not load.", footer: "No changes were made.",
-  ...failureCardFacts({ title: "Read timecard", observation: "x", attemptedAction: "Read timecard", lastCompleted: "Read employee ID", field: { label: "Employee ID", value: "10031875", outcome: "Read" } }) };
+  ...failureCardFacts({ title: "Read timecard", observation: "x", attemptedAction: "Read timecard", lastCompleted: "Read employee ID", field: { label: "Employee ID", value: "field-value-1", outcome: "Read" } }) };
 
 const mount = async (decision: LogDecision, handlers: { onAnswer?: () => void; onCancel?: () => void } = {}) => {
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
@@ -38,7 +38,7 @@ it("draws every served fact in the mock's order with Retry step and Cancel run",
     const text = host.textContent ?? "";
     const order = ["Read timecard", "The page did not load.", "While trying to", "Last completed · Read employee ID", "Employee ID", "Screenshot capture is off", "Retry step", "Cancel run"].map(part => text.indexOf(part));
     assert.ok(order.every((at, index) => at >= 0 && (index === 0 || at > order[index - 1])), `facts out of order: ${order.join(",")}`);
-    assert.equal(host.querySelector(".log-failed-field strong")?.textContent, "10031875");
+    assert.equal(host.querySelector(".log-failed-field strong")?.textContent, "field-value-1");
     assert.deepEqual(buttons(host), ["Retry step", "Cancel run"]);
     const cancel = [...host.querySelectorAll("button")].find(button => button.textContent === "Cancel run");
     assert.doesNotMatch(cancel?.className ?? "", /ghost|bg-transparent/u);
