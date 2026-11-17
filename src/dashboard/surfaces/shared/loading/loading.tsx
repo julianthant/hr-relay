@@ -12,7 +12,7 @@ export function SkeletonText({ className }: { className?: string }) {
 
 export function SettingsRowsSkeleton({ rows = 3, wide = false, presentation = "field", copy, singleLine = [] }: { rows?: number; singleLine?: readonly number[]; wide?: boolean; presentation?: "field" | "result" | "disclosure"; copy?: readonly { label: string; description?: string }[] }) {
   return <>{Array.from({ length: rows }, (_, index) => {
-    if (singleLine.includes(index)) return <ResultRow key={index} controlWidth={wide ? "wide" : "standard"} label={<SkeletonText className={index % 2 ? "w-36" : "w-44"} />} value={<SkeletonText className="w-20" />} />;
+    if (singleLine.includes(index)) return <div key={index} className="settings-compact-row"><ResultRow controlWidth={wide ? "wide" : "standard"} label={<SkeletonText className={index % 2 ? "w-36" : "w-44"} />} value={<SkeletonText className="w-20" />} /></div>;
     const label = copy?.[index]?.label ?? <SkeletonText className={index % 2 ? "w-36" : "w-44"} />;
     const description = copy?.[index]?.description ?? <SkeletonText className="w-60" />;
     if (presentation === "result") return <ResultRow key={index} controlWidth={wide ? "wide" : "standard"} label={label} description={description} value={<SkeletonText className="w-20" />} />;
