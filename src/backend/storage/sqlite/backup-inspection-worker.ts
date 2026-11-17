@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { isMainThread, parentPort, Worker, workerData } from "node:worker_threads";
@@ -7,37 +7,48 @@ import { z } from "zod";
 import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { createPrivateDirectory } from "../private-path.js";
+import { createPrivateDirectory, fsyncPath } from "../private-path.js";
 import { inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
-import { withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
+import { openReadOnlyDatabase, withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { BackupCopyInspectionSchema } from "./recovery-contracts.js";
 
 const PROTOCOL = "relay.backup-inspection.v1";
+const COPY_PROTOCOL = "relay.backup-copy.v1";
 const InspectionRequestSchema = z.strictObject({ protocol: z.literal(PROTOCOL), path: z.string().min(1), expectedSchemaVersion: z.number().int().positive().optional(),
   busyTimeoutMs: z.number().int().nonnegative() });
+const CopyRequestSchema = z.strictObject({ protocol: z.literal(COPY_PROTOCOL), source: z.string().min(1), destination: z.string().min(1),
+  busyTimeoutMs: z.number().int().positive() });
+const FailedReplySchema = z.strictObject({ kind: z.literal("failed"), name: z.string(), message: z.string(), code: z.string().optional() });
 const InspectionReplySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("inspected"), inspection: BackupCopyInspectionSchema }),
-  z.strictObject({ kind: z.literal("failed"), name: z.string(), message: z.string(), code: z.string().optional() }),
+  FailedReplySchema,
 ]);
+const CopyReplySchema = z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("copied") }), FailedReplySchema]);
 type InspectionRequest = z.infer<typeof InspectionRequestSchema>;
-type InspectionReply = z.infer<typeof InspectionReplySchema>;
+type CopyRequest = z.infer<typeof CopyRequestSchema>;
+type WorkerReply = z.infer<typeof InspectionReplySchema> | z.infer<typeof CopyReplySchema>;
+type ReplyVerdict<Value> = Readonly<{ value: Value } | { error: Error; invalid: boolean }>;
 
-/** Each queued inspection waits for the previous worker thread to exit, so at most one runs in this process. */
+/** Each queued request waits for the previous worker thread to exit, so at most one runs in this process. */
 let previousThread: Promise<void> = Promise.resolve();
 
+/** Resolves when every worker thread started so far has exited. */
+export function backupThreadIdle(): Promise<void> { return previousThread; }
+
+function failureError(reply: z.infer<typeof FailedReplySchema>): Error {
+  return Object.assign(new Error(reply.message), reply.code === undefined ? {} : { code: reply.code });
+}
+
 /**
- * The full read-only inspection of a private database file, run on a worker thread: path in, inspection out.
- * Resolves only from the worker's verdict; a failed inspection, a worker error or a worker exit without a verdict
- * rejects. An abort rejects at once and terminates the worker without waiting for it; the thread's scratch
+ * One request on a worker thread: resolves only from the worker's verdict; a failed reply, a worker error or a worker exit
+ * without a verdict rejects. An abort rejects at once and terminates the worker without waiting for it; the thread's scratch
  * folder is removed when it exits.
  */
-export function inspectBackupFileOffThread(path: string, expectedSchemaVersion: number | undefined,
-  options: Readonly<{ signal?: AbortSignal; busyTimeoutMs?: number }> = {}): Promise<BackupCopyInspection> {
-  const { signal, busyTimeoutMs = 250 } = options;
+function runOnWorkerThread<Value>(request: unknown, signal: AbortSignal | undefined, interpret: (message: unknown) => ReplyVerdict<Value>): Promise<Value> {
   let releaseTurn!: () => void;
   const turn = previousThread;
   previousThread = new Promise(resolve => { releaseTurn = resolve; });
-  return new Promise<BackupCopyInspection>((resolve, reject) => {
+  return new Promise<Value>((resolve, reject) => {
     let settled = false;
     const fail = (error: Error) => { if (!settled) { settled = true; reject(error); } };
     const stopWhileQueued = () => fail(abortReason(signal));
@@ -53,16 +64,16 @@ export function inspectBackupFileOffThread(path: string, expectedSchemaVersion: 
         worker = new Worker(new URL("./backup-inspection-worker.js", import.meta.url), { name: "relay-backup-inspection", execArgv: workerExecArgv(),
           // os.tmpdir() reads the thread's own environment, so the snapshot copy lands in the folder removed on its exit.
           env: { ...workerBootstrapEnvironment(), TMPDIR: scratchDirectory, TMP: scratchDirectory, TEMP: scratchDirectory },
-          workerData: InspectionRequestSchema.parse({ protocol: PROTOCOL, path, ...(expectedSchemaVersion === undefined ? {} : { expectedSchemaVersion }), busyTimeoutMs }) });
+          workerData: request });
       } catch (error) { removeScratchDirectory(scratchDirectory); releaseTurn(); fail(new Error("backup-inspection-worker-failed", { cause: error })); return; }
       const stop = () => { fail(abortReason(signal)); void worker.terminate(); };
       signal?.addEventListener("abort", stop, { once: true });
       worker.once("message", (message: unknown) => {
         if (settled) return;
-        const reply = InspectionReplySchema.safeParse(message);
-        if (!reply.success) { fail(new Error("backup-inspection-reply-invalid")); void worker.terminate(); return; }
-        if (reply.data.kind === "inspected") { settled = true; resolve(deepFreeze(reply.data.inspection)); return; }
-        fail(Object.assign(new Error(reply.data.message), reply.data.code === undefined ? {} : { code: reply.data.code }));
+        const verdict = interpret(message);
+        if ("value" in verdict) { settled = true; resolve(verdict.value); return; }
+        fail(verdict.error);
+        if (verdict.invalid) void worker.terminate();
       });
       worker.once("error", error => fail(new Error("backup-inspection-worker-failed", { cause: error })));
       worker.once("messageerror", error => fail(new Error("backup-inspection-worker-failed", { cause: error })));
@@ -76,12 +87,46 @@ export function inspectBackupFileOffThread(path: string, expectedSchemaVersion: 
   });
 }
 
+/**
+ * The full read-only inspection of a private database file, run on a worker thread: path in, inspection out.
+ */
+export function inspectBackupFileOffThread(path: string, expectedSchemaVersion: number | undefined,
+  options: Readonly<{ signal?: AbortSignal; busyTimeoutMs?: number }> = {}): Promise<BackupCopyInspection> {
+  const { signal, busyTimeoutMs = 250 } = options;
+  const request = InspectionRequestSchema.parse({ protocol: PROTOCOL, path, ...(expectedSchemaVersion === undefined ? {} : { expectedSchemaVersion }), busyTimeoutMs });
+  return runOnWorkerThread<BackupCopyInspection>(request, signal, message => {
+    const reply = InspectionReplySchema.safeParse(message);
+    if (!reply.success) return { error: new Error("backup-inspection-reply-invalid"), invalid: true };
+    if (reply.data.kind === "inspected") return { value: deepFreeze(reply.data.inspection) };
+    return { error: failureError(reply.data), invalid: false };
+  });
+}
+
 /** The same inspection as inspectAuthorityBackupReadOnly, admitted here on the main thread and run on a worker thread. */
 export async function inspectAuthorityBackupOffThread(admission: RuntimeAdmission, pathInput: string, expectedSchemaVersion: number | undefined,
   options: Readonly<{ signal?: AbortSignal; busyTimeoutMs?: number }> = {}): Promise<BackupCopyInspection> {
   const path = resolve(pathInput);
   requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
   return inspectBackupFileOffThread(path, expectedSchemaVersion, options);
+}
+
+/**
+ * A consistent copy of the live authority database written by a worker thread: the source is only opened read-only,
+ * the destination is a new file that is flushed before this resolves.
+ */
+export async function copyAuthorityOffThread(admission: RuntimeAdmission, sourcePathInput: string, destinationPathInput: string,
+  options: Readonly<{ signal?: AbortSignal; busyTimeoutMs?: number }> = {}): Promise<void> {
+  const source = resolve(sourcePathInput), destination = resolve(destinationPathInput);
+  const owner = requireRuntimeAdmission(admission);
+  owner.assertReadOnlyAuthorityDatabase(source);
+  owner.assertAuthorityBackupWrite(destination);
+  const request = CopyRequestSchema.parse({ protocol: COPY_PROTOCOL, source, destination, busyTimeoutMs: options.busyTimeoutMs ?? 250 });
+  await runOnWorkerThread<undefined>(request, options.signal, message => {
+    const reply = CopyReplySchema.safeParse(message);
+    if (!reply.success) return { error: new Error("backup-copy-reply-invalid"), invalid: true };
+    if (reply.data.kind === "copied") return { value: undefined };
+    return { error: failureError(reply.data), invalid: false };
+  });
 }
 
 function abortReason(signal: AbortSignal | undefined): Error {
@@ -123,20 +168,41 @@ function deepFreeze<T>(value: T): T {
 }
 
 /** The thread's answer to its start data: nothing for another module's worker, a failure for a request that does not parse. */
-export function answerInspectionRequest(data: unknown): InspectionReply | undefined {
-  if (!z.looseObject({ protocol: z.literal(PROTOCOL) }).safeParse(data).success) return undefined;
-  const request = InspectionRequestSchema.safeParse(data);
-  return request.success ? runInspection(request.data) : { kind: "failed", name: "Error", message: "backup-inspection-request-invalid" };
+export function answerInspectionRequest(data: unknown): WorkerReply | undefined {
+  const protocol = z.looseObject({ protocol: z.string() }).safeParse(data);
+  if (!protocol.success) return undefined;
+  if (protocol.data.protocol === PROTOCOL) {
+    const request = InspectionRequestSchema.safeParse(data);
+    return request.success ? runInspection(request.data) : { kind: "failed", name: "Error", message: "backup-inspection-request-invalid" };
+  }
+  if (protocol.data.protocol === COPY_PROTOCOL) {
+    const request = CopyRequestSchema.safeParse(data);
+    return request.success ? runCopy(request.data) : { kind: "failed", name: "Error", message: "backup-copy-request-invalid" };
+  }
+  return undefined;
 }
 
-function runInspection(request: InspectionRequest): InspectionReply {
+function failedReply(error: unknown): z.infer<typeof FailedReplySchema> {
+  const failure = error instanceof Error ? error : new Error(String(error));
+  const code = (failure as { code?: unknown }).code;
+  return { kind: "failed", name: failure.name, message: failure.message, ...(typeof code === "string" ? { code } : {}) };
+}
+
+function runInspection(request: InspectionRequest): WorkerReply {
   try {
     return { kind: "inspected", inspection: BackupCopyInspectionSchema.parse(withReadonlyAuthoritySnapshot(request.path, database => inspectOpenDatabase(database, request.expectedSchemaVersion), request.busyTimeoutMs)) };
-  } catch (error) {
-    const failure = error instanceof Error ? error : new Error(String(error));
-    const code = (failure as { code?: unknown }).code;
-    return { kind: "failed", name: failure.name, message: failure.message, ...(typeof code === "string" ? { code } : {}) };
-  }
+  } catch (error) { return failedReply(error); }
+}
+
+function runCopy(request: CopyRequest): WorkerReply {
+  try {
+    if (existsSync(request.destination)) throw new Error("backup-copy-destination-exists");
+    const database = openReadOnlyDatabase(request.source, request.busyTimeoutMs);
+    try { database.prepare("VACUUM INTO ?").run(request.destination); }
+    finally { database.close(); }
+    fsyncPath(request.destination);
+    return { kind: "copied" };
+  } catch (error) { return failedReply(error); }
 }
 
 if (!isMainThread && parentPort !== null) {
