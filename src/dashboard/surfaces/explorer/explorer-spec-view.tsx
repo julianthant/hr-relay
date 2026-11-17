@@ -1,8 +1,7 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { LockKeyhole, Monitor } from "lucide-react";
+import { CheckCheck, LockKeyhole, MousePointer2, Monitor } from "lucide-react";
 import type { ExplorerReviewSpec } from "../../../models/dashboard/explorer-review-spec.js";
 import { PageHeading, Select } from "../../ds/ui.js";
-import { ClickLine } from "../shared/steps/click-line.js";
 import { FieldRow, FieldRows } from "../shared/steps/field-row.js";
 import { NoteLine } from "../shared/steps/note-line.js";
 import { PageCard } from "../shared/steps/page-card.js";
@@ -11,6 +10,9 @@ import { ExplorerSource } from "./explorer-source.js";
 import { fieldSource, resolveExplorer, rowValue, systemName, visible, type SpecCard, type SpecDecision, type SpecRow, type SpecValues } from "./explorer-spec.js";
 
 type ExplorerWorkflowOption = Readonly<{ id: string; title: string; disabled?: boolean }>;
+
+// The step number sits in a circle beside the title; a rail joins the circles.
+const STEP = "border-b last:border-b-0 [--spacing-log-time:2.75rem]";
 
 type Source = Readonly<{ row: SpecRow; stepId: string; card: string }>;
 
@@ -57,6 +59,7 @@ export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { 
   const offset = sessions.length > 0 ? 1 : 0;
   const numberOf = (id: string) => { const index = steps.findIndex(step => step.id === id); return index < 0 ? undefined : index + 1 + offset; };
   const stepId = (number: number) => `explorer-step-${number}`;
+  const marker = (number: number) => <span className="relative inline-flex size-7 items-center justify-center rounded-full border border-ui-stroke bg-ui-panel text-caption tabular-nums text-ui-secondary">{number}</span>;
   const closeSource = () => { setSource(undefined); trigger.current?.focus({ preventScroll: true }); };
   const openSource = (stepOf: string, card: string) => (row: SpecRow, opener: HTMLButtonElement) => { trigger.current = opener; setSource({ row, stepId: stepOf, card }); };
   const choose = (id: string, value: string) => { setChosen(current => ({ ...current, [id]: value })); setSource(undefined); };
@@ -74,17 +77,17 @@ export function ExplorerSpecView({ spec, workflowId, workflows, onWorkflow }: { 
       </div>)}</div>
     </section>}
     <div className="mb-6 border-b border-ui-stroke pb-4"><NoteLine message={spec.unlistedFailure} /></div>
-    <div>
-      {offset === 1 && <StepFrame leading={1} title="Open browser sessions" titleId={stepId(1)} className="border-b">
+    <div className="relative before:absolute before:bottom-5 before:left-3.5 before:top-3 before:w-px before:bg-ui-stroke">
+      {offset === 1 && <StepFrame leading={marker(1)} title="Open browser sessions" titleId={stepId(1)} className={STEP}>
         <div className="flex flex-wrap gap-2">{sessions.map(system => <span key={system} className="inline-flex h-9 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-3 text-body"><Monitor aria-hidden className="size-4 text-ui-muted" />{systemName(system)}<LockKeyhole aria-hidden className="ml-2 size-3 text-ui-muted" /></span>)}</div>
       </StepFrame>}
       {steps.map((step, index) => {
         const number = index + 1 + offset;
-        return <StepFrame key={step.id} leading={number} title={step.title} system={step.system === undefined ? undefined : systemName(step.system)} titleId={stepId(number)} className="border-b last:border-b-0">
-          {visible(step.description, values).slice(0, 1).map(line => <NoteLine key={line.text} message={line.text} />)}
-          {visible(step.checks, values).map(line => <NoteLine key={line.text} message={line.text} tone="positive" />)}
+        return <StepFrame key={step.id} leading={marker(number)} title={step.title} system={step.system === undefined ? undefined : systemName(step.system)} titleId={stepId(number)} className={STEP}>
+          {visible(step.description, values).slice(0, 1).map(line => <p key={line.text} className="m-0 text-body text-ui-secondary">{line.text}</p>)}
+          {visible(step.checks, values).map(line => <NoteLine key={line.text} message={line.text} icon={<CheckCheck aria-hidden className="size-3.5 self-start translate-y-0.5 text-ui-positive" />} />)}
           {visible(step.blocks, values).map((block, position) => {
-            if (block.kind === "click") return <ClickLine key={`click:${position}`} label={block.target} />;
+            if (block.kind === "click") return <p key={`click:${position}`} className="m-0 flex items-center gap-3 text-body text-ui-secondary"><MousePointer2 aria-hidden className="size-3.5 shrink-0 text-ui-muted" /><span>Clicks <span className="font-medium text-ui-primary">{block.target}</span></span></p>;
             if (block.kind === "decision") return <Decision key={block.id} decision={block} values={values} onChoose={outcome => decide(block.id, outcome)} />;
             return <Card key={block.id} card={block} values={values} onSource={openSource(step.id, block.title)} />;
           })}
