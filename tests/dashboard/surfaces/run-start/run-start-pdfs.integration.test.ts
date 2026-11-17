@@ -124,7 +124,7 @@ it("keeps the accepted selection and refuses invalid PDFs before planning or upl
   } }), { workflows: [workflow], panelWorkflowId: workflow.workflowId });
   await attach([pdf("accepted.pdf", "%PDF accepted")]);
   await attach([new File(["wrong"], "wrong.txt", { type: "text/plain" })]);
-  expect(uploads).toBe(1); expect(dialog.text()).toContain("PDF selection refused");
+  expect(uploads).toBe(1); expect(dialog.text()).toContain("PDF selection refused"); expect(dialog.text()).toContain("Choose valid PDF files.");
   expect(dialog.text()).toContain("accepted.pdf"); expect(dialog.disabled("Continue")).toBe(true);
   await dialog.press("Remove accepted.pdf");
   expect(dialog.text()).toContain("No PDFs selected"); expect(dialog.disabled("Continue")).toBe(true);

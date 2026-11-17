@@ -76,7 +76,7 @@ describe("workflow change", () => {
     const next = changeWorkflow(used(freshLaunchDraft(plain)), other);
     assert.equal(next.text, "");
     assert.equal(next.sourceInputUnchanged, false);
-    assert.deepEqual([next.priority, next.dryRunRequested, next.browserMode], ["interactive", false, "headed"]);
+    assert.deepEqual([next.priority, next.dryRunRequested, next.browserMode], [undefined, false, "headed"]);
     assert.deepEqual([next.stepDrafts, [...next.touchedFacts], next.factsAttempted, next.referenceSelections, next.selectedWorkbookRows, next.launchFields, next.stepSelection],
       [{}, [], false, {}, undefined, {}, undefined]);
     assert.deepEqual(next.referenceDrafts, { ref: { libraryId: "l", versionId: "v" } });
