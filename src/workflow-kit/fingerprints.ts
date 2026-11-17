@@ -42,6 +42,7 @@ export function workflowContractFingerprint(input: Readonly<{
   contracts: readonly ContractShape[];
   requiredWorkbookFields?: readonly string[];
   workbookReference?: Readonly<{ id: string; keyFieldId: string; mode: "keys" | "all"; writableFields: readonly string[] }>;
+  workbookCheck?: Readonly<{ id: string; keyFieldId: string }>;
   kit?: number;
 }>): Fingerprint {
   const tasks = [...new Map(input.contracts.map(contract => [String(contract.id), taskIdentity(contract)])).entries()]
@@ -61,5 +62,6 @@ export function workflowContractFingerprint(input: Readonly<{
       id: input.workbookReference.id, keyFieldId: input.workbookReference.keyFieldId,
       mode: input.workbookReference.mode, writableFields: [...input.workbookReference.writableFields],
     },
+    ...(input.workbookCheck === undefined ? {} : { workbookCheck: { id: input.workbookCheck.id, keyFieldId: input.workbookCheck.keyFieldId } }),
   })}`));
 }

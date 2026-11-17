@@ -36,7 +36,8 @@ describe("Settings > Account Delete card", () => {
     await mount(createElement(DeleteAccountControl, { presentation: { state: "ready", personName: "Alex Morgan", onConfirm: () => { confirmed.push("confirmed"); } } }));
     await act(async () => triggers()[0]?.click());
     const dialog = document.body.querySelector('[role="dialog"]');
-    assert.ok(dialog?.textContent?.includes("Delete Alex Morgan’s account?"));
+    assert.ok(dialog);
+    assert.ok(dialog.textContent?.includes("Delete Alex Morgan’s account?"));
     assert.deepEqual(confirmed, []);
     await act(async () => [...dialog.querySelectorAll("button")].find(item => item.textContent === "Delete account")?.click());
     assert.deepEqual(confirmed, ["confirmed"]);

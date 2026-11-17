@@ -32,6 +32,20 @@ describe("a declared node condition", () => {
     assert.throws(() => evaluateNodeCondition(parseNodeCondition({ kind: "is-present", of: { ...of, path: "record.value" } }), { input: {}, outputs: { skipped: { record: true } } }), /non-object/);
   });
 
+  it("asks only whether a spreadsheet was picked for a declared reference, and refuses a scope that cannot say", () => {
+    const of = { from: "reference", typeId: "reference-check" } as const;
+    const picked = { input: {}, outputs: {}, references: ["plan-roster", "reference-check"] }, unpicked = { input: {}, outputs: {}, references: ["plan-roster"] };
+    assert.equal(evaluateNodeCondition(parseNodeCondition({ kind: "is-present", of }), picked), true);
+    assert.equal(evaluateNodeCondition(parseNodeCondition({ kind: "is-present", of }), unpicked), false);
+    assert.equal(evaluateNodeCondition(parseNodeCondition({ kind: "is-absent", of }), unpicked), true);
+    assert.throws(() => evaluateNodeCondition(parseNodeCondition({ kind: "is-present", of }), { input: {}, outputs: {} }), /carries no picked spreadsheets/);
+    assert.equal(describeNodeCondition(parseNodeCondition({ kind: "is-present", of })), "runs when a spreadsheet is picked for reference-check");
+    assert.equal(describeNodeCondition(parseNodeCondition({ kind: "is-absent", of })), "runs when no spreadsheet is picked for reference-check");
+    assert.equal(nodeConditionDependency(parseNodeCondition({ kind: "is-present", of })), undefined);
+    for (const kind of ["is-true", "is-false"] as const) assert.throws(() => parseNodeCondition({ kind, of } as unknown as NodeConditionSpec));
+    assert.throws(() => parseNodeCondition({ kind: "equals", of, value: true } as unknown as NodeConditionSpec));
+  });
+
   it("renders every arm in words, from the same value the executor reads", () => {
     const cases = [
       [{ kind: "is-true", of: { from: "input", path: "includeCrmDates" } },
@@ -167,8 +181,9 @@ describe("defineWorkflowDescriptor over a declared condition", () => {
     [{ eid: "10800000", includeExtras: true }, { eid: "10800001", includeExtras: false }],
   );
 
-  const descriptorWith = (when: NodeConditionSpec, dependsOn: readonly string[] = ["probe"]) =>
+  const descriptorWith = (when: NodeConditionSpec, dependsOn: readonly string[] = ["probe"], workbookCheck?: Readonly<{ id: string; keyFieldId: string }>) =>
     () => defineWorkflowDescriptor({
+      ...(workbookCheck === undefined ? {} : { workbookCheck }),
       id: "condition-fixture",
       version: 1,
       contractFingerprint: FingerprintSchema.parse("a".repeat(64)),
@@ -210,6 +225,13 @@ describe("defineWorkflowDescriptor over a declared condition", () => {
       kind: "is-true",
       of: { from: "input", path: "includeExtras" },
     }));
+  });
+
+  it("accepts a picked-spreadsheet condition only for a reference the workflow declares", () => {
+    const when = { kind: "is-present", of: { from: "reference", typeId: "reference-check" } } as const;
+    assert.doesNotThrow(descriptorWith(when, ["probe"], { id: "reference-check", keyFieldId: "eid" }));
+    assert.throws(descriptorWith(when), /when reads picked spreadsheets for undeclared reference reference-check/u);
+    assert.throws(descriptorWith(when, ["probe"], { id: "other-check", keyFieldId: "eid" }), /undeclared reference reference-check/u);
   });
 
   it("REFUSES a condition naming a field no schema owns — at module load, not mid-run", () => {

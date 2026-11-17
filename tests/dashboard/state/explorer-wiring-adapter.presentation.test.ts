@@ -34,10 +34,11 @@ it("projects every served workflow's Explorer at its registered version", () => 
 });
 
 describe("Explorer operator-field presentation fallback", () => {
-  it("generates the four walkthrough steps in declaration order without exposing internal task steps", () => {
+  it("generates the five walkthrough steps in declaration order without exposing internal task steps", () => {
     assert.deepEqual(projected().steps.map(step => [step.title, step.system]), [
       ["Search for person", "UCPath"], ["Cross-check identity", "CRM"],
       ["Read employment status", "Local"], ["Read CRM dates", "CRM"],
+      ["Check reference spreadsheets", "Local"],
     ]);
   });
   it("keeps node, dependency, condition and task diagnostics out of operator text", () => {
@@ -81,6 +82,7 @@ describe("Explorer operator-field presentation fallback", () => {
       [["CRM", [{ nodeId: "crm-identity", kind: "output", fieldPath: "crmState" }]], ["How found", [{ nodeId: "crm-identity", kind: "output", fieldPath: "method" }]]],
       [["UCPath", [{ nodeId: "active-status", kind: "output", fieldPath: "details.ucpath" }]], ["CRM", [{ nodeId: "active-status", kind: "output", fieldPath: "details.crm" }]], ["Status note", [{ nodeId: "active-status", kind: "output", fieldPath: "reason" }]]],
       [],
+      [["Reference spreadsheet", [{ nodeId: "reference-check", kind: "output", fieldPath: "checks.line" }]]],
     ]);
   });
   it.each([

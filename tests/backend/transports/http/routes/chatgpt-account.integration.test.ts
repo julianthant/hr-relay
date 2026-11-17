@@ -20,6 +20,7 @@ it("preserves the original typed closure refusal even when the current account i
   const app: DashboardApp = new Hono();
   let reads = 0;
   registerChatGptAccountRoutes(app, { clock: manualClock(new Date("2026-10-12T12:00:00.000Z")), chatGptAccount: {
+    signOut: async () => { throw new Error("unexpected sign-out"); },
     readStatus: async () => { throw new Error("unexpected status read"); },
     refreshAccount: async () => { reads++; return ChatGptAccountStateSchema.parse({ state: "connected", name: "Synthetic", email: "synthetic@example.com", expiresAt: "2099-01-01T00:00:00.000Z", planUsage: "enabled" }); },
     signIn: async () => ({ authorizationUrl: "https://auth.openai.com/api/accounts/authorize", expiresAt: "2099-01-01T00:00:00.000Z", completion: completion.promise, cancel: async () => {}, signingIn: true }),
@@ -38,6 +39,7 @@ it("D3: status and cancel read signing-in from the service attempt, not from its
   const app: DashboardApp = new Hono();
   let signingIn = true, cancels = 0;
   registerChatGptAccountRoutes(app, { clock: manualClock(new Date("2026-10-12T12:00:00.000Z")), chatGptAccount: {
+    signOut: async () => { throw new Error("unexpected sign-out"); },
     readStatus: async () => chatGptStatusFixture({ state: "signed-out" }),
     refreshAccount: async () => { throw new Error("unexpected refresh"); },
     signIn: async () => ({ authorizationUrl: "https://auth.openai.com/api/accounts/authorize", expiresAt: "2099-01-01T00:00:00.000Z", completion: completion.promise,
@@ -205,5 +207,33 @@ it("refuses an already completed authorization result when the completion GET ab
     const current = ChatGptSignInCompletionSchema.parse(await (await f.request(`/sign-in/${started.attemptId}`)).json());
     assert.equal(current.state, "completed");
     assert.equal(ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account.state, "connected");
+  } finally { await f.cleanup(); }
+});
+
+it("sign-out revokes and forgets the stored account, and a second call is a no-op", async () => {
+  const f = await setup();
+  try {
+    await f.connected();
+    assert.equal(f.service.readAccount().state, "connected");
+    const first = await f.request("/sign-out", {});
+    assert.equal(first.status, 200);
+    assert.deepEqual(await first.json(), { state: "signed-out", remoteRevocation: "confirmed" });
+    assert.equal(f.calls.filter(call => call.url.endsWith("/revoke")).length, 1);
+    const stored = f.repository.read();
+    assert.ok(stored === undefined || stored.session === null && stored.registration === null && stored.clientId === null);
+    assert.equal(ChatGptAccountStatusSchema.parse(await (await f.request()).json()).account.state, "signed-out");
+    const second = await f.request("/sign-out", {});
+    assert.deepEqual(await second.json(), { state: "signed-out", remoteRevocation: "not-needed" });
+    assert.equal(f.calls.filter(call => call.url.endsWith("/revoke")).length, 1);
+  } finally { await f.cleanup(); }
+});
+
+it("sign-out is refused with CHATGPT_AUTH_BUSY while a sign-in is in flight and leaves the attempt alone", async () => {
+  const f = await setup();
+  try {
+    await f.request("/sign-in", { usePlan: true });
+    const response = await f.request("/sign-out", {});
+    assert.deepEqual(await response.json(), { state: "refused", code: "CHATGPT_AUTH_BUSY", message: ERROR_CATALOG.CHATGPT_AUTH_BUSY.text });
+    assert.equal(f.authorization().signingIn, true);
   } finally { await f.cleanup(); }
 });
