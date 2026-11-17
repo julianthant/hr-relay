@@ -187,6 +187,7 @@ describe("ChatGPT card states", () => {
   it("shows a one-letter name and a missing email without a gap", () => {
     const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ ...connected, name: "J", email: "" }) }));
     assert.match(html, />J</u);
+    assert.doesNotMatch(html, /<span class="min-w-0 truncate/u);
   });
 
   it("uses the disconnect sentence for a failed disconnect and a beneath Try again button", async () => {

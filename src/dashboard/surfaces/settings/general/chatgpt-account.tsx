@@ -102,7 +102,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
         : account.state === "loading" ? show && <LoadingRegion label="Loading ChatGPT account"><ResultRow className={FIT} controlWidth="wide" label={<SkeletonText className="w-40" />} description={<SkeletonText className="w-60" />} value={<Skeleton className="h-[var(--ds-h-body-control)] w-48 rounded-[var(--ds-radius-body-control)]" />} /><ResultRow className={FIT} controlWidth="wide" label={<SkeletonText className="w-20" />} value={<Skeleton className="h-[var(--ds-h-body-control)] w-32 rounded-[var(--ds-radius-body-control)]" />} /></LoadingRegion>
         : <ResultRow className={FIT} controlWidth="wide" label={label} description={description}
           value={<div className="flex min-w-0 max-w-full items-center justify-end gap-3">
-            {connected && <span className="min-w-0 truncate text-[color:var(--ds-fg-muted)]" title={displayed.email}>{displayed.email}</span>}
+            {connected && displayed.email !== "" && <span className="min-w-0 truncate text-[color:var(--ds-fg-muted)]" title={displayed.email}>{displayed.email}</span>}
             {signingIn && <>
               {"authorizationUrl" in displayed && displayed.authorizationUrl !== undefined && <ButtonLink variant="secondary" href={displayed.authorizationUrl} target="_blank" rel="noopener noreferrer">Reopen sign-in page</ButtonLink>}
               <Button variant="ghost" disabled={pending !== undefined} loading={pending === "cancel"} onClick={() => { void perform("cancel"); }}>Cancel</Button>
