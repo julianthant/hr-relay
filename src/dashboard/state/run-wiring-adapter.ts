@@ -30,8 +30,10 @@ class RunLogIdentityError extends Error {
   readonly code = "LOGS_IDENTITY_REFUSED";
 }
 
+/** The run moved past the selected row while it was read; its logs are still the selected run's to show. */
 class RunLogSelectionBehindError extends RunLogIdentityError {
   override name = "RunLogSelectionBehindError";
+  constructor(readonly snapshot: RunLogSnapshot) { super("RUN_DETAIL_REVISION_AHEAD"); }
 }
 
 function requireNative(value: NativeRunEventWire | undefined): NativeRunEventWire {
@@ -74,7 +76,6 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   const detail = await client.runDetail(row.runId, signal);
   if (detail.runId !== row.runId || detail.rowRevision < row.rowRevision || detail.header.traceId !== row.traceId
     || detail.header.attempt !== row.attempt || detail.header.workflowId !== row.workflowId) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
-  if (detail.rowRevision > row.rowRevision) throw new RunLogSelectionBehindError("RUN_DETAIL_REVISION_AHEAD");
   signal.throwIfAborted();
   if (!detail.availableSections.includes("logs")) throw new RunLogIdentityError("RUN_LOGS_UNAVAILABLE");
   const section = await client.runSection(row.runId, "logs", undefined, signal);
@@ -102,15 +103,15 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   for (const section of sections) {
     if (section.section === "workbook-writes" && section.payload.runId !== row.runId) throw new RunLogIdentityError("RUN_WORKBOOK_IDENTITY_MISMATCH");
     if (section.section === "workbook-writes" && section.payload.referenceChoices?.some(choice => choice.resolution.state === "available"
-      && (choice.resolution.target.expectedVersion.valueOf() !== row.rowRevision.valueOf() || detail.gate.state !== "open"
+      && (choice.resolution.target.expectedVersion.valueOf() !== detail.rowRevision.valueOf() || detail.gate.state !== "open"
         || detail.gate.nodeId?.valueOf() !== choice.resolution.target.gateId.valueOf()))) throw new RunLogIdentityError("RUN_GATE_IDENTITY_MISMATCH");
     if (section.section === "captures" && (detail.captures?.state !== "available"
       || detail.captures.artifactCount !== section.payload.artifacts.length)) throw new RunLogIdentityError("RUN_CAPTURE_CAPABILITY_MISMATCH");
     if (section.section === "identity-gate" && section.payload.state === "available"
-      && (section.payload.value.expectedVersion !== row.rowRevision || detail.gate.state !== "open")) throw new RunLogIdentityError("RUN_GATE_IDENTITY_MISMATCH");
+      && (section.payload.value.expectedVersion !== detail.rowRevision || detail.gate.state !== "open")) throw new RunLogIdentityError("RUN_GATE_IDENTITY_MISMATCH");
     if (section.section === "failure" && section.payload.state === "available" && (section.payload.value.attempt !== row.attempt
       || section.payload.value.traceId !== row.traceId || section.payload.value.workflowId !== row.workflowId
-      || (section.payload.value.recovery !== undefined && section.payload.value.recovery.expectedVersion !== row.rowRevision))) throw new RunLogIdentityError("RUN_FAILURE_IDENTITY_MISMATCH");
+      || (section.payload.value.recovery !== undefined && section.payload.value.recovery.expectedVersion !== detail.rowRevision))) throw new RunLogIdentityError("RUN_FAILURE_IDENTITY_MISMATCH");
     if (section.section === "parked-write" && section.payload.runAttempt !== row.attempt) throw new RunLogIdentityError("RUN_WRITE_IDENTITY_MISMATCH");
   }
   if (sections.some(section => section.section === "identity-gate" && section.payload.state === "available") && detail.gate.state === "open" && detail.gate.nodeId === undefined) {
@@ -118,6 +119,7 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   }
   const snapshot: RunLogSnapshot = { detail, logs, sections, unavailableEvidence };
   validateRunLogSnapshot(snapshot);
+  if (detail.rowRevision > row.rowRevision) throw new RunLogSelectionBehindError(snapshot);
   return snapshot;
 }
 
@@ -540,17 +542,17 @@ export function runCommandRefreshesDay(view: CommandAttemptView, type: string): 
 
 export function useRunWiring(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined, confirm?: RunWiringConfirm) {
   const { row } = selection;
-  // Every day frame re-serves the row as a new object. An equal row that lands while the read is in flight must not
-  // restart it, or frequent frames keep Logs loading forever; one that lands after it settled (a day refresh) reads again.
+  // Every day frame re-serves the row as a new object, and a running run's revision moves with each worker heartbeat.
+  // A row of the same run that lands while the read is in flight must not restart it, or frequent frames keep Logs
+  // loading forever; the read lands, then a newer revision or a row that landed after it settled (a day refresh) reads again.
   const readRow = useRef(row);
   const reading = useRef(false);
   const latestRow = useRef(row);
   const settledRow = useRef(row);
   latestRow.current = row;
   const previous = readRow.current;
-  if (previous.runId !== row.runId || previous.rowRevision !== row.rowRevision || previous.attempt !== row.attempt
-    || previous.traceId !== row.traceId || previous.workflowId !== row.workflowId
-    || !reading.current && row !== settledRow.current && row !== previous) readRow.current = row;
+  if (previous.runId !== row.runId || previous.attempt !== row.attempt || previous.traceId !== row.traceId || previous.workflowId !== row.workflowId
+    || !reading.current && (previous.rowRevision !== row.rowRevision || row !== settledRow.current && row !== previous)) readRow.current = row;
   const servedRow = readRow.current;
   const request = useMemo(() => ({ client, runId: servedRow.runId, revision: servedRow.rowRevision, day: binding?.authority.day, selection: { row: servedRow, workflowLabel: selection.workflowLabel }, binding: binding?.scope,
     epoch: binding?.authority.epoch, actorId: binding?.scope.actorId, dayState: binding?.authority.dayState.day.state, dayRequest: binding?.authority.dayState.request, refreshDay: binding?.authority.dayState.refresh }),
@@ -589,6 +591,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       ended();
       if (cause instanceof RunLogSelectionBehindError && request.refreshDay !== undefined && !refreshBudget.revisions.has(request.revision)) {
         refreshBudget.revisions.add(request.revision);
+        setSettled({ request, value: { state: "loading", snapshot: cause.snapshot } });
         request.refreshDay();
         return;
       }
@@ -600,7 +603,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         ? formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_READ_FAILED", {})).text
         : formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text;
       setSettled(current => ({ request, value: { state: "failed", error, diagnostic: cause,
-        ...(current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
+        ...(cause instanceof RunLogSelectionBehindError ? { snapshot: cause.snapshot }
+          : current.request.client === client && current.request.runId === row.runId && current.request.epoch === request.epoch && current.value.snapshot ? { snapshot: current.value.snapshot } : {}) } }));
     });
     return () => { controller.abort(); reading.current = false; };
   }, [client, request, row.runId, refreshBudget]);
