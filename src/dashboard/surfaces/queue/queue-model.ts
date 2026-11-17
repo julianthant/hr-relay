@@ -57,6 +57,13 @@ export const QUEUE_SORTS: readonly { key: QueueSortKey; label: string; note: str
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 
 
+/** A queued run that already reports what it is doing has begun starting: the row and panel say Starting, not Queued. */
+export function isStarting(surface: Pick<QueueSurfaceWire, "status" | "liveMessage" | "surfaceKind">): boolean {
+  return surface.surfaceKind !== "operation" && dsStatusOf(surface.status) === "queued" && surface.liveMessage.state === "present";
+}
+
+export const STARTING_LABEL = "Starting";
+
 export type OperationSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "operation" }>;
 
 export type PipelineStep = QueueSurfaceWire["pipeline"][number];

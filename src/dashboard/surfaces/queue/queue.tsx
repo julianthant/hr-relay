@@ -64,6 +64,8 @@ import {
   type QueueItemGroup,
   queueDisplayGroups,
   useAttentionAnnounce,
+  isStarting,
+  STARTING_LABEL,
 } from "./queue-model.js";
 
 /** ── the queue's client-owned view state (ref frontend-backend-integration ) ─────────────────────── */
@@ -238,6 +240,7 @@ function HeaderChips({
         outcome={outcome}
         cancelledBy={surface.cancelledBy}
         presentation="queue"
+        {...(isStarting(surface) ? { label: STARTING_LABEL } : {})}
         hideIcon={status !== "running" && status !== "waiting" && status !== "failed"}
         {...(gateAge === undefined ? {} : { age: gateAge })}
       />
@@ -869,7 +872,7 @@ export function QueueRow({
                 className={cn(
                   dsText.meta,
                   "flex min-w-0 flex-wrap items-center gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)]",
-                  SUBLINE_TONE[status],
+                  SUBLINE_TONE[batch === undefined && isStarting(surface) ? "running" : status],
                 )}
               >
                 <span className="line-clamp-2 min-w-0 flex-1 break-words" title={subline}>{subline}</span>
