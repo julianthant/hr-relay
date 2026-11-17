@@ -7,7 +7,7 @@ import type { NavbarData, NavbarSearchResult } from "./search/navbar-view-model.
 import type { PaletteAction } from "./search/search-palette-model.js";
 import { shortcutLabel, useShortcutPreferences } from "../settings/navigation/keyboard-preferences-model.js";
 import { RailSearch } from "./search/navbar-view.js";
-import { NotificationBell, NotificationPing, NotificationsPanel } from "../notifications/notifications-view.js";
+import { NotificationBell, NotificationPing, NotificationsPanel, useNotificationAlert } from "../notifications/notifications-view.js";
 import { useNotificationRailModel, type NotificationReads } from "../notifications/notification-rail-model.js";
 import type { NotificationDestination, NotificationsState } from "../notifications/notifications-view-model.js";
 import type { WorkflowCountWire } from "./shell-model.js";
@@ -33,7 +33,8 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
   const [dismissed, setDismissed] = useState<readonly string[]>([]);
   const [activeId, setActiveId] = useViewState("notificationActive", "", "replace");
   const [notice, setNotice] = useState("");
-  const notificationRail = useNotificationRailModel({ notifications, reads, setReads, setOpen, setNotice, onOpenNotification, onActive: setActiveId, served: inbox });
+  const onAlert = useNotificationAlert();
+  const notificationRail = useNotificationRailModel({ notifications, reads, setReads, open, onAlert, setOpen, setNotice, onOpenNotification, onActive: setActiveId, served: inbox });
   const start = useShortcutPreferences().bindings.start[0];
   const choose = (id: string) => workflows.find(flow => flow.id === id)?.source === "preview" ? onPreview(id) : onSelect(id);
   const bell = useRef<HTMLButtonElement>(null);

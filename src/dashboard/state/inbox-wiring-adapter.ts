@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { attemptUnresolved } from "../app/commands/command-outcome.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { DashboardClient } from "../client/index.js";
-import type { DsToast } from "../ds/ui.js";
 import { NotificationWireSchema, type NotificationWire } from "../../models/dashboard/projection.js";
 import type { NotificationPublicationWire } from "../../models/dashboard/subscription.js";
 import type { NotificationCollectionTarget } from "../../models/notifications/notifications.js";
@@ -111,10 +110,9 @@ export interface InboxWiring {
   open(item: NotificationItem, navigate: (target: NotificationDestination, opened: () => void, refused: (message: string) => void) => void, opened: () => void, refused: (message: string) => void): void;
 }
 
-export function useInboxWiring({ client, enabled, binding, toast }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding;
-  toast: (input: Omit<DsToast, "id">) => string }): InboxWiring {
+export function useInboxWiring({ client, enabled, binding }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding }): InboxWiring {
   const request = useMemo(() => ({ client, enabled, scope: binding.scope }), [client, enabled, binding.scope]);
-  const current = useRef({ request, binding, toast, fresh: false }); current.current = { request, binding, toast, fresh: false };
+  const current = useRef({ request, binding, fresh: false }); current.current = { request, binding, fresh: false };
   const [revision, refresh] = useState(0);
   const readEpoch = useRef(0);
   const [settled, setSettled] = useState<{ request: typeof request; read: object; rows: readonly NotificationWire[] | undefined; notice: string; failed?: boolean }>();
@@ -158,9 +156,6 @@ export function useInboxWiring({ client, enabled, binding, toast }: { client: Da
       void client.notificationTarget(row.notificationId).then(target => {
         if (current.current.request !== request) return;
         if (!notificationTargetMatches(row, target)) { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return; }
-        const item = { ...notificationItem(row, current.current.binding.authority.nowIso), destination: target };
-        current.current.toast({ tone: policy.tone === "positive" ? "success" : policy.tone, title: item.title,
-          description: policy.tone === "positive" ? `${item.subject} · ${item.workflow}` : item.detail });
       }).catch(() => { if (current.current.request === request) setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); });
     });
   }, [client, enabled, request, subscribePublications]);
