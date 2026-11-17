@@ -3,12 +3,8 @@ import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { AuthorityDatabase, AuthorityDatabaseOptionsSchema } from "./authority-database.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import {
-  AuthorityBootReportSchema,
-  StorageHealthCauseSchema,
-  type AuthorityBootReport,
-  type StorageHealthCause,
-} from "./recovery-contracts.js";
+import { AuthorityBootReportSchema, type AuthorityBootReport } from "./recovery-contracts.js";
+import { StorageHealthCauseSchema, type StorageHealthCause } from "../../../models/storage/storage-status.js";
 
 
 function oneLine(message: string): string {

@@ -1,5 +1,6 @@
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../../../../src/models/dashboard/bootstrap.js";
 import { StorageDoctorWireSchema } from "../../../../../src/models/dashboard/storage.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../../src/models/config/authority-schema-versions.js";
 import type * as FixtureBootstrapTypes from "../../../fixtures/dashboard/fixture-bootstrap.js";
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
 
@@ -24,7 +25,7 @@ export function createFixtureStorageSetup({ FIXTURE_BOOTSTRAP, at, uuidOf }: {
     checkedAt: at(1),
     authority: {
       state: "healthy",
-      schemaVersion: 27,
+      schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
       authorityGeneration: 41,
       pageCount: 12,
     },
@@ -41,7 +42,6 @@ export function createFixtureStorageSetup({ FIXTURE_BOOTSTRAP, at, uuidOf }: {
       state: "degraded",
       streamRunCount: 11,
       liveRunCount: 7,
-      archived: [{ runId: uuidOf(401), archivedAt: "2026-08-03T08:00:00.000-07:00" }],
       deleted: [],
       problems: [
         { state: "missing", runId: uuidOf(402) },

@@ -1,5 +1,6 @@
 import { WorkbookCompatibilitySchema, WorkbookFieldRequirementSchema, WorkbookRequirementDeclarationSchema } from "./workbook-library.js";
 import { z } from "zod";
+import { StorageAuthoritySummarySchema } from "../storage/storage-status.js";
 import { ActivityTimeZoneSchema } from "./activity-volume.js";
 import { CapabilityAvailabilitySchema } from "../../rules/validation/absence.js";
 import {
@@ -27,10 +28,6 @@ export const ActorWireSchema = LocalOperatorActorSchema;
 export const ServerClockWireSchema = z.strictObject({
   now: IsoInstantSchema,
   zone: ActivityTimeZoneSchema,
-});
-/** Store failure throws; no reduced handle can report an intermediate availability. */
-export const StorageHealthSummaryWireSchema = z.strictObject({
-  authority: z.enum(["healthy", "unavailable"]),
 });
 
 /** Serve descriptor codes and raw category/role facts; the frontend owns presentation. */
@@ -138,7 +135,7 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
     projectionGeneration: ProjectionGenerationSchema,
     actor: ActorWireSchema,
     serverClock: ServerClockWireSchema,
-    storage: StorageHealthSummaryWireSchema,
+    storage: StorageAuthoritySummarySchema,
     workflows: z.array(parts.workflow),
     workbookCompatibility: WorkbookCompatibilitySchema,
     systemInstances: z.array(parts.systemInstance),
