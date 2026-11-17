@@ -796,6 +796,9 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     })),
   ]),
   ...open(taskOutput("workflow:i9-check/read-match-outcome"), "shouldLookup"),
+  ...population(taskOutput("workflow:i9-check/read-employment-candidates"), "candidates"),
+  ...person(taskOutput("workflow:i9-check/read-employment-candidates"), "candidates.emplId", "candidates.name"),
+  ...open(taskOutput("workflow:i9-check/read-employment-candidates"), "candidates.hireDate"),
   ...[taskOutput("workflow:i9-check/read-match-outcome"), taskOutput("workflow:i9-check/read-retention-row"), workflowResult("i9-check"), workflowResult("i9-check-roster-match"), workflowResult("i9-check-person-match"), workflowResult("i9-check-person-lookup")].flatMap(scope => [
     ...open(scope, "identity.status", "identity.candidateCount", "identity.reason"),
     ...person(scope, "identity.eid", "identity.name"),

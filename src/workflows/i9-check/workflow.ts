@@ -11,7 +11,9 @@ export const I9_CHECK_NODE_PURPOSES = [
   { nodeId: "identifier-match", purpose: "Search UCPath using usable identifiers without changing HR records." },
   { nodeId: "initial-name-search", purpose: "Read UCPath candidates when OCR supplied no usable identifier tuple." },
   { nodeId: "match-outcome", purpose: "Accept only a unique confirmed identifier match." },
+  { nodeId: "initial-candidates", purpose: "Retain every initial name-search candidate and its chosen hire date." },
   { nodeId: "name-search", purpose: "Read all departments for hire-date corroboration when identifiers did not resolve identity." },
+  { nodeId: "employment-candidates", purpose: "Retain every follow-up name-search candidate and its chosen hire date." },
   { nodeId: "retention-row", purpose: "Rematch the Action History evidence and derive one retention row." },
   { nodeId: "reference-check", purpose: "Look the Employee ID UCPath found up in each picked reference spreadsheet and go on whatever it shows." },
 ] as const;
@@ -46,7 +48,7 @@ export const i9CheckWorkflow = defineWorkflow({
   steps: author => {
     const matched = i9CheckPersonMatchDefinition.build(author);
     const looked = i9CheckPersonLookupDefinition.build(author, matched);
-    const roster = i9CheckRosterMatchDefinition.build(author, matched, looked.search), reference = i9CheckReferenceCheckDefinition.build(author, roster);
+    const roster = i9CheckRosterMatchDefinition.build(author, matched, looked), reference = i9CheckReferenceCheckDefinition.build(author, roster);
     return { steps: [...matched.steps, ...looked.steps, ...roster.steps, ...reference.steps], result: roster.result };
   },
 });
