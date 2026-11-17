@@ -100,6 +100,8 @@ it("combines failure codes across workflows for the global most common failure",
     await act(async () => root.render(createElement(ActivityView, { data: { state: "loaded", report: projected }, range: projected.range, today: selected.report.to, onRange: () => {} })));
     assert.deepEqual(projected.analytics.reasons.map(row => [row.label, row.runs]), [["Synthetic failure A", 3], ["Synthetic failure A", 2], ["Synthetic failure B", 4]]);
     assert.equal(projected.analytics.typicalSeconds, selected.report.typicalMedian.medianMs.state === "present" ? selected.report.typicalMedian.medianMs.value / 1000 : null);
+    assert.deepEqual(projected.analytics.assistant.messages, selected.report.assistantMessages.days.map(row => ({ date: row.day, count: row.count })));
+    assert.deepEqual(projected.analytics.assistant.actions, selected.report.assistantActions.days.map(row => ({ date: row.day, proposed: row.proposed })));
     assert.match(host.textContent ?? "", /Why runs failed/); assert.match(host.textContent ?? "", /Synthetic failure B/);
   } finally { await act(async () => root.unmount()); }
 });

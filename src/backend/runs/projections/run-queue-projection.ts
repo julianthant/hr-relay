@@ -37,6 +37,7 @@ import {
   activityMedian,
   type ActivityLedgerBlock,
   type ActivityReportWire,
+  type ActivityAssistantUsage,
   type ActivityWorkflowTotal,
 } from "../../../models/dashboard/activity.js";
 import { DashboardDayPatchSchema } from "../../../models/dashboard/subscription.js";
@@ -136,6 +137,7 @@ export interface ServedSummaryQueries {
 }
 
 export interface RunQueueProjectionDeps {
+  readonly assistantUsage?: (from: string, to: string, generatedAt: string) => ActivityAssistantUsage;
   readonly timeline: TimelineRepository;
   readonly reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> & { readonly summaries?: ServedSummaryQueries };
   readonly stateRoot: string;
@@ -1737,11 +1739,14 @@ export class RunQueueProjection {
     const median = sorted.length === 0 ? undefined : sorted[Math.floor((sorted.length - 1) / 2)];
     const typicalMedian = activityMedian(measured.map(entry => entry.ms));
 
+    if (this.#deps.assistantUsage === undefined) throw new Error("assistant-usage-source-unavailable");
+    const generatedAt = this.#deps.clock.now().toISOString();
     return ActivityReportWireSchema.parse({
       wireVersion: 1,
       from: start,
       to: end,
-      generatedAt: this.#deps.clock.now().toISOString(),
+      generatedAt,
+      ...this.#deps.assistantUsage(start, end, generatedAt),
       totalRuns: inRange.length,
       terminalRuns,
       inFlightRuns: inRange.length - terminalRuns,

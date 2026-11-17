@@ -67,3 +67,48 @@ it('counts a parked run as open, not as finished', async () => {
   await render({ ...data, report: { ...data.report, analytics: { ...data.report.analytics, running: 1, workflows: [{ ...first, done: 0, failed: 0, attention: 1 }] } } });
   assert.match(document.body.textContent, /0 finished runs · 1 still open/);
 });
+
+const days = (count: number) => Array.from({ length: count }, (_, index) => `2026-09-${String(20 + index)}`);
+const withAssistant = (messages: readonly number[], proposed: readonly number[]): ActivityViewState => {
+  if (data.state !== 'loaded') throw new Error('sample not loaded');
+  return { ...data, report: { ...data.report, analytics: { ...data.report.analytics, assistant: {
+    messages: days(7).map((date, index) => ({ date, count: messages[index] ?? 0 })), actions: days(7).map((date, index) => ({ date, proposed: proposed[index] ?? 0 })) } } } };
+};
+const headings = () => [...document.querySelectorAll('h2, h3')].map(item => item.textContent);
+
+it('draws Messages, Tools used and Actions after Why runs failed, with the served counts', async () => {
+  await render(withAssistant([1, 2, 3, 0, 0, 4, 5], [0, 1, 0, 0, 2, 0, 0]));
+  const order = headings().filter(text => ['Why runs failed', 'Messages', 'Tools used', 'Actions'].includes(text ?? ''));
+  assert.deepEqual(order, ['Why runs failed', 'Messages', 'Tools used', 'Actions']);
+  assert.match(document.body.textContent, /Messages sent to the assistant each day\./);
+  const messages = document.querySelector('figure[aria-label="Messages per day"]'); assert(messages);
+  assert.match(messages.textContent ?? '', /Messages\s*15/);
+  assert.deepEqual([...messages.querySelectorAll('table tbody tr')].map(row => row.lastElementChild?.textContent), ['1', '2', '3', '0', '0', '4', '5']);
+  const actions = document.querySelector('figure[aria-label="Proposed actions per day"]'); assert(actions);
+  assert.match(actions.textContent ?? '', /Proposed actions\s*3/);
+  assert.deepEqual([...actions.querySelectorAll('table tbody tr')].map(row => row.lastElementChild?.textContent), ['0', '1', '0', '0', '2', '0', '0']);
+});
+
+it('says tool calls and approvals are not recorded rather than drawing zeros', async () => {
+  await render(withAssistant([1], [1]));
+  const tools = [...document.querySelectorAll('section, div')].find(node => node.querySelector(':scope > h2, :scope > h3')?.textContent === 'Tools used');
+  assert(tools); assert.match(tools.textContent ?? '', /Tool calls are not recorded yet\./);
+  assert.equal(document.querySelector('figure[aria-label="Tool calls per day"]'), null);
+  assert.match(document.body.textContent, /Approvals are not recorded yet\./);
+});
+
+it('shows each assistant section empty when the range has no assistant use', async () => {
+  await render(withAssistant([], []));
+  assert.match(document.body.textContent, /No messages in this period/);
+  assert.match(document.body.textContent, /No actions proposed in this period/);
+  assert.match(document.body.textContent, /Tool calls are not recorded yet\./);
+  assert.equal(document.querySelector('figure[aria-label="Messages per day"]'), null);
+  assert.equal(document.querySelector('figure[aria-label="Proposed actions per day"]'), null);
+});
+
+it('leaves the run sections as they were', async () => {
+  await render(withAssistant([1], [1]));
+  assert.match(document.body.textContent, /finished runs/);
+  assert(document.querySelector('figure[aria-label="Runs per day"]'));
+  assert(document.querySelector('table[aria-label="Workflows"]'));
+});

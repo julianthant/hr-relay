@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
-import { ASSISTANT_HISTORY_MIGRATION, AssistantHistoryRefusal } from "../../../../src/backend/storage/sqlite/assistant-history.js";
+import { ASSISTANT_HISTORY_MIGRATION, AssistantHistoryRefusal, createAssistantHistoryRepository } from "../../../../src/backend/storage/sqlite/assistant-history.js";
 import { ASSISTANT_CHATS_MAX, ASSISTANT_MESSAGES_MAX } from "../../../../src/models/dashboard/assistant.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
@@ -25,6 +25,31 @@ async function world() {
   return { ...fixture, history, create, revision, accept, generation };
 }
 const refusedWith = (code: string) => (error: unknown) => error instanceof AssistantHistoryRefusal && error.code === code;
+
+it("reads only timestamped metadata of the current profile's unexpired messages without writing", () => {
+  const database = new DatabaseSync(":memory:"), owner = randomUUID();
+  let profileId = owner, writes = 0;
+  try {
+    for (const statement of ASSISTANT_HISTORY_MIGRATION.statements) database.exec(statement);
+    const history = createAssistantHistoryRepository({ database, profileId: () => profileId, read: work => work(),
+      mutate: (_table, work) => { writes++; return work().result; } });
+    const seed = (at: string) => {
+      const conversationId = randomUUID(), messageId = randomUUID();
+      history.apply({ operation: "create", conversationId, title: "Private chat" }, at);
+      history.accept({ conversationId, expectedRevision: 1, messageId, text: "Private question", modelText: "Private model text", subjectRef: null, attachments: [], now: at });
+      history.settle(conversationId, messageId, { delivery: "refused", code: "ASSISTANT_LIMIT" }, LATER);
+      return messageId;
+    };
+    const messageId = seed(NOW);
+    seed("2026-10-01T00:00:00.000Z");
+    profileId = randomUUID(); seed(NOW); profileId = owner;
+    const before = writes;
+    assert.deepEqual(history.activityMetadata(LATER), [{ id: messageId, kind: "turn", delivery: "refused", code: "ASSISTANT_LIMIT", actionId: null, createdAt: NOW, updatedAt: LATER }]);
+    assert.equal(writes, before);
+    assert.deepEqual(history.activityMetadata("2026-12-06T12:00:00.000Z"), []);
+    assert.throws(() => history.activityMetadata("invalid"));
+  } finally { database.close(); }
+});
 
 it("enforces the message shape natively: kinds, one sending turn, one caption per action and settle-only updates", () => {
   const database = new DatabaseSync(":memory:");
