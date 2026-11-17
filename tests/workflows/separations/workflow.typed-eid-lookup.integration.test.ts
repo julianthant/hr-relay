@@ -11,7 +11,7 @@ import { buildNodeFailureRecord } from "../../../src/backend/runtime/execution/r
 import { createServerVerifiedArtifactReader } from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
-import { deriveJobRowFromCells } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
+import { jobRowFromCells } from "../../support/helpers/ucpath-job-rows.js";
 import { readJobSummaryTask } from "../../../src/backend/systems/ucpath/tasks/read-job-summary.js";
 import { verifyIdentityApprovalTask } from "../../../src/workflows/separations/tasks/verify-identity-approval.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
@@ -42,12 +42,12 @@ type Harness = Awaited<ReturnType<typeof sourceBoundHarness>>;
 /** The checked person found by a name search with a second candidate, or the person found for the entered ID under a different UCPath name. */
 function packetFor(observedAt: string, source: "name-resolved" | "operator-entered") {
   const eid = source === "operator-entered" ? TYPED : CHECKED;
-  const rows = [deriveJobRowFromCells(["0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
+  const rows = [jobRowFromCells(["0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
     "Housing Dining Hospitality", "004920", "STDT 3", "", "0.500000", "Student"], 0)];
   return buildIdentityEvidencePacket({
     documentNumber: "4510", documentName: "Hernandez, Jose Santos", documentEidText: "the separation document carried no EID",
     emplIdSource: source, documentEidConflicts: false,
-    jobSummary: { pageStateId: "ucpath.person-org.detail-ready", emplId: eid as never,
+    jobSummary: { pageStateId: "ucpath.workforce-job-summary.detail-ready", emplId: eid as never,
       displayedName: source === "operator-entered" ? "Okafor, Adaeze" : "Hernandez, Jose Santos",
       jobRows: rows, rowCount: rows.length, renderContext: { entry: "auto-detail", searchResultRows: 0, employmentInstances: "already-complete" },
       observedAt: observedAt as never },
@@ -101,9 +101,9 @@ function parkAtIdentityGate(h: Harness, queued: RunRecord) {
   return parked.run;
 }
 
-type Outcome = "unknown-id" | "other-person-opened" | "rejected";
+type Outcome = "unknown-id" | "rejected";
 
-/** The replacement fails as the executor fails it, from the real task: UCPath's no-record page, a detail page for another person, or the operator's Reject of the person found. */
+/** The replacement fails as the executor fails it, from the real task: UCPath's no-record page, or the operator's Reject of the person found. */
 async function failReplacement(h: Harness, queued: RunRecord, outcome: Outcome) {
   const nodeId = outcome === "rejected" ? APPROVAL_NODE : JOB_SUMMARY_NODE;
   const { run } = claimRunning(h, queued, nodeId);
@@ -116,9 +116,8 @@ async function failReplacement(h: Harness, queued: RunRecord, outcome: Outcome) 
     : { emplId: TYPED };
   const ctx = { signal: new AbortController().signal, log: { debug() {}, info() {}, warn() {} }, recordData() {},
     captureScreenshot: async () => {}, fail: taskFailer(task.contract as never),
-    driver: { system: "ucpath", readJobSummary: async ({ emplId }: { emplId: string }) => outcome === "unknown-id"
-      ? { state: "employee-not-found", emplId, observedMarker: "No matching values were found." }
-      : { state: "subject-mismatch", observedEid: CHECKED, expectedEid: emplId } } };
+    driver: { system: "ucpath", readJobSummary: async ({ emplId }: { emplId: string }) =>
+      ({ state: "employee-not-found", emplId, observedMarker: "No matching values were found." }) } };
   const error = await (task.impl as { run: (input: unknown) => Promise<unknown> }).run({ input, ctx }).then(() => undefined, (thrown: unknown) => thrown);
   assert.ok(error instanceof Error && error.message.includes(`••••${TYPED.slice(-4)}`) && !error.message.includes(TYPED), String(error));
   const failure = buildNodeFailureRecord({ run, failureId: h.ids.uuid(), nodeId: NodeIdSchema.parse(nodeId), taskId: task.contract.id,
@@ -145,7 +144,6 @@ function typedPaths(value: unknown, path = ""): string[] {
 
 it.each<Readonly<{ outcome: Outcome; code: string; prefilled: boolean }>>([
   { outcome: "unknown-id", code: "employee-not-found", prefilled: true },
-  { outcome: "other-person-opened", code: "subject-mismatch", prefilled: false },
   { outcome: "rejected", code: "identity-approval-rejected", prefilled: false },
 ])("a typed Employee ID lookup ending $outcome serves the full ID only in its own Run data and the rejected-value correction", async ({ outcome, code, prefilled }) => {
   const h = await sourceBoundHarness(separationsDescriptor, undefined, undefined, protectedSecretSource({ profileName: "Synthetic Timekeeper" }));

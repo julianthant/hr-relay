@@ -184,7 +184,7 @@ hdh: true,
 export const FINALIZATION_JOB_SUMMARY_READ = UcpathJobSummaryReadSchema.parse({
   state: "read",
   summary: {
-    pageStateId: "ucpath.person-org.detail-ready",
+    pageStateId: "ucpath.workforce-job-summary.detail-ready",
     emplId: FINALIZATION_EID,
     displayedName: FINALIZATION_NAME,
     jobRows: [

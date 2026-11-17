@@ -1,4 +1,4 @@
-/** The UCPath **job summary** surface: the Person Organizational Summary detail page's *Employment Instances* grid, read WHOLE on ONE page visit. */
+/** The UCPath **job summary** surface: Workforce Job Summary, one row per employee record, each the effective-dated row in effect on the read's date. */
 import { z } from "zod";
 import { EidSchema, IsoInstantSchema } from "../../rules/identity/ids.js";
 
@@ -9,9 +9,9 @@ export const UcpathJobCellSchema = z.discriminatedUnion("state", [
 ]);
 export type UcpathJobCell = z.infer<typeof UcpathJobCellSchema>;
 
-/** One *Employment Instances* row, verbatim; `hrStatus` is deliberately a free string, because UCPath's own wording is the evidence an operator reads at the gate. */
+/** One employee record, verbatim; `hrStatus` is deliberately a free string, because UCPath's own wording is the evidence an operator reads at the gate. */
 export const UcpathJobRowSchema = z.strictObject({
-  /** 0-based position in the grid as rendered — the row's read identity. */
+  /** 0-based position in the read — the row's read identity. */
   rowIndex: z.number().int().nonnegative(),
   /** Empl Record number, verbatim (`"0"`, `"1"`, …). */
   emplRecord: z.string().min(1),
@@ -40,9 +40,9 @@ export const UcpathJobSummaryRenderContextSchema = z.strictObject({
 });
 export type UcpathJobSummaryRenderContext = z.infer<typeof UcpathJobSummaryRenderContextSchema>;
 
-export const UCPATH_JOB_SUMMARY_PAGE_STATE = "ucpath.person-org.detail-ready";
+export const UCPATH_JOB_SUMMARY_PAGE_STATE = "ucpath.workforce-job-summary.detail-ready";
 
-/** The whole job-summary surface for ONE proven person, from ONE page visit. */
+/** The whole job-summary surface for ONE person, every employee record. */
 export const UcpathJobSummarySchema = z.strictObject({
   /** The state the detail page was proved to be in before anything was read. */
   pageStateId: z.literal(UCPATH_JOB_SUMMARY_PAGE_STATE),
@@ -78,11 +78,6 @@ export const UcpathJobSummaryReadSchema = z.discriminatedUnion("state", [
     emplId: EidSchema,
     /** The positive no-results marker the page rendered, verbatim. */
     observedMarker: z.string().min(1),
-  }),
-  z.strictObject({
-    state: z.literal("subject-mismatch"),
-    expectedEid: EidSchema,
-    observedEid: EidSchema,
   }),
 ]);
 export type UcpathJobSummaryRead = z.infer<typeof UcpathJobSummaryReadSchema>;

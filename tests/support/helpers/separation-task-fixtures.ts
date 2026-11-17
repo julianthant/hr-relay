@@ -64,7 +64,7 @@ export function createSeparationTaskFixtures() {
 
   function jobSummary(rows: readonly UcpathJobRow[] = [jobRow()], emplId = EID): UcpathJobSummary {
     return UcpathJobSummarySchema.parse({
-      pageStateId: "ucpath.person-org.detail-ready",
+      pageStateId: "ucpath.workforce-job-summary.detail-ready",
       emplId,
       displayedName: NAME,
       jobRows: [...rows],

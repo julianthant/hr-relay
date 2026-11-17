@@ -4,7 +4,7 @@ import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../..
 import { identityReviewWire } from "../../../support/helpers/dashboard/identity-review-wire.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
+import { jobRowFromCells } from "../../../support/helpers/ucpath-job-rows.js";
 import { composeCommandRequest, verifyShellCommandEffect, type CommandAction } from "../../../../src/dashboard/app/commands/command-dispatch.js";
 import { RunDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { CommandRequestSchema, CommandResultSchema, DashboardCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
@@ -149,7 +149,7 @@ describe("composeCommandRequest — the run family", () => {
 });
 
 function packet(): IdentityEvidencePacket {
-  const rows = [deriveJobRowFromCells([
+  const rows = [jobRowFromCells([
     "0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
     "Housing Dining Hospitality", "004920", "STDT 3", "", "0.500000", "Student",
   ], 0)];
@@ -160,7 +160,7 @@ function packet(): IdentityEvidencePacket {
     emplIdSource: "document-eid",
     documentEidConflicts: false,
     jobSummary: {
-      pageStateId: "ucpath.person-org.detail-ready",
+      pageStateId: "ucpath.workforce-job-summary.detail-ready",
       emplId: EID as never,
       displayedName: "Hernandez, Jose Santos",
       jobRows: rows,

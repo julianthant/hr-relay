@@ -99,7 +99,7 @@ const IDENTITY_PACKET = buildIdentityEvidencePacket({
   emplIdSource: "document-eid",
   documentEidConflicts: false,
   jobSummary: {
-    pageStateId: "ucpath.person-org.detail-ready",
+    pageStateId: "ucpath.workforce-job-summary.detail-ready",
     emplId: candidate.emplId,
     displayedName: "Battistessa, Johnnie",
     jobRows: [{
