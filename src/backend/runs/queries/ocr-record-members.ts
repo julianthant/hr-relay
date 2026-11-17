@@ -18,7 +18,7 @@ import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import { deriveRunStatus, panelKindOf } from "../../../rules/runs/run-status.js";
 import { directIdentifierDisplay } from "../../../rules/redaction/redaction.js";
 import { LocalDateSchema } from "../../../rules/identity/ids.js";
-import { localDatePart } from "../../../rules/time/clock.js";
+import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
@@ -52,7 +52,7 @@ function readingMember(repositories: AuthorityRepositories, owner: RunRecord, pa
     title: `${prepared.manifest.pageCount} ${prepared.manifest.pageCount === 1 ? "page" : "pages"}`,
     status, statusLabel: status === "failed" ? "Failed" : status === "blocked" ? "Blocked" : status === "cancelled" ? "Cancelled" : "Reading",
     childRunIds, target: { runId: owner.envelope.runId, workflowId: owner.envelope.workflow,
-      partitionDay: LocalDateSchema.parse(localDatePart(new Date(owner.envelope.enqueuedAt))), label: workflowLabel(owner.envelope.workflow),
+      partitionDay: LocalDateSchema.parse(searchPartitionDay(new Date(owner.envelope.enqueuedAt))), label: workflowLabel(owner.envelope.workflow),
       status: deriveRunStatus({ ...owner,delegationWait: repositories.dependencies.waitState(owner.envelope.runId) }),
       panelKind: panelKindOf(owner.envelope.shape, reviewAvailable), section: "logs" as const } };
 }
@@ -119,7 +119,7 @@ function readOcrRecordPresentation(repositories: AuthorityRepositories, reader: 
   const reviewAuthority = readOcrReviewAuthority(repositories, reader, runId);
   const statusOf = (run: RunRecord) => deriveRunStatus({ ...run, delegationWait: repositories.dependencies.waitState(run.envelope.runId) });
   const link = (run: RunRecord) => ({ runId: run.envelope.runId, workflowId: run.envelope.workflow,
-    partitionDay: LocalDateSchema.parse(localDatePart(new Date(run.envelope.enqueuedAt))), label: workflowLabel(run.envelope.workflow),
+    partitionDay: LocalDateSchema.parse(searchPartitionDay(new Date(run.envelope.enqueuedAt))), label: workflowLabel(run.envelope.workflow),
     status: statusOf(run), panelKind: panelKindOf(run.envelope.shape, run.envelope.runId === owner.envelope.runId && reviewAuthority !== undefined) });
   const source = readOcrRecordSource(repositories, runId);
   const groups = source?.groups ?? repositories.dependencies.groups(runId);
@@ -284,7 +284,7 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
     return { ...row, status: status === "done" || status === "failed" || status === "blocked" || status === "cancelled" ? status : "running", statusLabel,
       childRunIds: [...new Set([...row.childRunIds,...member.history])],
       target: { runId: child.envelope.runId, workflowId: child.envelope.workflow,
-        partitionDay: LocalDateSchema.parse(localDatePart(new Date(child.envelope.enqueuedAt))), label: descriptor?.label ?? child.envelope.workflow,
+        partitionDay: LocalDateSchema.parse(searchPartitionDay(new Date(child.envelope.enqueuedAt))), label: descriptor?.label ?? child.envelope.workflow,
         status, panelKind: panelKindOf(child.envelope.shape, false), section: "logs" } };
   }) });
 }

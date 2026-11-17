@@ -43,10 +43,11 @@ budgets and durations and are not serialized as wall instants.
 `localDatePart(at)` and `formatTraceTimestamp(at)` are pure formatters.
 The fiscal year runs July 1 through June 30 and takes the ending calendar year's number.
 Calendar days are Pacific days whatever zone the machine is set to. `PACIFIC_TIME_ZONE` in
-`src/models/dashboard/search-calendar.ts` is the one definition of that zone: the stored and summary
-run day (`searchPartitionDay`), Analytics day buckets, the served `serverClock.zone` and Separations'
-Pacific calendar day all read it. `todayLocal()`, `timeOfDayCode()` and `localDatePart()` read the
-process zone.
+`src/models/dashboard/search-calendar.ts` is the one definition of that zone. The stored and summary
+run day, the queue, calendar, notification, OCR-member and data days and the calendar's today all
+read `searchPartitionDay`; Analytics day buckets, the served `serverClock.zone` and Separations'
+Pacific calendar day read the constant. `todayLocal()`, `timeOfDayCode()` and `localDatePart()` read
+the process zone; timeline `retentionDate` writes and the timeline prune keep it.
 `machineMonotonicMs()` uses `process.hrtime.bigint()` for backend IPC deadlines that need one
 machine-wide monotonic basis across processes.
 
