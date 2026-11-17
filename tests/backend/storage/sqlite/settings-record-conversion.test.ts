@@ -25,6 +25,7 @@ it("keeps the SQL of each numbered upgrade that converts settings records", () =
   assert.deepEqual(markers.filter(marker => SETTINGS_RECORD_CONVERSIONS.some(entry => entry.marker === marker.statement)), [
     { version: 16, statement: "SELECT 'person-preferences-forward-conversion:72ab4370a7a2766b8b169abdf2d6725b1cece28ddcd1bae6b70d28ab43ff99b4'" },
     { version: 32, statement: "SELECT 'runs-notifications-settings-forward-conversion:d7c2ef90355d8d28333c353c09625f73aaf2f7de031855cd063f7cddff6fa2f5'" },
+    { version: 35, statement: "SELECT 'send-shortcut-forward-conversion:339305dc9e801baea651d0717bc85249238ed4ed708b0414d0cf3edb6ce478d2'" },
   ]);
-  assert.equal(SETTINGS_RECORD_CONVERSION_VERSION, 32);
+  assert.equal(SETTINGS_RECORD_CONVERSION_VERSION, 35);
 });

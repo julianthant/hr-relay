@@ -19,6 +19,12 @@ function restoreSchema32CommandTable(database: DatabaseSync): void {
   for (const statement of owned) database.exec(statement);
 }
 
+/** Steps a current authority back to schema 34: schema 35 converts settings records in place and keeps the same layout. */
+export function regressSchema35SendShortcut(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 35);
+  database.exec("UPDATE database_states SET schema_version=34; PRAGMA user_version=34");
+}
+
 /** Steps a current authority back to schema 33: schema 34 strips failure notes from stored commands in place and keeps the same layout. */
 export function regressSchema34FailureNotes(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 34);
@@ -27,6 +33,7 @@ export function regressSchema34FailureNotes(database: DatabaseSync): void {
 
 /** Steps a current authority back to schema 32. */
 export function restoreSchema32CommandRows(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 35) regressSchema35SendShortcut(database);
   if (database.prepare("PRAGMA user_version").get()?.user_version === 34) regressSchema34FailureNotes(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 33);
   const nested = database.isTransaction;
