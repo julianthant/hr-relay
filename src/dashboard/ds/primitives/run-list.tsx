@@ -50,10 +50,9 @@ export function RunListRow({ title, description, wrapNote, check, locked, lead, 
   </div>;
 }
 
-/** Placeholder rows at the height of a two-line row (title and grey line), so a list that loads does not jump. */
+/** Placeholder rows built from the real row, so a list that loads has the height of the list that arrives and does not jump. */
 export function RunListSkeleton({ rows }: { rows: number }) {
-  return <>{Array.from({ length: rows }, (_, index) =>
-    <div key={index} aria-hidden className="ds-run-row flex min-h-[var(--ds-row-h-2)] flex-col justify-center gap-[var(--ds-row-gap)] border-b border-ui-stroke py-[var(--ds-row-pad-y)] last:border-b-0">
-      <Skeleton className="h-3.5 w-40" /><Skeleton className="w-64 max-w-full" />
-    </div>)}</>;
+  return <div aria-hidden>{Array.from({ length: rows }, (_, index) => <RunListRow key={index}
+    title={<div className="flex h-[var(--ds-row-title-lh)] items-center"><Skeleton className="w-40" /></div>}
+    description={<div className="flex h-[var(--ds-row-desc-lh)] items-center"><Skeleton className="w-64 max-w-full" /></div>} />)}</div>;
 }
