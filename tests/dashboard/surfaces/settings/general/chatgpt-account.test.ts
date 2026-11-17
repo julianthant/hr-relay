@@ -116,7 +116,7 @@ it("keeps OCR diagnostics out of the account panel", () => {
 
 it("keeps the expired sign-in text and its Sign in button", async () => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "sign-in-expired" } as ChatGptAccountSnapshot) })));
+  await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "sign-in-expired" }) })));
   const row = host.querySelector('[data-settings-path="chatgpt.account"]'); assert.ok(row);
   assert.match(row.textContent ?? "", /Your sign-in attempt expired\. Sign in to try again\./u);
   assert.deepEqual([...row.querySelectorAll("button")].map(button => button.textContent), ["Sign in"]);
