@@ -5,11 +5,15 @@ const NO_FAILED_STEP = "the failed run has no task span that records the step wh
 const ABSENT_MEDIAN = { measuredRuns: 0, medianMs: { state: "absent" as const, reason: ACTIVITY_MEDIAN_ABSENT_REASON } };
 
 export function createActivityReportFixtures() {
+  const assistantDays = Array.from({ length: 7 }, (_, index) => `2026-08-${String(index + 1).padStart(2, "0")}`);
   const EMPTY: ActivityReportWire = ActivityReportWireSchema.parse({
     wireVersion: 1,
     from: "2026-08-01",
     to: "2026-08-07",
     generatedAt: "2026-08-07T12:00:00.000Z",
+    assistantMessages: { state: "retained-history", days: assistantDays.map(day => ({ day, count: 0 })) },
+    assistantTools: { state: "unavailable", reason: "not-recorded" },
+    assistantActions: { state: "retained-history", days: assistantDays.map(day => ({ day, proposed: 0 })), approved: { state: "unavailable", reason: "not-recorded" } },
     totalRuns: 0,
     terminalRuns: 0,
     inFlightRuns: 0,

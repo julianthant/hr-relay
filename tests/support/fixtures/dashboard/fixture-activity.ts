@@ -9,6 +9,7 @@ const at = (minute: number): string => `${FIXTURE_DAY}T${String(9 + Math.floor(m
 export const FIXTURE_ACTIVITY_RANGE = { from: "2026-07-01", to: FIXTURE_DAY } as const;
 export const FIXTURE_ACTIVITY_UNAVAILABLE_RANGE = { from: "2026-07-02", to: FIXTURE_DAY } as const;
 const FIXTURE_ACTIVITY_TIME_ZONE = "America/Los_Angeles";
+const ASSISTANT_DAYS = Array.from({ length: 31 }, (_, index) => `2026-07-${String(index + 1).padStart(2, "0")}`);
 const FIXTURE_ACTIVITY_DAYS = [
   { day: "2026-07-29", runs: 3 },
   { day: "2026-07-30", runs: 4 },
@@ -45,6 +46,9 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
   from: FIXTURE_ACTIVITY_RANGE.from,
   to: FIXTURE_ACTIVITY_RANGE.to,
   generatedAt: at(120),
+  assistantMessages: { state: "retained-history", days: ASSISTANT_DAYS.map(day => ({ day, count: 0 })) },
+  assistantTools: { state: "unavailable", reason: "not-recorded" },
+  assistantActions: { state: "retained-history", days: ASSISTANT_DAYS.map(day => ({ day, proposed: 0 })), approved: { state: "unavailable", reason: "not-recorded" } },
   totalRuns: 12,
   terminalRuns: 10,
   inFlightRuns: 2,
@@ -142,6 +146,8 @@ export const FIXTURE_ACTIVITY_UNAVAILABLE_REPORT: ActivityReportWire = ActivityR
   ...FIXTURE_ACTIVITY_REPORT,
   from: FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.from,
   to: FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.to,
+  assistantMessages: { ...FIXTURE_ACTIVITY_REPORT.assistantMessages, days: FIXTURE_ACTIVITY_REPORT.assistantMessages.days.slice(1) },
+  assistantActions: { ...FIXTURE_ACTIVITY_REPORT.assistantActions, days: FIXTURE_ACTIVITY_REPORT.assistantActions.days.slice(1) },
   volume: fixtureActivityVolume(FIXTURE_ACTIVITY_UNAVAILABLE_RANGE, FIXTURE_ACTIVITY_DAYS),
   people: {
     state: "absent",
