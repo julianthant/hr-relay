@@ -66,6 +66,7 @@ const fixtureContract = defineTaskContract({
 });
 
 const invocations: string[] = [];
+const foldScopesAsserted: (readonly string[] | undefined)[] = [];
 const fixtureTask = defineTask(fixtureContract, {
   sessions: [],
   async run({ input, ctx }) {
@@ -96,7 +97,7 @@ function fixtureDescriptor(
     .step("fold", fixtureContract, {
       dependsOn: ["read"],
       replay: "checkpoint",
-      bind: ({ outputs }) => ({ disposition: outputs.read.providerState }),
+      bind: ({ outputs, asserted }) => { foldScopesAsserted.push(asserted); return { disposition: outputs.read.providerState }; },
     })
     .build({
       schema: z.strictObject({ folded: z.string().min(1) }),
@@ -435,6 +436,19 @@ describe("executor step omission", () => {
     assert.deepEqual(invocations, ["observed", "observed!"]);
     const result = database.authority.runResults.get(RUN_ID);
     assert.deepEqual(result?.dependencies.map((dependency) => dependency.state), ["resolved", "resolved"]);
+  });
+
+  it("names a typed dependency in the scope a node binds from, and none when nothing is typed", async () => {
+    for (const [stepOmissions, expected] of [[[{ step: "reading", facts: { value: "typed" } }], ["read"]], [undefined, undefined]] as const) {
+      foldScopesAsserted.length = 0;
+      const harness = await harnessFor(honestDescriptor);
+      const { database } = harness.authority;
+      database.authority.runs.enqueue(queuedRunFor(honestDescriptor, stepOmissions));
+      const outcome = await executeClaimedRun(harness.deps, { ...claim(database, honestDescriptor), signal: SIGNAL });
+      assert.deepEqual(outcome, { state: "done", runId: RUN_ID });
+      assert.ok(foldScopesAsserted.length > 0);
+      for (const seen of foldScopesAsserted) assert.deepEqual(seen, expected);
+    }
   });
 
   it("fails the asserted node by name when its producer returns a value the output schema refuses", async () => {

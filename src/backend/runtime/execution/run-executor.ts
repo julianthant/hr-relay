@@ -685,11 +685,14 @@ export async function executeClaimedRun(
         throw new Error(`run ${runId} has no validated canonical input; entry validation must have refused`);
       }
       const picked: Record<string, JsonValue> = {};
+      const asserted: string[] = [];
       for (const dependency of dependsOn) {
         const value = outputs[String(dependency)];
         if (value !== undefined) picked[String(dependency)] = value;
+        if (value !== undefined && omissionPlan.asserted.has(String(dependency))) asserted.push(String(dependency));
       }
       return { input: canonicalInput, outputs: Object.freeze(picked), references: runWorkbookReferenceTypeIds(getRun().input.workbookReferences),
+        ...(asserted.length === 0 ? {} : { asserted }),
         ...(envelope.dryRun ? { dryRun: { transactions: [...dryRunSteps.values()].filter(step => step.state === "transaction-preview") } } : {}),
         protectedInputBindings: retainedRunProtectedBindings(getRun()) };
     };
@@ -706,6 +709,7 @@ export async function executeClaimedRun(
       const source = sourceRunId === runId ? getRun() : continuationSources.find(row => row.envelope.runId === sourceRunId);
       if (source === undefined) throw new RunContinuationRefusedError("run-continuation-input-source-unavailable");
       const values: Record<string, JsonValue> = {};
+      const asserted: string[] = [];
       for (const dependency of dependsOn) {
         const dependencyNode = nodes.find(node => node.id === dependency);
         if (conditions && (dependencyNode?.kind === "task" || dependencyNode?.kind === "gate" && dependencyNode.resolvedBy === "operator") && dependencyNode.when !== undefined
@@ -713,6 +717,7 @@ export async function executeClaimedRun(
         const checkpoint = pick(source, dependency);
         const gate = readContinuationGate(deps.authority.authority, source.envelope, String(dependency));
         if (checkpoint !== undefined) {
+          if (checkpoint.assertion !== undefined) asserted.push(String(dependency));
           values[String(dependency)] = dependencyNode?.kind === "transaction"
             ? JsonValueSchema.parse(projectTransactionOutcome(dependencyNode.commit.uses, checkpoint.output.value, "Continuation source scope", { checkpoint, schemaReader: deps.authority.evidenceSchemaHash?.bind(deps.authority) })) : checkpoint.output.value;
         }
@@ -727,6 +732,7 @@ export async function executeClaimedRun(
         }
       }
       return { input: source.input.parsed.value, outputs: values, references: runWorkbookReferenceTypeIds(source.input.workbookReferences),
+        ...(asserted.length === 0 ? {} : { asserted }),
         protectedInputBindings: retainedRunProtectedBindings(source) };
     };
     // Mirrors sourceScopeFor's walk: a child reached directly or through a conditional dependency is authenticated only there.

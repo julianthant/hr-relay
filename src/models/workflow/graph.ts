@@ -50,6 +50,8 @@ export interface RuntimeScope {
   readonly outputs: JsonObject;
   /** Declared reference ids the run picked a spreadsheet for; read by node conditions only. */
   readonly references?: readonly string[];
+  /** The scope's dependencies the operator typed by hand in this run; absent when none was typed. */
+  readonly asserted?: readonly string[];
 }
 
 export interface WorkflowGateSource<
