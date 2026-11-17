@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 
 it("cancels the run at once from a decision card, without the queue card's confirm", async () => {
-  const row = QueueSurfaceWireSchema.parse({ ...base, actions: [...base.actions.filter(action => action.command !== "cancel"), cancel] });
+  const row = QueueSurfaceWireSchema.parse({ ...base, actions: [...base.actions.filter(action => !(action.kind === "command" && action.command === "cancel")), cancel] });
   const sent: unknown[] = [];
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {

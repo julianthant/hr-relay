@@ -31,6 +31,7 @@ type ServedNavigation = Readonly<{ reviewOpen?: boolean; reviewFocus?: Delegated
 
 /** Rerun sits in the Logs footer when the row serves a rerun action. */
 function withoutConfirm(action: ActionDescriptorWire): ActionDescriptorWire {
+  if (action.kind !== "command") return action;
   const { confirm: _confirm, ...direct } = action;
   return direct;
 }
