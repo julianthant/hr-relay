@@ -535,7 +535,7 @@ function buildDescriptor(
     presentation: { title: (input: z.output<typeof WriteFixtureInput>) => `Write fixture ${input.eid}` },
     scenarios: ["write-fixture/happy"],
     ...(options.omittable === true ? { timeline: [{ key: "reading", label: "Read", nodes: ["read"] }, { key: "write", label: "Write", nodes: [WRITE_FIXTURE_NODE_ID],
-      omission: { form: { fields: [{ key: "reason", label: "Reason", kind: "text" as const }] }, produces: {} } }] } : {}),
+      manual: { form: { fields: [{ key: "reason", label: "Reason", kind: "text" as const }] }, produces: {}, skips: [WRITE_FIXTURE_NODE_ID], skipsGatesAndTransactions: true } }] } : {}),
   } as const;
   return options.omittable === true ? defineWorkflowDescriptor({ ...definition, flow: omittedFlow() })
     : options.traversal === true ? defineWorkflowDescriptor({ ...definition, flow: traversalFlow() })

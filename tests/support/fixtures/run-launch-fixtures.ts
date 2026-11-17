@@ -64,8 +64,8 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", curre
     identity: { matchKey: (input: { eid: string }) => input.eid }, presentation: { title: (input: { eid: string }) => input.eid }, scenarios: ["launch-proof/happy"],
     timeline: [
       { key: `${prefix}reading`, label: "Read employee", nodes: ["read"] },
-      { key: `${prefix}checking`, label: "Check employee", nodes: ["check"], omission: { form: StepOmissionFormSchema.parse({ fields: [{ key: "eid", label: "Checked employee ID", kind: "eid" }] }), produces: {} } },
-      { key: `${prefix}filing`, label: "File transaction", nodes: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"], omission: { form: StepOmissionFormSchema.parse({ fields: [] }), produces: {} } },
+      { key: `${prefix}checking`, label: "Check employee", nodes: ["check"], manual: { skips: ["check"], form: StepOmissionFormSchema.parse({ fields: [{ key: "eid", label: "Checked employee ID", kind: "eid" }] }), produces: {} } },
+      { key: `${prefix}filing`, label: "File transaction", nodes: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"], manual: { form: StepOmissionFormSchema.parse({ fields: [] }), produces: {}, skips: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"], skipsGatesAndTransactions: true } },
     ],
     rerunValues: [
       { nodeId: "read", fieldPath: "eid", targetFieldPath: "eid", label: "Employee ID" },

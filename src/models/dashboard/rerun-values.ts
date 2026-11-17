@@ -4,6 +4,7 @@ import { FingerprintSchema, IsoInstantSchema, NodeIdSchema, PositiveIntSchema, R
   TaskIdSchema, WorkflowIdSchema, WriteIntentIdSchema } from "../../rules/identity/ids.js";
 import { FactProvenanceSchema } from "../workflow/checkpoint.js";
 import { RerunValueMappingSchema } from "../workflow/rerun-values.js";
+import { StepOmissionsSchema } from "../workflow/step-omission.js";
 
 export const RerunValuesRequestSchema = z.strictObject({ runId: RunIdSchema, expectedVersion: PositiveIntSchema });
 const CompletionStateSchema = z.enum(["completed", "failed", "unfinished"]);
@@ -42,6 +43,8 @@ export const RerunValuesSnapshotSchema = z.strictObject({
   }),
   steps: z.array(z.strictObject({ key: z.string().min(1), state: CompletionStateSchema, nodes: z.array(NodeCompletionSchema).min(1) })),
   values: z.array(ValueCandidateSchema),
+  /** The source run's typed facts per step, for a step it had typed; offered as typed by hand. */
+  typed: StepOmissionsSchema.optional(),
   transactions: z.array(z.strictObject({
     stepKey: z.string().min(1), nodeId: NodeIdSchema, taskId: TaskIdSchema,
     writeIntentId: WriteIntentIdSchema, evidenceDigest: FingerprintSchema,

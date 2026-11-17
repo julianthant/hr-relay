@@ -30,7 +30,7 @@ import {
   type WorkflowOperatorField,
   WorkflowStepSchema,
 } from "../models/workflow/presentation.js";
-import type { StepOmissionDeclaration } from "../models/workflow/step-omission.js";
+import type { StepLockReason, StepManualDeclaration } from "../models/workflow/step-omission.js";
 import type { ItemId } from "../rules/identity/ids.js";
 import { BrowserSystemIdSchema, DelegationEdgeIdSchema, WorkflowIdSchema } from "../rules/identity/ids.js";
 import type { AnyNodeEntry, BuiltFlow } from "./flow.js";
@@ -57,12 +57,14 @@ export interface WorkflowTimelineGroup {
   readonly system?: z.input<typeof BrowserSystemIdSchema> | "local";
   readonly key: string;
   readonly label: string;
-  readonly omission?: StepOmissionDeclaration;
+  readonly manual?: StepManualDeclaration;
   readonly selection?: Readonly<{ inputField: string; selectedWhen: boolean }>;
+  /** Why a reading step stays locked although its values could be typed; form-action and approval are derived from its nodes. */
+  readonly locked?: StepLockReason;
   readonly [GROUP_OWNER]?: WorkflowTimelineGroup;
 }
 
-export type WorkflowGroupOptions = Readonly<Partial<Pick<WorkflowTimelineGroup, "omission" | "description" | "system" | "operatorFields" | "review">>>;
+export type WorkflowGroupOptions = Readonly<Partial<Pick<WorkflowTimelineGroup, "manual" | "locked" | "description" | "system" | "operatorFields" | "review">>>;
 
 /** One timeline-tuple entry: a typed reusable value over an existing contract (or gate/transaction/parallel/delegate declaration), in exactly one tuple. */
 export interface WorkflowEntry<
@@ -295,7 +297,7 @@ export interface WorkflowResultDeclaration<
 /* ── the author ──────────────────────────────────────────────────────────── */
 
 export interface WorkflowAuthor<InputSchema extends z.ZodType> {
-  /** Add a composition's own group facts (omission, operator text and fields) to a step, beside its own entries. */
+  /** Add a composition's own group facts (manual entry, lock reason, operator text and fields) to a step, beside its own entries. */
   group(
     this: void,
     step: WorkflowTimelineGroup,
@@ -706,7 +708,7 @@ function validateSteps(
   for (const entry of entries) visit(entry, []);
 }
 
-// Omission rebuilds only tasks; mandatory verifiers remain outside the omitted step.
+// Manual entry rebuilds only tasks; a node outside the step never reads one the typed values skip.
 function validateOmissions(id: string, steps: readonly WorkflowTimelineTuple[]): void {
   const memberGroup = new Map<AnyWorkflowEntry, WorkflowTimelineGroup>();
   for (const [group, members] of steps) {
@@ -718,8 +720,8 @@ function validateOmissions(id: string, steps: readonly WorkflowTimelineTuple[]):
     }
   }
   for (const [group, members] of steps) {
-    const omission = group.omission;
-    if (omission === undefined) continue;
+    const manual = group.manual;
+    if (manual === undefined) continue;
     const memberById = new Map<string, AnyWorkflowEntry>();
     for (const entry of members) {
       memberById.set(entry.id, entry);
@@ -727,7 +729,7 @@ function validateOmissions(id: string, steps: readonly WorkflowTimelineTuple[]):
         for (const branch of entry.branches) for (const leaf of branch.leaves) memberById.set(leaf.id, leaf);
       }
     }
-    for (const producedId of Object.keys(omission.produces)) {
+    for (const producedId of Object.keys(manual.produces)) {
       const produced = memberById.get(producedId);
       if (produced === undefined) {
         throw new Error(
@@ -741,11 +743,11 @@ function validateOmissions(id: string, steps: readonly WorkflowTimelineTuple[]):
         );
       }
     }
+    const skipped = new Set(manual.skips ?? []);
     for (const [reader, readerGroup] of memberGroup) {
       if (readerGroup === group) continue;
       for (const reference of reader.references) {
-        if (memberGroup.get(reference) !== group) continue;
-        if (reference.kind === "task" && Object.hasOwn(omission.produces, reference.id)) continue;
+        if (memberGroup.get(reference) !== group || !skipped.has(reference.id) || Object.hasOwn(manual.produces, reference.id)) continue;
         throw new Error(
           `workflow ${id} step "${group.key}" is omittable, but ${entryName(reader)} in step "${readerGroup.key}" reads its `
           + `${reference.kind} entry "${reference.id}", which omitting the step leaves unread; rebuild "${reference.id}" `
@@ -1172,11 +1174,12 @@ export function compileWorkflow<
     nodes: entries.flatMap(entryNodeIds),
     ...(group.operatorFields === undefined ? {} : { operatorFields: group.operatorFields }),
     ...(group.selection === undefined ? {} : { selection: group.selection }),
-    ...(group.omission === undefined ? {} : { omission: group.omission }),
+    ...(group.manual === undefined ? {} : { manual: group.manual }),
+    ...(group.locked === undefined ? {} : { locked: group.locked }),
   }));
   const usesDefaultTimeline = steps.every(([group, entries]) => {
     const [entry] = entries as readonly RuntimeEntry[];
-    if (entry === undefined || entries.length !== 1 || group.omission !== undefined || group.selection !== undefined || group.operatorFields !== undefined || group.system !== undefined || group.description !== undefined) return false;
+    if (entry === undefined || entries.length !== 1 || group.manual !== undefined || group.locked !== undefined || group.selection !== undefined || group.operatorFields !== undefined || group.system !== undefined || group.description !== undefined) return false;
     const label = defaultEntryLabel(entry);
     return label !== undefined && group.key === entry.id && group.label === label;
   });

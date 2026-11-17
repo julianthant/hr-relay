@@ -39,7 +39,8 @@ function refuse(code: RerunValuesRefusalCode): never { throw new SourceRefused(c
 function atPath(value: JsonValue, path: string): JsonValue | undefined {
   let current = value;
   for (const key of path.split(".")) {
-    if (current === null || typeof current !== "object" || Array.isArray(current) || !Object.hasOwn(current, key)) return undefined;
+    if (current === null || typeof current !== "object" || !Object.hasOwn(current, key)
+      || (Array.isArray(current) && !/^(?:0|[1-9][0-9]*)$/u.test(key))) return undefined;
     const next: unknown = Reflect.get(current, key);
     if (next === undefined) return undefined;
     current = JsonValueSchema.parse(next);
@@ -141,8 +142,8 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       const facts = new Map<string, NodeFact>();
       for (const node of nodes) {
         const checkpoint = checkpoints.get(node.id);
-        const omitted = run.envelope.stepOmissions?.some(({ step }) => descriptor.timeline.some((category) =>
-          category.key === step && category.nodes.some(({ id }) => id === node.id))) === true;
+        const omitted = run.envelope.stepOmissions?.some(({ workflow, step }) => workflow === undefined
+          && descriptor.stepOmissions.find((spec) => spec.step === step)?.skips?.includes(String(node.id)) === true) === true;
         const observed = executions.filter(({ nodeId }) => nodeId === node.id).sort((a, b) =>
           a.attempt - b.attempt || (a.startedAt ?? a.endedAt ?? "").localeCompare(b.startedAt ?? b.endedAt ?? "")).at(-1);
         let fact: NodeFact;
@@ -222,6 +223,10 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           nodeId: member.nodeId, state: "unfinished", reason: "not-recorded",
         })) } : { key: step.key, state, nodes: members };
       });
+      // The source's own typed facts refill a step it had typed; they stay typed by hand.
+      const typed = (run.envelope.stepOmissions ?? []).filter((entry) => entry.workflow === undefined
+        && descriptor.stepOmissions.some((spec) => spec.step === entry.step)
+        && !containsProtected(JsonValueSchema.parse(entry.facts), privateValues));
       let sourceInput: RerunValuesSnapshot["sourceInput"] = { state: "available", value: run.input.parsed.value };
       if (canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
         || containsProtected(run.input.parsed.value, privateValues)) sourceInput = { state: "unavailable", reason: "protected" };
@@ -273,6 +278,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         source: { runId: request.runId, version: run.version, workflow: descriptor.id,
           descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, outcome: lifecycle.outcome },
         steps, values, transactions,
+        ...(typed.length === 0 ? {} : { typed }),
       } });
     });
   } catch (error) {

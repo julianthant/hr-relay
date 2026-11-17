@@ -291,7 +291,7 @@ function authoredSelection(options: Readonly<{
     presentation: { title: value => value.eid }, scenarios: ["ucpath/person-org-happy"],
     timeline: [{ key: "reading", label: "Read", nodes: ["read"],
       selection: { inputField: options.inputField ?? "enabled", selectedWhen: true },
-      ...(options.omission ? { omission: { form: READING_FORM, produces: {} } } : {}),
+      ...(options.omission ? { manual: { form: READING_FORM, produces: {}, skips: ["read"] } } : {}),
     }],
     flow: flow(input).step("read", FixtureReadReceipt, { dependsOn: [], replay: "checkpoint",
       when: { kind: options.contradictory ? "is-false" : "is-true", of: { from: "input", path: "enabled" } },

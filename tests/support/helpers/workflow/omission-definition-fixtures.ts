@@ -10,7 +10,7 @@ import { SearchPersonOrg } from "../../../../src/models/systems/ucpath/search-pe
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 
-import type { StepOmissionDeclaration } from "../../../../src/models/workflow/step-omission.js";
+import type { StepManualDeclaration } from "../../../../src/models/workflow/step-omission.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
@@ -33,7 +33,9 @@ export function createOmissionDefinitionFixtures() {
 
   type Author = WorkflowAuthor<typeof FixtureInput>;
 
-  const VERIFY_OMISSION: StepOmissionDeclaration = {
+  const VERIFY_OMISSION: StepManualDeclaration = {
+    skips: ["review"],
+    skipsGatesAndTransactions: true,
     form: { fields: [{ key: "verifiedByHand", label: "Verified by hand", kind: "boolean" }] },
     produces: {
       verify: ({ facts, scope }) => {
@@ -82,7 +84,7 @@ export function createOmissionDefinitionFixtures() {
     return {
       steps: [
         [{ key: "reads", label: "Reads" }, [search]],
-        [group({ key: "deciding", label: "Deciding" }, { omission: VERIFY_OMISSION }), [review, verify]],
+        [group({ key: "deciding", label: "Deciding" }, { manual: VERIFY_OMISSION }), [review, verify]],
       ],
       result: result(FixtureResultSchema, [verify], ({ outputs }) => ({ verified: outputs.verify.state === "found" })),
     };

@@ -1,10 +1,11 @@
-/** Step omission: the operator omits a timeline step at start and types the facts the rest of the run would have read from it — three closed things, and nothing that executes. */
+/** Manual entry: the operator types the values a step's reading would yield; produced nodes are rebuilt from them, skipped nodes do not run, and every other node of the step still runs. */
 import { z } from "zod";
 import type { JsonObject, JsonValue } from "../../rules/validation/canonical-json.js";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import type { IsoInstant } from "../../rules/identity/ids.js";
 import type { RuntimeScope } from "./graph.js";
 import { TimelineCategoryKeySchema } from "./presentation.js";
+import { ValueFieldPathSchema } from "./rerun-values.js";
 
 const FieldKeySchema = z.string().regex(/^[a-z][a-zA-Z0-9]*$/u, "an omission field key is a camelCase identifier");
 
@@ -12,6 +13,10 @@ const FieldBase = {
   key: FieldKeySchema,
   label: z.string().min(1),
   help: z.string().min(1).optional(),
+  /** Blank is stored as null. */
+  optional: z.literal(true).optional(),
+  /** The produced value this field stands for; its accepted facts parse unchanged under that leaf's schema. */
+  replaces: z.strictObject({ nodeId: z.string().min(1), path: ValueFieldPathSchema }).optional(),
 };
 
 /** The closed field vocabulary the Steps screen draws; each kind owns its parser. */
@@ -19,6 +24,8 @@ export const StepOmissionFieldSchema = z.discriminatedUnion("kind", [
   z.strictObject({ ...FieldBase, kind: z.literal("text") }),
   /** MM/DD/YYYY — the form every HR date in this tree is typed and staged in. */
   z.strictObject({ ...FieldBase, kind: z.literal("us-date") }),
+  /** Shown and typed as MM/DD/YYYY; the server accepts and stores YYYY-MM-DD only. */
+  z.strictObject({ ...FieldBase, kind: z.literal("iso-date") }),
   /** A UCPath employee id: eight digits, exactly. */
   z.strictObject({ ...FieldBase, kind: z.literal("eid") }),
   z.strictObject({ ...FieldBase, kind: z.literal("integer"), min: z.number().int().optional() }),
@@ -43,12 +50,14 @@ export const UsDateFactSchema = z.string().regex(
   /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/u,
   "a date fact must be MM/DD/YYYY",
 );
+export const IsoDateFactSchema = z.iso.date();
 export const EidFactSchema = z.string().regex(/^\d{8}$/u, "an employee id fact must be exactly eight digits");
 
 function fieldSchema(field: StepOmissionField): z.ZodType {
   switch (field.kind) {
     case "text": return z.string().trim().min(1);
     case "us-date": return UsDateFactSchema;
+    case "iso-date": return IsoDateFactSchema;
     case "eid": return EidFactSchema;
     case "integer": return field.min === undefined ? z.number().int() : z.number().int().min(field.min);
     case "boolean": return z.boolean();
@@ -57,11 +66,30 @@ function fieldSchema(field: StepOmissionField): z.ZodType {
   }
 }
 
-/** ONE strict facts schema per form — every field is required; absence is a refusal, not a default. */
+/** The schema of one field's stored fact; an optional field also accepts null. */
+export function stepOmissionFieldFactSchema(field: StepOmissionField): z.ZodType {
+  return field.optional === true ? fieldSchema(field).nullable() : fieldSchema(field);
+}
+
+/** ONE strict facts schema per form — every key is present; absence is a refusal, not a default. */
 export function stepOmissionFactsSchema(form: StepOmissionForm): z.ZodObject<Record<string, z.ZodType>> {
   const shape: Record<string, z.ZodType> = {};
-  for (const field of StepOmissionFormSchema.parse(form).fields) shape[field.key] = fieldSchema(field);
+  for (const field of StepOmissionFormSchema.parse(form).fields) shape[field.key] = stepOmissionFieldFactSchema(field);
   return z.strictObject(shape);
+}
+
+/** Values that stand for everything a field accepts, for the definition's representation check. */
+export function stepManualFieldSamples(field: StepOmissionField): readonly JsonValue[] {
+  switch (field.kind) {
+    case "text": return ["Typed value"];
+    case "us-date": return ["01/02/2000", "12/31/1999"];
+    case "iso-date": return ["2000-01-02", "1999-12-31"];
+    case "eid": return ["00000000", "12345678"];
+    case "integer": return [field.min ?? 0, (field.min ?? 0) + 1];
+    case "boolean": return [true, false];
+    case "enum": return field.values;
+    case "text-list": return [[], ["Typed value"]];
+  }
 }
 
 /** What a per-node producer sees: the parsed facts, the node's own dependency scope, and the instant of assertion. */
@@ -71,30 +99,77 @@ export interface StepOmissionProduceContext {
   readonly assertedAt: IsoInstant;
 }
 
+export interface StepManualIssue {
+  readonly field: string;
+  readonly message: string;
+}
+
 /** A step folder's declaration; a producer returns a COMPLETE output the executor parses with the node's own contract output schema — never a partial object or a placeholder. */
-export interface StepOmissionDeclaration {
+export interface StepManualDeclaration {
   readonly form: StepOmissionForm;
   readonly produces: Readonly<Record<string, (context: StepOmissionProduceContext) => unknown>>;
+  /** Reading nodes that do not run when the values are typed; every node neither produced nor skipped runs. */
+  readonly skips?: readonly string[];
+  /** Cross-field rules checked by the server at plan time, after the form parses. */
+  readonly refine?: (facts: JsonObject) => readonly StepManualIssue[];
+  /** Allows `skips` to name the step's gates and transactions: the typed values stand for their decision or write. */
+  readonly skipsGatesAndTransactions?: true;
 }
 
 /** The descriptor-retained form of one declaration, bound to its step key. */
-export interface StepOmissionSpec extends StepOmissionDeclaration {
+export interface StepOmissionSpec extends StepManualDeclaration {
   readonly step: string;
 }
+
+/** A reading lock the definition declares; `form-action` and `approval` are derived from the step's nodes. */
+export const StepLockReasonSchema = z.enum(["bound-read", "guard-read"]);
+export type StepLockReason = z.infer<typeof StepLockReasonSchema>;
+export const StartRowLockReasonSchema = z.enum(["form-action", "approval", "bound-read", "guard-read"]);
+export type StartRowLockReason = z.infer<typeof StartRowLockReasonSchema>;
+export const StartRowKindSchema = z.enum(["switch", "locked-manual", "locked"]);
+export type StartRowKind = z.infer<typeof StartRowKindSchema>;
+
+/** What a row shows: a whole step, some of its nodes, or one phase of its transaction nodes. */
+export const StartRowMemberSchema = z.strictObject({
+  workflow: z.string().min(1).optional(),
+  step: TimelineCategoryKeySchema,
+  nodes: z.array(z.string().min(1)).min(1).optional(),
+  phase: z.enum(["prepare", "commit"]).optional(),
+});
+export type StartRowMember = z.infer<typeof StartRowMemberSchema>;
+/** The whole step a row's switch and typed values address. */
+export const StartRowTargetSchema = z.strictObject({
+  workflow: z.string().min(1).optional(),
+  step: TimelineCategoryKeySchema,
+});
+export type StartRowTarget = z.infer<typeof StartRowTargetSchema>;
+/** One Start run row a workflow declares; absent rows = one row per timeline step. */
+export const StartRowDeclarationSchema = z.strictObject({
+  key: TimelineCategoryKeySchema,
+  label: z.string().min(1),
+  members: z.array(StartRowMemberSchema).min(1),
+  target: StartRowTargetSchema.optional(),
+});
+export type StartRowDeclaration = z.infer<typeof StartRowDeclarationSchema>;
 
 const JsonFactsSchema = z.record(z.string(), JsonValueSchema);
 
 export const StepOmissionEntrySchema = z.strictObject({
+  /** A step of this delegated child workflow; absent = the served workflow's own step. */
+  workflow: z.string().min(1).optional(),
   step: TimelineCategoryKeySchema,
   facts: JsonFactsSchema,
+  /** Each field's label as shown when typed. */
+  labels: z.record(z.string(), z.string().min(1)).optional(),
 });
 export type StepOmissionEntry = z.infer<typeof StepOmissionEntrySchema>;
 
 const uniqueSteps = (entries: readonly StepOmissionEntry[], ctx: z.RefinementCtx): void => {
   const seen = new Set<string>();
   for (const entry of entries) {
-    if (seen.has(entry.step)) ctx.addIssue({ code: "custom", message: `step "${entry.step}" is omitted twice` });
-    seen.add(entry.step);
+    const key = JSON.stringify([entry.workflow ?? null, entry.step]);
+    if (seen.has(key)) ctx.addIssue({ code: "custom", message: `step "${entry.step}" is omitted twice` });
+    seen.add(key);
   }
 };
 
@@ -143,6 +218,7 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
   const specByStep = new Map(graph.stepOmissions.map((spec) => [spec.step, spec]));
 
   for (const entry of RequestedOmissionsSchema.parse(requested)) {
+    if (entry.workflow !== undefined) continue;
     const category = graph.timeline.find(({ key }) => key === entry.step);
     if (category === undefined) {
       refusals.push({ code: "unknown-step", step: entry.step, message: `step "${entry.step}" is not on this workflow's timeline` });
@@ -162,13 +238,14 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
       });
       continue;
     }
+    const skipped = new Set(spec.skips ?? []);
     for (const { id } of category.nodes) {
       const node = nodeById.get(id);
       if (node === undefined) throw new Error(`timeline step "${entry.step}" names node "${id}", which the graph does not declare`);
-            // Omitted gates record no decision; dependent selected nodes must refuse.
+      // Skipped gates record no decision; dependent running nodes must refuse.
       const produce = node.kind === "task" ? spec.produces[id] : undefined;
-      if (produce === undefined) omitted.set(id, entry.step);
-      else asserted.set(id, { step: entry.step, facts: JsonFactsSchema.parse(facts.data), produce });
+      if (produce !== undefined) asserted.set(id, { step: entry.step, facts: JsonFactsSchema.parse(facts.data), produce });
+      else if (skipped.has(id)) omitted.set(id, entry.step);
     }
     for (const producedId of Object.keys(spec.produces)) {
       const owner = stepByNode.get(producedId);
@@ -212,6 +289,7 @@ export function stepOmissionPlaceholderFacts(form: StepOmissionForm): JsonObject
       case "text-list": return [];
       case "enum": return field.values[0] ?? "";
       case "us-date": return "01/01/2000";
+      case "iso-date": return "2000-01-01";
       case "eid": return "00000000";
       case "text": return "cascade";
     }

@@ -1158,7 +1158,7 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/intake/enqueue.ts:IntakeEnqueuePlanInput",
   // Omission declarations carry producer functions and plans use Maps; crossing values have strict schemas.
   "src/models/workflow/step-omission.ts:StepOmissionProduceContext",
-  "src/models/workflow/step-omission.ts:StepOmissionDeclaration",
+  "src/models/workflow/step-omission.ts:StepManualDeclaration",
   "src/models/workflow/step-omission.ts:StepOmissionSpec",
   "src/models/workflow/step-omission.ts:StepOmissionGraphView",
   "src/models/workflow/step-omission.ts:StepOmissionRefusal",

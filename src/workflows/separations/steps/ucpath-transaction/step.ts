@@ -27,7 +27,7 @@ import {
 } from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
-import type { StepOmissionDeclaration } from "../../../../models/workflow/step-omission.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { SeparationsMatchIdentity } from "../../../../models/workflows/separations/match-identity.js";
 import {
   SeparationsMatchTerminationType,
@@ -323,7 +323,7 @@ const UcpathTransactionFactsSchema = z.strictObject({
   approvalStatus: z.string().min(1),
 });
 
-export const UCPATH_TRANSACTION_OMISSION: StepOmissionDeclaration = {
+export const UCPATH_TRANSACTION_OMISSION: StepManualDeclaration = {
   form: {
     fields: [
       {
@@ -331,7 +331,7 @@ export const UCPATH_TRANSACTION_OMISSION: StepOmissionDeclaration = {
         help: "The T-number of the termination already filed in UCPath (T followed by 6–12 digits). This run files nothing in UCPath.",
       },
       {
-        key: "approvalStatus", label: "Approval status", kind: "enum",
+        key: "approvalStatus", label: "Approval status", kind: "enum", replaces: { nodeId: RECEIPT_NODE, path: "approvalStatus" },
         values: [...TERMINATION_RECEIPT_ACCEPTED_STATUSES],
         help: "The transaction's approval status as UCPath shows it now. Only a status that means the termination took effect can be asserted.",
       },
@@ -351,6 +351,8 @@ export const UCPATH_TRANSACTION_OMISSION: StepOmissionDeclaration = {
       });
     },
   },
+  skips: [PENDING_SET_NODE, SWEEP_NODE, TERMINATION_NODE],
+  skipsGatesAndTransactions: true,
 };
 
 
@@ -443,7 +445,7 @@ export function buildTermination({ task, transaction, group }: Author, extractio
   }));
   return {
     receipt, clearPending, fileTermination,
-    steps: [[group(UCPATH_TRANSACTION_STEP, { ...UCPATH_TRANSACTION_DISPLAY, omission: UCPATH_TRANSACTION_OMISSION }), [pendingSet, clearPending, fileTermination, receipt]]] as const
+    steps: [[group(UCPATH_TRANSACTION_STEP, { ...UCPATH_TRANSACTION_DISPLAY, manual: UCPATH_TRANSACTION_OMISSION }), [pendingSet, clearPending, fileTermination, receipt]]] as const
   };
 }
 
