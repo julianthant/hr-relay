@@ -15,6 +15,7 @@ import { buildRosterReference } from "../roster-reference/step.js";
 const step = Object.freeze({
   ...defineWorkflowStep({ key: "retention", label: "Check retention and save results" }),
   review: {
+    starts: [{ nodeId: "check-people", each: "Each approved person" }],
     pages: [
       {
         id: "results-workbook",
@@ -23,12 +24,28 @@ const step = Object.freeze({
         nodeIds: ["read-rows", "save-workbook", "publish-results"],
         lines: [
           { id: "rows", kind: "check", text: "Account for each approved person’s settled retention result.", nodeIds: ["read-rows"] },
-          { id: "save", kind: "action", text: "Save one results workbook and verify its publication receipt.", nodeIds: ["save-workbook", "publish-results"] }
+          { id: "collect", kind: "read", text: "Collect one retention result for every approved person after the person checks finish.", nodeIds: ["read-rows"] },
+          { id: "save", kind: "action", text: "Save one results workbook and verify its publication receipt.", nodeIds: ["save-workbook", "publish-results"], when: [{ "dry-run": ["false"] }] },
+          { id: "dry", kind: "check", text: "Preview the results workbook without saving it or changing the tracker.", nodeIds: ["save-workbook"], when: [{ "dry-run": ["true"] }] },
         ],
-        fields: []
+        fields: [
+          { id: "name", label: "Employee name", taskFields: [{ nodeId: "read-rows", kind: "output", fieldPath: "tracker.rows.employeeName" }], example: "Morrow, Bea",
+            source: { origin: "Approved PDF records", detail: "The person whose I-9 sections you approved.",
+              read: { stepKey: "documents", page: "I-9 PDFs and approved records", field: "Approved person" }, chain: [] } },
+          { id: "eid", label: "Employee ID", taskFields: [{ nodeId: "read-rows", kind: "output", fieldPath: "tracker.rows.ucpathEmplId" }], example: "10000001",
+            source: { origin: "Person check", detail: "The Employee ID confirmed by the delegated UCPath retention check; absent when identity is unresolved.", chain: [] } },
+          { id: "result", label: "UCPath result", taskFields: [{ nodeId: "read-rows", kind: "output", fieldPath: "tracker.rows.foundInUcpath" }], example: "Yes",
+            source: { origin: "Person check", detail: "Whether UCPath found one person, no person or an ambiguous identity.", chain: [] } },
+          { id: "action", label: "Retention action", taskFields: [{ nodeId: "read-rows", kind: "output", fieldPath: "tracker.rows.action" }], example: "Keep",
+            source: { origin: "Person check", detail: "Keep or Shred from the retention rule; left undecided when manual review is needed.", chain: [] } },
+        ]
       }
     ],
-    branchLabels: []
+    branchLabels: [],
+    decisions: [{ id: "results-publication", label: "Results workbook", reads: { nodeId: "publish-results", fieldPath: "workbook.state" },
+      nodeIds: ["read-rows", "save-workbook", "publish-results"], initial: "saved", outcomes: [
+        { value: "saved", label: "Workbook saved", then: "Finishes with one results workbook and the retained rows for the tracker.", when: [{ "dry-run": ["false"] }] },
+      ] }],
   } as const
 });
 const entries = defineStepEntries(step);

@@ -6,12 +6,12 @@
  */
 import { z } from "zod";
 import { BrowserSystemIdSchema } from "../../rules/identity/ids.js";
-import { ReviewPickContentSchema, ReviewValueSchema } from "../workflow/review-spec.js";
+import { ReviewDecisionInitialSchema, ReviewPickContentSchema, ReviewValueSchema } from "../workflow/review-spec.js";
 import { TaskErrorCodeSchema } from "../task/task-contract.js";
 
 const TextSchema = z.string().min(1);
 const IdSchema = z.string().min(1);
-export const ExplorerSpecConditionSchema = z.record(IdSchema, z.array(TextSchema).min(1));
+export const ExplorerSpecConditionSchema = z.record(IdSchema, z.array(z.string()).min(1));
 export const ExplorerSpecWhenSchema = z.array(ExplorerSpecConditionSchema).min(1);
 const Gate = { when: ExplorerSpecWhenSchema.optional() };
 export type ExplorerSpecGate = Readonly<{ when?: z.infer<typeof ExplorerSpecWhenSchema> }>;
@@ -20,14 +20,14 @@ export type ExplorerSpecValue = z.infer<typeof ReviewValueSchema>;
 const SystemSchema = z.union([BrowserSystemIdSchema, z.literal("local")]);
 const TextLineSchema = z.strictObject({ text: TextSchema, ...Gate });
 
-export const ExplorerSpecOutcomeSchema = z.strictObject({ value: TextSchema, label: TextSchema, then: TextSchema, stops: z.boolean(), ...Gate });
+export const ExplorerSpecOutcomeSchema = z.strictObject({ value: z.string(), label: TextSchema, then: TextSchema, stops: z.boolean(), ...Gate });
 const BlockSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("card"), id: IdSchema, title: TextSchema, mode: z.enum(["fill", "read"]), ...Gate,
     rows: z.array(z.strictObject({ id: IdSchema, label: TextSchema, value: ReviewValueSchema.optional(), source: IdSchema, ...Gate })) }),
   z.strictObject({ kind: z.literal("click"), target: TextSchema, ...Gate }),
   z.strictObject({ kind: z.literal("starts"), workflowId: IdSchema, title: TextSchema, each: TextSchema, ...Gate }),
   ReviewPickContentSchema.extend({ kind: z.literal("pick"), ...Gate }),
-  z.strictObject({ kind: z.literal("decision"), id: IdSchema, label: TextSchema, initial: ReviewValueSchema, ...Gate,
+  z.strictObject({ kind: z.literal("decision"), id: IdSchema, label: TextSchema, initial: ReviewDecisionInitialSchema, ...Gate,
     outcomes: z.array(ExplorerSpecOutcomeSchema).min(1) }),
 ]);
 

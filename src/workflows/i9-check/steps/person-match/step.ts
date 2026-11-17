@@ -18,25 +18,55 @@ export const personMatch = Object.freeze({
           {
             id: "match",
             kind: "action",
-            text: "When identifier matching is requested, search by name with the supplied date of birth or SSN.",
+            text: "When the approved record has matching identifiers, search Smart HR by first and last name with the supplied identity details.",
             nodeIds: ["identifier-match"]
-          }
+          },
+          { id: "search", kind: "click", target: "Search", nodeIds: ["identifier-match"] },
         ],
-        fields: []
+        fields: [
+          { id: "last-name", label: "Last name", inputField: "person.lastName", example: "Morrow",
+            source: { origin: "Approved PDF record", detail: "The last name approved with this person's I-9 sections; this form is used only when matching identifiers are available.", chain: [] } },
+          { id: "first-name", label: "First name", inputField: "person.firstName", example: "Bea",
+            source: { origin: "Approved PDF record", detail: "The first name approved with this person's I-9 sections.", chain: [] } },
+          { id: "dob", label: "Date of birth", inputField: "person.dob", example: "03/14/1990",
+            source: { origin: "Approved PDF record", detail: "The approved date of birth, formatted for the matching search when supplied.", chain: [] } },
+        ]
       },
       {
         id: "person-search",
         title: "Person Organizational Summary search",
         mode: "Fill form",
         nodeIds: ["initial-name-search"],
-        lines: [{ id: "search", kind: "action", text: "Otherwise search by the person’s name.", nodeIds: ["initial-name-search"] }],
-        fields: []
+        lines: [
+          { id: "search", kind: "action", text: "Without matching identifiers, search by the approved name and keep every department for the retention check.", nodeIds: ["initial-name-search"] },
+          { id: "all-departments", kind: "check", text: "Keep non-HDH departments as well as HDH departments.", nodeIds: ["initial-name-search"] },
+          { id: "click-search", kind: "click", target: "Search", nodeIds: ["initial-name-search"] },
+        ],
+        fields: [{ id: "name", label: "Name", inputField: "person.name", example: "Morrow, Bea",
+          source: { origin: "Approved PDF record", detail: "The approved full name used when no matching identifiers are available.", chain: [] } }]
+      },
+      {
+        id: "name-results",
+        title: "Person Organizational Summary results",
+        mode: "Read only",
+        nodeIds: ["initial-name-search"],
+        when: [{ "identifier-result": ["not-found"], "hire-date-needed": ["false"] }],
+        lines: [
+          { id: "read-candidates", kind: "read", text: "Read every candidate's Employee ID and hire date; the retention check compares them with the approved hire date.", nodeIds: ["initial-name-search"] },
+        ],
+        fields: [
+          { id: "hire-date", label: "Hire date", taskFields: [{ nodeId: "initial-name-search", kind: "output", fieldPath: "results.startDate" }], example: "2020-06-15",
+            source: { origin: "UCPath", detail: "Each candidate's start date, or effective date when start date is absent.", chain: [] } },
+          { id: "candidate-id", label: "Employee ID", taskFields: [{ nodeId: "initial-name-search", kind: "output", fieldPath: "results.emplId" }], example: "10000001",
+            source: { origin: "UCPath", detail: "The Employee ID on a candidate's Person Organizational Summary record; not yet confirmed as this person.", chain: [] } },
+        ]
       },
       {
         id: "person-details",
         title: "Person Organizational Summary detail",
         mode: "Read only",
         nodeIds: ["identifier-match", "match-outcome"],
+        when: [{ "identifier-result": ["found"] }],
         lines: [
           {
             id: "confirm",
@@ -45,10 +75,30 @@ export const personMatch = Object.freeze({
             nodeIds: ["identifier-match", "match-outcome"]
           }
         ],
-        fields: []
+        fields: [
+          { id: "employee-id", label: "Employee ID", taskFields: [{ nodeId: "match-outcome", kind: "output", fieldPath: "identity.eid" }], example: "10000001",
+            source: { origin: "UCPath", detail: "The unique identity confirmed by the identifier search, when one is found.", chain: [] } },
+          { id: "confirmed-name", label: "Confirmed name", taskFields: [{ nodeId: "match-outcome", kind: "output", fieldPath: "identity.name" }], example: "Morrow, Bea",
+            source: { origin: "UCPath", detail: "The name confirmed in Person Organizational Summary for the identifier match.", chain: [] } },
+        ]
       }
     ],
-    branchLabels: []
+    branchLabels: [],
+    decisions: [
+      { id: "identifier-result", label: "Identifier match", reads: { nodeId: "match-outcome", fieldPath: "identity.status" },
+        nodeIds: ["identifier-match", "initial-name-search", "match-outcome"], initial: "found", outcomes: [
+          { value: "found", label: "One person confirmed", then: "Continues with the confirmed Employee ID." },
+          { value: "ambiguous", label: "Several people match", then: "Searches all departments by name to pick the person whose hire date matches." },
+          { value: "not-found", label: "No confirmed match", then: "Continues with a name search: the one already read when no matching identifiers were supplied, otherwise a further search." },
+        ] },
+      { id: "hire-date-needed", label: "Further hire-date lookup", reads: { nodeId: "match-outcome", fieldPath: "shouldLookup" },
+        nodeIds: ["match-outcome"], initial: { by: "identifier-result", values: { ambiguous: "true" }, otherwise: "false" }, outcomes: [
+          { value: "false", label: "No further name search", then: "Continues with the confirmed match, or with the name search already read.",
+            when: [{ "identifier-result": ["found", "not-found"] }] },
+          { value: "true", label: "Identifier match unresolved", then: "Searches all departments by name to corroborate the approved hire date.",
+            when: [{ "identifier-result": ["ambiguous", "not-found"] }] },
+        ] },
+    ],
   } as const
 });
 type I9Author = WorkflowAuthor<typeof I9CheckInput>;
