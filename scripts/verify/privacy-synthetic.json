@@ -68,6 +68,7 @@
     "src/workflows/separations/steps/kronos-timecard/step.ts",
     "src/workflows/separations/steps/kuali-extraction/step.ts",
     "src/workflows/separations/steps/kuali-finalization/step.ts",
+    "src/workflows/separations/steps/reference-check/step.ts",
     "src/workflows/separations/steps/ucpath-transaction/step.ts",
     "src/workflows/work-study/steps/ucpath-auth/step.ts",
     "src/workflows/work-study/workflow.ts"

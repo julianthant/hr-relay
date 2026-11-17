@@ -1,4 +1,4 @@
-import { WorkbookImportRequestSchema, WorkbookImportResultSchema, decodeEditableWorkbook, encodeEditableWorkbook, EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperation, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookSnapshotSchema, RunWorkbookSnapshotReferenceSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
+import { WorkbookImportResultSchema, decodeEditableWorkbook, encodeEditableWorkbook, EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperation, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookSnapshotSchema, RunWorkbookSnapshotReferenceSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
@@ -16,6 +16,7 @@ import { workbookKey, workbookMatches } from "./master-changes.js";
 import { projectWorkbookCompatibility, workbookFieldCoverage, WorkbookActiveSnapshotRequestSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema, type WorkflowWorkbookSelectionRecord, type WorkbookLibraryActionRecord, type WorkbookLibraryActionResult, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema, type WorkflowWorkbookRequirementInput } from "../../models/dashboard/workbook-library.js";
 import { MAX_SELECTED_WORKBOOK_SOURCES, MAX_WORKBOOK_GRID_CELLS, MAX_WORKBOOK_POPULATED_CELLS, populatedSpreadsheetValue } from "../../rules/spreadsheets/workbook-size.js";
 import type { EditableWorkbookWire } from "../../models/dashboard/workbooks.js";
+import { WorkbookCloneRequestSchema, WorkbookLocalImportRequestSchema, WorkbookSharePointImportRequestSchema } from "../../models/dashboard/workbook-library.js";
 
 export interface WorkbookLibraryRepository {
   lastUsed(workflowId: string): WorkflowWorkbookSelectionRecord | undefined;
@@ -238,12 +239,22 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     if (record === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
     return record;
   };
-  const withDownloadedWorkbook = <T>(libraryId: string, operationId: string, signal: AbortSignal, use: (workbook: EditableWorkbookWire) => T): Promise<T> => {
-    const record = read(libraryId), link = deps.repository.metadata(libraryId).sharePoint;
-    if (link === null) throw new WorkbookLibraryError('WORKBOOK_SYNC_LINK_REQUIRED');
-    if (record.workbook.hasFormulas || record.workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
-    signal.throwIfAborted();
-    return deps.sync.withDownload({ libraryId, operationId, expectedVersion: record.version, link, signal }, async (downloaded, scope) => {
+  const assertNameAvailable = (name: string) => {
+    if (deps.repository.catalog().some(entry => entry.name.trim().toLowerCase() === name.trim().toLowerCase()))
+      throw new WorkbookLibraryError('WORKBOOK_NAME_EXISTS');
+  };
+  const importLocalWorkbook = (workbook: z.infer<typeof EditableWorkbookSchema>, tags: readonly string[] = [], libraryId = randomUUID()) => {
+    if (workbook.libraryId !== undefined) throw new WorkbookLibraryError('WORKBOOK_INVALID');
+    const now = deps.clock.now().toISOString();
+    const record = deps.repository.create(input(SavedWorkbookSchema, { libraryId, version: 1, createdAt: now, savedAt: now,
+      workbook: { ...workbook, libraryId } }), { kind: 'local' });
+    if (tags.length > 0) deps.repository.libraryAction(libraryId, { operationId: randomUUID(), expectedVersion: 1, expectedRevision: 1,
+      change: { kind: 'set-tags', tags } }, now);
+    return WorkbookImportResultSchema.parse({ workbook: encodeSavedWorkbook(record) });
+  };
+  const withImportedDownload = <T>(command: WorkbookSyncCommand, use: (workbook: z.infer<typeof EditableWorkbookSchema>) => T): Promise<T> => {
+    command.signal.throwIfAborted();
+    return deps.sync.withDownload(command, async (downloaded, scope) => {
       scope.assertCurrent();
       const { importWorkbook } = await import('../../rules/spreadsheets/workbook-io.js');
       scope.assertCurrent();
@@ -252,10 +263,17 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       });
       scope.assertCurrent();
       if (workbook.hasFormulas || workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
-      signal.throwIfAborted();
+      command.signal.throwIfAborted();
       scope.signal.throwIfAborted();
-      return use(encodeSavedWorkbook({ ...record, workbook: { ...workbook, name: record.workbook.name, libraryId } }).workbook);
+      return use(input(EditableWorkbookSchema, workbook));
     });
+  };
+  const withDownloadedWorkbook = <T>(libraryId: string, operationId: string, signal: AbortSignal, use: (workbook: EditableWorkbookWire) => T): Promise<T> => {
+    const record = read(libraryId), link = deps.repository.metadata(libraryId).sharePoint;
+    if (link === null) throw new WorkbookLibraryError('WORKBOOK_SYNC_LINK_REQUIRED');
+    if (record.workbook.hasFormulas || record.workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
+    return withImportedDownload({ libraryId, operationId, expectedVersion: record.version, link, signal }, workbook =>
+      use(encodeSavedWorkbook({ ...record, workbook: { ...workbook, name: record.workbook.name, libraryId } }).workbook));
   };
   return Object.freeze({
     compatibility(workflows: readonly WorkbookReferenceWorkflow[]) {
@@ -265,12 +283,31 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       return projectWorkbookResults(deps.repository.catalog(), deps.resultRun);
     },
     importWorkbook(value: unknown) {
-      const request = input(WorkbookImportRequestSchema, value), workbook = decodeEditableWorkbook(request.workbook);
-      if (workbook.libraryId !== undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-      const libraryId = randomUUID(), now = deps.clock.now().toISOString();
-      const record = deps.repository.create(input(SavedWorkbookSchema, { libraryId, version: 1, createdAt: now, savedAt: now, workbook: { ...workbook, libraryId } }),
-        { kind: 'local' });
-      return WorkbookImportResultSchema.parse({ workbook: encodeSavedWorkbook(record) });
+      const request = input(WorkbookLocalImportRequestSchema, value), workbook = decodeEditableWorkbook(request.workbook);
+      return importLocalWorkbook(workbook, request.tags);
+    },
+    async importSharePoint(value: unknown, signal: AbortSignal) {
+      const request = input(WorkbookSharePointImportRequestSchema, value);
+      assertNameAvailable(request.name);
+      const libraryId = randomUUID(), operationId = randomUUID();
+      const link = { url: request.url, verifiedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()) };
+      return withImportedDownload({ libraryId, operationId, expectedVersion: 1, link, signal }, workbook => {
+        assertNameAvailable(request.name);
+        importLocalWorkbook({ ...workbook, name: request.name }, request.tags, libraryId);
+        const apply = (change: z.infer<typeof WorkbookLibraryActionSchema>['change']) => deps.repository.libraryAction(libraryId,
+          { operationId: randomUUID(), expectedVersion: read(libraryId).version, expectedRevision: deps.repository.libraryState(libraryId).revision, change },
+          deps.clock.now().toISOString(), encodeEditableWorkbook({ ...workbook, name: request.name, libraryId }));
+        apply({ kind: 'link', url: request.url });
+        apply({ kind: 'sync' });
+        return WorkbookImportResultSchema.parse({ workbook: encodeSavedWorkbook(read(libraryId)) });
+      });
+    },
+    cloneWorkbook(libraryId: string, value: unknown) {
+      const request = input(WorkbookCloneRequestSchema, value);
+      read(libraryId);
+      assertNameAvailable(request.name);
+      const source = deps.repository.libraryVersion(libraryId);
+      return importLocalWorkbook(decodeEditableWorkbook({ ...source.workbook, libraryId: undefined, name: request.name }), request.tags);
     },
     catalog: () => deps.repository.catalog(),
     libraryVersion: (libraryId: string, versionId?: string) => deps.repository.libraryVersion(input(WorkbookIdSchema, libraryId), versionId === undefined ? undefined : input(WorkbookIdSchema, versionId)),

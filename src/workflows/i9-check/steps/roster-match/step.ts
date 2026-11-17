@@ -37,7 +37,7 @@ export function buildStep(author: I9Author, matched: ReturnType<typeof personMat
   const row = task(roster.task("retention-row", ReadRetentionRow, { replay: "always-rerun" }), [matched.initial, matched.initialSearch, search], ({ input, outputs }) => ({
     input, initial: outputs["match-outcome"].identity, search: input.person.useMatch ? outputs["name-search"] : outputs["initial-name-search"],
   }));
-  return { steps: [[rosterMatch, [row]]] as const, result: result(ReadRetentionRow.output, [row], ({ outputs }) => outputs["retention-row"]) };
+  return { row, steps: [[rosterMatch, [row]]] as const, result: result(ReadRetentionRow.output, [row], ({ outputs }) => outputs["retention-row"]) };
 }
 export const i9CheckRosterMatchDefinition = defineStep({
   group: rosterMatch, build: buildStep,

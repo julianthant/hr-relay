@@ -61,6 +61,7 @@ describe("start step selection", () => {
         ["identity-check", "required"],
         ["job-summary", "required"],
         ["kronos-timecard", "omittable"],
+        ["reference-check", "required"],
         ["ucpath-transaction", "omittable"],
         ["kuali-finalization", "omittable"],
       ],

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { describe, it, vi } from "vitest";
 import { buildBootstrap, type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
-import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { StorageAuthoritySummarySchema } from "../../../../src/models/storage/storage-status.js";
 import { projectWorkbookCompatibility } from "../../../../src/models/dashboard/workbook-library.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -15,14 +15,14 @@ vi.mock("node:fs", async importOriginal => ({
 
 describe("bootstrap storage authority contract", () => {
   it("requires authority and rejects removed status and restore fields", () => {
-    assert.equal(StorageHealthSummaryWireSchema.safeParse({}).success, false);
-    assert.equal(StorageHealthSummaryWireSchema.safeParse({ authority: "unknown" }).success, false);
+    assert.equal(StorageAuthoritySummarySchema.safeParse({}).success, false);
+    assert.equal(StorageAuthoritySummarySchema.safeParse({ authority: "unknown" }).success, false);
     for (const authority of ["healthy", "unavailable"]) {
-      assert.deepEqual(StorageHealthSummaryWireSchema.parse({ authority }), { authority });
+      assert.deepEqual(StorageAuthoritySummarySchema.parse({ authority }), { authority });
       for (const [field, value] of Object.entries({
         backup: "current", checkedAt: "2026-11-06T12:00:00.000Z",
         lastBackupAt: null, backupCheckedAt: null, restoreTarget: { state: "available" },
-      })) assert.equal(StorageHealthSummaryWireSchema.safeParse({ authority, [field]: value }).success, false, field);
+      })) assert.equal(StorageAuthoritySummarySchema.safeParse({ authority, [field]: value }).success, false, field);
     }
   });
 
@@ -30,7 +30,7 @@ describe("bootstrap storage authority contract", () => {
     const clock = manualClock(new Date("2026-11-06T13:00:00.000Z"));
     const authorityMeta = vi.fn(() => ({ schemaVersion: 27, authorityGeneration: 41 }));
     const deps = {
-      appVersion: "0.1.0", actorLabel: () => "Fixture Operator", clock, timeZone: "UTC", modules: [],
+      appVersion: "0.1.0", actorLabel: () => "Fixture Operator", clock, modules: [],
       descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), settingsSchemaHash: FingerprintSchema.parse("b".repeat(64)),
       projection: { generation: () => 1 }, authorityMeta,
       workbookCompatibility: workflows => projectWorkbookCompatibility(workflows, []), preflightReport: () => healthyDashboardPreflightReport(clock),
@@ -42,5 +42,22 @@ describe("bootstrap storage authority contract", () => {
     assert.deepEqual(buildBootstrap(deps).storage, { authority: "unavailable" });
     assert.equal(authorityMeta.mock.calls.length, 2);
     assert.equal(vi.mocked(readdirSync).mock.calls.length, 0);
+  });
+
+  it("serves the Pacific zone as the dashboard clock zone when the machine zone is not Pacific", () => {
+    const prior = process.env.TZ;
+    try {
+      process.env.TZ = "UTC";
+      const clock = manualClock(new Date("2026-11-06T13:00:00.000Z"));
+      const deps = {
+        appVersion: "0.1.0", actorLabel: () => "Fixture Operator", clock, modules: [],
+        descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), settingsSchemaHash: FingerprintSchema.parse("b".repeat(64)),
+        projection: { generation: () => 1 }, authorityMeta: () => ({ schemaVersion: 27, authorityGeneration: 41 }),
+        workbookCompatibility: workflows => projectWorkbookCompatibility(workflows, []), preflightReport: () => healthyDashboardPreflightReport(clock),
+      } satisfies BootstrapQueryDeps;
+      assert.deepEqual(buildBootstrap(deps).serverClock, { now: "2026-11-06T13:00:00.000Z", zone: "America/Los_Angeles" });
+    } finally {
+      if (prior === undefined) delete process.env.TZ; else process.env.TZ = prior;
+    }
   });
 });

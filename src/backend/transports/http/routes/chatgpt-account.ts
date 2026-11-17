@@ -5,14 +5,14 @@ import { ChatGptAccountError, type ChatGptAccountService, type ChatGptAuthorizat
 import { ChatGptCredentialError } from "../../../storage/configuration/chatgpt-credential-repository.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
 import { ChatGptAccountStatusSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptEmptyRequestSchema,
-  ChatGptOcrTestResultSchema, ChatGptSignInCompletionSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema,
+  ChatGptOcrTestResultSchema, ChatGptSignInCompletionSchema, ChatGptSignOutResultSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema,
   type ChatGptSignInCompletion } from "../../../../models/dashboard/chatgpt-account.js";
 import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
 import type { DashboardApp } from "./api-types.js";
 import type { ShellRouteDeps } from "./shell-types.js";
 import { wireError } from "./failure-status.js";
 
-export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "refreshAccount" | "signIn" | "readStatus">; readonly chatGptOcrTest?: ChatGptOcrTestService }
+export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "refreshAccount" | "signIn" | "signOut" | "readStatus">; readonly chatGptOcrTest?: ChatGptOcrTestService }
 function failure(error: unknown, dispatched = false, unknownCode: ErrorCatalogCode = "CHATGPT_AUTH_UNAVAILABLE") {
   const known = error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError;
   const code: ErrorCatalogCode = known ? error.code : unknownCode;
@@ -109,6 +109,18 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
       await current.authorization.cancel();
       return c.json(ChatGptCancelResultSchema.parse({ state: "cancelled", attemptId: current.id }));
     } catch (error) { return c.json(ChatGptCancelResultSchema.parse(failure(error, dispatched))); }
+  });
+  app.use("/api/v1/settings/chatgpt-account/sign-out", operatorMutationIngressGuard);
+  app.post("/api/v1/settings/chatgpt-account/sign-out", async c => {
+    c.header("Cache-Control", "no-store");
+    let dispatched = false;
+    try {
+      if (!ChatGptEmptyRequestSchema.safeParse(await c.req.json()).success) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
+      if (latest?.authorization.signingIn === true) throw new ChatGptAccountError("CHATGPT_AUTH_BUSY");
+      const accountService = service();
+      dispatched = true;
+      return c.json(ChatGptSignOutResultSchema.parse(await accountService.signOut()));
+    } catch (error) { return c.json(ChatGptSignOutResultSchema.parse(failure(error, dispatched))); }
   });
   app.use("/api/v1/settings/chatgpt-account/test-ocr", operatorMutationIngressGuard);
   app.post("/api/v1/settings/chatgpt-account/test-ocr", async c => {

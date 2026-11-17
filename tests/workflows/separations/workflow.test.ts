@@ -162,6 +162,12 @@ describe("workflow definition public equivalence characterization", () => {
             ]
           },
           {
+            key: "reference-check", label: "Check reference spreadsheets", nodes: [
+              { id: "reference-check", label: "Check reference spreadsheets" }, { id: "reference-stop", label: "Decide whether to ask before filing" },
+              { id: "reference-check-review", label: "Review the reference spreadsheets" },
+            ]
+          },
+          {
             key: "ucpath-transaction", label: "UCPath transaction", nodes: [
               { id: "pending-set", label: "Read Exact Pending Set" }, { id: "clear-pending", label: "Clear Pending Terminations" },
               { id: "file-termination", label: "File Termination" }, { id: "receipt", label: "Termination Receipt" },
@@ -204,6 +210,7 @@ describe("workflow definition public equivalence characterization", () => {
           { kind: "browser", namespace: "ucpath" },
           { kind: "browser", namespace: "new-kronos" },
           { kind: "headless", namespace: "workflow:separations" },
+          { kind: "headless", namespace: "workbooks" },
         ],
       },
       registryIndex: 1,
@@ -267,8 +274,11 @@ describe("workflow definition public equivalence characterization", () => {
         { id: "comparison", kind: "task", dependsOn: ["document", "plan", "subject", "job-summary", "name-search", "termination-type", "department-option", "employment", "dates"] },
         { id: "identity-approval", kind: "gate", dependsOn: ["comparison"], when: { kind: "is-true", of: { from: "node", nodeId: "comparison", path: "approvalRequired" } } },
         { id: "approval", kind: "task", dependsOn: ["comparison", "identity-approval"] },
+        { id: "reference-check", kind: "task", dependsOn: ["approval"], when: { kind: "is-present", of: { from: "reference", typeId: "reference-check" } } },
+        { id: "reference-stop", kind: "task", dependsOn: ["reference-check"], when: { kind: "is-present", of: { from: "reference", typeId: "reference-check" } } },
+        { id: "reference-check-review", kind: "gate", dependsOn: ["reference-stop"], when: { kind: "is-present", of: { from: "node", nodeId: "reference-stop", path: "ask" } } },
         { id: "pending-set", kind: "task", dependsOn: ["approval"] },
-        { id: "clear-pending", kind: "transaction", dependsOn: ["approval", "pending-set"], dryRun: "stop-after-prepare" },
+        { id: "clear-pending", kind: "transaction", dependsOn: ["approval", "pending-set", "reference-check-review"], dryRun: "stop-after-prepare" },
         { id: "file-termination", kind: "transaction", dependsOn: ["approval", "termination-type", "employment", "dates", "clear-pending"], dryRun: "stop-after-prepare" },
         { id: "receipt", kind: "task", dependsOn: ["approval", "dates", "file-termination"] },
         { id: "filing-presence", kind: "task", dependsOn: ["receipt"] },
@@ -295,6 +305,9 @@ describe("workflow definition public equivalence characterization", () => {
         { key: "comparison", nodeId: "comparison", label: "Identity Comparison", kind: "task", taskId: "workflow:separations/match-identity", conditional: false },
         { key: "identity-approval", nodeId: "identity-approval", label: "Identity Approval", kind: "gate", conditional: true },
         { key: "approval", nodeId: "approval", label: "Approval Check", kind: "task", taskId: "workflow:separations/verify-identity-approval", conditional: false },
+        { key: "reference-check", nodeId: "reference-check", label: "Check reference spreadsheets", kind: "task", taskId: "workbooks/verify-person", conditional: true },
+        { key: "reference-stop", nodeId: "reference-stop", label: "Decide whether to ask before filing", kind: "task", taskId: "workflow:separations/read-reference-stop", conditional: true },
+        { key: "reference-check-review", nodeId: "reference-check-review", label: "Review the reference spreadsheets", kind: "gate", conditional: true },
         { key: "pending-set", nodeId: "pending-set", label: "Read Exact Pending Set", kind: "task", taskId: "ucpath/read-pending-termination-set", conditional: false },
         { key: "clear-pending/prepare", nodeId: "clear-pending", label: "Clear Pending Terminations — prepare", kind: "prepare", taskId: "ucpath/stage-pending-termination-sweep", conditional: false },
         { key: "clear-pending/commit", nodeId: "clear-pending", label: "Clear Pending Terminations — commit", kind: "commit", taskId: "ucpath/delete-pending-terminations", conditional: false },
@@ -305,7 +318,8 @@ describe("workflow definition public equivalence characterization", () => {
         { key: "finalize-kuali/prepare", nodeId: "finalize-kuali", label: "Finalize Kuali Document — prepare", kind: "prepare", taskId: "kuali/stage-separation-finalization", conditional: false },
         { key: "finalize-kuali/commit", nodeId: "finalize-kuali", label: "Finalize Kuali Document — commit", kind: "commit", taskId: "kuali/save-separation-finalization", conditional: false },
       ],
-      gates: [{ nodeId: "identity-approval", label: "Identity Approval", statusKey: "awaitingIdentityApproval", resolvedBy: "operator" }],
+      gates: [{ nodeId: "identity-approval", label: "Identity Approval", statusKey: "awaitingIdentityApproval", resolvedBy: "operator" },
+        { nodeId: "reference-check-review", label: "Review the reference spreadsheets", statusKey: "awaitingReferenceCheckReview", resolvedBy: "operator" }],
       systems: ["kuali", "new-kronos", "ucpath"],
       requires: [],
       contracts: [
@@ -313,7 +327,7 @@ describe("workflow definition public equivalence characterization", () => {
         "workflow:separations/match-termination-type", "ucpath/search-person-org", "workflow:separations/match-separation-subject",
         "ucpath/read-job-summary", "workflow:separations/match-active-employment", "workflow:separations/match-department-option",
         "new-kronos/search-employee", "new-kronos/read-separation-timecard", "workflow:separations/read-separation-dates",
-        "workflow:separations/match-identity", "workflow:separations/verify-identity-approval", "ucpath/read-pending-termination-set",
+        "workflow:separations/match-identity", "workflow:separations/verify-identity-approval", "workbooks/verify-person", "workflow:separations/read-reference-stop", "ucpath/read-pending-termination-set",
         "ucpath/stage-pending-termination-sweep", "ucpath/delete-pending-terminations", "ucpath/stage-termination",
         "ucpath/create-termination", "workflow:separations/verify-termination-receipt", "ucpath/verify-termination-filing-present",
         "kuali/stage-separation-finalization", "kuali/save-separation-finalization",

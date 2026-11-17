@@ -14,9 +14,9 @@ const staging = load("staging");
 const production = load("production");
 const checks = load("checks");
 const filters = { shared: "true", unit: "false", integration: "false", architecture: "false" };
-const planFor = (workflow: "portable" | "release", extra: Record<string, unknown> = {}) => createCiPlan({
-  workflow, event: "pull_request", base: workflow === "portable" ? "staging" : "main",
-  head: workflow === "portable" ? "feature/test" : "staging", draft: false, filters, ...extra,
+const planFor = (workflow: "fast" | "portable" | "release", extra: Record<string, unknown> = {}) => createCiPlan({
+  workflow, event: "pull_request", base: workflow === "fast" ? "development" : workflow === "portable" ? "staging" : "main",
+  head: workflow === "fast" ? "feature/test" : workflow === "portable" ? "development" : "staging", draft: false, filters, ...extra,
 });
 const portableResults = { changes: { result: "success" }, lint: { result: "success" }, static: { result: "success" }, privacy: { result: "success" },
   ubuntu: { result: "success" }, integration: { result: "success" }, architecture: { result: "success" },
@@ -31,9 +31,74 @@ function job(workflow: string, name: string): string {
 }
 const jobNames = (workflow: string) => [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([\w-]+):$/gmu)].map(match => match[1]);
 
-function expression(value: string, needs: unknown, context: Record<string, unknown>): unknown {
+describe("development fast check", () => {
+  it("uses one shared check definition and a plain development gate without runner admission", () => {
+    const development = load("development");
+    expect(development).toContain("name: Development");
+    expect(development).toContain("run-name: ${{ github.event.pull_request.title }}");
+    expect(development).toContain("branches: [development]");
+    expect(development).not.toMatch(/\n {2}push:|workflow_dispatch:|ci-runners/u);
+    expect(development).toContain("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number }}");
+    expect(development).toContain("cancel-in-progress: true");
+    expect(jobNames(development)).toEqual(["checks", "development"]);
+    expect(job(development, "checks")).toContain("uses: ./.github/workflows/checks.yml");
+    expect(job(development, "checks")).toContain("kind: fast");
+    const gate = job(development, "development");
+    expect(gate).toContain("name: development");
+    expect(gate).toContain("needs: checks");
+    expect(gate).toContain("if: ${{ always() }}");
+    expect(gate).toContain('scripts/test/ci-plan.ts verify "$PLAN" "$RESULTS"');
+    expect(checks).toContain("value: ${{ jobs.changes.outputs.plan }}");
+    expect(checks).toContain("value: ${{ toJSON(jobs) }}");
+    expect(job(checks, "changes")).toContain("npm run names:check");
+  });
+
+  it.each([
+    { draft: false, markdown: false, count: 10 },
+    { draft: true, markdown: false, count: 7 },
+    { draft: false, markdown: true, count: 5 },
+  ])("starts $count runner jobs for draft=$draft markdown=$markdown", ({ draft, markdown, count }) => {
+    const plan = selectUsingAdapter("fast", "pull_request", "development", "feature/test",
+      { ...filters, shared: markdown ? "false" : "true" }, draft);
+    const needs = { changes: { result: "success", outputs: { plan: JSON.stringify(plan) } } };
+    const started = jobNames(checks).filter(name => {
+      const condition = job(checks, name).match(/^ {4}if: (.+)$/mu)?.[1];
+      return !condition || expression(condition, needs, {}, "fast");
+    });
+    expect(started).toEqual(["changes", ...(!draft ? ["lint"] : []), "static", "privacy", ...(!markdown ? ["ubuntu"] : [])]);
+    const runners = started.reduce((total, name) => total + (name === "ubuntu" ? plan.ubuntu.include.length : 1), 1);
+    expect(runners).toBe(count);
+    expect(runners).toBeLessThanOrEqual(10);
+    expect(plan.ubuntu.include.map(row => row.suite)).toEqual(markdown ? [] : draft
+      ? ["unit", "unit", "unit"] : ["unit", "unit", "unit", "architecture", "architecture"]);
+    for (const name of ["lint", "static", "privacy", "ubuntu"]) expect(job(checks, name)).toContain("needs: changes");
+  });
+
+  it("executes the development gate's proof shell, rejecting failures, cancellations and missing results", () => {
+    const development = load("development");
+    const skipped = { result: "skipped" };
+    for (const draft of [false, true]) {
+      const plan = planFor("fast", { draft });
+      const positive = { ...portableResults, lint: { result: draft ? "skipped" : "success" },
+        integration: skipped, architecture: skipped, macos: skipped, "unit-proofs": skipped,
+        unit: skipped, perf: skipped, smoke: skipped };
+      const run = (result: string, outcomes: Record<string, { result: string }>) => summary(development, "development", plan,
+        { checks: { result, outputs: { plan: JSON.stringify(plan), results: JSON.stringify(outcomes) } } });
+      expect(run("success", positive)).toBe("success");
+      for (const result of ["failure", "cancelled", "skipped"]) {
+        expect(run(result, positive)).toBe("failure");
+        expect(run("success", { ...positive, ubuntu: { result } })).toBe("failure");
+      }
+      const missing: Record<string, { result: string }> = { ...positive };
+      delete missing.static;
+      expect(run("success", missing)).toBe("failure");
+    }
+  });
+});
+
+function expression(value: string, needs: unknown, context: Record<string, unknown>, kind = "portable"): unknown {
   return runInNewContext(value.replace(/\$\{\{(.*?)\}\}/gu, "$1").replaceAll("needs.*.result", "Object.values(needs).map(need => need.result)").replace(/\.([\w]+-[\w-]+)/gu, '["$1"]'), {
-    needs, github: context, fromJSON: JSON.parse, toJSON: JSON.stringify, always: () => true, cancelled: () => false,
+    needs, github: context, inputs: { kind }, fromJSON: JSON.parse, toJSON: JSON.stringify, always: () => true, cancelled: () => false,
     contains: (items: unknown[], item: string) => items.includes(item),
   });
 }
@@ -45,9 +110,9 @@ function summary(workflow: string, name: string, plan: CiPlan, outcomes: Record<
   const body = job(workflow, name);
   const condition = body.match(/^ {4}if: (.+)$/mu)?.[1];
   assert.ok(condition);
-  if (!expression(condition, needs, context)) return "skipped";
+  if (!expression(condition, needs, context, plan.workflow)) return "skipped";
   const env = Object.fromEntries([...body.matchAll(/^ {10}([A-Z_]+): (.+)$/gmu)].map(([, key, value]) => [key,
-    value.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) => String(expression(code, needs, context))) ]));
+    value.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) => String(expression(code, needs, context, plan.workflow))) ]));
   const verify = [...body.matchAll(/^ {8}run: (.+)$/gmu)].map((match) => match[1]).find((line) => line.includes("ci-plan.ts verify"));
   const script = verify
     ?? body.match(/^ {8}run: \|\n((?: {10}[^\n]*\n|\n)+)/mu)?.[1]
@@ -61,7 +126,7 @@ function summary(workflow: string, name: string, plan: CiPlan, outcomes: Record<
   return result.status === 0 ? "success" : "failure";
 }
 
-function selectUsingAdapter(kind: "portable" | "release", event: string, base: string, head: string, selectedFilters: Record<string, string>, draft = false): CiPlan {
+function selectUsingAdapter(kind: "fast" | "portable" | "release", event: string, base: string, head: string, selectedFilters: Record<string, string>, draft = false): CiPlan {
   const source = job(checks, "changes").match(/ {8}id: select[\s\S]*? {10}script: \|\n((?: {12}[^\n]*\n|\n)+)/u)?.[1];
   assert.ok(source);
   const outputs: Record<string, string> = {};
@@ -161,41 +226,34 @@ describe("separate event and admitted proof workflows", () => {
     }
   });
 
-  it("defines two triggered workflows, each ending in one gate job", () => {
+  it("defines three triggered workflows, each ending in one gate job", () => {
     const stagingTrigger = staging.split("\npermissions:\n")[0];
     const productionTrigger = production.split("\npermissions:\n")[0];
     expect(stagingTrigger).toContain("run-name: ${{ github.event.pull_request.title || github.event.head_commit.message }}");
-    expect(stagingTrigger).toContain("push:\n    branches: [staging]\n    paths-ignore: ['docs/roadmap/**']");
+    expect(stagingTrigger).not.toMatch(/\n {2}push:|auto_merge_enabled/u);
     expect(stagingTrigger).toContain("pull_request:\n    branches: [staging]");
     const pullRequestTypes = stagingTrigger.match(/types:\s*\[([^\]]*)\]/u)?.[1] ?? "";
-    expect(pullRequestTypes.split(",").map((item) => item.trim())).toEqual(["opened", "edited", "synchronize", "reopened", "ready_for_review", "converted_to_draft", "auto_merge_enabled"]);
+    expect(pullRequestTypes.split(",").map((item) => item.trim())).toEqual(["opened", "edited", "synchronize", "reopened", "ready_for_review", "converted_to_draft"]);
     expect(stagingTrigger).not.toContain("workflow_dispatch:");
     expect(productionTrigger).toContain("run-name: ${{ github.event.pull_request.title || inputs.title }}");
     expect(productionTrigger).toContain("pull_request:\n    branches: [main]");
     expect(productionTrigger).toMatch(/workflow_dispatch:\n {4}inputs:\n {6}title:\n[^\n]*\n {8}required: true/u);
     expect(productionTrigger).toContain("push:\n    branches: [main]");
-    expect(load("merge-train").split("\non:\n")[1]?.split("\npermissions:")[0]).toBe(`  workflow_call:
-    inputs:
-      pr: {type: string, default: ""}
-      conclusion: {type: string, default: ""}
-    secrets:
-      TRAIN_TOKEN: {required: true}
-`);
     expect(job(staging, "checks")).toContain("uses: ./.github/workflows/checks.yml");
     expect(job(staging, "checks")).toContain("kind: portable");
     expect(job(production, "checks")).toContain("uses: ./.github/workflows/checks.yml");
     expect(job(production, "checks")).toContain("kind: release");
     expect(checks).not.toMatch(/uses: \.\/\.github\/workflows\//u);
     expect(checks).not.toMatch(/windows/iu);
-    expect(checks.split("\njobs:\n")[0]).not.toContain("outputs:");
+    expect(checks.split("\njobs:\n")[0]).toContain("value: ${{ toJSON(jobs) }}");
     expect(readdirSync(new URL("../../../.github/workflows", import.meta.url)).sort())
-      .toEqual(["checks.yml", "merge-train.yml", "production.yml", "staging.yml"]);
-    expect(jobNames(staging)).toEqual(["names", "checks", "staging", "train"]);
+      .toEqual(["checks.yml", "development.yml", "production.yml", "staging.yml"]);
+    expect(jobNames(staging)).toEqual(["names", "checks", "staging"]);
     expect(jobNames(production)).toEqual(["checks", "codeql", "dependencies", "production"]);
     expect(jobNames(checks)).toEqual(["changes", "lint", "static", "privacy", "ubuntu", "macos", "unit-proofs", "integration", "architecture", "perf", "smoke", "unit"]);
     expect(job(checks, "lint")).toContain("run: npm run lint");
     expect(job(checks, "lint")).toContain("working-directory: fast-duo");
-    expect(job(checks, "lint")).not.toMatch(/^ {4}if:/mu);
+    expect(job(checks, "lint")).toContain("if: ${{ fromJSON(needs.changes.outputs.plan).lint }}");
     expect(job(checks, "static")).toContain("run: npm run typecheck");
     expect(job(checks, "static")).not.toContain("npm run lint");
   });
@@ -256,7 +314,7 @@ describe("separate event and admitted proof workflows", () => {
   });
 
   it("executes each entry's actual shared selection adapter", () => {
-    expect(selectUsingAdapter("portable", "pull_request", "staging", "feature/test", filters)).toEqual(planFor("portable"));
+    expect(selectUsingAdapter("portable", "pull_request", "staging", "development", filters)).toEqual(planFor("portable"));
     expect(selectUsingAdapter("release", "pull_request", "main", "staging", filters)).toEqual(planFor("release"));
     expect(selectUsingAdapter("release", "pull_request", "main", "feature/other", filters).fullRelease).toBe(false);
     expect(selectUsingAdapter("release", "pull_request", "main", "hotfix/x", filters)).toEqual(planFor("release", { head: "hotfix/x" }));
@@ -264,7 +322,7 @@ describe("separate event and admitted proof workflows", () => {
     expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {})).toMatchObject({ perf: false, smoke: false });
     expect(selectUsingAdapter("release", "workflow_dispatch", "", "", {}).testJobs).toBe(40);
     expect(selectUsingAdapter("release", "pull_request", "main", "staging", { ...filters, shared: "false" }).testJobs).toBe(0);
-    expect(() => selectUsingAdapter("portable", "pull_request", "staging", "feature/test", {})).toThrow();
+    expect(() => selectUsingAdapter("portable", "pull_request", "staging", "development", {})).toThrow();
   });
 
   it("retains explicit budgets and complete inner/outer fences without nested admission", () => {
@@ -283,8 +341,6 @@ describe("separate event and admitted proof workflows", () => {
       expect(job(workflow, "unit").match(/actions\/checkout@v7/gu)).toHaveLength(1);
       expect(job(workflow, "unit").match(/run: npm ci/gu)).toHaveLength(1);
     }
-    expect(job(staging, "train")).toContain("needs: staging");
-    expect(job(staging, "train")).toContain("uses: ./.github/workflows/merge-train.yml");
     expect(job(checks, "unit")).toContain("needs: [changes, lint, static, privacy, ubuntu, integration, architecture, macos, unit-proofs, perf, smoke]");
     expect(job(checks, "unit")).not.toMatch(/^ {4}needs:.*\btimings\b/mu);
     expect(job(staging, "staging")).toContain("needs: [names, checks]");
@@ -402,49 +458,6 @@ describe("separate event and admitted proof workflows", () => {
     expect(summary(staging, "staging", plan, { names: { result }, checks: { result: "skipped" } }, pull)).toBe("failure");
   });
 
-  it("skips the staging gate for pushes only; enabling auto-merge runs and judges the proofs", () => {
-    const plan = planFor("portable");
-    const skipped = { names: { result: "skipped" }, checks: { result: "skipped" } };
-    expect(summary(staging, "staging", plan, skipped, { event_name: "push", event: {} })).toBe("skipped");
-    const enable = { event_name: "pull_request", event: { action: "auto_merge_enabled" } };
-    expect(summary(staging, "staging", plan, { names: { result: "success" }, checks: { result: "success" } }, enable)).toBe("success");
-    for (const result of ["failure", "cancelled"]) {
-      expect(summary(staging, "staging", plan, { names: { result: "success" }, checks: { result } }, enable)).toBe("failure");
-    }
-    expect(job(staging, "names")).not.toContain("auto_merge_enabled");
-  });
-});
-
-describe("merge train admission", () => {
-  it("starts from staging.yml after the gate, on a push and on auto-merge, with the same-repository fence", () => {
-    const train = job(staging, "train");
-    const condition = train.match(/^ {4}if: (.+)$/mu)?.[1];
-    assert.ok(condition);
-    const run = (event_name: string, repository: string, result: string): unknown => runInNewContext(condition.replace(/^\$\{\{\s*|\s*\}\}$/gu, ""), {
-      github: { event_name, repository: "julianthant/relay", event: { pull_request: { head: { repo: { full_name: repository } } } } },
-      cancelled: () => false, needs: { staging: { result } },
-    });
-    expect(run("push", "", "skipped")).toBe(true);
-    expect(run("pull_request", "julianthant/relay", "skipped")).toBe(true);
-    expect(run("pull_request", "julianthant/relay", "success")).toBe(true);
-    expect(run("pull_request", "someone/fork", "success")).toBe(false);
-    expect(train).toContain("pr: ${{ needs.staging.result != 'skipped' && github.event.pull_request.number || '' }}");
-    expect(train).toContain("conclusion: ${{ needs.staging.result != 'skipped' && needs.staging.result || '' }}");
-  });
-
-  it("selects only auto-merge PRs while retaining owner, repository and draft restrictions", () => {
-    const train = load("merge-train");
-    expect(train).toContain("--json number,isDraft,headRefOid,headRepositoryOwner,isCrossRepository,author,autoMergeRequest");
-    expect(train).toContain('.isDraft == false and .isCrossRepository == false and .author.login == "julianthant"');
-    expect(train).toContain('.headRepositoryOwner.login == "${{ github.repository_owner }}" and .autoMergeRequest != null');
-    const condition = job(train, "train").match(/^ {4}if: (.+)$/mu)?.[1];
-    assert.ok(condition);
-    for (const event_name of ["push", "pull_request"]) {
-      expect(runInNewContext(condition, { github: { event_name, repository: "julianthant/relay", event: {
-        pull_request: { user: { login: "julianthant" }, head: { repo: { full_name: "julianthant/relay" } } },
-      } } })).toBe(true);
-    }
-  });
 });
 
 describe("shared timing discovery adapters", () => {
@@ -477,18 +490,16 @@ describe("per-PR cancellation with complete FIFO pipelines", () => {
     expect(key(undefined, "refs/heads/staging", "")).toBe(`ci-${name}-refs/heads/staging`);
     expect(key(90, "refs/pull/90/merge")).not.toBe(key(91, "refs/pull/91/merge"));
     expect(key(undefined, "refs/heads/staging", "")).not.toBe(key(undefined, "refs/heads/other", ""));
-    if (source === staging) expect(key(90, "refs/pull/90/merge", "auto_merge_enabled")).toBe(key(90, "refs/pull/90/merge"));
     const cancel = header.match(/^ {2}cancel-in-progress: (.+)$/mu)?.[1];
     assert.ok(cancel);
     const cancels = (event_name: string, action: string): unknown => runInNewContext(cancel.replace(/^\$\{\{\s*|\s*\}\}$/gu, ""), { github: { event_name, event: { action } } });
     expect(cancels("pull_request", "synchronize")).toBe(true);
     if (source === staging) {
-      expect(cancels("pull_request", "auto_merge_enabled")).toBe(true);
       expect(cancels("push", "")).toBe(false);
     }
   });
 
-  it.each([staging, production])("queues the transitive whole proof pipeline while keeping train outside", source => {
+  it.each([staging, production])("queues the transitive whole proof pipeline through the shared final proof", source => {
     const admitted = job(source, "checks");
     expect(admitted).toContain(source === staging ? "group: ci-runners" : "group: release-runners");
     if (source === production) expect(admitted).not.toContain("group: ci-runners");
@@ -520,7 +531,7 @@ describe("cancelled admitted source work", () => {
     const condition = (body: string, cancelled: boolean) => {
       const code = body.match(/^ {4}if: \$\{\{ (.+) \}\}$/mu)?.[1];
       assert.ok(code);
-      return Boolean(runInNewContext(code, { cancelled: () => cancelled, always: () => true, github: { event_name: "pull_request", event: { action: "synchronize" } } }));
+      return Boolean(runInNewContext(code, { cancelled: () => cancelled, always: () => true, inputs: { kind: name === "staging" ? "portable" : "release" }, github: { event_name: "pull_request", event: { action: "synchronize" } } }));
     };
     expect(inner).toContain("uses: actions/checkout@v7");
     expect(inner).toContain("run: npm ci");

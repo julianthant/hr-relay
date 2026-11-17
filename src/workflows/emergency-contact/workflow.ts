@@ -7,15 +7,17 @@ import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js
 import { PositiveIntSchema } from "../../rules/identity/ids.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { EMERGENCY_CONTACT_SCENARIOS } from "../emergency-contact-member/workflow.js";
+import { REFERENCE_CHECK } from "../../models/processing/workbooks/verify-person.js";
 
 const UNNAMED_PDF_TITLE = "Emergency Contact PDF";
 
 export const emergencyContactWorkflow = defineWorkflow({
   id: "emergency-contact", version: 1, code: "ec", label: "Emergency Contact", icon: "Users", category: "documents",
   summary: "Reads and releases a PDF, then delegates exactly its approved records for primary contact previews.",
-  requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] }, input: EmergencyContactInputSchema, canonicalInput: EmergencyContactCanonicalInput,
+  requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] }, workbookCheck: REFERENCE_CHECK, input: EmergencyContactInputSchema, canonicalInput: EmergencyContactCanonicalInput,
   inputSubject: "document", surface: { shape: "operation" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
-  surfaces: { uploadRun: { title: { segments: [{ kind: "literal", text: "Emergency Contact PDFs" }] }, fields: [],
+  surfaces: { uploadRun: { title: { segments: [{ kind: "literal", text: "Emergency Contact PDFs" }] },
+    fields: [{ kind: "select", field: "onbaseFiling", label: "File to OnBase", required: true, options: [{ value: "file", label: "File" }, { value: "skip", label: "Do not file" }] }],
     pdfInput: { documentField: "document", fileNameField: "fileName", readingIdField: "readingId", fixed: { roster: null, reading: { kind: "subscription" } } },
     accepts: [{ mediaType: "application/pdf", extensions: [".pdf"], maxBytes: PositiveIntSchema.parse(25 * 1024 * 1024) }],
     successMessage: { segments: [{ kind: "literal", text: "PDFs attached for Emergency Contact runs." }] } } }, details: [], role: defineWorkflowRole({ kind: "composition" }),

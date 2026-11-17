@@ -6,8 +6,7 @@ import { join } from "node:path";
 import { afterEach,describe,expect,it,vi } from "vitest";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { inspectRestoreEligibility,inspectStorageRecovery } from "../../../../src/backend/storage/sqlite/storage-recovery-status.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { inspectStorageRecovery,recoveryInspectionOf } from "../../../../src/backend/storage/sqlite/storage-recovery-status.js";
 const faults=vi.hoisted(()=>({root:"",listings:0,onList:undefined as (()=>void) | undefined,onFstat:undefined as (()=>void) | undefined,stageDescriptor:undefined as number | undefined}));
 vi.mock("node:fs",async()=>{
   const actual=await vi.importActual<typeof import("node:fs")>("node:fs");
@@ -46,16 +45,18 @@ function fixture(ownedOperation = false) {
   return {root,admission,observer,identity,staged,read:()=>inspectStorageRecovery(observer,identity)};
 }
 describe("native recovery evidence inventory",()=>{
-  it.each([8,9,10,11,12,13,14,15,CURRENT_AUTHORITY_SCHEMA_VERSION])("keeps supported person backup schema %s eligible behind current authority",schemaVersion=>{
-    const f=fixture();
-    const input={schemaVersion,backupPath:join(f.root,"backup.sqlite"),backupSha256:"a".repeat(64),stateRoot:f.root,authorityAvailable:true};
-    expect(inspectRestoreEligibility(f.admission,input)).toEqual({state:"eligible"});
-    expect(inspectRestoreEligibility(f.admission,{...input,authorityAvailable:false}).state).toBe("unavailable");
-    f.admission.release();expect(()=>inspectRestoreEligibility(f.admission,input)).toThrow(/released/u);
-  });
-  it.each([1,6,7,CURRENT_AUTHORITY_SCHEMA_VERSION+1])("keeps unsupported backup schema %s ineligible",schemaVersion=>{
-    const f=fixture();
-    expect(inspectRestoreEligibility(f.admission,{schemaVersion,backupPath:join(f.root,"backup.sqlite"),backupSha256:"a".repeat(64),stateRoot:f.root,authorityAvailable:true}).state).toBe("unsupported");
+  const interrupted={marker:"authority-restore" as const,state:"interrupted" as const},unowned={marker:"unowned-recovery-entry" as const,state:"unavailable" as const};
+  it.each([
+    ["no findings","inspected",[],{state:"clear"}],
+    ["owned findings","inspected",[interrupted],{state:"interrupted",findings:[interrupted]}],
+    ["any unavailable finding","inspected",[interrupted,unowned],{state:"unavailable",findings:[interrupted,unowned],
+      cause:{code:"authority-unavailable",summary:"Recovery evidence is unsafe or has no current owner. Preserve it before recovery."}}],
+    ["a failed inspection","failed",[interrupted],{state:"unavailable",findings:[interrupted],
+      cause:{code:"authority-unavailable",summary:"Recovery evidence could not be inspected safely. Preserve it before recovery."}}],
+    ["evidence that changed between the doctor's two inspections","changed",[],{state:"unavailable",findings:[],
+      cause:{code:"authority-unavailable",summary:"Recovery evidence changed during inspection. Run the doctor again before deciding recovery."}}],
+  ] as const)("derives the recovery inspection from %s",(_label,inspection,findings,expected)=>{
+    expect(recoveryInspectionOf({inspection,findings})).toEqual(expected);
   });
   it("reports clear only behind admitted live ownership and exact source identity",()=>{
     const f=fixture();expect(f.read().report.state).toBe("clear");
