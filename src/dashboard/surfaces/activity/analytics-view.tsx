@@ -2,9 +2,9 @@ import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-rea
 import { Fragment, useState, type CSSProperties } from "react";
 import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
 import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, SegmentedChoice, dsIcon } from "../../ds/ui.js";
-import { ChartHeading, KeyFigures, LineChart, StackedBars } from "./analytics-charts.js";
+import { ChartHeading, KeyFigures, LineChart, StackedBars, countScale } from "./analytics-charts.js";
 import type { ActivityDateRange } from "./activity-model.js";
-import { analyticsBuckets, analyticsClock, analyticsPeriodLabel, finished, shiftDate, shiftRange, type AnalyticsData, type AnalyticsWorkflow } from "./analytics-model.js";
+import { analyticsBuckets, analyticsClock, analyticsPeriodLabel, bucketCounts, finished, shiftDate, shiftRange, type AnalyticsData, type AnalyticsWorkflow } from "./analytics-model.js";
 
 const QUICK = [{ value: "7d", label: "7d" }, { value: "30d", label: "30d" }, { value: "90d", label: "90d" }] as const;
 type Quick = (typeof QUICK)[number]["value"];
@@ -38,7 +38,7 @@ export function AnalyticsToolbar({ range, today, onRange, workflows, workflow, o
   </>;
 }
 
-/** Runs, Workflows, Time and Why runs failed, for the selected period, on served data. */
+/** Runs, Workflows, Time, Why runs failed, and the assistant's Messages, Tools used and Actions, for the selected period, on served data. */
 export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns }: {
   data: AnalyticsData; range: ActivityDateRange; workflow: string; onRange: (range: ActivityDateRange) => void; onOpenRuns?: (workflowId: string) => void;
 }) {
@@ -53,6 +53,10 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns }
   const top = Math.max(60, Math.ceil(longest / 60) * 60);
   const typical = workflow === "all" ? data.typicalSeconds : shown[0]?.typicalSeconds ?? null;
   const reasons = data.reasons.filter(reason => workflow === "all" || shown.some(row => row.label === reason.workflow));
+  const messages = bucketCounts(buckets, data.assistant.messages), proposed = bucketCounts(buckets, data.assistant.actions.map(row => ({ date: row.date, count: row.proposed })));
+  const messageTotal = messages.reduce((n, value) => n + value, 0), proposedTotal = proposed.reduce((n, value) => n + value, 0);
+  const noun = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+  const messageScale = countScale(Math.max(0, ...messages));
   const toggle = (id: string) => setOpen(current => { const next = new Set(current); if (!next.delete(id)) next.add(id); return next; });
   return <div className="ds-body-stack mt-2">
     <BodySection title="Runs" description={`${totals.done + totals.failed} finished runs${workflow === "all" ? ` · ${data.running} still open` : ""}`}>
@@ -97,5 +101,19 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns }
     {reasons.length > 0 && <BodySection title="Why runs failed" description="Failed runs in this period.">
       <RunList label="Why runs failed">{reasons.map(reason => <RunListRow key={`${reason.workflow}:${reason.label}`} title={reason.label} description={reason.workflow}><span className="text-[13px] tabular-nums">{reason.runs}</span></RunListRow>)}</RunList>
     </BodySection>}
+    <BodySection title="Messages" description="Messages sent to the assistant each day.">
+      {messageTotal === 0 ? <p className="m-0 text-body text-ui-secondary">No messages in this period</p> :
+      <LineChart label="Messages per day" days={days} series={[{ id: "messages", label: "Messages", color: "var(--chart-1)", values: messages }]} ticks={messageScale.ticks} top={messageScale.top} format={String}
+        summary={index => noun(messages[index] ?? 0, "message", "messages")} header={<ChartHeading label="Messages" value={String(messageTotal)} />} />}
+    </BodySection>
+    <BodySection title="Tools used" description="Tools the assistant called each day.">
+      <p className="m-0 text-body text-ui-secondary">Tool calls are not recorded yet.</p>
+    </BodySection>
+    <BodySection title="Actions" description="Actions the assistant proposed each day.">
+      {proposedTotal === 0 ? <p className="m-0 text-body text-ui-secondary">No actions proposed in this period</p> :
+      <StackedBars label="Proposed actions per day" days={days} unit={["action", "actions"]} series={[{ id: "proposed", label: "Proposed", color: "var(--chart-1)", values: proposed }]}
+        header={<ChartHeading label="Proposed actions" value={String(proposedTotal)} />} />}
+      <p className="m-0 mt-2 text-[12px] leading-4 text-ui-secondary">Approvals are not recorded yet.</p>
+    </BodySection>
   </div>;
 }
