@@ -283,7 +283,7 @@ launch imports and content-addressed loading; `guards-and-tests.md` owns its cac
 
 | Behavior | Test owner |
 | --- | --- |
-| Committed write-recovery refusal | `tests/backend/runtime/writes/write-recovery.committed-refusal.integration.test.ts` |
+| Committed write-resolution refusal | `tests/backend/runtime/writes/write-recovery.committed-refusal.integration.test.ts` |
 | Dashboard rerun launch | `tests/dashboard/surfaces/run-start/run-launch.rerun.integration.test.ts` |
 | Executor snapshot refusal | `tests/backend/runtime/execution/run-executor.snapshot-refusal.integration.test.ts` |
 
