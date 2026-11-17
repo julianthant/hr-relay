@@ -108,4 +108,13 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(document.querySelector('[role="dialog"]') !== null, true); assert.equal(text().includes(formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text), true, "missing binding shows fixed authority feedback");
   });
 
+  it("a failed readiness check keeps Rerun's Start off on Checks", async () => {
+    const h = await setup(); const source = await h.completeSource();
+    const failing = { state: "present", report: { configFingerprint: "a".repeat(64), descriptorFingerprint: "a".repeat(64), checkedAt: "2026-08-26T21:00:00.000Z", requestedCapabilities: ["dashboard.serve"],
+      results: [{ status: "fail", check: "secrets.ucpath-sso", summary: "The UCPath password is missing.", blocks: ["dashboard.serve"], remediation: "Add it." }] } };
+    const client = { ...h.client, readPreflight: async () => failing } as unknown as typeof h.client;
+    await mount(h, source, client); await press("Continue"); await press("Confirm"); await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
+    for (let wait = 0; wait < 20 && !text().includes("Add password"); wait += 1) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+    assert.ok(text().includes("The UCPath password is missing.")); assert.equal(button("Start dry run").disabled, true); assert.equal(h.finalCommands.length, 0);
+  });
 });
