@@ -76,25 +76,27 @@ it("derives the journal state, its schema, latest forward upgrade and evidence c
 const EVENTS = {
   initialize: { type: "initialize" },
   "forward from 20": { type: "forward-upgrade", from: 20 },
-  "forward from 7": { type: "forward-upgrade", from: 7 },
+  "forward from 1": { type: "forward-upgrade", from: 1 },
+  "forward from 0": { type: "forward-upgrade", from: 0 },
   "forward from current": { type: "forward-upgrade", from: CURRENT },
   "convert profile-name-domain": { type: "convert-evidence", id: "profile-name-domain" },
   "convert retired-input-generation": { type: "convert-evidence", id: "retired-input-generation" },
 } satisfies Record<string, AuthorityUpgradeJournalEvent>;
 type Expected = "baseline" | "settled" | `!${AuthorityUpgradeRefusal}`;
-type Row = readonly [initialize: Expected, from20: Expected, from7: Expected, fromCurrent: Expected, nameDomain: Expected, retired: Expected];
+type Row = readonly [initialize: Expected, from20: Expected, from1: Expected, from0: Expected, fromCurrent: Expected, nameDomain: Expected, retired: Expected];
 
 // Columns follow EVENTS. The journal only appends: `baseline` or `settled` is the phase of the appended row.
 const TABLE: Record<Journal, Row> = {
-  empty: ["baseline", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable"],
-  "baseline at current": ["!already-initialized", "settled", "!not-upgradeable", "!not-upgradeable", "settled", "settled"],
-  "baseline at 20": ["!already-initialized", "settled", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable"],
-  "settled at current": ["!already-initialized", "settled", "!not-upgradeable", "!not-upgradeable", "settled", "settled"],
-  "settled at 22": ["!already-initialized", "settled", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable"],
-  "settled with startup logout": ["!already-initialized", "settled", "!not-upgradeable", "!not-upgradeable", "settled", "settled"],
-  "settled with one evidence conversion": ["!already-initialized", "settled", "!not-upgradeable", "!not-upgradeable", "!evidence-schema-conversion-duplicate", "settled"],
-  "settled with both evidence conversions": ["!already-initialized", "settled", "!not-upgradeable", "!not-upgradeable", "!evidence-schema-conversion-duplicate", "!evidence-schema-conversion-duplicate"],
-  "evidence after a startup logout": ["!already-initialized", "settled", "!not-upgradeable", "!not-upgradeable", "settled", "!evidence-schema-conversion-duplicate"],
+  // A stopped store from before the baseline row upgrades with an empty journal.
+  empty: ["baseline", "settled", "settled", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable"],
+  "baseline at current": ["!already-initialized", "settled", "settled", "!not-upgradeable", "!not-upgradeable", "settled", "settled"],
+  "baseline at 20": ["!already-initialized", "settled", "settled", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable"],
+  "settled at current": ["!already-initialized", "settled", "settled", "!not-upgradeable", "!not-upgradeable", "settled", "settled"],
+  "settled at 22": ["!already-initialized", "settled", "settled", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable", "!not-upgradeable"],
+  "settled with startup logout": ["!already-initialized", "settled", "settled", "!not-upgradeable", "!not-upgradeable", "settled", "settled"],
+  "settled with one evidence conversion": ["!already-initialized", "settled", "settled", "!not-upgradeable", "!not-upgradeable", "!evidence-schema-conversion-duplicate", "settled"],
+  "settled with both evidence conversions": ["!already-initialized", "settled", "settled", "!not-upgradeable", "!not-upgradeable", "!evidence-schema-conversion-duplicate", "!evidence-schema-conversion-duplicate"],
+  "evidence after a startup logout": ["!already-initialized", "settled", "settled", "!not-upgradeable", "!not-upgradeable", "settled", "!evidence-schema-conversion-duplicate"],
 };
 
 const answerOf = (transition: AuthorityUpgradeTransition): Expected => "append" in transition ? transition.append : `!${transition.refused}`;

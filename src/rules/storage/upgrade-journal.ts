@@ -1,5 +1,5 @@
 import type { AuthorityEvidenceSchemaUpgradeRecord, AuthorityForwardUpgradeRecord, AuthorityUpgradeRecord } from "../../models/config/authority.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS } from "../../models/config/authority-schema-versions.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS } from "../../models/config/authority-schema-versions.js";
 import type { EvidenceSchemaConversion } from "../../models/storage/evidence-schema-admission.js";
 
 /** One authority store's upgrade journal, derived from its append-only `database_upgrades` rows. */
@@ -38,17 +38,18 @@ export function authorityUpgradeJournalOf(records: readonly AuthorityUpgradeReco
   return { journal: "settled", schemaVersion: last.toSchemaVersion, latestForward, evidence };
 }
 
-const isUpgradeable = (version: number) => UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.some(upgradeable => upgradeable === version);
+/** Every supported stopped schema, including the unbound 1 through 7, upgrades straight to the current schema. */
+const isUpgradeable = (version: number) => SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(stopped => stopped === version);
 
 /**
- * Which row an event appends. A forward upgrade's source is the store's stopped schema, which the writer reads;
- * evidence conversion runs only at the current schema and records each conversion once.
+ * Which row an event appends. A forward upgrade's source is the store's stopped schema, which the writer reads, whatever
+ * the journal holds; evidence conversion runs only at the current schema and records each conversion once.
  */
 export function authorityUpgradeTransition(state: AuthorityUpgradeJournalState, event: AuthorityUpgradeJournalEvent): AuthorityUpgradeTransition {
   if (event.type === "initialize") return state.journal === "empty" ? { append: "baseline" } : { refused: "already-initialized" };
-  if (state.journal === "empty") return { refused: "not-upgradeable" };
+  // Stopped stores from before the baseline row have an empty journal and still upgrade.
   if (event.type === "forward-upgrade") return isUpgradeable(event.from) ? { append: "settled" } : { refused: "not-upgradeable" };
-  if (state.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) return { refused: "not-upgradeable" };
+  if (state.journal === "empty" || state.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) return { refused: "not-upgradeable" };
   if (state.journal === "settled" && state.evidence.some(record => record.evidenceSchemas.id === event.id)) return { refused: "evidence-schema-conversion-duplicate" };
   return { append: "settled" };
 }
