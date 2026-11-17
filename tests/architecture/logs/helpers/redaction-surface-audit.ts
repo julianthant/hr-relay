@@ -966,13 +966,13 @@ const COMPATIBILITY_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
     ...[
-      "options[].id", "options[].label", "options[].choices[].value", "options[].choices[].label", "options[].initial", "options[].initial.by",
-      "options[].initial.otherwise", "options[].initial.values", "options[].when", "sessions[].when", "sources",
-      "steps[].id", "steps[].title", "steps[].when", "steps[].description[].text", "steps[].description[].when", "steps[].checks[].text", "steps[].checks[].when",
-      "steps[].blocks[].id", "steps[].blocks[].title", "steps[].blocks[].target", "steps[].blocks[].label", "steps[].blocks[].initial", "steps[].blocks[].when",
-      "steps[].blocks[].rows[].id", "steps[].blocks[].rows[].label", "steps[].blocks[].rows[].source", "steps[].blocks[].rows[].when",
-      "steps[].blocks[].rows[].value", "steps[].blocks[].rows[].value.by", "steps[].blocks[].rows[].value.otherwise", "steps[].blocks[].rows[].value.values",
-      "steps[].blocks[].outcomes[].value", "steps[].blocks[].outcomes[].label", "steps[].blocks[].outcomes[].then", "steps[].blocks[].outcomes[].when",
+      "options[].choices[].label", "options[].choices[].value", "options[].id", "options[].initial", "options[].initial.by", "options[].initial.otherwise",
+      "options[].initial.values", "options[].label", "options[].when[]", "sessions[].when[]", "sources", "steps[].blocks[].id",
+      "steps[].blocks[].initial", "steps[].blocks[].initial.by", "steps[].blocks[].initial.otherwise", "steps[].blocks[].initial.values", "steps[].blocks[].label", "steps[].blocks[].outcomes[].label",
+      "steps[].blocks[].outcomes[].then", "steps[].blocks[].outcomes[].value", "steps[].blocks[].outcomes[].when[]", "steps[].blocks[].rows[].id", "steps[].blocks[].rows[].label", "steps[].blocks[].rows[].source",
+      "steps[].blocks[].rows[].value", "steps[].blocks[].rows[].value.by", "steps[].blocks[].rows[].value.otherwise", "steps[].blocks[].rows[].value.values", "steps[].blocks[].rows[].when[]", "steps[].blocks[].target",
+      "steps[].blocks[].title", "steps[].blocks[].when[]", "steps[].checks[].text", "steps[].checks[].when[]", "steps[].description[].text", "steps[].description[].when[]",
+      "steps[].id", "steps[].title", "steps[].when[]",
     ].map(path => ({ surface: "wire/workflow-explorer", path: `workflows[].reviewSpec.${path}`, origin: "repository-authored" })),
     ...([
       ["wire/run-detail", "decision."], ["wire/run-detail", "gate.decision."], ["wire/run-detail-section", "payload.decision."],

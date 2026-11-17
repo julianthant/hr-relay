@@ -99,7 +99,7 @@ Paths in this table are relative to `src/backend/`.
 | `runs/lifecycle/startup-crash-recovery.ts` | Startup process-closure receipts, dead-worker run reconciliation and previous-day pristine queue cancellation before work admission. |
 | `runs/` | Commands, start plans, lifecycle, recovery, queries, projections, exports, provenance, notifications, settings, explanation, and trust readers. |
 | `runs/commands/write-command-target.ts` | Projects opaque write occurrence tokens and resolves them through private intent authority at HTTP ingress. |
-| `runs/queries/explorer.ts` and `explorer-review-spec.ts` | Definition-derived Explorer catalog and review spec: run options, gated steps, session chips, cards, click lines, sources and decision outcomes. |
+| `runs/queries/explorer.ts` and `explorer-review-spec.ts` | Definition-derived Explorer catalog and operator review: run options, scoped session requirements, ordered page/source cards and declared outcomes. |
 | `runs/commands/command-refusal.ts` | Shared command rejection construction; runtime recovery imports it directly. |
 | `runs/trust/` | Canonical run readers and receipt services. |
 | `runs/start/recovery-plan.ts` | Server-derived checkpoint recovery admission and completed-transaction validation. `models/run/recovery-plan.ts` owns its internal plan; ordinary Rerun remains in `rerun.ts` and `rerun-values.ts`. |
@@ -144,7 +144,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/workflows/person-lookup/result.ts` | Person Lookup terminal result schema shared by its definition, retained CRM proof and OCR outcome fold. |
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. `authority-schema-versions.ts` owns the authority application id and schema-version lists. `person-preferences.ts` owns the strict person appearance/shell values and neutral defaults; snapshot preference fingerprints are independent of execution config fingerprints. |
 | `src/models/workflow/explorer-preview.ts` | Browser-safe read-only Explorer flow parts the timeline renders. |
-| `src/models/workflow/review-spec.ts` | Strict step-owned Explorer page, line, field-source, decision and branch-label declarations. `src/models/dashboard/explorer-review-spec.ts` owns their generated wire shape. |
+| `src/models/workflow/review-spec.ts` | Strict step-owned Explorer page, line, field-source and branch-label declarations. `src/models/dashboard/explorer-review-spec.ts` owns their generated wire shape. |
 | `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |
 | `src/workflow-kit/fingerprints.ts` | Pure, browser-safe workflow contract and task implementation fingerprints, and `WORKFLOW_KIT_VERSION`. `backend/runtime/build-id.ts` owns the worker-scoped app build id. |
 | `src/models/events/` | Timeline, stored confirmed-action, and confirmation-proof schemas. |

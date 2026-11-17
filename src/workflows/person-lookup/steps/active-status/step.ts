@@ -34,6 +34,7 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
     { label: "Status note", visibility: "logs", sources: [{ nodeId: "active-status", kind: "output", fieldPath: "reason" }] },
   ],
   review: {
+    when: [{ mode: ["search"] }],
     pages: [
       {
         id: "person-org-detail",
@@ -67,6 +68,7 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
           },
           {
             id: "hdh-department",
+            when: [{ "employment-status": ["active", "inactive", "undetermined"] }],
             operatorField: "HDH department",
             source: {
               origin: "UCPath",
@@ -77,6 +79,7 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
           },
           {
             id: "department",
+            when: [{ "employment-status": ["active", "inactive", "crm-only", "undetermined"] }],
             operatorField: "Department",
             source: {
               origin: "UCPath",
@@ -87,6 +90,7 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
           },
           {
             id: "end-date",
+            when: [{ "employment-status": ["inactive"] }],
             operatorField: "End date",
             source: {
               origin: "UCPath",
@@ -97,6 +101,7 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
           },
           {
             id: "termination-reason",
+            when: [{ "employment-status": ["inactive"] }],
             operatorField: "Termination reason",
             source: {
               origin: "UCPath",

@@ -21,6 +21,8 @@ export const CRM_DATES_STEP = Object.freeze({
     })),
   ],
   review: {
+    // Dates are read only for a found employee ID (datesEid in rules/matching/person-lookup.ts).
+    when: [{ "employment-status": ["active", "inactive", "crm-only", "undetermined"] }],
     pages: [
       {
         id: "crm-onboarding-record",

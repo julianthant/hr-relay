@@ -32,6 +32,8 @@ export const CROSS_VERIFY_STEP = Object.freeze({
     { label: "How found", visibility: "logs", display: lookupMethodDisplay, sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "method" }] },
   ],
   review: {
+    // Match mode checks CRM only for the one person it confirmed (shouldCheckCrm in rules/matching/person-lookup.ts).
+    when: [{ mode: ["search"] }, { mode: ["match"], "search-result": ["resolved"] }],
     pages: [
       {
         id: "crm-search",
@@ -62,6 +64,7 @@ export const CROSS_VERIFY_STEP = Object.freeze({
         title: "CRM onboarding record",
         mode: "Read only",
         nodeIds: ["cross-verify", "crm-identity", "crm-selected-record", "crm-results"],
+        when: [{ "crm-result": ["Found"] }],
         lines: [],
         fields: [
           {

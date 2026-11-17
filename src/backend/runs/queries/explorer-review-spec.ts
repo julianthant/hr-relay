@@ -8,7 +8,10 @@ import { contractSchemaLeaves, contractSchemaLeavesForModes } from "../../../mod
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../workflow-kit/workflow.js";
 import type { ExplorerModuleView } from "./explorer.js";
 
-type When = Readonly<Record<string, readonly string[]>>;
+type Condition = Readonly<Record<string, readonly string[]>>;
+/** Alternatives, any of which shows a part; `undefined` shows it always. */
+type When = readonly Condition[];
+type Choices = ReadonlyMap<string, readonly string[]>;
 type Spec = ExplorerReviewSpec;
 type Option = Spec["options"][number];
 type Step = Spec["steps"][number];
@@ -20,43 +23,78 @@ type RuntimeNode = ReturnType<typeof descriptorRuntimeNodes>[number];
 
 const STOPS = "The run stops with a failure card.";
 const ON_OFF = [{ value: "true", label: "On" }, { value: "false", label: "Off" }];
+const DRY_RUN = "dry-run";
+const DRY: When = [{ [DRY_RUN]: ["true"] }];
+const LIVE: When = [{ [DRY_RUN]: ["false"] }];
 
-/** Every gate's keys must hold one of their values; `undefined` shows the part always. */
-function both(...gates: readonly (When | undefined)[]): When | undefined {
-  const joined: Record<string, readonly string[]> = {};
-  for (const gate of gates) for (const [key, values] of Object.entries(gate ?? {})) {
-    const kept = joined[key] === undefined ? [...values] : joined[key].filter(value => values.includes(value));
-    if (kept.length === 0) throw new Error(`explorer gate on ${key} admits no value`);
+/** Drops keys that admit every choice and alternatives another alternative already covers; `undefined` when one admits every run. */
+function simplify(when: When, choices: Choices): When | undefined {
+  const reduced = when.map(condition => Object.fromEntries(Object.entries(condition).flatMap(([key, values]) => {
+    const all = choices.get(key);
+    if (all !== undefined && all.every(value => values.includes(value))) return [];
+    return [[key, all === undefined ? [...new Set(values)] : all.filter(value => values.includes(value))] as const];
+  })));
+  if (reduced.some(condition => Object.keys(condition).length === 0)) return undefined;
+  const merged = mergeAlternatives(reduced);
+  if (merged.length < reduced.length) return simplify(merged, choices);
+  const covers = (wide: Condition, narrow: Condition) => Object.entries(wide).every(([key, values]) => narrow[key]?.every(value => values.includes(value)) === true);
+  return reduced.filter((condition, index) => !reduced.some((other, at) => at !== index && covers(other, condition) && (at < index || !covers(condition, other))));
+}
+
+/** Two alternatives that differ only in one key's values are one alternative admitting both. */
+function mergeAlternatives(when: When): When {
+  for (const [index, left] of when.entries()) for (const [at, right] of when.entries()) {
+    if (at <= index) continue;
+    const keys = Object.keys(left);
+    if (keys.length !== Object.keys(right).length || !keys.every(key => right[key] !== undefined)) continue;
+    const differing = keys.filter(key => JSON.stringify(left[key]) !== JSON.stringify(right[key]));
+    if (differing.length > 1) continue;
+    const merged = Object.fromEntries(keys.map(key => [key, [...new Set([...left[key] ?? [], ...right[key] ?? []])]]));
+    return mergeAlternatives([...when.filter((_, position) => position !== index && position !== at), merged]);
+  }
+  return when;
+}
+
+function join(left: Condition, right: Condition): Condition | undefined {
+  const joined: Record<string, readonly string[]> = { ...left };
+  for (const [key, values] of Object.entries(right)) {
+    const kept = joined[key]?.filter(value => values.includes(value)) ?? values;
+    if (kept.length === 0) return undefined;
     joined[key] = kept;
   }
-  return Object.keys(joined).length === 0 ? undefined : joined;
+  return joined;
 }
 
-/** Any of the gates holds: kept to the keys every gate names, so a part is never hidden from a run that reaches it. */
-function either(gates: readonly (When | undefined)[], choices: ReadonlyMap<string, readonly string[]>): When | undefined {
-  if (gates.length === 0 || gates.some(gate => gate === undefined)) return undefined;
-  const defined = gates.filter((gate): gate is When => gate !== undefined);
-  const joined: Record<string, readonly string[]> = {};
-  for (const key of Object.keys(defined[0] ?? {})) {
-    if (!defined.every(gate => gate[key] !== undefined)) continue;
-    const values = [...new Set(defined.flatMap(gate => gate[key] ?? []))];
-    if (choices.get(key)?.every(value => values.includes(value)) === true) continue;
-    joined[key] = (choices.get(key) ?? values).filter(value => values.includes(value));
+/** Every gate holds. */
+function both(choices: Choices, ...gates: readonly (When | undefined)[]): When | undefined {
+  let joined: readonly Condition[] | undefined;
+  for (const gate of gates) {
+    if (gate === undefined) continue;
+    joined = (joined ?? [{}]).flatMap(left => gate.flatMap(right => join(left, right) ?? []));
+    if (joined.length === 0) throw new Error(`explorer gates ${JSON.stringify(gates)} admit no run`);
   }
-  return Object.keys(joined).length === 0 ? undefined : joined;
+  return joined === undefined ? undefined : simplify(joined, choices);
 }
 
-const gated = (when: When | undefined) => when === undefined ? {} : { when: Object.fromEntries(Object.entries(when).map(([key, values]) => [key, [...values]])) };
+/** Any gate holds. */
+function either(choices: Choices, gates: readonly (When | undefined)[]): When | undefined {
+  if (gates.length === 0 || gates.some(gate => gate === undefined)) return undefined;
+  return simplify(gates.flatMap(gate => gate ?? []), choices);
+}
+
+const gated = (when: When | undefined) => when === undefined ? {} : { when: when.map(condition => Object.fromEntries(Object.entries(condition).map(([key, values]) => [key, [...values]]))) };
 
 /** The run options Start run declares, and how input conditions read as gates on them. */
 function runOptions(module: ExplorerModuleView, inputLabels: ReadonlyMap<string, string>) {
   const { descriptor } = module;
   const typed = descriptor.surfaces.inputRun?.typedInput;
   const options: Option[] = [];
+  const choices = new Map<string, readonly string[]>();
   const gates = new Map<string, When | undefined>();
   const emitted = new Map<string, { option: string; value: string }>();
   const add = (option: Omit<Option, "when">, when: When | undefined): void => {
     options.push({ ...option, ...gated(when) });
+    choices.set(option.id, option.choices.map(choice => choice.value));
     gates.set(option.id, when);
   };
   if (typed !== undefined) {
@@ -64,7 +102,7 @@ function runOptions(module: ExplorerModuleView, inputLabels: ReadonlyMap<string,
     if (modeOption !== undefined) add({ id: modeOption, label: typed.modeLabel, choices: typed.modes.map(mode => ({ value: mode.value, label: mode.label })),
       initial: typed.initialMode ?? typed.modes[0]?.value ?? "" }, undefined);
     const modeGate = (modes: readonly string[]): When | undefined =>
-      modeOption === undefined || typed.modes.every(mode => modes.includes(mode.value)) ? undefined : { [modeOption]: modes };
+      modeOption === undefined || typed.modes.every(mode => modes.includes(mode.value)) ? undefined : [{ [modeOption]: modes }];
     for (const mode of typed.modes) {
       if (mode.parser.kind !== "entries") continue;
       const fields = [...new Set(mode.parser.spec.rules.map(rule => rule.emit))];
@@ -83,35 +121,34 @@ function runOptions(module: ExplorerModuleView, inputLabels: ReadonlyMap<string,
         : contractSchemaLeavesForModes(descriptor.input, typed.modeField, control.modes);
       const leaf = leaves.find(candidate => candidate.path === control.field);
       if (leaf === undefined) throw new Error(`workflow ${descriptor.id} review control names unknown input field ${control.field}`);
-      const choices = leaf.kind === "boolean" ? ON_OFF : leaf.options?.map(value => ({ value, label: value }));
-      if (choices === undefined) continue;
+      const offered = leaf.kind === "boolean" ? ON_OFF : leaf.options?.map(value => ({ value, label: value }));
+      if (offered === undefined) continue;
       const defaults = new Map(typed.modes.filter(mode => control.modes.includes(mode.value)).flatMap(mode => {
         const declared = mode.defaults.find(field => field.field === control.field)?.value;
         const value = declared === undefined ? undefined : declared.kind === "boolean" ? String(declared.value) : declared.kind === "text" ? declared.text : undefined;
         return value === undefined ? [] : [[mode.value, value] as const];
       }));
-      const first = choices[0]?.value ?? "";
+      const first = offered[0]?.value ?? "";
       const initialMode = typed.initialMode ?? typed.modes[0]?.value;
       const distinct = new Set(defaults.values());
       const initial: ExplorerSpecValue = distinct.size <= 1 || modeOption === undefined ? [...distinct][0] ?? first
         : { by: modeOption, values: Object.fromEntries(defaults), otherwise: (initialMode === undefined ? undefined : defaults.get(initialMode)) ?? first };
-      add({ id: control.field, label: control.label, choices, initial },
-        both(modeGate(control.modes), ...control.requires.map(field => both({ [field]: ["true"] }, gates.get(field)))));
+      add({ id: control.field, label: control.label, choices: offered, initial },
+        both(choices, modeGate(control.modes), ...control.requires.map(field => both(choices, [{ [field]: ["true"] }], gates.get(field)))));
     }
   }
-  if (workflowDryRunSupport(descriptor).state === "supported") add({ id: "dry-run", label: "Dry run", choices: ON_OFF, initial: "false" }, undefined);
+  if (workflowDryRunSupport(descriptor).state === "supported") add({ id: DRY_RUN, label: "Dry run", choices: ON_OFF, initial: "false" }, undefined);
   for (const omission of descriptor.stepOmissions) {
     const step = descriptor.timeline.find(group => group.key === omission.step);
     if (step === undefined) throw new Error(`workflow ${descriptor.id} review omission names unknown step ${omission.step}`);
     add({ id: `skip-${step.key}`, label: step.label, choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }], initial: "run" }, undefined);
   }
-  const choices = new Map(options.map(option => [option.id, option.choices.map(choice => choice.value)]));
   /** The gate an input condition puts on a node; a condition on another node's output depends on the run, so it gates nothing. */
   const conditionGate = (condition: NodeCondition | undefined): When | undefined => {
     if (condition?.of.from !== "input") return undefined;
     const path = String(condition.of.path);
     const values = choices.get(path);
-    const option = (picked: readonly string[]) => values === undefined ? undefined : both({ [path]: picked }, gates.get(path));
+    const option = (picked: readonly string[]) => values === undefined ? undefined : both(choices, [{ [path]: picked }], gates.get(path));
     switch (condition.kind) {
       case "equals": return values?.includes(String(condition.value)) === true ? option([String(condition.value)]) : undefined;
       case "not-equals": return option(values?.filter(value => value !== String(condition.value)) ?? []);
@@ -121,16 +158,16 @@ function runOptions(module: ExplorerModuleView, inputLabels: ReadonlyMap<string,
         const emit = emitted.get(path);
         if (emit === undefined) return undefined;
         const all = choices.get(emit.option) ?? [];
-        return both({ [emit.option]: condition.kind === "is-present" ? [emit.value] : all.filter(value => value !== emit.value) }, gates.get(emit.option));
+        return both(choices, [{ [emit.option]: condition.kind === "is-present" ? [emit.value] : all.filter(value => value !== emit.value) }], gates.get(emit.option));
       }
     }
   };
   const inputGate = (path: string): When | undefined => {
     const emit = emitted.get(path);
-    return emit === undefined ? undefined : both({ [emit.option]: [emit.value] }, gates.get(emit.option));
+    return emit === undefined ? undefined : both(choices, [{ [emit.option]: [emit.value] }], gates.get(emit.option));
   };
   const selectionGate = (field: string, selectedWhen: boolean): When | undefined =>
-    choices.get(field)?.includes(String(selectedWhen)) === true ? both({ [field]: [String(selectedWhen)] }, gates.get(field)) : undefined;
+    choices.get(field)?.includes(String(selectedWhen)) === true ? both(choices, [{ [field]: [String(selectedWhen)] }], gates.get(field)) : undefined;
   return { options, choices, conditionGate, inputGate, selectionGate };
 }
 
@@ -172,16 +209,18 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
     const { shape } = nodeWire(id);
     return run.conditionGate(shape.kind === "task" || shape.kind === "gate" ? shape.condition : undefined);
   };
+  const previewsOnDryRun = (node: ExplorerNodeWire): boolean => node.shape.kind === "transaction" && node.shape.dryRun === "stop-after-prepare" && known.has(DRY_RUN);
   const runtimeNode = (id: string): RuntimeNode => {
     const node = runtimeNodes.find(candidate => candidate.id === id);
     if (node === undefined) throw new Error(`workflow ${descriptor.id} review names unknown node ${id}`);
     return node;
   };
   const omitted = new Set(descriptor.stepOmissions.map(omission => omission.step));
-  const stepGates = descriptor.timeline.map(group => both(
+  const stepGates = descriptor.timeline.map(group => both(known,
     group.selection === undefined ? undefined : run.selectionGate(group.selection.inputField, group.selection.selectedWhen),
-    omitted.has(group.key) ? { [`skip-${group.key}`]: ["run"] } : undefined,
-    either(group.nodes.map(member => nodeGate(member.id)), known)));
+    omitted.has(group.key) ? [{ [`skip-${group.key}`]: ["run"] }] : undefined,
+    either(known, group.nodes.map(member => nodeGate(member.id))),
+    reviews.get(group.key)?.when));
   const continueText = (index: number): string => {
     const next = descriptor.timeline[index + 1];
     return next === undefined ? "The run finishes." : stepGates[index + 1] === undefined ? `Continues to ${next.label}.` : "Continues to the next step.";
@@ -223,7 +262,7 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
       decisionReads.set(`${decision.reads.nodeId}/${decision.reads.fieldPath}`, { decision: decision.id, values: decision.outcomes.map(outcome => outcome.value) });
     }
     for (const page of review?.pages ?? []) {
-      const pageGate = both(page.when, either(page.nodeIds.map(nodeGate), known));
+      const pageGate = both(known, page.when, either(known, page.nodeIds.map(nodeGate)));
       const rows = page.fields.map(field => {
         const id = `${group.key}/${page.id}/${field.id}`;
         sources[id] = { origin: field.source.origin, detail: field.source.detail, reads: [field.source.read, ...field.source.chain.map(link => link.read)]
@@ -235,7 +274,7 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
           const sample = operator.example ?? outputSample(operator.sources, operator.display);
           return row(operator.label, byDecision(operator.sources, operator.display, sample), field.when);
         }
-        if ("inputField" in field) return row(field.label, field.example, both(field.when, run.inputGate(field.inputField)));
+        if ("inputField" in field) return row(field.label, field.example, both(known, field.when, run.inputGate(field.inputField)));
         if ("constant" in field) return row(field.label, field.example ?? sampleText(field.constant.value, undefined), field.when);
         const references = "taskFields" in field ? field.taskFields : field.transactionFields;
         const display = "display" in field ? field.display : undefined;
@@ -243,7 +282,7 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
       });
       blocks.push({ kind: "card", id: page.id, title: page.title, mode: page.mode === "Fill form" ? "fill" : "read", ...gated(pageGate), rows });
       for (const line of page.lines) {
-        const when = both(pageGate, line.when);
+        const when = both(known, pageGate, line.when);
         if (line.kind === "click") blocks.push({ kind: "click", target: line.target, ...gated(when) });
         else (line.kind === "check" ? checks : description).push({ text: line.text, ...gated(when) });
       }
@@ -254,7 +293,7 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
     for (const decision of review?.decisions ?? []) {
       const display = displayOf(decision.reads.nodeId, decision.reads.fieldPath);
       decisions.push({ nodeIds: decision.nodeIds, block: { kind: "decision", id: decision.id, label: decision.label, initial: decision.initial,
-        ...gated(both(decision.when, nodeGate(decision.reads.nodeId))), outcomes: decision.outcomes.map(outcome => {
+        ...gated(both(known, decision.when, nodeGate(decision.reads.nodeId))), outcomes: decision.outcomes.map(outcome => {
           const label = outcome.label ?? display?.cases.find(entry => String(entry.value) === outcome.value)?.text;
           if (label === undefined) throw new Error(`workflow ${descriptor.id} review decision ${decision.id} outcome ${outcome.value} has no label`);
           return { value: outcome.value, label, then: outcome.then ?? continueText(index), stops: outcome.stops === true, ...gated(outcome.when) };
@@ -262,7 +301,7 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
     }
     for (const member of group.nodes) {
       const node = nodeWire(member.id);
-      const point = (initial: string, outcomes: Outcome[]) => decisions.push({ nodeIds: [node.id],
+      const point = (initial: ExplorerSpecValue, outcomes: Outcome[]) => decisions.push({ nodeIds: [node.id],
         block: { kind: "decision", id: node.id, label: node.label, initial, ...gated(nodeGate(node.id)), outcomes } });
       const { shape } = node;
       if (shape.kind === "branch") {
@@ -274,10 +313,10 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
       } else if (shape.kind === "gate" && shape.resolvedBy === "operator") {
         point("waits", [{ value: "waits", label: "Waits for you", then: "Waits for you to resolve it in Logs, then continues.", stops: false }]);
       } else if (shape.kind === "transaction") {
-        point("saved", [continuing("saved", "Saved"),
-          { value: "unconfirmed", label: "Save unconfirmed", then: "Parks the write for your review in Logs and does not retry it.", stops: false },
-          ...(shape.dryRun === "stop-after-prepare" && known.has("dry-run")
-            ? [{ value: "dry-run", label: "Dry run", then: "Prepares the change without saving it, then continues.", stops: false, when: { "dry-run": ["true"] } }] : [])]);
+        const live = previewsOnDryRun(node) ? LIVE : undefined;
+        point(live === undefined ? "saved" : { by: DRY_RUN, values: { true: DRY_RUN }, otherwise: "saved" }, [continuing("saved", "Saved", live),
+          { value: "unconfirmed", label: "Save unconfirmed", then: "Parks the write for your review in Logs and does not retry it.", stops: false, ...gated(live) },
+          ...(live === undefined ? [] : [{ value: DRY_RUN, label: "Dry run", then: "Prepares the change without saving it, then continues.", stops: false, ...gated(DRY) }])]);
       } else if (shape.kind === "child-run" && shape.await === "terminal" && shape.onChildFailed !== "allow-partial") {
         point("succeeded", [continuing("succeeded", "Delegated work succeeds"), shape.onChildFailed === "fail-parent"
           ? { value: "child-failed", label: "Delegated work fails", then: STOPS, stops: true }
@@ -288,15 +327,17 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
     for (const member of group.nodes) {
       const node = nodeWire(member.id);
       const owner = decisions.find(candidate => candidate.nodeIds.includes(node.id))?.block ?? generic;
-      if (node.shape.kind === "task" && node.shape.dryRun === "stop-before-publish" && known.has("dry-run") && !owner.outcomes.some(outcome => outcome.value === "dry-run")) {
-        owner.outcomes.push({ value: "dry-run", label: "Dry run", then: "Prepares the output without publishing it, then continues.", stops: false, when: { "dry-run": ["true"] } });
+      if (node.shape.kind === "task" && node.shape.dryRun === "stop-before-publish" && known.has(DRY_RUN) && !owner.outcomes.some(outcome => outcome.value === DRY_RUN)) {
+        owner.outcomes.push({ value: DRY_RUN, label: "Dry run", then: "Prepares the output without publishing it, then continues.", stops: false, ...gated(DRY) });
+        if (typeof owner.initial === "string") owner.initial = { by: DRY_RUN, values: { true: DRY_RUN }, otherwise: owner.initial };
       }
       for (const task of node.tasks) for (const code of task.errorCodes) {
-        const when = nodeGate(node.id);
+        // A dry run prepares a transaction and never commits it, so commit failures apply only to a live run.
+        const when = both(known, nodeGate(node.id), task.arm === "commit" && previewsOnDryRun(node) ? LIVE : undefined);
         const existing = owner.outcomes.findIndex(outcome => outcome.value === code);
         const previous = owner.outcomes[existing];
         const outcome: Outcome = { value: code, label: operatorFailureSentence(failureCodeFromTaskCode(code)), then: STOPS, stops: true,
-          ...gated(previous === undefined ? when : either([previous.when, when], known)) };
+          ...gated(previous === undefined ? when : either(known, [previous.when, when])) };
         if (previous === undefined) owner.outcomes.push(outcome); else owner.outcomes[existing] = outcome;
       }
     }
@@ -328,12 +369,15 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
       visit(child, () => delegated, [...ancestry, workflowId]);
     }
   };
-  visit(module, (stepIndex, nodeId) => both(stepGates[stepIndex], nodeGate(nodeId)), []);
+  visit(module, (stepIndex, nodeId) => both(known, stepGates[stepIndex], nodeGate(nodeId)), []);
+  // Sessions open before the run starts, so a chip follows run options only; conditions on outcomes are dropped.
+  const optionsOnly = (gate: When | undefined): When | undefined => gate === undefined ? undefined
+    : simplify(gate.map(condition => Object.fromEntries(Object.entries(condition).filter(([key]) => run.choices.has(key)))), run.choices);
 
   return ExplorerReviewSpecSchema.parse({
     unlistedFailure: "Anything not listed stops the run with a failure card.",
     options: run.options,
-    sessions: [...sessions].map(([system, gates]) => ({ system, ...gated(either(gates, run.choices)) })),
+    sessions: [...sessions].map(([system, gates]) => ({ system, ...gated(either(run.choices, gates.map(optionsOnly))) })),
     steps, sources,
   });
 }

@@ -50,8 +50,8 @@ it("derives run options from Start run declarations only", () => {
   const separations = workflow("separations").reviewSpec;
   assert.deepEqual(separations.options.filter(option => option.id.startsWith("skip-")).map(option => [option.id, option.label, option.initial]),
     [["skip-kronos-timecard", "Kronos timecard", "run"], ["skip-ucpath-transaction", "UCPath transaction", "run"], ["skip-kuali-finalization", "Kuali finalization", "run"]]);
-  assert.deepEqual(separations.steps.find(step => step.id === "kronos-timecard")?.when, { "skip-kronos-timecard": ["run"] });
-  assert.deepEqual(separations.sessions.find(session => session.system === "new-kronos")?.when, { "skip-kronos-timecard": ["run"] });
+  assert.deepEqual(separations.steps.find(step => step.id === "kronos-timecard")?.when, [{ "skip-kronos-timecard": ["run"] }]);
+  assert.deepEqual(separations.sessions.find(session => session.system === "new-kronos")?.when, [{ "skip-kronos-timecard": ["run"] }]);
   const lookup = workflow("person-lookup").reviewSpec;
   assert.equal(lookup.options.some(option => option.id === "keepNonHdh"), false);
 });
@@ -72,8 +72,9 @@ it("lists only outcomes that change the flow, ask the operator or stop the run",
   assert.equal(decisions(emergency).some(block => block.id === "members"), false);
   const onbase = workflow("onbase").reviewSpec;
   const save = decision(onbase, "import-document");
+  assert.deepEqual(save.initial, { by: "dry-run", values: { true: "dry-run" }, otherwise: "saved" });
   assert.deepEqual(save.outcomes.slice(0, 3).map(outcome => [outcome.value, outcome.stops, outcome.when]),
-    [["saved", false, undefined], ["unconfirmed", false, undefined], ["dry-run", false, { "dry-run": ["true"] }]]);
+    [["saved", false, [{ "dry-run": ["false"] }]], ["unconfirmed", false, [{ "dry-run": ["false"] }]], ["dry-run", false, [{ "dry-run": ["true"] }]]]);
   const onboarding = workflow("onboarding").reviewSpec;
   assert.deepEqual(decision(onboarding, "i9-route").outcomes.map(outcome => outcome.value), ["create", "existing"]);
 });
@@ -93,10 +94,13 @@ it("rejects forged gates, values, initial outcomes and missing failures without 
   const [first, ...rest] = spec.steps; assert.ok(first);
   const withFirst = (step: typeof first) => ({ ...spec, steps: [step, ...rest] });
   assert.equal(ExplorerReviewSpecSchema.safeParse(spec).success, true);
-  assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: { unknown: ["x"] } })).success, false);
-  assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: { mode: ["sideways"] } })).success, false);
-  assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: { "search-result": ["resolved"] } })).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: [{ unknown: ["x"] }] })).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: [{ mode: ["sideways"] }] })).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: [{ "search-result": ["resolved"] }] })).success, false);
   const withBlocks = (blocks: typeof first.blocks) => withFirst({ ...first, blocks });
+  // A step's cards may follow its own decision; a decision may not follow itself.
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "card" ? { ...block, when: [{ "search-result": ["not-found"] }] } : block))).success, true);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, when: [{ "search-result": ["not-found"] }] } : block))).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, initial: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" } : block))).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "card" ? { ...block, rows: block.rows.map(row => ({ ...row, source: "missing" })) } : block))).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse({ ...spec, sessions: [{ system: "ucpath", acquired: true }] }).success, false);

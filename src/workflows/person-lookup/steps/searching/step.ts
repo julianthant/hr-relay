@@ -39,7 +39,7 @@ export const SEARCHING_STEP = Object.freeze({
         mode: "Fill form",
         nodeIds: ["searching"],
         lines: [
-          { id: "keep-hdh", kind: "check", text: "Keeps HDH departments only", nodeIds: ["searching"], when: { "search-by": ["name"] } },
+          { id: "keep-hdh", kind: "check", text: "Keeps HDH departments only", nodeIds: ["searching"], when: [{ "search-by": ["name"] }] },
           { id: "search", kind: "click", target: "Search", nodeIds: ["searching"] }
         ],
         fields: [
@@ -64,6 +64,7 @@ export const SEARCHING_STEP = Object.freeze({
         title: "Person Organizational Summary detail",
         mode: "Read only",
         nodeIds: ["searching", "matching", "search-identity"],
+        when: [{ "search-result": ["resolved"] }],
         lines: [],
         fields: [
           {

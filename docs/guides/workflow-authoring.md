@@ -179,32 +179,28 @@ contract objects. Fix the named owner rather than copying a declaration.
 coverage. Keep stable entry/leaf IDs and exact contracts. Branch choices are hypothetical.
 
 Each owning group declares `review` through
-[`WorkflowStepReview`](../../src/models/workflow/review-spec.ts): ordered pages, lines, fields and
-decisions. A field references a visible `operatorField` by label, or declares its own `label` with
-`inputField` (a run input path), `taskFields` (a task's input or output paths in the page) or
-`transactionFields` (the owning transaction's prepare input or output paths). Fixed workflow
-choices use `constant` with the owning transaction `nodeIds` and value. Give every field an
-`example` unless its source contract's example already holds one. Lines are `check` lines,
-`action`/`read` description lines, or `click` lines naming the pressed control. Use real page
-names and the modes `Fill form` or `Read only`; local or gate-only steps can have no pages. Source
-drawer prose belongs beside the field reference. A source `read` names an exact step key, page
-title and field label; its ordered `chain` can refer to earlier reads in the same workflow. Every
-declared branch case needs a label when the group supplies review metadata.
+[`WorkflowStepReview`](../../src/models/workflow/review-spec.ts): ordered pages, action/check/read
+lines and fields. A field references a visible `operatorField` by label, or declares its own
+`label` with `transactionFields` pointing to the owning transaction's prepare input or output
+paths. Fixed workflow choices use `constant` with the owning transaction `nodeIds` and value.
+Compilation checks each transaction path against its prepare contract; the backend derives its
+finite options from that contract or the field's display mapping. These review declarations do
+not add transaction sources to Logs operator fields. Use real page names and the modes
+`Fill form` or `Read only`; local or gate-only steps can have no pages. Source drawer prose belongs
+beside the field reference. A source `read` names an exact step key, page title and field label;
+its ordered `chain` can refer to earlier reads in the same workflow. Every declared branch case
+needs a label when the group supplies review metadata. Compilation rejects unknown, ambiguous or
+out-of-step references.
 
-A `decision` reads one closed output of a task in the step and lists the values that change what
-the run does: each outcome's label defaults to that output's operator display text, `then` says
-what the run does next (required when it `stops`), and `initial` names a continuing outcome.
-Pages, lines, fields and outcomes may carry `when`, keyed by Explorer option ids (the Start run
-mode field, `<mode>-by`, visible control fields, `dry-run`, `skip-<step>`) and earlier decision
-ids. Compilation rejects unknown, ambiguous or out-of-step references and values an output never
-holds.
+Source paths may name structured values such as a Kuali field's present/absent object. Those
+references remain intact; automatic dropdown options require a complete finite scalar vocabulary
+for every source of the field.
 
-The backend derives `reviewSpec` from these declarations, the Start run declaration, omission
-forms, task session declarations, node conditions on run inputs, graph policies and declared
-failure codes: options with their defaults, gates on steps, cards and session chips, row sample
-values from contract examples, rows that follow a decision, and the outcomes of branches, operator
-gates, transactions, delegations and every declared task failure. Register each normalized failure
-sentence in the error catalog. Explorer serves child-only definitions for inspection without adding
+The backend derives `reviewSpec` from these groups, existing run surfaces, omission forms, task
+session declarations, graph policies and declared failure codes. Control kinds and options use only
+the input alternatives admitted by each control's declared modes. Register each normalized failure
+sentence in the error catalog. Session requirements describe preparation and use, never observed
+sign-ins or acquired locks. Explorer serves child-only definitions for inspection without adding
 them to the Run picker.
 
 ## 5 · Person Lookup: reuse and a pure fold

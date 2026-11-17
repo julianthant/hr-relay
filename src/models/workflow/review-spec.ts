@@ -5,8 +5,8 @@ import { OperatorFieldDisplaySchema } from "./presentation.js";
 
 const ReviewIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
 const ReviewTextSchema = z.string().trim().min(1);
-/** Shows a part only under these Explorer option values and decision outcomes: every key (an option or decision id) holds one of its values. */
-export const ReviewWhenSchema = z.record(z.string().min(1), z.array(z.string().min(1)).min(1));
+/** Shows a part when any alternative holds: each key (an Explorer option or decision id) holds one of its values. */
+export const ReviewWhenSchema = z.array(z.record(z.string().min(1), z.array(z.string().min(1)).min(1))).min(1);
 const Gate = { when: ReviewWhenSchema.optional() };
 const ReviewReadLocationSchema = z.strictObject({
   stepKey: ReviewIdSchema,
@@ -68,6 +68,8 @@ export const WorkflowReviewDecisionSchema = z.strictObject({
     stops: z.literal(true).optional(), ...Gate })).min(1),
 });
 export const WorkflowStepReviewSchema = z.strictObject({
+  /** When the step runs, beyond what its selection, omission and input conditions already say; for conditions on earlier outcomes. */
+  ...Gate,
   pages: z.array(WorkflowReviewPageSchema),
   branchLabels: z.array(z.strictObject({ nodeId: NodeIdSchema, outcome: ReviewTextSchema, label: ReviewTextSchema })),
   decisions: z.array(WorkflowReviewDecisionSchema).optional(),
