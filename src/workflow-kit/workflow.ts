@@ -40,7 +40,7 @@ import {
 } from "../models/run/result.js";
 import { StartRowDeclarationSchema, StepLockReasonSchema, StepOmissionFormSchema, stepManualFieldFitsLeaf, stepManualFiniteFacts } from "../models/workflow/step-omission.js";
 import type { StartRowDeclaration, StepLockReason, StepManualDeclaration, StepOmissionSpec } from "../models/workflow/step-omission.js";
-import { schemaAcceptsUnchanged, valueLeafSchemaExact, valueLeafSchemas } from "../models/workflow/rerun-values.js";
+import { schemaAcceptsUnchanged, valueLeafSchemaForManual, valueLeafSchemas } from "../models/workflow/rerun-values.js";
 import { SecretNameSchema } from "../models/config/secret-names.js";
 import { deriveSchemaHash } from "../models/validation/schema-bound-value.js";
 import { assertAuditedCanonicalInput, canonicalInputSamples } from "../models/workflow/canonical-input.js";
@@ -949,7 +949,7 @@ function deriveStepOmissions(
       const leaves = valueLeafSchemas(node.uses.output, field.replaces.path.split("."));
       if (leaves.length === 0) throw new Error(`${fieldOwner} replaces "${field.replaces.path}", which node "${field.replaces.nodeId}"'s output does not offer`);
       const target = `"${field.replaces.nodeId}.${field.replaces.path}"`;
-      const leaf = valueLeafSchemaExact(node.uses.output, field.replaces.path.split("."));
+      const leaf = valueLeafSchemaForManual(node.uses.output, field.replaces.path.split("."));
       if (leaf === undefined) throw new Error(`${fieldOwner} replaces ${target}, which a union, check or transform above it keeps from being proven`);
       const finite = stepManualFiniteFacts(field);
       const refused = finite?.find((fact) => !schemaAcceptsUnchanged(leaf, fact));
