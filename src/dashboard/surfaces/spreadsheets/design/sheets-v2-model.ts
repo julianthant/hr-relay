@@ -1,4 +1,4 @@
-import type { WorkbookCompatibility, WorkbookLibraryEntry } from '../../../../models/dashboard/workbook-library.js';
+import type { WorkbookCompatibility, WorkbookLibraryEntry, WorkbookLibrarySyncStatus } from '../../../../models/dashboard/workbook-library.js';
 import { spreadsheetField } from '../../../../models/fields/workbook-fields.js';
 import { cellText, type EditableSheet } from '../../../../rules/spreadsheets/workbook-io.js';
 import { columnName } from '../spreadsheet-editor-model.js';
@@ -11,6 +11,8 @@ export interface Sheet {
   readonly id: string; readonly name: string; readonly sharePoint: string | null;
   readonly pinned: boolean; readonly tags: readonly string[];
   readonly workflow?: string; readonly run?: { readonly id: string; readonly day: string };
+  /** Served on SharePoint-linked entries only. */
+  readonly sync?: WorkbookLibrarySyncStatus;
   readonly updatedAt: string; readonly version: number; readonly currentVersionId: string; readonly versions: readonly VersionEntry[];
 }
 export type Mapping = Readonly<Record<string, string | null>>;
@@ -25,7 +27,7 @@ export const sheetOf = (entry: WorkbookLibraryEntry): Sheet => ({
   id: entry.libraryId, name: entry.name, sharePoint: entry.metadata.sharePoint?.url ?? null, pinned: entry.state.pinned, tags: entry.state.tags,
   workflow: entry.state.origin.kind === 'workflow' ? entry.state.origin.workflowLabel : undefined,
   run: entry.state.origin.kind === 'workflow' ? { id: entry.state.origin.runId, day: entry.state.origin.partitionDay } : undefined,
-  updatedAt: entry.updatedAt, version: entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.version ?? entry.version, currentVersionId: entry.state.selectedVersionId,
+  sync: entry.sync, updatedAt: entry.updatedAt, version: entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.version ?? entry.version, currentVersionId: entry.state.selectedVersionId,
   versions: entry.state.versions.map(version => ({ id: version.id, n: version.version, at: version.savedAt, note: version.name })).toSorted((a, b) => b.n - a.n),
 });
 

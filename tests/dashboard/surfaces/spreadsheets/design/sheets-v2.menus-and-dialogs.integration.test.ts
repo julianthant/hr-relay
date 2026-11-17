@@ -9,7 +9,7 @@ import { ToastProvider, TooltipProvider } from '../../../../../src/dashboard/ds/
 const wiring = vi.hoisted(() => ({ adapter: {} as Record<string, ReturnType<typeof vi.fn>>, catalog: [] as unknown[] }));
 const LINK = 'https://contoso.sharepoint.com/sites/hr/roster.xlsx';
 const version = (id: string, n: number) => ({ id, name: `v${n}`, snapshotId: id, version: n, savedAt: `2026-11-0${n}T00:00:00Z`, source: 'operator' });
-const make = (libraryId: string, name: string, options: { pinned?: boolean; linked?: boolean } = {}) => WorkbookLibraryEntrySchema.parse({ libraryId, version: 2, name, updatedAt: '2026-11-02T00:00:00Z', rowCount: 1,
+const make = (libraryId: string, name: string, options: { pinned?: boolean; linked?: boolean; sync?: unknown } = {}) => WorkbookLibraryEntrySchema.parse({ libraryId, version: 2, name, updatedAt: '2026-11-02T00:00:00Z', rowCount: 1, ...(options.sync ? { sync: options.sync } : {}),
   worksheets: [{ id: 'people', name: 'People' }], metadata: { typeId: 't', sharePoint: options.linked ? { url: LINK, verifiedAt: '2026-11-01T00:00:00Z' } : null },
   type: { id: 't', name: 'Roster', keyFieldId: 'email', fields: ['email'], defaultWorkbookId: 'roster' },
   state: { libraryId, revision: 1, selectedVersionId: 'v2', removed: false, origin: { kind: 'local' }, pinned: options.pinned ?? false, tags: [], versions: [version('v1', 1), version('v2', 2)] } });
@@ -46,6 +46,31 @@ it('lists the row menu in the mock order for a pinned, a linked and a local spre
   await click(document.body.querySelector('[role="menuitem"]')); // Unpin closes the menu
   await openMenu('Keys.xlsx');
   assert.deepEqual(items(), ['Pin', 'Link to SharePoint…', 'Clone', 'Rename', 'Edit tags', 'Delete']);
+});
+
+it('shows each served sync state under the SharePoint link and offers Retry sync only after a failure', async () => {
+  const sync = (value: object) => ({ state: 'idle', ...value });
+  wiring.catalog = [
+    make('ok', 'Ok.xlsx', { linked: true, sync: sync({ lastFinishedAt: '2026-11-02T10:05:00Z', lastResult: 'ok' }) }),
+    make('run', 'Run.xlsx', { linked: true, sync: { state: 'running' } }),
+    make('bad', 'Bad.xlsx', { linked: true, sync: sync({ lastFinishedAt: '2026-11-02T10:05:00Z', lastResult: 'failed', lastFailureCode: 'WORKBOOK_SYNC_FAILED' }) }),
+    make('new', 'New.xlsx', { linked: true, sync: sync({}) }),
+    make('local', 'Local.xlsx'),
+  ];
+  wiring.adapter.snapshot = vi.fn(() => ({ pendingLibraries: [] }));
+  await render();
+  const status = (name: string) => host.querySelector(`li[aria-label="${name}"] [data-sync]`)?.textContent?.trim();
+  assert.match(status('Ok.xlsx') ?? '', /^Synced Nov 2/u);
+  assert.equal(status('Run.xlsx'), 'Syncing…');
+  assert.equal(status('Bad.xlsx'), 'Sync failed');
+  assert.equal(status('New.xlsx'), 'Not synced yet');
+  assert.equal(status('Local.xlsx'), undefined);
+  await openMenu('Bad.xlsx');
+  assert.deepEqual(items().slice(1, 2), ['Retry sync']);
+  await click(byText('[role="menuitem"]', 'Retry sync'));
+  assert.deepEqual(wiring.adapter.changeLibrary?.mock.calls.at(-1)?.[1], { kind: 'sync' });
+  await openMenu('Run.xlsx');
+  assert.deepEqual(items().slice(1, 2), ['Syncing…']);
 });
 
 it('asks for a name on Clone and sends the clone write', async () => {

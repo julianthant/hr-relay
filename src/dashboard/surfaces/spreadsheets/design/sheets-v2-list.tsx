@@ -3,14 +3,17 @@ import { ExternalLink } from 'lucide-react';
 import { BodySection, Skeleton } from '../../../ds/ui.js';
 import { LoadingRegion, SkeletonText } from '../../shared/loading/loading.js';
 import { type Sheet, stamp } from './sheets-v2-model.js';
-import { DownloadIcon, SheetMenu, TagsFit, V2Button, type MenuAction } from './sheets-v2-ui.js';
+import { DownloadIcon, SheetMenu, SyncStatus, TagsFit, V2Button, type MenuAction } from './sheets-v2-ui.js';
 
 export interface RowActions { open: (id: string) => void; version: (id: string) => void; menu: (id: string, action: MenuAction) => void; logs: (sheet: Sheet) => void }
 
 const cols = (narrow: boolean) => `grid items-center gap-x-4 ${narrow ? 'grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_150px_56px_28px]' : 'grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_150px_56px_64px]'}`;
 const LINK = 'inline-flex max-w-full items-center gap-1 hover:text-ui-primary hover:underline';
 function SourceCell({ sheet }: { sheet: Sheet }) {
-  if (sheet.sharePoint) return <a href={sheet.sharePoint} target="_blank" rel="noreferrer" className={LINK} onClick={event => event.stopPropagation()}><span className="truncate">SharePoint</span><ExternalLink size={12} aria-hidden className="shrink-0" /></a>;
+  if (sheet.sharePoint) return <>
+    <a href={sheet.sharePoint} target="_blank" rel="noreferrer" className={`${LINK} sv2-row-title`} onClick={event => event.stopPropagation()}><span className="truncate">SharePoint</span><ExternalLink size={12} aria-hidden className="shrink-0" /></a>
+    {sheet.sync && <div className="sv2-row-desc truncate"><SyncStatus sheet={sheet} /></div>}
+  </>;
   return <span>{sheet.run ? 'Run output' : 'Imported'}</span>;
 }
 
@@ -24,7 +27,7 @@ export function SheetRow({ sheet, narrow, actions }: { sheet: Sheet; narrow: boo
       <div className="sv2-row-desc truncate tabular-nums text-ui-muted"><span>Updated {stamp(sheet.updatedAt)}</span></div>
     </div>
     <TagsFit sheet={sheet} />
-    <div className="truncate text-ui-muted"><SourceCell sheet={sheet} /></div>
+    <div className="min-w-0 text-ui-muted"><SourceCell sheet={sheet} /></div>
     <div onClick={stop}><V2Button look="outline" className="tabular-nums" aria-label={`Versions of ${sheet.name}, now v${sheet.version}`} onClick={() => actions.version(sheet.id)}>v{sheet.version}</V2Button></div>
     <div className="flex justify-end" onClick={stop}>{!narrow && <DownloadIcon name={sheet.name} onClick={() => actions.menu(sheet.id, 'download')} />}<SheetMenu sheet={sheet} label={sheet.name} withDownload={narrow} onAction={action => actions.menu(sheet.id, action)} /></div>
   </li>;

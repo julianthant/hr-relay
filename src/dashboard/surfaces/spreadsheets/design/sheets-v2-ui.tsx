@@ -1,7 +1,7 @@
 import { forwardRef, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
-import { ChevronDown, Download, LogOut, MoreHorizontal, Search, UserPlus, Users, X, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Download, Loader2, LogOut, MoreHorizontal, Search, UserPlus, Users, X, type LucideIcon } from 'lucide-react';
 import { Button, IconButton, Tooltip, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, dsFocus } from '../../../ds/ui.js';
-import { type Sheet, addTag, tagsOf, MAX_TAG_LENGTH } from './sheets-v2-model.js';
+import { type Sheet, addTag, stamp, tagsOf, MAX_TAG_LENGTH } from './sheets-v2-model.js';
 import { MENU } from './sheets-v2-menu.js';
 
 // soft = secondary (grey fill), line = outline (faint border), plain = ghost; primary is only a dialog's confirming action.
@@ -63,6 +63,17 @@ export function TagEditor({ tags, onChange }: { tags: readonly string[]; onChang
   </div>;
 }
 
+/** One line under the SharePoint link: syncing, last synced, last sync failed, or not synced yet. */
+export function SyncStatus({ sheet }: { sheet: Sheet }) {
+  const sync = sheet.sync;
+  if (!sync) return null;
+  if (sync.state === 'running') return <span data-sync="running" className="inline-flex items-center gap-1 text-ui-info"><Loader2 size={11} aria-hidden className="shrink-0 animate-spin" /><span className="truncate">Syncing…</span></span>;
+  const failed = sync.lastResult === 'failed', never = sync.lastFinishedAt === undefined;
+  const text = never ? 'Not synced yet' : failed ? 'Sync failed' : `Synced ${stamp(sync.lastFinishedAt!)}`;
+  return <span data-sync={never ? 'never' : failed ? 'failed' : 'ok'} title={never ? undefined : `${failed ? 'Sync failed' : 'Synced'} ${stamp(sync.lastFinishedAt!)}`} className={`inline-flex min-w-0 items-center gap-1.5 ${failed ? 'text-ui-danger' : ''}`}>
+    <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${failed ? 'bg-ui-danger' : never ? 'bg-ui-stroke' : 'bg-ui-positive'}`} /><span className="truncate">{text}</span></span>;
+}
+
 export type MenuAction = 'pin' | 'sync' | 'link' | 'clone' | 'rename' | 'tags' | 'delete' | 'download';
 /** Same menu on every row and on the detail page. */
 export function SheetMenu({ sheet, onAction, withDownload, label }: { sheet: Sheet; onAction: (action: MenuAction) => void; withDownload: boolean; label: string }) {
@@ -70,7 +81,7 @@ export function SheetMenu({ sheet, onAction, withDownload, label }: { sheet: She
   return <DropdownMenu><DropdownMenuTrigger render={<V2Icon label={`Actions for ${label}`}><MoreHorizontal size={16} aria-hidden /></V2Icon>} /><DropdownMenuContent align="end" className={`min-w-[210px] ${MENU}`}>
     {withDownload && item('download', 'Download')}
     {item('pin', sheet.pinned ? 'Unpin' : 'Pin')}
-    {sheet.sharePoint && item('sync', 'Sync now')}
+    {sheet.sharePoint && (sheet.sync?.state === 'running' ? <DropdownMenuItem disabled>Syncing…</DropdownMenuItem> : item('sync', sheet.sync?.lastResult === 'failed' ? 'Retry sync' : 'Sync now'))}
     {item('link', sheet.sharePoint ? 'Change SharePoint link…' : 'Link to SharePoint…')}
     {item('clone', 'Clone')}
     {item('rename', 'Rename')}
