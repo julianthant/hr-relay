@@ -51,18 +51,18 @@ it("one Stop while the filing has not reached its Import cancels it, then the pe
   assert.deepEqual(saves(f), [1, 1]);
 });
 
-it("Stop while the Import is fenced is refused; the Import finishes once and is never clicked again", async () => {
-  let refusal: ReturnType<typeof stop> | undefined;
+it("one Stop while the Import is fenced lets the Import finish once, then the person and the run settle cancelled", async () => {
+  let stopped: ReturnType<typeof stop> | undefined;
   // Read by the fake page right after the Import click, inside the fenced write.
-  f.filing.next.page = { get lostClick() { refusal = stop(f); return false; } };
+  f.filing.next.page = { get lostClick() { stopped = stop(f); return false; } };
   const stepped = await f.raw.step(f.parentRun, signal());
-  assert.equal(refusal?.state, "rejected");
-  assert.equal(stepped.outcome.state, "done");
-  assert.equal(f.current().cancelRequested, undefined, "nothing was marked for cancellation");
+  assert.equal(stopped?.state, "applied");
+  assert.deepEqual(stepped.outcome, { state: "abandoned", runId: people(f).filing.envelope.runId, reason: "cancelled" });
   await settle(f);
   const { waiting, filing } = people(f);
-  for (const run of [filing, waiting, f.current()]) assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", `${run.envelope.workflow} ${JSON.stringify(run.lifecycle)}`);
-  assert.deepEqual(f.database.authority.writeIntents.listByRun(filing.envelope.runId).map(intent => intent.status), ["committed"]);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(filing.envelope.runId).map(intent => intent.status), ["committed"], "the Import settles once");
+  for (const run of [filing, waiting, f.current()]) assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled", `${run.envelope.workflow} ${JSON.stringify(run.lifecycle)}`);
+  assert.deepEqual(tree(f).filter(run => run.lifecycle.state !== "terminal").map(run => run.envelope.workflow), [], "nothing is left queued");
   assert.equal(f.filing.imports(), 1);
   assert.deepEqual(saves(f), [1, 1]);
 });
