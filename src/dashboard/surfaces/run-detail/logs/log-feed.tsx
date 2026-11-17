@@ -21,7 +21,7 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
         return <div key={field.id} data-log-field={field.kind} className="grid min-w-0 grid-cols-[1rem_minmax(var(--spacing-log-label),.85fr)_minmax(0,1.15fr)] items-baseline gap-x-3 max-[1100px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] @max-[448px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] border-b border-ui-stroke py-2.5 last:border-b-0">
           <Icon aria-hidden className={cn("size-3.5 self-start translate-y-0.5", field.kind === "fill" ? "text-ui-info" : "text-ui-muted")} />
           <dt className="min-w-0 text-body font-medium">{field.label}</dt>
-          <FieldValueCell value={field.value} className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word] @max-[448px]:overflow-hidden @max-[448px]:text-ellipsis @max-[448px]:[overflow-wrap:normal] max-[1100px]:truncate", field.kind === "fill" ? "text-ui-info font-medium" : field.unread ? "text-ui-danger/75" : "text-ui-secondary")} />
+          <FieldValueCell value={field.value} mark={field.mark} className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word] @max-[448px]:overflow-hidden @max-[448px]:text-ellipsis @max-[448px]:[overflow-wrap:normal] max-[1100px]:truncate", field.kind === "fill" ? "text-ui-info font-medium" : field.unread ? "text-ui-danger/75" : "text-ui-secondary")} />
         </div>;
       })}
     </dl>
@@ -41,7 +41,7 @@ function LogNote({ entry }: { entry: Extract<LogEntry, { kind: "note" }> }) {
 }
 
 /** At narrow widths the value truncates on one line; the shared tooltip then shows the whole value. */
-function FieldValueCell({ value, className }: { value: string; className: string }) {
+function FieldValueCell({ value, mark, className }: { value: string; mark?: string; className: string }) {
   const [cut, setCut] = useState(false);
   const cell = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -53,7 +53,7 @@ function FieldValueCell({ value, className }: { value: string; className: string
     observer.observe(node);
     return () => observer.disconnect();
   }, [value]);
-  return <Tooltip side="bottom" content={value} open={cut ? undefined : false}><dd ref={cell} className={className}><FieldValue value={value} /></dd></Tooltip>;
+  return <Tooltip side="bottom" content={value} open={cut ? undefined : false}><dd ref={cell} className={className}><FieldValue value={value} />{mark !== undefined && <span className="ml-2 whitespace-nowrap text-caption font-normal text-ui-muted">{mark}</span>}</dd></Tooltip>;
 }
 
 function FieldValue({ value }: { value: string }) {
