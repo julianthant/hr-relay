@@ -496,7 +496,7 @@ export function toggleStepSelection(
 }
 
 /** The one sentence for a required reference spreadsheet that was never chosen. */
-export const MISSING_REFERENCE_TEXT = "Choose a reference spreadsheet.";
+export const MISSING_REFERENCE_TEXT = "Add the reference spreadsheet this run looks people up in. A spreadsheet picked only as a check does not count.";
 
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
   selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,

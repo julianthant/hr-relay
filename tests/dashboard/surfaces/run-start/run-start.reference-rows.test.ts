@@ -139,3 +139,15 @@ it("opens Onboarding with its required reference unpicked, the check rows beside
   assert.match(text(), /I-9 tracker/u);
   assert.equal(dialog.disabled("Continue"), true, "the required reference keeps Continue off until picked");
 });
+
+it("keeps the required roster and the optional check picks in separate lists, so Use never reads as the roster", async () => {
+  await h.openDialog(h.stubClient({ ...reads([roster, tracker], [source("roster", { First: ["eid", "email"] }), source("tracker", { Sheet1: ["eid"] })], [onboarding]) }),
+    { workflows: [onboardingFlow], panelWorkflowId: onboarding.id });
+  await h.settle();
+  const lists = [...document.querySelectorAll<HTMLElement>('[role="region"]')];
+  const required = lists.find(list => list.textContent?.includes("Reference spreadsheets")), check = lists.find(list => list.textContent?.includes("Also check"));
+  assert.ok(required && check && required !== check, "two separate lists");
+  assert.equal(required.textContent?.includes("I-9 tracker"), false, "check rows are not in the required list");
+  assert.ok(check.textContent?.includes("I-9 tracker") && check.textContent?.includes("Optional"));
+  assert.ok(h.buttons().some(button => h.buttonName(button) === "Add spreadsheet"), "the roster is added with Add spreadsheet");
+});

@@ -496,7 +496,6 @@ export function RunReferenceRows({ checkRows, requiredLabel, sheets, chosenLibra
         </Select>
         <IconButton size="xs" label={`Remove ${chosen.name}`} icon={<X aria-hidden className={dsIcon.md} />} onClick={onRemove} />
       </RunListRow>}
-      {checkRows}
     </RunList></>}
     {worksheetsState === "error" && <p role="alert" className="m-0 text-caption text-ui-danger">{worksheetsError}</p>}
     {chosen && worksheetsState === "ready" && worksheets.length === 0 && <p role="status" className="m-0 text-caption text-ui-muted">No worksheets in this version have {requiredLabel}.</p>}
@@ -516,6 +515,7 @@ export function RunReferenceRows({ checkRows, requiredLabel, sheets, chosenLibra
         })}
       </DropdownMenuContent>
     </DropdownMenu></div>}
+    {!catalogError && checkRows !== undefined && <RunList title="Also check" description="Optional. Spreadsheets this run also looks the person up in. Needs Employee ID.">{checkRows}</RunList>}
   </div>;
 }
 
