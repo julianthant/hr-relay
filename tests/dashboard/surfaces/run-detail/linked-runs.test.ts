@@ -25,15 +25,19 @@ describe("linkedRunEntries", () => {
 });
 
 describe("Logs header linked runs", () => {
+  const roots: ReturnType<typeof createRoot>[] = [];
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   });
-  afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ""; });
+  afterEach(async () => {
+    await act(async () => { for (const root of roots.splice(0)) root.unmount(); });
+    vi.unstubAllGlobals(); document.body.innerHTML = "";
+  });
 
   const mount = async (row: Row, onOpen = vi.fn()) => {
     const host = document.createElement("div"); document.body.append(host);
-    const root = createRoot(host);
+    const root = createRoot(host); roots.push(root);
     await act(async () => root.render(createElement(LogPanel, { title: "Avery", steps: [], timeline: [], linkedRuns: linkedRunEntries(row), onOpenLinkedRun: onOpen })));
     return { host, root, onOpen, button: () => host.querySelector<HTMLButtonElement>('button[aria-label^="Linked runs"]') };
   };

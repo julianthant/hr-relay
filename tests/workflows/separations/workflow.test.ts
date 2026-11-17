@@ -145,12 +145,6 @@ describe("workflow definition public equivalence characterization", () => {
           {
             key: "identity-check", label: "Identity check", nodes: [
               { id: "name-search", label: "Name Search" }, { id: "subject", label: "Separation Subject" },
-              { id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" },
-              { id: "approval", label: "Approval Check" },
-            ]
-          },
-          {
-            key: "job-summary", label: "Job summary", nodes: [
               { id: "job-summary", label: "Job Summary" }, { id: "employment", label: "Employment" },
               { id: "department-option", label: "Department Option" },
             ]
@@ -159,6 +153,12 @@ describe("workflow definition public equivalence characterization", () => {
             key: "kronos-timecard", label: "Kronos timecard", nodes: [
               { id: "timecard-search", label: "Timecard Search" }, { id: "timecard", label: "Timecard" },
               { id: "dates", label: "Reconciled Dates" },
+            ]
+          },
+          {
+            key: "identity-review", label: "Identity approval", nodes: [
+              { id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" },
+              { id: "approval", label: "Approval Check" },
             ]
           },
           {

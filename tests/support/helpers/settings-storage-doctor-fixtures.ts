@@ -1,4 +1,5 @@
-import { StorageHealthSummaryWireSchema } from "../../../src/models/dashboard/bootstrap.js";
+import { StorageAuthoritySummarySchema } from "../../../src/models/storage/storage-status.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/models/config/authority-schema-versions.js";
 
 
 
@@ -9,7 +10,7 @@ export class MeasurementFreeResizeObserver {
 }
 
 export function createSettingsStorageDoctorFixtures() {
-  const STORAGE = StorageHealthSummaryWireSchema.parse({
+  const STORAGE = StorageAuthoritySummarySchema.parse({
     authority: "healthy" });
 
   const REPORT_BASE = {
@@ -20,7 +21,7 @@ export function createSettingsStorageDoctorFixtures() {
     checkedAt: "2026-08-31T16:01:00.000Z",
     authority: {
       state: "healthy",
-      schemaVersion: 27,
+      schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
       authorityGeneration: 41,
       pageCount: 12,
     },

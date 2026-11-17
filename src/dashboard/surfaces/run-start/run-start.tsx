@@ -12,6 +12,8 @@ import { WorkflowMockRunForm } from "../workflows/mocks/workflow-mock-run.js";
 import { RunOptionsLayout } from "./run-launch-layout.js";
 import type { MockDraft, MockRun } from "../workflows/mocks/workflow-mock-model.js";
 import { RunWorkflowPicker } from "./run-start-picker.js";
+import { RunChecksStage } from "./run-checks.js";
+import { runChecksBlocked, useRunChecks, type RunCheckRow } from "./run-checks-model.js";
 
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { candidateText, rerunTypedSourceInput, rerunSubmission } from "./run-start-rerun-model.js";
@@ -177,6 +179,8 @@ export function RunStartDialog({
   actorId,
   onApplied,
   onCloseAutoFocus,
+  hidden = false,
+  onFixCheck,
   rerunSource,
   rerunInputText,
   previewLaunch,
@@ -185,6 +189,10 @@ export function RunStartDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Settings is open from a Fix button: the dialog stays mounted with everything typed, but is not drawn. */
+  hidden?: boolean;
+  /** Opens the Settings section that fixes a failed check, over this dialog. */
+  onFixCheck?: (section: string) => void;
   /** Shared registration and explicit launch capabilities from the app boundary. */
   catalog: readonly WorkflowCatalogEntry[];
   /** the Workflow Panel the operator is standing in — the dialog's default */
@@ -456,6 +464,25 @@ export function RunStartDialog({
     if (!next) send({ type: "close" });
   }, [onOpenChange, send]);
 
+  const checks = useRunChecks(client, previewOwnsStages ? undefined : workflow?.workflowId, open && !hidden);
+  /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
+  const fixedCheck = useRef<{ check: string; reread: boolean } | null>(null);
+  const fixCheck = (item: RunCheckRow) => {
+    if (item.fix === undefined || onFixCheck === undefined) return;
+    fixedCheck.current = { check: item.check, reread: false };
+    onFixCheck(item.fix.section);
+  };
+  useEffect(() => {
+    const fixed = fixedCheck.current;
+    if (fixed === null || hidden) return;
+    if (checks.state.state === "checking") { fixed.reread = true; return; }
+    if (!fixed.reread) return;
+    const row = document.querySelector<HTMLElement>(`[data-run-check-fix="${fixed.check}"]`) ?? document.querySelector<HTMLElement>(`[data-run-check="${fixed.check}"]`);
+    if (row === null) return;
+    fixedCheck.current = null;
+    row.focus();
+  }, [checks.state, hidden]);
+
 
   const typedInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -597,7 +624,9 @@ export function RunStartDialog({
   const gates: LaunchGates = {
     next: nextStage, inputBlocked: blockedReason !== null, stepsBlocked: stepsBlockedReason !== null, optionsBlocked: optionsBlockedReason !== null,
     rerunInputBlocked: rerunInputBlocked || (declaredInput && isRerun && preview.submissions.length !== 1),
+    checksBlocked: runChecksBlocked(checks.state),
     referencesUnavailable: requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || Boolean(library.catalogError) || library.compatibility === undefined || versionSources.state !== "ready"),
+    path: launchStages.map(stage => stage.label),
     omissionMismatch, plannedCount: plan?.planned.length ?? 0, ...(supportsDryRun ? { dryRun } : {}),
   };
   // A blocked Start on Steps stays pressable: pressing it shows the facts still missing.
@@ -630,7 +659,7 @@ export function RunStartDialog({
   const enterRef = useRef<(() => void) | null>(null);
   enterRef.current = previewOwnsStages || controls.enter === null ? null : () => press(controls.enter);
   useEffect(() => {
-    if (!open) return;
+    if (!open || hidden) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Enter" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented || event.isComposing) return;
       const target = event.target instanceof Element ? event.target : null;
@@ -642,11 +671,11 @@ export function RunStartDialog({
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  }, [open, hidden]);
   return (
-    <Dialog open={open} onOpenChange={closeAndReset}>
+    <Dialog open={open && !hidden} onOpenChange={closeAndReset}>
       <DialogContent
-        onCloseAutoFocus={onCloseAutoFocus}
+        onCloseAutoFocus={event => { if (hidden) event.preventDefault(); else onCloseAutoFocus?.(event); }}
         size="xl"
         band
         title={previewSelection?.source || isRerun ? "Rerun" : "Start run"}
@@ -691,6 +720,8 @@ export function RunStartDialog({
               </div>
               <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Required steps stay included. Optional steps may be omitted."}</p>
             </section>}
+
+            {currentStage === "Checks" && <RunChecksStage checks={checks.state} onFix={fixCheck} onRecheck={checks.recheck} />}
 
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
               {(currentStage === "Input" || currentStage === "Values") && (
@@ -856,6 +887,8 @@ export function RunStartDialog({
                   ? optionsBlockedReason ?? undefined
                   : currentStage === "Steps" && !isRerun
                   ? stepsBlockedReason ?? undefined
+                  : currentStage === "Checks" && gates.checksBlocked
+                  ? checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : "Checks are unavailable."
                   : undefined,
               ].filter((item): item is string => item !== undefined)}
             />
@@ -863,7 +896,7 @@ export function RunStartDialog({
         >
           {controls.hint !== null && <span className="text-[12px] text-ui-muted">{controls.hint}</span>}
           {controls.back !== null && (
-            <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-3" />} onClick={() => send({ type: "go-to", stage: controls.back as RunStartStage, via: "back" })}>Back</Button>
+            <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-3" />} onClick={() => send({ type: "go-to", stage: controls.back as RunStartStage, via: "back", path: gates.path })}>Back</Button>
           )}
           <Button variant="secondary" onClick={() => controls.cancel.type === "close" ? closeAndReset(false) : send(controls.cancel)}>
             Cancel
@@ -898,6 +931,8 @@ export function RunStartSurfaces({
   onApplied,
   onOpenIntake,
   onCloseAutoFocus,
+  hidden,
+  onFixCheck,
   rerunSource,
   rerunInputText,
   previewLaunch,
@@ -906,6 +941,8 @@ export function RunStartSurfaces({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  hidden?: boolean;
+  onFixCheck?: (section: string) => void;
   catalog: readonly WorkflowCatalogEntry[];
   panelWorkflowId: string;
   actorId: string;
@@ -928,6 +965,8 @@ export function RunStartSurfaces({
       onApplied={onApplied}
       onOpenIntake={onOpenIntake}
       onCloseAutoFocus={onCloseAutoFocus}
+      hidden={hidden}
+      onFixCheck={onFixCheck}
       rerunSource={rerunSource}
       rerunInputText={rerunInputText}
       previewLaunch={previewLaunch}

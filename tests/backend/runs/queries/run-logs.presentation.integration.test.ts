@@ -47,7 +47,7 @@ it("labels every observed candidate by exact declared container paths while omit
   assert.equal(unlabelled.payload.rows?.some(row => row.kind === "observed"), false);
 });
 
-it("groups the normal registered Person Lookup helper nodes into four walkthrough headings including skipped dates", async () => {
+it("groups the normal registered Person Lookup helper nodes into walkthrough headings without the dates branch it did not take", async () => {
   const w = await world();
   queuedEventOf(w, { seed: 81, descriptor: personLookupModule.descriptor });
   const run = w.authority.records.get(uuidOf(81)); assert.ok(run);
@@ -75,9 +75,9 @@ it("groups the normal registered Person Lookup helper nodes into four walkthroug
   const section = buildRunLogsSection(deps, run.envelope.runId, w.projection.runFold(run.envelope.runId), run); assert.ok(section.section === "logs");
   const projected = projectRunLogs({ detail, logs: section.payload, sections: [], unavailableEvidence: [] }, { artifactUrl: () => "unused" });
   assert.deepEqual(projected.steps.map(step => [step.title, step.system]), [["Search for person", "UCPath"], ["Cross-check identity", "CRM"],
-    ["Read employment status", undefined], ["Read CRM dates", "CRM"]]);
-  assert.equal(projected.timeline[3].state, "skipped");
-  assert.match(logPlainText(projected.steps), /Skipped · Not needed for this run/u);
+    ["Read employment status", undefined]]);
+  assert.equal(projected.timeline.some(stage => stage.label === "Read CRM dates"), false);
+  assert.doesNotMatch(logPlainText(projected.steps), /Skipped|Not needed for this run/u);
   assert.doesNotMatch(logPlainText(projected.steps), /Run note|\bdone\b|condition-false|search-identity|crm-identity|crm-only-recovery|workflow:person-lookup/u);
 });
 

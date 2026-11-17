@@ -473,7 +473,6 @@ export async function harness(options: {
         stateRoot,
         authorityPath: join(stateRoot, "state.db"),
         backupDirectory: join(stateRoot, "backups", "authority"),
-        maxBackupAgeMs: 45 * 60 * 1000,
         busyTimeoutMs: 1000,
       },
       clock,

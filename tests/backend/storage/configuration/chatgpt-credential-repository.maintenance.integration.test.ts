@@ -54,7 +54,7 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
       clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
     try {
       const backup = await new AuthorityBackupService(profile.admission, database, { directory: backupDirectory }, clock).request({
-        trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+        trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
       const latest = backup.manifests.at(-1); assert.ok(latest);
       assert.equal(existsSync(join(backupDirectory, `${latest.backupFileName}.manifest.json`)), true);
     } finally { database.close(); }
