@@ -64,8 +64,8 @@ function checksHarness(workflowId: string, failConfig = true, beforeRerun?: () =
   });
   const app: DashboardApp = new Hono();
   app.use("*", async (c, next) => { c.set("requestActorId", ActorIdSchema.parse("local-operator")); await next(); });
-  app.get("/api/v1/bootstrap", c => c.json(FIXTURE_START_PICKER_BOOTSTRAP));
-  app.get("/api/v1/settings/editable", c => c.json(FIXTURE_EDITABLE_SETTINGS));
+  app.get("/api/v1/bootstrap", () => Response.json(FIXTURE_START_PICKER_BOOTSTRAP));
+  app.get("/api/v1/settings/editable", () => Response.json(FIXTURE_EDITABLE_SETTINGS));
   registerSettingsPreflightRoutes(app, { clock, preflight: service });
   const requests: string[] = [];
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
@@ -125,7 +125,7 @@ it.each(Object.entries(workflowSources).filter(([, source]) => source === "serve
     await mount(h.client, workflowId);
     const wire = await h.client.readPreflight(PreflightSelectionSchema.parse({ workflowId }));
     assert.equal(wire.state, "present");
-    if (wire.state !== "present") throw new Error(wire.reason);
+    if (wire.state !== "present") throw new Error("Exact-scope report required");
     assert.equal(wire.report.configFingerprint, h.scope.configFingerprint);
     assert.equal(wire.report.descriptorFingerprint, h.scope.descriptorFingerprint);
     assert.deepEqual(wire.report.requestedCapabilities, h.scope.requestedCapabilities);
