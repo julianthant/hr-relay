@@ -64,6 +64,13 @@ export function isStarting(surface: Pick<QueueSurfaceWire, "status" | "liveMessa
 
 export const STARTING_LABEL = "Starting";
 
+/** A run held only by the operator's Duo approval; the served `operatorWait` is the sole source, never the live message. */
+export const NEEDS_DUO_LABEL = "Needs Duo";
+export function isNeedsDuo(surface: Pick<QueueSurfaceWire, "operatorWait">): boolean {
+  return surface.operatorWait.state === "present";
+}
+export const NEEDS_DUO_MEANING = "Relay is waiting for your Duo approval. Approve the sign-in on your phone to continue.";
+
 export type OperationSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "operation" }>;
 
 export type PipelineStep = QueueSurfaceWire["pipeline"][number];

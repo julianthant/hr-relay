@@ -495,6 +495,20 @@ describe("queue and run panel loading and status", () => {
     assert.match(renderToStaticMarkup(createElement(RunStateChips, { row: waiting })), /Queued/);
   });
 
+  it("says Needs Duo from the served operatorWait only, in the row and the panel header", () => {
+    const absent = { state: "absent", reason: "none" } as const;
+    const waitingOnDuo = QueueSurfaceWireSchema.parse({ ...live("awaiting-approval", { state: "present", value: "Waiting for Duo approval" }),
+      operatorWait: { state: "present", kind: "duo", system: "ucpath", since: FIXTURE_NOW } });
+    assert.match(rowMarkup(waitingOnDuo), />Needs Duo</);
+    assert.doesNotMatch(rowMarkup(waitingOnDuo), />Review</);
+    assert.match(renderToStaticMarkup(createElement(RunStateChips, { row: waitingOnDuo })), />Needs Duo</);
+    // The same status and message without the served wait stays an ordinary Review row.
+    const review = QueueSurfaceWireSchema.parse({ ...live("awaiting-approval", { state: "present", value: "Waiting for Duo approval" }), operatorWait: { state: "absent" } });
+    assert.match(rowMarkup(review), />Review</);
+    assert.doesNotMatch(rowMarkup(review), /Needs Duo/);
+    assert.doesNotMatch(renderToStaticMarkup(createElement(RunStateChips, { row: live("running", absent) })), /Needs Duo/);
+  });
+
   it("shows the run's status in the panel for cancelling, cancelled and blocked runs", () => {
     const absent = { state: "absent", reason: "none" } as const;
     for (const [status, word] of [["cancelling", "Cancelling"], ["cancelled", "Cancelled"], ["blocked", "Write parked"], ["done", "Done"]] as const) {
