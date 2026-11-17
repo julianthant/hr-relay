@@ -60,6 +60,7 @@ import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-
 import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
 import { createTaskProvenanceCollector } from "../../runs/provenance/task-provenance.js";
+import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
 import { RunResultRecordSchema, AnyRunPreviewStepSchema, delegationEvidenceOutput, resolveDelegationEvidenceOutput, type RunPreviewStep, terminalGateDependencyRecord } from "../../../models/run/result.js";
 import { buildTerminalAuthorization } from "../../runs/lifecycle/terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type RunMutationOutcome, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
@@ -688,7 +689,7 @@ export async function executeClaimedRun(
         const value = outputs[String(dependency)];
         if (value !== undefined) picked[String(dependency)] = value;
       }
-      return { input: canonicalInput, outputs: Object.freeze(picked),
+      return { input: canonicalInput, outputs: Object.freeze(picked), references: runWorkbookReferenceTypeIds(getRun().input.workbookReferences),
         ...(envelope.dryRun ? { dryRun: { transactions: [...dryRunSteps.values()].filter(step => step.state === "transaction-preview") } } : {}),
         protectedInputBindings: retainedRunProtectedBindings(getRun()) };
     };
@@ -725,7 +726,7 @@ export async function executeClaimedRun(
           throw new RunContinuationRefusedError("run-continuation-input-context-unavailable");
         }
       }
-      return { input: source.input.parsed.value, outputs: values,
+      return { input: source.input.parsed.value, outputs: values, references: runWorkbookReferenceTypeIds(source.input.workbookReferences),
         protectedInputBindings: retainedRunProtectedBindings(source) };
     };
     // Mirrors sourceScopeFor's walk: a child reached directly or through a conditional dependency is authenticated only there.
@@ -800,6 +801,8 @@ export async function executeClaimedRun(
           ? ownRecord
           : undefined;
         plan.set(String(node.id), replay === undefined ? { mode: "asserted" } : { mode: "asserted", replay });
+        // This run's own assertion row is its output; later conditions read it as known.
+        if (replay !== undefined) outputs[String(node.id)] = JsonValueSchema.parse(replay.output.value);
         continue;
       }
       // A dry run re-derives a publication boundary and everything behind it; stored state never stands in.
@@ -832,7 +835,8 @@ export async function executeClaimedRun(
         let conditionKnown = true;
         for (const dependency of node.dependsOn) {
           const dependencyEntry = plan.get(String(dependency));
-          if (dependencyEntry === undefined || dependencyEntry.mode === "execute" || dependencyEntry.mode === "asserted"
+          if (dependencyEntry === undefined || dependencyEntry.mode === "execute"
+            || dependencyEntry.mode === "asserted" && dependencyEntry.replay === undefined
             || !Object.hasOwn(outputs, String(dependency))) {
             conditionKnown = false;
           }
@@ -1138,7 +1142,7 @@ export async function executeClaimedRun(
         descriptor,
         schemaReader: deps.authority.evidenceSchemaHash?.bind(deps.authority),
         ...(continuationAuthority === undefined ? {} : { continuation: continuationAuthority }),
-        canonicalInput,
+        canonicalInput, references: runWorkbookReferenceTypeIds(getRun().input.workbookReferences),
         execution: {
           runId,
           traceId: envelope.traceId,

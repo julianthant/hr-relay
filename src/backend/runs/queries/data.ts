@@ -1,4 +1,4 @@
-import { localDatePart } from "../../../rules/time/clock.js";
+import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import {
@@ -288,7 +288,7 @@ export function buildDataSection(
       entries: [
         { label: "current-attempt", valueRedacted: String(authority.envelope.attempt) },
         { label: "requeues", valueRedacted: row === undefined ? "not recorded" : String(row.requeues) },
-        { label: "enqueued-day", valueRedacted: localDatePart(new Date(authority.envelope.enqueuedAt)) },
+        { label: "enqueued-day", valueRedacted: searchPartitionDay(new Date(authority.envelope.enqueuedAt)) },
       ],
     },
   });

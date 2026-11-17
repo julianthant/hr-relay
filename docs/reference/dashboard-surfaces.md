@@ -63,13 +63,13 @@ It keeps stable ID, label, category, start capability, availability, and source 
 Preview capability does not establish executable registration. An unknown workflow source throws
 rather than picking a default.
 
-`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and I-9 Check are `served`. OCR and I-9 Lookup are `hidden`; the other configured values are `mock`. The I-9 Check person child has no source entry. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
+`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and I-9 Check are `served`. OCR, I-9 Lookup and OnBase are `hidden`; the other configured values are `mock`. Emergency Contact members start OnBase to file each person's page. The I-9 Check person child has no source entry. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
 selection determines Queue heading, visible rows, launcher target, and Logs context. Exact run
 selection may identify its own workflow. Counts come from the producer corresponding to the
 rows rather than a second browser status authority.
 
 The public catalog contains Separations, Onboarding, Person Lookup, Work-Study,
-Kronos Pay Rule, Oath Signature, Oath Upload, Emergency Contact, OnBase, I-9 Check,
+Kronos Pay Rule, Oath Signature, Oath Upload, Emergency Contact, I-9 Check,
 CRM Doc Download, SharePoint Download, and Old Kronos Reports. SharePoint Download is parent-only.
 Hidden children have no public catalog choice. Explicit fixtures retain their mock definitions.
 I-9 Check launches through its served PDF input and awaits operator acceptance. Its read-only graph
@@ -213,7 +213,7 @@ when a later producer introduces paging.
 
 ## Logs and timeline
 
-When a live timeline is supplied and the workflow version or contract fingerprint differs from the retained run, older runs use its current step names. Every node recorded by that run's spans, checkpoints, gates, actions and same-run action lineage must map to exactly one keyed live category; missing or ambiguous mappings refuse as `LOGS_IDENTITY_REFUSED`. Notification display applies the same rule and retains its unavailable state on incompatibility. Matching version and fingerprint skip this structural evidence check; notification subject projection still reads its declared checkpoint. Run detail skips timeline reads when the fold has no task spans or gates, except that an older run with a live timeline reads it once for structural compatibility. Missing live category keys still refuse for every run. Frozen action evidence and every write, gate-resolution, resume, rerun and checkpoint-replay fingerprint check remain exact.
+When a live timeline is supplied and the workflow version or contract fingerprint differs from the retained run, older runs use its current step names. Every node recorded by that run's spans, checkpoints, gates, actions and same-run action lineage must map to exactly one keyed live category; missing or ambiguous mappings refuse as `LOGS_IDENTITY_REFUSED`. Notification subject display applies the same rule: incompatibility withholds the subject while retaining the linked run’s registered workflow label. A missing run or workflow descriptor leaves the notification context unavailable. Matching version and fingerprint skip this structural evidence check; notification subject projection still reads its declared checkpoint. Run detail skips timeline reads when the fold has no task spans or gates, except that an older run with a live timeline reads it once for structural compatibility. Missing live category keys still refuse for every run. Frozen action evidence and every write, gate-resolution, resume, rerun and checkpoint-replay fingerprint check remain exact.
 
 Served Logs combines action notes, declared operator observations, fences and decisions in native ingestion order. Contiguous actions nest under their registered timeline group and system; helper completions do not create their own headings. Unknown field paths remain in Run data instead of becoming operator labels. Browser action labels come from exact frozen declarations; gestures labelled only by the UI registry stay in Run data and are not shown. Values appear only through declared fields and existing frozen classification; legacy unbound gesture values remain explicitly unavailable. Captures join exact bundle, artifact, node, attempt and physical session metadata while their labels stay operator text. Within each displayed step, identical declared field labels and values render once at their first observation time; different values stay separate. Run data retains all source observations, and repeated-field captures remain visible.
 
@@ -268,8 +268,9 @@ number and sends it with the recheck. Not saved composes `resolve-write-absent`.
 write from the operator's statement alone. Every choice uses its served command confirmation and
 binds the run version, intent, generation, write attempt, binding proof digest and occurrence key
 digest. Superseded choices refuse before dispatch.
-A failure after a write the run settled offers Mark as failed or Add note; both send
-`annotate-failure` with the served resolution version and never run, retry or file anything.
+A failure after a write the run settled offers Mark as failed, which sends `annotate-failure`
+with the served resolution version and never runs, retries or files anything. Failure resolution
+commands accept no note; stored notes remain readable.
 Pending, refused, uncertain with exact replay, and settled feedback use the existing command
 executor. Local result copy describes the request, without claiming verification or continuation.
 

@@ -10,6 +10,7 @@ import { delegationEvidenceOutput } from "../../../models/run/result.js";
 import { readRunCheckpoint, readContinuationGate, validateRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { captureRunContinuation, continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
+import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
 import { RerunRefusedError, validateRerunSourcePlan } from "./rerun.js";
 import { RunRecoveryPlanSchema } from "../../../models/run/recovery-plan.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -98,7 +99,7 @@ export function validateCompletedTransactionContinuations(repositories: Authorit
   const nodes = descriptorRuntimeNodes(descriptor);
   const completed = new Set<string>();
   const scopeFor = (source: RunRecord, dependsOn: readonly string[], value: JsonValue, historical = false): {
-    input: JsonValue; outputs: Record<string, JsonValue>;
+    input: JsonValue; outputs: Record<string, JsonValue>; references: readonly string[];
     protectedInputBindings: ReturnType<typeof retainedRunProtectedBindings>;
   } => {
     const outputs: Record<string, JsonValue> = {};
@@ -129,7 +130,7 @@ export function validateCompletedTransactionContinuations(repositories: Authorit
         outputs[dependency] = gate.result.value;
       }
     }
-    return { input: value, outputs, protectedInputBindings: retainedRunProtectedBindings(source) };
+    return { input: value, outputs, references: runWorkbookReferenceTypeIds(source.input.workbookReferences), protectedInputBindings: retainedRunProtectedBindings(source) };
   };
   for (const node of nodes) {
     if (node.kind !== "transaction") continue;

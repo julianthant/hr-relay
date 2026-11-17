@@ -1,4 +1,4 @@
-import type { RunRecord } from "../../../models/run/record.js";
+import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -35,7 +35,9 @@ export function delegatedCandidateEligible(repositories: AuthorityRepositories, 
     const { manifest, group } = delegationGroupForChild(repositories,parent.envelope.runId,child.envelope.runId);
     if (child === candidate && !group.children.some(member => member.child.envelope.runId === child.envelope.runId)) throw new Error("delegation-dispatch-membership-unavailable");
     const { invocation } = group;
-    if (parent.cancelRequested === true && manifest.policy.cascadeCancel !== "independent") return false;
+    // A queued child that carries its own cancel request is claimed only to settle cancelled before any step.
+    if (parent.cancelRequested === true && manifest.policy.cascadeCancel !== "independent"
+      && (child.cancelRequested !== true || runClaim(child) !== undefined)) return false;
     const producer = resolveDescriptor(parent.envelope.workflow), target = resolveDescriptor(child.envelope.workflow);
     const node = producer === undefined ? undefined : descriptorRuntimeNodes(producer).find(node => node.id === invocation.nodeId);
     if (producer === undefined || target === undefined || producer.version !== parent.envelope.descriptorVersion

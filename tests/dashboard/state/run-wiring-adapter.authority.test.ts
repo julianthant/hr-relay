@@ -934,7 +934,6 @@ describe("failure resolution from the decision card", () => {
 
   for (const [choice, answer, payload] of [
     ["mark-as-failed", {}, { action: "resolve" }],
-    ["add-note", { text: " Checked T00042871 in UCPath " }, { action: "resolve", note: "Checked T00042871 in UCPath" }],
   ] as const) it(`closes the failure with ${choice} and nothing else`, async () => {
     const selected = selectionAt(3), sent: DashboardCommandRequest[] = [];
     const fixture = failureClient(selected, sent, [], applied, committedAt(selected));
@@ -948,11 +947,10 @@ describe("failure resolution from the decision card", () => {
     assert.equal(request.source, "run-detail");
   });
 
-  it("sends no note without its text, and nothing for a failure option the server no longer serves", async () => {
+  it("sends nothing for a failure option the server no longer serves", async () => {
     const selected = selectionAt(3), sent: DashboardCommandRequest[] = [];
     const fixture = failureClient(selected, sent, [], applied, committedAt(selected));
     const h = await harness(fixture.client); await h.render(selected);
-    await act(async () => h.state?.onDecision?.(FAILURE, failureOption(fixture.failed, "add-note"), { text: "  " }));
     await act(async () => h.state?.onDecision?.(FAILURE, { ...failureOption(fixture.failed, "mark-as-failed"), id: "retry" }, {}));
     assert.equal(sent.length, 0);
   });

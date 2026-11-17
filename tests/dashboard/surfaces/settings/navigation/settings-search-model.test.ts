@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
+import { GENERAL_RUN_PATHS } from "../../../../../src/dashboard/surfaces/settings/general/general-groups-model.js";
 import { searchSettings,settingsSearchIndex } from "../../../../../src/dashboard/surfaces/settings/navigation/settings-search-model.js";
 import { buildSettingsNav } from "../../../../../src/dashboard/surfaces/settings/settings-model.js";
 import { fixtureSettingsDocument } from "../../../../mocks/helpers/fixture-settings.js";
@@ -52,7 +53,7 @@ describe("Settings field search", () => {
   it("indexes each appearance control once through its visible destination", () => {
     assert.deepEqual(searchSettings(index, "theme").map(result => result.target), ["appearance.theme"]);
     assert.deepEqual(searchSettings(index, "animations").map(result => result.target), ["appearance.animations"]);
-    assert.equal(index.some(result => result.target?.startsWith("preferences.")), false);
+    assert.deepEqual(index.filter(result => result.target?.startsWith("preferences.")).map(result => result.target).sort(), [...GENERAL_RUN_PATHS].sort());
   });
 
   it("never searches or serializes current values, secrets, or source paths", () => {
