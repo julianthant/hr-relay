@@ -1,7 +1,7 @@
 import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, renameSync, writeFileSync, type BigIntStats } from "node:fs";
 import { dirname } from "node:path";
 import { createRequire } from "node:module";
-import { assertWindowsNoReparse, assertWindowsPrivateParent, createWindowsPrivateDirectory, flushWindowsPath, windowsPrivatePathRejects } from "./windows-private-path.js";
+import { NATIVE_BRIDGE_VERSION, assertWindowsNoReparse, assertWindowsPrivateParent, createWindowsPrivateDirectory, flushWindowsPath, windowsPrivatePathRejects } from "./windows-private-path.js";
 import { retainAuthoritySourceClosure } from "./source-closure.js";
 
 export type PrivacyRule = "owner" | "ancestor" | "group-write" | "directory-0700" | "file-0600" | "file-0400" | "private" | "private-read-write" | "owner-write-only";
@@ -78,7 +78,7 @@ export function movePrivateDirectoryExclusive(source: string, target: string): v
   if (process.platform !== "darwin") throw new Error("private-directory-exclusive-move-unavailable");
   if (exclusiveDirectoryMove === undefined) {
     const native: unknown = createRequire(import.meta.url)("koffi");
-    if (typeof native !== "object" || native === null || !("version" in native) || native.version !== "3.3.6"
+    if (typeof native !== "object" || native === null || !("version" in native) || native.version !== NATIVE_BRIDGE_VERSION
       || !("load" in native) || typeof native.load !== "function") throw new Error("private-directory-native-bridge-unavailable");
     const library: unknown = Reflect.apply(native.load, native, ["/usr/lib/libSystem.B.dylib"]);
     if (typeof library !== "object" || library === null || !("func" in library) || typeof library.func !== "function") throw new Error("private-directory-native-bridge-unavailable");

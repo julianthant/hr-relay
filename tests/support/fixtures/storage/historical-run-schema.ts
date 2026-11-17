@@ -1,11 +1,21 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
+
+/** Steps a current authority back to schema 30: the change log, its run references, its triggers and indexes did not exist. */
+export function removeSchema31ChangeLog(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 31);
+  const objects = z.array(z.object({ type: z.string(), name: z.string() })).parse(database.prepare("SELECT type,name FROM sqlite_schema").all())
+    .filter(({ name }) => CHANGE_LOG_OBJECTS.includes(name));
+  for (const type of ["trigger", "index", "table"]) for (const object of objects) if (object.type === type) database.exec(`DROP ${type} ${object.name}`);
+  database.exec("DELETE FROM sqlite_sequence WHERE name='authority_changes'; UPDATE database_states SET schema_version=30; PRAGMA user_version=30");
+}
 
 /** Removes schema 30's pin and tags from every library state and recorded action result; the schema version is left to the caller. */
 function removeSchema30WorkbookPinTags(database: DatabaseSync): void {
@@ -20,6 +30,7 @@ function removeSchema30WorkbookPinTags(database: DatabaseSync): void {
 
 /** Steps a current authority back to schema 29: library states and recorded actions carried no pin or tags. */
 export function restoreSchema29WorkbookPinTags(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 31) removeSchema31ChangeLog(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 30);
   removeSchema30WorkbookPinTags(database);
   database.exec("UPDATE database_states SET schema_version=29; PRAGMA user_version=29");
@@ -27,7 +38,7 @@ export function restoreSchema29WorkbookPinTags(database: DatabaseSync): void {
 
 /** Steps an empty current authority back to schema 28: the empty operator grant table still existed. */
 export function restoreSchema28AssistantGrants(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 30) restoreSchema29WorkbookPinTags(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 30) restoreSchema29WorkbookPinTags(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 29);
   const ddl = SQLITE_MIGRATIONS.find(migration => migration.version === 8)?.statements.join("\n");
   const table = ddl?.match(/CREATE TABLE assistant_grants \([\s\S]*?\n\) STRICT;/u)?.[0], trigger = ddl?.match(/CREATE TRIGGER assistant_grants_revision[\s\S]*?END;/u)?.[0];

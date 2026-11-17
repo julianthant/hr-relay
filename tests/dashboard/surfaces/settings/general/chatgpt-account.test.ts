@@ -41,12 +41,11 @@ describe("General ChatGPT account", () => {
     assert.doesNotMatch(html, /Connect ChatGPT/u);
   });
 
-  it("renders loading, expired, unavailable and usage-limit states distinctly", () => {
+  it("renders loading, unavailable and usage-limit states distinctly", () => {
     const render = (snapshot: ChatGptAccountSnapshot) => renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) }));
     const loading = render({ state: "loading" });
     assert.doesNotMatch(loading, /aria-busy="true"/u);
     assert.doesNotMatch(loading, /Connect ChatGPT/u);
-    assert.match(render({ state: "expired" }), /Your ChatGPT session expired/u);
     assert.match(render({ state: "unavailable", message: "Account read failed" }), /ChatGPT account unavailable.*Account read failed/u);
     const limited = render({ state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "limit-reached" });
     assert.match(limited, /Usage limit reached/u);
@@ -101,11 +100,14 @@ it("recovers through Continue after an initial read failure without restarting a
 });
 
 
-it("offers Reconnect for an expired session without a separate disconnect", () => {
-  const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "expired" }) }));
-  assert.match(html, />Reconnect</u);
-  assert.doesNotMatch(html, /Disconnect|Use a different account/u);
-});
+for (const snapshot of [{ state: "signed-out" }, { state: "expired" }] as const)
+  it(`shows the one not-connected row for a ${snapshot.state} account`, async () => {
+    host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) })));
+    const row = host.querySelector('[data-settings-path="chatgpt.account"]'); assert.ok(row);
+    assert.equal(row.textContent, "Use your ChatGPT plan" + "Not connected. Connect your ChatGPT account to Relay." + "Connect ChatGPT");
+    assert.deepEqual([...row.querySelectorAll("button")].map(button => button.textContent), ["Connect ChatGPT"]);
+  });
 
 it("keeps OCR diagnostics out of the account panel", () => {
   const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "connected", name: "Operator", email: "operator@example.com", planUsage: "enabled" }) }));

@@ -46,7 +46,7 @@ export function readPcTiming(line: string, runId: string): PcTiming | undefined 
 export function pcListingArgs(patterns: readonly string[]): string[][] {
   return patterns.length > 0 ? [[...projects]] : [
     ["--project", "architecture"],
-    ["--project", "unit", "--project", "integration", "--changed=origin/staging"],
+    ["--project", "unit", "--project", "integration", "--changed=origin/development"],
   ];
 }
 
