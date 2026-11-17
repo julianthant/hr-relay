@@ -53,7 +53,7 @@ const applied = (commandId: string) => CommandResultSchema.parse({ state: "appli
 const feedback = formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {}));
 const authorityText = formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text;
 
-const LAST: LaunchGates = { next: null, inputBlocked: false, stepsBlocked: false, rerunInputBlocked: false, referencesUnavailable: false, omissionMismatch: false, plannedCount: 1 };
+const LAST: LaunchGates = { next: null, inputBlocked: false, stepsBlocked: false, optionsBlocked: false, rerunInputBlocked: false, referencesUnavailable: false, omissionMismatch: false, plannedCount: 1 };
 const gates = (patch: Partial<LaunchGates> = {}): LaunchGates => ({ ...LAST, ...patch });
 const at = (patch: Partial<RunDialogState>): RunDialogState => ({ ...initialRunDialogState, ...patch });
 const rerunReady = (load: Partial<{ warning: typeof WARNING; acknowledgment: string }> = {}) =>

@@ -71,6 +71,8 @@ export type LaunchGates = Readonly<{
   next: RunStartStage | null;
   inputBlocked: boolean;
   stepsBlocked: boolean;
+  /** A required launch pick (a PDF workflow's File to OnBase) is still unmade. */
+  optionsBlocked: boolean;
   rerunInputBlocked: boolean;
   referencesUnavailable: boolean;
   omissionMismatch: boolean;
@@ -179,6 +181,7 @@ function startRefusal(state: RunDialogState, gates: LaunchGates, current: Planne
   if (current !== undefined) return gates.omissionMismatch || gates.plannedCount === 0 ? "blocked" : undefined;
   if (state.source.kind === "rerun" && state.source.load.state !== "ready") return "blocked";
   if (state.stage === "Steps" && gates.stepsBlocked) return "blocked";
+  if (gates.optionsBlocked) return "blocked";
   if (state.source.kind === "start" ? gates.inputBlocked : gates.rerunInputBlocked) return "blocked";
   return undefined;
 }
@@ -189,6 +192,7 @@ function continueRefusal(state: RunDialogState, gates: LaunchGates): RunDialogRe
   if (state.recovery.state !== "none") return "blocked";
   if (state.source.kind === "rerun" && state.source.load.state !== "ready") return "blocked";
   if (state.stage === "Input" && gates.inputBlocked) return "blocked";
+  if (state.stage === "Options" && gates.optionsBlocked) return "blocked";
   if (state.stage === "Values" && (gates.rerunInputBlocked || gates.stepsBlocked)) return "blocked";
   return undefined;
 }

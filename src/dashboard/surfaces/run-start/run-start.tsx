@@ -24,7 +24,7 @@ import { runDialogControls, useRunDialogMachine, visibleRunDialog, type Authorit
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Keyboard, Lock, Play } from "lucide-react";
 import { cn } from "../../lib/utils.js";
-import { useToasts, BareButton, Badge, Banner, Button, Checkbox, Switch, Dialog, DialogBody, DialogContent, DialogFooter, EmptyState, Field, Input, KeyValueList, MetaLine, Table, THead, TBody, TR, TH, TD, Skeleton, Well, dsFg, dsFocus, dsIcon, dsText } from "../../ds/ui.js";
+import { useToasts, BareButton, Badge, Banner, Button, Checkbox, Switch, Dialog, SegmentedChoice, DialogBody, DialogContent, DialogFooter, EmptyState, Field, Input, KeyValueList, MetaLine, Table, THead, TBody, TR, TH, TD, Skeleton, Well, dsFg, dsFocus, dsIcon, dsText } from "../../ds/ui.js";
 
 import { runStartRefusalToast } from "../../app/commands/command-result.js";
 import { type InputRunSurface, type UploadRunSurface } from "../../../models/workflow/ingress.js";
@@ -39,7 +39,7 @@ import { foldStepOmissionFacts, forcedStepOmissions, initialStepOmissionDraft, o
 import { adjacentRunStartStage, reconcileRunStartStage, runStartStages, type RunStartStage } from "./run-start-timeline.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import { WorkflowPdfInput } from "../workflows/mocks/workflow-pdf-input.js";
-import { previewPdfRun, usePdfRunInput } from "./run-start-pdfs.js";
+import { pdfRunLaunchFields, previewPdfRun, unpickedPdfRunField, usePdfRunInput } from "./run-start-pdfs.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration ) */
 
@@ -330,7 +330,7 @@ export function RunStartDialog({
     },
   ), [customizeSteps, steps, selectedStepKeys, stepDrafts]);
   const stepOmissions = useMemo(() => completeStepOmissions(omissionRows), [omissionRows]);
-  const requestFingerprint = canonicalJsonStringify([rowIdentity, workbookRows.state, rowSelectionFresh, selectedWorkbookRows?.choices.map(({ sheetId, rowId }) => ({ sheetId, rowId })) ?? [], library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility ?? null, versionSources.state, versionSources.sources, selectedReferences, library.catalog.filter(entry => Object.values(selectedReferences).some(selection => selection.libraryId === entry.libraryId)).map(entry => [entry.libraryId, entry.state.revision]), rerunSource ?? null, valueDrafts, copiedOmissions, typedValues, sourceInputUnchanged, pdfInput.draft, startRequestFingerprint({
+  const requestFingerprint = canonicalJsonStringify([rowIdentity, workbookRows.state, rowSelectionFresh, selectedWorkbookRows?.choices.map(({ sheetId, rowId }) => ({ sheetId, rowId })) ?? [], library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility ?? null, versionSources.state, versionSources.sources, selectedReferences, library.catalog.filter(entry => Object.values(selectedReferences).some(selection => selection.libraryId === entry.libraryId)).map(entry => [entry.libraryId, entry.state.revision]), rerunSource ?? null, valueDrafts, copiedOmissions, typedValues, sourceInputUnchanged, pdfInput.draft, pdfInput.picks, startRequestFingerprint({
     workflowId,
     text,
     dryRun,
@@ -460,7 +460,7 @@ export function RunStartDialog({
   const typedInputRef = useRef<HTMLTextAreaElement>(null);
 
   const preview = useMemo((): RunInputPreview => {
-    if (pdfSurface !== undefined) return previewPdfRun(pdfSurface, pdfInput.draft);
+    if (pdfSurface !== undefined) return previewPdfRun(pdfSurface, pdfInput.draft, pdfInput.picks);
     if (inputRun.state !== "present") return { entries: [], submissions: [], problem: null };
     if (rowCapability !== undefined) {
       const selected = selectedWorkbookRows?.choices ?? [];
@@ -471,7 +471,7 @@ export function RunStartDialog({
     }
     return previewRunInput(inputRun.surface, text, typedValues,
       sourceInputUnchanged && snapshot?.source.runId === rerunSource?.runId && snapshot?.source.version === rerunSource?.expectedVersion && snapshot !== null ? rerunTypedSourceInput(inputRun.surface.typedInput, snapshot.sourceInput) : undefined);
-  }, [inputRun, rowCapability, selectedWorkbookRows, rowSelectionFresh, workbookRows.state, workbookRows.error, text, typedValues, snapshot, rerunSource, sourceInputUnchanged, pdfSurface, pdfInput.draft]);
+  }, [inputRun, rowCapability, selectedWorkbookRows, rowSelectionFresh, workbookRows.state, workbookRows.error, text, typedValues, snapshot, rerunSource, sourceInputUnchanged, pdfSurface, pdfInput.draft, pdfInput.picks]);
 
 
 
@@ -510,6 +510,10 @@ export function RunStartDialog({
       : preview.entries.length === 0
         ? rowCapability === undefined ? "Type at least one value." : "Select at least one saved row."
         : null;
+  const launchFields = pdfSurface === undefined ? [] : pdfRunLaunchFields(pdfSurface);
+  const unpickedField = pdfSurface === undefined ? null : unpickedPdfRunField(pdfSurface, pdfInput.picks);
+  /** A required launch field without a pick blocks planning from Options, where it is picked. */
+  const optionsBlockedReason = unpickedField === null ? null : `Pick ${unpickedField.label}.`;
   const rerunInputBlocked = pdfSurface !== undefined ? blockedReason !== null : preview.problem !== null || preview.entries.length > 1 || (declaredInput && preview.entries.length === 0);
   /** Incomplete omitted-step facts block confirmation using the descriptor’s own schema refusal. */
   /** Omission facts describe one person; fan-out must not assert the same dates for multiple subjects. */
@@ -591,7 +595,7 @@ export function RunStartDialog({
       onRefresh={() => void library.adapter.refreshCatalog()} />;
   })}</>;
   const gates: LaunchGates = {
-    next: nextStage, inputBlocked: blockedReason !== null, stepsBlocked: stepsBlockedReason !== null,
+    next: nextStage, inputBlocked: blockedReason !== null, stepsBlocked: stepsBlockedReason !== null, optionsBlocked: optionsBlockedReason !== null,
     rerunInputBlocked: rerunInputBlocked || (declaredInput && isRerun && preview.submissions.length !== 1),
     referencesUnavailable: requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || Boolean(library.catalogError) || library.compatibility === undefined || versionSources.state !== "ready"),
     omissionMismatch, plannedCount: plan?.planned.length ?? 0, ...(supportsDryRun ? { dryRun } : {}),
@@ -620,6 +624,7 @@ export function RunStartDialog({
       const version = chosen.state.versions.find(entry => entry.id === selection.versionId)?.name;
       return [{ key: "Reference spreadsheet", value: version ? `${chosen.name} \u00b7 ${version}` : chosen.name }];
     }),
+    ...launchFields.flatMap(field => { const option = field.options.find(candidate => candidate.value === pdfInput.picks[field.field]); return option === undefined ? [] : [{ key: field.label, value: option.label }]; }),
   ];
   // Enter continues or starts; Shift+Enter keeps its newline. Buttons, links and open pickers keep Enter for themselves.
   const enterRef = useRef<(() => void) | null>(null);
@@ -784,6 +789,7 @@ export function RunStartDialog({
                   flags={<>
                     {!isRerun && <RunListRow title="Customize steps" description="Choose optional steps."><Switch hideLabel label="Customize steps" checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     {supportsDryRun && <RunListRow title="Dry run" description={dryRunDescription}><Switch hideLabel label="Dry run" checked={dryRun} onCheckedChange={next => update(current => launchDraft.changeDryRun(current, next === true))} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
+                    {launchFields.map(field => <RunListRow key={field.field} title={field.label}><div className="w-[250px]"><SegmentedChoice hideLabel label={field.label} value={pdfInput.picks[field.field] ?? ""} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></div></RunListRow>)}
                     <RunListRow title="Screenshots" description="Required by this workflow."><span className="inline-flex items-center gap-1.5 text-[12px] text-ui-secondary"><Lock aria-hidden className="size-3" />Always on</span></RunListRow>
                   </>} />
               )}
@@ -846,6 +852,8 @@ export function RunStartDialog({
                 priority === "interactive" ? "Priority" : undefined,
                 currentStage === "Input"
                   ? blockedReason ?? undefined
+                  : currentStage === "Options"
+                  ? optionsBlockedReason ?? undefined
                   : currentStage === "Steps" && !isRerun
                   ? stepsBlockedReason ?? undefined
                   : undefined,

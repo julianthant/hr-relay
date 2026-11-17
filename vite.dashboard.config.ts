@@ -6,6 +6,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "node:path";
 import { writeDashboardBuildIdentity, DASHBOARD_BUILD_COMMAND, type DashboardBuildCommand } from "./src/backend/app/composition/dashboard/build-identity.js";
 import {
+  DASHBOARD_FRONTEND_HOST,
   DASHBOARD_FRONTEND_OWNER_PATH,
   DASHBOARD_LAUNCH_NONCE_ENV,
   DashboardLaunchNonceSchema,
@@ -70,6 +71,7 @@ return defineConfig({
     manifest: true,
   },
   server: {
+    host: DASHBOARD_FRONTEND_HOST,
     port: 5174,
     strictPort: true,
     proxy: {

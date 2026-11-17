@@ -4,12 +4,13 @@ import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { contactPlanDefinition } from "./steps/contact-plan/step.js";
 import { contactPreviewDefinition } from "./steps/contact-preview/step.js";
+import { onbaseFilingDefinition } from "./steps/onbase-filing/step.js";
 
 export const EMERGENCY_CONTACT_SCENARIOS = ["emergency-contact/unambiguous-addition", "emergency-contact/exact-existing-effect",
   "emergency-contact/conflict-refused", "emergency-contact/dry-run", "emergency-contact/unknown", "emergency-contact/verified-save"] as const;
 export const emergencyContactMemberWorkflow = defineWorkflow({
   id: "emergency-contact-member", version: 1, code: "em", label: "Emergency Contact member", icon: "Users", category: "documents",
-  summary: "Authenticates one approved OCR record and saves its ordered primary contact changes in UCPath.", requiredWorkbookFields: [],
+  summary: "Authenticates one approved OCR record, saves its ordered primary contact changes in UCPath and files its source page to OnBase.", requiredWorkbookFields: [],
   input: EmergencyContactMemberInputSchema, canonicalInput: EmergencyContactMemberCanonicalInput, inputSubject: "eid",
   surface: { shape: "operation-member" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {},
   role: defineWorkflowRole({ kind: "composition" }), identity: { matchKey: input => `${input.approval.sourceRunId}:${input.record.recordId}` },
@@ -22,9 +23,10 @@ export const emergencyContactMemberWorkflow = defineWorkflow({
     { nodeId: "read-contacts", purpose: "Open the employee contact editor and capture the complete saved contact set." },
     { nodeId: "contact-plan", purpose: "Declare the ordered primary demotion and addition bound to the exact original contact set." },
     { nodeId: "contact-preview", purpose: "Probe exact presence, prepare and save the approved primary contact plan, then verify persisted contacts." },
+    { nodeId: "onbase-filing", purpose: "File the record's first source page to OnBase through one child once the Save settles." },
   ],
   steps: author => {
-    const plan = contactPlanDefinition.build(author), preview = contactPreviewDefinition.build(author, plan);
-    return { steps: [...plan.steps, ...preview.steps], result: preview.result };
+    const plan = contactPlanDefinition.build(author), preview = contactPreviewDefinition.build(author, plan), filing = onbaseFilingDefinition.build(author);
+    return { steps: [...plan.steps, ...preview.steps, ...filing.steps], result: preview.result };
   },
 });
