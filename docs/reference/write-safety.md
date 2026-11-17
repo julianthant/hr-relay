@@ -298,7 +298,7 @@ A lost or crashed recheck claim returns claimed, validating, or running executio
 
 `requireWriteResolutionBinding` checks the consumed semantic surface. Exact contract-closure identity is sufficient. When the closure changes, the module checks workflow identity, descriptor version, transaction node, canonical-input schema, re-derived permanent key, and retained binding identity. Missing evidence, schema failure, and key drift remain distinct refusal categories. There is no force or waiver arm. Settling an intent does not re-plan its run onto a changed descriptor.
 
-`command-kernel.ts` refuses generic retry for parked writes and rejects cancellation over any `attempting` or `parked` intent in the entire cancellation cascade. Resolution must precede cancellation. Confirmed absence resumes to queued, so subsequent cancellation remains subject to the ordinary queue race.
+`command-kernel.ts` refuses generic retry for parked writes and rejects cancellation over any `parked` intent, or any `attempting` intent whose run holds no live claim, in the entire cancellation cascade. Resolution must precede cancellation. A run Cancel (Stop) over a claimed `attempting` intent only marks the cascade cancel-requested: that write finishes and settles once, then its run ends cancelled at its next boundary and the cascade settles after it; the settled write is never repeated. Confirmed absence resumes to queued, so subsequent cancellation remains subject to the ordinary queue race.
 
 ## 6. Settlement, history, and evidence receipts
 

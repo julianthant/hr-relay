@@ -181,7 +181,20 @@ export function authenticateStartPlanRun(repositories: AuthorityRepositories, ru
   return { session, plan, command, audit, create: created, creation };
 }
 
-export function authenticateRootRun(repositories: AuthorityRepositories, candidate: RunRecord): ReturnType<typeof authenticateStartPlanRun> {
+export type RootRunProof = ReturnType<typeof authenticateStartPlanRun>;
+
+/** Inside a read snapshot a run is authenticated once; every caller gets its own copy of the proof. */
+export function authenticateRootRun(repositories: AuthorityRepositories, candidate: RunRecord): RootRunProof {
+  const roots = repositories.dependencies.snapshotMemo(repositories)?.roots;
+  if (roots === undefined) return authenticateRoot(repositories, candidate);
+  const run = canonicalJsonStringify(candidate), cached = roots.get(candidate.envelope.runId);
+  if (cached?.run === run) return structuredClone(cached.proof);
+  const proof = authenticateRoot(repositories, candidate);
+  roots.set(candidate.envelope.runId, { run, proof: structuredClone(proof) });
+  return proof;
+}
+
+function authenticateRoot(repositories: AuthorityRepositories, candidate: RunRecord): RootRunProof {
   const visited = new Set<string>(), actors: string[] = [];
   let current = candidate;
   for (;;) {

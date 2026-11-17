@@ -182,7 +182,7 @@ describe("settings facts — workflow capabilities", () => {
     const gates = new Map(
       facts().workflowCapabilities.map(({ workflowId, operatorGates }) => [String(workflowId), operatorGates]),
     );
-    assert.deepEqual(gates.get("separations"), ["identity-approval"]);
+    assert.deepEqual(gates.get("separations"), ["identity-approval", "reference-check-review"]);
     assert.deepEqual(gates.get("person-lookup"), []);
 
     const [external] = buildSettingsFacts({

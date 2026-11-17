@@ -103,7 +103,7 @@ describe("bootstrap start-surface block", () => {
       expect([...served.keys()].sort())
         .toEqual(DESCRIPTORS.map((d) => String(d.id)).sort());
       const systemsByStep: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
-        "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "crm-dates": ["crm"] },
+        "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "reference-check": [], "crm-dates": ["crm"] },
         separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "job-summary": ["ucpath"], "kronos-timecard": ["new-kronos"], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
         "crm-doc-download": { "search-records": ["crm"], reference: [], "read-idocs": ["crm"], "package-worksheets": [] },
         onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "hire-review": ["ucpath"],
@@ -129,6 +129,7 @@ describe("bootstrap start-surface block", () => {
                 fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
           spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
           ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
+          ...(descriptor.id === "person-lookup" ? { workbookCheck: { id: "reference-check", keyFieldId: "eid" } } : {}),
           steps: projectStartSteps(descriptor).map((step) => ({
             key: step.key,
             label: step.label,

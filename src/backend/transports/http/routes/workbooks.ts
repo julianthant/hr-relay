@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { WorkbookImportRequestSchema, WorkbookRevisionSchema, WorkbookOperatorOperationRequestSchema, WorkbookTypeSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, decodeEditableWorkbook, encodeSavedWorkbook } from "../../../../models/dashboard/workbooks.js";
+import { WorkbookRevisionSchema, WorkbookOperatorOperationRequestSchema, WorkbookTypeSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, decodeEditableWorkbook, encodeSavedWorkbook } from "../../../../models/dashboard/workbooks.js";
 import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.js";
 import { type WorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import type { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import type { DashboardApp } from "./api-types.js";
-import { WorkbookLibraryActionSchema } from "../../../../models/dashboard/workbook-library.js";
+import { WorkbookCloneRequestSchema, WorkbookLibraryActionSchema, WorkbookLibraryImportRequestSchema } from "../../../../models/dashboard/workbook-library.js";
 import type { WorkbookReferenceWorkflow } from "../../../workbooks/workbook-library-service.js";
 
 export interface WorkbooksRouteDeps {
@@ -24,7 +24,15 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
   app.get("/api/v1/workbooks/catalog", c => c.json(service().library.catalog()));
   app.get("/api/v1/workbooks/compatibility", c => c.json(service().library.compatibility(service().workflows)));
   app.get("/api/v1/workbooks/results", c => c.json(service().library.results()));
-  app.post("/api/v1/workbooks/import", async c => c.json(service().library.importWorkbook(workbookRequest(WorkbookImportRequestSchema, await c.req.json())), 201));
+  app.post("/api/v1/workbooks/import", async c => {
+    const request = workbookRequest(WorkbookLibraryImportRequestSchema, await c.req.json());
+    return c.json('source' in request ? await service().library.importSharePoint(request, c.req.raw.signal)
+      : service().library.importWorkbook(request), 201);
+  });
+  app.post("/api/v1/workbooks/:libraryId/clone", async c => {
+    const request = workbookRequest(WorkbookCloneRequestSchema, await c.req.json());
+    return c.json(service().library.cloneWorkbook(c.req.param('libraryId'), request), 201);
+  });
   app.post("/api/v1/workbooks/:libraryId/library-actions", async c => {
     const request = workbookRequest(WorkbookLibraryActionSchema, await c.req.json());
     return c.json(await service().library.libraryAction(c.req.param('libraryId'), request, c.req.raw.signal));

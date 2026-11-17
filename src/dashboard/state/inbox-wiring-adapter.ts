@@ -2,14 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { attemptUnresolved } from "../app/commands/command-outcome.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { DashboardClient } from "../client/index.js";
-import type { DsToast } from "../ds/ui.js";
 import { NotificationWireSchema, type NotificationWire } from "../../models/dashboard/projection.js";
 import type { NotificationPublicationWire } from "../../models/dashboard/subscription.js";
 import type { NotificationCollectionTarget } from "../../models/notifications/notifications.js";
 import type { NotificationTarget } from "../../models/notifications/notification-target.js";
 import type { NotificationTriggerEvent } from "../../rules/notifications/notification-triggers.js";
 import { NotificationCommandRequestSchema } from "../../rules/commands/commands.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import type { NotificationControl, NotificationDestination, NotificationItem, NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
@@ -61,6 +60,14 @@ export function notificationDay(occurredAt: string, nowIso: string): string {
   return ago <= 0 ? "Today" : ago === 1 ? "Yesterday" : ago < 7 ? WEEKDAY.format(when) : MONTH_DAY.format(when);
 }
 
+function notificationDetail(row: Exclude<NotificationWire, { kind: "backfill-gap" }>): string | undefined {
+  if (row.kind === "command") return row.summary;
+  const source = row.sourceEvent;
+  if (row.summary !== undefined && (source?.state === "available" ? source.kind === "run-failed"
+    : row.trigger === "failed" && Object.values(ERROR_CATALOG).some(entry => entry.text === row.summary))) return row.summary;
+  return notificationPolicy(row)?.detail;
+}
+
 function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" }>, nowIso: string): NotificationItem {
   const policy = notificationPolicy(row);
   const elapsed = Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(row.occurredAt)) / 60000));
@@ -71,11 +78,9 @@ function notificationItem(row: Exclude<NotificationWire, { kind: "backfill-gap" 
       kind: command ? "command" as const : row.link?.kind === "storage" ? "storage" as const : "run" as const,
       // Notices the server marks as commands carry their own priority; error and warning notices still need the operator.
       priority: command ? row.priority : tone === "danger" || tone === "warning",
-      subject: context.state === "available" ? context.subject : inboxMessage("NOTIFICATION_CONTEXT_UNAVAILABLE"),
+      subject: context.state === "available" ? context.subject : context.state === "unavailable" ? inboxMessage("NOTIFICATION_CONTEXT_UNAVAILABLE") : "",
       workflow: context.state === "available" || context.state === "workflow-only" ? context.workflow : "",
-      detail: command ? row.summary : row.sourceEvent?.state === "available" && row.sourceEvent.kind === "run-failed" && row.summary !== undefined
-        ? row.summary
-        : policy?.detail ?? inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"),
+      detail: notificationDetail(row) ?? inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"),
       age: elapsed < 1 ? "Just now" : elapsed < 60 ? `${elapsed} min ago` : elapsed < 1440 ? `${Math.floor(elapsed / 60)} hr ago` : `${Math.floor(elapsed / 1440)} days ago`,
       day: notificationDay(row.occurredAt, nowIso),
       read: row.readState === "read", action: command ? "Open" : row.link?.kind === "storage" ? "" : "Open log",
@@ -88,8 +93,9 @@ export function inboxProjection(rows: readonly NotificationWire[], nowIso: strin
   const items: NotificationItem[] = [];
   for (const row of rows) {
     if (row.kind === "backfill-gap") { notices.add(inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE")); continue; }
-    const policy = notificationPolicy(row);
-    if (policy === undefined) notices.add(inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"));
+    const run = row.kind === "notification" && row.link?.kind !== "storage";
+    const unavailable = run ? row.context.state === "unavailable" || notificationDetail(row) === undefined : notificationPolicy(row) === undefined;
+    if (unavailable) notices.add(inboxMessage("NOTIFICATION_SOURCE_UNAVAILABLE"));
     items.push(notificationItem(row, nowIso));
   }
   const needsYou = items.filter(item => !item.read && (item.tone === "danger" || item.tone === "warning")).length;
@@ -104,10 +110,9 @@ export interface InboxWiring {
   open(item: NotificationItem, navigate: (target: NotificationDestination, opened: () => void, refused: (message: string) => void) => void, opened: () => void, refused: (message: string) => void): void;
 }
 
-export function useInboxWiring({ client, enabled, binding, toast }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding;
-  toast: (input: Omit<DsToast, "id">) => string }): InboxWiring {
+export function useInboxWiring({ client, enabled, binding }: { client: DashboardClient; enabled: boolean; binding: DashboardCommandBinding }): InboxWiring {
   const request = useMemo(() => ({ client, enabled, scope: binding.scope }), [client, enabled, binding.scope]);
-  const current = useRef({ request, binding, toast, fresh: false }); current.current = { request, binding, toast, fresh: false };
+  const current = useRef({ request, binding, fresh: false }); current.current = { request, binding, fresh: false };
   const [revision, refresh] = useState(0);
   const readEpoch = useRef(0);
   const [settled, setSettled] = useState<{ request: typeof request; read: object; rows: readonly NotificationWire[] | undefined; notice: string; failed?: boolean }>();
@@ -151,9 +156,6 @@ export function useInboxWiring({ client, enabled, binding, toast }: { client: Da
       void client.notificationTarget(row.notificationId).then(target => {
         if (current.current.request !== request) return;
         if (!notificationTargetMatches(row, target)) { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); return; }
-        const item = { ...notificationItem(row, current.current.binding.authority.nowIso), destination: target };
-        current.current.toast({ tone: policy.tone === "positive" ? "success" : policy.tone, title: item.title,
-          description: policy.tone === "positive" ? `${item.subject} · ${item.workflow}` : item.detail });
       }).catch(() => { if (current.current.request === request) setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") }); });
     });
   }, [client, enabled, request, subscribePublications]);

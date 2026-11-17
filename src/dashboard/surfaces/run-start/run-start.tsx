@@ -31,6 +31,7 @@ import {
   Checkbox,
   Switch,
   Dialog,
+  SegmentedChoice,
   DialogBody,
   DialogContent,
   DialogFooter,
@@ -101,7 +102,7 @@ import {
 import { versionTag } from "../shared/status/format.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import { WorkflowPdfInput } from "../workflows/mocks/workflow-pdf-input.js";
-import { previewPdfRun, usePdfRunInput } from "./run-start-pdfs.js";
+import { pdfRunLaunchFields, previewPdfRun, unpickedPdfRunField, usePdfRunInput } from "./run-start-pdfs.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration ) */
 
@@ -541,7 +542,7 @@ export function RunStartDialog({
     },
   ), [customizeSteps, steps, selectedStepKeys, stepDrafts]);
   const stepOmissions = useMemo(() => completeStepOmissions(omissionRows), [omissionRows]);
-  const requestFingerprint = canonicalJsonStringify([rowIdentity, workbookRows.state, rowSelectionFresh, selectedWorkbookRows?.choices.map(({ sheetId, rowId }) => ({ sheetId, rowId })) ?? [], library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility ?? null, versionSources.state, versionSources.sources, selectedReferences, library.catalog.filter(entry => Object.values(selectedReferences).some(selection => selection.libraryId === entry.libraryId)).map(entry => [entry.libraryId, entry.state.revision]), rerunSource ?? null, valueDrafts, copiedOmissions, typedValues, sourceInputUnchanged, pdfInput.draft, startRequestFingerprint({
+  const requestFingerprint = canonicalJsonStringify([rowIdentity, workbookRows.state, rowSelectionFresh, selectedWorkbookRows?.choices.map(({ sheetId, rowId }) => ({ sheetId, rowId })) ?? [], library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility ?? null, versionSources.state, versionSources.sources, selectedReferences, library.catalog.filter(entry => Object.values(selectedReferences).some(selection => selection.libraryId === entry.libraryId)).map(entry => [entry.libraryId, entry.state.revision]), rerunSource ?? null, valueDrafts, copiedOmissions, typedValues, sourceInputUnchanged, pdfInput.draft, pdfInput.picks, startRequestFingerprint({
     workflowId,
     text,
     dryRun,
@@ -564,7 +565,7 @@ export function RunStartDialog({
   const typedInputRef = useRef<HTMLTextAreaElement>(null);
 
   const preview = useMemo((): RunInputPreview => {
-    if (pdfSurface !== undefined) return previewPdfRun(pdfSurface, pdfInput.draft);
+    if (pdfSurface !== undefined) return previewPdfRun(pdfSurface, pdfInput.draft, pdfInput.picks);
     if (inputRun.state !== "present") return { entries: [], submissions: [], problem: null };
     if (rowCapability !== undefined) {
       const selected = selectedWorkbookRows?.choices ?? [];
@@ -575,7 +576,7 @@ export function RunStartDialog({
     }
     return previewRunInput(inputRun.surface, text, typedValues,
       sourceInputUnchanged && snapshot?.source.runId === rerunSource?.runId && snapshot?.source.version === rerunSource?.expectedVersion && snapshot !== null ? rerunTypedSourceInput(inputRun.surface.typedInput, snapshot.sourceInput) : undefined);
-  }, [inputRun, rowCapability, selectedWorkbookRows, rowSelectionFresh, workbookRows.state, workbookRows.error, text, typedValues, snapshot, rerunSource, sourceInputUnchanged, pdfSurface, pdfInput.draft]);
+  }, [inputRun, rowCapability, selectedWorkbookRows, rowSelectionFresh, workbookRows.state, workbookRows.error, text, typedValues, snapshot, rerunSource, sourceInputUnchanged, pdfSurface, pdfInput.draft, pdfInput.picks]);
 
 
 
@@ -730,6 +731,10 @@ export function RunStartDialog({
       : preview.entries.length === 0
         ? rowCapability === undefined ? "Type at least one value." : "Select at least one saved row."
         : null;
+  const launchFields = pdfSurface === undefined ? [] : pdfRunLaunchFields(pdfSurface);
+  const unpickedField = pdfSurface === undefined ? null : unpickedPdfRunField(pdfSurface, pdfInput.picks);
+  /** A required launch field without a pick blocks planning from Options, where it is picked. */
+  const optionsBlockedReason = unpickedField === null ? null : `Pick ${unpickedField.label}.`;
   const rerunInputBlocked = pdfSurface !== undefined ? blockedReason !== null : preview.problem !== null || preview.entries.length > 1 || (declaredInput && preview.entries.length === 0);
   /** Incomplete omitted-step facts block confirmation using the descriptor’s own schema refusal. */
   /** Omission facts describe one person; fan-out must not assert the same dates for multiple subjects. */
@@ -873,7 +878,7 @@ export function RunStartDialog({
       onRefresh={() => void library.adapter.refreshCatalog()} />;
   })}</>;
   const continueEnabled = !busy && recoveryError === null && recovery === null && currentStage !== "Warning" && nextStage !== null
-    && !(isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (rerunInputBlocked || stepsBlockedReason !== null)))) && !(currentStage === "Input" && blockedReason !== null);
+    && !(isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (rerunInputBlocked || stepsBlockedReason !== null)))) && !(currentStage === "Input" && blockedReason !== null) && !(currentStage === "Options" && optionsBlockedReason !== null);
   const warningEnabled = currentStage === "Warning" && warning !== null && !busy && recoveryError === null && recovery === null;
   const acknowledgeWarning = () => { if (warning === null) return; setAcknowledgment(warning.rerun.warningDigest); setPlan(null); reviewedRequest.current = null; setCurrentStage("Values"); };
   const startEnabled = currentStage === "Confirm" && plan !== null && !(busy || applied || omissionMismatch || plan.planned.length === 0 || recoveryError !== null || (recovery !== null && recovery.target.startPlanId !== plan.startPlanId));
@@ -1047,6 +1052,7 @@ export function RunStartDialog({
                   flags={<>
                     {!isRerun && <RunListRow title="Customize steps" description="Choose optional steps."><Switch hideLabel label="Customize steps" checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     {supportsDryRun && <RunListRow title="Dry run" description={dryRunDescription}><Switch hideLabel label="Dry run" checked={dryRun} onCheckedChange={next => setDryRunRequested(next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
+                    {launchFields.map(field => <RunListRow key={field.field} title={field.label}><div className="w-[250px]"><SegmentedChoice hideLabel label={field.label} value={pdfInput.picks[field.field] ?? ""} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></div></RunListRow>)}
                     <RunListRow title="Screenshots" description="Required by this workflow."><span className="inline-flex items-center gap-1.5 text-[12px] text-ui-secondary"><Lock aria-hidden className="size-3" />Always on</span></RunListRow>
                   </>} />
               )}
@@ -1096,6 +1102,7 @@ export function RunStartDialog({
                       { key: "Priority", value: plan.priority === "interactive" ? "On" : "Off" },
                       { key: "Browser", value: `${browserMode === "headed" ? "Headed" : "Headless"} · screenshots required` },
                       { key: "Dry run", value: plan.dryRun ? "On" : "Off" },
+                      ...launchFields.flatMap(field => { const option = field.options.find(candidate => candidate.value === pdfInput.picks[field.field]); return option === undefined ? [] : [{ key: field.label, value: option.label }]; }),
                   ]}>
                   {omissionMismatch && (
                     <Banner tone="danger" title="This plan does not describe the steps you omitted">
@@ -1122,6 +1129,8 @@ export function RunStartDialog({
                 priority === "interactive" ? "Priority" : undefined,
                 currentStage === "Input"
                   ? blockedReason ?? undefined
+                  : currentStage === "Options"
+                  ? optionsBlockedReason ?? undefined
                   : currentStage === "Steps" && !isRerun
                   ? stepsBlockedReason ?? undefined
                   : currentStage === "Confirm" && plan !== null
@@ -1155,7 +1164,7 @@ export function RunStartDialog({
               variant="primary"
               loading={busy}
               iconAfter={<ArrowRight aria-hidden className="size-[14px]" />}
-              disabled={busy || recoveryError !== null || recovery !== null || (isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (rerunInputBlocked || stepsBlockedReason !== null)))) || (currentStage === "Input" && blockedReason !== null) || nextStage === null}
+              disabled={busy || recoveryError !== null || recovery !== null || (isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (rerunInputBlocked || stepsBlockedReason !== null)))) || (currentStage === "Input" && blockedReason !== null) || (currentStage === "Options" && optionsBlockedReason !== null) || nextStage === null}
               onClick={() => void advance()}
             >
               {nextStage === "Confirm" ? "Preview plan" : "Continue"}
