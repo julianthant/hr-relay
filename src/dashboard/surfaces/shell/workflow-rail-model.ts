@@ -22,7 +22,7 @@ function workflowPosition(id: string): number {
 export function workflowNavigationGroups<Entry extends WorkflowNavigationEntry>(entries: readonly Entry[]): WorkflowCategoryGroup<Entry>[] {
   const ordered = [...entries].sort((left, right) => workflowPosition(left.id) - workflowPosition(right.id));
   const rank = (category: string) => { const index = CATEGORY_ORDER.findIndex(label => label === category); return index < 0 ? CATEGORY_ORDER.length : index; };
-  return groupWorkflowsByCategory(ordered).map(group => group.label === "Search" ? { ...group, label: "Lookup" } : group).sort((left, right) => rank(left.label) - rank(right.label));
+  return groupWorkflowsByCategory(ordered).sort((left, right) => rank(left.label) - rank(right.label));
 }
 
 const words = (label: string) => label.split(/[\s-]+|(?<=[a-z])(?=[A-Z])/).filter(Boolean);

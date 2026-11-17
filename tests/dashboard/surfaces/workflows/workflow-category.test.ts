@@ -47,7 +47,7 @@ describe("groupWorkflowsByCategory — the category half", () => {
       entry("person-lookup", "search", STANDALONE),
       entry("separations", "separation", COMPOSITION),
     ]);
-    assert.deepEqual(groups.map((group) => group.label), ["Separations", "Search", "Work Study"]);
+    assert.deepEqual(groups.map((group) => group.label), ["Separations", "Lookup", "Work Study"]);
   });
 
   it("appends an unlisted category after the listed ones, headed by its raw id", () => {
@@ -55,13 +55,13 @@ describe("groupWorkflowsByCategory — the category half", () => {
       entry("invented", "no-such-category", STANDALONE),
       entry("person-lookup", "search", STANDALONE),
     ]);
-    assert.deepEqual(groups.map((group) => group.label), ["Search", "no-such-category"]);
+    assert.deepEqual(groups.map((group) => group.label), ["Lookup", "no-such-category"]);
     assert.equal(workflowCategoryLabel("no-such-category"), "no-such-category");
   });
 
   it("drops a category nothing is registered under rather than heading an empty list", () => {
     const groups = groupWorkflowsByCategory([entry("person-lookup", "search", STANDALONE)]);
-    assert.deepEqual(groups.map((group) => group.label), ["Search"]);
+    assert.deepEqual(groups.map((group) => group.label), ["Lookup"]);
   });
 });
 
