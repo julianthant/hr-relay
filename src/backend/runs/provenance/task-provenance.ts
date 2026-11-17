@@ -333,7 +333,9 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
 
   const originsFor = (point: ParsedDataPoint): DataObservationOrigins | undefined => {
     const spanPath = input.observationSpanPath;
-    const aliases = (point.aliases ?? []).map(alias => {
+    const aliases = (point.aliases ?? []).filter(alias => alias.source.kind !== "dependency"
+      // An operator-typed dependency has no observation to forward; its leaves keep this task's own origin.
+      || evidence.checkpoints.find(row => row.nodeId === alias.source.nodeId)?.assertion === undefined).map(alias => {
       const target = readObservationPath(point.value, alias.path);
       let source: JsonValue;
       let originAt: (path: readonly (string | number)[]) => DataObservationOrigin;
