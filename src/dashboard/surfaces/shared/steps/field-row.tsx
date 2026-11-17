@@ -1,0 +1,42 @@
+import { useEffect, useRef, useState } from "react";
+import { Cpu, Eye, PencilLine } from "lucide-react";
+import { displayExtractedDate } from "../../../lib/date-format.js";
+import { Tooltip } from "../../../ds/ui.js";
+import { cn } from "../../../lib/utils.js";
+
+export type FieldRowKind = "fill" | "read" | "compute";
+
+/** A fill row (typed value, blue) or a read row (what the page showed). `unread` marks a read that found nothing. */
+export function FieldRow({ kind, label, value, unread = false }: { kind: FieldRowKind; label: string; value: string; unread?: boolean }) {
+  const Icon = kind === "fill" ? PencilLine : kind === "compute" ? Cpu : Eye;
+  return <div data-log-field={kind} className="grid min-w-0 grid-cols-[1rem_minmax(var(--spacing-log-label),.85fr)_minmax(0,1.15fr)] items-baseline gap-x-3 max-[1100px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] @max-[448px]:grid-cols-[1rem_minmax(4.5rem,.85fr)_minmax(0,1.15fr)] border-b border-ui-stroke py-2.5 last:border-b-0">
+    <Icon aria-hidden className={cn("size-3.5 self-start translate-y-0.5", kind === "fill" ? "text-ui-info" : "text-ui-muted")} />
+    <dt className="min-w-0 text-body font-medium">{label}</dt>
+    <FieldValueCell value={value} className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word] @max-[448px]:overflow-hidden @max-[448px]:text-ellipsis @max-[448px]:[overflow-wrap:normal] max-[1100px]:truncate", kind === "fill" ? "text-ui-info font-medium" : unread ? "text-ui-danger/75" : "text-ui-secondary")} />
+  </div>;
+}
+
+/** The rows of a page card, grouped as one definition list. */
+export function FieldRows({ padded, children }: { padded: boolean; children: React.ReactNode }) {
+  return <dl className={cn("m-0", padded && "px-3")}>{children}</dl>;
+}
+
+/** At narrow widths the value truncates on one line; the shared tooltip then shows the whole value. */
+function FieldValueCell({ value, className }: { value: string; className: string }) {
+  const [cut, setCut] = useState(false);
+  const cell = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const node = cell.current;
+    if (node === null) return;
+    const measure = () => setCut(node.scrollWidth > node.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [value]);
+  return <Tooltip side="bottom" content={value} open={cut ? undefined : false}><dd ref={cell} className={className}><FieldValue value={value} /></dd></Tooltip>;
+}
+
+function FieldValue({ value }: { value: string }) {
+  return <>{displayExtractedDate(value).split(/(\b[A-Z]{2,}[A-Za-z\d]*-[A-Za-z\d-]+\b)/gu).map((part, index) => /^[A-Z]{2,}[A-Za-z\d]*-[A-Za-z\d-]+$/u.test(part) && part.length < 80 ? <span key={index} className="whitespace-nowrap">{part}</span> : part)}</>;
+}
