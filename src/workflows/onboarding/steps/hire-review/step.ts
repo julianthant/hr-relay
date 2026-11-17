@@ -20,7 +20,7 @@ import { onboardingMasterResults } from "../../../../rules/onboarding/master-res
 import { buildCrmData } from "../crm-data/step.js";
 import { buildUcpathSearch } from "../ucpath-search/step.js";
 import { buildI9Search } from "../i9-search/step.js";
-import { buildReferenceCheck } from "../reference-check/step.js";
+import type { buildReferenceCheck } from "../reference-check/step.js";
 
 const review = Object.freeze({ ...defineWorkflowStep({ key: "hire-review", label: "Review UCPath hire findings" }), system: "ucpath" as const,
   operatorFields: [
@@ -683,9 +683,8 @@ export const onboardingHireWritesDefinition = defineStep({
     build: (parent: WorkflowDefinition<typeof OnboardingInput>) => ({ ...inheritStepProof(parent), code: "onhw", label: "Onboarding writes", summary: parent.summary,
       steps: (author: WorkflowAuthor<typeof OnboardingInput>) => {
         const crm = buildCrmData(author), ucpath = buildUcpathSearch(author, crm), i9 = buildI9Search(author, crm, ucpath);
-        const reviewed = buildHireReview(author, crm, ucpath, i9), reference = buildReferenceCheck(author, crm, reviewed);
-        const writes = buildHireWrites(author, crm, ucpath, i9, reviewed, reference);
-        return { steps: [...crm.steps, ...ucpath.steps, ...i9.steps, ...reviewed.steps, ...reference.steps, ...writes.steps], result: writes.result };
+        const reviewed = buildHireReview(author, crm, ucpath, i9), writes = buildHireWrites(author, crm, ucpath, i9, reviewed);
+        return { steps: [...crm.steps, ...ucpath.steps, ...i9.steps, ...reviewed.steps, ...writes.steps], result: writes.result };
       },
     }),
   },

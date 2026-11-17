@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
+import { z } from "zod";
 import { parseRunWorkbookReference } from "../../../src/models/dashboard/workbooks.js";
 import { REFERENCE_CHECK, VerifyWorkbookPerson } from "../../../src/models/processing/workbooks/verify-person.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
 import { I9CheckStartResultSchema } from "../../../src/models/workflows/i9-check/batch.js";
+import { I9IdentitySchema } from "../../../src/models/workflows/i9-check/check.js";
 import { createI9CheckStartWorld } from "../../support/helpers/backend/i9-check-start-world.js";
 
 const world = createI9CheckStartWorld();
 afterEach(world.cleanup);
 const CheckLines = VerifyWorkbookPerson.output.shape.checks;
+/** A person child's result; only the identity UCPath found is read here. */
+const ChildResultSchema = z.looseObject({ identity: I9IdentitySchema });
 /** A name no fixture carries, so finding it anywhere in a run proves a row value leaked. */
 const ROW_ONLY_NAME = "Zebedee Quillfeather";
 /** Holds both people; Blair's row carries another name. */
@@ -37,8 +41,9 @@ async function fixture(options: Parameters<typeof world.fixture>[0] = {}) {
     && event.payload.event.spanPath.includes(`/${nodeId}#`) ? [[event.payload.event.outcome, "notRunReason" in event.payload.event ? event.payload.event.notRunReason : undefined]] : []);
   /** Each person child's check lines, keyed by the Employee ID UCPath found. */
   const linesByPerson = () => Object.fromEntries(people().map(child => {
-    const identity = Reflect.get(f.database.authority.runResults.get(child.envelope.runId)?.result.value as object, "identity") as { eid?: string };
-    return [identity.eid, checkLines(child)];
+    const { identity } = ChildResultSchema.parse(f.database.authority.runResults.get(child.envelope.runId)?.result.value);
+    assert.ok(identity.status === "found", JSON.stringify(identity));
+    return [identity.eid, checkLines(child)] as const;
   }));
   /** Results workbooks the run saved to the library. */
   const savedResults = () => f.database.authority.workbooks.list().filter(workbook => workbook.libraryId.startsWith("workflow:")).length;

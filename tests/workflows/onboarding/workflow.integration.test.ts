@@ -133,11 +133,13 @@ describe("onboarding workflow", () => {
     const targets = ["hire-plan", "hire-subject", "i9-lookup", "i9-profile-plan"];
     const referenceProofEntries = ["roster-choice", "crm-source", "hire-plan", "ucpath-source", "hire-subject", "i9-lookup-child", "i9-lookup",
       "hire-findings", "hire-review", "reference-check", "reference-stop", "reference-check-review"];
+    const referenceStepEntries = new Set(["reference-check", "reference-stop", "reference-check-review"]);
+    const writesProofEntries = onboardingWorkflow.steps.flatMap(([, entries]) => entries.map(entry => entry.id)).filter(id => !referenceStepEntries.has(id));
     for (const [index, proof] of registration.proofs.entries()) {
       assert.equal(proof.definition.input, onboardingWorkflow.input);
       assert.equal(proof.definition.canonicalInput, onboardingWorkflow.canonicalInput);
       assert.deepEqual(proof.definition.steps.flatMap(([, entries]) => entries.map(entry => entry.id)), index === 3
-        ? onboardingWorkflow.steps.flatMap(([, entries]) => entries.map(entry => entry.id)) : index === 4 ? referenceProofEntries : entryIds.slice(0, proofSizes[index]));
+        ? writesProofEntries : index === 4 ? referenceProofEntries : entryIds.slice(0, proofSizes[index]));
       assert.deepEqual(proof.definition.result.references.map(reference => reference.id), index === 3
         ? onboardingWorkflow.result.references.map(reference => reference.id) : index === 4 ? ["reference-check"] : [targets[index]]);
     }

@@ -26,7 +26,7 @@ export const EMERGENCY_CONTACT_PEOPLE = ["Example, Avery", "Example, Blake"].map
 /** Runs an Emergency Contact PDF with two approved people through OCR release to its members, without OnBase filing, against real library spreadsheets. */
 export function createEmergencyContactReferenceWorld() {
   const world = createOcrReviewWorld();
-  return { cleanup: world.cleanup, async fixture(options: Readonly<{ dryRun?: boolean; checks?: Parameters<typeof world.fixture>[0]["checks"] }> = {}) {
+  return { cleanup: world.cleanup, async fixture(options: Readonly<{ dryRun?: boolean; checks?: NonNullable<Parameters<typeof world.fixture>[0]>["checks"] }> = {}) {
     let ticks = Date.parse(fixture.page.observedAt);
     const now = () => new Date(++ticks).toISOString();
     const persistence = new Map<string, ReturnType<typeof createDeterministicContactPersistence>>();
