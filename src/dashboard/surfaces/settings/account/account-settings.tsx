@@ -12,7 +12,7 @@ export interface AccountValues {
   readonly timekeeperInitials: string;
   readonly lastSignedInAt: string;
 }
-export interface AccountPage { readonly values: AccountValues; readonly duo: "ready" | "setup"; readonly onSignOut: () => void; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; readonly login: Omit<RelayLogin, "username"> }
+export interface AccountPage { readonly values: AccountValues; readonly onSignOut: () => void; /** Opens the served Duo re-enrolment; resolves to the backend's failure sentence when it could not open. */ readonly onDuoSetup?: () => Promise<string | undefined>; readonly details: (request: ProfileDetailsChangeRequest) => Promise<ProfileDetailsChangeResult>; readonly login: Omit<RelayLogin, "username"> }
 
 function Group({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return <BodySection title={label} description={description}><FormGroup label={label}>{children}</FormGroup></BodySection>;

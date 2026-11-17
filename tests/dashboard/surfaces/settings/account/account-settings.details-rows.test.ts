@@ -17,7 +17,7 @@ afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; 
 const values = { name: "Jordan Lee", initials: "JL", timekeeper: "Casey Morgan Park", timekeeperInitials: "CMP", lastSignedInAt: IsoInstantSchema.parse("2026-11-01T10:00:00.000Z") };
 const account = (over: Partial<typeof values> = {}) => ({ ...values, ...over });
 function page(details: AccountPage["details"], shown: typeof values = values): AccountPage {
-  return { values: shown, duo: "ready", onSignOut: () => {}, details,
+  return { values: shown, onSignOut: () => {}, details,
     login: { changePassword: async () => ({ state: "changed" }), changeUsername: async () => ({ state: "changed" }) } };
 }
 const render = (value: AccountPage) => act(async () => root?.render(createElement(ToastProvider, { children: createElement(AccountSettings, { page: value, username: "jordan.lee@ucsd.edu", ucpath: null, deleteAccount: null }) })));

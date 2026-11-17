@@ -18,7 +18,7 @@ async function mount(over: Partial<AccountPage>): Promise<void> {
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  const page: AccountPage = { values, duo: "ready", onSignOut: () => {}, onDuoSetup: async () => undefined, details: async () => ({ state: "changed", account: values }),
+  const page: AccountPage = { values, onSignOut: () => {}, onDuoSetup: async () => undefined, details: async () => ({ state: "changed", account: values }),
     login: { changePassword: async () => ({ state: "changed" }), changeUsername: async () => ({ state: "changed" }) }, ...over };
   await act(async () => root?.render(createElement(ToastProvider, { children: createElement(AccountSettings, { page, username: "jordan.lee@ucsd.edu", ucpath: null, deleteAccount: null }) })));
 }
