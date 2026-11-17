@@ -129,3 +129,19 @@ it('serves the last finished sync after the store reopens, and drops it once the
   expect(reopened.service.metadata(f.linked).sharePoint?.url).toBe('https://example.sharepoint.com/sites/hr/Other.csv');
   expect((await reopened.catalog()).find(entry => entry.libraryId === f.linked)?.sync).toEqual({ state: 'idle' });
 });
+
+it('serves a legacy sync whose captured version lost to a concurrent edit as failed, keeping the link', async () => {
+  const f = fixture({ async withDownload(command, use) {
+    f.service.operatorOperation(f.linked, 'reverify', { kind: 'metadata', expectedVersion: 2,
+      metadata: { typeId: 'general', sharePoint: { url, verifiedAt: finished } } });
+    f.clock.advanceWall(60_000);
+    return use({ name: 'Linked.csv', bytes: bytes() }, { signal: command.signal, assertCurrent: () => command.signal.throwIfAborted() });
+  } });
+  const before = f.service.read(f.linked).workbook;
+  const response = await f.app.request(`/api/v1/workbooks/${f.linked}/sync`, { method: 'POST', headers, body: JSON.stringify({ operationId: 'legacy-sync' }) });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ state: 'refused', reason: 'version-conflict', changes: [] });
+  expect(f.service.read(f.linked).workbook).toEqual(before);
+  expect(f.service.metadata(f.linked).sharePoint?.url).toBe(url);
+  expect((await f.catalog()).find(entry => entry.libraryId === f.linked)?.sync).toEqual({ state: 'idle', lastFinishedAt: finished, lastResult: 'failed', lastFailureCode: 'WORKBOOK_VERSION_CONFLICT' });
+});

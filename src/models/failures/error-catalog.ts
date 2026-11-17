@@ -1012,6 +1012,7 @@ export const ERROR_CATALOG = Object.freeze({
   WORKBOOK_SYNC_CONTEXT_CHANGED: catalogEntry("The profile, settings or credentials changed during Sync. Start a new Sync command.", EmptyParametersSchema),
   WORKBOOK_SYNC_IMPORT_FAILED: catalogEntry("The downloaded file cannot be imported as a supported workbook.", EmptyParametersSchema),
   WORKBOOK_SYNC_FAILED: catalogEntry("Sync did not finish. Start Sync again.", EmptyParametersSchema),
+  WORKBOOK_SYNC_NOT_APPLIED: catalogEntry("Sync downloaded the workbook, but its rows could not be applied to this spreadsheet. Review the spreadsheet, then start Sync again.", EmptyParametersSchema),
   WORKBOOK_TYPE_UNAVAILABLE: catalogEntry("This workflow's spreadsheet type is unavailable. Restore its reference definition before importing a file for it.", EmptyParametersSchema),
   WORKBOOK_LIBRARY_EMPTY: catalogEntry("Import a Library spreadsheet before selecting a workflow source.", EmptyParametersSchema),
   WORKBOOK_FIELDS_MISSING: catalogEntry("A Library worksheet is missing fields required by this workflow. Review its column mappings.", EmptyParametersSchema),

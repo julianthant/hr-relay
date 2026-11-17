@@ -243,6 +243,13 @@ function syncFailureCode(error: unknown): ErrorCatalogCode {
   }
   return catalogCodeForThrown(error) ?? 'WORKBOOK_SYNC_FAILED';
 }
+type SyncOutcome = Readonly<{ result: 'ok' } | { result: 'failed'; code: ErrorCatalogCode }>;
+/** A legacy sync resolves with its receipt; only an applied receipt is a successful sync. */
+function receiptOutcome(receipt: WorkbookOperationReceipt): SyncOutcome {
+  if (receipt.state === 'applied') return { result: 'ok' };
+  return { result: 'failed', code: receipt.reason === 'version-conflict' ? 'WORKBOOK_VERSION_CONFLICT'
+    : receipt.reason === 'metadata-unsupported' ? 'WORKBOOK_METADATA_UNSUPPORTED' : 'WORKBOOK_SYNC_NOT_APPLIED' };
+}
 export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; sync: WorkbookSyncDownload;
   resultRun?: (runId: string) => Readonly<{ workflowId: string; enqueuedAt: string }> | undefined;
 }>) {
@@ -252,17 +259,17 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     return record;
   };
   const running = new Map<string, number>();
-  /** Serves the entry as running while `work` downloads its SharePoint link, then records how that sync finished. */
-  const tracked = async <T>(libraryId: string, work: () => Promise<T>): Promise<T> => {
+  /** Serves the entry as running while `work` downloads its SharePoint link, then records how that sync finished: `outcome` judges a resolved result. */
+  const tracked = async <T>(libraryId: string, work: () => Promise<T>, outcome: (value: T) => SyncOutcome = () => ({ result: 'ok' })): Promise<T> => {
     const link = deps.repository.metadata(libraryId).sharePoint;
     if (link === null) return work();
-    const finish = (result: { result: 'ok' } | { result: 'failed'; code: ErrorCatalogCode }) =>
+    const finish = (result: SyncOutcome) =>
       deps.repository.recordSync(libraryId, { url: link.url, finishedAt: deps.clock.now().toISOString(), ...result });
     running.set(libraryId, (running.get(libraryId) ?? 0) + 1);
     try {
       let value: T;
       try { value = await work(); } catch (error) { finish({ result: 'failed', code: syncFailureCode(error) }); throw error; }
-      finish({ result: 'ok' });
+      finish(outcome(value));
       return value;
     } finally {
       const remaining = (running.get(libraryId) ?? 1) - 1;
@@ -411,7 +418,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       return tracked(libraryId, () => withDownloadedWorkbook(libraryId, operationId, signal, workbook => {
         return deps.repository.operation(libraryId, { operationId, source: { kind: 'sync', syncId: operationId }, at: deps.clock.now().toISOString(),
           change: { kind: 'sync', expectedVersion: record.version, workbook } });
-      }));
+      }), receiptOutcome);
     },
   });
 }
