@@ -13,9 +13,16 @@ export function workflowRailCategory(id: string, categoryId: string): string {
   return MOCK_WORKFLOWS.find(flow => flow.id === id)?.category ?? workflowCategoryLabel(categoryId);
 }
 
+/** The one place a workflow's position is decided: the approved mock catalog's order, whether the entry is served or mock-only. A workflow the mock does not list follows the listed ones, in the order given. */
+function workflowPosition(id: string): number {
+  const index = MOCK_WORKFLOWS.findIndex(flow => flow.id === id);
+  return index < 0 ? MOCK_WORKFLOWS.length : index;
+}
+
 export function workflowNavigationGroups<Entry extends WorkflowNavigationEntry>(entries: readonly Entry[]): WorkflowCategoryGroup<Entry>[] {
+  const ordered = [...entries].sort((left, right) => workflowPosition(left.id) - workflowPosition(right.id));
   const rank = (category: string) => { const index = CATEGORY_ORDER.findIndex(label => label === category); return index < 0 ? CATEGORY_ORDER.length : index; };
-  return groupWorkflowsByCategory(entries).sort((left, right) => rank(left.label) - rank(right.label));
+  return groupWorkflowsByCategory(ordered).sort((left, right) => rank(left.label) - rank(right.label));
 }
 
 const words = (label: string) => label.split(/[\s-]+|(?<=[a-z])(?=[A-Z])/).filter(Boolean);

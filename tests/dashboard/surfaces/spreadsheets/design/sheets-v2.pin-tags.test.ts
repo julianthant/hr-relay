@@ -69,12 +69,12 @@ it('pins and unpins through the library command', async () => {
 
 it('adds and removes manual tags through set-tags', async () => {
   await render();
-  await openMenu('Roster.xlsx'); await click(byText('[role="menuitem"]', 'Edit tags…'));
+  await openMenu('Roster.xlsx'); await click(byText('[role="menuitem"]', 'Edit tags'));
   const input = document.body.querySelector<HTMLInputElement>('input[aria-label="New tag"]'); assert.ok(input);
   await type(input, 'HR'); await click(byText('button', 'Add'));
   await click(byText('button', 'Save'));
   assert.deepEqual(wiring.changeLibrary.mock.calls.at(-1)?.[1], { kind: 'set-tags', tags: ['Fall', 'HR'] });
-  await openMenu('Roster.xlsx'); await click(byText('[role="menuitem"]', 'Edit tags…'));
+  await openMenu('Roster.xlsx'); await click(byText('[role="menuitem"]', 'Edit tags'));
   await click(document.body.querySelector('button[aria-label="Remove tag Fall"]')); await click(byText('button', 'Save'));
   assert.deepEqual(wiring.changeLibrary.mock.calls.at(-1)?.[1], { kind: 'set-tags', tags: [] });
 });
