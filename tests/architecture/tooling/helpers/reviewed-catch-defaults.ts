@@ -123,6 +123,11 @@ export const REVIEWED_CATCH_DEFAULTS = [
       },
       {
         "kind": "try",
+        "sha256": "66224d4224fca4fe56950278e4d6f895444af9ace20c173ab3d91af109192cca",
+        "occurrences": 1
+      },
+      {
+        "kind": "try",
         "sha256": "35b15170c232cccf531eed4e1a5ba4823afc7fa9e7302726923291936931ae5c",
         "occurrences": 1
       }
@@ -277,17 +282,6 @@ export const REVIEWED_CATCH_DEFAULTS = [
       {
         "kind": "try",
         "sha256": "303999c0206ec8cdda7ca46427ee4ae3097555b3a2e94e98c6a2b95061dd0ebe",
-        "occurrences": 1
-      }
-    ]
-  },
-  {
-    "path": "src/backend/storage/sqlite/authority-boot.ts",
-    "reason": "A failed open or inspection returns degraded-read-only with mutations blocked; only successful close clears the database handle, and uncertain close preserves the handle and aggregate cause.",
-    "statements": [
-      {
-        "kind": "try",
-        "sha256": "cdcd384cd125be140cfe07817e6623892f7d13d2ee0ad5ea83a188113f061dbe",
         "occurrences": 1
       }
     ]

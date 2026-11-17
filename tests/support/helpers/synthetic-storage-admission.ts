@@ -12,7 +12,6 @@ import { doctorAuthorityStorage as realDoctorAuthorityStorage } from "../../../s
 import type { composeStorageCommand as realComposeStorageCommand } from "../../../src/backend/app/composition/storage-compose.js";
 import { createCredentialStore as realCreateCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import type { composeTestDataCommand as realComposeTestDataCommand } from "../../../src/backend/app/test-data/compose.js";
-import { AuthorityBootStore as RealAuthorityBootStore } from "../../../src/backend/storage/sqlite/authority-boot.js";
 import { AuthorityHealthPreflightRunner as RealAuthorityHealthPreflightRunner } from "../../../src/backend/storage/sqlite/authority-health-runner.js";
 
 export * from "../../../src/backend/storage/sqlite/authority-database.js";
@@ -24,7 +23,6 @@ export * from "../../../src/backend/storage/sqlite/storage-recovery-status.js";
 export * from "../../../src/backend/storage/maintenance/upgrade.js";
 export * from "../../../src/backend/storage/configuration/credential-store.js";
 export type { TestDataComposeDependencies } from "../../../src/backend/app/test-data/compose.js";
-export * from "../../../src/backend/storage/sqlite/authority-boot.js";
 export * from "../../../src/backend/storage/sqlite/authority-health-runner.js";
 export { AuthorityDatabase } from "./synthetic-database-admission.js";
 export function inspectAuthorityBackupReadOnly(path: string, expectedSchemaVersion?: number, busyTimeoutMs?: number) {
@@ -80,8 +78,8 @@ export async function backupStoppedAuthority(browserClosure: ProfileBrowserClosu
   processLockRoot: string, heldRestore?: Parameters<typeof realBackupStoppedAuthority>[5]) {
   const admission = syntheticStateRoot(stateRoot);
   return heldRestore === undefined
-    ? withOfflineMaintenance(admission, operation => prepareStoppedBackupClosure(browserClosure, admission, operation, clock, processLockRoot).then(closure => realBackupStoppedAuthority(closure, admission, stateRoot, clock, processLockRoot, operation)))
-    : prepareStoppedBackupClosure(browserClosure, admission, heldRestore, clock, processLockRoot).then(closure => realBackupStoppedAuthority(closure, admission, stateRoot, clock, processLockRoot, heldRestore));
+    ? withOfflineMaintenance(admission, operation => prepareStoppedBackupClosure(browserClosure, admission, operation, clock, processLockRoot).then(closure => realBackupStoppedAuthority(closure, admission, stateRoot, clock, processLockRoot, operation, "schema-migration")))
+    : prepareStoppedBackupClosure(browserClosure, admission, heldRestore, clock, processLockRoot).then(closure => realBackupStoppedAuthority(closure, admission, stateRoot, clock, processLockRoot, heldRestore, "schema-migration"));
 }
 
 export async function upgradeStorage(browserClosure: ProfileBrowserClosure, input: Parameters<typeof realUpgradeStorage>[2], clock: Parameters<typeof realUpgradeStorage>[3],
@@ -97,18 +95,6 @@ export async function doctorAuthorityStorage(options: Parameters<typeof realDoct
   const admission = findProfileFixtureAdmission(dirname(authorityPath)) ?? RuntimeAdmission.syntheticFixture(authorityPath);
   return realDoctorAuthorityStorage(admission, options, clock);
 }
-
-export const AuthorityBootStore = new Proxy(RealAuthorityBootStore, {
-  get(target, property, receiver) {
-    if (property === "open") return (input: unknown, clock?: Parameters<typeof RealAuthorityBootStore.open>[2]) => {
-      const path = resolve((input as { path: string }).path);
-      const admission = findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path);
-      return target.open(admission, input, clock);
-    };
-    return Reflect.get(target,property,receiver) as unknown;
-  },
-}) as unknown as Omit<typeof RealAuthorityBootStore,"open"> & {open(input:unknown,clock?:Parameters<typeof RealAuthorityBootStore.open>[2]):RealAuthorityBootStore};
-export type AuthorityBootStore = RealAuthorityBootStore;
 
 export class AuthorityHealthPreflightRunner extends RealAuthorityHealthPreflightRunner {
   constructor(input: ConstructorParameters<typeof RealAuthorityHealthPreflightRunner>[1],

@@ -245,7 +245,7 @@ it("requires the same actual profile credential owner for canonical offline rest
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials, clock, hostFacts: { primaryDisplay: null } });
   try {
     const report = await new AuthorityBackupService(f.admission, context.database, { directory: join(f.stateRoot, "backups", "authority") }, clock)
-      .request({ trigger: "operator", requiredGeneration: context.database.getMeta().authorityGeneration });
+      .request({ trigger: "schema-migration", requiredGeneration: context.database.getMeta().authorityGeneration });
     const manifest = report.manifests.at(-1); assert.ok(manifest);
     await context.account.close(); context.database.close();
     const options = { authorityPath: f.path, suspectDirectory: join(f.stateRoot, "backups", "suspects"), busyTimeoutMs: 250,

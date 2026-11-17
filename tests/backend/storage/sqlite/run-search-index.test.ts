@@ -7,22 +7,36 @@ import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
 import { TimelineEventRecordSchema } from "../../../../src/models/events/timeline.js";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,expect,it,vi } from "vitest";
+import { z } from "zod";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { runRecordColumns,runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
-import { createRunSearchIndex,rebindAssistantM1RunSearchRow,runSearchIndexFromRow } from "../../../../src/backend/storage/sqlite/run-search-index.js";
+import {
+  RUN_SEARCH_EVENTS,
+  RUN_SEARCH_STATES,
+  RUN_SEARCH_TRANSITIONS,
+  SearchStateColumnSchema,
+  createRunSearchIndex,
+  rebindAssistantM1RunSearchRow,
+  runSearchIndexFromRow,
+  runSearchPublicationOf,
+  runSearchStateOf,
+  runSearchTransition,
+  type RunSearchEvent,
+  type RunSearchState,
+} from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { RunSearchIndexRecordSchema,RunSearchPublicationSchema } from "../../../../src/models/dashboard/search-index.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 const databases: DatabaseSync[] = [];
 afterEach(() => { for (const db of databases.splice(0)) db.close(); });
-function fixture() {
+function fixture(registered = true) {
   const db = new DatabaseSync(":memory:", { enableForeignKeyConstraints: false }); databases.push(db);
   for (const migration of SQLITE_MIGRATIONS) for (const sql of migration.statements) db.exec(sql);
   db.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,1,0,?,0,'ready',?,?)")
     .run(QUEUED_RUN.createdAt, "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222");
   const index = createRunSearchIndex(db); index.installTracking();
-  index.register([{ workflow: QUEUED_RUN.envelope.workflow, version: 1, contractFingerprint: QUEUED_RUN.envelope.contractFingerprint, subjectProjection: null }], QUEUED_RUN.createdAt);
+  if (registered) index.register([{ workflow: QUEUED_RUN.envelope.workflow, version: 1, contractFingerprint: QUEUED_RUN.envelope.contractFingerprint, subjectProjection: null }], QUEUED_RUN.createdAt);
   const add = (sequence: number, date: string) => {
     const row = runRecordColumns(RunRecordSchema.parse({ ...QUEUED_RUN,
       envelope: { ...QUEUED_RUN.envelope, runId: `10000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`, itemId: `20000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`, enqueuedAt: date },
@@ -124,6 +138,102 @@ describe("native one-row search", () => {
     expect(f.index.rebuild({ limit: 1 }, 0, QUEUED_RUN.createdAt).state).toBe("published");
     expect(f.index.search(query, 0).totalMatches).toBe(2);
   });
+});
+
+/** Written by hand from the design's machine 8 table; it is the specification RUN_SEARCH_TRANSITIONS must reproduce. */
+const RESTART = { refused: "run-search-rebuild-restart-required" } as const;
+const REBUILD = { refused: "run-search-index-rebuild-required" } as const;
+const PUBLISHED = { state: "published" } as const, BUILDING = { state: "building" } as const, INVALID = { state: "invalid" } as const;
+const UNPUBLISHED = {
+  "authority-write": INVALID, register: INVALID, "register-bulk": INVALID, "native-cancellation": INVALID, "projection-repair": INVALID,
+  "restart-chunk": BUILDING, "restart-last-chunk": PUBLISHED, "continue-chunk": RESTART, "continue-last-chunk": RESTART, search: REBUILD,
+} as const;
+const expectedTransitions: Record<RunSearchState, Record<RunSearchEvent, { readonly state: RunSearchState } | { readonly refused: string }>> = {
+  published: {
+    "authority-write": PUBLISHED, register: PUBLISHED, "register-bulk": INVALID, "native-cancellation": INVALID, "projection-repair": INVALID,
+    "restart-chunk": BUILDING, "restart-last-chunk": PUBLISHED, "continue-chunk": RESTART, "continue-last-chunk": RESTART, search: PUBLISHED,
+  },
+  building: { ...UNPUBLISHED, "continue-chunk": BUILDING, "continue-last-chunk": PUBLISHED },
+  stale: UNPUBLISHED,
+  invalid: UNPUBLISHED,
+};
+
+describe("run search publication transition table", () => {
+  it("declares exactly the four publication states and ten events", () => {
+    expect([...RUN_SEARCH_STATES]).toEqual(["published", "building", "stale", "invalid"]);
+    expect([...RUN_SEARCH_EVENTS]).toEqual(["authority-write", "register", "register-bulk", "native-cancellation", "projection-repair",
+      "restart-chunk", "restart-last-chunk", "continue-chunk", "continue-last-chunk", "search"]);
+    expect(Object.keys(RUN_SEARCH_TRANSITIONS).sort()).toEqual([...RUN_SEARCH_STATES].sort());
+    expect(Object.isFrozen(RUN_SEARCH_TRANSITIONS.building)).toBe(true);
+  });
+
+  for (const state of RUN_SEARCH_STATES) {
+    for (const event of RUN_SEARCH_EVENTS) {
+      it(`${state} on ${event}`, () => {
+        expect(runSearchTransition(state, event)).toEqual(expectedTransitions[state][event]);
+      });
+    }
+  }
+});
+
+describe("run search publication derivation", () => {
+  const progress = (generation: number) => `30000000-0000-4000-8000-${String(generation).padStart(12, "0")}`;
+  it.each([
+    [{ authority_generation: 4, search_generation: 4, search_state: "ready" }, { state: "published", sourceGeneration: 4, afterRun: null }],
+    [{ authority_generation: 4, search_generation: 3, search_state: "invalid" }, { state: "building", sourceGeneration: 3, afterRun: "30000000-0000-4000-8000-000000000003" }],
+    [{ authority_generation: 4, search_generation: null, search_state: "invalid" }, { state: "invalid", sourceGeneration: 4, afterRun: null }],
+    [{ authority_generation: 4, search_generation: null, search_state: "unbuilt" }, { state: "invalid", sourceGeneration: 4, afterRun: null }],
+  ] as const)("derives %j as %j", (row, publication) => {
+    expect(runSearchPublicationOf(row, progress)).toEqual(publication);
+  });
+
+  it("reads the stored column with one schema that keeps the historical unbuilt value", () => {
+    expect(SearchStateColumnSchema.options).toEqual(["unbuilt", "ready", "invalid"]);
+    expect(SearchStateColumnSchema.safeParse("published").success).toBe(false);
+  });
+
+  it.each([
+    ["published", 4, "published"], ["published", 5, "stale"], ["building", 4, "building"], ["building", 5, "stale"], ["invalid", 5, "invalid"],
+  ] as const)("keys a %s publication at generation 4 against authority generation %i as %s", (state, authorityGeneration, key) => {
+    expect(runSearchStateOf({ state, sourceGeneration: 4 }, authorityGeneration)).toBe(key);
+  });
+});
+
+/** Arranges each stored publication state on a real index with three runs, then applies each event the index owns. */
+function walkFixture(state: RunSearchState) {
+  const f = fixture(false), now = QUEUED_RUN.createdAt;
+  f.add(1, "2026-10-01T12:00:00.000Z"); f.add(2, "2026-10-02T12:00:00.000Z"); f.add(3, "2026-10-03T12:00:00.000Z"); f.publish();
+  if (state !== "published") f.db.exec("UPDATE database_states SET search_state='invalid',search_generation=NULL");
+  if (state === "building" || state === "stale") f.index.rebuild({ restart: true, limit: 1 }, 1, now);
+  if (state === "stale") f.db.exec("UPDATE database_states SET authority_generation=2");
+  const generation = () => z.object({ g: z.number() }).parse(f.db.prepare("SELECT authority_generation AS g FROM database_states").get()).g;
+  return { ...f, now, generation, key: () => runSearchStateOf(f.index.publication(), generation()) };
+}
+const INDEX_EVENTS = ["authority-write", "register", "restart-chunk", "restart-last-chunk", "continue-chunk", "continue-last-chunk", "search"] as const;
+
+describe("run search index follows its transition table", () => {
+  for (const state of RUN_SEARCH_STATES) {
+    for (const event of INDEX_EVENTS) {
+      it(`${state} on ${event}`, () => {
+        const f = walkFixture(state);
+        expect(f.key()).toBe(state);
+        const g = f.generation();
+        const apply = () => {
+          if (event === "authority-write") {
+            const prior = f.index.publication();
+            f.db.exec("UPDATE database_states SET authority_generation=authority_generation+1,search_generation=NULL,search_state='invalid'");
+            f.index.publishChanges(g + 1, f.now, prior);
+          } else if (event === "register") {
+            expect(f.index.register([{ workflow: QUEUED_RUN.envelope.workflow, version: 1, contractFingerprint: QUEUED_RUN.envelope.contractFingerprint, subjectProjection: null }], f.now)).toBeGreaterThan(0);
+          } else if (event === "search") f.index.search(query, g);
+          else f.index.rebuild({ restart: event.startsWith("restart"), limit: event.endsWith("last-chunk") ? 500 : 1 }, g, f.now);
+        };
+        const expected = expectedTransitions[state][event];
+        if ("refused" in expected) expect(apply).toThrow(new RegExp(`^${expected.refused}$`, "u"));
+        else { apply(); expect({ state: f.key() }).toEqual(expected); }
+      });
+    }
+  }
 });
 
 function rebindFixture() {

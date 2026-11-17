@@ -600,14 +600,17 @@ manifest and canonical action binding before consumption and at the asynchronous
 Subject-dependent, protected and unbound private/freeform actions remain unavailable until their
 actual owners are connected.
 
-`AuthorityBootStore` reports `healthy` with mutations `available`, or `degraded-read-only` with
-mutations `blocked`. Empty, corrupt, unavailable, or incompatible existing authority does not become a
-replacement database. `requireWritable` throws `AuthorityMutationUnavailableError` with code
-`AUTHORITY_MUTATION_UNAVAILABLE` for `enqueue`, `claim`, `commit`, or `control` in degraded mode.
-Storage causes use the closed codes in `recovery-contracts.ts`, including `authority-empty`,
-`authority-not-sqlite`, `authority-schema-newer`, `authority-record-invalid`,
-`authority-schema-mismatch`, `authority-migration-locked`, `authority-foreign-key`,
-`authority-invariant`, `authority-locked`, `authority-corrupt`, and `authority-unavailable`.
+Startup gives each registered person one standing for the runtime lifetime
+(`src/rules/storage/person-startup-standing.ts`): `unchecked`, `open`, or `held` at one step with the
+sign-in refusal code chosen where the hold is written. A held person's sign-in is refused with that
+code and startup continues for everyone else; unproved closure and unavailable maintenance or browser
+custody stop startup instead. Empty, corrupt, unavailable, or incompatible existing authority does not
+become a replacement database. The storage doctor names a degraded authority's cause from its
+inspection error with the ordered `STORAGE_HEALTH_CAUSE_RULES` in `storage-doctor.ts`, using the closed
+codes in `src/models/storage/storage-status.ts`: `authority-empty`, `authority-not-sqlite`,
+`authority-schema-newer`, `authority-record-invalid`, `authority-schema-mismatch`,
+`authority-migration-locked`, `authority-foreign-key`, `authority-invariant`, `authority-locked`,
+`authority-corrupt`, and `authority-unavailable`.
 
 `storage upgrade --plan` requires exclusive installation admission and stopped runtime locks. For an
 existing schema 1, 2, 3, 4, 5 or 6 database, the plan validates its native form without changing the

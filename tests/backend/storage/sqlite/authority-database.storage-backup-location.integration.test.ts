@@ -21,7 +21,7 @@ it("refuses inconsistent logical identity even with matching profile UUIDs befor
     let manifestPath: string;
     try {
       const report = await new AuthorityBackupService(f.admission,database,{directory},systemClock)
-        .request({trigger:"operator",requiredGeneration:database.getMeta().authorityGeneration});
+        .request({trigger:"schema-migration",requiredGeneration:database.getMeta().authorityGeneration});
       const manifest = report.manifests[0]; assert.ok(manifest);
       manifestPath = join(directory,manifest.backupFileName+".manifest.json");
     } finally { database.close(); }

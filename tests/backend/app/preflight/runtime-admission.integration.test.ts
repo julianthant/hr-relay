@@ -927,7 +927,7 @@ it("opens CRM during authority writes while the full doctor still rejects mixed 
     assert.equal(opens, 1);
     const directory = h.f.doctorOptions.backupDirectory;
     await new AuthorityBackupService(h.database, { directory }, h.clock).request({
-      trigger: "operator", requiredGeneration: h.database.getMeta().authorityGeneration,
+      trigger: "schema-migration", requiredGeneration: h.database.getMeta().authorityGeneration,
     });
     const createReadStream = fs.createReadStream;
     const spy = vi.spyOn(fs, "createReadStream").mockImplementation((...args) => {

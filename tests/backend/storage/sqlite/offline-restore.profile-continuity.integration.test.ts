@@ -101,7 +101,7 @@ async function world(clock: Clock = systemClock) {
     const database = AuthorityDatabase.open(admission, { path: fixture.path, busyTimeoutMs: 250, migrationOwner: "restore-continuity" }, clock);
     try {
       const report = await new AuthorityBackupService(admission, database, { directory: join(fixture.stateRoot, "backups", "authority") }, clock)
-        .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+        .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
       const manifest = report.manifests[0];
       assert.ok(manifest);
       return join(fixture.stateRoot, "backups", "authority", manifest.backupFileName + ".manifest.json");

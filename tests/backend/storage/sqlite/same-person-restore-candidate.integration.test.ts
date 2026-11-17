@@ -18,7 +18,7 @@ it("admits a current profile backup and refuses foreign profile, path and incons
   try {
     const directory = join(profile.stateRoot, "backups", "authority");
     const report = await new AuthorityBackupService(profile.admission, database, { directory }).request({
-      trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+      trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
     const produced = report.manifests[0]; assert.ok(produced);
     const manifest = AuthorityBackupManifestSchema.parse(produced);
     const verifiedBackup = await verifyBackupManifestAtPath(profile.admission,
