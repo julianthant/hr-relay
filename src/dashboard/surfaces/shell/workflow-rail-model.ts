@@ -7,7 +7,7 @@ export interface WorkflowNavigationEntry {
   readonly id: string; readonly label: string; readonly categoryId: string; readonly role: WorkflowModuleRole;
 }
 
-const CATEGORY_ORDER = ["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"] as const;
+const CATEGORY_ORDER = ["Lookup", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"] as const;
 
 export function workflowRailCategory(id: string, categoryId: string): string {
   return MOCK_WORKFLOWS.find(flow => flow.id === id)?.category ?? workflowCategoryLabel(categoryId);
@@ -22,7 +22,7 @@ function workflowPosition(id: string): number {
 export function workflowNavigationGroups<Entry extends WorkflowNavigationEntry>(entries: readonly Entry[]): WorkflowCategoryGroup<Entry>[] {
   const ordered = [...entries].sort((left, right) => workflowPosition(left.id) - workflowPosition(right.id));
   const rank = (category: string) => { const index = CATEGORY_ORDER.findIndex(label => label === category); return index < 0 ? CATEGORY_ORDER.length : index; };
-  return groupWorkflowsByCategory(ordered).sort((left, right) => rank(left.label) - rank(right.label));
+  return groupWorkflowsByCategory(ordered).map(group => group.label === "Search" ? { ...group, label: "Lookup" } : group).sort((left, right) => rank(left.label) - rank(right.label));
 }
 
 const words = (label: string) => label.split(/[\s-]+|(?<=[a-z])(?=[A-Z])/).filter(Boolean);
