@@ -26,7 +26,7 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
   const [removal, setRemoval] = useState<Removal | null>(null);
   const removeTrigger = useRef<HTMLElement | null>(null);
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
-  if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" />;
+  if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" contentOnly={embedded} />;
   if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Credentials unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />;
   const settingsDocument = editor.editor.document;
   const authority = settingsDocument.protectedSettings;
