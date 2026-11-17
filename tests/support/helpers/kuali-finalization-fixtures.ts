@@ -184,14 +184,14 @@ hdh: true,
 export const FINALIZATION_JOB_SUMMARY_READ = UcpathJobSummaryReadSchema.parse({
   state: "read",
   summary: {
-    pageStateId: "ucpath.person-org.detail-ready",
+    pageStateId: "ucpath.workforce-job-summary.detail-ready",
     emplId: FINALIZATION_EID,
     displayedName: FINALIZATION_NAME,
     jobRows: [
       {
         rowIndex: 0,
         emplRecord: "0",
-        hrStatus: "Active",
+        hrStatus: { state: "present", value: "Active" },
         businessUnit: "SDCMP",
         effectiveDate: { state: "present", value: "06/01/2026" },
         positionNumber: { state: "present", value: "40012345" },

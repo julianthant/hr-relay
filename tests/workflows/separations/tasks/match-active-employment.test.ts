@@ -4,13 +4,17 @@ import { describe, it } from "vitest";
 import { matchActiveEmploymentTask } from "../../../../src/workflows/separations/tasks/match-active-employment.js";
 
 const { DOCUMENT, taskContext, cell, jobRow, jobSummary } = createSeparationTaskFixtures();
+const BLANK_REQUEST = {
+  studentTitleCode: { state: "present", value: "- - -" },
+  additionalComments: { state: "absent", reason: "the field rendered empty" },
+} as const;
 
 
 describe("separations workflow task wrappers", () => {
   it("records selected employment facts and keeps the named refusal", async () => {
     const success = taskContext();
     const output = await matchActiveEmploymentTask.impl.run({
-      input: { documentNumber: DOCUMENT, jobSummary: jobSummary() },
+      input: { documentNumber: DOCUMENT, jobSummary: jobSummary(), request: BLANK_REQUEST },
       ctx: success.ctx,
     });
     const expected = {
@@ -37,7 +41,8 @@ describe("separations workflow task wrappers", () => {
     await assert.rejects(() => matchActiveEmploymentTask.impl.run({
       input: {
         documentNumber: DOCUMENT,
-        jobSummary: jobSummary([jobRow({ hrStatus: "Terminated" })]),
+        jobSummary: jobSummary([jobRow({ hrStatus: cell("Terminated") })]),
+        request: BLANK_REQUEST,
       },
       ctx: refusal.ctx,
     }), (error: unknown) => error instanceof TaskRefusal && error.code === "no-active-employment");

@@ -70,6 +70,7 @@ export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[]
     ...(entry.start.uploadRun === undefined ? {} : { uploadRun: entry.start.uploadRun }),
     requiredWorkbookFields: entry.start.requiredWorkbookFields,
     workbookReference: entry.start.workbookReference,
+    workbookCheck: entry.start.workbookCheck,
     referenceSources: projection?.sources ?? [],
     inputRun: entry.start.inputRun === undefined ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
       : { state: "present", surface: entry.start.inputRun } };

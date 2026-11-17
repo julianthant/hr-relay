@@ -6,27 +6,26 @@ import {
 import { maskedEid } from "../../../../rules/redaction/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
-
 export const readJobSummaryTask = defineTask(ucpathDriver, UcpathReadJobSummary, {
   sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
   retry: { attempts: 2, backoffMs: 2_000, retryOn: "transient" },
   async run({ input, ctx }) {
-    const read = await ctx.driver.readJobSummary({ emplId: input.emplId });
+    const read = await ctx.driver.readJobSummary(input);
 
     if (read.state === "employee-not-found") {
-
       return ctx.fail(
         "employee-not-found",
         // The ID may be one the operator typed, so these lines name only its last four digits.
-        `UCPath Person Org has no record for EID ${maskedEid(read.emplId)} `
+        `UCPath Workforce Job Summary has no record for EID ${maskedEid(read.emplId)} `
         + `(the page rendered ${JSON.stringify(read.observedMarker)}). This is UCPath's own answer, not `
         + "a timeout: a search that times out throws instead.",
       );
     }
+
     if (read.state === "subject-mismatch") {
       return ctx.fail(
         "subject-mismatch",
-        `UCPath opened the Person Org detail for EID ${maskedEid(read.observedEid)} while the run asked for `
+        `UCPath opened the Workforce Job Summary detail for EID ${maskedEid(read.observedEid)} while the run asked for `
         + `${maskedEid(read.expectedEid)}; refusing to read one person's employment grid as another's.`,
       );
     }

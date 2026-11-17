@@ -18,15 +18,6 @@ import { EidSchema } from "../../../../rules/identity/ids.js";
 import type { Eid, ElementId } from "../../../../rules/identity/ids.js";
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import {
-  UCPATH_JOB_SUMMARY_PAGE_STATE,
-  UcpathJobRowSchema,
-  UcpathJobSummaryReadSchema,
-} from "../../../../models/ui/ucpath-job-summary.js";
-import type {
-  UcpathJobRow,
-  UcpathJobSummaryRead,
-} from "../../../../models/ui/ucpath-job-summary.js";
-import {
   UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
   UCPATH_PERSON_ORG_EID_DISPLAY,
   UCPATH_PERSON_ORG_EID_INPUT,
@@ -648,111 +639,6 @@ async function ensureResultsExpanded(assertCurrent: () => void, page: Page): Pro
 }
 
 
-const JOB_ROW_CELL_COUNT = 12;
-
-function jobCell(raw: string | undefined, label: string): { state: "present"; value: string }
-  | { state: "absent"; reason: string } {
-  const value = (raw ?? "").trim();
-  return value.length === 0
-    ? {
-      state: "absent",
-      reason: `the Person Org Employment Instances grid rendered ${label} as an empty cell`,
-    }
-    : { state: "present", value };
-}
-
-
-export function deriveJobRowFromCells(cells: readonly string[], rowIndex: number): UcpathJobRow {
-  if (cells.length < JOB_ROW_CELL_COUNT) {
-    throw new Error(
-      `Person Org job row ${String(rowIndex)} has ${String(cells.length)} cells; expected at least `
-      + String(JOB_ROW_CELL_COUNT),
-    );
-  }
-  const values = cells.map((cell) => cell.trim());
-  if (values[6] === "Department Description") {
-    throw new Error("Person Org job-summary extraction reached a header row instead of data");
-  }
-  return UcpathJobRowSchema.parse({
-    rowIndex,
-    emplRecord: values[0],
-    hrStatus: values[2],
-    businessUnit: values[3],
-    effectiveDate: jobCell(values[1], "Effective Date"),
-    positionNumber: jobCell(values[4], "Position Number"),
-    deptId: jobCell(values[5], "Dept ID"),
-    department: jobCell(values[6], "Department Description"),
-    jobCode: jobCell(values[7], "Job Code"),
-    jobTitle: jobCell(values[8], "Job Code Description"),
-    expectedJobEndDate: jobCell(values[9], "Expected Job End Date"),
-    fte: jobCell(values[10], "FTE"),
-    emplClass: jobCell(values[11], "Empl Class"),
-  });
-}
-
-
-async function readJobSummaryWithPagePort(
-  pagePort: PersonOrgPagePort,
-  input: Readonly<{ emplId: Eid }>,
-  observedAt: string,
-): Promise<UcpathJobSummaryRead> {
-  const emplId = EidSchema.parse(input.emplId);
-  const outcome = await pagePort.search({ kind: "by-eid", eid: emplId });
-  if (outcome.kind === "not-found") {
-    return UcpathJobSummaryReadSchema.parse({
-      state: "employee-not-found",
-      emplId,
-      observedMarker: outcome.marker,
-    });
-  }
-  let detail: PersonOrgDetail;
-  let entry: "auto-detail" | "drilled-from-grid";
-  let searchResultRows: number;
-  if (outcome.kind === "detail") {
-    detail = outcome.detail;
-    entry = "auto-detail";
-    searchResultRows = 0;
-  } else {
-    // Employment-instance rows lead to the same Person Org detail; drill any row only after proving the shared person.
-    const foreign = outcome.rows.filter(({ emplId: rowEid }) => rowEid !== emplId);
-    if (foreign.length > 0) {
-      throw new Error(
-        `Person Org EID ${directIdentifierDisplay(emplId)} returned a results grid carrying ${String(foreign.length)} row(s) for `
-        + `other people (${[...new Set(foreign.map(({ emplId: rowEid }) => directIdentifierDisplay(rowEid)))].join(", ")})`,
-      );
-    }
-    const first = outcome.rows[0];
-    if (first === undefined) throw new Error(`Person Org EID ${directIdentifierDisplay(emplId)} returned an empty results grid`);
-    detail = await pagePort.drill(first.rowIndex);
-    entry = "drilled-from-grid";
-    searchResultRows = outcome.rows.length;
-  }
-  if (detail.observedEid !== emplId) {
-    return UcpathJobSummaryReadSchema.parse({
-      state: "subject-mismatch",
-      expectedEid: emplId,
-      observedEid: detail.observedEid,
-    });
-  }
-  const jobRows = detail.cells.map((cells, rowIndex) => deriveJobRowFromCells(cells, rowIndex));
-  return UcpathJobSummaryReadSchema.parse({
-    state: "read",
-    summary: {
-      pageStateId: UCPATH_JOB_SUMMARY_PAGE_STATE,
-      emplId,
-      displayedName: detail.displayedName,
-      jobRows,
-      rowCount: jobRows.length,
-      renderContext: {
-        entry,
-        searchResultRows,
-        employmentInstances: detail.employmentInstances,
-      },
-      observedAt,
-    },
-  });
-}
-
 async function ensureEmploymentInstancesExpanded(
   assertCurrent: () => void,
   page: Page,
@@ -1003,17 +889,6 @@ export async function searchPersonOrgOnPage(
   input: z.output<typeof SearchPersonOrgInputSchema>,
 ): Promise<SearchPersonOrgOutput> {
   const result = await searchPersonOrgWithPagePort(assertCurrent, createPlaywrightPersonOrgPage(assertCurrent, page), input);
-  assertCurrent();
-  return result;
-}
-
-export async function readJobSummaryOnPage(
-  assertCurrent: () => void,
-  page: Page,
-  input: Readonly<{ emplId: Eid }>,
-  observedAt: string,
-): Promise<UcpathJobSummaryRead> {
-  const result = await readJobSummaryWithPagePort(createPlaywrightPersonOrgPage(assertCurrent, page), input, observedAt);
   assertCurrent();
   return result;
 }
