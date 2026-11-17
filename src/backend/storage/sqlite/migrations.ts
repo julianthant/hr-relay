@@ -132,6 +132,42 @@ export const COMMAND_ROW_STATE_MIGRATION = deepFreeze({ version: COMMAND_ROW_STA
   ...COMMANDS_CHANGE_LOG_OBJECTS,
 ] });
 
+/** Migration 34 indexes the dashboard and worker statements that scanned a table growing with runs. */
+export const QUERY_INDEX_SCHEMA_VERSION = 34;
+/** Each index the migration adds, with the statements it serves; the store query plan test proves every one is used. */
+export const QUERY_INDEXES = deepFreeze({
+  checkpoints_run_idx: { on: "run_checkpoints(run_id,node_id,attempt,claim_generation)",
+    serves: "a run's checkpoints in run deletion, the search index's latest node checkpoint and the stale-queue custody probe" },
+  // The run state and pause indexes are partial, so reads of terminal or unpaused runs keep their own lookups.
+  runs_queued_idx: { on: "runs(created_at,id) WHERE state='queued'", serves: "the cross-workflow claim of queued runs" },
+  runs_parked_gate_idx: { on: "runs(created_at,id) WHERE state='parked-gate'", serves: "runs.listParkedAtGate" },
+  runs_pause_idx: { on: "runs(pause_state,created_at,id) WHERE pause_state IS NOT NULL", serves: "runs.listByPauseState" },
+  runs_batch_idx: { on: "runs(batch_id,created_at,id)", serves: "runs.listBySession" },
+  runs_trace_idx: { on: "runs(trace_id,created_at,id)", serves: "runs.findByTrace" },
+  commands_request_run_idx: { on: "commands(family,json_extract(request_json,'$.request.runId'))",
+    serves: "lifecycle commands by request run: delegation refreshes and invocations, gate transitions, cancellation sources" },
+  commands_outcome_run_idx: { on: "commands(family,json_extract(outcome_json,'$.result.runId'))",
+    serves: "lifecycle commands by outcome run: the terminal evidence owner, resumes, continuation and root origins" },
+  commands_target_run_idx: { on: "commands(family,json_extract(request_json,'$.target.runId'))", serves: "commands.listRunResumes and listRunBumpCommands" },
+  commands_target_idx: { on: "commands(family,target_id)", serves: "lifecycleJournal.listDelegationAdmissions and findDelegationOwner" },
+  commands_runtime_generation_idx: { on: "commands(family,json_extract(request_json,'$.request.runtimeGeneration'))",
+    serves: "the application admission and quit holds read on every claim" },
+  commands_manifest_idx: { on: "commands(family,json_extract(request_json,'$.request.manifestId'))", serves: "lifecycleJournal.findDelegationInvocation" },
+  commands_source_command_idx: { on: "commands(family,json_extract(request_json,'$.request.sourceCommandId'))",
+    serves: "lifecycleJournal.findDelegationParentHold" },
+  command_audits_target_run_idx: { on: "command_audits(json_extract(payload_json,'$.request.target.runId'),created_at,id)",
+    serves: "commandAudits.parkedWriteChecks" },
+  write_intents_status_idx: { on: "write_intents(status,id)", serves: "the attempting write intents of one item" },
+  write_intents_payload_run_idx: { on: "write_intents(json_extract(payload_json,'$.runId'),created_at,id)", serves: "writeIntents.listByRun" },
+  diagnostics_retention_idx: { on: "diagnostic_snapshots(retention_kind,purge_after,id)",
+    serves: "the ordinary diagnostic retention sweep, listRetentionDue and the retained-bytes total" },
+});
+/** The unique key UNIQUE(workflow,item_id,node_id,attempt,claim_generation) already serves checkpoint replay. */
+export const QUERY_INDEX_MIGRATION = deepFreeze({ version: QUERY_INDEX_SCHEMA_VERSION, statements: [
+  "DROP INDEX checkpoints_replay_idx",
+  ...Object.entries(QUERY_INDEXES).map(([name, index]) => `CREATE INDEX ${name} ON ${index.on}`),
+] });
+
 export const SQLITE_MIGRATIONS = deepFreeze([
   { version: 1, statements: [`CREATE TABLE database_states (
  id INTEGER PRIMARY KEY CHECK(id=1), schema_version INTEGER NOT NULL CHECK(schema_version>0),
@@ -1084,6 +1120,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
       BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
   ] },
   COMMAND_ROW_STATE_MIGRATION,
+  QUERY_INDEX_MIGRATION,
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,

@@ -23,6 +23,13 @@ export const RunSummaryQuerySchema = SummaryQuerySchema.extend({
   { message: "run-summary-range-invalid" });
 export type RunSummaryQuery = z.infer<typeof RunSummaryQuerySchema>;
 
+/** Every workflow with a stored run, in order: one seek of the workflow index per workflow instead of a scan of every run. */
+export function listRunWorkflows(database: DatabaseSync): string[] {
+  return database.prepare(`WITH RECURSIVE workflows(workflow) AS (SELECT min(workflow) FROM runs
+    UNION ALL SELECT (SELECT min(workflow) FROM runs WHERE workflow>workflows.workflow) FROM workflows WHERE workflow IS NOT NULL)
+    SELECT workflow FROM workflows WHERE workflow IS NOT NULL`).all().map(row => z.object({ workflow: z.string() }).parse(row).workflow);
+}
+
 export function createRunSummaries(database: DatabaseSync, waitState: (run: RunRecord) => DelegationWaitState | null,
   parentage: (envelopes: readonly RunRecord["envelope"][]) => ReadonlyMap<string, QueueParent | null>) {
   const snapshot = (sourceGeneration: number, selected?: readonly RunRecord[], waits?: ReadonlyMap<string, DelegationWaitState | null>,
@@ -106,7 +113,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
   };
   return {
     workflows(_sourceGeneration: number) {
-      return database.prepare("SELECT DISTINCT workflow FROM runs ORDER BY workflow").all().map(row => z.object({ workflow: z.string() }).parse(row).workflow);
+      return listRunWorkflows(database);
     },
     read(sourceGeneration: number) {
       return snapshot(sourceGeneration).map(({ cancelRequested, ...summary }) => { void cancelRequested; return summary; });

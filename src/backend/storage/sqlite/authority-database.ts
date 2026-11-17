@@ -98,7 +98,7 @@ import { predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitio
 import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
 import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
-import { createRunSummaries } from "./run-summaries.js";
+import { createRunSummaries, listRunWorkflows } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings, migrateSettingsRecords } from "./settings-storage.js";
 import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } from "./timeline-repository.js";
@@ -6788,11 +6788,7 @@ export class AuthorityDatabase implements Disposable {
       listByPauseState: (state: "requested" | "paused") => Object.freeze(this.#database.prepare(`
         SELECT * FROM runs WHERE pause_state = ? ORDER BY created_at, id
       `).all(state).map((row) => runRecordFromRow(row))),
-      listWorkflows: () => Object.freeze(
-        z.array(z.strictObject({ workflow: z.string() })).parse(this.#database.prepare(`
-          SELECT DISTINCT workflow AS workflow FROM runs ORDER BY workflow
-        `).all()).map(({ workflow }) => workflow),
-      ),
+      listWorkflows: () => Object.freeze(listRunWorkflows(this.#database)),
       findByTrace: (traceId: string) => {
         const parsed = TraceIdSchema.parse(traceId);
         const rows = this.#database.prepare(`
