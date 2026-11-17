@@ -142,7 +142,7 @@ export function createCommandBrowserManager(options: Readonly<{
           context = outcome.context;
           lifecycle = observeContextLifecycle(context); launch.opened(); assertCurrent();
           gate = composeDuoCeremonyGateFactory({ config, duo: input.duo, leases: options.leases, clock, scheduler }).openGate({
-            commandId: input.commandId, system: 'sharepoint', envelopeDeadlineMonotonicMs: deadline,
+            commandId: input.commandId, system: 'sharepoint', envelopeDeadlineMonotonicMs: () => deadline,
             cancelCeremony: error => controller.abort(error), signal: controller.signal });
           const credentials = { userId: requireSecret('ucpathUserId', input.protectedSecrets), password: requireSecret('ucpathPassword', input.protectedSecrets) };
           assertCurrent();

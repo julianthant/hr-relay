@@ -33,6 +33,7 @@ describe("start step selection", () => {
         { key: "cross-verify", includedByDefault: true, state: "selectable" },
         { key: "active-status", includedByDefault: true, state: "required" },
         { key: "crm-dates", includedByDefault: false, state: "selectable" },
+        { key: "reference-check", includedByDefault: true, state: "required" },
       ],
     );
   });
@@ -54,8 +55,9 @@ describe("start step selection", () => {
       [
         ["kuali-extraction", "required"],
         ["identity-check", "required"],
-        ["job-summary", "required"],
         ["kronos-timecard", "omittable"],
+        ["identity-review", "required"],
+        ["reference-check", "required"],
         ["ucpath-transaction", "omittable"],
         ["kuali-finalization", "omittable"],
       ],

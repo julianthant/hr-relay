@@ -2,7 +2,7 @@ import { ActorIdSchema, NotificationIdSchema } from "../../../rules/identity/ids
 import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import { bulkChildClass, type CommandRowState } from "../../../rules/commands/command-lifecycle.js";
 import type { BulkRunCommandAcceptanceRecord, BulkRunCommandOutcome, CommandRequest, CommandResult } from "../../../rules/commands/commands.js";
-import { localDatePart } from "../../../rules/time/clock.js";
+import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import type { RunExistence } from "../../../models/config/authority.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { FailureRecord } from "../../../models/trust/failure.js";
@@ -29,7 +29,7 @@ export function createNotificationTargetQuery(deps: {
     const dayOf = (runId: string): string | undefined => {
       const current = deps.read(runId);
       if (current.state !== "present") return undefined;
-      return localDatePart(new Date((deps.host?.(current.run) ?? current.run).envelope.enqueuedAt));
+      return searchPartitionDay(new Date((deps.host?.(current.run) ?? current.run).envelope.enqueuedAt));
     };
     const refused = (reason: Extract<NotificationTarget, { kind: "refused" }>["reason"]): NotificationTarget => ({ kind: "refused", reason });
     try {
@@ -45,8 +45,8 @@ export function createNotificationTargetQuery(deps: {
       const current = deps.read(link.runId);
       if (current.state !== "present") return refused("run-unavailable");
       const host = deps.host?.(current.run);
-      if (host !== undefined) return NotificationTargetSchema.parse({ kind: "run", runId: host.envelope.runId, day: localDatePart(new Date(host.envelope.enqueuedAt)) });
-      const day = localDatePart(new Date(current.run.envelope.enqueuedAt));
+      if (host !== undefined) return NotificationTargetSchema.parse({ kind: "run", runId: host.envelope.runId, day: searchPartitionDay(new Date(host.envelope.enqueuedAt)) });
+      const day = searchPartitionDay(new Date(current.run.envelope.enqueuedAt));
       if (link.kind === "failure") {
         const failure = deps.failure(link.failureId);
         if (failure === undefined || failure.runId !== link.runId || current.run.lifecycle.state !== "terminal" || current.run.lifecycle.failureId !== link.failureId) return refused("failure-unavailable");

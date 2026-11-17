@@ -52,11 +52,10 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
       <BodySection title="UCPath sign-in" description={embedded ? "What workflows use to sign in to UCPath. Separate from your Relay account." : undefined}>
         <FormGroup label="UCPath sign-in">
           {authority.rows.filter(row => row.name === "ucpathUserId" || row.name === "ucpathPassword").map(row => {
-            const label = row.name === "ucpathUserId" ? "UCPath username" : row.label;
             const description = PROTECTED_DESCRIPTION[row.name] ?? row.purpose;
             const onRemove = (hasSaved: boolean, removeLabel: string): void => askRemove({ name: row.name, label: removeLabel, hasSaved });
             return embedded
-              ? <ProtectedPencilRow key={row.name} editor={editor} name={row.name} label={label} description={description} onRemove={onRemove} />
+              ? <ProtectedPencilRow key={row.name} editor={editor} name={row.name} label={row.name === "ucpathUserId" ? "Username" : "Password"} thing={row.name === "ucpathUserId" ? "UCPath username" : "UCPath password"} description={description} onRemove={onRemove} />
               : <ProtectedSettingField key={row.name} editor={editor} name={row.name} description={description} onRemove={onRemove} />;
           })}
         </FormGroup>

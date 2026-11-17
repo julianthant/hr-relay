@@ -256,7 +256,7 @@ function logLinesForRun(
         assertRunLogIdentity("span", event, line, runId, row, authority);
         const producer = producerOf(descriptor, event, line);
         const entry = { kind: "observed" as const, line, event, producer };
-        if (operatorFieldsOf(entry).length > 0) matches.push(entry);
+        if (projectObservedOperatorFields(entry.event, entry.producer.operatorFields).length > 0) matches.push(entry);
         continue;
       }
       assertScopedSpanWorkflow(event, line);
@@ -301,7 +301,8 @@ function logIdOf(entry: RunLogScanEntry): string {
   return deterministicUuid(`log:${entry.line.file.path}:${String(entry.line.lineNumber)}`);
 }
 
-function operatorFieldsOf(entry: Extract<RunLogScanEntry, { kind: "observed" }>) {
+export function projectObservedOperatorFields(event: Extract<SpanEventWire, { t: "data.observed" }>,
+  operatorFields: RunDetailDataOriginView["operatorFields"]) {
   const atPath = (value: unknown, path: readonly string[], order: readonly number[] = [], address: readonly (string | number)[] = []): readonly Readonly<{ observed: unknown; order: readonly number[]; address: readonly (string | number)[] }>[] => {
     if (Array.isArray(value)) return value.flatMap((member, index) => atPath(member, path, [...order, index], [...address, index]));
     if (path.length === 0) return [{ observed: value, order, address }];
@@ -309,8 +310,8 @@ function operatorFieldsOf(entry: Extract<RunLogScanEntry, { kind: "observed" }>)
     return head !== undefined && value !== null && typeof value === "object" && Object.hasOwn(value, head)
       ? atPath(Reflect.get(value, head), tail, order, [...address, head]) : [];
   };
-  return entry.event.points.flatMap(point => point.values.flatMap(value =>
-    (entry.producer.operatorFields ?? []).filter(field => field.kind === "output" &&
+  return event.points.flatMap(point => point.values.flatMap(value =>
+    (operatorFields ?? []).filter(field => field.kind === "output" &&
       (field.fieldPath === value.key || field.fieldPath.startsWith(`${value.key}.`))).flatMap(field => {
       const retained = value.state === "allowed" ? value.value : undefined;
       const values = value.state === "allowed" ? atPath(retained, field.fieldPath === value.key ? [] : field.fieldPath.slice(value.key.length + 1).split("."))
@@ -321,7 +322,7 @@ function operatorFieldsOf(entry: Extract<RunLogScanEntry, { kind: "observed" }>)
         if (value.state === "allowed" && field.display !== undefined && mapped === undefined) throw new LogDisplayRefusedError();
         const text = mapped?.text ?? String(observed);
         const pointAddress = [...(value.key === point.field ? [] : value.key.slice(point.field.length + 1).split(".")), ...address];
-        const origin = resolveObservationOrigin(entry.event, point, pointAddress);
+        const origin = resolveObservationOrigin(event, point, pointAddress);
         return text.trim().length === 0 ? [] : [{ order, field: { direction: point.direction, label: field.label, value: text,
           ...(field.declaration === undefined ? {} : { causal: { declaration: field.declaration, origin } }),
           point: { direction: point.direction, field: field.fieldPath, values: [value.state === "allowed"
@@ -404,7 +405,7 @@ function logRowOf(
   }
   const { operatorFields: _operatorFields, ...producer } = entry.producer;
   if (entry.kind === "observed") {
-    const fields = operatorOnly ? operatorFieldsOf(entry).map(field => authority?.envelope.dryRun && containsDryRunSample(field.value)
+    const fields = operatorOnly ? projectObservedOperatorFields(entry.event, entry.producer.operatorFields).map(field => authority?.envelope.dryRun && containsDryRunSample(field.value)
       ? { ...field, label: `dry-run sample: ${field.label}` } : field) : undefined;
     return {
       kind: "observed",

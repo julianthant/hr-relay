@@ -135,6 +135,47 @@ describe("two workers, one credential, one ceremony at a time", () => {
     await managerB.closeAll("worker-stop");
   });
 
+  it("a waiter whose acquisition was extended keeps its Duo budget from the extended deadline", async () => {
+    const clock = manualClock(T0);
+    const scheduler = new ManualScheduler(clock);
+    const database = await sharedAuthority(clock);
+    const holdA = deferred();
+    const a = recipeFactory(WORKER_A, { onCeremony: async () => holdA.promise });
+    const b = recipeFactory(WORKER_B, { onCeremony: async () => undefined });
+    // B first waits on an exclusive lease another worker is actively using, extending its acquisition as the session factory does.
+    const leaseWait = deferred();
+    let extend: (() => void) | undefined;
+    const waitingFactory: typeof b.factory = { ...b.factory, async open(input) {
+      extend = input.extendAcquisition;
+      await leaseWait.promise;
+      return b.factory.open(input);
+    } };
+    const managerA = managerFor(WORKER_A, a.factory, clock, scheduler, duoCeremonyGatesOver(database, clock, scheduler));
+    const managerB = managerFor(WORKER_B, waitingFactory, clock, scheduler, duoCeremonyGatesOver(database, clock, scheduler));
+
+    const runB = managerB.withDriver(NEED, "prod", new AbortController().signal, async () => "b");
+    const outcome = runB.then(value => value, (error: unknown) => error);
+    await flush();
+    assert.ok(extend !== undefined, "the manager hands the factory its acquisition extension");
+    for (let step = 0; step < 4; step += 1) { await advance(clock, scheduler, FIXTURE_SESSION_ACQUIRE_MS / 2); extend(); }
+    // A starts its ceremony only now, so its own acquisition bound outlasts the rest of the test.
+    const runA = managerA.withDriver(NEED, "prod", new AbortController().signal, async () => "a");
+    await flush();
+    assert.equal(leaseRow(database).holder.workerId, WORKER_A);
+    leaseWait.resolve();
+    await flush();
+    // B now meets A's Duo lease two envelopes after it started: it waits instead of being refused at once.
+    assert.equal(await Promise.race([outcome.then(value => `settled: ${String(value)}`), flush().then(() => "pending")]), "pending");
+    await advance(clock, scheduler, BUDGET_MS - POLL_MS);
+    assert.equal(await Promise.race([outcome.then(value => `settled: ${String(value)}`), flush().then(() => "pending")]), "pending");
+    holdA.resolve();
+    assert.equal(await runA, "a");
+    await advance(clock, scheduler, POLL_MS);
+    assert.equal(await outcome, "b");
+    await managerA.closeAll("worker-stop");
+    await managerB.closeAll("worker-stop");
+  });
+
   it("a lease past its TTL is taken over at the next generation, and the old holder's in-flight ceremony is cancelled", async () => {
     const clock = manualClock(T0);
     const scheduler = new ManualScheduler(clock);
@@ -142,10 +183,11 @@ describe("two workers, one credential, one ceremony at a time", () => {
     const gatesA = duoCeremonyGatesOver(database, clock, scheduler);
     const gatesB = duoCeremonyGatesOver(database, clock, scheduler);
     const cancellations: Error[] = [];
+    const envelopeA = clock.monotonicMs() + 10 * TTL_MS;
     const gateA = gatesA.openGate({
       workerId: WORKER_A, system: SYSTEM,
       // The envelope deliberately sits BEYOND the TTL here, so the TTL is the arm under test.
-      envelopeDeadlineMonotonicMs: clock.monotonicMs() + 10 * TTL_MS,
+      envelopeDeadlineMonotonicMs: () => envelopeA,
       cancelCeremony: (reason) => cancellations.push(reason),
       signal: new AbortController().signal,
     });
@@ -161,9 +203,10 @@ describe("two workers, one credential, one ceremony at a time", () => {
     assert.ok(cancellations[0] instanceof DuoCeremonyLeaseExpiredError);
     assert.match(cancellations[0].message, /expired at .* before the content verifier returned/);
 
+    const envelopeB = clock.monotonicMs() + FIXTURE_SESSION_ACQUIRE_MS;
     const gateB = gatesB.openGate({
       workerId: WORKER_B, system: "crm",
-      envelopeDeadlineMonotonicMs: clock.monotonicMs() + FIXTURE_SESSION_ACQUIRE_MS,
+      envelopeDeadlineMonotonicMs: () => envelopeB,
       cancelCeremony: () => undefined,
       signal: new AbortController().signal,
     });
@@ -227,10 +270,11 @@ describe("Gate#release preserves the original error when the store's release() i
       graceMs: FIXTURE_DUO_LEASE_GRACE_MS,
       pollIntervalMs: DUO_CEREMONY_LEASE_POLL_MS,
     });
+    const envelopeDeadline = clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS;
     const gate = factory.openGate({
       workerId: WORKER_A,
       system: SYSTEM,
-      envelopeDeadlineMonotonicMs: clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
+      envelopeDeadlineMonotonicMs: () => envelopeDeadline,
       cancelCeremony: () => undefined,
       signal: new AbortController().signal,
     });
@@ -282,10 +326,11 @@ describe("Gate#release preserves the original error when the store's release() i
       graceMs: FIXTURE_DUO_LEASE_GRACE_MS,
       pollIntervalMs: DUO_CEREMONY_LEASE_POLL_MS,
     });
+    const envelopeDeadline = clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS;
     const gate = factory.openGate({
       workerId: WORKER_A,
       system: SYSTEM,
-      envelopeDeadlineMonotonicMs: clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
+      envelopeDeadlineMonotonicMs: () => envelopeDeadline,
       cancelCeremony: () => undefined,
       signal: new AbortController().signal,
     });

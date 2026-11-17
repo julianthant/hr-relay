@@ -13,6 +13,7 @@ import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.j
 import { FailureRecordSchema } from "../../../models/trust/failure.js";
 import { CROSS_DATE_SEARCH_MATCH_ORDER, SearchMetadataSchema } from "../../../models/dashboard/search.js";
 import { RunSearchDeclarationSchema, RunSearchIndexRecordSchema, RunSearchPublicationSchema, RunSearchReadRequestSchema, RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 
 import { runRecordFromRow } from "./run-record-row.js";
 import { CommandAuditRecordSchema } from "../../../rules/commands/commands.js";
@@ -89,6 +90,70 @@ function safeSubject(database: DatabaseSync, run: PredecessorRunRecord, declarat
   return { state: "available", value: value.trim() };
 }
 
+type RunSearchPublication = z.infer<typeof RunSearchPublicationSchema>;
+
+/** `database_states.search_state`. Nothing writes `unbuilt`; a store upgraded from schema 6 or earlier may still hold it. */
+export const SearchStateColumnSchema = z.enum(["unbuilt", "ready", "invalid"]);
+const SearchColumnsSchema = z.strictObject({ authority_generation: z.number().int(), search_generation: z.number().int().nullable(), search_state: SearchStateColumnSchema });
+const StoredPublicationSchema = RunSearchPublicationSchema.omit({ rowCount: true });
+
+/**
+ * The stored publication, without its row count. An invalid state that keeps a generation is a build in progress at that
+ * generation; its progress is the last run written with that `buildGeneration`.
+ */
+export function runSearchPublicationOf(row: z.infer<typeof SearchColumnsSchema>, buildProgress: (generation: number) => string | null): Omit<RunSearchPublication, "rowCount"> {
+  if (row.search_state === "invalid" && row.search_generation !== null) return StoredPublicationSchema.parse({ state: "building", sourceGeneration: row.search_generation, afterRun: buildProgress(row.search_generation) });
+  return StoredPublicationSchema.parse({ state: row.search_state === "ready" ? "published" : "invalid", sourceGeneration: row.search_generation ?? row.authority_generation, afterRun: null });
+}
+
+/** A publication against the current authority generation; a publication or build at any other generation is stale. */
+export const RUN_SEARCH_STATES = deepFreeze(["published", "building", "stale", "invalid"] as const);
+export type RunSearchState = (typeof RUN_SEARCH_STATES)[number];
+
+export function runSearchStateOf(publication: Pick<z.input<typeof RunSearchPublicationSchema>, "state" | "sourceGeneration">, authorityGeneration: number): RunSearchState {
+  if (publication.state === "invalid") return "invalid";
+  return publication.sourceGeneration === authorityGeneration ? publication.state : "stale";
+}
+
+/**
+ * `register` affects at most 500 indexed runs and `register-bulk` more. A rebuild chunk is `last` when it writes the final run.
+ * Native cancellation and projection repair invalidate in their own SQL in `authority-database.ts`.
+ */
+export const RUN_SEARCH_EVENTS = deepFreeze(["authority-write", "register", "register-bulk", "native-cancellation", "projection-repair",
+  "restart-chunk", "restart-last-chunk", "continue-chunk", "continue-last-chunk", "search"] as const);
+export type RunSearchEvent = (typeof RUN_SEARCH_EVENTS)[number];
+export type RunSearchTransition = { readonly state: RunSearchState } | { readonly refused: "run-search-rebuild-restart-required" | "run-search-index-rebuild-required" };
+
+const RESTART_REQUIRED = { refused: "run-search-rebuild-restart-required" } as const;
+const REBUILD_REQUIRED = { refused: "run-search-index-rebuild-required" } as const;
+const PUBLISHED = { state: "published" } as const, BUILDING = { state: "building" } as const, INVALID = { state: "invalid" } as const;
+const UNPUBLISHED_ROW = {
+  "authority-write": INVALID, register: INVALID, "register-bulk": INVALID, "native-cancellation": INVALID, "projection-repair": INVALID,
+  "restart-chunk": BUILDING, "restart-last-chunk": PUBLISHED, "continue-chunk": RESTART_REQUIRED, "continue-last-chunk": RESTART_REQUIRED, search: REBUILD_REQUIRED,
+} as const;
+
+/** Only a published index serves search and survives a write; only a build at the current generation continues. */
+export const RUN_SEARCH_TRANSITIONS = deepFreeze({
+  published: {
+    "authority-write": PUBLISHED, register: PUBLISHED, "register-bulk": INVALID, "native-cancellation": INVALID, "projection-repair": INVALID,
+    "restart-chunk": BUILDING, "restart-last-chunk": PUBLISHED, "continue-chunk": RESTART_REQUIRED, "continue-last-chunk": RESTART_REQUIRED, search: PUBLISHED,
+  },
+  building: { ...UNPUBLISHED_ROW, "continue-chunk": BUILDING, "continue-last-chunk": PUBLISHED },
+  stale: UNPUBLISHED_ROW,
+  invalid: UNPUBLISHED_ROW,
+} as const satisfies Record<RunSearchState, Record<RunSearchEvent, RunSearchTransition>>);
+
+export function runSearchTransition(state: RunSearchState, event: RunSearchEvent): RunSearchTransition {
+  return RUN_SEARCH_TRANSITIONS[state][event];
+}
+
+/** The next state, or the refusal raised as today's error. */
+function nextRunSearchState(state: RunSearchState, event: RunSearchEvent): RunSearchState {
+  const next = runSearchTransition(state, event);
+  if ("refused" in next) throw new Error(next.refused);
+  return next.state;
+}
+
 export function createRunSearchIndex(database: DatabaseSync) {
   const schemaVersion = z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version;
   const prepareTemporaryState = () => {
@@ -97,15 +162,10 @@ export function createRunSearchIndex(database: DatabaseSync) {
   };
   const count = () => CountSchema.parse(database.prepare("SELECT count(*) AS count FROM run_search").get()).count;
   /** The publication without its row count, which coverage checks do not need and which reads every index row. */
-  const publicationState = () => {
-    const row = z.strictObject({authority_generation:z.number().int(),search_generation:z.number().int().nullable(),search_state:z.enum(["unbuilt","ready","invalid"])}).parse(
-      database.prepare("SELECT authority_generation,search_generation,search_state FROM database_states WHERE id=1").get());
-    if (row.search_state === "invalid" && row.search_generation !== null) {
-      const progress = z.strictObject({after_run:z.string().nullable()}).parse(database.prepare("SELECT max(run_id) AS after_run FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=?").get(row.search_generation));
-      return {state:"building" as const,sourceGeneration:row.search_generation,afterRun:progress.after_run};
-    }
-    return {state:row.search_state === "ready" ? "published" as const : "invalid" as const,sourceGeneration:row.search_generation ?? row.authority_generation,afterRun:null};
-  };
+  const columns = () => SearchColumnsSchema.parse(database.prepare("SELECT authority_generation,search_generation,search_state FROM database_states WHERE id=1").get());
+  const buildProgress = (generation: number) => z.strictObject({after_run:z.string().nullable()})
+    .parse(database.prepare("SELECT max(run_id) AS after_run FROM run_search WHERE json_extract(metadata_json,'$.buildGeneration')=?").get(generation)).after_run;
+  const publicationState = () => runSearchPublicationOf(columns(), buildProgress);
   const publication = () => {
     const current = publicationState();
     const rowCount = current.state === "building"
@@ -245,7 +305,6 @@ export function createRunSearchIndex(database: DatabaseSync) {
     publicationState,
     validateCoverage,
     validateCoverageOf,
-    initialize(sourceGeneration: number, now: string) { return publish({ state: "published", sourceGeneration, afterRun: null, rowCount: 0 }, now); },
     installTracking() {
       prepareTemporaryState();
       database.exec("CREATE TEMP TABLE IF NOT EXISTS search_dirty(run_id TEXT PRIMARY KEY) WITHOUT ROWID");
@@ -267,7 +326,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
       }
     },
     register(input: unknown, now: string) {
-      const current = publication();
+      const stored = columns(), current = runSearchPublicationOf(stored, buildProgress);
       const affected = new Set<string>();
       for (const declaration of z.array(RunSearchDeclarationSchema).parse(input)) {
         const key = `${declaration.workflow}:${declaration.version}:${declaration.contractFingerprint}`, json = canonicalJsonStringify(declaration);
@@ -279,15 +338,15 @@ export function createRunSearchIndex(database: DatabaseSync) {
         database.prepare("UPDATE run_search SET declaration_json=? WHERE run_id IN (SELECT id FROM runs WHERE workflow=? AND descriptor_version=? AND contract_fingerprint=?) AND declaration_json IS NULL").run(json,declaration.workflow,declaration.version,declaration.contractFingerprint);
       }
       if (affected.size === 0) return 0;
-      if (current.state !== "published" || affected.size > 500) {
+      if (nextRunSearchState(runSearchStateOf(current, stored.authority_generation), affected.size > 500 ? "register-bulk" : "register") === "invalid") {
         publish({state:"invalid",sourceGeneration:current.sourceGeneration,afterRun:null,rowCount:count()},now);
       } else {
         for (const id of affected) writeId(id,now);
       }
       return affected.size;
     },
-    publishChanges(sourceGeneration: number, now: string, prior: z.infer<typeof RunSearchPublicationSchema>) {
-      if (prior.state !== "published" || prior.sourceGeneration !== sourceGeneration - 1) {
+    publishChanges(sourceGeneration: number, now: string, prior: RunSearchPublication) {
+      if (nextRunSearchState(runSearchStateOf(prior, sourceGeneration - 1), "authority-write") === "invalid") {
         // An explicit chunked rebuild may already have published this transaction's generation.
         // Search stays unavailable until explicit rebuild. Unrelated execution remains authoritative.
         if (publication().sourceGeneration !== sourceGeneration) publish({state:"invalid",sourceGeneration,afterRun:null,rowCount:count()},now);
@@ -301,18 +360,21 @@ export function createRunSearchIndex(database: DatabaseSync) {
     rebuild(input: unknown, sourceGeneration: number, now: string) {
       const { restart, limit } = RunSearchRebuildRequestSchema.parse(input);
       const prior = publication();
-      if (!restart && (prior.state !== "building" || prior.sourceGeneration !== sourceGeneration)) throw new Error("run-search-rebuild-restart-required");
+      const state = runSearchStateOf(prior, sourceGeneration);
+      // A continuation is refused before it writes; whether its chunk is the last is known only after.
+      if (!restart) nextRunSearchState(state, "continue-chunk");
       if (restart) database.exec("UPDATE run_search SET metadata_json=json_remove(metadata_json,'$.buildGeneration'); DELETE FROM run_search WHERE run_id NOT IN (SELECT id FROM runs)");
       const after = restart ? "" : prior.afterRun ?? "";
       const rows = database.prepare(`SELECT id FROM runs WHERE id>? ORDER BY id LIMIT ?`).all(after, limit + 1).map(row => KeySchema.parse(row).id);
       const selected = rows.slice(0, limit);
       for (const id of selected) writeId(id, now, true);
-      return publish({ state: rows.length > limit ? "building" : "published", sourceGeneration, afterRun: selected.at(-1) ?? prior.afterRun, rowCount: (restart ? 0 : prior.rowCount) + selected.length }, now);
+      const last = rows.length <= limit, next = nextRunSearchState(state, restart ? (last ? "restart-last-chunk" : "restart-chunk") : (last ? "continue-last-chunk" : "continue-chunk"));
+      if (next !== "published" && next !== "building") throw new Error(`run-search-rebuild-result-invalid: ${next}`);
+      return publish({ state: next, sourceGeneration, afterRun: selected.at(-1) ?? prior.afterRun, rowCount: (restart ? 0 : prior.rowCount) + selected.length }, now);
     },
     search(input: unknown, sourceGeneration: number) {
       const request = RunSearchReadRequestSchema.parse(input);
-      const current = publication();
-      if (current.state !== "published" || current.sourceGeneration !== sourceGeneration) throw new Error("run-search-index-rebuild-required");
+      nextRunSearchState(runSearchStateOf(publicationState(), sourceGeneration), "search");
       const clauses: string[] = [], parameters: (string | number)[] = [];
       const add = (sql: string, ...values: (string | number)[]) => { clauses.push(sql); parameters.push(...values); };
       const { facets, q } = request;

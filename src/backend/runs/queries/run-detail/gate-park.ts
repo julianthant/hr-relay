@@ -20,6 +20,8 @@ import { z } from "zod";
 import { HirePlanSchema } from "../../../../models/workflows/onboarding/read-hire-plan.js";
 import { SearchPersonMatchOutputSchema } from "../../../../models/systems/ucpath/search-person-match.js";
 import { ONBOARDING_WRITE_REVIEW_GATE, OnboardingWriteApprovalSchema } from "../../../../models/workflows/onboarding/read-write-plan.js";
+import { REFERENCE_CHECK_REVIEW_GATE, ReferenceCheckReviewSchema } from "../../../../models/processing/workbooks/reference-check-stop.js";
+import { VerifyWorkbookPerson } from "../../../../models/processing/workbooks/verify-person.js";
 import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
 import { hireReviewChoices, type HireReviewChoices } from "../../../../rules/onboarding/match-hire-subject.js";
 import { MatchIdentityOutputSchema } from "../../../../models/workflows/separations/match-identity.js";
@@ -52,7 +54,7 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import { timelineCheckpointReference } from "../../../../models/events/timeline.js";
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
 import type { DecisionInputWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
-import { IDENTITY_REVIEW_TEXT, PARKED_WRITE_RECORDS, parkedWriteRecordId, type ParkedWriteRecord } from "../../decisions/decision-catalog.js";
+import { IDENTITY_REVIEW_TEXT, PARKED_WRITE_RECORDS, REFERENCE_CHECK_REVIEW_TEXT, parkedWriteRecordId, type ParkedWriteRecord } from "../../decisions/decision-catalog.js";
 import { projectDecision, rowActionOption } from "../../decisions/project-decision.js";
 import { decisionAnswerer, type DecisionAnswerer } from "../../decisions/decision-answer.js";
 
@@ -122,17 +124,47 @@ function settledGateWire(
     resolvedBy: stored.resolvedBy,
     resolvedAt: stored.resolvedAt,
     revision: 2,
-    ...(answer === undefined || gateId !== ONBOARDING_WRITE_REVIEW_GATE ? {} : { answer: answer(stored.commandId, { id: arm.value, label: arm.label }, stored.resolvedAt) }),
+    ...(answer === undefined || (gateId !== ONBOARDING_WRITE_REVIEW_GATE && gateId !== REFERENCE_CHECK_REVIEW_GATE) ? {} : { answer: answer(stored.commandId, { id: arm.value, label: arm.label }, stored.resolvedAt) }),
   };
 }
 
 /** D4 for the hire review: both arms are served from `hireReviewChoices` over the run's own UCPath match, exactly as `readOnboardingWritePlan` accepts them. Other operator gates stay unprojected: the identity gate has its own section, and no other arm's result can be built from served facts. */
 function reviewBeforeWriteDecision(deps: RunDetailQueryDeps, authority: RunRecord, gateId: string): RunDecisionWire | undefined {
   const arms = findGateDecision(authority.envelope.workflow, gateId)?.arms;
+  if (gateId === REFERENCE_CHECK_REVIEW_GATE && arms !== undefined) return referenceCheckReviewDecision(deps, authority, arms, gateId);
   if (gateId !== ONBOARDING_WRITE_REVIEW_GATE || arms === undefined) return undefined;
   const review = hireReviewFacts(deps, authority);
   return review === undefined ? undefined
     : hireReviewDecision(review.mode, review.match, review.plan.employee, arms, gateId, authority.version);
+}
+
+/** The reference review: the gate's declared arm plus the run's own cancel; the context names each spreadsheet that did not confirm the person, never a row's values. */
+function referenceCheckReviewDecision(deps: RunDetailQueryDeps, authority: RunRecord, arms: readonly Readonly<{ value: string; label: string; hint: string }>[], gateId: string): RunDecisionWire | undefined {
+  const check = hireReviewCheckpoint(deps, authority, "reference-check", VerifyWorkbookPerson.output);
+  const unconfirmed = check?.checks.filter(item => item.outcome !== "found") ?? [];
+  if (unconfirmed.length === 0) return undefined;
+  const send = (arm: string) => ({ via: "gate-arm" as const, gateNodeId: gateId, expectedVersion: authority.version, arm });
+  return projectDecision("review-before-write", [
+    ...arms.map(arm => ({ id: arm.value, label: arm.label, hint: arm.hint, send: send(arm.value) })),
+    ...rowActionOption("cancel-run", "cancel", deps.projection.queueSurface(authority.envelope.runId)?.actions).map(option => ({ ...option, hint: REFERENCE_CHECK_REVIEW_TEXT.cancelHint })),
+  ], { title: REFERENCE_CHECK_REVIEW_TEXT.title, context: `${unconfirmed.map(item => item.line).join("; ")}. ${REFERENCE_CHECK_REVIEW_TEXT.compared}` });
+}
+
+/** The reference review's one stored answer is "continue"; a stale version or another arm is refused. */
+function resolveReferenceReviewAnswer(deps: RunDetailQueryDeps, answer: GateArmAnswerRequest, journaled: CommandRequest | undefined): IdentityGateAnswerResolution {
+  const refused = (code: "invalid-state" | "command-divergent", message: string) => ({ state: "refused" as const, code, message });
+  if (journaled !== undefined) {
+    return journaled.family === "gate" && journaled.type === "resolve-gate" && canonicalJsonStringify(journaled.target) === canonicalJsonStringify(answer.target)
+      && answer.payload.arm === "continue" && answer.payload.rowId === undefined
+      ? { state: "accepted", request: journaled }
+      : refused("command-divergent", "command-divergent: this command was already used for a different answer");
+  }
+  const authority = requireTrustRun(deps.runReader, answer.target.runId);
+  if (authority.lifecycle.state !== "parked-gate" || String(authority.lifecycle.gateId) !== REFERENCE_CHECK_REVIEW_GATE
+    || authority.version !== answer.target.expectedVersion || answer.payload.arm !== "continue" || answer.payload.rowId !== undefined) return refused("invalid-state", REFERENCE_CHECK_REVIEW_TEXT.stale);
+  const { commandId, requestedAt, requestedBy, source, target } = answer;
+  return { state: "accepted", request: CommandRequestSchema.parse({ commandId, requestedAt, requestedBy, source, family: "gate", type: "resolve-gate",
+    target, payload: { result: { schemaHash: deriveSchemaHash(ReferenceCheckReviewSchema, "output"), value: { decision: "continue" } } } }) };
 }
 
 const RunModeSchema = z.object({ mode: OnboardingInput.shape.mode });
@@ -219,6 +251,7 @@ const STALE_HIRE_REVIEW = "This review changed. Reload it before answering.";
 
 /** Resolve the dashboard's gate-arm answer to the kernel's `resolve-gate`, composing the hire-review result from the UCPath match this run holds now. */
 export function resolveGateArmAnswer(deps: RunDetailQueryDeps, answer: GateArmAnswerRequest, journaled: CommandRequest | undefined): IdentityGateAnswerResolution {
+  if (String(answer.target.gateId) === REFERENCE_CHECK_REVIEW_GATE) return resolveReferenceReviewAnswer(deps, answer, journaled);
   const refused = (code: "invalid-state" | "command-divergent", message: string) => ({ state: "refused" as const, code, message });
   if (journaled !== undefined) {
     const approval = journaled.family === "gate" && journaled.type === "resolve-gate" ? OnboardingWriteApprovalSchema.safeParse(journaled.payload.result.value) : undefined;
@@ -596,6 +629,7 @@ function identityComparisons(packet: IdentityEvidencePacket): readonly Readonly<
     name: [packet.documentName, packet.ucpathName],
     eid: [/^\d{8}$/u.test(packet.documentEidText) ? maskedEid(packet.documentEidText) : value.noFormEid, maskedEid(packet.emplId)],
     employment: [value.oneActiveJob, jobs.disposition === "single-active-job" ? value.oneActiveJob
+      : jobs.disposition === "sole-record" ? value.soleRecord
       : jobs.disposition === "no-active-job" ? value.noActiveJob
         : jobs.disposition === "concurrent-active-jobs" ? `${String(jobs.activeRowCount)} active jobs` : value.unknownJob],
     "name-search": [packet.documentName, nameSearch.status === "resolved" ? `${nameSearch.candidate.name} · ${maskedEid(nameSearch.candidate.eid)}`

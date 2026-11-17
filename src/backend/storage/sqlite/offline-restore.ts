@@ -3,7 +3,8 @@ import { resolveConfigWithProvenance } from "../../app/config/resolve.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { randomUUID } from "node:crypto";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
-import type { AuthorityRestoreInput } from "../admission/installation.js";
+import { authorityRestoreStageOf, readAuthorityRestoreJournal, type AuthorityRestoreInput } from "../admission/installation.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
@@ -617,7 +618,9 @@ export async function resumeAutomaticAuthorityRestore(input: Readonly<{
   assertMaintenanceCustodyAvailable("restore");
   operation.consume();
   assertOfflineMaintenanceForProcessRoot(operation, input.processLockRoot);
-  const binding = admission.readAuthorityRestore(input.operationId);
+  const binding = admission.readAuthorityRestore(input.operationId), workspace = admission.readInstallationContext()?.workspace;
+  const journal = workspace === undefined ? undefined : readAuthorityRestoreJournal(workspace);
+  if (journal === undefined || canonicalJsonStringify(journal.restore) !== canonicalJsonStringify(binding)) throw new Error("restore-recovery-journal-changed");
   assertRestoreRootMembership(admission.stateRoot, binding.operationId);
   if (restoreRetainedFilesDigest(admission.stateRoot) !== binding.retainedFilesDigest) throw new Error("restore-retained-files-changed");
   if (restoreBrowserMembershipDigest(admission) !== binding.browserMembershipDigest) throw new Error("restore-browser-membership-changed");
@@ -635,7 +638,7 @@ export async function resumeAutomaticAuthorityRestore(input: Readonly<{
   same(binding.suspectPath, binding.suspect);
   const original = withReadonlyAuthoritySnapshot(binding.suspectPath, readRestoreWriteFences);
   if (restoreWriteFenceDigest(original) !== binding.unresolvedWriteDigest) throw new Error("restore-recovery-write-fences-changed");
-  const stagePresent = existsSync(binding.stagedPath);
+  const stagePresent = authorityRestoreStageOf(journal, existsSync(binding.stagedPath)) === "staged";
   if (stagePresent) {
     same(binding.authorityPath, binding.live); same(binding.stagedPath, binding.staged);
     assertRestorePreservesWriteFences(original, withReadonlyAuthoritySnapshot(binding.stagedPath, readRestoreWriteFences));

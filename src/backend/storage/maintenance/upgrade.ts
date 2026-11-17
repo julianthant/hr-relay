@@ -43,7 +43,7 @@ function requireStopped(admission:RuntimeAdmission,input:StorageUpgradeInput,_cl
   admission.assertOfflineMaintenance(operation);
   assertOfflineMaintenanceForProcessRoot(operation, input.processLockRoot);
 }
-export async function backupStoppedAuthority(closure: StoppedBackupClosure, admission:RuntimeAdmission,stateRoot:string,clock:Clock,processLockRoot:string,restore:OfflineMaintenanceOperation, trigger: "operator" | "schema-migration" | "graceful-drain" = "operator") {
+export async function backupStoppedAuthority(closure: StoppedBackupClosure, admission:RuntimeAdmission,stateRoot:string,clock:Clock,processLockRoot:string,restore:OfflineMaintenanceOperation, trigger: "schema-migration" | "graceful-drain") {
   const stopped = requireRuntimeAdmission(admission).forStoppedMaintenance(restore);
   const input={stateRoot,processLockRoot,plan:false};
   const verifyHeld=()=>{ admission.assertOfflineMaintenance(restore); assertOfflineMaintenanceForProcessRoot(restore,processLockRoot); assertStoppedBackupClosure(closure,admission,restore); };

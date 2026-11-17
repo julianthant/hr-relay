@@ -56,4 +56,4 @@ export const itemDay = (item: NotificationItem) => item.day ?? "Today";
 /** The grey tag on the title line: the workflow, or the system the notice is about. */
 export const itemSource = (item: NotificationItem) => item.kind === "storage" ? "Storage" : item.kind === "chatgpt" ? "ChatGPT" : item.kind === "command" ? "Commands" : item.workflow;
 /** Runs name the subject on the grey preview; the other notices carry their own sentence. */
-export const itemPreview = (item: NotificationItem) => item.kind === "run" ? `${item.subject} · ${item.detail}` : item.detail;
+export const itemPreview = (item: NotificationItem) => item.kind === "run" && item.subject !== "" ? `${item.subject} · ${item.detail}` : item.detail;

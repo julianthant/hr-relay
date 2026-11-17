@@ -14,13 +14,14 @@ import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
 import { existsSync,statSync } from "node:fs";
 import { basename,dirname,join } from "node:path";
-import { DatabaseSync,backup as sqliteBackup,type SQLInputValue } from "node:sqlite";
+import { DatabaseSync,backup as sqliteBackup,type SQLInputValue,type SQLTagStore } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ArtifactRefSchema,type ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
 import { CHANGE_LOG_SCHEMA_VERSION, ChangeEntrySchema, RUN_REFERENCE_SOURCES, RunReferenceSourceSchema, SingletonImageSchema, currentRowKey, expectedRunReferences, singletonChangeKeys, sourceRowWhere, type ChangeEntry, type DependencyKey, type RunReferenceSource, type SingletonImage } from "./authority-change-log.js";
-import { AUTHORITY_DERIVED_TABLES,AUTHORITY_TABLE_REGISTRY,AuthorityTableNameSchema,CHANGE_LOG_TABLE,RUN_REFERENCES_TABLE,AuthorityEvidenceSchemaUpgradeRecordSchema,AuthorityUpgradeRecordSchema,ProjectionTableNameSchema,type AuthorityTableName,type RunRecordRefusal,type TableName } from "../../../models/config/authority.js";
+import { AUTHORITY_DERIVED_TABLES,AUTHORITY_TABLE_REGISTRY,AuthorityTableNameSchema,CHANGE_LOG_TABLE,RUN_REFERENCES_TABLE,AuthorityEvidenceSchemaUpgradeRecordSchema,AuthorityUpgradeRecordSchema,ProjectionTableNameSchema,type AuthorityEvidenceSchemaUpgradeRecord,type AuthorityTableName,type RunRecordRefusal,type TableName } from "../../../models/config/authority.js";
+import { authorityUpgradeJournalOf, authorityUpgradeTransition, type AuthorityUpgradeJournalEvent } from "../../../rules/storage/upgrade-journal.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { type ActiveRuntimeConfigRecord,type RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
@@ -95,7 +96,7 @@ import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatem
 import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { assertPredecessorWorkerHistory, isPredecessorWorkerHistory, predecessorCommandFromRow, predecessorCustodyRunFromRow, predecessorCustodyRunRow, predecessorLifecycleRequest, predecessorWorkerSlotFromRow } from "./worker-custody-predecessor.js";
 import { predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitionRunRecord,transitionStoredRun,updateRunRecord } from "./run-record-row.js";
-import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
+import { SearchStateColumnSchema,createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
 import { ApplicationAdmissionHoldSchema, ApplicationAdmissionReleaseSchema, type ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type RunAdmission,} from "./run-store-contracts.js";
 import { createRunSummaries } from "./run-summaries.js";
@@ -129,6 +130,7 @@ import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { ASSISTANT_HISTORY_MIGRATION, assistantConversationFromRow, assistantMessageFromRow, createAssistantHistoryRepository } from "./assistant-history.js";
 import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow, migrateAssistantEffortScale } from "./assistant-effort-migration.js";
+import { FAILURE_NOTE_REMOVAL_CONVERSION_ID, FAILURE_NOTE_REMOVAL_SCHEMA_VERSION, convertFailureNoteRow, migrateFailureNotes } from "./failure-note-removal-migration.js";
 import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertNoAssistantGrantHistory } from "./assistant-grant-retirement.js";
 import { assistantAttachmentFromRow, byteAwareRow } from "./assistant-attachments.js";
 import { RECOGNIZED_AUTHORITY_SCHEMA_VERSIONS } from "../../../models/config/authority-schema-versions.js";
@@ -298,6 +300,8 @@ type SettingsCurrentRepository = Readonly<{
 
 type DependencyRepository = Readonly<{
   authenticateGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup>;
+  /** The open read snapshot's authentications, for the database's own repositories only; undefined in a write transaction and outside a snapshot. */
+  snapshotMemo(repositories: AuthorityRepositories): DelegationAuthenticationMemo | undefined;
   parents(envelopes: readonly RunRecord["envelope"][]): ReturnType<typeof readQueueParents>;
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof DependencyRecordSchema>>;
   get(dependencyId: string): z.infer<typeof DependencyRecordSchema> | undefined;
@@ -1344,7 +1348,8 @@ function storedRowContext(database: DatabaseSync, expectedSchemaVersion: number)
   const convertPreferences = (table: string, row: unknown) => {
     const person = expectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow(table, row) : row;
     const effort = expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
-    return expectedSchemaVersion < COMMAND_ROW_STATE_SCHEMA_VERSION ? convertPredecessorCommandRowState(table, effort) : effort;
+    const state = expectedSchemaVersion < COMMAND_ROW_STATE_SCHEMA_VERSION ? convertPredecessorCommandRowState(table, effort) : effort;
+    return expectedSchemaVersion < FAILURE_NOTE_REMOVAL_SCHEMA_VERSION ? convertFailureNoteRow(table, state) : state;
   };
   return { database, read, expectedSchemaVersion, predecessorCustody, convertPreferences };
 }
@@ -1392,7 +1397,7 @@ function validateStoredRow(context: StoredRowContext, table: AuthorityTableName,
       try {
         if (table === "database_states") {
           const row = z.strictObject({id:z.literal(1),schema_version:z.literal(expectedSchemaVersion),authority_generation:z.number().int().nonnegative(),updated_at:IsoInstantSchema,
-            search_generation:z.number().int().nonnegative().nullable(),search_state:z.enum(["unbuilt","ready","invalid"]),
+            search_generation:z.number().int().nonnegative().nullable(),search_state:SearchStateColumnSchema,
             ...(expectedSchemaVersion >= 7 ? { installation_id: z.uuid(), profile_id: z.uuid() } : {}) }).parse(raw);
           if (row.search_state === "ready" && row.search_generation !== row.authority_generation) throw new Error("search-generation-mismatch");
         } else if (table === "runs") read.run(raw);
@@ -1695,7 +1700,7 @@ function fixedLayoutChangedAuthorityTables(before: DatabaseSync, after: Database
 function assertFixedLayoutPublications(before: DatabaseSync, after: DatabaseSync, sourceGeneration: number, activatedAt: string): void {
   const schema = z.strictObject({ id: z.literal(1), schema_version: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
     authority_generation: z.number().int().nonnegative(), updated_at: z.string(),
-    search_generation: z.number().int().nonnegative().nullable(), search_state: z.enum(["unbuilt", "ready", "invalid"]),
+    search_generation: z.number().int().nonnegative().nullable(), search_state: SearchStateColumnSchema,
     installation_id: z.uuid(), profile_id: z.uuid() });
   const prior = schema.parse(before.prepare("SELECT * FROM database_states WHERE id=1").get());
   const current = schema.parse(after.prepare("SELECT * FROM database_states WHERE id=1").get());
@@ -1903,6 +1908,7 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
       execMigrationStatement(database, statement);
       if (isSettingsRecordConversionMarker(statement)) migrateSettingsRecords(database);
       if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
+      if (statement === `SELECT '${FAILURE_NOTE_REMOVAL_CONVERSION_ID}'`) migrateFailureNotes(database);
       if (statement === `SELECT '${WORKER_CUSTODY_SCAN_ID}'`) assertWorkerCustodyConverted(database);
     }
   }
@@ -1918,7 +1924,14 @@ function readAuthorityUpgradeRecords(database: DatabaseSync) {
     .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
 }
 
-type AuthorityEvidenceSchemaUpgradeRecord = z.infer<typeof AuthorityEvidenceSchemaUpgradeRecordSchema>;
+const readAuthorityUpgradeJournal = (database: DatabaseSync) => authorityUpgradeJournalOf(readAuthorityUpgradeRecords(database));
+
+/** Refuses a row the journal's transition table does not allow, before the writer inserts it. */
+function assertAuthorityUpgradeAppend(database: DatabaseSync, event: AuthorityUpgradeJournalEvent, phase: "baseline" | "settled") {
+  const transition = authorityUpgradeTransition(readAuthorityUpgradeJournal(database), event);
+  if (!("append" in transition)) throw new Error(`authority-upgrade-journal-${transition.refused}`);
+  if (transition.append !== phase) throw new Error("authority-upgrade-journal-phase-mismatch");
+}
 
 function evidenceSchemaPlanDigest(upgradeId: string, conversion: EvidenceSchemaConversion): string {
   return sha256Hex(`relay:evidence-schema-conversion:v1\0${upgradeId}\0${canonicalJsonStringify(conversion)}`);
@@ -1928,12 +1941,12 @@ function evidenceSchemaPlanDigest(upgradeId: string, conversion: EvidenceSchemaC
 function verifiedEvidenceSchemaRecords(database: DatabaseSync, admission: RuntimeAdmission,
   binding: Readonly<{ installationId?: string; profileId?: string }>): ReadonlyMap<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord> {
   const records = new Map<EvidenceSchemaConversion["id"], AuthorityEvidenceSchemaUpgradeRecord>();
-  for (const stored of readAuthorityUpgradeRecords(database)) {
-    if (!("evidenceSchemas" in stored) || stored.evidenceSchemas === undefined) continue;
+  const journal = readAuthorityUpgradeJournal(database);
+  for (const stored of journal.journal === "settled" ? journal.evidence : []) {
     admission.assertEvidenceSchemaConversion(stored);
     const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse(stored), conversion = record.evidenceSchemas;
     if (records.has(conversion.id)) throw new Error("evidence-schema-conversion-duplicate");
-    if (record.phase !== "settled" || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+    if (record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
       || record.planDigest !== evidenceSchemaPlanDigest(record.upgradeId, conversion)) throw new Error("evidence-schema-conversion-unproved");
     if (conversion.installationId !== binding.installationId || conversion.profileId !== binding.profileId) throw new Error("evidence-schema-conversion-foreign");
     records.set(conversion.id, record);
@@ -1994,6 +2007,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
       planDigest, backup: { manifestPath: backup.manifestPath, sha256: backup.manifest.sha256, authorityGeneration: backup.manifest.authorityGeneration },
       ...(logout?.settlement === undefined ? {} : { startupLogout: { operation: logout, postimage: authorityContentFingerprint(database) } }),
       by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() });
+    assertAuthorityUpgradeAppend(database, { type: "forward-upgrade", from: version }, record.phase);
     database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
       .run(record.recordKey, record.upgradeId, record.phase, backup.manifest.sha256, canonicalJsonStringify(record), record.recordedAt);
     const inspection = inspectNormalAuthority(database);
@@ -2304,7 +2318,7 @@ function inspectSpanRunAuthorityReadOnly(path: string, rootsInput: readonly Span
         : {state:"malformed",runId:root.runId,table:"runs",summary:mismatches.join("; ")});
     });
     const snapshot = SpanAuthorityReadSnapshotSchema.parse({authorityGeneration:meta.authority_generation,authorityContentFingerprint:authorityContentFingerprint(database),
-      liveRunCount:runs.size,archivedRunCount:0,tombstoneOrdinalFindings:[],malformedRecords,resolutions,
+      liveRunCount:runs.size,tombstoneOrdinalFindings:[],malformedRecords,resolutions,
       missingSpanRunIds:malformedRecords.length === 0 ? [...runs.keys()].filter(id=>!queuedRunIds.has(RunIdSchema.parse(id))).map(id=>RunIdSchema.parse(id)) : []});
     database.exec("COMMIT");transactionOpen = false;
     return Object.freeze(snapshot);
@@ -2363,12 +2377,16 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
       return Object.freeze([...references.values()].sort((a, b) => a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0).map(reference => Object.freeze(reference)));
 }
 
+/** The WAL file is cut back to this size whenever a checkpoint lets it restart: two automatic checkpoints' worth of 4 KiB pages. */
+export const AUTHORITY_WAL_SIZE_LIMIT_BYTES = 8 * 1024 * 1024;
+
 export function configureWritableConnection(database: DatabaseSync, busyTimeoutMs: number): void {
   database.exec("PRAGMA foreign_keys = ON");
   // Enable secure deletion so freed SQLite pages do not retain deleted run bytes.
   database.exec("PRAGMA secure_delete = ON");
   database.exec("PRAGMA journal_mode = WAL");
   database.exec("PRAGMA synchronous = FULL");
+  database.exec(`PRAGMA journal_size_limit = ${String(AUTHORITY_WAL_SIZE_LIMIT_BYTES)}`);
   database.exec(`PRAGMA busy_timeout = ${String(busyTimeoutMs)}`);
 }
 
@@ -2381,6 +2399,8 @@ export class AuthorityDatabase implements Disposable {
   #busyTimeoutMs: number;
   #credentialCommandIds: (commandId: string) => boolean;
   #closed = false;
+  /** Statements reused across reads: only the run lookup a queue read repeats per row, used with get(), never iterate(). */
+  #statements: SQLTagStore;
   #openedFileIdentity: DirectoryIdentity | undefined;
   #coldLogout: Readonly<{ machine: RuntimeAdmission; operationId: string; admission: RuntimeAdmission; restore: OfflineMaintenanceOperation;
     sourcePath: string; owner: RuntimeAdmission; inspection: ReturnType<RuntimeAdmission["capturePendingLogoutSnapshot"]> }> | undefined;
@@ -2487,6 +2507,7 @@ export class AuthorityDatabase implements Disposable {
       allowUnknownNamedParameters: false,
       defensive: true,
     });
+    this.#statements = this.#database.createTagStore(1);
 
     const admittedDataVersion = readIntPragma(this.#database, "data_version");
     try {
@@ -2975,8 +2996,8 @@ export class AuthorityDatabase implements Disposable {
         const inspection = inspectNativeAuthority(database, version);
         machine.assertOfflineMaintenance(machine.maintenanceOperation());
         if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");
-        const record = readAuthorityUpgradeRecords(database).at(-1);
-        const continuation = record !== undefined && "startupLogout" in record ? record.startupLogout : undefined;
+        const journal = readAuthorityUpgradeJournal(database);
+        const continuation = journal.journal === "settled" ? journal.latestForward?.startupLogout : undefined;
         const file = continuation === undefined ? undefined : readPrivateFile(join(machine.stateRoot, "machine", "operations", `${continuation.operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
         const nativeContinuation = file !== undefined && canonicalJsonStringify(LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)))) === canonicalJsonStringify(continuation?.operation);
         const context = machine.readInstallationContext();
@@ -3032,11 +3053,12 @@ export class AuthorityDatabase implements Disposable {
       return result;
     }
     return withAuthorityDatabaseReadOnly(admission, join(admission.stateRoot, "state.db"), database => {
-      const inspection = inspectNativeAuthority(database), record = readAuthorityUpgradeRecords(database).at(-1);
-      if (record === undefined || !("startupLogout" in record) || record.startupLogout === undefined
+      const inspection = inspectNativeAuthority(database), journal = readAuthorityUpgradeJournal(database);
+      const record = journal.journal === "settled" ? journal.latestForward : undefined;
+      if (record?.startupLogout === undefined
         || canonicalJsonStringify(record.startupLogout.operation) !== canonicalJsonStringify(operation)) return undefined;
       const settlement = operation.settlement;
-      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || !UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(record.fromSchemaVersion)
+      if (record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || !UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(record.fromSchemaVersion)
         || settlement === undefined || record.startupLogout.postimage !== authorityContentFingerprint(database, record.recordKey)) throw new Error("profile-startup-logout-postimage-changed");
       const backup = verifyBackup(admission, record.backup.manifestPath);
       if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId
@@ -3102,6 +3124,7 @@ export class AuthorityDatabase implements Disposable {
       try {
         admission.assertStoppedProtectedSettingsUpgrade();
         if (inspectNativeAuthority(database).authorityContentFingerprint !== expectedFingerprint) throw new Error("evidence-schema-conversion-source-changed");
+        assertAuthorityUpgradeAppend(database, { type: "convert-evidence", id: conversion.id }, record.phase);
         database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
           .run(record.recordKey, record.upgradeId, record.phase, backup.manifest.sha256, canonicalJsonStringify(record), record.recordedAt);
         inspectNativeAuthority(database); admission.assertStoppedProtectedSettingsUpgrade();
@@ -3187,13 +3210,10 @@ export class AuthorityDatabase implements Disposable {
 
   readUpgradePhases() {
     return this.withAuthorityReadSnapshot(() => {
-      const phases = readAuthorityUpgradeRecords(this.#database).map(record => {
-        return { phase: record.phase, fromSchemaVersion: record.fromSchemaVersion,
-          toSchemaVersion: record.toSchemaVersion, recordedAt: record.recordedAt };
-      });
-      return phases.length === 0
-        ? { state: "absent" as const, reason: "journal-empty" as const }
-        : { state: "available" as const, phases };
+      const records = readAuthorityUpgradeRecords(this.#database);
+      if (authorityUpgradeJournalOf(records).journal === "empty") return { state: "absent" as const, reason: "journal-empty" as const };
+      const phases = records.map(({ phase, fromSchemaVersion, toSchemaVersion, recordedAt }) => ({ phase, fromSchemaVersion, toSchemaVersion, recordedAt }));
+      return { state: "available" as const, phases };
     });
   }
 
@@ -4723,6 +4743,7 @@ export class AuthorityDatabase implements Disposable {
         .run(CURRENT_AUTHORITY_SCHEMA_VERSION, now, this.#admission.profileBinding.installationId, this.#admission.profileBinding.profileId);
       const baseline = AuthorityUpgradeRecordSchema.parse({ recordKey: randomUUID(), upgradeId: "fresh", phase: "baseline",
         fromSchemaVersion: 0, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now });
+      assertAuthorityUpgradeAppend(this.#database, { type: "initialize" }, baseline.phase);
       this.#database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,NULL,?,?)")
         .run(baseline.recordKey, baseline.upgradeId, baseline.phase, canonicalJsonStringify(baseline), now);
       this.#database.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
@@ -5061,7 +5082,7 @@ export class AuthorityDatabase implements Disposable {
       return row === undefined ? undefined : schema.parse(commandFromRow(row));
     }
     if (table === "runs") {
-      const row = this.#database.prepare("SELECT * FROM runs WHERE id = ?").get(recordKey);
+      const row = this.#statements.get`SELECT * FROM runs WHERE id = ${recordKey}`;
       if (row === undefined) return undefined;
       const record = runRecordFromRow(row);
       return Object.is(schema, RunRecordSchema) ? structuredClone(record) as z.output<Schema> : schema.parse(record);
@@ -5928,6 +5949,8 @@ export class AuthorityDatabase implements Disposable {
       }),
       dependencies: Object.freeze({
         authenticateGroup: (manifest: DelegationManifest) => this.#readDelegationGroup(manifest),
+        snapshotMemo: (repositories: AuthorityRepositories) =>
+          repositories === this.authority && this.#transactionMode === "read" ? this.#delegationReadSnapshot?.memo : undefined,
         parents: (envelopes: readonly RunRecord["envelope"][]) => readQueueParents(this.authority, envelopes),
         groups: (parentRunId: string, selection: "current" | "retained" = "current") => {
           const parent = this.authority.runs.get(parentRunId);

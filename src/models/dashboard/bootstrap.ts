@@ -1,5 +1,6 @@
-import { WorkbookCompatibilitySchema, WorkbookFieldRequirementSchema, WorkbookRequirementDeclarationSchema } from "./workbook-library.js";
+import { WorkbookCheckRequirementSchema, WorkbookCompatibilitySchema, WorkbookFieldRequirementSchema, WorkbookRequirementDeclarationSchema } from "./workbook-library.js";
 import { z } from "zod";
+import { StorageAuthoritySummarySchema } from "../storage/storage-status.js";
 import { ActivityTimeZoneSchema } from "./activity-volume.js";
 import { CapabilityAvailabilitySchema } from "../../rules/validation/absence.js";
 import {
@@ -27,10 +28,6 @@ export const ActorWireSchema = LocalOperatorActorSchema;
 export const ServerClockWireSchema = z.strictObject({
   now: IsoInstantSchema,
   zone: ActivityTimeZoneSchema,
-});
-/** Store failure throws; no reduced handle can report an intermediate availability. */
-export const StorageHealthSummaryWireSchema = z.strictObject({
-  authority: z.enum(["healthy", "unavailable"]),
 });
 
 /** Serve descriptor codes and raw category/role facts; the frontend owns presentation. */
@@ -62,6 +59,8 @@ export const WorkflowStartWireSchema = z.strictObject({
   spreadsheetIntake: z.boolean(),
   requiredWorkbookFields: z.array(z.string().min(1)).refine(ids => new Set(ids).size === ids.length),
   workbookReference: WorkbookFieldRequirementSchema.optional(),
+  /** The optional second check: the launcher lists every sheet that maps its key field, and a start may pick none. */
+  workbookCheck: WorkbookCheckRequirementSchema.optional(),
   steps: z.array(z.strictObject({
     key: StepKeySchema,
     label: z.string().min(1),
@@ -82,6 +81,7 @@ export const WorkflowStartWireSchema = z.strictObject({
   const checked = WorkbookRequirementDeclarationSchema.safeParse({
     requiredWorkbookFields: start.requiredWorkbookFields,
     ...(start.workbookReference === undefined ? {} : { workbookReference: start.workbookReference }),
+    ...(start.workbookCheck === undefined ? {} : { workbookCheck: start.workbookCheck }),
   });
   if (!checked.success) context.addIssue({ code: "custom", message: "invalid workflow workbook requirement" });
 });
@@ -138,7 +138,7 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
     projectionGeneration: ProjectionGenerationSchema,
     actor: ActorWireSchema,
     serverClock: ServerClockWireSchema,
-    storage: StorageHealthSummaryWireSchema,
+    storage: StorageAuthoritySummarySchema,
     workflows: z.array(parts.workflow),
     workbookCompatibility: WorkbookCompatibilitySchema,
     systemInstances: z.array(parts.systemInstance),

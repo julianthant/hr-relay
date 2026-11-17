@@ -281,6 +281,10 @@ export const RunWorkbookNamedAllRowsReferenceSchema = z.strictObject({ request: 
   });
 export const RunWorkbookSnapshotReferenceSchema = z.union([RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema,
   RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema]);
+/** The declared reference ids a run holds picked spreadsheets for. */
+export function runWorkbookReferenceTypeIds(references: readonly SchemaBoundCanonicalValue[] | undefined): readonly string[] {
+  return [...new Set((references ?? []).map(bound => parseRunWorkbookReference(bound).request.typeId))];
+}
 export function parseRunWorkbookReference(bound: SchemaBoundCanonicalValue): z.output<typeof RunWorkbookSnapshotReferenceSchema> {
   for (const schema of [RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema]) {
     const hash = deriveSchemaHash(schema, "output");

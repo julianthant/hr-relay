@@ -1,9 +1,9 @@
 /** The run launcher's compact path.
  * Options is always visible. Step customization is chosen there, and only */
 
-import type { StartMethod } from "./run-start-model.js";
+import type { RunStartStage } from "./run-dialog-model.js";
 
-export type RunStartStage = "Input" | "Options" | "Steps" | "Values" | "Warning" | "Confirm";
+export type { RunStartStage };
 
 export interface RunStartStageSpec {
   readonly label: RunStartStage;
@@ -12,14 +12,11 @@ export interface RunStartStageSpec {
 
 export function runStartStages(
   customizeSteps: boolean,
-  method: StartMethod = "typed",
   rerun = false,
 ): readonly RunStartStageSpec[] {
-  const labels: RunStartStage[] = rerun ? ["Steps", "Values", "Options", "Confirm"] : method === "spreadsheet"
-    ? ["Input"]
-    : customizeSteps
-      ? ["Input", "Options", "Steps", "Confirm"]
-      : ["Input", "Options", "Confirm"];
+  const labels: RunStartStage[] = rerun ? ["Steps", "Values", "Options", "Checks"] : customizeSteps
+      ? ["Input", "Options", "Steps", "Checks"]
+      : ["Input", "Options", "Checks"];
   return Object.freeze(labels.map((label, index) => Object.freeze({ label, number: index + 1 })));
 }
 
