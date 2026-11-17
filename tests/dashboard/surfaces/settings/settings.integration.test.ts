@@ -53,7 +53,8 @@ describe("independent protected Settings surface", () => {
       assert.equal(input.value, expected);
       assert.equal(h.host.querySelector(`button[aria-label="Show ${name}"]`), null);
     }
-    assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]')[0]?.value, values.ucpathPassword);
+    assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]')[0]?.value, "");
+    assert.ok(h.host.querySelector('button[aria-label="Remove UCPath password"]'));
     assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]').length, 1);
     const after = h.authority.read(); assert.equal(after.revision, ordinary.revision); assert.deepEqual(after.sections, ordinary.sections);
     assert.match(JSON.stringify(after), /synthetic-password-sentinel/u);
