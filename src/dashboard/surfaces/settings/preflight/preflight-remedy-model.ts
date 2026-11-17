@@ -29,8 +29,8 @@ export const CURRENT_FISCAL_TARGET = 'annualDates.current';
 
 const at = (section: string, label: string, target: string): RunCheckFix => ({ section, label, target });
 
-const NO_ADDRESS_CONTROL = 'Cannot be fixed in Settings. Restart Relay, then check again.';
-const NO_PROVIDER_CONTROL = 'Cannot be fixed in Settings. Restart Relay, then check again.';
+const NO_ADDRESS_CONTROL = 'Cannot be fixed in Settings. Relay cannot use this system\'s address, and this run cannot start until it can.';
+const NO_PROVIDER_CONTROL = 'Cannot be fixed in Settings. The lookup service did not answer; check again in a moment.';
 
 /** Every registered check id has an explicit entry; a test fails when one is missing. */
 export const RUN_CHECK_FIXES: Readonly<Record<string, RunCheckFix>> = Object.freeze({
@@ -65,7 +65,7 @@ export const RUN_CHECK_HINTS: Readonly<Record<string, string>> = Object.freeze({
   'filesystem.health': 'Cannot be fixed in Settings. Free up disk space, then check again.',
   'authority.health': 'Cannot be fixed in Settings. Restart Relay, then check again.',
   'ports.available': 'Cannot be fixed in Settings. Close the program using the port.',
-  'secrets.sharepoint-roster': 'Cannot be fixed in Settings. Restart Relay, then check again.',
+  'secrets.sharepoint-roster': 'Cannot be fixed in Settings. The SharePoint roster location is not set, and this run cannot start until it is.',
   'endpoint.ucpath.prod': NO_ADDRESS_CONTROL,
   'endpoint.crm.prod': NO_ADDRESS_CONTROL,
   'endpoint.onbase.prod': NO_ADDRESS_CONTROL,
