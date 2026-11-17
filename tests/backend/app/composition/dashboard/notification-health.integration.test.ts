@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createNotificationHealthObserver, readNotificationHealth } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
 import * as authorityInspection from "../../../../../src/backend/storage/sqlite/authority-inspection-off-thread.js";
 import * as backupInspection from "../../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { withReadonlyAuthoritySnapshot } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import * as backupInspectionWorker from "../../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import { parseBackupManifestFile } from "../../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityBackupService, syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
@@ -180,8 +181,13 @@ describe("canonical notification producers", () => {
   });
 });
 
-/** Holds each off-thread backup inspection until the test settles it; the stand-in verdict is the synchronous full inspection. */
+/**
+ * Holds each off-thread backup inspection until the test settles it; the stand-in verdict is the synchronous full inspection.
+ * The store inspection before it gets the same synchronous stand-in, so a pass reaches the backups without waiting on a worker start.
+ */
 function holdBackupInspections() {
+  const store = vi.spyOn(authorityInspection, "inspectAuthorityOffThread").mockImplementation(async (_admission, path) =>
+    withReadonlyAuthoritySnapshot(path, database => backupInspection.inspectOpenDatabase(database)));
   const held: Array<{ settle(outcome: "inspect" | Error): void; signal: AbortSignal | undefined; path: string }> = [];
   const spy = vi.spyOn(backupInspectionWorker, "inspectAuthorityBackupOffThread").mockImplementation((admission, path, expectedSchemaVersion, options) =>
     new Promise((resolve, reject) => {
@@ -191,7 +197,7 @@ function holdBackupInspections() {
         else resolve(backupInspection.inspectAuthorityBackupReadOnly(admission, path, expectedSchemaVersion));
       } });
     }));
-  return { held, restore: () => spy.mockRestore() };
+  return { held, restore: () => { spy.mockRestore(); store.mockRestore(); } };
 }
 async function withOneBackup(f: Awaited<ReturnType<typeof fixture>>) {
   const directory = join(f.root, "backups", "authority"); mkdirSync(directory, { recursive: true });

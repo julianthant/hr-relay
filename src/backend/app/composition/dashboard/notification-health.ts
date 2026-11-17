@@ -65,8 +65,11 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
     try { await inspectAuthorityOffThread(input.admission, join(stateRoot, "state.db"), { signal: input.signal }); }
     catch (error) {
       if (input.signal?.aborted === true) throw error;
-      // A write that landed during the inspection is no verdict: the last one holds and the next pass inspects again.
-      if (isAuthoritySourceChanged(error)) { judged = false; integrityFailed = prior?.integrityFailed ?? false; }
+      // A write that landed during the inspection is no verdict: the last one, remembered or stored, holds and the next pass inspects again.
+      if (isAuthoritySourceChanged(error)) {
+        judged = false;
+        integrityFailed = prior?.integrityFailed ?? input.database.authority.notificationHealth.get("integrity-check")?.active === true;
+      }
       else integrityFailed = true;
     }
     finally { if (inFlight.get(input.database) === flight) inFlight.delete(input.database); }

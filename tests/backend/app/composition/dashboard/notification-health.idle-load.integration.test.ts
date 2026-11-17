@@ -5,7 +5,9 @@ import { ownedDiagnostics } from "../../../../../src/backend/app/composition/das
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import { GATE_PARK_WATCH_MS } from "../../../../../src/backend/app/composition/dashboard/timeline.js";
 import * as authorityInspection from "../../../../../src/backend/storage/sqlite/authority-inspection-off-thread.js";
+import { inspectOpenDatabase } from "../../../../../src/backend/storage/sqlite/backup-inspection.js";
 import * as backupInspectionWorker from "../../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
+import { withReadonlyAuthoritySnapshot } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import * as canonicalRuns from "../../../../../src/backend/runs/queries/canonical-runs.js";
 import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -31,7 +33,9 @@ async function idleReads(backups: number, stalls = false): Promise<ReturnType<ty
       await service.request({ trigger: "schema-migration", requiredGeneration: f.db.getMeta().authorityGeneration });
       f.clock.advanceWall(1_000);
     }
-    const stores = vi.spyOn(authorityInspection, "inspectAuthorityOffThread");
+    // Counted through the synchronous inspection: the worker thread start is not what this measures.
+    const stores = vi.spyOn(authorityInspection, "inspectAuthorityOffThread").mockImplementation(async (_admission, path) =>
+      withReadonlyAuthoritySnapshot(path, database => inspectOpenDatabase(database)));
     const backupCopies = vi.spyOn(backupInspectionWorker, "inspectAuthorityBackupOffThread");
     const liveRunLists = vi.spyOn(canonicalRuns, "listCanonicalRuns");
     try {

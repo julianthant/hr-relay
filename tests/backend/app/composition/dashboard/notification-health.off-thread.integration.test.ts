@@ -39,18 +39,27 @@ function damagedCopy(f: Fixture): string {
 describe("notification health off the event loop", () => {
   it("keeps the event loop running while it inspects a store that takes over a second to inspect", async () => {
     const f = await fixture();
+    const inspect = authorityInspection.inspectAuthorityOffThread;
+    let started = 0, ended = 0, last = 0, longestGap = 0;
+    // Timed from the inspection's start: the fixture's thousands of live runs make the heartbeat list before it slower than a real store's.
+    const inspections = vi.spyOn(authorityInspection, "inspectAuthorityOffThread").mockImplementation(async (...args) => {
+      started = last = performance.now();
+      try { return await inspect(...args); } finally { ended = performance.now(); }
+    });
+    const ticks = setInterval(() => {
+      if (started === 0 || ended !== 0) return;
+      const now = performance.now();
+      longestGap = Math.max(longestGap, now - last);
+      last = now;
+    }, 10);
     try {
-      for (let index = 0; index < LARGE_STORE_RUNS; index++) seedRun(f, queuedRun());
-      let last = performance.now(), longestGap = 0;
-      const ticks = setInterval(() => { const now = performance.now(); longestGap = Math.max(longestGap, now - last); last = now; }, 10);
-      const started = performance.now();
-      try { expect((await read(f)).integrityFailed).toBe(false); }
-      finally { clearInterval(ticks); }
-      // A reading that held the loop to its end leaves no tick behind to see the block.
-      longestGap = Math.max(longestGap, performance.now() - last);
-      expect(performance.now() - started).toBeGreaterThan(1_000);
+      f.db.withAuthorityTransaction(() => { for (let index = 0; index < LARGE_STORE_RUNS; index++) seedRun(f, queuedRun()); });
+      expect((await read(f)).integrityFailed).toBe(false);
+      // An inspection that held the loop to its end leaves no tick behind to see the block.
+      longestGap = Math.max(longestGap, ended - last);
+      expect(ended - started).toBeGreaterThan(1_000);
       expect(longestGap).toBeLessThan(250);
-    } finally { await f.close(); }
+    } finally { clearInterval(ticks); inspections.mockRestore(); await f.close(); }
   });
 
   it("still raises the integrity-check concern for a damaged store", async () => {
@@ -90,6 +99,19 @@ describe("notification health off the event loop", () => {
       expect(inspections).toHaveBeenCalledTimes(2);
       await read(f);
       expect(inspections).toHaveBeenCalledTimes(2);
+    } finally { inspections.mockRestore(); await f.close(); }
+  });
+
+  it("an overtaken first inspection after a restart keeps a stored integrity-check failure", async () => {
+    const f = await fixture();
+    const inspections = vi.spyOn(authorityInspection, "inspectAuthorityOffThread");
+    try {
+      const at = f.clock.now().toISOString();
+      f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "integrity-check", active: true, occurrence: 1, observedAt: at, createdAt: at, samples: [] }));
+      inspections.mockRejectedValueOnce(new AuthoritySourceChangedError());
+      await createNotificationHealthObserver({ database: f.db, clock: f.clock, inbox: f.inbox, read: () => read(f) })();
+      expect(inspections).toHaveBeenCalledTimes(1);
+      expect(f.db.authority.notificationHealth.get("integrity-check")?.active).toBe(true);
     } finally { inspections.mockRestore(); await f.close(); }
   });
 });
