@@ -38,19 +38,19 @@ describe("General ChatGPT account", () => {
     assert.match(html, /Held operator.*held@example\.com/u);
     assert.match(html, /ChatGPT account unavailable.*Account read failed/u);
     assert.doesNotMatch(html, /Disconnect/u);
-    assert.doesNotMatch(html, /Connect ChatGPT/u);
+    assert.doesNotMatch(html, />Connect</u);
   });
 
   it("renders loading, unavailable and usage-limit states distinctly", () => {
     const render = (snapshot: ChatGptAccountSnapshot) => renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) }));
     const loading = render({ state: "loading" });
     assert.doesNotMatch(loading, /aria-busy="true"/u);
-    assert.doesNotMatch(loading, /Connect ChatGPT/u);
+    assert.doesNotMatch(loading, />Connect</u);
     assert.match(render({ state: "unavailable", message: "Account read failed" }), /ChatGPT account unavailable.*Account read failed/u);
     const limited = render({ state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "limit-reached" });
     assert.match(limited, /Usage limit reached/u);
     assert.match(limited, /Manage usage/u);
-    assert.doesNotMatch(limited, /Using ChatGPT plan|Connect ChatGPT/u);
+    assert.doesNotMatch(limited, /Using ChatGPT plan|>Connect</u);
   });
 });
 
@@ -59,7 +59,7 @@ it("places a rejected account port action outside the field group with its origi
   const port = controlledPort({ state: "signed-out" }, { signIn: async () => { throw new Error("synthetic action failure"); } });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
-  const action = [...host.querySelectorAll("button")].find(button => button.textContent === "Connect ChatGPT");
+  const action = [...host.querySelectorAll("button")].find(button => button.textContent === "Connect");
   assert.ok(action); await act(async () => action.click());
   const banner = [...host.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes("ChatGPT connection failed"));
   assert.ok(banner); assert.equal(banner.closest(".ds-form-group"), null);
@@ -86,7 +86,7 @@ it("recovers through Continue after an initial read failure without restarting a
     assert.equal(port.getResource().state, "failed");
     const message = ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text;
     assert.ok(host.textContent?.includes(message));
-    const recovery = button("Connect ChatGPT"); assert.equal(recovery.disabled, false);
+    const recovery = button("Connect"); assert.equal(recovery.disabled, false);
     await act(async () => { recovery.click(); recovery.click(); });
     assert.equal(starts, 1); assert.equal(button("Cancel").disabled, false);
     assert.match(host.textContent ?? "", /Waiting for you to finish signing in in your browser/u);
@@ -105,11 +105,19 @@ for (const snapshot of [{ state: "signed-out" }, { state: "expired" }] as const)
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: controlledPort(snapshot) })));
     const row = host.querySelector('[data-settings-path="chatgpt.account"]'); assert.ok(row);
-    assert.equal(row.textContent, "Use your ChatGPT plan" + "Not connected. Connect your ChatGPT account to Relay." + "Connect ChatGPT");
-    assert.deepEqual([...row.querySelectorAll("button")].map(button => button.textContent), ["Connect ChatGPT"]);
+    assert.equal(row.textContent, "ChatGPT" + "Not connected" + "Connect");
+    assert.deepEqual([...row.querySelectorAll("button")].map(button => button.textContent), ["Connect"]);
   });
 
 it("keeps OCR diagnostics out of the account panel", () => {
   const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "connected", name: "Operator", email: "operator@example.com", planUsage: "enabled" }) }));
   assert.doesNotMatch(html, /Test OCR|OCR test/u);
+});
+
+it("keeps the expired sign-in text and its Sign in button", async () => {
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "sign-in-expired" } as ChatGptAccountSnapshot) })));
+  const row = host.querySelector('[data-settings-path="chatgpt.account"]'); assert.ok(row);
+  assert.match(row.textContent ?? "", /Your sign-in attempt expired\. Sign in to try again\./u);
+  assert.deepEqual([...row.querySelectorAll("button")].map(button => button.textContent), ["Sign in"]);
 });
