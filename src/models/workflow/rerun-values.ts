@@ -45,8 +45,9 @@ export function valueLeafSchemas(schema: z.core.$ZodType, path: readonly string[
 
 /**
  * The one schema a value path lands on when nothing above it can refuse or rewrite that value: objects, arrays
- * and check-free optional, nullable, readonly, nonoptional and default wrappers. A union, check, catch or
- * transform on the way gives undefined.
+ * and check-free optional, nullable, readonly, nonoptional and default wrappers, and a check-free discriminated
+ * union whose every option lands on the same leaf schema. Any other union, a check, catch or transform on the way
+ * gives undefined.
  */
 export function valueLeafSchemaExact(schema: z.core.$ZodType, path: readonly string[]): z.core.$ZodType | undefined {
   if (path.length === 0) return schema;
@@ -54,6 +55,12 @@ export function valueLeafSchemaExact(schema: z.core.$ZodType, path: readonly str
   if (schema instanceof z.core.$ZodOptional || schema instanceof z.core.$ZodNullable || schema instanceof z.core.$ZodReadonly
     || schema instanceof z.core.$ZodNonOptional || schema instanceof z.core.$ZodDefault) {
     return valueLeafSchemaExact(schema._zod.def.innerType, path);
+  }
+  // Whichever option the discriminator picks, the value lands on the one leaf every option shares.
+  if (schema instanceof z.core.$ZodDiscriminatedUnion) {
+    const leaves = schema._zod.def.options.map((option) => valueLeafSchemaExact(option, path));
+    const [first] = leaves;
+    return first !== undefined && leaves.every((leaf) => leaf === first) ? first : undefined;
   }
   const [key, ...rest] = path;
   if (key === undefined) return undefined;

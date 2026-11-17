@@ -17,8 +17,8 @@ export const CRM_DATES_NODE = "crm-dates";
 export const CRM_DATES_MANUAL: StepManualDeclaration = {
   form: {
     fields: [
-      { key: "employmentDate", label: "Employment date", kind: "iso-date" }, //TMPREPLACES-employmentDate
-      { key: "oathDate", label: "Oath date", kind: "iso-date" }, //TMPREPLACES-oathDate
+      { key: "employmentDate", label: "Employment date", kind: "iso-date", replaces: { nodeId: CRM_DATES_NODE, path: "employmentDate" } },
+      { key: "oathDate", label: "Oath date", kind: "iso-date", replaces: { nodeId: CRM_DATES_NODE, path: "oathDate" } },
     ],
   },
   produces: {
