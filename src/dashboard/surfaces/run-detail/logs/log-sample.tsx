@@ -9,6 +9,8 @@ import type { WorkflowSource } from "../../../app/workflow-sources.js";
 import { Badge, Button, IconButton, Notice } from "../../../ds/ui.js";
 import type { DashboardActionHandler } from "../../shared/actions/actions.js";
 import { LogPanel } from "../log-panel.js";
+import { linkedRunEntries } from "../linked-runs.js";
+import type { LinkedRunWire } from "../../queue/queue-model.js";
 import type { LogDecisionHandler } from "./log-feed.js";
 import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
 import { answeredRow, isCancelOption, type LogDecision } from "./log-decision-model.js";
@@ -27,7 +29,7 @@ import { ReviewDialog } from "../review/review-dialog.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
 import { batchMemberRetryAction } from "../../../app/commands/command-dispatch.js";
 
-type ServedNavigation = Readonly<{ reviewOpen?: boolean; reviewFocus?: DelegatedRecordRef; onReview?: () => void; onLogs?: () => void; onAction?: DashboardActionHandler }>;
+type ServedNavigation = Readonly<{ reviewOpen?: boolean; reviewFocus?: DelegatedRecordRef; onReview?: () => void; onLogs?: () => void; onAction?: DashboardActionHandler; onOpenLinked?: (target: LinkedRunWire) => void }>;
 
 /** Rerun sits in the Logs footer when the row serves a rerun action. */
 function withoutConfirm(action: ActionDescriptorWire): ActionDescriptorWire {
@@ -48,7 +50,7 @@ export function LogSample({ selection, source = "served", initialStepId, confirm
   return <PreviewLogSample selection={selection} onAction={navigation.onAction} />;
 }
 
-function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, reviewFocus, onReview, onLogs, onAction }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
+function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, reviewFocus, onReview, onLogs, onAction, onOpenLinked }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
   const client = useDashboardClient();
   const binding = useDashboardCommandBinding();
   const resource = useRunWiring(client, selection, binding, confirm);
@@ -96,6 +98,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
   const retryRun = useCallback(() => {
     if (retry !== undefined) onAction?.(retry, { runId: selection.row.runId, expectedVersion: selection.row.rowRevision });
   }, [retry,onAction,selection.row.runId,selection.row.rowRevision]);
+  const linkedRuns = useMemo(() => linkedRunEntries(selection.row), [selection.row]);
   const recordCount = resource.snapshot?.detail.ocrRecordCount;
   const rerun = rerunFooterButton(selection, onAction);
   const footerActions = useMemo(() => {
@@ -110,7 +113,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
       {retry !== undefined && onAction !== undefined && <IconButton size="md" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,retry,onAction,retryEnabled,retryRun,feedback]);
   return <><LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
     onReview={reviewAvailable ? onReview : undefined}
-    toolbar={toolbar} footerActions={footerActions}
+    toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} footerActions={footerActions}
     content={content}
     afterStep={afterStep} />
     {reviewAvailable && <ReviewDialog open={Boolean(reviewOpen)} onOpenChange={open => { if (!open) onLogs?.(); }} subject={selection.row.title}><RunReview selection={selection} focus={reviewFocus} /></ReviewDialog>}</>;
