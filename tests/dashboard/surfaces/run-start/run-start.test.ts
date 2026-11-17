@@ -323,7 +323,7 @@ describe("spreadsheet registration stays outside Run", () => {
 
 {
 type OpenDialog = Awaited<ReturnType<typeof openDialog>>;
-const { cleanup, openDialog, stubClient, ACTOR_ID, HASH } = createRunStartDialogHarness();
+const { cleanup, openDialog, stubClient, ACTOR_ID, HASH, APPLIED } = createRunStartDialogHarness();
 
 
 const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(

@@ -265,7 +265,7 @@ export function RunStartDialog({
     selectedLibrary?.libraryId, selectedVersion, selectedLibrary?.state.selectedVersionId,
     selectedWorkflow?.requiredWorkbookFields ?? [], referenceSources);
   const [customizeSteps, setCustomizeSteps] = useViewState("launchCustomize", false);
-  const customizedStepKeys = useMemo(() => [...launchDraft.selectedStepKeys(draft, selectedWorkflow)], [draft.stepSelection, selectedWorkflow]);
+  const customizedStepKeys = useMemo(() => [...launchDraft.selectedStepKeys(draft, selectedWorkflow)], [draft, selectedWorkflow]);
   const captureBrowserScreenshots = true;
 
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
