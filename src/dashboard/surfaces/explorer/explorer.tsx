@@ -11,16 +11,15 @@ import { explorerPickerEntries } from "./explorer-picker-model.js";
 import { ExplorerPage, ExplorerSpecView } from "./explorer-spec-view.js";
 
 export function WorkflowExplorer({ catalog, client }: { catalog: readonly WorkflowCatalogEntry[]; client?: DashboardClient }) {
-  const first = catalog.find(entry => entry.source === "served")?.id ?? "";
-  const [chosen, setWorkflowId] = useViewState("explorerWorkflow", first);
-  const registered = catalog.find(entry => entry.id === chosen && entry.source === "served");
-  const { state, retry, workflows: wire } = useExplorerWiring(client, chosen, registered?.served?.version);
-  const [known, setKnown] = useState<readonly ExplorerWorkflowWire[] | undefined>(wire);
-  if (wire !== undefined && wire !== known) setKnown(wire);
+  const [chosen, setWorkflowId] = useViewState("explorerWorkflow", catalog.find(entry => entry.source === "served")?.id ?? "");
+  const [known, setKnown] = useState<readonly ExplorerWorkflowWire[] | undefined>();
   const workflows = useMemo(() => explorerPickerEntries(catalog, known), [catalog, known]);
+  // A workflow that is not listed (a stale route) shows the first one instead; before the wire arrives the choice stands.
   const workflowId = known === undefined && chosen !== "" ? chosen : workflows.some(entry => entry.id === chosen) ? chosen : workflows[0]?.id;
+  const registered = catalog.find(entry => entry.id === workflowId && entry.source === "served");
+  const { state, retry, workflows: wire } = useExplorerWiring(client, workflowId, registered?.served?.version);
+  if (wire !== undefined && wire !== known) setKnown(wire);
   if (workflowId === undefined) return <EmptyState title="Workflow unavailable" description="No workflow is registered to inspect." />;
-  if (workflowId !== chosen) return <EmptyState title="Workflow unavailable" description="Choose a registered workflow to inspect its steps." action={<Button onClick={() => setWorkflowId(workflowId)}>Open {workflows[0].title}</Button>} />;
   const spec = state.state === "ready" ? state.spec : state.state === "refused" ? state.previous : undefined;
   return <>{state.state === "refused" && spec !== undefined && <Notice tone="warning" title="Workflow definition unavailable" description={formatErrorCatalogFailure(state.failure).text} />}
     {spec !== undefined ? <ExplorerSpecView key={workflowId} spec={spec} workflowId={workflowId} workflows={workflows} onWorkflow={setWorkflowId} />
