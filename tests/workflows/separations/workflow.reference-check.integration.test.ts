@@ -124,10 +124,10 @@ describe("Separations composition with a reference spreadsheet", () => {
   const REFERENCE_GATE = "reference-check-review";
   const OMIT_KRONOS = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/12/2026", separationDate: "06/19/2026" } }];
 
-  async function composition() {
+  async function composition(options: Readonly<{ documentEid?: string }> = {}) {
     const clock = manualClock(new Date(COMPOSITION_NOW));
     const kuali = createKualiFakeWorld({ actionId: COMPOSITION_ACTION_ID, documentNumber: COMPOSITION_DOCUMENT, displayedEid: COMPOSITION_EID });
-    kuali.separationForm = { formType: KUALI_SEPARATION_FORM_TYPE, employeeName: COMPOSITION_DOCUMENT_NAME, eid: "", employeeType: "Student",
+    kuali.separationForm = { formType: KUALI_SEPARATION_FORM_TYPE, employeeName: COMPOSITION_DOCUMENT_NAME, eid: options.documentEid ?? "", employeeType: "Student",
       studentTitleCode: "4921 - STDT 2", division: "Campus Dining and Retail", location: "Synthetic Hall", terminationType: "Move out of Area",
       lastDayWorked: COMPOSITION_LAST_DAY_WORKED, separationDate: COMPOSITION_SEPARATION_DATE, additionalComments: "", requestAcknowledged: false,
       timekeeperName: "", timekeeperComments: "", terminationEffectiveDate: "", department: "- - -", payrollTitleCode: "", payrollTitle: "",
@@ -213,5 +213,16 @@ describe("Separations composition with a reference spreadsheet", () => {
     assert.notEqual(c.parkedAt(run), REFERENCE_GATE);
     assert.deepEqual(c.nodeSpans(run, REFERENCE_GATE), [["skipped", "condition-false"]]);
     assert.deepEqual(c.checkLines(run), ["Separations roster · People: found in row 3"]);
+  });
+
+  it("resumes past a skipped identity approval when the document carries the Employee ID and the Kronos timecard is omitted", async () => {
+    const c = await composition({ documentEid: COMPOSITION_EID }), started = c.begin([c.missing()]);
+    const parked = await c.execute(started);
+    assert.equal(c.parkedAt(parked), REFERENCE_GATE);
+    assert.deepEqual(c.nodeSpans(parked, "identity-approval"), [["skipped", "condition-false"]]);
+    assert.equal(c.continueAnyway(started).state, "applied");
+    const resumed = await c.execute(c.current(started));
+    assert.ok(resumed.lifecycle.state === "terminal" && resumed.lifecycle.outcome === "done", JSON.stringify(resumed.lifecycle));
+    assert.deepEqual(c.commits(), ["commit:kuali.rrss-document.save-button", "commit:ucpath.smart-hr.save-and-submit-button"]);
   });
 });
