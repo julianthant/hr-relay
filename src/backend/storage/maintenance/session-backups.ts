@@ -8,6 +8,7 @@ import { fsyncPath } from "../private-path.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { AuthorityBackupService, parseBackupManifestFile, verifyBackupBytesAtPath, type AuthorityBackupSource } from "../sqlite/backup-service.js";
 import { backupThreadIdle, copyAuthorityOffThread } from "../sqlite/backup-inspection-worker.js";
+import type { AuthorityBackupManifest } from "../sqlite/recovery-contracts.js";
 import { hasUnprovedSourceClosure } from "../source-closure.js";
 import { StorageMaintenanceCustodyUnavailableError } from "./custody-availability.js";
 
@@ -36,10 +37,6 @@ export type SessionBackups = Readonly<{
 }>;
 
 type VerifiedManifest = Readonly<{ name: string; createdAt: string; authorityGeneration: number }>;
-
-function readManifest(path: string) {
-  try { return parseBackupManifestFile(path); } catch { return undefined; }
-}
 
 function fileIdentity(path: string): string {
   const stats = statSync(path, { bigint: true, throwIfNoEntry: false });
@@ -87,10 +84,12 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
   const newestVerified = async (only?: RegExp): Promise<VerifiedManifest | undefined> => {
     if (!existsSync(directory)) return undefined;
     const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
-    const binding = admission.profileBinding, nowMs = clock.nowMs(), candidates: Array<VerifiedManifest & { manifestPath: string; backup: NonNullable<ReturnType<typeof readManifest>> }> = [];
+    const binding = admission.profileBinding, nowMs = clock.nowMs(), candidates: Array<VerifiedManifest & { manifestPath: string; backup: AuthorityBackupManifest }> = [];
     for (const name of readdirSync(directory).filter(entry => entry.endsWith(ManifestSuffix) && (only === undefined || only.test(entry)))) {
-      const manifestPath = join(directory, name), manifest = readManifest(manifestPath);
-      if (manifest === undefined || name !== `${manifest.backupFileName}${ManifestSuffix}` || manifest.installationId !== binding.installationId
+      const manifestPath = join(directory, name);
+      let manifest: AuthorityBackupManifest;
+      try { manifest = parseBackupManifestFile(manifestPath); } catch { continue; }
+      if (name !== `${manifest.backupFileName}${ManifestSuffix}` || manifest.installationId !== binding.installationId
         || manifest.profileId !== binding.profileId || manifest.sourceDatabaseIdentity !== sourceIdentity || Date.parse(manifest.createdAt) > nowMs) continue;
       candidates.push({ name, createdAt: manifest.createdAt, authorityGeneration: manifest.authorityGeneration, manifestPath, backup: manifest });
     }
@@ -206,8 +205,8 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
       controller.abort(new DOMException("session backup stopped", "AbortError"));
     },
     async awaitCancellation(): Promise<void> {
-      await inFlight?.catch(() => undefined);
-      await backupThreadIdle().catch(() => undefined);
+      await inFlight;
+      await backupThreadIdle();
       if (closureFailure !== undefined) throw closureFailure.error;
     },
   });
