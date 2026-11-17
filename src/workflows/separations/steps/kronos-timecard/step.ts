@@ -9,7 +9,7 @@ import {
 import { NewKronosSearchEmployee, SearchEmployeeOutputSchema } from "../../../../models/systems/new-kronos/search-employee.js";
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
-import type { StepOmissionDeclaration } from "../../../../models/workflow/step-omission.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import {
   SeparationsReadSeparationDates
 } from "../../../../models/workflows/separations/read-separation-dates.js";
@@ -153,15 +153,15 @@ const KronosTimecardFactsSchema = z.strictObject({
   separationDate: z.string().min(1),
 });
 
-export const KRONOS_TIMECARD_OMISSION: StepOmissionDeclaration = {
+export const KRONOS_TIMECARD_OMISSION: StepManualDeclaration = {
   form: {
     fields: [
       {
-        key: "lastDayWorked", label: "Last day worked", kind: "us-date",
+        key: "lastDayWorked", label: "Last day worked", kind: "us-date", replaces: { nodeId: DATES_NODE, path: "lastDayWorked" },
         help: "The employee's last physical day of work, MM/DD/YYYY. Kronos is not read; this stands in for the card's last punch.",
       },
       {
-        key: "separationDate", label: "Separation date", kind: "us-date",
+        key: "separationDate", label: "Separation date", kind: "us-date", replaces: { nodeId: DATES_NODE, path: "separationDate" },
         help: "The last day on pay status, MM/DD/YYYY — the same day as the last day worked unless paid leave follows it. The termination is effective the next day.",
       },
     ],
@@ -185,6 +185,7 @@ export const KRONOS_TIMECARD_OMISSION: StepOmissionDeclaration = {
       });
     },
   },
+  skips: [TIMECARD_SEARCH_NODE, TIMECARD_NODE],
 };
 
 
@@ -300,7 +301,7 @@ export function buildTimecard({ task, group }: Author, extraction: Extraction, r
       end: outputs[TIMECARD_NODE].range.observedEnd,
     },
   }));
-  return { dates, steps: [[group(KRONOS_TIMECARD_STEP, { ...KRONOS_TIMECARD_DISPLAY, omission: KRONOS_TIMECARD_OMISSION }), [timecardSearch, timecard, dates]]] as const };
+  return { dates, steps: [[group(KRONOS_TIMECARD_STEP, { ...KRONOS_TIMECARD_DISPLAY, manual: KRONOS_TIMECARD_OMISSION }), [timecardSearch, timecard, dates]]] as const };
 }
 
 export const separationsKronosTimecardDefinition = defineStep({

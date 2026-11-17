@@ -16,7 +16,7 @@ import { defineTaskContract } from "../../../../src/models/task/task-contract.js
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
-import type { StepOmissionDeclaration } from "../../../../src/models/workflow/step-omission.js";
+import type { StepManualDeclaration } from "../../../../src/models/workflow/step-omission.js";
 import { NodeIdSchema,ScenarioIdSchema,taskId,TraceIdSchema } from "../../../../src/rules/identity/ids.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineServiceStore,defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
@@ -82,7 +82,7 @@ const fixtureTask = defineTask(fixtureContract, {
 function fixtureDescriptor(
   id: string,
   code: string,
-  omission: StepOmissionDeclaration,
+  manual: StepManualDeclaration,
   artifactProjections?: readonly Readonly<{
     id: string;
     source: Readonly<{ nodeId: "read" | "fold"; fieldPath: string }>;
@@ -122,7 +122,7 @@ function fixtureDescriptor(
     presentation: { title: (input: z.output<typeof FixtureInput>) => input.name },
     scenarios: [`${id}/happy`],
     timeline: [
-      { key: "reading", label: "Reading", nodes: ["read"], omission },
+      { key: "reading", label: "Reading", nodes: ["read"], manual },
       { key: "folding", label: "Folding", nodes: ["fold"] },
     ],
     flow: fixtureFlow,
@@ -134,17 +134,19 @@ const FORM = { fields: [{ key: "value", label: "Value", kind: "text" as const }]
 const honestDescriptor = fixtureDescriptor("omission-honest", "oh", {
   form: FORM,
   produces: { read: ({ facts }) => ({ disposition: facts.value, providerState: facts.value }) },
+  skips: [],
 });
 const lyingDescriptor = fixtureDescriptor("omission-lying", "ol", {
   form: FORM,
   produces: { read: () => ({ wrong: "shape" }) },
+  skips: [],
 });
-const bareDescriptor = fixtureDescriptor("omission-bare", "ob", { form: FORM, produces: {} });
+const bareDescriptor = fixtureDescriptor("omission-bare", "ob", { form: FORM, produces: {}, skips: ["read"] });
 /** Bullet 5 — the asserted node ("read") also declares an artifact projection; an assertion projects nothing. */
 const projectingDescriptor = fixtureDescriptor(
   "omission-projecting",
   "op",
-  { form: FORM, produces: { read: ({ facts }) => ({ disposition: facts.value, providerState: facts.value }) } },
+  { form: FORM, produces: { read: ({ facts }) => ({ disposition: facts.value, providerState: facts.value }) }, skips: [] },
   [{
     id: "retention-row",
     source: { nodeId: "read", fieldPath: "disposition" },
@@ -193,7 +195,7 @@ const gateOmissionDescriptor = defineWorkflowDescriptor({
       key: "reading",
       label: "Reading",
       nodes: ["read"],
-      omission: { form: FORM, produces: { read: ({ facts }) => ({ disposition: facts.value, providerState: facts.value }) } },
+      manual: { form: FORM, produces: { read: ({ facts }) => ({ disposition: facts.value, providerState: facts.value }) }, skips: [] },
     },
     { key: "approving", label: "Approving", nodes: ["approval"] },
     { key: "folding", label: "Folding", nodes: ["fold"] },

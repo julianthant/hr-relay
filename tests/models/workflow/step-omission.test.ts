@@ -14,11 +14,14 @@ const READING: StepOmissionSpec = {
   step: "reading",
   form: { fields: [{ key: "value", label: "Value", kind: "text" }] },
   produces: { fold: ({ facts }) => ({ folded: facts.value }) },
+  skips: ["read"],
 };
 const WRITING: StepOmissionSpec = {
   step: "writing",
   form: { fields: [{ key: "transactionNumber", label: "Transaction number", kind: "text" }] },
   produces: { receipt: ({ facts }) => ({ transactionNumber: facts.transactionNumber }) },
+  skips: ["write"],
+  skipsGatesAndTransactions: true,
 };
 
 function graph(overrides: Partial<StepOmissionGraphView> = {}): StepOmissionGraphView {
@@ -93,7 +96,7 @@ describe("planStepOmissions", () => {
   });
 
   it("refuses by name when an executing node reads a node the omission leaves unread", () => {
-    const view = graph({ stepOmissions: [{ ...READING, produces: {} }, WRITING] });
+    const view = graph({ stepOmissions: [{ ...READING, produces: {}, skips: ["read", "fold"] }, WRITING] });
     const plan = planStepOmissions(view, [{ step: "reading", facts: { value: "typed" } }]);
     // Both the gate and the approval fold read `fold`; each refusal names its own node.
     assert.deepEqual(plan.refusals.map(({ code, step }) => [code, step]), [
@@ -123,11 +126,11 @@ describe("planStepOmissions", () => {
 
   it("throws on a declaration that produces a foreign node or a non-task node", () => {
     assert.throws(
-      () => planStepOmissions(graph({ stepOmissions: [{ ...READING, produces: { receipt: () => ({}) } }] }), [{ step: "reading", facts: { value: "x" } }]),
+      () => planStepOmissions(graph({ stepOmissions: [{ ...READING, produces: { receipt: () => ({}) }, skips: ["read", "fold"] }] }), [{ step: "reading", facts: { value: "x" } }]),
       /produces node "receipt", which belongs to step "writing"/u,
     );
     assert.throws(
-      () => planStepOmissions(graph({ stepOmissions: [{ ...WRITING, produces: { write: () => ({}) } }] }), [{ step: "writing", facts: { transactionNumber: "x" } }]),
+      () => planStepOmissions(graph({ stepOmissions: [{ ...WRITING, produces: { write: () => ({}) }, skips: ["receipt"] }] }), [{ step: "writing", facts: { transactionNumber: "x" } }]),
       /gates and transactions are never substituted/u,
     );
   });
@@ -139,13 +142,13 @@ describe("stepOmissionCascade", () => {
     assert.deepEqual(rows.get("reading"), { state: "omittable", forces: [] });
     assert.deepEqual(rows.get("writing"), { state: "omittable", forces: [] });
 
-    const blocked = stepOmissionCascade(graph({ stepOmissions: [{ ...READING, produces: {} }, WRITING] }));
+    const blocked = stepOmissionCascade(graph({ stepOmissions: [{ ...READING, produces: {}, skips: ["read", "fold"] }, WRITING] }));
     assert.deepEqual(blocked.get("reading"), { state: "blocked", by: "deciding", forces: [] });
 
     const chained = stepOmissionCascade(graph({
       stepOmissions: [
-        { ...READING, produces: {} },
-        { step: "deciding", form: { fields: [] }, produces: { approve: () => ({}) } },
+        { ...READING, produces: {}, skips: ["read", "fold"] },
+        { step: "deciding", form: { fields: [] }, produces: { approve: () => ({}) }, skips: ["gate"], skipsGatesAndTransactions: true },
         WRITING,
       ],
     }));

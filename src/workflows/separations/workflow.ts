@@ -98,12 +98,6 @@ export const separationsWorkflow = defineWorkflow({
     label: "Document number", actionLabel: "Enter document number", pattern: z.toJSONSchema(KualiDocumentNumberSchema).pattern
   }],
   gateCorrections: [{ gateId: GATE_NODE, inputField: "operatorEmployeeId", label: "Employee ID", placeholder: "8 digits", pattern: EID_PATTERN.source }],
-  rerunValues: [
-    { nodeId: DATES_NODE, fieldPath: "lastDayWorked", label: "Last day worked", targetStepKey: "kronos-timecard", targetFieldPath: "lastDayWorked" },
-    { nodeId: DATES_NODE, fieldPath: "separationDate", label: "Separation date", targetStepKey: "kronos-timecard", targetFieldPath: "separationDate" },
-    { nodeId: RECEIPT_NODE, fieldPath: "transactionNumber", label: "UCPath transaction number", targetStepKey: "ucpath-transaction", targetFieldPath: "transactionNumber" },
-    { nodeId: RECEIPT_NODE, fieldPath: "approvalStatus", label: "Approval status", targetStepKey: "ucpath-transaction", targetFieldPath: "approvalStatus" },
-  ],
   protectedInputs: [{ inputPath: "timekeeperName", name: "timekeeperName" }],
   inputSubject: "document",
   surface: { shape: "single" },

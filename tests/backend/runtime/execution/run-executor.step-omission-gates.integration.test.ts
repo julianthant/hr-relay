@@ -14,7 +14,7 @@ import { SearchPersonOrg } from "../../../../src/models/systems/ucpath/search-pe
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 
 
-import { type StepOmissionDeclaration } from "../../../../src/models/workflow/step-omission.js";
+import { type StepManualDeclaration } from "../../../../src/models/workflow/step-omission.js";
 
 
 
@@ -58,7 +58,7 @@ describe("definition-time omission completeness", () => {
       return {
         steps: [
           [{ key: "reads", label: "Reads" }, [search]],
-          [group({ key: "deciding", label: "Deciding" }, { omission: VERIFY_OMISSION }), [review, verify]],
+          [group({ key: "deciding", label: "Deciding" }, { manual: VERIFY_OMISSION }), [review, verify]],
           [{ key: "after", label: "After" }, [after]],
         ],
         result: result(FixtureResultSchema, [after], ({ outputs }) => ({ verified: outputs.after.state === "found" })),
@@ -67,7 +67,7 @@ describe("definition-time omission completeness", () => {
   });
 
   it("refuses an omittable step whose unproduced task is read from outside, and a producer naming a non-member or a gate", () => {
-    const unproduced: StepOmissionDeclaration = { form: { fields: [] }, produces: {} };
+    const unproduced: StepManualDeclaration = { form: { fields: [] }, produces: {}, skips: ["verify"] };
     assert.throws(() => fixture("omission-task-read-outside", "dtr", ({ task, group, result }) => {
       const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], ({ input }) => ({
         kind: "by-eid" as const, emplId: input.emplId,
@@ -81,14 +81,14 @@ describe("definition-time omission completeness", () => {
       return {
         steps: [
           [{ key: "reads", label: "Reads" }, [search]],
-          [group({ key: "deciding", label: "Deciding" }, { omission: unproduced }), [verify]],
+          [group({ key: "deciding", label: "Deciding" }, { manual: unproduced }), [verify]],
           [{ key: "after", label: "After" }, [after]],
         ],
         result: result(FixtureResultSchema, [after], ({ outputs }) => ({ verified: outputs.after.state === "found" })),
       };
     }), /reads its task entry "verify", which omitting the step leaves unread; rebuild "verify" from the step's omission form/u);
 
-    const foreignProducer: StepOmissionDeclaration = { form: { fields: [] }, produces: { search: () => ({}) } };
+    const foreignProducer: StepManualDeclaration = { form: { fields: [] }, produces: { search: () => ({}) }, skips: ["verify"] };
     assert.throws(() => fixture("omission-foreign-producer", "dfp", ({ task, group, result }) => {
       const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], ({ input }) => ({
         kind: "by-eid" as const, emplId: input.emplId,
@@ -99,13 +99,13 @@ describe("definition-time omission completeness", () => {
       return {
         steps: [
           [{ key: "reads", label: "Reads" }, [search]],
-          [group({ key: "deciding", label: "Deciding" }, { omission: foreignProducer }), [verify]],
+          [group({ key: "deciding", label: "Deciding" }, { manual: foreignProducer }), [verify]],
         ],
         result: result(FixtureResultSchema, [verify], ({ outputs }) => ({ verified: outputs.verify.state === "found" })),
       };
     }), /step "deciding" omission produces "search", which is not an entry of that step/u);
 
-    const gateProducer: StepOmissionDeclaration = { form: { fields: [] }, produces: { review: () => ({ approved: true }) } };
+    const gateProducer: StepManualDeclaration = { form: { fields: [] }, produces: { review: () => ({ approved: true }) }, skips: [] };
     assert.throws(() => fixture("omission-gate-producer", "dgp", ({ task, gate, group, result }) => {
       const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint" }, [], ({ input }) => ({
         kind: "by-eid" as const, emplId: input.emplId,
@@ -114,7 +114,7 @@ describe("definition-time omission completeness", () => {
       return {
         steps: [
           [{ key: "reads", label: "Reads" }, [search]],
-          [group({ key: "deciding", label: "Deciding" }, { omission: gateProducer }), [review]],
+          [group({ key: "deciding", label: "Deciding" }, { manual: gateProducer }), [review]],
         ],
         result: result(FixtureResultSchema, [search], ({ outputs }) => ({ verified: outputs.search.selection.selected !== null })),
       };

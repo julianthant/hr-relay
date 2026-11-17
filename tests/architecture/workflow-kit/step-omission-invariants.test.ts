@@ -13,7 +13,7 @@ import {
   stepOmissionPlaceholderFacts,
   StepOmissionFormSchema,
   type StepOmissionCascadeRow,
-  type StepOmissionDeclaration,
+  type StepManualDeclaration,
   type StepOmissionGraphView,
   type StepOmissionPlan,
 } from "../../../src/models/workflow/step-omission.js";
@@ -66,8 +66,8 @@ function buildStepOmissionFixture(
   id: string,
   code: string,
   overrides: {
-    identityCheckOmission?: StepOmissionDeclaration;
-    writingOmission?: StepOmissionDeclaration;
+    identityCheckOmission?: StepManualDeclaration;
+    writingOmission?: StepManualDeclaration;
   } = {},
 ): AnyWorkflowDescriptor {
   const fixtureFlow = flow(FixtureInput)
@@ -122,22 +122,24 @@ function buildStepOmissionFixture(
         key: "identity-check",
         label: "Identity Check",
         nodes: ["identity-approval", "approve"],
-        ...(overrides.identityCheckOmission === undefined ? {} : { omission: overrides.identityCheckOmission }),
+        ...(overrides.identityCheckOmission === undefined ? {} : { manual: overrides.identityCheckOmission }),
       },
       {
         key: "writing",
         label: "Writing",
         nodes: ["submit"],
-        ...(overrides.writingOmission === undefined ? {} : { omission: overrides.writingOmission }),
+        ...(overrides.writingOmission === undefined ? {} : { manual: overrides.writingOmission }),
       },
     ],
     flow: fixtureFlow,
   });
 }
 
-const VALID_OMISSION: StepOmissionDeclaration = {
+const VALID_OMISSION: StepManualDeclaration = {
   form: { fields: [{ key: "approvedFlag", label: "Approved", kind: "boolean" }] },
   produces: { approve: ({ facts }) => ({ approved: facts.approvedFlag }) },
+  skips: ["identity-approval"],
+  skipsGatesAndTransactions: true,
 };
 
 /** The two descriptor ids this guard names explicitly: the real registry's only omission author, and the fixture's. */
@@ -161,7 +163,7 @@ function graphViewOf(descriptor: AnyWorkflowDescriptor): StepOmissionGraphView {
 const PRODUCTION_DECLARATIONS: readonly Readonly<{
   descriptor: string;
   step: string;
-  declaration: StepOmissionDeclaration;
+  declaration: StepManualDeclaration;
   fieldKeys: readonly string[];
   produces: readonly string[];
 }>[] = [
@@ -252,9 +254,10 @@ function assertSweptEveryDeclaration(audited: readonly string[], sweep: string):
 
 describe("step-omission invariants", () => {
   it("throws at definition time when an omission produces the gate node of its own step", () => {
-    const gateOmission: StepOmissionDeclaration = {
+    const gateOmission: StepManualDeclaration = {
       form: { fields: [] },
       produces: { "identity-approval": () => ({ approved: true }) },
+      skips: ["approve"],
     };
     assert.throws(
       () => buildStepOmissionFixture("step-omission-guard-gate", "sog", { identityCheckOmission: gateOmission }),
@@ -263,9 +266,10 @@ describe("step-omission invariants", () => {
   });
 
   it("throws at definition time when an omission produces the transaction node of its own step", () => {
-    const transactionOmission: StepOmissionDeclaration = {
+    const transactionOmission: StepManualDeclaration = {
       form: { fields: [] },
       produces: { submit: () => ({ transactionId: "T1" }) },
+      skips: [],
     };
     assert.throws(
       () => buildStepOmissionFixture("step-omission-guard-txn", "sot", { writingOmission: transactionOmission }),
@@ -274,9 +278,11 @@ describe("step-omission invariants", () => {
   });
 
   it("refuses a descriptor whose omission form declares a duplicate field key (negative arm for check c)", () => {
-    const duplicateFieldOmission: StepOmissionDeclaration = {
+    const duplicateFieldOmission: StepManualDeclaration = {
       form: { fields: [{ key: "value", label: "V1", kind: "text" }, { key: "value", label: "V2", kind: "text" }] },
       produces: { approve: () => ({ approved: true }) },
+      skips: ["identity-approval"],
+      skipsGatesAndTransactions: true,
     };
     assert.throws(
       () => buildStepOmissionFixture("step-omission-guard-dup", "sod", { identityCheckOmission: duplicateFieldOmission }),
@@ -315,7 +321,7 @@ describe("step-omission invariants", () => {
 
   it("parses every RAW step-folder declaration through StepOmissionFormSchema, with exactly the pinned keys and producers", () => {
     const audited: string[] = [];
-    const raw: readonly Readonly<{ key: string; declaration: StepOmissionDeclaration; fieldKeys: readonly string[]; produces: readonly string[] }>[] = [
+    const raw: readonly Readonly<{ key: string; declaration: StepManualDeclaration; fieldKeys: readonly string[]; produces: readonly string[] }>[] = [
       ...PRODUCTION_DECLARATIONS.map(({ descriptor, step, declaration, fieldKeys, produces }) => ({
         key: `${descriptor}::${step}`, declaration, fieldKeys, produces,
       })),
