@@ -6,7 +6,7 @@ import { MemberRunControls } from "./log-member-controls.js";
 import type { DelegatedRecordRef } from "../../../../models/workflow/delegated-record.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import type { WorkflowSource } from "../../../app/workflow-sources.js";
-import { Badge, Button, IconButton, Notice } from "../../../ds/ui.js";
+import { Badge, Button, FailureNotice, IconButton, Notice } from "../../../ds/ui.js";
 import type { DashboardActionHandler } from "../../shared/actions/actions.js";
 import { LogPanel } from "../log-panel.js";
 import { linkedRunEntries } from "../linked-runs-model.js";
@@ -29,7 +29,7 @@ import { ReviewDialog } from "../review/review-dialog.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
 import { batchMemberRetryAction } from "../../../app/commands/command-dispatch.js";
 
-type ServedNavigation = Readonly<{ reviewOpen?: boolean; reviewFocus?: DelegatedRecordRef; onReview?: () => void; onLogs?: () => void; onAction?: DashboardActionHandler; onOpenLinked?: (target: LinkedRunWire) => void }>;
+type ServedNavigation = Readonly<{ reviewOpen?: boolean; reviewFocus?: DelegatedRecordRef; onReview?: () => void; onLogs?: () => void; onAction?: DashboardActionHandler; onOpenLinked?: (target: LinkedRunWire) => void; onRetryLogs?: () => void }>;
 
 /** Rerun sits in the Logs footer when the row serves a rerun action. */
 function withoutConfirm(action: ActionDescriptorWire): ActionDescriptorWire {
@@ -50,7 +50,7 @@ export function LogSample({ selection, source = "served", initialStepId, confirm
   return <PreviewLogSample selection={selection} onAction={navigation.onAction} />;
 }
 
-function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, reviewFocus, onReview, onLogs, onAction, onOpenLinked }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
+function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, reviewFocus, onReview, onLogs, onAction, onOpenLinked, onRetryLogs }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
   const client = useDashboardClient();
   const binding = useDashboardCommandBinding();
   const resource = useRunWiring(client, selection, binding, confirm);
@@ -80,8 +80,9 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     const action = selection.row.actions.find(candidate => candidate.key === key);
     if (action !== undefined) onAction?.(isCancelOption(option) ? withoutConfirm(action) : action, target);
   }, [resource, selection.row.actions, onAction, target]);
-  const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <Notice tone="danger" title={logsReadFailedTitle} description={resource.error} /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, logsReadFailedTitle]);
-  const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Notice tone="danger" title={logsUnavailableTitle} description={resource.error} /> : undefined : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, resource.error]);
+  const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <Notice tone="danger" title={logsReadFailedTitle} description="Relay could not refresh these logs." /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, logsReadFailedTitle]);
+  const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <div className="p-4"><FailureNotice sentence="Relay could not load this run's logs." stillWorks="The queue and the other runs still work."
+    action={onRetryLogs === undefined ? undefined : { label: "Retry", onClick: onRetryLogs }} /></div> : undefined : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, onRetryLogs]);
   const afterStep = useCallback((id: string) => {
     const findings = projection.ucpathFindings;
     const showFindings = findings?.stepId === id;
