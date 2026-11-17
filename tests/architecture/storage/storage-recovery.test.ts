@@ -2134,8 +2134,9 @@ describe("offline exact-backup restore", () => {
         copyFile: copyFileSync,
         atomicReplace: (source, destination) => {
           renameSync(source, destination);
-          cleanupPath = source;
-          copyFileSync(destination, cleanupPath);
+          // A staged companion left behind; a file at the staged path itself would leave settlement unproved.
+          cleanupPath = `${source}-wal`;
+          writeFileSync(cleanupPath, "");
         },
         removePath: (path) => {
           if (path === cleanupPath) throw new Error("injected staged cleanup failure");

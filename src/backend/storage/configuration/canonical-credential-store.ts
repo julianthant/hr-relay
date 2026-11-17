@@ -470,6 +470,7 @@ export function captureCanonicalCredentialStartupLocks(lifetime: RuntimeLifetime
       const parsed = CanonicalCredentialHeadSchema.parse(parse(file.bytes));
       if (parsed.installationId !== installationId || parsed.profileId !== profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       const reading = canonicalCredentialHeadReading(parsed, "absent");
+      if ("inconsistent" in reading) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       if (reading.state === "active") {
         const head = reading.head;
         guard(); const key = authenticateHead(head);
@@ -989,6 +990,7 @@ export function eraseCanonicalDraftCredentials(machine: RuntimeAdmission, profil
       if (stored.installationId !== paths.binding.installationId || stored.profileId !== paths.binding.profileId
         || stored.key.keyId !== input.credentials.keyId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       const reading = canonicalCredentialHeadReading(stored, "absent");
+      if ("inconsistent" in reading) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       if (reading.state === "erased") {
         const erased = reading.head;
         if (erased.operationId !== abort.operationId || erased.generation !== abort.generation) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");

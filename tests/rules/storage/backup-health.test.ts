@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { backupHealthOf, type VerifiedRestoreCandidate } from "../../../src/rules/storage/backup-health.js";
 import type { RestoreCandidate } from "../../../src/models/storage/storage-status.js";
+import { IsoInstantSchema, PositiveIntSchema } from "../../../src/rules/identity/ids.js";
 
 const verified = (gap: VerifiedRestoreCandidate["generationGap"]): VerifiedRestoreCandidate => ({
   state: "verified-compatible",
   selection: "single-database",
-  schemaVersion: 29,
+  schemaVersion: PositiveIntSchema.parse(29),
   restoreEligibility: { state: "eligible" },
   manifestFileName: "authority-1.sqlite.manifest.json",
   backupFileName: "authority-1.sqlite",
-  createdAt: "2026-11-17T00:00:00.000Z",
+  createdAt: IsoInstantSchema.parse("2026-11-17T00:00:00.000Z"),
   authorityGeneration: 4,
   ageMs: 1500,
   generationGap: gap,

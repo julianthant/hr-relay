@@ -95,21 +95,22 @@ type RunSearchPublication = z.infer<typeof RunSearchPublicationSchema>;
 /** `database_states.search_state`. Nothing writes `unbuilt`; a store upgraded from schema 6 or earlier may still hold it. */
 export const SearchStateColumnSchema = z.enum(["unbuilt", "ready", "invalid"]);
 const SearchColumnsSchema = z.strictObject({ authority_generation: z.number().int(), search_generation: z.number().int().nullable(), search_state: SearchStateColumnSchema });
+const StoredPublicationSchema = RunSearchPublicationSchema.omit({ rowCount: true });
 
 /**
  * The stored publication, without its row count. An invalid state that keeps a generation is a build in progress at that
  * generation; its progress is the last run written with that `buildGeneration`.
  */
 export function runSearchPublicationOf(row: z.infer<typeof SearchColumnsSchema>, buildProgress: (generation: number) => string | null): Omit<RunSearchPublication, "rowCount"> {
-  if (row.search_state === "invalid" && row.search_generation !== null) return { state: "building", sourceGeneration: row.search_generation, afterRun: buildProgress(row.search_generation) };
-  return { state: row.search_state === "ready" ? "published" : "invalid", sourceGeneration: row.search_generation ?? row.authority_generation, afterRun: null };
+  if (row.search_state === "invalid" && row.search_generation !== null) return StoredPublicationSchema.parse({ state: "building", sourceGeneration: row.search_generation, afterRun: buildProgress(row.search_generation) });
+  return StoredPublicationSchema.parse({ state: row.search_state === "ready" ? "published" : "invalid", sourceGeneration: row.search_generation ?? row.authority_generation, afterRun: null });
 }
 
 /** A publication against the current authority generation; a publication or build at any other generation is stale. */
 export const RUN_SEARCH_STATES = deepFreeze(["published", "building", "stale", "invalid"] as const);
 export type RunSearchState = (typeof RUN_SEARCH_STATES)[number];
 
-export function runSearchStateOf(publication: Pick<RunSearchPublication, "state" | "sourceGeneration">, authorityGeneration: number): RunSearchState {
+export function runSearchStateOf(publication: Pick<z.input<typeof RunSearchPublicationSchema>, "state" | "sourceGeneration">, authorityGeneration: number): RunSearchState {
   if (publication.state === "invalid") return "invalid";
   return publication.sourceGeneration === authorityGeneration ? publication.state : "stale";
 }
