@@ -52,7 +52,7 @@ import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/
 import { I9LookupError, type I9LookupInput } from "../../../../src/models/systems/i9/read-section2-signer.js";
 import { sessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { i9PageSubmission } from "../../fixtures/i9-check-start.js";
-import type { ProviderAdapter } from "../../../../src/workflow-kit/providers.js";
+import type { ChatGptOcrAdapter } from "../../../../src/backend/processing/providers/provider-client.js";
 
 interface ReviewedPageFacts {
   readonly employeeName: string;
@@ -101,7 +101,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       const signerReads: string[] = [];
       const pageReads: number[] = [];
       let ocrCalls = 0;
-      const refuseOcr: ProviderAdapter<"ocr.extract"> = { capability: "ocr.extract", async invoke() {
+      const refuseOcr: ChatGptOcrAdapter = { capability: "ocr.extract", policy: { kind: "chatgpt-subscription-only", timeoutMs: 120_000 }, async invoke() {
         ocrCalls++;
         throw new Error("Unexpected OCR provider request in the manual-entry fixture.");
       } };
