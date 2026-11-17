@@ -38,7 +38,7 @@ import { useDashboardCommandBinding, useDashboardClient } from "../../state/clie
 import { TypedInput, planRefusalNotice, StepOmissionFactsForm, RunReferenceRows, RunCheckRows, RunCheckCard, type CheckSheet } from "./run-start-kit.js";
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-model.js";
-import { foldStepOmissionFacts, forcedStepOmissions, initialStepOmissionDraft, omittedStepViews, startRequestFingerprint, previewRunInput, launchWorkbookReferences, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
+import { foldStepOmissionFacts, forcedStepOmissions, initialStepOmissionDraft, omittedStepViews, startRequestFingerprint, previewRunInput, launchWorkbookReferences, MISSING_REFERENCE_TEXT, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
 import { adjacentRunStartStage, reconcileRunStartStage, runStartStages, type RunStartStage } from "./run-start-timeline.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import { WorkflowPdfInput } from "../workflows/mocks/workflow-pdf-input.js";
@@ -572,13 +572,16 @@ export function RunStartDialog({
     });
   };
 
-  const blockedReason = pdfSurface !== undefined ? pdfInput.loading ? "Reading PDFs…" : pdfInput.error !== null ? "Fix the refused PDF selection first." : preview.entries.length === 0 ? "Choose at least one PDF." : null : inputRun.state !== "present"
+  const referenceMissing = requiredTypes.some(typeId => selectedReferences[typeId] === undefined);
+  const blockedReason = pdfSurface !== undefined ? pdfInput.loading ? "Reading PDFs…" : pdfInput.error !== null ? "Fix the refused PDF selection first." : preview.entries.length === 0 ? "Choose at least one PDF." : referenceMissing ? MISSING_REFERENCE_TEXT : null : inputRun.state !== "present"
     ? inputRun.reason
     : preview.problem !== null
       ? "Fix the refused entry first."
       : preview.entries.length === 0
         ? rowCapability === undefined ? "Type at least one value." : "Select at least one saved row."
-        : null;
+        : referenceMissing
+          ? MISSING_REFERENCE_TEXT
+          : null;
   const launchFields = pdfSurface === undefined ? [] : pdfRunLaunchFields(pdfSurface);
   const unpickedField = pdfSurface === undefined ? null : unpickedPdfRunField(pdfSurface, pdfInput.picks);
   /** A required launch field without a pick blocks planning from Options, where it is picked. */
