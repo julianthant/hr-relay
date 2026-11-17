@@ -1,3 +1,4 @@
+import { healthyDashboardPreflightReport } from "./preflight-seams.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { InputRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
 import { StepOmissionFormSchema } from "../../../src/models/workflow/step-omission.js";
@@ -108,6 +109,8 @@ export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", in
     appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(h.database.authority),
     descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined } });
   registerQueueRoutes(app, { queue: { day: day => { projection.rebuildFromTimeline(); return projection.buildDashboardDayWire(day); } }, startPlans: h.planner });
+  /** The Run dialog's Checks step reads the workflow's readiness; this fixture's checks all pass. */
+  app.get("/api/v1/preflight", (c) => c.json({ state: "present", report: healthyDashboardPreflightReport(h.clock) }));
   app.get("/api/v1/runs/:id/rerun-values", (c) => {
     const response = readRerunValues({ reader: h.lifecycle, database: h.database, descriptors: { resolve: () => h.descriptor } },
       { runId: c.req.param("id"), expectedVersion: Number(c.req.query("expectedVersion")) });
