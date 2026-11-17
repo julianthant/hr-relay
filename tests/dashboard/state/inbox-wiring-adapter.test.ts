@@ -17,7 +17,6 @@ import { NotificationPublicationWireSchema, type NotificationPublicationWire } f
 import { NotificationCommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
-import type { DsToast } from "../../../src/dashboard/ds/ui.js";
 import { verifyShellCommandEffect } from "../../../src/dashboard/app/commands/command-dispatch.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -43,7 +42,7 @@ async function harness(enabled = true, initiallyFailed = false) {
   let rows: readonly NotificationWire[] = [row()], lose = false, refuseTarget = false;
   let snapshotWait: Promise<void> | undefined, postWait: Promise<void> | undefined, failReads = initiallyFailed;
   const requests: string[] = [];
-  const commands: CommandRequest[] = [], toasts: Omit<DsToast, "id">[] = [], listeners: ((publication: NotificationPublicationWire) => void)[] = [];
+  const commands: CommandRequest[] = [], listeners: ((publication: NotificationPublicationWire) => void)[] = [];
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname; requests.push(path);
     if (path.endsWith("/target")) {
@@ -78,11 +77,11 @@ async function harness(enabled = true, initiallyFailed = false) {
   const binding: DashboardCommandBinding = { executor, scope, feedback() {}, authority: { epoch, nowIso: now, today: "2026-08-03", day: "2026-08-03", catalog: [], selection: { route: { start: false }, workflowId: "" },
     dayState: { request: dayRequest, day: { state: "loaded", value: FIXTURE_DAY_WIRE }, connection: { state: "live" }, refresh() {}, subscribePublications: listener => { listeners.push(listener); return () => { listeners.splice(listeners.indexOf(listener), 1); }; } } } };
   let value: InboxWiring | undefined;
-  function Probe({ served, currentBinding, currentClient }: { served: boolean; currentBinding: DashboardCommandBinding; currentClient: typeof client }) { value = useInboxWiring({ client: currentClient, enabled: served, binding: currentBinding, toast: input => { toasts.push(input); return "toast"; } }); return null; }
+  function Probe({ served, currentBinding, currentClient }: { served: boolean; currentBinding: DashboardCommandBinding; currentClient: typeof client }) { value = useInboxWiring({ client: currentClient, enabled: served, binding: currentBinding }); return null; }
   root = createRoot(document.createElement("div"));
   const render = async (served = enabled, currentBinding = binding, currentClient = client) => { activeScope = currentBinding.scope; await act(async () => { root?.render(createElement(Probe, { served, currentBinding, currentClient })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
   await render();
-  return { client, binding, requests, commands, toasts, listeners, render, get value() { assert(value); return value; }, setRows: (next: readonly NotificationWire[]) => { rows = next; }, lose: () => { lose = true; }, refuseTarget: () => { refuseTarget = true; },
+  return { client, binding, requests, commands, listeners, render, get value() { assert(value); return value; }, setRows: (next: readonly NotificationWire[]) => { rows = next; }, lose: () => { lose = true; }, refuseTarget: () => { refuseTarget = true; },
     holdReads: () => { let release = () => {}; snapshotWait = new Promise<void>(resolve => { release = resolve; }); return release; },
     holdCommands: () => { let release = () => {}; postWait = new Promise<void>(resolve => { release = resolve; }); return release; },
     failReads: () => { failReads = true; } };
@@ -138,7 +137,6 @@ it("confirms read, unread, snooze and unsnooze only through matching shared read
   for (const action of ["read", "unread", "snooze", "unsnooze"] as const) { await act(async () => { assert(await h.value.control(id, action)); }); }
   assert.deepEqual(h.commands.map(command => command.type), ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"]);
   for (const command of h.commands) { assert.equal(command.requestedBy, "local-operator"); assert.equal("payload" in command, false); }
-  assert.equal(h.toasts.length, 0);
 });
 it("retains uncertain command identity without automatic or repeated control retry", async () => {
   const h = await harness(); h.lose();
@@ -147,23 +145,9 @@ it("retains uncertain command identity without automatic or repeated control ret
   await act(async () => { assert.equal(await h.value.control(id, "read"), false); });
   assert.equal(h.commands.length, 1); assert.equal(h.binding.executor.retainedAttempts()[0].request.commandId, original.request.commandId);
 });
-it("toasts only explicit committed publications, suppressing snooze, replay, gaps, missing source and stale scope", async () => {
-  const h = await harness(); assert.equal(h.toasts.length, 0);
-  const emit = async (value: NotificationPublicationWire) => { await act(async () => { h.listeners[0](value); await new Promise(resolve => setTimeout(resolve, 0)); }); };
-  await emit(publication(row())); assert.equal(h.toasts.length, 1); assert.equal(h.toasts[0].tone, "warning");
-  await emit(publication(row())); assert.equal(h.toasts.length, 1);
-  await emit(publication(row("storage-degraded", { state: "snoozed", snoozedUntil: "2026-08-03T18:00:00Z" }), 2));
-  await emit(publication(row("backfill-gap"), 3));
-  await emit(publication(row("run-failed", { sourceEvent: { state: "unavailable" } }), 4));
-  assert.equal(h.toasts.length, 1);
-  const old = h.listeners[0];
-  await h.render(true, { ...h.binding, scope: { ...h.binding.scope, dayRequest: {} } });
-  await act(async () => old(publication(row(), 5))); assert.equal(h.toasts.length, 1);
-});
-it("keeps successful Ping values and refuses a stale target without marking it read", async () => {
+it("refuses a stale target without marking it read", async () => {
   const h = await harness(); const completed = row("verified-done"); h.setRows([completed]);
   await act(async () => { h.listeners[0](publication(completed)); await new Promise(resolve => setTimeout(resolve, 0)); });
-  assert.equal(h.toasts[0]?.title, "Run completed"); assert.equal(h.toasts[0]?.description, "Exact subject · Person Lookup"); assert.equal(h.toasts[0]?.tone, "success");
   h.refuseTarget(); let refused = "";
   const item = h.value.state.state === "ready" ? h.value.state.items[0] : undefined; assert(item);
   await act(async () => { h.value.open(item, (target, _opened, reject) => { if (target.kind === "refused") reject("Exact refusal"); }, () => assert.fail("must not open"), message => { refused = message; }); await new Promise(resolve => setTimeout(resolve, 0)); });
@@ -182,34 +166,6 @@ it("keeps mock mode disconnected from inbox reads, writes and publications", asy
   const h = await harness(false);
   assert.equal(h.requests.length, 0); assert.equal(h.listeners.length, 0);
   assert.equal(await h.value.control(id, "read"), false); assert.equal(h.requests.length, 0);
-});
-
-it("delivers two synchronous positive publications and a warning once each without collapsing the batch", async () => {
-  const h = await harness();
-  const first = row("verified-done"), second = row("verified-done", { count: 2, revision: 2, publicationId: "b".repeat(64) });
-  const warning = row("storage-degraded", { notificationId: "00000000-0000-4000-8000-000000000112" });
-  h.setRows([second, warning]);
-  await act(async () => {
-    h.listeners[0](publication(first, 1)); h.listeners[0](publication(second, 2));
-    h.listeners[0](publication(warning, 3)); h.listeners[0](publication(first, 1));
-    await new Promise(resolve => setTimeout(resolve, 0));
-  });
-  assert.deepEqual(h.toasts.map(toast => toast.tone), ["success", "success", "warning"]);
-  assert.deepEqual(h.toasts.slice(0, 2).map(toast => toast.description), ["Exact subject · Person Lookup", "Exact subject · Person Lookup"]);
-  assert(h.toasts.every(toast => !("action" in toast)));
-  await h.render(true, { ...h.binding, authority: { ...h.binding.authority, dayState: { ...h.binding.authority.dayState, connection: { state: "reconnecting" } } } });
-  await h.render();
-  await act(async () => { h.listeners[0](publication(second, 2)); h.listeners[0](publication(warning, 3)); await new Promise(resolve => setTimeout(resolve, 0)); });
-  assert.equal(h.toasts.length, 3);
-});
-it("delivers the closed danger and warning source policies using exact current target identities", async () => {
-  const h = await harness();
-  const kinds = ["run-failed", "subject-mismatch", "gate-opened", "write-parked", "repeating-failure", "storage-degraded"];
-  for (const [index, kind] of kinds.entries()) {
-    const next = row(kind); h.setRows([next]);
-    await act(async () => { h.listeners[0](publication(next, index + 1)); await new Promise(resolve => setTimeout(resolve, 0)); });
-  }
-  assert.deepEqual(h.toasts.map(toast => toast.tone), ["danger", "danger", "warning", "warning", "danger", "warning"]);
 });
 
 it("read-all binds the complete inbox in one command and preserves the pinned backfill notice", async () => {
@@ -268,7 +224,7 @@ for (const replacement of ["actor", "client", "authority"] as const) it(`does no
   const readCount = h.requests.filter(path => path.endsWith("/notifications")).length;
   await act(async () => { release(); await result; await new Promise(resolve => setTimeout(resolve, 0)); });
   assert.equal(h.requests.filter(path => path.endsWith("/notifications")).length, readCount + 1, "only the executor's original readback runs; replacement authority must not refresh");
-  assert.equal(h.commands.length, 1); assert.equal(h.toasts.length, 0);
+  assert.equal(h.commands.length, 1);
 });
 
 it("retains a lost collection response and blocks overlapping single-row or collection retries", async () => {

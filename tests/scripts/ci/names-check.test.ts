@@ -161,7 +161,7 @@ describe("names:check", () => {
   });
 
   it("accepts a good title and rejects a conventional title on the same head", () => {
-    const head = ["--branch", "feature/names", "--base", "staging"] as const;
+    const head = ["--branch", "feature/names", "--base", "development"] as const;
     const good = runNamesCheck([...head, "--title", "Workspace: check names"]);
     const bad = runNamesCheck([...head, "--title", "feat(ci): add names check"]);
     expect(good.status).toBe(0);

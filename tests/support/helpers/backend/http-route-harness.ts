@@ -1,3 +1,4 @@
+import { AUTHORITY_DERIVED_TABLES } from "../../../../src/models/config/authority.js";
 import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
@@ -153,6 +154,42 @@ export const disposeHttpRouteHarness = async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 };
 
+/** A test arms this so one command's audit inserts throw inside the kernel's authority transactions. */
+export type CommandAuditInsertFault = {
+  commandId: string;
+  armed: boolean;
+  /** Command ids whose `commandAudits.insert` threw, in call order. */
+  failures: string[];
+};
+
+function auditInsertCommandId(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null || !("request" in input)) return undefined;
+  const request = input.request;
+  if (typeof request !== "object" || request === null || !("commandId" in request)) return undefined;
+  return typeof request.commandId === "string" ? request.commandId : undefined;
+}
+
+function installCommandAuditInsertFault(database: AuthorityDatabase, fault: CommandAuditInsertFault): void {
+  const real = database.authority;
+  const commandAudits: AuthorityRepositories["commandAudits"] = Object.freeze({
+    ...real.commandAudits,
+    insert: (input: unknown) => {
+      const commandId = auditInsertCommandId(input);
+      if (fault.armed === true && commandId === fault.commandId) {
+        fault.failures.push(commandId);
+        throw new Error("synthetic-child-audit-failure");
+      }
+      return real.commandAudits.insert(input);
+    },
+  });
+  // One bag for every authority transaction. Nested work compares that object
+  // by identity, and the frozen original cannot swap commandAudits in place.
+  const authority: AuthorityRepositories = Object.freeze({ ...real, commandAudits });
+  Object.defineProperty(database, "authority", {
+    value: authority, writable: true, configurable: true, enumerable: true,
+  });
+}
+
 export async function harness(options: {
   readonly workbookWorkflows?: readonly import("../../../../src/backend/workbooks/workbook-library-service.js").WorkbookReferenceWorkflow[];
   readonly profileFixture?: () => Promise<BoundProfileStorageFixture>;
@@ -179,6 +216,12 @@ export async function harness(options: {
   readonly commandJournal?: (
     real: DashboardAppDeps["commandJournal"],
   ) => DashboardAppDeps["commandJournal"];
+  /**
+   * While armed, the command authority handed to the kernel throws from
+   * `commandAudits.insert` for this command id. The throw runs inside that
+   * authority transaction. Every other repository method passes through.
+   */
+  readonly commandAuditInsertFault?: CommandAuditInsertFault;
 } = {}): Promise<Harness> {
   const profile = await (options.profileFixture ?? createBoundProfileFixture)();
   const root = profile.workspace, stateRoot = profile.stateRoot;
@@ -297,6 +340,7 @@ export async function harness(options: {
       return { record, activeConfig: activeSettings.config, activePreferences: activeSettings.preferences, runtimeStatus: { state: "restart-required" as const, active: activeSettingsIdentity, persisted } };
     },
   };
+  if (options.commandAuditInsertFault !== undefined) installCommandAuditInsertFault(database, options.commandAuditInsertFault);
   const kernel = createCommandKernel({
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
       if (publication === undefined) throw new Error("command-created run lacks queue presentation");
@@ -485,7 +529,8 @@ export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot"
   const raw = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
   try {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all()
-      .filter(row => typeof row.name !== "string" || !history.tables.includes(row.name));
+      // The change log and run references are derived from the rows compared here, and log the permitted timeline writes too.
+      .filter(row => typeof row.name !== "string" || (!history.tables.includes(row.name) && !AUTHORITY_DERIVED_TABLES.some(table => table === row.name)));
     const rows = tables.map(row => {
       if (typeof row.name !== "string" || !/^[a-z_]+$/u.test(row.name)) throw new Error("fixture table identity invalid");
       return { table: row.name, rows: raw.prepare(`SELECT * FROM ${row.name} ORDER BY rowid`).all() };

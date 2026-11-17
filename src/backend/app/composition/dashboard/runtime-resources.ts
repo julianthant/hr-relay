@@ -174,11 +174,14 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   const backupDirectory = join(stateRoot, "backups", "authority");
   const backupServiceState: BackupServiceStateWire = BackupServiceStateWireSchema.parse({
     state: "never-run",
-    reason: "verified backups run after clean shutdown; the last three shutdown backups are retained",
+    reason: "verified backups run hourly while the dashboard is open and after clean shutdown; one in-session backup and the last three shutdown backups are retained",
   });
 
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: appVersion, development: frontend === "vite-dev" });
+  context.attachSlowOperations(debugEvents);
+  context.sessionBackups.start(ownedDiagnostics(database, debugEvents));
+  startupCleanups.push(() => context.sessionBackups.requestCancellation());
   const loopDelayMonitor = composeLoopDelayMonitor(input.loopDelay, { clock, debugEvents: ownedDiagnostics(database, debugEvents) });
   startupCleanups.push(() => loopDelayMonitor.stop());
   chatGptAccount.setDebugEvents(debugEvents);
