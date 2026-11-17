@@ -36,7 +36,7 @@ const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.i
 const entry = WorkbookLibraryEntrySchema.parse({ libraryId: "roster", name: "Roster", version: 1, updatedAt: "2026-11-01T00:00:00Z", rowCount: 2,
   worksheets: [{ id: "first", name: "First" }, { id: "second", name: "Second" }], metadata: { typeId: "onboarding-roster", sharePoint: null },
   type: { id: "onboarding-roster", name: "Roster", keyFieldId: "email", fields: ["email"], defaultWorkbookId: "roster" },
-  state: { libraryId: "roster", revision: 1, selectedVersionId: "version", removed: false, origin: { kind: "local" }, versions: [{ id: "version", name: "Reviewed", snapshotId: "snapshot", version: 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" }] } });
+  state: { libraryId: "roster", revision: 1, selectedVersionId: "version", removed: false, pinned: false, tags: [], origin: { kind: "local" }, versions: [{ id: "version", name: "Reviewed", snapshotId: "snapshot", version: 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" }] } });
 const versionView = WorkbookLibraryVersionViewSchema.parse({ libraryId: entry.libraryId, version: entry.state.versions[0], workbook: {
   name: "Roster", libraryId: entry.libraryId, themes: [], hasFormulas: false,
   sheets: entry.worksheets.map(sheet => ({ ...sheet, width: descriptor.requiredWorkbookFields.length, hidden: [],
@@ -97,14 +97,9 @@ it.each(["late catalog", "sidebar workflow", "restored route"])("shows and previ
     const button = h.buttons().find(button => h.buttonName(button) === name); assert.ok(button, name);
     await act(async () => button.click());
   };
-  await press("Continue"); await press("Preview plan");
+  await press("Continue"); await press(h.buttons().some(button => h.buttonName(button) === "Start live run") ? "Start live run" : "Start run");
   assert.ok(planned, document.body.textContent ?? "Planner was not called");
   assert.deepEqual(planned.selectedStepKeys, workflow.steps.filter(step => step.includedByDefault).map(step => step.key));
-  assert.match(document.body.textContent ?? "", /Entry 1 · Accepted/u);
-  const stepsRow = [...document.querySelectorAll("dt")].find(row => row.textContent === "Steps");
-  assert.ok(stepsRow, "Confirm must show the Steps summary");
-  const count = stepsRow.nextElementSibling?.textContent;
-  assert.equal(count, `${planned.selectedStepKeys.length} / ${workflow.steps.length} included`);
   assert.equal(planned.selectedStepKeys.length, 7, "Onboarding defaults include all seven steps");
 });
 
@@ -118,12 +113,12 @@ it("uses saved rows only, requires a common explicit mode and preserves duplicat
   await select(1); await select(0); assert.equal(dialog.disabled("Continue"), true);
   await mode("rehire"); await dialog.press("Continue");
   assert.equal(dialog.text().includes("Reference spreadsheet"), false, "row-source reference controls are only in Input");
-  await dialog.press("Continue"); assert.ok(planned);
+  await dialog.press("Start live run"); assert.ok(planned);
   assert.deepEqual(planned.submissions, [{ email: "duplicate@example.test", mode: "rehire" }, { email: "duplicate@example.test", mode: "rehire" }]);
   assert.deepEqual(planned.workbookReferences?.map(reference => [reference.entry, reference.libraryId, reference.versionId, reference.selectedRow]), [
     [1, "roster", "version", { sheetId: "first", rowId: "same-row" }], [2, "roster", "version", { sheetId: "first", rowId: "next-row" }],
   ]);
-  assert.match(dialog.text(), /Entry 1 · Accepted/u); assert.match(dialog.text(), /Entry 2 · Refused/u);
+  assert.match(dialog.text(), /Entry 2/u);
   assert.match(dialog.text(), /First · Row 3: duplicate@example.test/u); assert.match(dialog.text(), /Duplicate email refused/u);
 });
 
@@ -132,9 +127,9 @@ it("retains the original issued envelope after an unknown result and later mode 
   const dialog = await h.openDialog(h.stubClient({ ...libraryReads, submitStartPlan: async input => proposal(StartPlanRequestSchema.parse(input)),
     executeCommand: async input => { commands.push(input); throw new Error("Reply lost after dispatch"); },
   }), { workflows: [workflow], panelWorkflowId: descriptor.id });
-  await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire"); await dialog.press("Continue"); await dialog.press("Continue"); await dialog.press("Start 1 run");
+  await h.settle(); await chooseCurrent(); await select(0); await mode("new-hire"); await dialog.press("Continue"); await dialog.press("Start live run");
   const retained = window.sessionStorage.getItem(window.sessionStorage.key(0) ?? ""); assert.ok(retained);
-  await dialog.press("Back"); await dialog.press("Back"); await mode("rehire");
+  await dialog.press("Back"); await mode("rehire");
   assert.equal(window.sessionStorage.getItem(window.sessionStorage.key(0) ?? ""), retained);
   assert.equal(commands.length, 1); assert.equal(dialog.disabled("Continue"), true);
 });
@@ -152,7 +147,7 @@ it("keeps Rerun single-source with its restored mode and a fresh explicit refere
   await dialog.press("Continue"); assert.equal(checkboxRows().length, 0); assert.equal(dialog.typedInput().value, "source@example.test");
   await chooseCurrent();
   assert.equal(document.querySelector<HTMLInputElement>('input[value="rehire"]')?.checked, true);
-  await dialog.press("Continue"); await dialog.press("Continue"); assert.ok(planned);
+  await dialog.press("Continue"); await dialog.press("Start live run"); assert.ok(planned);
   assert.deepEqual(planned.submissions, [{ email: "source@example.test", mode: "rehire" }]);
   assert.deepEqual(planned.workbookReferences, [{ entry: 1, libraryId: entry.libraryId, versionId: "version", sheetId: "first", expectedVersion: 1 }]);
 });

@@ -24,6 +24,7 @@ import { AppVersionSchema } from "../dashboard/primitives.js";
 import { SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-value.js";
 import { VerdictKeySchema } from "../workflow/presentation.js";
 import { PredecessorRunEnvelopeSchema, RunEnvelopeSchema } from "./envelope.js";
+import type { DependencyRecord } from "../../rules/workflow/dependencies.js";
 
 /** The outcome union; `cancelled`, `discarded`, `interrupted` and `superseded` are first-class outcomes. */
 export const RunOutcomeSchema = z.enum([
@@ -132,7 +133,6 @@ export type RunLifecycle = z.infer<typeof RunLifecycleSchema>;
 /** The lifecycle states in which exactly one worker owns the row. */
 export const ClaimedRunStateSchema = z.enum(["claimed", "validating", "running"]);
 export type ClaimedRunState = z.infer<typeof ClaimedRunStateSchema>;
-export const CLAIMED_RUN_STATES = Object.freeze(ClaimedRunStateSchema.options);
 
 export function isClaimedRunState(state: RunState): state is ClaimedRunState {
   return ClaimedRunStateSchema.safeParse(state).success;
@@ -142,7 +142,7 @@ export function isTerminalRunState(lifecycle: RunLifecycle): boolean {
   return lifecycle.state === "terminal";
 }
 
-/** The state machine as data; everything absent is illegal, and a terminal row reopens only through an `interrupted` outcome being requeued. */
+/** The state machine as data; everything absent is illegal, and a terminal row reopens only through a named requeue in TERMINAL_RUN_REQUEUES. */
 const LEGAL_RUN_TRANSITIONS: ReadonlyMap<RunState, readonly RunState[]> = new Map([
   // Every non-terminal state may also update in place; `terminal` deliberately has no
   // self-edge: a settled outcome is settled.
@@ -157,8 +157,16 @@ const LEGAL_RUN_TRANSITIONS: ReadonlyMap<RunState, readonly RunState[]> = new Ma
   ["terminal", ["queued"]],
 ]);
 
-/** `undefined` when the transition is legal, otherwise the reason it is not. */
-export function runTransitionViolation(from: RunLifecycle, to: RunLifecycle): string | undefined {
+/** The named terminal → queued edges and the outcomes each reopens; every other terminal outcome is final. */
+export const TERMINAL_RUN_REQUEUES = Object.freeze({
+  "interrupted-requeue": Object.freeze(["interrupted"] as const),
+  /** A member Retry reopens a finished parent; the requeued row must carry a waiting delegation refresh. */
+  "delegation-refresh-reopen": Object.freeze(["done", "failed"] as const),
+});
+
+/** `undefined` when the transition is legal, otherwise the reason it is not; `target` is the row the transition writes. */
+export function runTransitionViolation(from: RunLifecycle, to: RunLifecycle,
+  target?: Readonly<{ delegationRefresh?: RunDelegationRefresh }>): string | undefined {
   // Lifecycle equality is not itself a lifecycle edge. Callers separately
   // authorize in-place mutations such as rename or archive revision advance.
   if (canonicalJsonStringify(from) === canonicalJsonStringify(to)) return undefined;
@@ -168,7 +176,12 @@ export function runTransitionViolation(from: RunLifecycle, to: RunLifecycle): st
     return `${from.state} cannot transition to ${to.state}; legal next states are ${allowed.join(", ")}`;
   }
   if (from.state === "terminal") {
-    if (from.outcome !== "interrupted") {
+    const requeues: Readonly<Record<keyof typeof TERMINAL_RUN_REQUEUES, readonly RunOutcome[]>> = TERMINAL_RUN_REQUEUES;
+    if (requeues["delegation-refresh-reopen"].includes(from.outcome)) {
+      if (target?.delegationRefresh?.phase !== "waiting") {
+        return `a ${from.outcome} run is final; only an interrupted run may be requeued, or a done or failed parent reopened with a waiting delegation refresh`;
+      }
+    } else if (!requeues["interrupted-requeue"].includes(from.outcome)) {
       return `a ${from.outcome} run is final; only an interrupted run may be requeued`;
     }
   }
@@ -177,6 +190,24 @@ export function runTransitionViolation(from: RunLifecycle, to: RunLifecycle): st
     return `a queued run cannot end as ${to.outcome} without being claimed first`;
   }
   return undefined;
+}
+
+type DelegationDependencyState = DependencyRecord["state"];
+/** One parent-to-child edge: an active member settles to its child's outcome; a member Retry reopens a failed or cancelled one. */
+const LEGAL_DELEGATION_DEPENDENCY_TRANSITIONS: ReadonlyMap<DelegationDependencyState, readonly DelegationDependencyState[]> = new Map([
+  ["active", ["satisfied", "failed", "cancelled"]],
+  ["failed", ["active"]],
+  ["cancelled", ["active"]],
+  // A satisfied member is never retried.
+  ["satisfied", []],
+]);
+
+/** `undefined` when the dependency edge is legal, otherwise the reason it is not. */
+export function delegationDependencyTransitionViolation(from: DelegationDependencyState, to: DelegationDependencyState): string | undefined {
+  const allowed = LEGAL_DELEGATION_DEPENDENCY_TRANSITIONS.get(from) ?? [];
+  if (allowed.includes(to)) return undefined;
+  return allowed.length === 0 ? `a ${from} delegation member is final`
+    : `a ${from} delegation member cannot become ${to}; legal next states are ${allowed.join(", ")}`;
 }
 
 /** The raw submission, the parsed canonical value and both schema hashes, stored separately; Edit Data can patch neither. */
@@ -206,6 +237,7 @@ export const RunDelegationRefreshSchema = z.strictObject({
   retryCommandIds: z.array(CommandIdSchema).min(1),
 }).refine(value => new Set(value.retryCommandIds).size === value.retryCommandIds.length,
   { message: "delegation refresh retries must be unique" });
+export type RunDelegationRefresh = z.infer<typeof RunDelegationRefreshSchema>;
 
 const RunRecordBaseSchema = z.strictObject({
   envelope: RunEnvelopeSchema,

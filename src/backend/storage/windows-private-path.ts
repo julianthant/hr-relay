@@ -95,9 +95,11 @@ function exact(value: number | bigint): bigint {
   return BigInt(value);
 }
 
+/** The one koffi release both native bridges accept; it matches the installed dependency. */
+export const NATIVE_BRIDGE_VERSION = "3.3.8";
 type NativeKoffi = Pick<typeof import("koffi"), "version" | "load" | "decode" | "array" | "address">;
 function isNativeKoffi(value: unknown): value is NativeKoffi {
-  return typeof value === "object" && value !== null && Reflect.get(value, "version") === "3.3.6"
+  return typeof value === "object" && value !== null && Reflect.get(value, "version") === NATIVE_BRIDGE_VERSION
     && ["load", "decode", "array", "address"].every(name => typeof Reflect.get(value, name) === "function");
 }
 

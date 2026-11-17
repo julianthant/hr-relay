@@ -1,3 +1,4 @@
+import { AUTHORITY_DERIVED_TABLES } from "../../../../src/models/config/authority.js";
 import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands/write-command-target.js";
 import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
@@ -57,7 +58,7 @@ import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-strea
 import { fixtureDescriptor } from "../../fixtures/descriptor-fixtures.js";
 import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 import { NO_INTAKE_PROJECTIONS,UNSTORED_CONFIG_IDENTITY,UNWIRED_INTAKE_PARSER,UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
-import { activityPersonPseudonymResultRecord,CURRENT_SEPARATIONS_RESULT,seedSeparationsRunAuthority,TERMINAL_SEPARATIONS_RUN } from "../../fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { separationsRunResultRecord,CURRENT_SEPARATIONS_RESULT,seedSeparationsRunAuthority,TERMINAL_SEPARATIONS_RUN } from "../../fixtures/integration/separations-run-fixtures.js";
 import { CONFIG_SNAPSHOT,UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID,sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
@@ -153,6 +154,42 @@ export const disposeHttpRouteHarness = async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 };
 
+/** A test arms this so one command's audit inserts throw inside the kernel's authority transactions. */
+export type CommandAuditInsertFault = {
+  commandId: string;
+  armed: boolean;
+  /** Command ids whose `commandAudits.insert` threw, in call order. */
+  failures: string[];
+};
+
+function auditInsertCommandId(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null || !("request" in input)) return undefined;
+  const request = input.request;
+  if (typeof request !== "object" || request === null || !("commandId" in request)) return undefined;
+  return typeof request.commandId === "string" ? request.commandId : undefined;
+}
+
+function installCommandAuditInsertFault(database: AuthorityDatabase, fault: CommandAuditInsertFault): void {
+  const real = database.authority;
+  const commandAudits: AuthorityRepositories["commandAudits"] = Object.freeze({
+    ...real.commandAudits,
+    insert: (input: unknown) => {
+      const commandId = auditInsertCommandId(input);
+      if (fault.armed === true && commandId === fault.commandId) {
+        fault.failures.push(commandId);
+        throw new Error("synthetic-child-audit-failure");
+      }
+      return real.commandAudits.insert(input);
+    },
+  });
+  // One bag for every authority transaction. Nested work compares that object
+  // by identity, and the frozen original cannot swap commandAudits in place.
+  const authority: AuthorityRepositories = Object.freeze({ ...real, commandAudits });
+  Object.defineProperty(database, "authority", {
+    value: authority, writable: true, configurable: true, enumerable: true,
+  });
+}
+
 export async function harness(options: {
   readonly workbookWorkflows?: readonly import("../../../../src/backend/workbooks/workbook-library-service.js").WorkbookReferenceWorkflow[];
   readonly profileFixture?: () => Promise<BoundProfileStorageFixture>;
@@ -179,6 +216,12 @@ export async function harness(options: {
   readonly commandJournal?: (
     real: DashboardAppDeps["commandJournal"],
   ) => DashboardAppDeps["commandJournal"];
+  /**
+   * While armed, the command authority handed to the kernel throws from
+   * `commandAudits.insert` for this command id. The throw runs inside that
+   * authority transaction. Every other repository method passes through.
+   */
+  readonly commandAuditInsertFault?: CommandAuditInsertFault;
 } = {}): Promise<Harness> {
   const profile = await (options.profileFixture ?? createBoundProfileFixture)();
   const root = profile.workspace, stateRoot = profile.stateRoot;
@@ -297,6 +340,7 @@ export async function harness(options: {
       return { record, activeConfig: activeSettings.config, activePreferences: activeSettings.preferences, runtimeStatus: { state: "restart-required" as const, active: activeSettingsIdentity, persisted } };
     },
   };
+  if (options.commandAuditInsertFault !== undefined) installCommandAuditInsertFault(database, options.commandAuditInsertFault);
   const kernel = createCommandKernel({
     lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: (run, publication) => {
       if (publication === undefined) throw new Error("command-created run lacks queue presentation");
@@ -476,10 +520,17 @@ export function settingsAuthoritySnapshot(h: Harness, commandId: string) {
   };
 }
 
-export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot">) {
+/** Assistant chat rows an accepted send writes; a fault check that spans a send names its exact history writes. */
+export const ASSISTANT_HISTORY_TABLES = Object.freeze(["assistant_conversations", "assistant_messages"]);
+export interface HistoryWrites { readonly tables: readonly string[]; readonly writes: number }
+const NO_HISTORY_WRITES: HistoryWrites = { tables: [], writes: 0 };
+
+export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot">, history: HistoryWrites = NO_HISTORY_WRITES) {
   const raw = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
   try {
-    const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all();
+    const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all()
+      // The change log and run references are derived from the rows compared here, and log the permitted timeline writes too.
+      .filter(row => typeof row.name !== "string" || (!history.tables.includes(row.name) && !AUTHORITY_DERIVED_TABLES.some(table => table === row.name)));
     const rows = tables.map(row => {
       if (typeof row.name !== "string" || !/^[a-z_]+$/u.test(row.name)) throw new Error("fixture table identity invalid");
       return { table: row.name, rows: raw.prepare(`SELECT * FROM ${row.name} ORDER BY rowid`).all() };
@@ -490,22 +541,38 @@ export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot"
   } finally { raw.close(); }
 }
 
+type TimelinePage = ReturnType<Harness["database"]["authority"]["timelineEvents"]["page"]>;
+/** The dashboard's loop-delay monitor writes a stall diagnostic on its own clock; a slow host can land one inside any checked span. */
+const isLoopStall = (record: TimelinePage[number]) => record.payload.kind === "debug" && record.payload.event.category === "boot"
+  && record.payload.event.area === "event-loop" && record.payload.event.reason === "event-loop-stall";
+
+/** Asserts a span wrote nothing to authority except loop-stall diagnostics; returns how many it wrote. */
+export function assertOnlyLoopStallWrites(database: Harness["database"], before: Readonly<{ generation: number; timeline: TimelinePage }>): number {
+  const timeline = database.authority.timelineEvents.page({ limit: 500 });
+  assert.deepEqual(timeline.slice(0, before.timeline.length), before.timeline);
+  const added = timeline.slice(before.timeline.length);
+  assert.ok(added.every(isLoopStall), "the span wrote only loop-stall diagnostics");
+  assert.equal(database.getMeta().authorityGeneration, before.generation + added.length);
+  return added.length;
+}
+
 /** Exact HTTP-fault timeline counts compose the dashboard with the event-loop monitor off. */
 export const exactHttpFaultLoopDelay = false;
 
-export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number) {
-  const after = faultAuthoritySnapshot(h);
+export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number,
+  history: HistoryWrites = NO_HISTORY_WRITES) {
+  const after = faultAuthoritySnapshot(h, history);
   assert.deepEqual(after.schema, before.schema, "HTTP refusal changes no table, index or trigger");
   assert.deepEqual(after.rows, before.rows, "HTTP refusal changes no HR, settings, command, audit or proof owner");
   assert.deepEqual(after.timeline.slice(0, before.timeline.length), before.timeline);
-  const added = after.timeline.slice(before.timeline.length);
-  assert.equal(added.length, expected);
-  for (const record of added) {
+  const added = after.timeline.slice(before.timeline.length), stalls = added.filter(isLoopStall).length;
+  assert.equal(added.length - stalls, expected);
+  for (const record of added.filter(record => !isLoopStall(record))) {
     assert.equal(record.payload.kind, "debug");
     if (record.payload.kind !== "debug") throw new Error("HTTP refusal wrote non-debug authority");
     assert.equal(record.payload.event.category, "http");
   }
-  assert.equal(after.generation, Number(before.generation) + expected);
+  assert.equal(after.generation, Number(before.generation) + expected + history.writes + stalls);
 }
 
 export function rawSettingsPatchFingerprint(patch: unknown): string {
@@ -583,7 +650,7 @@ export function seedCurrentSeparationsRun(
   run: RunRecord,
   canonicalSubject = "10800000",
 ): void {
-  const result = activityPersonPseudonymResultRecord(run, {
+  const result = separationsRunResultRecord(run, {
     ...CURRENT_SEPARATIONS_RESULT,
     approved: { ...CURRENT_SEPARATIONS_RESULT.approved, emplId: canonicalSubject },
   });

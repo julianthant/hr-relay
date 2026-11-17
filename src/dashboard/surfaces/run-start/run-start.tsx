@@ -1,5 +1,5 @@
 import { StartPlanRequestSchema, type StartPlanRequest } from "../../../models/dashboard/start-plan.js";
-import { useWorkbookRows, useWorkbookVersionSources, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT, type WorkbookRowChoice } from "./run-workbook-rows-model.js";
+import { useWorkbookRows, useWorkbookVersionSources, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT } from "./run-workbook-rows-model.js";
 import { spreadsheetField } from "../../../models/fields/workbook-fields.js";
 import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
@@ -9,95 +9,34 @@ import "./launch-presentation.css";
 import { mockWorkflow, type MockWorkflowId } from "../workflows/mocks/workflow-mock-catalog.js";
 import { statusMock } from "../settings/status-mock/status-mock-model.js";
 import { WorkflowMockRunForm } from "../workflows/mocks/workflow-mock-run.js";
-import { RunConfirmLayout, RunOptionsLayout } from "./run-launch-layout.js";
+import { RunOptionsLayout } from "./run-launch-layout.js";
 import type { MockDraft, MockRun } from "../workflows/mocks/workflow-mock-model.js";
 import { RunWorkflowPicker } from "./run-start-picker.js";
-import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
-import type { RerunWarningWire } from "../../../models/dashboard/rerun-warning.js";
-import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
-import { candidateText, defaultRerunSteps, partialRerunTypedInput, plainRerunInputText, rerunTypedSourceInput, initialRerunValueDrafts, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
-import { readLaunchRecovery, readLaunchVerificationPlan, retainLaunchFinal, dismissLaunchRecovery, type LaunchFinalCommand } from "./run-launch-recovery.js";
+
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { candidateText, rerunTypedSourceInput, rerunSubmission } from "./run-start-rerun-model.js";
+import { readLaunchRecovery, readLaunchVerificationPlan, retainLaunchFinal, dismissLaunchRecovery } from "./run-launch-recovery.js";
 import { createRunLaunchService, type RerunLaunchSource } from "./run-launch-model.js";
+import * as launchDraft from "./run-launch-draft-model.js";
+import type { LaunchDraft } from "./run-launch-draft-model.js";
+import { runDialogControls, useRunDialogMachine, visibleRunDialog, type AuthorityCheck, type LaunchGates, type LaunchRecovery, type RunDialogEvent, type RunDialogPrimaryInput, type RunDialogStep } from "./run-dialog-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Keyboard, Lock, Play } from "lucide-react";
 import { cn } from "../../lib/utils.js";
-import {
-  useToasts,
-  BareButton,
-  Badge,
-  Banner,
-  Button,
-  Checkbox,
-  Switch,
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  EmptyState,
-  Field,
-  Input,
-  KeyValueList,
-  MetaLine,
-  Table, THead, TBody, TR, TH, TD, Skeleton,
-  Well,
-  dsFg,
-  dsFocus,
-  dsIcon,
-  dsText,
-} from "../../ds/ui.js";
-import type { CommandResult, RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
-import { runStartRefusalToast, settleCommandResult } from "../../app/commands/command-result.js";
-import {
-  type InputRunSurface,
-  type TypedInputDraft,
-  type UploadRunSurface,
-} from "../../../models/workflow/ingress.js";
+import { useToasts, BareButton, Badge, Banner, Button, Checkbox, Switch, Dialog, DialogBody, DialogContent, DialogFooter, EmptyState, Field, Input, KeyValueList, MetaLine, Table, THead, TBody, TR, TH, TD, Skeleton, Well, dsFg, dsFocus, dsIcon, dsText } from "../../ds/ui.js";
+
+import { runStartRefusalToast } from "../../app/commands/command-result.js";
+import { type InputRunSurface, type UploadRunSurface } from "../../../models/workflow/ingress.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
-import type { StartPlanResponse } from "../../client/index.js";
+
 import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
-import {
-  TypedInput,
-  PlanRefusals,
-  RunFlagChips,
-  StepOmissionFactsForm,
-  RunReferenceRows,
-} from "./run-start-kit.js";
+import { TypedInput, PlanRefusals, StepOmissionFactsForm, RunReferenceRows } from "./run-start-kit.js";
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import { SYSTEM_LABEL, type BrowserSystemId } from "../shared/status/system-chip-model.js";
-import {
-  foldStepOmissionFacts,
-  forcedStepOmissions,
-  initialStepOmissionDraft,
-  inputRunFieldLabel,
-  omittedStepViews,
-  startRequestFingerprint,
-  toggleStepSelection,
-  previewRunInput,
-  launchWorkbookReferences,
-  typedInputDefaults,
-  typedInputText,
-  typedInputMode,
-  typedDateControls,
-  usDateText,
-  restoreTypedInput,
-  typedControlAvailable,
-  changeTypedInput,
-  type RunInputPreview,
-  type BrowserMode,
-  type StartPriority,
-  type StepOmissionDraft,
-  type StepOmissionFactDraft,
-  type StepOmissionFactsFold,
-  type StepOmissionFactValue,
-} from "./run-start-model.js";
-import {
-  adjacentRunStartStage,
-  reconcileRunStartStage,
-  runStartStages,
-} from "./run-start-timeline.js";
-import { versionTag } from "../shared/status/format.js";
+import { foldStepOmissionFacts, forcedStepOmissions, initialStepOmissionDraft, omittedStepViews, startRequestFingerprint, previewRunInput, launchWorkbookReferences, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
+import { adjacentRunStartStage, reconcileRunStartStage, runStartStages, type RunStartStage } from "./run-start-timeline.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import { WorkflowPdfInput } from "../workflows/mocks/workflow-pdf-input.js";
 import { previewPdfRun, usePdfRunInput } from "./run-start-pdfs.js";
@@ -182,28 +121,6 @@ function completeStepOmissions(
   return Object.freeze(entries);
 }
 
-/** One omitted step's typed facts, in the operator's own words */
-function stepOmissionFactsSummary(row: StepOmissionRow): string {
-  if (row.form.fields.length === 0) return "no facts to supply";
-  if (row.fold.state !== "facts") {
-              // Confirm is unreachable with an unparsed form: `advance` refuses it.
-          // fingerprint clears the plan on every keystroke, so reaching here means one of the two is broken.
-    throw new Error(`the Confirm summary reached step "${row.step}" with facts that do not parse`);
-  }
-  const facts = row.fold.facts;
-  return row.form.fields
-    .map((field) => `${field.label}: ${stepOmissionFactLabel(field.key, facts[field.key])}`)
-    .join(" \u00b7 ");
-}
-
-/** one parsed fact, in the words the operator reads — never the raw JSON shape */
-function stepOmissionFactLabel(field: string, value: StepOmissionFactValue | undefined): string {
-  if (value === undefined) throw new Error(`omission field "${field}" parsed to no value`);
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (Array.isArray(value)) return value.length === 0 ? "None" : value.join(", ");
-  return String(value);
-}
-
 /** Compare omission sets, not order; added or missing keys describe a different run and must refuse. */
 function sameStepKeys(left: readonly string[], right: readonly string[]): boolean {
   if (left.length !== right.length) return false;
@@ -215,7 +132,6 @@ function sameStepKeys(left: readonly string[], right: readonly string[]): boolea
 
 
 /** Restore intake focus to its launcher; it is the control that opened the workspace. */
-const NO_TYPED_DRAFT: TypedInputDraft = {};
 
 export function RunStartButton({ id, onOpen }: { id: string; onOpen: () => void }) {
   return (
@@ -275,7 +191,7 @@ export function RunStartDialog({
   panelWorkflowId: string;
   /** echoed from bootstrap; the server matches it against the request identity */
   actorId: string;
-  onApplied?: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
+  onApplied?: (workflowId: string, count?: number) => void;
   /** Hand intake the picker’s workflow, never the panel’s incidental scope. */
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
@@ -313,29 +229,23 @@ export function RunStartDialog({
     return binding.authority.nowIso;
   } }), [client, actorId]);
   const { toast } = useToasts();
-  const reviewedRequest = useRef<{ planId: string; request: StartPlanRequest } | null>(null);
-  const [expiredPlan, setExpiredPlan] = useState(false);
-  const finalRequest = useRef<LaunchFinalCommand | null>(null);
-  const sending = useRef<object | false>(false);
-  const finalDiagnostic = useRef<Readonly<{ command: LaunchFinalCommand; cause: unknown }> | null>(null);
-  const launchInstance = useRef(0);
-  const [recovery, setRecovery] = useState<LaunchFinalCommand | null>(null);
-  const [recoveryError, setRecoveryError] = useState<string | null>(null);
-  const [snapshot, setSnapshot] = useState<RerunValuesSnapshot | null>(null);
-  const [sourceError, setSourceError] = useState<string | null>(null);
-  const [valueDrafts, setValueDrafts] = useState<Readonly<Record<number, RerunValueDraft>>>({});
-  const [copiedOmissions, setCopiedOmissions] = useState<Readonly<Record<number, boolean>>>({});
-  const [warning, setWarning] = useState<RerunWarningWire | null>(null);
-  const [acknowledgment, setAcknowledgment] = useState<string | undefined>();
   const isRerun = rerunSource !== undefined;
 
   const [workflowId, setWorkflowId] = useViewState("launchServed", () => defaultWorkflowId(workflows, panelWorkflowId));
   const selectedWorkflowRef = useRef(previewSelection?.workflowId ?? workflowId);
   useEffect(() => { selectedWorkflowRef.current = previewSelection?.workflowId ?? workflowId; }, [previewSelection, workflowId]);
   const [currentStage, setCurrentStage] = useViewState("launchStage", "Input");
-  const [selectedWorkbookRows, setSelectedWorkbookRows] = useState<{ source: string; choices: readonly WorkbookRowChoice[] }>();
-  const [referenceSelections, setReferenceSelections] = useState<Record<string, { libraryId: string; versionId: string; sheetId: string }>>({});
-  const [referenceDrafts, setReferenceDrafts] = useState<Record<string, { libraryId: string; versionId?: string }>>({});
+  const [draft, setDraft] = useState(() => launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId))));
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const update = useCallback((change: (current: LaunchDraft) => LaunchDraft) => {
+    const next = change(draftRef.current);
+    draftRef.current = next;
+    setDraft(next);
+  }, []);
+  const { text, sourceInputUnchanged, stepDrafts, touchedFacts, factsAttempted, priority, dryRunRequested, browserMode,
+    referenceSelections, referenceDrafts, selectedWorkbookRows, valueDrafts, copiedOmissions } = draft;
+  const typedDraft = launchDraft.typedDraftOf(draft, workflowId);
   const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && workflow.workbookReference !== undefined), null, true);
   const selectedWorkflow = workflows.find(workflow => workflow.workflowId === workflowId);
   const workbookReference = selectedWorkflow?.workbookReference;
@@ -354,129 +264,9 @@ export function RunStartDialog({
   const versionSources = useWorkbookVersionSources(client, commandBinding?.authority.epoch ?? client,
     selectedLibrary?.libraryId, selectedVersion, selectedLibrary?.state.selectedVersionId,
     selectedWorkflow?.requiredWorkbookFields ?? [], referenceSources);
-  const initialWorkflow = workflows.find((entry) => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId));
   const [customizeSteps, setCustomizeSteps] = useViewState("launchCustomize", false);
-  const stepContext = useRef({ workflowId, workflows });
-  stepContext.current = { workflowId, workflows };
-  const workflowDefaultStepKeys = (forWorkflow: string, from = stepContext.current.workflows): string[] =>
-    from.find((entry) => entry.workflowId === forWorkflow)?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? [];
-  /** A selection belongs to the workflow that made it; the workflow shown falls back to its own defaults. */
-  const [stepSelection, setStepSelection] = useState<Readonly<{ workflowId: string; keys: readonly string[] }>>();
-  const customizedStepKeys = useMemo(() => stepSelection?.workflowId === workflowId ? [...stepSelection.keys] : workflowDefaultStepKeys(workflowId, workflows), [stepSelection, workflowId, workflows]);
-  const setSelectedStepKeys = useCallback((next: string[] | ((current: string[]) => string[]), forWorkflow: string = stepContext.current.workflowId) =>
-    setStepSelection((previous) => ({ workflowId: forWorkflow, keys: typeof next === "function"
-      ? next(previous?.workflowId === forWorkflow ? [...previous.keys] : workflowDefaultStepKeys(forWorkflow)) : next })), []);
-  /** Keep drafts across checkbox toggles, but clear them across workflow or customization exits. */
-  const [stepDrafts, setStepDrafts] = useState<Readonly<Record<string, StepOmissionDraft>>>({});
-  const [touchedFacts, setTouchedFacts] = useState<ReadonlySet<string>>(() => new Set());
-  const [factsAttempted, setFactsAttempted] = useState(false);
-  const [text, setText] = useState("");
-  /** A draft belongs to the workflow that made it; another workflow (e.g. restored view state) sees an empty one. */
-  const [typedState, setTypedState] = useState<Readonly<{ workflowId: string; draft: TypedInputDraft }>>(() => ({ workflowId: initialWorkflow?.workflowId ?? "", draft: initialWorkflow?.inputRun.state === "present" && initialWorkflow.inputRun.surface.typedInput ? typedInputDefaults(initialWorkflow.inputRun.surface.typedInput) : {} }));
-  const typedDraft = typedState.workflowId === workflowId ? typedState.draft : NO_TYPED_DRAFT;
-  const setTypedDraft = (forWorkflow: string, draft: TypedInputDraft) => setTypedState({ workflowId: forWorkflow, draft });
-  const [sourceInputUnchanged, setSourceInputUnchanged] = useState(false);
-  const [priority, setPriority] = useState<StartPriority>("interactive");
-  const [dryRunRequested, setDryRunRequested] = useState(false);
-  const [browserMode, setBrowserMode] = useState<BrowserMode>("headed");
+  const customizedStepKeys = useMemo(() => [...launchDraft.selectedStepKeys(draft, selectedWorkflow)], [draft.stepSelection, selectedWorkflow]);
   const captureBrowserScreenshots = true;
-  const [plan, setPlan] = useState<StartPlanResponse | null>(null);
-  const [result, setResult] = useState<Exclude<CommandResult, { state: "pending" }> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { sending.current = false; setBusy(false); }, [commandBinding?.scope]);
-
-  /** Changing workflow clears its parser input and bound plan; another workflow cannot reuse either. */
-  const selectWorkflow = useCallback((next: string, preserveStage = false) => {
-    resetPdfs();
-    setWorkflowId(next);
-    setText("");
-    const nextInput = workflows.find(entry => entry.workflowId === next)?.inputRun;
-    setTypedDraft(next, nextInput?.state === "present" && nextInput.surface.typedInput ? typedInputDefaults(nextInput.surface.typedInput) : {}); setSourceInputUnchanged(false);
-    setPlan(null); reviewedRequest.current = null; setExpiredPlan(false);
-    setResult(null);
-    setError(null);
-    if (!preserveStage) { setCurrentStage("Input"); setCustomizeSteps(false); }
-    // Reset start method with workflow; unavailable spreadsheet declarations must not leave a selected hidden tab.
-    setReferenceSelections({});
-    setSelectedWorkbookRows(undefined);
-    setStepSelection(undefined);
-    setStepDrafts({});
-    setTouchedFacts(new Set());
-    setFactsAttempted(false);
-    setPriority("interactive");
-    setDryRunRequested(false);
-    setBrowserMode("headed");
-  }, [workflows, setCurrentStage, setCustomizeSteps, setWorkflowId, resetPdfs]);
-
-  // Opening lands on the panel you are standing in, every time — including the
-  // second time, which is why this keys on `open` rather than running once.
-  useEffect(() => {
-    reviewedRequest.current = null; setExpiredPlan(false);
-    const instance = ++launchInstance.current;
-    if (!open) return;
-    resetPdfs();
-    if (!routed && !previewLaunch && selectedWorkflowRef.current !== defaultWorkflowId(workflows, panelWorkflowId)) selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId), true);
-    if (!routed) setLocalPreviewSelection(previewLaunch);
-    setPickerQuery("");
-    setSnapshot(null); setSourceError(null); setValueDrafts({}); setCopiedOmissions({}); setSourceInputUnchanged(false);
-    setWarning(null); setAcknowledgment(undefined); setBusy(false); sending.current = false;
-    try { setRecovery(readLaunchRecovery(window.sessionStorage, actorId)); setRecoveryError(null); }
-    catch (caught) { setRecoveryError(caught instanceof Error ? caught.message : String(caught)); }
-    if (rerunSource !== undefined) {
-      setTypedState({ workflowId: "", draft: {} }); setText("");
-      setCurrentStage("Steps"); setCustomizeSteps(true);
-      void launchService.openRerun({ runId: rerunSource.runId, expectedVersion: rerunSource.expectedVersion }).then((response) => {
-        if (launchInstance.current !== instance) return;
-        if (response.state === "refused") { setSourceError(`Rerun unavailable: ${response.code}`); return; }
-        if (response.snapshot.source.runId !== rerunSource.runId || response.snapshot.source.version !== rerunSource.expectedVersion) throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text);
-        const sourceWorkflow = workflows.find((entry) => entry.workflowId === response.snapshot.source.workflow);
-        if (sourceWorkflow === undefined) throw new Error("RERUN_WORKFLOW_UNAVAILABLE");
-        const selection = defaultRerunSteps(response.snapshot, sourceWorkflow);
-        setWorkflowId(sourceWorkflow.workflowId); setSelectedStepKeys(selection, sourceWorkflow.workflowId); setSnapshot(response.snapshot);
-        setValueDrafts(initialRerunValueDrafts(response.snapshot, sourceWorkflow));
-        if (rerunInputText !== undefined) {
-          if (sourceWorkflow.inputRun.state !== "present" || sourceWorkflow.inputRun.surface.typedInput !== undefined
-            || response.snapshot.source.outcome !== "failed" || response.snapshot.transactions.length !== 0) throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})).text);
-          setText(rerunInputText); setValueDrafts({}); setSelectedStepKeys(sourceWorkflow.steps.map(step => step.key), sourceWorkflow.workflowId);
-          setCurrentStage("Values");
-        }
-        if (sourceWorkflow.inputRun.state === "present" && sourceWorkflow.inputRun.surface.typedInput !== undefined) {
-          if (response.snapshot.sourceInput.state === "unavailable") throw new Error(formatErrorCatalogFailure(createErrorCatalogFailure("RERUN_SOURCE_INPUT_PROTECTED", {})).text);
-          const declaration = sourceWorkflow.inputRun.surface.typedInput;
-          const input = response.snapshot.sourceInput.value;
-          const partial = response.snapshot.sourceInput.state === "partial" ? partialRerunTypedInput(declaration, response.snapshot.sourceInput) : undefined;
-          const restored = partial?.draft ?? restoreTypedInput(declaration, input);
-          setTypedDraft(sourceWorkflow.workflowId, restored);
-          setText(partial?.text ?? typedInputText(declaration, input));
-          setSourceInputUnchanged(partial === undefined || response.snapshot.sourceInput.state === "partial" && response.snapshot.sourceInput.identityCopied);
-          setSelectedStepKeys(sourceWorkflow.steps.filter(step => step.control.state !== "selectable"
-            || restored[step.control.inputField] === true).map(step => step.key), sourceWorkflow.workflowId);
-          setValueDrafts({});
-        } else if (sourceWorkflow.inputRun.state === "present" && rerunInputText === undefined) {
-          setText(plainRerunInputText(sourceWorkflow.inputRun.surface, response.snapshot.sourceInput));
-        }
-      }).catch((caught: unknown) => {
-        if (launchInstance.current === instance) { setSnapshot(null); setSourceError(caught instanceof Error ? caught.message : String(caught)); }
-      });
-    }
-    return () => { launchInstance.current = instance + 1; };
-  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, actorId, launchService, previewLaunch, routed, setCurrentStage, setCustomizeSteps, setWorkflowId, setSelectedStepKeys, resetPdfs]);
-
-  const pickWorkflow = useCallback((id: string) => {
-    if (selectedWorkflowRef.current === id || sending.current) return;
-    const entry = catalog.find(flow => flow.id === id);
-    if (!entry || entry.launch.state === "unavailable") return;
-    if (entry.launch.state === "preview" && onSubmitPreview === undefined) return;
-    selectedWorkflowRef.current = id;
-    ++launchInstance.current;
-    setBusy(false);
-    if (entry.preview && (statusMock() !== undefined && entry.preview.runnable || !entry.served)) setPreviewSelection({ workflowId: entry.preview.id });
-    else if (entry.served) {
-      setPreviewSelection(undefined);
-      selectWorkflow(id);
-    }
-  }, [catalog, selectWorkflow, onSubmitPreview, setPreviewSelection]);
 
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
 
@@ -518,7 +308,7 @@ export function RunStartDialog({
     ? "Fill and check every step without submitting or saving."
     : "Fill and check every step without submitting.";
   const dryRun = supportsDryRun && dryRunRequested;
-  const launchStages = useMemo(() => runStartStages(customizeSteps, "typed", isRerun), [customizeSteps, isRerun]);
+  const launchStages = useMemo(() => runStartStages(customizeSteps, isRerun), [customizeSteps, isRerun]);
 
   useEffect(() => {
     if (previewOwnsStages) return;
@@ -550,15 +340,122 @@ export function RunStartDialog({
     selectedStepKeys,
     stepOmissionDrafts: omissionRows.map(({ step, draft }) => ({ step, draft })),
   })]);
-  /** Accept async settlements only for their captured request identity; clear stale results alongside invalidation. */
-  const requestFingerprintRef = useRef(requestFingerprint);
+  const [requestProblem, setRequestProblem] = useState<string | null>(null);
+  const suppressStage = useRef(false);
+  const startRef = useRef<() => void>(() => undefined);
+  const workflowsRef = useRef(workflows);
+  workflowsRef.current = workflows;
+  const authority = (): AuthorityCheck => {
+    const binding = commandBindingRef.current;
+    return binding !== undefined && binding.scope.client === client && binding.scope.actorId === actorId ? { state: "ok" } : { state: "replaced" };
+  };
+  const { state: machine, send } = useRunDialogMachine({
+    stage: currentStage,
+    setStage: next => { if (!suppressStage.current) setCurrentStage(next); },
+    fingerprint: requestFingerprint,
+    effects: {
+      loadSource: async source => {
+        const response = await launchService.openRerun({ runId: source.runId, expectedVersion: source.expectedVersion });
+        if (response.state === "refused") throw new Error(`Rerun unavailable: ${response.code}`);
+        return response.snapshot;
+      },
+      restoreSource: restored => {
+        const sourceWorkflow = workflowsRef.current.find(entry => entry.workflowId === restored.source.workflow);
+        if (sourceWorkflow === undefined) throw new Error("RERUN_WORKFLOW_UNAVAILABLE");
+        const next = launchDraft.restoreRerunDraft(draftRef.current, restored, sourceWorkflow, rerunInputText);
+        setWorkflowId(sourceWorkflow.workflowId);
+        draftRef.current = next;
+        setDraft(next);
+      },
+      requestPlan: planRequest => launchService.preview(planRequest),
+      checkWarnings: () => {
+        if (snapshot === null) return Promise.reject(new Error("RERUN_SOURCE_UNAVAILABLE"));
+        return launchService.previewWarnings({ workflowId, source: { runId: snapshot.source.runId,
+          expectedVersion: snapshot.source.version, intent: "rerun", selectedStepKeys } });
+      },
+      retain: (command, planned) => {
+        retainLaunchFinal(window.sessionStorage, command, planned);
+        return readLaunchVerificationPlan(window.sessionStorage, command.requestedBy);
+      },
+      submit: (command, verification) => {
+        const binding = commandBindingRef.current;
+        if (binding === undefined) return Promise.reject(new Error("RUN_LAUNCH_AUTHORITY_UNAVAILABLE"));
+        return launchService.submit(command, binding, verification);
+      },
+      dismissRecovery: command => dismissLaunchRecovery(window.sessionStorage, command),
+      feedback: outcome => commandBindingRef.current?.feedback(outcome),
+      applied: (applied, count) => onApplied?.(applied, count),
+      closeDialog: () => onOpenChange(false),
+      refusalToast: () => toast(runStartRefusalToast(formatErrorCatalogFailure(createErrorCatalogFailure("RUN_START_READINESS_UNAVAILABLE", {})).text)),
+      autoStart: () => startRef.current(),
+    },
+  });
+  const view = visibleRunDialog(machine, requestFingerprint);
+  const plan = view.shown?.plan ?? null;
+  const expiredPlan = view.shown?.expired ?? false;
+  const recovery = view.recovery.state === "retained" ? view.recovery.command : null;
+  const recoveryError = view.recovery.state === "unreadable" ? view.recovery.message : null;
+  const readback = view.recovery.state === "retained" && view.recovery.answer !== undefined;
+  const load = view.source.kind === "rerun" ? view.source.load : undefined;
+  const snapshot = load?.state === "ready" ? load.snapshot : null;
+  const sourceError = load?.state === "failed" ? load.message : null;
+  const warning = load?.state === "ready" ? load.warning ?? null : null;
+  const acknowledgment = load?.state === "ready" ? load.acknowledgment : undefined;
+  const busy = view.activity.kind !== "idle";
+  const error = requestProblem ?? view.problem ?? null;
+  const sending = [view.activity, ...view.detached].some(request => request.kind === "submitting" || request.kind === "replanning");
+  useEffect(() => { send({ type: "draft-changed" }); setRequestProblem(null); }, [requestFingerprint, send]);
+  useEffect(() => { send({ type: "binding-changed" }); }, [commandBinding?.scope, send]);
+
+  /** Changing workflow clears its parser input and bound plan; another workflow cannot reuse either. */
+  const selectWorkflow = useCallback((next: string, preserveStage = false) => {
+    resetPdfs();
+    setWorkflowId(next);
+    update(current => launchDraft.changeWorkflow(current, workflows.find(entry => entry.workflowId === next)));
+    if (!preserveStage) { setCurrentStage("Input"); setCustomizeSteps(false); }
+  }, [workflows, update, setCurrentStage, setCustomizeSteps, setWorkflowId, resetPdfs]);
+
+  // Opening lands on the panel you are standing in, every time — including the
+  // second time, which is why this keys on `open` rather than running once.
   useEffect(() => {
-    requestFingerprintRef.current = requestFingerprint;
-    setPlan(null); reviewedRequest.current = null; setExpiredPlan(false);
-    setResult(null);
-    setError(null);
-    if (!previewOwnsStages) setCurrentStage((current) => current === "Confirm" ? (isRerun ? "Values" : "Input") : current);
-  }, [requestFingerprint, isRerun, setCurrentStage, previewOwnsStages]);
+    if (!open) return;
+    resetPdfs();
+    if (!routed && !previewLaunch && selectedWorkflowRef.current !== defaultWorkflowId(workflows, panelWorkflowId)) selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId), true);
+    if (!routed) setLocalPreviewSelection(previewLaunch);
+    setPickerQuery("");
+    update(current => ({ ...current, valueDrafts: {}, copiedOmissions: {}, sourceInputUnchanged: false,
+      ...(rerunSource === undefined ? {} : { typed: { workflowId: "", draft: {} }, text: "" }) }));
+    let recoveryState: LaunchRecovery;
+    try {
+      const retained = readLaunchRecovery(window.sessionStorage, actorId);
+      recoveryState = retained === null ? { state: "none" } : { state: "retained", command: retained };
+    } catch (caught) { recoveryState = { state: "unreadable", message: caught instanceof Error ? caught.message : String(caught) }; }
+    if (rerunSource !== undefined) setCustomizeSteps(true);
+    // A start keeps the routed stage; only a rerun opens on its own first stage.
+    suppressStage.current = rerunSource === undefined;
+    try { send({ type: "open", recovery: recoveryState, ...(rerunSource === undefined ? {} : { rerun: rerunSource }), landOnValues: rerunInputText !== undefined }); }
+    finally { suppressStage.current = false; }
+  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, actorId, launchService, previewLaunch, routed, setCustomizeSteps, resetPdfs, update, send]);
+
+  const pickWorkflow = useCallback((id: string) => {
+    if (selectedWorkflowRef.current === id || sending) return;
+    const entry = catalog.find(flow => flow.id === id);
+    if (!entry || entry.launch.state === "unavailable") return;
+    if (entry.launch.state === "preview" && onSubmitPreview === undefined) return;
+    selectedWorkflowRef.current = id;
+    if (entry.preview && (statusMock() !== undefined && entry.preview.runnable || !entry.served)) setPreviewSelection({ workflowId: entry.preview.id });
+    else if (entry.served) {
+      send({ type: "pick-workflow" });
+      setPreviewSelection(undefined);
+      selectWorkflow(id);
+    }
+  }, [catalog, selectWorkflow, onSubmitPreview, setPreviewSelection, send, sending]);
+
+  const closeAndReset = useCallback((next: boolean) => {
+    onOpenChange(next);
+    if (!next) send({ type: "close" });
+  }, [onOpenChange, send]);
+
 
   const typedInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -578,151 +475,34 @@ export function RunStartDialog({
 
 
 
-  const submitPlan = useCallback(async (): Promise<void> => {
-    if (preview.problem !== null || (!isRerun && preview.entries.length === 0)) return;
-    if (isRerun && (snapshot === null || preview.entries.length > 1)) return;
-    if (declaredInput && preview.submissions.length !== 1 && isRerun) return;
-    if (requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || library.catalogError || library.compatibility === undefined || versionSources.state !== 'ready')) { setError('Reference data is unavailable. Refresh it before planning.'); return; }
-    const dispatchedFor = requestFingerprint;
-    const instance = launchInstance.current;
-    setBusy(true);
-    setError(null);
-    try {
-      const values = snapshot === null ? null : pdfSurface === undefined ? rerunSubmission(snapshot, preview.submissions[0] ?? {}, valueDrafts)
-        : { submission: preview.submissions[0], copiedFrom: [] };
-      const copiedFrom = [...(values?.copiedFrom ?? []), ...Object.entries(copiedOmissions).flatMap(([index, copied]) => {
-        const candidate = snapshot?.values[Number(index)];
-        return copied && candidate?.state === "available" && candidate.targetStepKey !== undefined
-          && !selectedStepKeys.includes(candidate.targetStepKey)
-          ? [{ nodeId: candidate.nodeId, fieldPath: candidate.fieldPath, targetFieldPath: candidate.targetFieldPath, targetStepKey: candidate.targetStepKey }] : [];
-      })];
-      const request = StartPlanRequestSchema.parse({
-        workflowId,
-        submissions: values === null ? preview.submissions : [values.submission],
-        ...(snapshot === null ? {} : { rerunSource: { runId: snapshot.source.runId, expectedVersion: snapshot.source.version,
-          intent: "rerun", selectedStepKeys, copiedFrom }, ...(acknowledgment === undefined ? {} : { warningAcknowledgment: acknowledgment }) }),
-        dryRun,
-        browserMode,
-        captureBrowserScreenshots,
-        priority,
-        ...(requiredTypes.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, selectedReferences, values === null ? preview.submissions.length : 1,
-          versionSources.sources, (workbookReference?.writableFields.length ?? 0) > 0,
-          rowCapability === undefined ? undefined : { typeId: rowCapability.typeId, rows: selectedWorkbookRows?.choices ?? [] }) } : {}),
-        selectedStepKeys,
-        // Send omission facts only after every declared form parses.
-        ...(customizeSteps && stepOmissions !== null && stepOmissions.length > 0 ? { stepOmissions } : {}),
-      });
-      const next = await launchService.preview(request);
-      // Ignore superseded plan responses; their tokens describe text no longer in the form.
-      if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
-      reviewedRequest.current = { planId: next.startPlanId, request };
-      setPlan(next);
-      setResult(null);
-      if (next.rerun !== undefined && next.rerun.warnings.length > 0 && next.rerun.acknowledgment !== next.rerun.warningDigest) {
-        setWarning({ workflowId: next.workflowId, rerun: next.rerun }); setCurrentStage("Warning");
-      } else setCurrentStage("Confirm");
-    } catch (caught) {
-      // Render refusals only against their current request; superseded errors would condemn different input.
-      if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      if (launchInstance.current === instance) setBusy(false);
-    }
-  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput, requiredTypes, library.catalog, library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility, versionSources, workbookReference, selectedReferences, rowCapability, selectedWorkbookRows, pdfSurface]);
+  /** The plan request for the draft on screen; the gates keep it from being asked for a draft that cannot plan. */
+  const buildPlanRequest = (): StartPlanRequest => {
+    const values = snapshot === null ? null : pdfSurface === undefined ? rerunSubmission(snapshot, preview.submissions[0] ?? {}, valueDrafts)
+      : { submission: preview.submissions[0], copiedFrom: [] };
+    const copiedFrom = [...(values?.copiedFrom ?? []), ...Object.entries(copiedOmissions).flatMap(([index, copied]) => {
+      const candidate = snapshot?.values[Number(index)];
+      return copied && candidate?.state === "available" && candidate.targetStepKey !== undefined
+        && !selectedStepKeys.includes(candidate.targetStepKey)
+        ? [{ nodeId: candidate.nodeId, fieldPath: candidate.fieldPath, targetFieldPath: candidate.targetFieldPath, targetStepKey: candidate.targetStepKey }] : [];
+    })];
+    return StartPlanRequestSchema.parse({
+      workflowId,
+      submissions: values === null ? preview.submissions : [values.submission],
+      ...(snapshot === null ? {} : { rerunSource: { runId: snapshot.source.runId, expectedVersion: snapshot.source.version,
+        intent: "rerun", selectedStepKeys, copiedFrom }, ...(acknowledgment === undefined ? {} : { warningAcknowledgment: acknowledgment }) }),
+      dryRun,
+      browserMode,
+      captureBrowserScreenshots,
+      priority,
+      ...(requiredTypes.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, selectedReferences, values === null ? preview.submissions.length : 1,
+        versionSources.sources, (workbookReference?.writableFields.length ?? 0) > 0,
+        rowCapability === undefined ? undefined : { typeId: rowCapability.typeId, rows: selectedWorkbookRows?.choices ?? [] }) } : {}),
+      selectedStepKeys,
+      // Send omission facts only after every declared form parses.
+      ...(customizeSteps && stepOmissions !== null && stepOmissions.length > 0 ? { stepOmissions } : {}),
+    });
+  };
 
-  const closeAndReset = useCallback((next: boolean) => {
-    onOpenChange(next);
-    if (!next) {
-      ++launchInstance.current;
-      if (result !== null && recovery !== null) {
-        dismissLaunchRecovery(window.sessionStorage, recovery); setRecovery(null); finalRequest.current = null;
-      }
-      // Closing invalidates single-use plans; typed drafts may survive, consumed authority may not.
-      setPlan(null); reviewedRequest.current = null; setExpiredPlan(false);
-      setResult(null);
-      setError(null);
-      setCurrentStage("Input");
-    }
-  }, [onOpenChange, result, recovery, setCurrentStage]);
-
-
-  const sendFinal = useCallback(async (command: LaunchFinalCommand, dispatchedFor: string, expiryRequest?: StartPlanRequest): Promise<void> => {
-    if (sending.current) return;
-    const binding = commandBindingRef.current;
-    if (binding === undefined || binding.scope.client !== client || binding.scope.actorId !== actorId || command.requestedBy !== binding.scope.actorId) { setError(formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text); return; }
-    const instance = launchInstance.current;
-    const attempt = {};
-    sending.current = attempt; setBusy(true); setError(null);
-    try {
-      retainLaunchFinal(window.sessionStorage, command, plan?.startPlanId === command.target.startPlanId ? plan : undefined);
-      const verificationPlan = readLaunchVerificationPlan(window.sessionStorage, command.requestedBy);
-      finalRequest.current = command; setRecovery(command);
-      const outcome = await launchService.submit(command, binding, verificationPlan);
-      if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance || commandBindingRef.current?.scope !== binding.scope) return;
-      const reply = outcome.reply;
-      if (outcome.kind === "refused" && reply !== undefined && "state" in reply && reply.state === "rejected"
-        && reply.code === "RUN_START_PLAN_EXPIRED" && expiryRequest !== undefined) {
-        dismissLaunchRecovery(window.sessionStorage, command);
-        finalRequest.current = null; setRecovery(null); setPlan(null); reviewedRequest.current = null; setExpiredPlan(false); setResult(null);
-        try {
-          const next = await launchService.preview(expiryRequest);
-          if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance || commandBindingRef.current?.scope !== binding.scope) return;
-          reviewedRequest.current = { planId: next.startPlanId, request: expiryRequest };
-          setPlan(next); setExpiredPlan(true);
-          if (next.rerun !== undefined && next.rerun.warnings.length > 0 && next.rerun.acknowledgment !== next.rerun.warningDigest) {
-            setWarning({ workflowId: next.workflowId, rerun: next.rerun }); setCurrentStage("Warning");
-          } else setCurrentStage("Confirm");
-        } catch (caught) {
-          finalDiagnostic.current = { command, cause: caught };
-          if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance || commandBindingRef.current?.scope !== binding.scope) return;
-          closeAndReset(false);
-          toast(runStartRefusalToast(formatErrorCatalogFailure(createErrorCatalogFailure("RUN_START_READINESS_UNAVAILABLE", {})).text));
-        }
-        return;
-      }
-      binding.feedback(outcome);
-      if (outcome.kind === "confirmed") {
-        dismissLaunchRecovery(window.sessionStorage, command);
-        finalRequest.current = null; setRecovery(null); setPlan(null); reviewedRequest.current = null; setExpiredPlan(false); setResult(null); setBusy(false);
-        const workerStartup = reply !== undefined && "state" in reply && (reply.state === "applied" || reply.state === "already-applied")
-          ? reply.workerStartup : undefined;
-        onApplied?.(command.target.workflowId, plan?.planned.length, workerStartup);
-        onOpenChange(false);
-        ++launchInstance.current;
-      } else if ((outcome.kind === "refused" || outcome.kind === "conflict") && reply !== undefined && "state" in reply
-        && (reply.state === "rejected" || reply.state === "conflict")) {
-        dismissLaunchRecovery(window.sessionStorage, command);
-        finalRequest.current = null; setRecovery(null);
-        closeAndReset(false);
-      } else {
-        setError(outcome.feedback.text);
-        if (outcome.kind !== "uncertain" && reply !== undefined && "state" in reply
-          && (reply.state === "rejected" || reply.state === "conflict" || reply.state === "confirmation-required")) {
-          setResult({ ...reply, message: outcome.feedback.text });
-        }
-      }
-    } catch (caught) {
-      finalDiagnostic.current = { command, cause: caught };
-      if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance || commandBindingRef.current?.scope !== binding.scope) return;
-      setError(formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_DISPATCH_FAILED", {})).text);
-    } finally {
-      if (sending.current === attempt) sending.current = false;
-      if (launchInstance.current === instance && commandBindingRef.current?.scope === binding.scope) setBusy(false);
-    }
-  }, [launchService, onApplied, onOpenChange, plan, client, actorId, closeAndReset, setCurrentStage, toast]);
-  const confirmStart = useCallback(async (): Promise<void> => {
-    if (plan === null || sending.current || recoveryError !== null) return;
-    if (commandBinding === undefined || commandBinding.scope.client !== client || commandBinding.scope.actorId !== actorId) { setError(formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_AUTHORITY_REPLACED", {})).text); return; }
-    const expiryRequest = finalRequest.current === null && recovery === null && reviewedRequest.current?.planId === plan.startPlanId
-      ? reviewedRequest.current.request : undefined;
-    if (finalRequest.current === null || finalRequest.current.target.startPlanId !== plan.startPlanId) {
-      finalRequest.current = launchService.prepareFinal(plan);
-    }
-    await sendFinal(finalRequest.current, requestFingerprint, expiryRequest);
-  }, [client, actorId, commandBinding, launchService, plan, requestFingerprint, recoveryError, recovery, sendFinal]);
-
-  // already-applied confirms the same enqueue; its plan token is single-use.
-  const applied = result !== null && settleCommandResult(result).kind === "applied";
   const blockedReason = pdfSurface !== undefined ? pdfInput.loading ? "Reading PDFs…" : pdfInput.error !== null ? "Fix the refused PDF selection first." : preview.entries.length === 0 ? "Choose at least one PDF." : null : inputRun.state !== "present"
     ? inputRun.reason
     : preview.problem !== null
@@ -761,91 +541,30 @@ export function RunStartDialog({
       Object.entries(row.fold.errors).filter(([field]) => touchedFacts.has(`${row.step}:${field}`)),
     );
   };
-  const previousStage = adjacentRunStartStage(launchStages, currentStage, "previous");
   const nextStage = adjacentRunStartStage(launchStages, currentStage, "next");
-  const inputSummary = preview.entries.map((entry) => entry.sourceText).join(", ");
+  const onLastStage = nextStage === null && currentStage !== "Warning";
 
-
-  const changeCustomizeSteps = useCallback((next: boolean) => {
+  const changeCustomizeSteps = (next: boolean) => {
     setCustomizeSteps(next);
-    setSelectedStepKeys(defaultStepKeys);
-    if (!next) {
-      // Leaving customization clears facts so unchosen assertions cannot survive invisibly.
-      setStepDrafts({});
-      setTouchedFacts(new Set());
-      setFactsAttempted(false);
-    } else if (currentStage === "Confirm") {
-      setCurrentStage("Steps");
-    }
-  }, [currentStage, defaultStepKeys, setCurrentStage, setCustomizeSteps, setSelectedStepKeys]);
+    update(current => ({ ...(next ? current : launchDraft.leaveCustomization(current, workflow)),
+      stepSelection: { workflowId, keys: defaultStepKeys } }));
+  };
 
   /** Use the shared cascade; locked omissions cannot be changed by another checkbox path. */
-  const toggleStep = useCallback((key: string, next: boolean) => {
-    setSelectedStepKeys((current) => [...toggleStepSelection(workflow?.steps ?? EMPTY_STEPS, current, key, next)]);
-  }, [workflow, setSelectedStepKeys]);
+  const toggleStep = (key: string, next: boolean) => {
+    if (workflow !== undefined) update(current => launchDraft.toggleStep(current, workflow, key, next));
+  };
 
-  const changeFact = useCallback(
-    (step: string, form: StepOmissionForm, field: string, next: StepOmissionFactDraft) => {
-      setCopiedOmissions((current) => Object.fromEntries(Object.entries(current).filter(([index]) => {
-        const candidate = snapshot?.values[Number(index)];
-        return candidate?.targetStepKey !== step || candidate.targetFieldPath !== field;
-      })));
-      setStepDrafts((current) => ({
-        ...current,
-        [step]: { ...(current[step] ?? initialStepOmissionDraft(form)), [field]: next },
-      }));
-    },
-    [snapshot],
-  );
-
-  const touchFact = useCallback((step: string, field: string) => {
-    const id = `${step}:${field}`;
-    setTouchedFacts((current) => current.has(id) ? current : new Set([...current, id]));
-  }, []);
-
-  const advance = useCallback(async (): Promise<void> => {
-    if (nextStage === null) return;
-    if (isRerun && currentStage === "Values" && rerunInputBlocked) return;
-    if (isRerun && currentStage === "Steps") {
-      if (snapshot === null) return;
-      const instance = launchInstance.current;
-      const dispatchedFor = requestFingerprint;
-      setBusy(true); setError(null);
-      try {
-        const next = await launchService.previewWarnings({ workflowId, source: { runId: snapshot.source.runId,
-          expectedVersion: snapshot.source.version, intent: "rerun", selectedStepKeys } });
-        if (launchInstance.current !== instance || requestFingerprintRef.current !== dispatchedFor) return;
-        setWarning(next);
-        if (next.rerun.warnings.length > 0 && acknowledgment !== next.rerun.warningDigest) setCurrentStage("Warning");
-        else { setAcknowledgment(next.rerun.warningDigest); setCurrentStage("Values"); }
-      } catch (caught) {
-        if (launchInstance.current === instance && requestFingerprintRef.current === dispatchedFor) setError(caught instanceof Error ? caught.message : String(caught));
-      } finally { if (launchInstance.current === instance) setBusy(false); }
-      return;
-    }
-    if ((currentStage === "Steps" || (isRerun && currentStage === "Values")) && stepsBlockedReason !== null) {
-      // Attempted advancement exposes every invalid field so incomplete answers are actionable.
-      setFactsAttempted(true);
-      return;
-    }
-    if (nextStage === "Confirm") {
-      if (plan === null) await submitPlan();
-      else setCurrentStage("Confirm");
-      return;
-    }
-    setCurrentStage(nextStage);
-  }, [currentStage, nextStage, plan, stepsBlockedReason, submitPlan, isRerun, snapshot, requestFingerprint, launchService, workflowId, selectedStepKeys, acknowledgment, setCurrentStage, rerunInputBlocked]);
+  const changeFact = (step: string, form: StepOmissionForm, field: string, next: StepOmissionFactDraft) =>
+    update(current => launchDraft.changeFact(current, snapshot, step, form, field, next));
+  const touchFact = (step: string, field: string) => update(current => launchDraft.touchFact(current, step, field));
 
   const copyOmittedValue = (step: string, index: number) => {
-    const candidate = snapshot?.values[index];
     const row = omissionRows.find(entry => entry.step === step);
-    if (!row || !candidate || candidate.state !== "available") throw new Error("RERUN_OMISSION_FIELD_UNAVAILABLE");
-    const field = row.form.fields.find(entry => entry.key === candidate.targetFieldPath);
-    if (!field) throw new Error("RERUN_OMISSION_FIELD_UNAVAILABLE");
-    const draft = typeof candidate.value === "boolean" ? candidate.value : Array.isArray(candidate.value) ? candidate.value.map((value: unknown) => candidateText(JsonValueSchema.parse(value))).join("\n") : candidateText(candidate.value);
-    setStepDrafts(current => ({ ...current, [step]: { ...(current[step] ?? initialStepOmissionDraft(row.form)), [field.key]: draft } }));
-    setCopiedOmissions(current => ({ ...current, [index]: true }));
+    if (row === undefined) throw new Error("RERUN_OMISSION_FIELD_UNAVAILABLE");
+    update(current => launchDraft.copyOmittedValue(current, snapshot, index, step, row.form));
   };
+
 
   const picker = <RunWorkflowPicker catalog={catalog} value={previewSelection?.workflowId ?? workflowId} onChange={pickWorkflow} query={pickerQuery} onQuery={setPickerQuery} />;
   const selectedLaunch = catalog.find(entry => entry.id === (previewSelection?.workflowId ?? workflowId))?.launch;
@@ -858,28 +577,53 @@ export function RunStartDialog({
     const requiredFields = selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [];
     const sheets = library.catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed).map(entry => ({ libraryId: entry.libraryId, name: entry.name,
       versions: entry.state.versions, currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
-    const clearSelection = () => setReferenceSelections(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== typeId)));
     return <RunReferenceRows key={typeId} requiredLabel={requiredFields.length > 1 ? `${requiredFields.slice(0, -1).join(', ')} and ${requiredFields[requiredFields.length - 1]}` : requiredFields.join('')}
       sheets={sheets} chosenLibraryId={draft?.libraryId} chosenVersionId={draft?.versionId} chosenSheetId={selectedReferences[typeId]?.sheetId ?? ''}
       worksheets={sheetOptions.map(source => ({ sheetId: source.sheetId, sheetName: source.sheetName }))} worksheetsState={versionSources.state} worksheetsError={versionSources.error}
       busy={library.catalogRefreshing || library.compatibility === undefined} catalogError={library.catalogError}
-      onPick={(libraryId, versionId) => { setReferenceDrafts(current => ({ ...current, [typeId]: { libraryId, versionId } })); clearSelection(); }}
-      onVersion={versionId => { if (draft !== undefined) setReferenceDrafts(current => ({ ...current, [typeId]: { libraryId: draft.libraryId, versionId } })); clearSelection(); }}
+      onPick={(libraryId, versionId) => update(current => launchDraft.pickReference(current, typeId, libraryId, versionId))}
+      onVersion={versionId => update(current => launchDraft.pickReferenceVersion(current, typeId, versionId))}
       onWorksheet={sheetId => {
         const source = sheetOptions.find(candidate => candidate.sheetId === sheetId);
-        if (source !== undefined) setReferenceSelections(current => ({ ...current, [typeId]: { libraryId: source.libraryId, versionId: source.versionId, sheetId: source.sheetId } }));
+        if (source !== undefined) update(current => launchDraft.pickWorksheet(current, typeId, { libraryId: source.libraryId, versionId: source.versionId, sheetId: source.sheetId }));
       }}
-      onRemove={() => { setReferenceDrafts(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== typeId))); clearSelection(); }}
+      onRemove={() => update(current => launchDraft.removeReference(current, typeId))}
       onRefresh={() => void library.adapter.refreshCatalog()} />;
   })}</>;
-  const continueEnabled = !busy && recoveryError === null && recovery === null && currentStage !== "Warning" && nextStage !== null
-    && !(isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (rerunInputBlocked || stepsBlockedReason !== null)))) && !(currentStage === "Input" && blockedReason !== null);
-  const warningEnabled = currentStage === "Warning" && warning !== null && !busy && recoveryError === null && recovery === null;
-  const acknowledgeWarning = () => { if (warning === null) return; setAcknowledgment(warning.rerun.warningDigest); setPlan(null); reviewedRequest.current = null; setCurrentStage("Values"); };
-  const startEnabled = currentStage === "Confirm" && plan !== null && !(busy || applied || omissionMismatch || plan.planned.length === 0 || recoveryError !== null || (recovery !== null && recovery.target.startPlanId !== plan.startPlanId));
+  const gates: LaunchGates = {
+    next: nextStage, inputBlocked: blockedReason !== null, stepsBlocked: stepsBlockedReason !== null,
+    rerunInputBlocked: rerunInputBlocked || (declaredInput && isRerun && preview.submissions.length !== 1),
+    referencesUnavailable: requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || Boolean(library.catalogError) || library.compatibility === undefined || versionSources.state !== "ready"),
+    omissionMismatch, plannedCount: plan?.planned.length ?? 0, ...(supportsDryRun ? { dryRun } : {}),
+  };
+  // A blocked Start on Steps stays pressable: pressing it shows the facts still missing.
+  const controls = runDialogControls(view, currentStage === "Steps" ? { ...gates, stepsBlocked: false } : gates);
+  const primaryInput: RunDialogPrimaryInput = { gates, authority: authority(), planRequest: buildPlanRequest, prepare: target => launchService.prepareFinal(target) };
+  const press = (event: ((input: RunDialogPrimaryInput) => RunDialogEvent) | null) => {
+    if (event === null) return;
+    let step: RunDialogStep;
+    try { step = send(event(primaryInput)); }
+    catch (caught) { setRequestProblem(caught instanceof Error ? caught.message : String(caught)); return; }
+    if ("refused" in step && step.refused === "blocked" && currentStage === "Steps" && stepsBlockedReason !== null) update(launchDraft.attemptFacts);
+  };
+  startRef.current = () => press(controls.primary.event);
+  /** What a workflow's last stage still shows before Start: its chosen references and typed dates. */
+  const lastStageFacts = [
+    ...(typedDeclaration === undefined ? [] : typedDateControls(typedDeclaration, typedInputMode(typedDeclaration, typedValues)?.value ?? "").flatMap(control => {
+      const date = typeof typedValues[control.field] === "string" ? usDateText(String(typedValues[control.field]).trim()) : undefined;
+      return date === undefined ? [] : [{ key: control.label, value: date }];
+    })),
+    ...(pdfSurface === undefined ? [] : requiredTypes).flatMap(typeId => {
+      const selection = selectedReferences[typeId];
+      const chosen = library.catalog.find(entry => entry.libraryId === selection?.libraryId);
+      if (selection === undefined || chosen === undefined) return [];
+      const version = chosen.state.versions.find(entry => entry.id === selection.versionId)?.name;
+      return [{ key: "Reference spreadsheet", value: version ? `${chosen.name} \u00b7 ${version}` : chosen.name }];
+    }),
+  ];
   // Enter continues or starts; Shift+Enter keeps its newline. Buttons, links and open pickers keep Enter for themselves.
   const enterRef = useRef<(() => void) | null>(null);
-  enterRef.current = previewOwnsStages ? null : startEnabled ? () => void confirmStart() : warningEnabled ? acknowledgeWarning : continueEnabled ? () => void advance() : null;
+  enterRef.current = previewOwnsStages || controls.enter === null ? null : () => press(controls.enter);
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -913,7 +657,7 @@ export function RunStartDialog({
                 const activeIndex = launchStages.findIndex(entry => entry.label === (currentStage === "Warning" ? "Steps" : currentStage));
                 const current = index === activeIndex;
                 return <li key={stage.label} aria-current={current ? "step" : undefined}>
-                  <BareButton disabled={index > activeIndex || busy || recovery !== null} aria-label={`${stage.number} ${stage.label}`} className={dsFocus} onClick={() => setCurrentStage(stage.label)}>
+                  <BareButton disabled={index > activeIndex || busy || recovery !== null} aria-label={`${stage.number} ${stage.label}`} className={dsFocus} onClick={() => send({ type: "go-to", stage: stage.label, via: "stage-bar" })}>
                   <span aria-hidden className="launch-stage-marker" data-current={current || undefined} data-completed={index < activeIndex || undefined}>{index < activeIndex ? <Check className="size-3" /> : stage.number}</span>
                   <span className={cn("text-body", current ? "font-semibold" : "text-ui-secondary")}>{stage.label}</span>
                   </BareButton>
@@ -925,22 +669,22 @@ export function RunStartDialog({
             {sourceError !== null && <Banner tone="danger" title="Rerun unavailable">{sourceError}</Banner>}
             {recoveryError !== null && <Banner tone="danger" title="Submission recovery unavailable">{recoveryError}</Banner>}
             {/* While the Start is in flight its outcome is not unknown yet; only a settled, unresolved command needs readback. */}
-            {recovery !== null && result === null && !busy && (
+            {recovery !== null && !readback && !busy && (
               <Banner tone="warning" title="A previous submission needs readback">
                 <MetaLine items={[recovery.commandId, recovery.target.workflowId]} />
-                <Button disabled={busy} onClick={() => void sendFinal(recovery, requestFingerprint)}>Replay exact submission</Button>
+                <Button disabled={busy} onClick={() => send({ type: "replay", authority: authority() })}>Replay exact submission</Button>
               </Banner>
             )}
             {error !== null && (
               <Banner tone="danger" title="The request did not complete">{error}</Banner>
             )}
 
-            {(currentStage === "Steps" || currentStage === "Confirm") && <section className="flex flex-col gap-1">
+            {currentStage === "Steps" && <section className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between gap-3">
-              <h3 className="text-heading font-semibold">{currentStage === "Steps" ? isRerun ? "Choose what to run again" : "Workflow steps" : "Review the plan"}</h3>
-              {currentStage === "Steps" && workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} / {workflow.steps.length} included</span>}
+              <h3 className="text-heading font-semibold">{isRerun ? "Choose what to run again" : "Workflow steps"}</h3>
+              {workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} / {workflow.steps.length} included</span>}
               </div>
-              {currentStage === "Steps" && <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Required steps stay included. Optional steps may be omitted."}</p>}
+              <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Required steps stay included. Optional steps may be omitted."}</p>
             </section>}
 
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
@@ -955,7 +699,7 @@ export function RunStartDialog({
                       surface={inputRun.surface}
                       workflowId={workflowId}
                       text={text}
-                      onText={next => { setText(next); setSourceInputUnchanged(false); }}
+                      onText={next => update(current => launchDraft.changeText(current, next))}
                       preview={preview}
                       inputRef={typedInputRef}
                       draft={typedValues}
@@ -964,26 +708,19 @@ export function RunStartDialog({
                         {library.catalogRefreshing && <p role="status">Refreshing reference data. Row selection is disabled.</p>}
                         {workbookRows.state === "loading" && <div role="status" aria-label="Loading saved rows"><Skeleton className="h-9 w-full" /></div>}
                         {workbookRows.state === "error" && <Banner tone="danger" title="Saved rows unavailable">{workbookRows.error}<Button variant="secondary" onClick={() => void library.adapter.refreshCatalog()}>Refresh reference data</Button></Banner>}
-                        {!rowSelectionFresh && <Banner tone="warning" title="Previous row selection"><p>The selected rows are from earlier spreadsheet data and cannot be planned.</p><Button variant="secondary" onClick={() => setSelectedWorkbookRows(undefined)}>Clear previous row selection</Button></Banner>}
+                        {!rowSelectionFresh && <Banner tone="warning" title="Previous row selection"><p>The selected rows are from earlier spreadsheet data and cannot be planned.</p><Button variant="secondary" onClick={() => update(launchDraft.clearWorkbookRows)}>Clear previous row selection</Button></Banner>}
                         {workbookRows.state === "ready" && rowChoices.length === 0 && <EmptyState title="No saved data rows" description="This version contains no rows after the worksheet headers." />}
                         {rowChoices.length > 0 && <Table label="Saved spreadsheet rows"><THead><TR><TH>Select</TH><TH>Source row</TH><TH>Lookup key</TH></TR></THead><TBody>{rowChoices.map(choice => {
                           const selected = selectedWorkbookRows?.choices.some(row => row.sheetId === choice.sheetId && row.rowId === choice.rowId) ?? false;
                           const label = `${choice.sourceLabel}: ${choice.key.state === "available" ? choice.key.value : WORKBOOK_ROW_UNAVAILABLE_TEXT[choice.key.reason]}`;
                           return <TR key={JSON.stringify([choice.sheetId, choice.rowId])} selected={selected}><TD><Checkbox label={<span className="sr-only">{`Select ${label}`}</span>} checked={selected}
                             disabled={workbookRows.state !== "ready" || !rowSelectionFresh || choice.key.state === "unavailable" || recovery !== null}
-                            onCheckedChange={checked => setSelectedWorkbookRows(current => ({ source: rowSource,
-                              choices: resolveWorkbookRowSelection(workbookRows.choices, checked === true ? [...(current?.choices ?? []), choice] : (current?.choices ?? []).filter(row => row.sheetId !== choice.sheetId || row.rowId !== choice.rowId)) }))} /></TD>
+                            onCheckedChange={checked => update(current => launchDraft.selectWorkbookRows(current, rowSource,
+                              resolveWorkbookRowSelection(workbookRows.choices, checked === true ? [...(current.selectedWorkbookRows?.choices ?? []), choice] : (current.selectedWorkbookRows?.choices ?? []).filter(row => row.sheetId !== choice.sheetId || row.rowId !== choice.rowId))))} /></TD>
                             <TD>{choice.sourceLabel}</TD><TD className="break-all">{choice.key.state === "available" ? choice.key.value : WORKBOOK_ROW_UNAVAILABLE_TEXT[choice.key.reason]}</TD></TR>;
                         })}</TBody></Table>}
                       </>}
-                      onValue={(field, value) => {
-                        if (typedDeclaration === undefined) return;
-                        const next = changeTypedInput(typedDeclaration, typedValues, field, value);
-                        setTypedDraft(workflowId, next);
-                        if (field === typedDeclaration.modeField) setSourceInputUnchanged(false);
-                        setSelectedStepKeys(current => workflow?.steps.filter(step => step.control.state !== "selectable"
-                          ? current.includes(step.key) : next[step.control.inputField] === true).map(step => step.key) ?? []);
-                      }}
+                      onValue={(field, value) => { if (workflow !== undefined) update(current => launchDraft.changeTypedValue(current, workflow, field, value)); }}
                     />
                   ) : (
                     <Well>
@@ -1004,10 +741,10 @@ export function RunStartDialog({
                         if (candidate.targetStepKey !== undefined) return null;
                         const label = candidate.label;
                         return <div key={`${candidate.nodeId}:${candidate.fieldPath}`} className="min-w-0">
-                          {candidate.state === "available" && <Field label={label}><Input className="h-9" value={valueDrafts[index]?.text ?? ""} onChange={event => setValueDrafts(current => ({ ...current, [index]: { text: event.target.value, copied: false } }))} /></Field>}
+                          {candidate.state === "available" && <Field label={label}><Input className="h-9" value={valueDrafts[index]?.text ?? ""} onChange={event => update(current => launchDraft.changeValueText(current, index, event.target.value))} /></Field>}
                           {!(candidate.state === "available" && valueDrafts[index]?.copied && inputRun.state === "present" && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) && <div className="mt-[var(--ds-space-tight)] flex flex-wrap items-baseline justify-between gap-[var(--ds-space-base)] text-caption">
                             <span className="min-w-0 break-words text-[color:var(--ds-fg-muted)]">{candidate.state === "available" ? `Saved ${candidateText(candidate.value)}` : `Unavailable: ${candidate.reason}`}</span>
-                            {candidate.state === "available" && <Button size="sm" variant="ghost" className="h-auto p-0 text-caption text-ui-info" aria-label={`Copy ${label}`} onClick={() => setValueDrafts(current => ({ ...current, [index]: { text: candidateText(candidate.value), copied: true } }))}>Use previous</Button>}
+                            {candidate.state === "available" && <Button size="sm" variant="ghost" className="h-auto p-0 text-caption text-ui-info" aria-label={`Copy ${label}`} onClick={() => update(current => ({ ...current, valueDrafts: { ...current.valueDrafts, [index]: { text: candidateText(candidate.value), copied: true } } }))}>Use previous</Button>}
                           </div>}
                         </div>;
                       })}
@@ -1043,10 +780,10 @@ export function RunStartDialog({
               )}
 
               {currentStage === "Options" && (
-                <RunOptionsLayout priority={priority} onPriorityChange={setPriority} browserMode={browserMode} onBrowserModeChange={setBrowserMode}
+                <RunOptionsLayout priority={priority} onPriorityChange={next => update(current => launchDraft.changePriority(current, next))} browserMode={browserMode} onBrowserModeChange={next => update(current => launchDraft.changeBrowserMode(current, next))}
                   flags={<>
                     {!isRerun && <RunListRow title="Customize steps" description="Choose optional steps."><Switch hideLabel label="Customize steps" checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
-                    {supportsDryRun && <RunListRow title="Dry run" description={dryRunDescription}><Switch hideLabel label="Dry run" checked={dryRun} onCheckedChange={next => setDryRunRequested(next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
+                    {supportsDryRun && <RunListRow title="Dry run" description={dryRunDescription}><Switch hideLabel label="Dry run" checked={dryRun} onCheckedChange={next => update(current => launchDraft.changeDryRun(current, next === true))} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     <RunListRow title="Screenshots" description="Required by this workflow."><span className="inline-flex items-center gap-1.5 text-[12px] text-ui-secondary"><Lock aria-hidden className="size-3" />Always on</span></RunListRow>
                   </>} />
               )}
@@ -1079,24 +816,11 @@ export function RunStartDialog({
                 </section>
               )}
 
-              {currentStage === "Confirm" && plan !== null && (
-                <RunConfirmLayout count={plan.planned.length} outputs={plan.planned.flatMap(planned => planned.outputs ?? [])} inputs={pdfSurface !== undefined ? pdfInput.draft?.files.map(file => ({ label: file.source.fileName, kind: "PDF" })) : preview.entries.length ? preview.entries.map(entry => ({ label: entry.sourceText, kind: rowCapability === undefined ? inputRun.state === 'present' ? inputRunFieldLabel(inputRun.surface.parser) : 'Input' : `Entry ${entry.index + 1} · ${plan.refused.some(refusal => refusal.entry === entry.index + 1) ? "Refused" : "Accepted"}` })) : undefined} flags={<RunFlagChips dryRun={plan.dryRun} priority={plan.priority} />}
-                  description={expiredPlan ? "This plan expired, so it was checked again. Review it and press Start again." : isRerun ? "A new run linked to the source." : pdfSurface !== undefined ? pdfSurface.pdfInput !== undefined && "documentField" in pdfSurface.pdfInput ? "One run for each attached PDF." : "One run for all attached PDFs." : "One run for each accepted entry."}
-                  facts={[
-                      { key: "Workflow", value: workflow === undefined ? plan.workflowId : `${workflow.label} · ${versionTag(workflow.version)}` },
-                      { key: "Input", value: inputSummary || Object.values(valueDrafts).map(draft => draft.text).filter(Boolean).join(", ") },
-                      ...(isRerun && snapshot ? [{ key: "Source", value: rerunSource?.traceId ?? snapshot.source.runId }] : []),
-                      { key: "Steps", value: `${selectedStepKeys.length} / ${workflow?.steps.length ?? 0} included${omissionRows.length ? ` · Omitted: ${omissionRows.map(row => row.label).join(", ")}` : ""}` },
-                      ...(typedDeclaration === undefined ? [] : typedDateControls(typedDeclaration, typedInputMode(typedDeclaration, typedValues)?.value ?? "").flatMap(control => {
-                        const date = typeof typedValues[control.field] === "string" ? usDateText(String(typedValues[control.field]).trim()) : undefined;
-                        return date === undefined ? [] : [{ key: control.label, value: date }];
-                      })),
-                      ...omissionRows.map(row => ({ key: row.form.fields.every(field => field.kind === "us-date") ? "Entered dates" : row.label, value: stepOmissionFactsSummary(row) })),
-                      ...plan.planned.flatMap(planned => (planned.workbookReferences ?? []).map(reference => ({ key: `Reference · ${reference.type.name}`, value: `${library.catalog.find(entry => entry.libraryId === reference.libraryId)?.name ?? 'Spreadsheet unavailable'} · ${reference.versionName ?? `Revision ${reference.version}`}` }))),
-                      { key: "Priority", value: plan.priority === "interactive" ? "On" : "Off" },
-                      { key: "Browser", value: `${browserMode === "headed" ? "Headed" : "Headless"} · screenshots required` },
-                      { key: "Dry run", value: plan.dryRun ? "On" : "Off" },
-                  ]}>
+              {onLastStage && lastStageFacts.length > 0 && <KeyValueList items={lastStageFacts} />}
+
+              {onLastStage && plan !== null && (
+                <section id="run-start-plan" aria-label="Plan" className="flex flex-col gap-[var(--ds-space-cozy)]">
+                  {expiredPlan && <p className="text-body text-ui-secondary">This plan expired, so it was checked again. Review it and press Start again.</p>}
                   {omissionMismatch && (
                     <Banner tone="danger" title="This plan does not describe the steps you omitted">
                       {`You omitted ${sentOmittedSteps.length === 0 ? "no steps" : sentOmittedSteps.join(", ")}; the plan came back omitting `
@@ -1105,7 +829,7 @@ export function RunStartDialog({
                     </Banner>
                   )}
                   <PlanRefusals refused={plan.refused} sources={rowCapability === undefined ? undefined : preview.entries} />
-                </RunConfirmLayout>
+                </section>
               )}
             </div>
           </DialogBody>
@@ -1124,41 +848,29 @@ export function RunStartDialog({
                   ? blockedReason ?? undefined
                   : currentStage === "Steps" && !isRerun
                   ? stepsBlockedReason ?? undefined
-                  : currentStage === "Confirm" && plan !== null
-                    ? `${String(plan.planned.length)} to create`
-                    : undefined,
+                  : undefined,
               ].filter((item): item is string => item !== undefined)}
             />
           }
         >
-          {(startEnabled || warningEnabled || continueEnabled) && <span className="text-[12px] text-ui-muted">{startEnabled ? "Enter to start" : "Enter to continue"}</span>}
-          {currentStage !== "Warning" && previousStage !== null && (
-            <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-3" />} onClick={() => setCurrentStage(previousStage)}>Back</Button>
+          {controls.hint !== null && <span className="text-[12px] text-ui-muted">{controls.hint}</span>}
+          {controls.back !== null && (
+            <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-3" />} onClick={() => send({ type: "go-to", stage: controls.back as RunStartStage, via: "back" })}>Back</Button>
           )}
-          <Button variant="secondary" onClick={() => currentStage === "Warning" ? setCurrentStage("Steps") : closeAndReset(false)}>
+          <Button variant="secondary" onClick={() => controls.cancel.type === "close" ? closeAndReset(false) : send(controls.cancel)}>
             Cancel
           </Button>
-          {currentStage === "Warning" && warning !== null ? (
-            <Button variant="primary" onClick={acknowledgeWarning}>Confirm</Button>
-          ) : currentStage === "Confirm" && plan !== null ? (
-            <Button
-              variant="primary"
-              icon={<Play aria-hidden className={dsIcon.md} />}
-              loading={busy}
-              disabled={busy || applied || omissionMismatch || plan.planned.length === 0 || recoveryError !== null || (recovery !== null && recovery.target.startPlanId !== plan.startPlanId)}
-              onClick={() => void confirmStart()}
-            >
-              {plan.dryRun ? "Start dry run" : isRerun ? "Create rerun" : `Start ${plan.planned.length} ${plan.planned.length === 1 ? "run" : "runs"}`}
-            </Button>
+          {currentStage === "Warning" ? (
+            <Button variant="primary" disabled={!controls.primary.enabled} onClick={() => press(controls.primary.event)}>{controls.primary.label}</Button>
           ) : (
             <Button
               variant="primary"
-              loading={busy}
-              iconAfter={<ArrowRight aria-hidden className="size-[14px]" />}
-              disabled={busy || recoveryError !== null || recovery !== null || (isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (rerunInputBlocked || stepsBlockedReason !== null)))) || (currentStage === "Input" && blockedReason !== null) || nextStage === null}
-              onClick={() => void advance()}
+              {...(onLastStage ? { icon: <Play aria-hidden className={dsIcon.md} /> } : { iconAfter: <ArrowRight aria-hidden className="size-[14px]" /> })}
+              loading={controls.primary.loading}
+              disabled={!controls.primary.enabled}
+              onClick={() => press(controls.primary.event)}
             >
-              {nextStage === "Confirm" ? "Preview plan" : "Continue"}
+              {controls.primary.label}
             </Button>
           )}
         </DialogFooter>
@@ -1189,7 +901,7 @@ export function RunStartSurfaces({
   catalog: readonly WorkflowCatalogEntry[];
   panelWorkflowId: string;
   actorId: string;
-  onApplied?: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
+  onApplied?: (workflowId: string, count?: number) => void;
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;

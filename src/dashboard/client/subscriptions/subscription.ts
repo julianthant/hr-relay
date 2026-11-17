@@ -1,4 +1,6 @@
-/** The resumable dashboard-day subscription (ref frontend-backend-integration ), client side. */
+/** The resumable dashboard-day subscription (ref frontend-backend-integration ), client side.
+ * One phase value owns the stream, the timer, and the greeting. A waiting
+ * subscription cannot also be greeted, and a stopped one holds neither. */
 import { z } from "zod";
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import {
@@ -16,6 +18,24 @@ export type SubscriptionState =
   | { readonly state: "reconnecting" }
   | { readonly state: "degraded" }
   | { readonly state: "stopped"; readonly error?: DashboardClientError };
+
+/** Waiting holds the reconnect timer. Open has a stream and no hello yet.
+ * Greeted has a stream and a health. Stopped has neither a stream nor a timer. */
+type StreamPhase =
+  | { readonly phase: "waiting"; readonly shown: "connecting" | "reconnecting"; readonly resume: boolean; readonly cancel: () => void }
+  | { readonly phase: "open"; readonly identity: number; readonly stream: StreamHandle }
+  | { readonly phase: "greeted"; readonly identity: number; readonly stream: StreamHandle;
+      readonly health: "pending" | "live" | "reconnecting" | "degraded" }
+  | { readonly phase: "stopped" };
+
+/** The greeting, plus the snapshot the subscription can resume from.
+ * A held snapshot always carries its cursor. */
+type Baseline = Readonly<{
+  authority?: { generation: number; descriptorHash: string };
+  held?: { snapshot: DashboardDayWire; cursorNumber: number; cursorId: string };
+}>;
+
+type EnvelopeOf<Type extends DashboardStreamEnvelope["type"]> = Extract<DashboardStreamEnvelope, { type: Type }>;
 
 export interface DashboardDaySubscriptionDeps {
   readonly transport: DashboardTransport;
@@ -35,13 +55,13 @@ export interface DashboardDaySubscription {
 const CURSOR_PATTERN = /^pc:([1-9]\d*)$/;
 
 /** Which stream endings a RECONNECT can answer, and which are terminal.
- * `openStream` rejects with exactly two kinds: `network` when the fetch itself */
+ * `openStream` rejects with exactly two kinds: `network` when the fetch itself fails. */
 function reconnectableStreamFailure(reason: unknown): boolean {
   return reason instanceof DashboardClientError && reason.kind === "network";
 }
 
 /** A rejection this client cannot classify is not a network blip. Naming it
- * (and keeping the value as the cause) is what stops an unknown from being */
+ * (and keeping the value as the cause) is what stops an unknown from being retried. */
 function streamFailure(reason: unknown): DashboardClientError {
   if (reason instanceof DashboardClientError) return reason;
   return new DashboardClientError({
@@ -60,128 +80,67 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     });
   const reconnectDelayMs = deps.reconnectDelayMs ?? 1000;
 
-  let closed = false;
-  let streamIdentity = 0;
-  let stream: StreamHandle | undefined;
-  let cancelTimer: (() => void) | undefined;
-  let snapshot: DashboardDayWire | undefined;
-  let generation: number | undefined;
-  let descriptorHash: string | undefined;
-  let greeted = false;
-  let publicationReady = false;
-  let lastCursorNumber: number | undefined;
-  let lastCursorId: string | undefined;
+  const initialCancel = (): void => undefined;
+  let phase: StreamPhase = { phase: "waiting", shown: "connecting", resume: false, cancel: initialCancel };
+  let baseline: Baseline = {};
+  let nextIdentity = 0;
   const published = new Set<string>();
 
+  /** The only writer of `phase`, and the only caller of `onState`. */
+  function enter(next: StreamPhase, shown?: SubscriptionState): void {
+    if (phase.phase === "stopped") return;
+    const previous = phase;
+    phase = next;
+    if (previous.phase === "waiting" && (next.phase !== "waiting" || next.cancel !== previous.cancel)) previous.cancel();
+    if ((previous.phase === "open" || previous.phase === "greeted")
+        && (next.phase !== "open" && next.phase !== "greeted" || next.stream !== previous.stream)) {
+      previous.stream.close();
+    }
+    if (shown !== undefined && phase === next) deps.onState(shown);
+  }
+
   function stop(error?: DashboardClientError): void {
-    if (closed) return;
-    closed = true;
-    cancelTimer?.();
-    stream?.close();
-    deps.onState(error === undefined ? { state: "stopped" } : { state: "stopped", error });
+    enter({ phase: "stopped" }, error === undefined ? { state: "stopped" } : { state: "stopped", error });
   }
 
-  function resnapshot(): void {
-    // A fresh snapshot supersedes local state; resume without Last-Event-ID.
-    snapshot = undefined;
-    lastCursorNumber = undefined;
-    lastCursorId = undefined;
-    reconnect(false, "connecting");
+  function currentStream(identity: number, stream: StreamHandle): boolean {
+    return (phase.phase === "open" || phase.phase === "greeted")
+      && phase.identity === identity
+      && phase.stream === stream;
   }
 
-  function handleEnvelope(envelope: DashboardStreamEnvelope): void {
-    if (envelope.type === "hello") {
-      if (generation !== undefined && (envelope.projectionGeneration !== generation || envelope.descriptorHash !== descriptorHash)) {
-        snapshot = undefined;
-        lastCursorNumber = undefined;
-        lastCursorId = undefined;
-      }
-      generation = envelope.projectionGeneration;
-      descriptorHash = envelope.descriptorHash;
-      greeted = true;
-      return;
-    }
-    if (!greeted) throw protocolError("day-stream-hello-missing");
-    if (envelope.type === "health") {
-      publicationReady = envelope.state === "live";
-      if (envelope.state === "degraded") deps.onState({ state: "degraded" });
-      else if (envelope.state === "live") deps.onState({ state: "live" });
-      else deps.onState({ state: "reconnecting" });
-      return;
-    }
-    if (envelope.type === "reset-required") {
-      resnapshot();
-      return;
-    }
-
-    if (envelope.type === "notification-publication") {
-      if (envelope.day !== day || envelope.descriptorHash !== descriptorHash || envelope.projectionGeneration !== generation) throw protocolError("notification-publication-authority-mismatch");
-      if (snapshot === undefined || !publicationReady) throw protocolError("notification-publication-baseline-missing");
-      if (deps.publications === undefined) return;
-      if (envelope.publication.actorId !== deps.publications.actorId) throw protocolError("notification-publication-actor-mismatch");
-      if (published.has(envelope.publication.sourceId)) return;
-      published.add(envelope.publication.sourceId);
-      deps.publications.onPublication(envelope.publication);
-      return;
-    }
-
-    const cursorMatch = CURSOR_PATTERN.exec(envelope.cursor);
-    if (cursorMatch === null) {
-      throw protocolError(`envelope carries malformed cursor ${envelope.cursor}`);
-    }
-    const cursorNumber = Number(cursorMatch[1]);
-
-    // Accept same-cursor snapshots but reject duplicate patches; only snapshots refresh worker and count rollups.
-    if (envelope.type === "snapshot") {
-      if (envelope.payload.day !== day) throw protocolError("day-request-identity-mismatch");
-      if (envelope.payload.descriptorHash !== descriptorHash || envelope.payload.projectionGeneration !== generation) {
-        throw protocolError("day-stream-authority-mismatch");
-      }
-      if (envelope.payload.snapshotCursor !== envelope.cursor) throw protocolError("day-stream-cursor-mismatch");
-      if (lastCursorNumber !== undefined && cursorNumber < lastCursorNumber) return;
-      snapshot = envelope.payload;
-      lastCursorNumber = cursorNumber;
-      lastCursorId = envelope.cursor;
-      deps.onDay(snapshot);
-      return;
-    }
-
-    // patch
-    if (lastCursorNumber !== undefined && cursorNumber <= lastCursorNumber) return;
-    if (snapshot === undefined || lastCursorNumber === undefined) {
-      resnapshot();
-      return;
-    }
-    if (cursorNumber > lastCursorNumber + 1) {
-      resnapshot();
-      return;
-    }
-    try {
-      snapshot = applyDashboardDayPatch(snapshot, envelope.payload);
-    } catch (error) {
-      if (error instanceof DashboardClientError && error.kind === "protocol") {
-        resnapshot();
-        return;
-      }
-      throw error;
-    }
-    lastCursorNumber = Math.max(lastCursorNumber, cursorNumber);
-    lastCursorId = envelope.cursor;
-    deps.onDay(snapshot);
+  function clearHeld(): void {
+    baseline = baseline.authority === undefined ? {} : { authority: baseline.authority };
   }
 
-  function connect(withResume: boolean): void {
-    if (closed) return;
-    const lastEventId = withResume ? lastCursorId : undefined;
-    const lastProjectionGeneration = lastEventId === undefined ? undefined : generation;
-    const identity = ++streamIdentity;
-    greeted = false;
-    publicationReady = false;
-    const handle = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}`, {
+  /** Arm the timer after the waiting phase is entered, so closing the old
+   * stream cannot schedule a second reconnect. The cancel function exists
+   * only once the scheduler returns, and storing it does not report state again. */
+  function enterWaiting(shown: "connecting" | "reconnecting", resume: boolean): void {
+    if (phase.phase === "stopped") return;
+    let cancel: () => void = () => undefined;
+    enter({ phase: "waiting", shown, resume, cancel }, { state: shown });
+    if (phase.phase !== "waiting") return;
+    const delay = shown === "connecting" ? 0 : reconnectDelayMs;
+    cancel = schedule(delay, () => {
+      if (phase.phase !== "waiting" || phase.cancel !== cancel) return;
+      openStream(resume);
+    });
+    if (phase.phase !== "waiting") return;
+    enter({ phase: "waiting", shown, resume, cancel });
+  }
+
+  function openStream(resume: boolean): void {
+    if (phase.phase === "stopped") return;
+    const lastEventId = resume ? baseline.held?.cursorId : undefined;
+    const generation = baseline.authority?.generation;
+    const lastProjectionGeneration = lastEventId === undefined || generation === undefined ? undefined : generation;
+    const identity = ++nextIdentity;
+    const stream = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}`, {
       ...(lastEventId === undefined ? {} : { lastEventId }),
       ...(lastProjectionGeneration === undefined ? {} : { lastProjectionGeneration }),
       onMessage: (message) => {
-        if (closed || identity !== streamIdentity) return;
+        if (!currentStream(identity, stream)) return;
         let envelope: DashboardStreamEnvelope;
         try {
           envelope = DashboardStreamEnvelopeSchema.parse(JSON.parse(message.data));
@@ -198,20 +157,16 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
         }
       },
     });
-    stream = handle;
-    // Ignore superseded stream settlements so closing an old handle cannot schedule another reconnect.
-    const superseded = (): boolean => closed || stream !== handle;
-    handle.done.then(
-      // EOF: the server closed a healthy stream. Resuming from the held cursor
-      // is exactly what that ending calls for.
+    enter({ phase: "open", identity, stream });
+    stream.done.then(
       () => {
-        if (superseded()) return;
-        reconnect(true, "reconnecting");
+        if (!currentStream(identity, stream)) return;
+        enterWaiting("reconnecting", true);
       },
       (reason: unknown) => {
-        if (superseded()) return;
+        if (!currentStream(identity, stream)) return;
         if (reconnectableStreamFailure(reason)) {
-          reconnect(true, "reconnecting");
+          enterWaiting("reconnecting", true);
           return;
         }
         stop(streamFailure(reason));
@@ -219,18 +174,167 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
     );
   }
 
-  function reconnect(withResume: boolean, nextState: "connecting" | "reconnecting"): void {
-    if (closed) return;
-    ++streamIdentity;
-    const previous = stream;
-    stream = undefined;
-    previous?.close();
-    deps.onState({ state: nextState });
-    cancelTimer?.();
-    cancelTimer = schedule(nextState === "connecting" ? 0 : reconnectDelayMs, () => connect(withResume));
+  function requireGreeted(): Extract<StreamPhase, { phase: "greeted" }> | undefined {
+    if (phase.phase === "stopped") return undefined;
+    if (phase.phase !== "greeted") {
+      stop(protocolError("day-stream-hello-missing"));
+      return undefined;
+    }
+    return phase;
   }
 
-  deps.onState({ state: "connecting" });
-  connect(false);
+  function cursorNumber(cursor: string): number | undefined {
+    const match = CURSOR_PATTERN.exec(cursor);
+    if (match === null) {
+      stop(protocolError(`envelope carries malformed cursor ${cursor}`));
+      return undefined;
+    }
+    return Number(match[1]);
+  }
+
+  function applyHello(envelope: EnvelopeOf<"hello">): void {
+    if (phase.phase !== "open" && phase.phase !== "greeted") return;
+    const current = phase;
+    const previous = baseline.authority;
+    const differs = previous !== undefined && (
+      envelope.projectionGeneration !== previous.generation || envelope.descriptorHash !== previous.descriptorHash
+    );
+    const held = differs ? undefined : baseline.held;
+    baseline = {
+      authority: { generation: envelope.projectionGeneration, descriptorHash: envelope.descriptorHash },
+      ...(held === undefined ? {} : { held }),
+    };
+    enter({
+      phase: "greeted",
+      identity: current.identity,
+      stream: current.stream,
+      health: current.phase === "greeted" ? current.health : "pending",
+    });
+  }
+
+  function applyHealth(envelope: EnvelopeOf<"health">): void {
+    const greeted = requireGreeted();
+    if (greeted === undefined) return;
+    enter(
+      { phase: "greeted", identity: greeted.identity, stream: greeted.stream, health: envelope.state },
+      { state: envelope.state },
+    );
+  }
+
+  function applyPublication(envelope: EnvelopeOf<"notification-publication">): void {
+    const greeted = requireGreeted();
+    if (greeted === undefined) return;
+    const authority = baseline.authority;
+    if (authority === undefined
+        || envelope.day !== day
+        || envelope.descriptorHash !== authority.descriptorHash
+        || envelope.projectionGeneration !== authority.generation) {
+      stop(protocolError("notification-publication-authority-mismatch"));
+      return;
+    }
+    if (baseline.held === undefined || greeted.health !== "live") {
+      stop(protocolError("notification-publication-baseline-missing"));
+      return;
+    }
+    if (deps.publications === undefined) return;
+    if (envelope.publication.actorId !== deps.publications.actorId) {
+      stop(protocolError("notification-publication-actor-mismatch"));
+      return;
+    }
+    if (published.has(envelope.publication.sourceId)) return;
+    published.add(envelope.publication.sourceId);
+    deps.publications.onPublication(envelope.publication);
+  }
+
+  function applySnapshot(envelope: EnvelopeOf<"snapshot">): void {
+    if (requireGreeted() === undefined) return;
+    const cursor = cursorNumber(envelope.cursor);
+    if (cursor === undefined || phase.phase !== "greeted") return;
+    const authority = baseline.authority;
+    if (envelope.payload.day !== day) {
+      stop(protocolError("day-request-identity-mismatch"));
+      return;
+    }
+    if (authority === undefined
+        || envelope.payload.descriptorHash !== authority.descriptorHash
+        || envelope.payload.projectionGeneration !== authority.generation) {
+      stop(protocolError("day-stream-authority-mismatch"));
+      return;
+    }
+    if (envelope.payload.snapshotCursor !== envelope.cursor) {
+      stop(protocolError("day-stream-cursor-mismatch"));
+      return;
+    }
+    // Same-cursor snapshots refresh the held day; only an older cursor is stale.
+    if (baseline.held !== undefined && cursor < baseline.held.cursorNumber) return;
+    baseline = {
+      authority,
+      held: { snapshot: envelope.payload, cursorNumber: cursor, cursorId: envelope.cursor },
+    };
+    deps.onDay(envelope.payload);
+  }
+
+  function applyPatch(envelope: EnvelopeOf<"patch">): void {
+    if (requireGreeted() === undefined) return;
+    const cursor = cursorNumber(envelope.cursor);
+    if (cursor === undefined || phase.phase !== "greeted") return;
+    const held = baseline.held;
+    // A cursor already applied, including a duplicate removal, is not applied again.
+    if (held !== undefined && cursor <= held.cursorNumber) return;
+    if (held === undefined || cursor > held.cursorNumber + 1) {
+      clearHeld();
+      enterWaiting("connecting", false);
+      return;
+    }
+    let next: DashboardDayWire;
+    try {
+      next = applyDashboardDayPatch(held.snapshot, envelope.payload);
+    } catch (error) {
+      if (error instanceof DashboardClientError && error.kind === "protocol") {
+        clearHeld();
+        enterWaiting("connecting", false);
+        return;
+      }
+      throw error;
+    }
+    const authority = baseline.authority;
+    baseline = {
+      ...(authority === undefined ? {} : { authority }),
+      held: { snapshot: next, cursorNumber: Math.max(held.cursorNumber, cursor), cursorId: envelope.cursor },
+    };
+    deps.onDay(next);
+  }
+
+  function handleEnvelope(envelope: DashboardStreamEnvelope): void {
+    switch (envelope.type) {
+      case "hello":
+        applyHello(envelope);
+        return;
+      case "health":
+        applyHealth(envelope);
+        return;
+      case "reset-required":
+        if (requireGreeted() === undefined) return;
+        clearHeld();
+        enterWaiting("connecting", false);
+        return;
+      case "notification-publication":
+        applyPublication(envelope);
+        return;
+      case "snapshot":
+        applySnapshot(envelope);
+        return;
+      case "patch":
+        applyPatch(envelope);
+        return;
+      default: {
+        const unexpected: never = envelope;
+        throw protocolError(`unhandled stream envelope ${JSON.stringify(unexpected)}`);
+      }
+    }
+  }
+
+  enter(phase, { state: "connecting" });
+  openStream(false);
   return Object.freeze({ close: (): void => stop() });
 }

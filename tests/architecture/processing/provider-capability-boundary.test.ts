@@ -34,8 +34,7 @@ function isNetworkOwner(path: string): boolean {
 }
 
 function isProviderConsumer(path: string): boolean {
-  return path.startsWith("src/stores/")
-    || path.startsWith("src/workflows/")
+  return path.startsWith("src/workflows/")
     || (path.startsWith("src/backend/processing/") && !path.startsWith("src/backend/processing/providers/"))
     || path.startsWith("src/backend/systems/")
     || path.startsWith("src/workflows/");

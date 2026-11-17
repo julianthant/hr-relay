@@ -33,8 +33,8 @@ function plan(startPlanId: string, extra: Record<string, unknown> = {}): StartPl
     dryRun: false, priority: "interactive", plannedBy: ACTOR, configSnapshotId: "c0000000-0000-4000-8000-000000000001", fingerprints: FINGERPRINTS,
     planned: [{ logicalKey: "entry:1", title: "Ada Lovelace", matchKey: "eid:E1234567" }], refused: [], ...extra });
 }
-const REQUEST = StartPlanRequestSchema.parse({ workflowId: WORKFLOW, submissions: [{ eid: "10873698" }], dryRun: false, browserMode: "headless", captureBrowserScreenshots: false });
-const EXPIRY_REQUEST = StartPlanRequestSchema.parse({ ...REQUEST, submissions: [{ eid: "20000000" }] });
+const REQUEST = StartPlanRequestSchema.parse({ workflowId: WORKFLOW, submissions: [{ eid: "10812345" }], dryRun: false, browserMode: "headless", captureBrowserScreenshots: false });
+const EXPIRY_REQUEST = StartPlanRequestSchema.parse({ ...REQUEST, submissions: [{ eid: "10812346" }] });
 function command(startPlanId: string, commandId = "c1000000-0000-4000-8000-000000000001") {
   return StartCommandRequestSchema.parse({ commandId, requestedAt: "2026-08-26T21:40:00.000Z", requestedBy: ACTOR, source: "run-start",
     family: "start", type: "start-run", target: { workflowId: WORKFLOW, startPlanId, expectedVersion: 4 }, payload: FINGERPRINTS });

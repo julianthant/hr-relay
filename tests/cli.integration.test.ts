@@ -13,7 +13,30 @@ import { describe,it,vi } from "vitest";
 import { z } from "zod";
 import { writeDashboardBuildIdentity } from "../src/backend/app/composition/dashboard/build-identity.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../src/backend/app/config/runtime-isolation.js";
+import type { RuntimeAdmission } from "../src/backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock, RuntimeAlreadyRunningError } from "../src/backend/storage/admission/lifetime-lock.js";
+import { runCli } from "../src/cli.js";
+import { createBoundProfileFixture, findProfileFixtureAdmission } from "./support/helpers/admission-fixture.js";
+import { historyWorld } from "./support/helpers/storage/transaction-history-fixture.js";
+
+/** Admissions are frozen, so the stores the transaction export opens record which admission opened them. */
+const transactionStoreOwners = vi.hoisted((): Array<{ owner: RuntimeAdmission; stateRoot: string }> => []);
+vi.mock("../src/backend/storage/sqlite/authority-database.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../src/backend/storage/sqlite/authority-database.js")>();
+  const open: typeof actual.AuthorityDatabase.open = (admission, input, ...rest) => {
+    if (typeof input === "object" && input !== null && "migrationOwner" in input && input.migrationOwner === "transaction-export") {
+      transactionStoreOwners.push({ owner: admission, stateRoot: admission.stateRoot });
+    }
+    return actual.AuthorityDatabase.open(admission, input, ...rest);
+  };
+  return { ...actual, AuthorityDatabase: new Proxy(actual.AuthorityDatabase, {
+    get: (target, key, receiver): unknown => key === "open" ? open : Reflect.get(target, key, receiver) }) };
+});
+/** The history world keeps its installation private; the call-through factory spy hands this test that installation. */
+vi.mock("./support/helpers/admission-fixture.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("./support/helpers/admission-fixture.js")>();
+  return { ...actual, createBoundProfileFixture: vi.fn(actual.createBoundProfileFixture) };
+});
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const BOOTSTRAP = join(REPO_ROOT, "scripts", "dev", "secure-env-bootstrap.ts");
@@ -333,4 +356,100 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
       vi.unstubAllEnvs(); removeScratchRepoRoot(scratchRoot);
     }
   }, BOOT_TIMEOUT_MS + 30_000);
+});
+
+describe("the `storage transactions` CLI command", () => {
+  const range = { from: "2026-07-01", to: "2026-09-09" };
+  const ExportedFileSchema = z.object({ rows: z.array(z.object({ operationId: z.string() })) });
+
+  async function runTransactions(admission: Parameters<typeof runCli>[0], args: readonly string[]): Promise<string> {
+    const lock = await RuntimeLifetimeLock.acquire(0);
+    const written: string[] = [];
+    const argv = process.argv;
+    process.argv = [argv[0] ?? process.execPath, "cli", "storage", "transactions", ...args];
+    const write = vi.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
+      written.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")); return true;
+    });
+    try { await runCli(admission, undefined, { lock, parentSignal: new AbortController().signal }); }
+    finally { write.mockRestore(); process.argv = argv; await lock.close(); }
+    return written.join("");
+  }
+
+  async function installationOf(personRoot: string): Promise<RuntimeAdmission> {
+    const fixtures = await Promise.all(vi.mocked(createBoundProfileFixture).mock.results
+      .flatMap(result => result.type === "return" ? [result.value] : []));
+    const fixture = fixtures.find(candidate => candidate.stateRoot === personRoot);
+    assert.ok(fixture, "the history world was built on a bound profile fixture");
+    assert.equal(fixture.machine.isInstallation(), true);
+    return fixture.machine;
+  }
+
+  /** The installation opens its one ready person's store under that person's own admission, then releases it. */
+  function assertPersonReleased(personRoot: string): void {
+    const opened = transactionStoreOwners.splice(0);
+    assert.deepEqual(opened.map(({ stateRoot }) => stateRoot), [personRoot], "the installation opens its one ready person's store");
+    for (const { owner } of opened) assert.throws(() => owner.assertLive(), /released admission/u);
+  }
+
+  it("exports a ready person's committed transaction from an installation, labelled with that person", async () => {
+    const w = await historyWorld();
+    try {
+      const committed = w.commit(901);
+      const machine = await installationOf(w.root);
+      const [person] = machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready");
+      assert.ok(person, "the fixture installation has one ready person");
+      const output = join(w.root, "report.json");
+      transactionStoreOwners.splice(0);
+      const stdout = await runTransactions(machine, ["--from", range.from, "--to", range.to, "--output", output]);
+      assertPersonReleased(w.root);
+      const personOutput = join(w.root, `report.${person.profileId}.json`);
+      const reported = z.strictObject({ profiles: z.array(z.strictObject({ profileId: z.string(), output: z.string(),
+        sourceDigest: z.string(), transactions: z.number() })) }).parse(JSON.parse(stdout));
+      assert.deepEqual(reported.profiles.map(({ profileId, output: path, transactions }) => ({ profileId, path, transactions })),
+        [{ profileId: person.profileId, path: personOutput, transactions: 1 }]);
+      assert.deepEqual(ExportedFileSchema.parse(JSON.parse(readFileSync(personOutput, "utf8"))).rows.map(row => row.operationId),
+        [committed.commit.transaction.writeIntentId]);
+      assert.equal(existsSync(output), false, "an installation writes one labelled report per person, never the bare path");
+    } finally { await w.dispose(); }
+  });
+
+  it("releases the admitted person when reading their store throws", async () => {
+    const w = await historyWorld();
+    try {
+      w.commit(902);
+      const machine = await installationOf(w.root);
+      const [person] = machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready");
+      assert.ok(person);
+      const occupied = join(w.root, `report.${person.profileId}.json`);
+      writeFileSync(occupied, "other-owner");
+      transactionStoreOwners.splice(0);
+      await assert.rejects(runTransactions(machine, ["--from", range.from, "--to", range.to, "--output", join(w.root, "report.json")]), /EEXIST/u);
+      assertPersonReleased(w.root);
+      assert.equal(readFileSync(occupied, "utf8"), "other-owner");
+    } finally { await w.dispose(); }
+  });
+
+  it("exports a store that is not an installation as itself, at the bare output path", async () => {
+    const w = await historyWorld();
+    try {
+      const committed = w.commit(903);
+      const person = findProfileFixtureAdmission(w.root);
+      assert.ok(person); assert.equal(person.isInstallation(), false);
+      const output = join(w.root, "report.json");
+      const reported = z.strictObject({ output: z.string(), sourceDigest: z.string(), transactions: z.number() })
+        .parse(JSON.parse(await runTransactions(person, ["--from", range.from, "--to", range.to, "--output", output])));
+      assert.equal(reported.output, output); assert.equal(reported.transactions, 1);
+      assert.deepEqual(ExportedFileSchema.parse(JSON.parse(readFileSync(output, "utf8"))).rows.map(row => row.operationId),
+        [committed.commit.transaction.writeIntentId]);
+    } finally { await w.dispose(); }
+  });
+
+  it("prints usage that names the per-person report path", async () => {
+    const w = await historyWorld();
+    try {
+      assert.equal(await runTransactions(await installationOf(w.root), ["--help"]), "storage transactions --from YYYY-MM-DD --to YYYY-MM-DD [--system SYSTEM] --output PATH\n"
+        + "Writes a deterministic JSON transaction report from one database snapshot; an existing output is refused.\n"
+        + "On an installation, the signed-in person's report is written beside PATH as NAME.<profile-id>.EXT; other ready people are not checked because they are signed out.\n");
+    } finally { await w.dispose(); }
+  });
 });

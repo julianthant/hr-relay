@@ -6,6 +6,7 @@ import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.
 import { RunSummaryQuerySchema } from "../../storage/sqlite/run-summaries.js";
 import { runtimeTimeZone } from "../../../rules/time/clock.js";
 import { deriveRunStatus } from "../../../rules/runs/run-status.js";
+import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
 type SummaryRow = ReturnType<AuthorityDatabase["queryRunSummaries"]>["items"][number];
 /** Selected live summary rows, streamed in bounded indexed pages inside one database snapshot. */
 function visitRange(database:AuthorityDatabase,from:string,to:string,visit:(row:SummaryRow)=>void) {
@@ -147,7 +148,7 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
         ? failureStepOfTaskSpans(taskSpansForRun(database, surface.runId), deps.descriptors.resolve(surface.workflowId)?.timeline)
         : undefined;
       analytics.observe({ workflowId: surface.workflowId, day, status: surface.status, lifecycleState: authority.lifecycle.state, durationMs, ...(failureStep === undefined ? {} : { failureStep }) });
-      if (authority.lifecycle.state !== "terminal") continue;
+      if (!runResultCurrent(authority)) continue;
       terminalRuns += 1;
       outcomes.set(authority.lifecycle.outcome, (outcomes.get(authority.lifecycle.outcome) ?? 0) + 1);
 

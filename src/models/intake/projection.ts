@@ -34,12 +34,6 @@ export interface IntakeProjection {
   readonly target: (id: IntakeTargetFieldId) => IntakeTarget | undefined;
 }
 
-const FACTORY_DEFINED_PROJECTIONS = new WeakSet<IntakeProjection>();
-
-export function isFactoryDefinedIntakeProjection(candidate: IntakeProjection): boolean {
-  return FACTORY_DEFINED_PROJECTIONS.has(candidate);
-}
-
 /** Why a target path could not be resolved, in the input schema's own terms, so an authoring mistake reads as one and a structural problem is not invented. */
 function intakeTargetPathRefusal(targetFieldId: IntakeTargetFieldId, failure: SchemaPathFailure): string {
   if (failure.kind === "no-such-field") {
@@ -114,7 +108,6 @@ export function defineIntakeProjection(
     target: (id) => byId.get(id),
   };
   Object.freeze(projection);
-  FACTORY_DEFINED_PROJECTIONS.add(projection);
   return projection;
 }
 

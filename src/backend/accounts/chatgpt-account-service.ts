@@ -1,5 +1,6 @@
+import { AssistantCallUsageSchema } from "../../models/dashboard/assistant-usage.js";
 import { AssistantModelPreferenceSchema, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
-import { AssistantInferenceRequestSchema, AssistantInferenceResultSchema, AssistantModelCatalogSchema, type AssistantInferenceRequest } from "../../models/dashboard/assistant.js";
+import { ASSISTANT_CONTEXT_MEDIA_MAX_BYTES, ASSISTANT_REQUEST_MAX_BYTES, AssistantInferenceRequestSchema, AssistantInferenceResultSchema, AssistantModelCatalogSchema, assistantInputMedia, assistantUserParts, type AssistantInferenceRequest } from "../../models/dashboard/assistant.js";
 import { ChatGptAccountStatusSchema, type ChatGptAccountStatus, type ChatGptAccountState, type ChatGptSignInRequest, type ChatGptSignedOut } from "../../models/dashboard/chatgpt-account.js";
 import { createHash, createPublicKey, randomBytes, randomUUID, verify } from "node:crypto";
 import { createServer, type Server } from "node:http";
@@ -24,6 +25,10 @@ export class ChatGptAccountError extends Error {
 }
 export class ChatGptResourceClosureUnprovedError extends ChatGptAccountError {
   constructor(cause: unknown) { super("CHATGPT_RESOURCE_CLOSURE_UNPROVED"); this.name = "ChatGptResourceClosureUnprovedError"; this.cause = cause; }
+}
+/** The Responses POST may have reached the provider, and neither a complete answer nor a provider refusal came back. */
+export class ChatGptDeliveryUncertainError extends ChatGptAccountError {
+  constructor(code: ChatGptAccountCode) { super(code); }
 }
 const fault = (code: ChatGptAccountCode) => new ChatGptAccountError(code);
 export interface ChatGptAuthorization {
@@ -132,12 +137,16 @@ async function boundedEmptyResponse(response: Response): Promise<boolean> {
   finally { await reader.cancel(); reader.releaseLock(); }
 }
 function publicState(record: ChatGptCredentialRecord | undefined, now: number): ChatGptAccountState {
-  if (record?.session == null || record.registration === null) return { state: "signed-out", ...(record?.registration == null ? {} : { account: { email: record.registration.email } }) };
+  if (record?.session == null || record.registration === null) return { state: "signed-out" };
   if (Date.parse(record.session.expiresAt) <= now) return { state: "expired" };
   if (record.session.usage === "unavailable") return { state: "unavailable", code: "CHATGPT_USAGE_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text };
   return { state: "connected", name: record.registration.name, email: record.registration.email, expiresAt: record.session.expiresAt,
     planUsage: !record.session.usePlan || !PLAN_SCOPES.every(scope => record.session?.scopes.includes(scope)) ? "disabled"
       : record.session.usage === "limit-reached" ? "limit-reached" : "enabled" };
+}
+/** The record after its account is forgotten: no identity, client or session, and a new host. */
+function forgotten(record: ChatGptCredentialRecord): ChatGptCredentialRecord {
+  return { ...record, revision: record.revision + 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
 }
 async function closeServer(server: Server): Promise<void> {
   server.closeAllConnections();
@@ -213,11 +222,25 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       catch (error) { retainCredentialClosure(error); throw error; }
     },
     async withLock<T>(operation: (transaction: ChatGptCredentialTransaction) => Promise<T>): Promise<T> {
-      try { return await credentialRepository.withLock(operation); }
+      try {
+        return await credentialRepository.withLock(transaction => {
+          // A registration without a session is an account that ended; every change starts from it forgotten.
+          const current = transaction.read();
+          if (current !== undefined && current.registration !== null && current.session === null) transaction.replace(forgotten(current), current.revision);
+          return operation(transaction);
+        });
+      }
       catch (error) { retainCredentialClosure(error); throw error; }
     },
   };
   let lifecycle: ChatGptLifecycle = { phase: "idle", epoch: 0 };
+  /** The authority of the forgotten record, keyed by the expiry error of the operation that wrote it. */
+  const erasures = new WeakMap<Error, ChatGptAccountAuthority>();
+  function forgetEnded(transaction: ChatGptCredentialTransaction, current: ChatGptCredentialRecord, expired: Error): void {
+    const next = forgotten(current);
+    transaction.replace(next, current.revision);
+    erasures.set(expired, Object.freeze({ revision: next.revision, attemptGeneration: lifecycle.epoch, availability: "signed-out" }));
+  }
   let rejectedSessionToken: string | undefined;
   let planFailureToken: string | undefined;
   let refreshingAccount: Promise<ChatGptAccountState> | undefined;
@@ -394,7 +417,10 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     try {
       const record = await repository.withLock(async transaction => {
         if (fenced()) throw fault("CHATGPT_AUTH_CANCELLED");
-        const current = transaction.read(); if (current !== undefined) return current;
+        const current = transaction.read();
+        // A client kept from a connect that never stored a session is not reused: Connect starts fresh.
+        if (current?.session === null && current.clientId !== null) { const fresh = forgotten(current); transaction.replace(fresh, current.revision); return fresh; }
+        if (current !== undefined) return current;
         const initial: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
         transaction.replace(initial, null); return initial;
       });
@@ -487,7 +513,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       finishStartup();
     }
   }
-  async function disconnect(forget: boolean): Promise<ChatGptSignedOut> {
+  async function disconnect(): Promise<ChatGptSignedOut> {
     active();
     // The epoch moves before the operation starts (its attempt drain must not bump it again), so the lifetime is resolved from the operation afterwards.
     // It settles to a result rather than rejecting, because only close() reads a failed sign-out.
@@ -504,7 +530,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       await Promise.all([...inferenceLifetimes]); assertCurrent(); assertResourceClosure();
       return repository.withLock(async transaction => {
         assertCurrent();
-        const current = transaction.read(); if (current === undefined || current.registration === null || !forget && (current.session === null || current.clientId === null)) return { state: "signed-out", remoteRevocation: "not-needed" };
+        const current = transaction.read(); if (current === undefined || current.registration === null && current.clientId === null) return { state: "signed-out", remoteRevocation: "not-needed" };
         let remoteRevocation: "confirmed" | "unconfirmed" | "not-needed" = current.session?.refreshToken == null ? "not-needed" : "unconfirmed";
         try { if (current.session?.refreshToken != null && current.clientId !== null) {
           const discovered = await discovery(); assertCurrent();
@@ -520,7 +546,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
           retainCredentialClosure(error); assertResourceClosure(); assertCurrent(); remoteRevocation = "unconfirmed";
         }
         assertCurrent(); assertResourceClosure();
-        transaction.replace({ ...current, revision: current.revision + 1, session: null, ...(forget ? { hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null } : {}) }, current.revision);
+        transaction.replace(forgotten(current), current.revision);
         return { state: "signed-out", remoteRevocation };
       });
     })();
@@ -532,6 +558,10 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     return record.session !== null && (rejectedSessionToken !== undefined && privateEqual(record.session.accessToken, rejectedSessionToken)
       || Date.parse(record.session.expiresAt) <= clock.nowMs() + 60_000);
   }
+  function unrenewableEnded(record: ChatGptCredentialRecord): boolean {
+    return record.session !== null && record.session.refreshToken === null && (rejectedSessionToken !== undefined && privateEqual(record.session.accessToken, rejectedSessionToken)
+      || Date.parse(record.session.expiresAt) <= clock.nowMs());
+  }
   async function renewCredentials(transaction: ChatGptCredentialTransaction, assertCurrent: () => void, signal?: AbortSignal, diagnostic?: ChatGptInferenceDiagnostic): Promise<ChatGptCredentialRecord> {
     const epoch = lifecycle.epoch;
     assertCurrent();
@@ -539,14 +569,18 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     if (current?.session == null || current.registration === null || current.clientId === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
     if (needsRefresh(current)) {
       if (diagnostic !== undefined) diagnostic.path = "auth-refresh";
-      if (current.session.refreshToken === null) throw fault("CHATGPT_ACCOUNT_EXPIRED");
+      if (current.session.refreshToken === null) {
+        const expired = fault("CHATGPT_ACCOUNT_EXPIRED");
+        if (unrenewableEnded(current) && epoch === lifecycle.epoch && lifecycle.phase !== "closed") forgetEnded(transaction, current, expired);
+        throw expired;
+      }
       if (current.session.earliestRefreshAt !== null && clock.nowMs() / 1000 < current.session.earliestRefreshAt) throw fault("CHATGPT_ACCOUNT_EXPIRED");
       let result;
       try { result = await token(new URLSearchParams({ grant_type: "refresh_token", client_id: current.clientId, refresh_token: current.session.refreshToken, resource: RESOURCE }), current.clientId, current.session.usePlan, undefined, signal, diagnostic); }
       catch (error) {
         assertCurrent();
         if (error instanceof ChatGptAccountError && error.code === "CHATGPT_ACCOUNT_EXPIRED" && epoch === lifecycle.epoch && lifecycle.phase !== "closed")
-          transaction.replace({ ...current, revision: current.revision + 1, session: null }, current.revision);
+          forgetEnded(transaction, current, error);
         throw error;
       }
       assertCurrent();
@@ -586,8 +620,8 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         active(); assertResourceClosure();
         if (lifecycle.phase !== "idle") return readAccount();
         const observed = repository.read();
-        if (observed?.session == null || observed.session.refreshToken === null || !needsRefresh(observed)) return readAccount();
-        if (observed.session.earliestRefreshAt !== null && clock.nowMs() / 1000 < observed.session.earliestRefreshAt) {
+        if (observed?.session == null || !needsRefresh(observed) || observed.session.refreshToken === null && !unrenewableEnded(observed)) return readAccount();
+        if (observed.session.refreshToken !== null && observed.session.earliestRefreshAt !== null && clock.nowMs() / 1000 < observed.session.earliestRefreshAt) {
           if (Date.parse(observed.session.expiresAt) > clock.nowMs()) return readAccount();
           throw fault("CHATGPT_AUTH_UNAVAILABLE");
         }
@@ -601,7 +635,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         try { assertResourceClosure(); }
         catch (closure) { diagnostic.path = "resource-closure"; recordFailure(closure, diagnostic); throw closure; }
         recordFailure(error, diagnostic);
-        if (error instanceof ChatGptAccountError && error.code === "CHATGPT_ACCOUNT_EXPIRED") return { state: "expired" };
+        if (error instanceof ChatGptAccountError && error.code === "CHATGPT_ACCOUNT_EXPIRED") return readAccount();
         throw error;
       }
     })().finally(() => { if (refreshingAccount === reading) refreshingAccount = undefined; });
@@ -746,7 +780,15 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     operation.assertCurrent();
     if (diagnostic !== undefined) { diagnostic.path = "http-error"; recordProviderCode(diagnostic, code); }
     await rejectProviderCode(code, operation);
-    if (response.status === 401) { rejectedSessionToken = invokedAccessToken; throw fault("CHATGPT_ACCOUNT_EXPIRED"); }
+    if (response.status === 401) {
+      rejectedSessionToken = invokedAccessToken;
+      const expired = fault("CHATGPT_ACCOUNT_EXPIRED");
+      if (operation.credentials.session?.refreshToken === null) await repository.withLock(async transaction => {
+        const current = transaction.read();
+        if (operation.epoch === lifecycle.epoch && lifecycle.phase !== "closed" && current?.session != null && privateEqual(current.session.accessToken, invokedAccessToken)) forgetEnded(transaction, current, expired);
+      });
+      throw expired;
+    }
     if (response.status === 403 && (code === undefined || ["subscription_sharing_user_not_eligible", "chatpass_v2_scope_not_authorized", "chatpass_v2_invalid_authorization_context"].includes(code))) {
       planFailureToken = invokedAccessToken; throw fault("CHATGPT_PLAN_DISABLED");
     }
@@ -821,7 +863,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       authority = operation.authority;
       return { state: "completed" as const, checkedAt: IsoInstantSchema.parse(clock.now().toISOString()), authority };
     } catch (error) {
-      authority = operation?.authority ?? authority;
+      authority = (error instanceof Error ? erasures.get(error) : undefined) ?? operation?.authority ?? authority;
       return { state: "failed" as const, error: error instanceof ChatGptAccountError && error.code === "CHATGPT_OCR_CANCELLED"
         ? fault("CHATGPT_CONNECTION_CANCELLED") : error, authority };
     } finally { operation?.close(); }
@@ -924,9 +966,17 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   async function inferBoundAssistant(input: AssistantInferenceRequest, signal?: AbortSignal, operation?: InferenceOperation) {
     active();
     const parsed = AssistantInferenceRequestSchema.safeParse(input);
-    if (!parsed.success || Buffer.byteLength(JSON.stringify(parsed.data)) > 160_000) throw fault("CHATGPT_OCR_INVALID");
+    if (!parsed.success) throw fault("CHATGPT_OCR_INVALID");
+    // Attachment Base64 is exempt from the 160,000-byte structure budget; it has its own decoded-media and whole-request bounds.
+    const media = assistantInputMedia(parsed.data.input), bytes = Buffer.byteLength(JSON.stringify(parsed.data));
+    if (bytes - media.base64Chars > 160_000 || bytes > ASSISTANT_REQUEST_MAX_BYTES || media.bytes > ASSISTANT_CONTEXT_MEDIA_MAX_BYTES
+      || !parsed.data.input.every(canonicalMedia)) throw fault("CHATGPT_OCR_INVALID");
     return responseStream(parsed.data.model, parsed.data.input, (terminal, text, textOutputIndex, argumentDeltas) => {
-      const result = AssistantInferenceResultSchema.parse({ responseId: terminal.id, model: terminal.model, output: terminal.output });
+      const providerUsage = z.object({ input_tokens: z.unknown(), output_tokens: z.unknown(), total_tokens: z.unknown() }).safeParse(terminal.usage);
+      const measured = providerUsage.success ? AssistantCallUsageSchema.safeParse({ state: "measured", inputTokens: providerUsage.data.input_tokens,
+        outputTokens: providerUsage.data.output_tokens, totalTokens: providerUsage.data.total_tokens }) : undefined;
+      const usage = measured?.success ? measured.data : { state: "unavailable", reason: terminal.usage === undefined || terminal.usage === null ? "missing" : "invalid" };
+      const result = AssistantInferenceResultSchema.parse({ responseId: terminal.id, model: terminal.model, output: terminal.output, usage });
       if (result.model !== parsed.data.model) throw fault("CHATGPT_OCR_INCOMPLETE");
       const calls = result.output.filter(item => item.type === "function_call"), messages = result.output.filter(item => item.type === "message");
       if (calls.length > 1 || messages.length > 1 || calls.length === 1 && messages.length !== 0 || calls.length === 0 && messages.length !== 1) throw fault("CHATGPT_OCR_INCOMPLETE");
@@ -945,8 +995,11 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       return result;
     }, signal, 160_000, { reasoning: parsed.data.reasoning, tools: parsed.data.tools, parallel_tool_calls: false, include: ["reasoning.encrypted_content"] }, operation);
   }
-  function inferAssistant(input: AssistantInferenceRequest, signal?: AbortSignal) {
-    return inferBoundAssistant(input, signal);
+  /** `assertCurrent` fences every credential await, the provider POST and each stream chunk; this caller owns the operation's close. */
+  async function inferAssistant(input: AssistantInferenceRequest, signal?: AbortSignal, assertCurrent: () => void = () => {}) {
+    const operation = await beginInference(signal, () => { options.admission.assertProfileRuntime(); assertCurrent(); }, "assistant");
+    try { return await inferBoundAssistant(input, signal, operation); }
+    finally { operation.close(); }
   }
   function assertAssistantCurrent(check: () => true): void {
     const current: unknown = check();
@@ -981,70 +1034,6 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     assertPreparedCurrent();
     return assertPreparedCurrent;
   }
-  let capabilityGeneration = 0;
-  let assistantVerification: Readonly<{
-    generation: number; preference: AssistantModelPreference; authority: ChatGptAccountAuthority;
-    issuedAt: number; expiresAt: number; assertCurrent(): void;
-  }> | undefined;
-  async function verifyAssistantCapability(input: AssistantModelPreference, assertCurrent: () => true, signal?: AbortSignal): Promise<void> {
-    const generation = ++capabilityGeneration;
-    assistantVerification = undefined;
-    active();
-    if (closureFailures.size !== 0) throw new ChatGptResourceClosureUnprovedError(new AggregateError([...closureFailures.keys()], 'chatgpt-account-response-closure-unproved'));
-    const preference = Object.freeze(AssistantModelPreferenceSchema.parse(input));
-    const assertVerificationCurrent = () => {
-      assertAssistantCurrent(assertCurrent);
-      if (generation !== capabilityGeneration || signal?.aborted === true) throw fault('CHATGPT_ASSISTANT_REFUSED');
-    };
-    const operation = await beginInference(signal, assertVerificationCurrent, "assistant");
-    let authority: ChatGptAccountAuthority;
-    try {
-      const tools: AssistantInferenceRequest['tools'] = [{ type: 'namespace', name: 'relay_capability', description: 'Public capability verification only.',
-        tools: [{ type: 'function', name: 'echo', description: 'Return the fixed public verification value.', strict: true,
-          parameters: { type: 'object', properties: { value: { type: 'string', enum: ['relay-public-capability'] } },
-            required: ['value'], additionalProperties: false } }] }];
-      const history: AssistantInferenceRequest['input'] = [{ role: 'developer',
-        content: 'Call relay_capability.echo once with value relay-public-capability. After its public output, answer Relay public capability verified. Do nothing else.' },
-        { role: 'user', content: 'Verify this model using the fixed public function only.' }];
-      const first = await inferBoundAssistant({ model: preference.slug, reasoning: { effort: preference.effort }, input: history, tools }, signal, operation);
-      operation.assertCurrent();
-      const calls = first.output.filter(item => item.type === 'function_call'), call = calls[0];
-      if (calls.length !== 1 || call?.namespace !== 'relay_capability' || call.name !== 'echo') throw fault('CHATGPT_ASSISTANT_REFUSED');
-      let argumentsValue: unknown;
-      try { argumentsValue = JSON.parse(call.arguments); } catch { throw fault('CHATGPT_ASSISTANT_REFUSED'); }
-      if (!z.strictObject({ value: z.literal('relay-public-capability') }).safeParse(argumentsValue).success) throw fault('CHATGPT_ASSISTANT_REFUSED');
-      const terminal = await inferBoundAssistant({ model: preference.slug, reasoning: { effort: preference.effort }, tools,
-        input: [...history, ...first.output, { type: 'function_call_output', call_id: call.call_id, namespace: call.namespace, name: call.name,
-          ...(call.caller === undefined ? {} : { caller: call.caller }), output: JSON.stringify({ value: 'relay-public-capability' }) }] }, signal, operation);
-      operation.assertCurrent();
-      if (terminal.output.some(item => item.type === 'function_call') || !terminal.output.some(item => item.type === 'message')) throw fault('CHATGPT_ASSISTANT_REFUSED');
-      const catalog = await listAssistantModels(signal);
-      operation.assertCurrent();
-      if (!revalidateAuthority(catalog.authority) || !catalog.catalog.models.some(model => model.slug === preference.slug)) throw fault('CHATGPT_ASSISTANT_REFUSED');
-      authority = catalog.authority;
-    } finally { operation.close(); }
-    assertVerificationCurrent();
-    if (!revalidateAuthority(authority)) throw fault('CHATGPT_ASSISTANT_REFUSED');
-    if (closureFailures.size !== 0) throw new ChatGptResourceClosureUnprovedError(new AggregateError([...closureFailures.keys()], 'chatgpt-account-response-closure-unproved'));
-    const issuedAt = clock.nowMs();
-    assistantVerification = Object.freeze({ generation, preference, authority, issuedAt, expiresAt: issuedAt + 15 * 60_000, assertCurrent: assertVerificationCurrent });
-  }
-  function captureAssistantModelPolicy() {
-    const verified = assistantVerification;
-    if (verified === undefined) return undefined;
-    const isCurrent = () => {
-      active();
-      if (closureFailures.size !== 0) return false;
-      if (assistantVerification !== verified || verified.generation !== capabilityGeneration
-        || clock.nowMs() < verified.issuedAt || clock.nowMs() >= verified.expiresAt) return false;
-      verified.assertCurrent();
-      return revalidateAuthority(verified.authority);
-    };
-    if (!isCurrent()) return undefined;
-    return Object.freeze({ policy: Object.freeze({ model: verified.preference.slug, effort: verified.preference.effort,
-      eligible: true as const, consented: true as const, billing: "chatgpt-plan" as const,
-      verifiedUntil: new Date(verified.expiresAt).toISOString() }), isCurrent });
-  }
   async function responseText<T>(model: string, input: readonly unknown[], accept: (result: { readonly text: string; readonly model: string; readonly responseId: string }) => T,
     signal?: AbortSignal, streamLimit = 4_000_000, operation?: InferenceOperation): Promise<T> {
     return responseStream(model, input, (terminal, output, textOutputIndex, argumentDeltas) => {
@@ -1062,25 +1051,28 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     }, signal, streamLimit, undefined, operation);
   }
   async function responseStream<T>(model: string, input: readonly unknown[],
-    accept: (terminal: { id: string; model: string; output: unknown[] }, text: string, textOutputIndex: number | undefined, argumentDeltas: ReadonlyMap<number, string>) => T,
+    accept: (terminal: { id: string; model: string; output: unknown[]; usage?: unknown }, text: string, textOutputIndex: number | undefined, argumentDeltas: ReadonlyMap<number, string>) => T,
     signal: AbortSignal | undefined, streamLimit: number,
     assistant?: Readonly<{ reasoning: AssistantInferenceRequest["reasoning"]; tools: AssistantInferenceRequest["tools"]; parallel_tool_calls: false; include: readonly ["reasoning.encrypted_content"] }>, capturedOperation?: InferenceOperation): Promise<T> {
     const cancelled = () => signal?.aborted === true;
     active(); if (cancelled()) throw fault("CHATGPT_OCR_CANCELLED");
     const operation = capturedOperation ?? await beginInference(signal, undefined, assistant === undefined ? "ocr" : "assistant");
     const diagnostic: ChatGptInferenceDiagnostic = { operation: assistant === undefined ? "ocr" : "assistant", path: "transport", contentType: "missing", providerCode: "none" };
+    // After the POST only a provider refusal or terminal event is a definite outcome; any other failure leaves delivery uncertain.
+    let posted = false, definite = false;
     try {
       operation.assertCurrent();
       const { credentials, epoch } = operation, session = credentials.session;
       if (session === null) throw fault("CHATGPT_PLAN_DISABLED");
       const persistUsage = (usage: "available" | "limit-reached" | "unavailable") => persistPlanUsage(operation, usage);
+      posted = true;
       const response = await request(`${RESOURCE}/responses`, { method: "POST", headers: { Authorization: `Bearer ${session.accessToken}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model, store: false, stream: true, input, ...assistant }) }, signal, diagnostic);
       diagnostic.contentType = inferenceContentType(response.headers);
       diagnostic.hasBody = response.body !== null;
       return await consumeInferenceResponse(response, async () => {
         operation.assertCurrent();
-        if (!response.ok) await rejectPlanResponse(response, operation, diagnostic);
+        if (!response.ok) { definite = true; await rejectPlanResponse(response, operation, diagnostic); }
         diagnostic.path = "content-type";
         // Headerless subscription replies still require validated SSE and completed output below.
         if (response.body === null || diagnostic.contentType !== "text/event-stream" && diagnostic.contentType !== "missing") { await response.body?.cancel(); throw fault("CHATGPT_OCR_FAILED"); }
@@ -1135,6 +1127,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                 if (completed) throw fault("CHATGPT_OCR_INCOMPLETE");
                 const failureCode = event.response?.error?.code ?? event.error?.code ?? event.code ?? undefined;
                 if (event.type === "error" || event.type === "response.failed" || event.type === "response.incomplete") {
+                  definite = true;
                   diagnostic.path = event.type === "error" ? "stream-error" : event.type === "response.failed" ? "response-failed" : "response-incomplete";
                   recordProviderCode(diagnostic, failureCode);
                   await rejectProviderCode(failureCode, operation);
@@ -1211,9 +1204,10 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                   doneItems.set(done.output_index, done.item);
                 }
                 if (event.type === "response.completed") {
+                  definite = true;
                   diagnostic.path = "terminal-schema";
                   const parsedTerminal = z.object({ id: z.string().min(1).max(256), model: ChatGptOcrRequestSchema.shape.model,
-                    status: z.literal("completed").optional(), error: z.null().optional(), incomplete_details: z.null().optional(), output: z.array(z.unknown()).max(32),
+                    status: z.literal("completed").optional(), error: z.null().optional(), incomplete_details: z.null().optional(), output: z.array(z.unknown()).max(32), usage: z.unknown().optional(),
                   }).safeParse(event.response);
                   if (!parsedTerminal.success) {
                     diagnostic.terminalIssues = { issues: parsedTerminal.error.issues.slice(0, 16).map(issue => ({ path: [inferenceShapeKey("response"), ...issue.path.map(inferenceShapeKey)].slice(0, 8), code: issue.code })),
@@ -1293,6 +1287,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     } catch (error) {
       if (error instanceof ChatGptResourceClosureUnprovedError) diagnostic.path = "resource-closure";
       recordFailure(error, diagnostic, { method: "POST", route: "/v1/responses" });
+      if (posted && !definite && error instanceof ChatGptAccountError && !(error instanceof ChatGptResourceClosureUnprovedError)) throw new ChatGptDeliveryUncertainError(error.code);
       throw error;
     } finally { if (capturedOperation === undefined) operation.close(); }
   }
@@ -1314,6 +1309,15 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     if (signOutFailure instanceof Error) throw signOutFailure;
     if (signOutFailure !== undefined) throw new Error("ChatGPT sign-out failed", { cause: signOutFailure });
   }
-  return Object.freeze({ setDebugEvents, readAccount, refreshAccount, readStatus, checkConnection, readAuthority, revalidateAuthority, signIn, signOut: () => disconnect(false), forgetAccount: () => disconnect(true), extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, verifyAssistantCapability, captureAssistantModelPolicy, close });
+  return Object.freeze({ setDebugEvents, readAccount, refreshAccount, readStatus, checkConnection, readAuthority, revalidateAuthority, signIn, signOut: disconnect, extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, close });
 }
 export type ChatGptAccountService = ReturnType<typeof createChatGptAccountService>;
+
+/** Media parts must carry canonical Base64, so decoded lengths are exact. */
+function canonicalMedia(item: AssistantInferenceRequest["input"][number]): boolean {
+  return assistantUserParts(item).every(part => {
+    if (part.type === "input_text") return true;
+    const url = part.type === "input_image" ? part.image_url : part.file_data, payload = url.slice(url.indexOf(",") + 1);
+    return Buffer.from(payload, "base64").toString("base64") === payload;
+  });
+}

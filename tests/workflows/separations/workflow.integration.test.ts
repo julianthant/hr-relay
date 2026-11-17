@@ -6,7 +6,7 @@ import { VerifyTerminationReceiptOutputSchema } from "../../../src/models/workfl
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { SeparationPlanSchema } from "../../../src/rules/separations/separation-dates.js";
 import { KRONOS_TIMECARD_OMISSION, SeparationsResultSchema, UCPATH_TRANSACTION_OMISSION } from "../../../src/workflows/separations/workflow.js";
-import { CURRENT_SEPARATIONS_RESULT } from "../../support/fixtures/integration/activity-person-pseudonym-fixtures.js";
+import { CURRENT_SEPARATIONS_RESULT } from "../../support/fixtures/integration/separations-run-fixtures.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { COMPOSITION_SCOPE_OUTPUTS } from "../../support/helpers/separations-composition-fixtures.js";
 

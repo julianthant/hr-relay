@@ -18,7 +18,7 @@ const surface = descriptor.surfaces.inputRun; assert.ok(surface?.typedInput);
 const workStudy: RunStartWorkflow = { ...h.WORKFLOWS[0], label: descriptor.label, workflowId: descriptor.id, version: descriptor.version,
   steps: projectStartSteps(descriptor), inputRun: { state: "present", surface } };
 
-describe("served Work Study Confirm", () => {
+describe("served Work Study last stage", () => {
   it("shows the typed effective date as an Effective date fact", async () => {
     const dialog = await h.openDialog(h.stubClient({ submitStartPlan: async () => ({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), workflowId: descriptor.id, expectedVersion: workStudy.version }) }),
       { workflows: [workStudy], panelWorkflowId: workStudy.workflowId });
@@ -26,11 +26,10 @@ describe("served Work Study Confirm", () => {
     const date = document.body.querySelector<HTMLInputElement>('input[aria-label="Effective date"]'); assert.ok(date);
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(date, "08/03/2026"); date.dispatchEvent(new Event("input", { bubbles: true })); });
     await dialog.press("Continue");
-    await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Confirm");
+    assert.equal(dialog.stage(), "Options");
     assert.match(dialog.text(), /Effective date08\/03\/2026/u);
   });
-  it("restores a rerun's stored ISO effective date as MM/DD/YYYY and shows it at Confirm", async () => {
+  it("restores a rerun's stored ISO effective date as MM/DD/YYYY and shows it before Start", async () => {
     const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
     const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion,
       workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: "0".repeat(64), outcome: "done" },
@@ -44,8 +43,8 @@ describe("served Work Study Confirm", () => {
     }), { workflows: [workStudy], panelWorkflowId: descriptor.id, rerunSource: source });
     await dialog.press("Continue");
     assert.equal(document.body.querySelector<HTMLInputElement>('input[aria-label="Effective date"]')?.value, "08/03/2026");
-    for (let guard = 0; guard < 4 && dialog.stage() !== "Confirm"; guard += 1) await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Confirm");
+    for (let guard = 0; guard < 4 && dialog.stage() !== "Options"; guard += 1) await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Options");
     assert.match(dialog.text(), /Effective date08\/03\/2026/u);
   });
 });

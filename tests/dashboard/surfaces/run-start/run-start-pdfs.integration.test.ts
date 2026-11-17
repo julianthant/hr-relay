@@ -26,7 +26,7 @@ const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.i
 const reference = WorkbookLibraryEntrySchema.parse({ libraryId: "action-history-file", version: 3, name: "Action History.xlsx", updatedAt: "2026-11-01T00:00:00Z", rowCount: 2,
   worksheets: [{ id: "history", name: "Action History" }], metadata: { typeId: I9_CHECK_REFERENCE.typeId, sharePoint: null },
   type: { id: I9_CHECK_REFERENCE.typeId, name: "Action History", keyFieldId: "eid", fields: [...I9_CHECK_REFERENCE.fields], defaultWorkbookId: "action-history-file" },
-  state: { libraryId: "action-history-file", revision: 4, selectedVersionId: "current", removed: false, origin: { kind: "local" },
+  state: { libraryId: "action-history-file", revision: 4, selectedVersionId: "current", removed: false, pinned: false, tags: [], origin: { kind: "local" },
     versions: ["earlier", "current"].map((id, index) => ({ id, name: id === "earlier" ? "Fall review" : "Current", snapshotId: id,
       version: index + 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" })) } });
 const workbookFor = (fields: readonly string[]) => ({ name: reference.name, libraryId: reference.libraryId, themes: [], hasFormulas: false,
@@ -75,7 +75,8 @@ it("uploads both original PDFs through the typed client and plans one parent wit
   expect(dialog.disabled("Continue")).toBe(false);
   await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
   await dialog.press("Continue");
-  await dialog.press("Continue");
+  expect(dialog.text()).toContain("Action History.xlsx · Fall review");
+  await dialog.press("Start live run");
   expect(plans).toHaveLength(1);
   const request = StartPlanRequestSchema.parse(plans[0]);
   expect(request.submissions).toHaveLength(1);
@@ -83,13 +84,8 @@ it("uploads both original PDFs through the typed client and plans one parent wit
   const input = I9CheckStartInput.parse(request.submissions[0]);
   expect(input.documents.map(file => file.fileName)).toEqual(uploads);
   expect(new Set(input.documents.map(file => file.readingId)).size).toBe(2);
-  expect(dialog.text()).toContain("first.pdf"); expect(dialog.text()).toContain("second.pdf");
-  expect(dialog.text()).toContain("Action History.xlsx · Fall review");
-  expect(dialog.text()).toContain("I-9 Check results");
-  expect(dialog.text()).toContain("One row per person after review");
-  const confirm = document.querySelector('[aria-label="Confirm"]'); assert.ok(confirm);
-  expect([...confirm.querySelectorAll("dt")].filter(term => ["first.pdf", "second.pdf"].includes(term.textContent ?? ""))
-    .map(term => [term.textContent, term.nextElementSibling?.textContent])).toEqual([["first.pdf", "PDF"], ["second.pdf", "PDF"]]);
+  expect(dialog.text()).not.toContain("I-9 Check results");
+  expect(dialog.text()).not.toContain("One row per person after review");
   expect(request.dryRun).toBe(false);
 });
 
@@ -111,12 +107,10 @@ it("offers the Dry run switch for the PDF workflow and plans and confirms a dry 
   expect(dryRunSwitch.closest(".ds-run-row")?.textContent).toContain("Dry run");
   expect(dryRunSwitch.closest(".ds-run-row")?.textContent).toContain("Fill and check every step without submitting or saving.");
   await act(async () => dryRunSwitch.click()); await h.settle();
-  await dialog.press("Continue");
-  expect(StartPlanRequestSchema.parse(plans[0]).dryRun).toBe(true);
-  const confirm = document.querySelector('[aria-label="Confirm"]'); assert.ok(confirm);
-  expect(confirm.textContent).toMatch(/Dry run\s*On/u);
-  expect(dialog.text()).not.toContain("I-9 Check results");
   expect(dialog.text()).toContain("Start dry run");
+  await dialog.press("Start dry run");
+  expect(StartPlanRequestSchema.parse(plans[0]).dryRun).toBe(true);
+  expect(dialog.text()).not.toContain("I-9 Check results");
 });
 
 it("keeps the accepted selection and refuses invalid PDFs before planning or uploading them", async () => {
@@ -170,7 +164,7 @@ it("retires an upload when the selected workflow changes and ignores its late re
   expect(document.querySelector("textarea")).not.toBeNull();
 });
 
-it("plans one Emergency Contact run per uploaded PDF and says so on Confirm", async () => {
+it("plans one Emergency Contact run per uploaded PDF", async () => {
   const contact = compileWorkflow(emergencyContactWorkflow).descriptor, uploads: string[] = [], plans: unknown[] = [];
   const served = client({
     uploadOcrSource: async request => {
@@ -188,10 +182,9 @@ it("plans one Emergency Contact run per uploaded PDF and says so on Confirm", as
   await dialog.press("Continue");
   const dryRun = [...document.querySelectorAll<HTMLElement>('[role="checkbox"], [role="switch"]')].find(node => node.closest("label")?.textContent?.startsWith("Dry run"));
   assert.ok(dryRun); await act(async () => dryRun.click());
-  await dialog.press("Continue");
+  await dialog.press("Start dry run");
   const request = StartPlanRequestSchema.parse(plans[0]);
   expect(request.dryRun).toBe(true);
   expect(request.submissions).toHaveLength(2);
   expect(request.submissions.map(submission => EmergencyContactInputSchema.parse(submission).fileName)).toEqual(uploads);
-  expect(dialog.text()).toContain("One run for each attached PDF");
 });
