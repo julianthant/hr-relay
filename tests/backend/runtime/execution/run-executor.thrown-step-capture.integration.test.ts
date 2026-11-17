@@ -16,13 +16,14 @@ import { happySessionHarness, personLookupQueuedRun, type SessionFactoryHarness 
 const { executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld();
 afterEach(cleanup);
 
-type Thrown = "timeout" | "undefined" | "declared";
+type Thrown = "timeout" | "undefined" | "declared" | "nothing";
 
 function thrownTask(thrown: Thrown) {
   return defineTask(ucpathDriver, SearchPersonOrg, {
     sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
     async run({ input, ctx }) {
-      await ctx.driver.searchPersonOrg(input);
+      const output = await ctx.driver.searchPersonOrg(input);
+      if (thrown === "nothing") return output;
       const nonError: unknown = undefined;
       if (thrown === "undefined") throw nonError;
       if (thrown === "declared") ctx.fail("PERSON_LOOKUP_UCPATH_SEARCH_FAILED", "UCPath search stopped");
@@ -34,7 +35,9 @@ function thrownTask(thrown: Thrown) {
 /** `deadline` reaches the task deadline while the failure screenshot is being taken. */
 type Page = BrowserScreenshotEvidence["state"] | "throws" | "deadline";
 
-function sessionsShowing(page: Page, reachDeadline: () => void): SessionFactoryHarness {
+type Refusal = Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"];
+
+function sessionsShowing(page: Page, reachDeadline: () => void, refusal: Refusal = "page-closed"): SessionFactoryHarness {
   const base = happySessionHarness();
   return { ...base, factory: { ...base.factory, async open(input) {
     const resource = await base.factory.open(input);
@@ -44,15 +47,15 @@ function sessionsShowing(page: Page, reachDeadline: () => void): SessionFactoryH
       const evidence = { pageVersion: 1, sessionId: resource.sessionId, observedAt: "2026-08-29T08:00:00.000Z" } as const;
       return page === "available"
         ? { ...evidence, state: "available", bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720 }
-        : { ...evidence, state: "unavailable", reason: "page-closed" };
+        : { ...evidence, state: "unavailable", reason: refusal };
     } };
   } } };
 }
 
-async function runThrownStep(page: Page, options: Readonly<{ notes?: "saved" | "screenshot-refused"; thrown?: Thrown }> = {}) {
+async function runThrownStep(page: Page, options: Readonly<{ notes?: "saved" | "screenshot-refused"; thrown?: Thrown; refusal?: Refusal }> = {}) {
   const services: ReturnType<typeof createDiagnosticCaptureService>[] = [];
   const deadlines: (() => void)[] = [];
-  const h = await executorHarness({ sessions: sessionsShowing(page, () => deadlines.shift()?.()),
+  const h = await executorHarness({ sessions: sessionsShowing(page, () => deadlines.shift()?.(), options.refusal),
     stores: registryWithUcpathSearch(thrownTask(options.thrown ?? "timeout")),
     screenshotCapture: { capture: context => {
       const service = services[0];
@@ -162,5 +165,17 @@ describe("a task that throws", () => {
       ["BROWSER_SCREENSHOT_CAPTURE_FAILED", "Failure screenshot not taken: task-deadline"],
       ["TASK_UNHANDLED_FAILURE", "The browser lease failed after the task stopped: ucpath/search-person-org exceeded its immutable 60000ms task deadline"],
     ]);
+  });
+});
+
+describe("a step whose required screenshot is refused", () => {
+  it("fails naming why the screenshot could not be taken, as on the Kronos timecard grid", async () => {
+    const { outcome, failure, stepCaptures } = await runThrownStep("unavailable", { thrown: "nothing", refusal: "horizontal-overflow" });
+    assert.equal(outcome.state, "failed");
+    assert.ok(failure);
+    assert.equal(failure.code, "BROWSER_SCREENSHOT_CAPTURE_FAILED");
+    assert.deepEqual(failure.causeChain.slice(1).map(({ code, summary }) => [code, summary]),
+      [["BROWSER_SCREENSHOT_CAPTURE_FAILED", "Failure screenshot not taken: horizontal-overflow"]]);
+    assert.deepEqual(stepCaptures, []);
   });
 });

@@ -57,7 +57,7 @@ import type { BrowserSystemBinding, BrowserSystemBindings } from "./system-bindi
 import { attachBrowserDiagnostics } from "./browser-diagnostics.js";
 import type { DebugEvent } from "../../../models/events/timeline.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { captureFullPage, FullPageCaptureRefusedError, FullPageCaptureRestoreError } from "./full-page-capture.js";
+import { captureFullPage, FullPageCaptureFailedError, FullPageCaptureRefusedError, FullPageCaptureRestoreError } from "./full-page-capture.js";
 import { serializeErrorCauses } from "../../../models/failures/error-origins.js";
 
 export const BrowserProfileAdmissionSchema = z.strictObject({
@@ -389,7 +389,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
           } catch (error) {
             if (error instanceof FullPageCaptureRestoreError) throw error;
             assertCurrent();
-            if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
+            if (error instanceof FullPageCaptureRefusedError || error instanceof FullPageCaptureFailedError) return unavailable(error.reason);
             if (pageVersion !== version) return unavailable("page-changed");
             const call = playwrightCall(error);
             for (const [index, cause] of serializeErrorCauses(error).entries()) {

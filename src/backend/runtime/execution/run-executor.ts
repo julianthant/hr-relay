@@ -1356,8 +1356,14 @@ export async function executeClaimedRun(
                       let captured = false;
                       let captureFailure: Readonly<{ error: unknown }> | undefined;
                       const requiredCapture = async (): Promise<void> => {
+                        const earlierRefusals = captureRefusals.length;
                         try { await captureScreenshot(); captured = true; }
-                        catch (error) { captureFailure = { error }; throw error; }
+                        catch (error) {
+                          captureFailure = { error };
+                          const refusal = captureRefusals.slice(earlierRefusals).at(-1);
+                          if (refusal !== undefined) failureCaptureRefused(refusal);
+                          throw error;
+                        }
                       };
                       let output: unknown;
                       try {

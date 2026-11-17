@@ -259,6 +259,9 @@ const SCREENSHOT_REASON: Readonly<Record<string, string>> = {
   "secret-controls-present": "the page showed a password or other secret field", "authentication-unverified": "the sign-in could not be confirmed",
   "verification-failed": "the captured page could not be checked", "task-aborted": "the step was stopped first",
   "lease-ended": "the browser had already been released", TimeoutError: "the browser did not respond in time",
+  "horizontal-overflow": "the page was wider than the browser could capture", "unpainted-gap": "part of the page could not be scrolled into view",
+  "content-bottom-unreached": "the bottom of the page could not be scrolled into view", "band-limit": "the page was too long to capture",
+  "pixel-limit": "the page was too large to capture", "observer-unavailable": "the secret-field check stopped working during capture",
 };
 
 /** Why a step has no screenshot, in the operator's words; any other recorded reason is a browser error. */

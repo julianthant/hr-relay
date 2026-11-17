@@ -35,11 +35,14 @@ export type BrowserSessionCloseReason =
   | "operator-reopen"
   | "login-failed";
 
+/** Why a whole-page capture could not complete on a page that was safe to capture. */
+export type BrowserCaptureFailure = "horizontal-overflow" | "unpainted-gap" | "content-bottom-unreached" | "band-limit" | "pixel-limit" | "observer-unavailable";
+
 export type BrowserScreenshotEvidence = Readonly<{
   pageVersion: number; sessionId: BrowserSessionId; observedAt: string;
   diagnosticAttachments?: readonly Readonly<{ kind: "console-summary" | "network-summary"; mediaType: string; bytes: Uint8Array; sensitivity: "redacted" }>[];
 }> & (Readonly<{ state: "available"; bytes: Uint8Array; width: number; height: number }>
-  | Readonly<{ state: "unavailable"; reason: "authentication-unverified" | "page-changed" | "page-closed" | "secret-controls-present" | "verification-failed" }>);
+  | Readonly<{ state: "unavailable"; reason: "authentication-unverified" | "page-changed" | "page-closed" | "secret-controls-present" | "verification-failed" | BrowserCaptureFailure }>);
 
 /** One authenticated worker-owned browser session for one system; the reuse identity (`instance`/`configFingerprint`/`browserMode`) records the exact instance and run-config it authenticated under. */
 export interface WorkerBrowserResource {
