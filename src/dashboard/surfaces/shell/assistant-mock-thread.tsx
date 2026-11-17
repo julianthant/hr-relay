@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Check, ChevronRight, Paperclip } from "lucide-react";
-import { EmptyState, useToasts } from "../../ds/ui.js";
+import { EmptyState, FailureNotice, useToasts } from "../../ds/ui.js";
 import type { AssistantActivityWire } from "../../../models/dashboard/assistant.js";
 import { cn } from "../../lib/utils.js";
 import { ACTIVITY, type AssistantFrame, type ChatItem, type Row } from "../assistant/assistant-mock-frames.js";
@@ -67,20 +67,21 @@ export function AssistantMockActivity({ query, onOpen }: { query: string; onOpen
 
 const clock = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" });
 
-/** The served Activity list: read once when it opens, filtered in place by the search. */
+/** The served Activity list: read once when it opens, filtered in place by the search; a failed read shows one notice with Retry. */
 export function AssistantServedActivity({ query, read }: { query: string; read: (signal: AbortSignal) => Promise<AssistantActivityWire> }) {
-  const { toast } = useToasts();
-  const [rows, setRows] = useState<readonly Row[]>();
+  const [rows, setRows] = useState<readonly Row[] | "failed">();
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const abort = new AbortController();
+    setRows(undefined);
     read(abort.signal).then(view => setRows(view.rows.map(row => ({ primary: row.label, value: clock.format(new Date(row.at)) }))), () => {
-      if (abort.signal.aborted) return;
-      setRows([]); toast({ tone: "warning", title: "Activity unavailable" });
+      if (!abort.signal.aborted) setRows("failed");
     });
     return () => abort.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the read happens once per opening
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the read happens once per opening and once per Retry
+  }, [attempt]);
   if (rows === undefined) return null;
+  if (rows === "failed") return <FailureNotice sentence="Activity did not load." stillWorks="Your chats are not affected." action={{ label: "Retry", onClick: () => setAttempt(count => count + 1) }} />;
   const needle = query.trim().toLowerCase(), shown = rows.filter(row => row.primary.toLowerCase().includes(needle));
   if (rows.length === 0) return <EmptyState title="No activity today" />;
   return shown.length === 0 ? <div className="hub-empty">No matching activity.</div> : <Rows rows={shown} />;
