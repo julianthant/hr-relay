@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION } from '../../../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_PAYLOAD_TABLE } from '../../../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService, projectWorkbookCompatibilityFromRepository } from '../../../../../src/backend/workbooks/workbook-library-service.js';
 import { manualClock } from '../../../../../src/rules/time/clock.js';
 import { unexpectedWorkbookSync } from '../../../../support/helpers/backend/workbook-sync.js';
@@ -57,14 +57,14 @@ it('returns a named conflict and retains the master when formula metadata makes 
   assert.equal((await response.json() as { code: string }).code, 'WORKBOOK_METADATA_UNSUPPORTED');
   assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(path)).json()), first);
 });
-it.each(["/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/operations", "/api/v1/workbooks/id/sync"])("requires JSON before effects for %s", async path => {
+it.each(["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/operations", "/api/v1/workbooks/id/sync"])("requires JSON before effects for %s", async path => {
   const h = await harness(), beforeFault = faultAuthoritySnapshot(h);
   const response = await h.app.request(`http://localhost${path}`, { method: "POST", headers: { host: "localhost", origin: "http://localhost", "content-type": "text/plain" }, body: "{}" });
   assert.equal(response.status, 415); assertHttpFaultOnly(h, beforeFault, 1);
 });
 it.each(foreignOriginCases())("rejects foreign workbook mutation %s before reading the body", async (_label, originHeaders) => {
   const h = await harness();
-  for (const path of ["/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/operations", "/api/v1/workbooks/id/sync"]) {
+  for (const path of ["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/operations", "/api/v1/workbooks/id/sync"]) {
     const request = new Request(`http://localhost${path}`, { method: "POST", headers: { ...originHeaders, "content-type": "application/json" }, body: "{}" });
     const read = vi.spyOn(request, "json");
     assert.equal((await h.app.request(request)).status, 403); assert.equal(request.bodyUsed, false); assert.equal(read.mock.calls.length, 0);
@@ -120,6 +120,50 @@ it('rejects retired import purpose input and serves a plain import with admitted
   assert.deepEqual(await (await h.app.request('http://localhost/api/v1/workbooks/results')).json(), { workflows: [], unavailable: [] });
 });
 
+it('serves clone as a new import result and refuses an existing name without creating another spreadsheet', async () => {
+  const h = await harness();
+  const response = await h.app.request('http://localhost/api/v1/workbooks/import', { method: 'POST', headers,
+    body: JSON.stringify({ workbook: encodeEditableWorkbook(workbook), tags: ['Original'] }) });
+  expect(response.status).toBe(201);
+  const original = WorkbookImportResultSchema.parse(await response.json()).workbook;
+  const path = `http://localhost/api/v1/workbooks/${original.libraryId}/clone`;
+  const cloneResponse = await h.app.request(path, { method: 'POST', headers, body: JSON.stringify({ name: 'Clone.xlsx', tags: ['Copy'] }) });
+  expect(cloneResponse.status).toBe(201);
+  const cloned = WorkbookImportResultSchema.parse(await cloneResponse.json()).workbook;
+  expect(cloned.workbook).toEqual({ ...original.workbook, libraryId: cloned.libraryId, name: 'Clone.xlsx' });
+  const duplicate = await h.app.request(path, { method: 'POST', headers, body: JSON.stringify({ name: 'Clone.xlsx' }) });
+  expect(duplicate.status).toBe(409);
+  expect(await duplicate.json()).toMatchObject({ code: 'WORKBOOK_NAME_EXISTS',
+    message: 'A spreadsheet with this name already exists. Choose a different name.' });
+  expect(h.database.authority.workbooks.catalog()).toHaveLength(2);
+});
+
+it('dispatches a SharePoint import to the authenticated download boundary and serves its linked, tagged result', async () => {
+  const database = new DatabaseSync(':memory:');
+  try {
+    for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(sql);
+    const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => work().result });
+    let downloads = 0;
+    const library = createWorkbookLibraryService({ repository, clock: manualClock(new Date('2026-11-02T00:00:00.000Z')),
+      sync: { async withDownload(command, use) {
+        downloads++;
+        return use({ name: 'Remote.csv', bytes: new TextEncoder().encode('Label\nRemote\n').buffer },
+          { signal: command.signal, assertCurrent: () => command.signal.throwIfAborted() });
+      } } });
+    const app: DashboardApp = new Hono();
+    registerWorkbookRoutes(app, { workbooks: { library, intake: async () => { throw new Error('unexpected intake'); }, workflows: [] } });
+    const url = 'https://example.sharepoint.com/sites/hr/Remote.csv';
+    const response = await app.request('/api/v1/workbooks/import', { method: 'POST', headers,
+      body: JSON.stringify({ source: 'sharepoint', name: 'Remote', url, tags: ['Fall'] }) });
+    expect(response.status).toBe(201);
+    const result = WorkbookImportResultSchema.parse(await response.json());
+    expect(downloads).toBe(1);
+    expect(library.catalog()).toHaveLength(1);
+    expect(library.catalog()[0]).toMatchObject({ libraryId: result.workbook.libraryId, name: 'Remote',
+      metadata: { sharePoint: { url } }, state: { tags: ['Fall'] } });
+  } finally { database.close(); }
+});
+
 it.each(['new-merge', 'merge'])('rejects retired merge %s before service or replay lookup', async operationId => {
   const app: DashboardApp = new Hono();
   app.onError((error, context) => {
@@ -137,7 +181,7 @@ it.each(['new-merge', 'merge'])('rejects retired merge %s before service or repl
 it('serves a closed retired status without merge payload and rejects its exact completed POST', async () => {
   const database = new DatabaseSync(':memory:');
   try {
-    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(statement);
+    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(statement);
     const record = installRetainedMergeFixture(database);
     const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => work().result });
     const library = createWorkbookLibraryService({ repository, clock: manualClock(new Date(record.at)), sync: unexpectedWorkbookSync });

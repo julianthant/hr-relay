@@ -4,7 +4,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { applyAuthorityMigrationsAfter, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, QUERY_INDEXES, QUERY_INDEX_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { restoreSchema33QueryIndexes } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreSchema35QueryIndexes } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 const AT = "2026-11-17T00:00:00.000Z";
@@ -13,44 +13,44 @@ const ObjectSchema = z.object({ type: z.string(), name: z.string(), tbl_name: z.
 const schemaObjects = (database: DatabaseSync) => z.array(ObjectSchema)
   .parse(database.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all());
 const indexNames = (database: DatabaseSync) => schemaObjects(database).filter(object => object.type === "index").map(object => object.name);
-const rows = (database: DatabaseSync) => migrationTableNames(33).map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() }));
+const rows = (database: DatabaseSync) => migrationTableNames(35).map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() }));
 const plan = (database: DatabaseSync, sql: string) => database.prepare(`EXPLAIN QUERY PLAN ${sql}`).all()
   .map(row => z.object({ detail: z.string() }).parse(row).detail).join("\n");
 
-/** A store at schema 33, the query index migration's predecessor, holding one command. */
-function schema33(): DatabaseSync {
+/** A store at schema 35, the query index migration's predecessor, holding one command. */
+function schema35(): DatabaseSync {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys=ON");
-  for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= 33)) for (const statement of migration.statements) database.exec(statement);
+  for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= 35)) for (const statement of migration.statements) database.exec(statement);
   database.prepare(`INSERT INTO commands(id,family,actor_id,parent_id,target_id,request_digest,request_json,state,outcome_json,created_at,updated_at)
     VALUES('command','run-lifecycle','operator',NULL,'run','digest',?,'admitted',NULL,?,?)`)
     .run(JSON.stringify({ kind: "run-lifecycle", operation: "delegation-invocation", request: { runId: "run" } }), AT, AT);
   return database;
 }
 
-function migrateTo34(database: DatabaseSync): void {
+function migrateTo36(database: DatabaseSync): void {
   database.exec("BEGIN");
-  applyAuthorityMigrationsAfter(database, 33, { now: AT, captureFile: () => { throw new Error("no capture expected"); } });
+  applyAuthorityMigrationsAfter(database, 35, { now: AT, captureFile: () => { throw new Error("no capture expected"); } });
   database.exec("COMMIT");
 }
 
-describe("query index migration 34", () => {
-  it("is schema version 34, the current schema, and changes no table", () => {
-    assert.equal(QUERY_INDEX_SCHEMA_VERSION, 34);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 34);
-    assert.deepEqual(migrationTableNames(34), migrationTableNames(33));
+describe("query index migration 36", () => {
+  it("is schema version 36, under the workbook payloads' current 37, and changes no table", () => {
+    assert.equal(QUERY_INDEX_SCHEMA_VERSION, 36);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 37);
+    assert.deepEqual(migrationTableNames(36), migrationTableNames(35));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });
 
   it("drops the checkpoint replay index, adds each query index and keeps every row and other schema object", () => {
-    const database = schema33();
+    const database = schema35();
     try {
       database.exec("DELETE FROM authority_changes");
       const prior = schemaObjects(database), stored = rows(database);
       assert.ok(prior.some(object => object.name === "checkpoints_replay_idx"));
-      migrateTo34(database);
+      migrateTo36(database);
       const after = schemaObjects(database);
-      assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES)), prior.filter(object => object.name !== "checkpoints_replay_idx"));
+      assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES) && object.tbl_name !== "workbook_payloads"), prior.filter(object => object.name !== "checkpoints_replay_idx"));
       assert.deepEqual(after.filter(object => object.name in QUERY_INDEXES).map(object => [object.name, object.sql]).sort(),
         Object.entries(QUERY_INDEXES).map(([name, index]) => [name, `CREATE INDEX ${name} ON ${index.on}`]).sort());
       assert.deepEqual(rows(database), stored);
@@ -60,10 +60,10 @@ describe("query index migration 34", () => {
   });
 
   it("replays checkpoints through the table's unique key and finds a run's commands through the new index", () => {
-    const database = schema33();
+    const database = schema35();
     try {
       assert.match(plan(database, REPLAY), /USING INDEX checkpoints_replay_idx/u);
-      migrateTo34(database);
+      migrateTo36(database);
       assert.match(plan(database, REPLAY), /SEARCH run_checkpoints USING INDEX sqlite_autoindex_run_checkpoints_\d \(workflow=\? AND item_id=\?\)/u);
       const invocations = `SELECT id FROM commands WHERE family='run-lifecycle' AND json_extract(request_json,'$.operation')='delegation-invocation'
         AND json_extract(request_json,'$.request.runId')=? ORDER BY id`;
@@ -72,7 +72,7 @@ describe("query index migration 34", () => {
     } finally { database.close(); }
   });
 
-  it("upgrades a schema-33 store to 34 through the store upgrade", async () => {
+  it("upgrades a schema-35 store through the store upgrade", async () => {
     const f = await storageRecoveryFixture(7);
     try {
       const database = new DatabaseSync(f.path);
@@ -81,15 +81,15 @@ describe("query index migration 34", () => {
         for (const migration of SQLITE_MIGRATIONS) if (migration.version > 7) for (const statement of migration.statements) database.exec(statement);
         database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
         database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
-        restoreSchema33QueryIndexes(database);
-        assert.equal(inspectNativeAuthority(database, 33).schemaVersion, 33);
+        restoreSchema35QueryIndexes(database);
+        assert.equal(inspectNativeAuthority(database, 35).schemaVersion, 35);
         assert.ok(indexNames(database).includes("checkpoints_replay_idx"));
       } finally { database.close(); }
       assert.equal((await f.run()).state, "upgraded");
       const upgraded = new DatabaseSync(f.path, { readOnly: true });
       try {
-        assert.equal(upgraded.prepare("PRAGMA user_version").get()?.user_version, 34);
-        assert.equal(inspectNativeAuthority(upgraded).schemaVersion, 34);
+        assert.equal(upgraded.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+        assert.equal(inspectNativeAuthority(upgraded).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
         const names = indexNames(upgraded);
         assert.equal(names.includes("checkpoints_replay_idx"), false);
         assert.deepEqual(Object.keys(QUERY_INDEXES).filter(name => !names.includes(name)), []);

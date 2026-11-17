@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { IsoInstantSchema, RunIdSchema, WorkflowIdSchema, DateOnlySchema, CommandIdSchema } from "../../rules/identity/ids.js";
-import { WorkbookIdSchema, WorkbookRevisionSchema, WorkbookMetadataSchema, WorkbookTypeSchema, EditableWorkbookWireSchema, WorkbookLinkSchema } from "./workbooks.js";
+import { WorkbookIdSchema, WorkbookRevisionSchema, WorkbookMetadataSchema, WorkbookTypeSchema, EditableWorkbookWireSchema, WorkbookLinkSchema, WorkbookImportRequestSchema } from "./workbooks.js";
 import { SPREADSHEET_FIELDS } from "../fields/workbook-fields.js";
 
 export const WorkbookSourceSelectionSchema = z.strictObject({
@@ -23,10 +23,16 @@ export const WorkbookFieldRequirementSchema = z.strictObject({
   id: WorkbookIdSchema, keyFieldId: KnownWorkbookFieldSchema, mode: z.enum(["keys", "all"]),
   writableFields: z.array(KnownWorkbookFieldSchema).refine(fields => new Set(fields).size === fields.length),
 });
+/** An optional second check: any library sheet whose key field is bound fits, and a run may pick none. */
+export const WorkbookCheckRequirementSchema = z.strictObject({ id: WorkbookIdSchema, keyFieldId: KnownWorkbookFieldSchema });
 export const WorkbookRequirementDeclarationSchema = z.strictObject({
   requiredWorkbookFields: z.array(KnownWorkbookFieldSchema).refine(fields => new Set(fields).size === fields.length),
   workbookReference: WorkbookFieldRequirementSchema.optional(),
+  workbookCheck: WorkbookCheckRequirementSchema.optional(),
 }).superRefine((workflow, context) => {
+  if (workflow.workbookCheck !== undefined && workflow.workbookCheck.id === workflow.workbookReference?.id) {
+    context.addIssue({ code: "custom", message: "workbook check and workbook reference need distinct ids" });
+  }
   const reference = workflow.workbookReference;
   if (workflow.requiredWorkbookFields.length === 0 ? reference !== undefined : reference === undefined
     || reference !== undefined && (!workflow.requiredWorkbookFields.includes(reference.keyFieldId)
@@ -126,6 +132,8 @@ export const WorkbookCompatibilitySchema = z.strictObject({
 export type WorkbookCompatibility = z.infer<typeof WorkbookCompatibilitySchema>;
 
 export const WorkbookActiveSelectionSchema = z.strictObject({
+  /** Which declaration the pick answers; absent means the workflow's required reference. */
+  typeId: WorkbookIdSchema.optional(),
   entry: z.number().int().positive(), libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema,
   sheetId: WorkbookIdSchema, expectedVersion: WorkbookRevisionSchema,
   selectedRow: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema }).optional(),
@@ -202,6 +210,11 @@ const NameSchema = z.string().refine(value => value.trim().length > 0);
 /** Tags the operator typed; workflow-derived tags come from `origin` and are never stored here. */
 export const WorkbookLibraryTagsSchema = z.array(z.string().min(1).max(40).refine(tag => tag.trim() === tag, { message: "tags are trimmed" })).max(20)
   .refine(tags => new Set(tags.map(tag => tag.toLowerCase())).size === tags.length, { message: "tags must be unique" });
+export const WorkbookCloneRequestSchema = z.strictObject({ name: NameSchema, tags: WorkbookLibraryTagsSchema.optional() });
+export const WorkbookLocalImportRequestSchema = WorkbookImportRequestSchema.safeExtend({ tags: WorkbookLibraryTagsSchema.optional() });
+export const WorkbookSharePointImportRequestSchema = z.strictObject({ source: z.literal('sharepoint'),
+  url: WorkbookLinkSchema.shape.url, name: NameSchema, tags: WorkbookLibraryTagsSchema.optional() });
+export const WorkbookLibraryImportRequestSchema = z.union([WorkbookLocalImportRequestSchema, WorkbookSharePointImportRequestSchema]);
 export const WorkbookLibraryOriginSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("local") }),
   z.strictObject({ kind: z.literal("workflow"), runId: RunIdSchema, partitionDay: DateOnlySchema, workflowId: WorkflowIdSchema, workflowLabel: NameSchema,

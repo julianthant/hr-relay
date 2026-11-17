@@ -5,7 +5,7 @@ import { AppSettingsSchema } from "../../../../src/models/config/app-settings.js
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../../src/models/config/person-preferences.js";
 import { SettingsInitializationCommandSchema, SettingsInitializationAuditSchema } from "../../../../src/models/config/settings-initialization.js";
-import { PRE_PREFERENCES_SETTINGS_SCHEMA_HASH, PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH } from "../../../../src/backend/storage/sqlite/settings-record-conversion.js";
+import { PRE_PREFERENCES_SETTINGS_SCHEMA_HASH, PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH, PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH } from "../../../../src/backend/storage/sqlite/settings-record-conversion.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -54,9 +54,18 @@ export function prePreferencesSettingsRow(table: string, input: unknown): Record
 /** The row as a store wrote it before the Runs and Notifications settings existed (schemas 16 through 31). */
 export function preRunsNotificationsSettingsRow(table: string, input: unknown): Record<string, unknown> {
   return predecessorSettingsRow(table, input, PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH, snapshot => {
-    const { preventSleepWhileRunning, confirmCloseDuringRun, notifications, ...preferences } = snapshot.preferences;
-    assert.deepEqual({ preventSleepWhileRunning, confirmCloseDuringRun, notifications }, { preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run",
-      notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" } });
+    const { preventSleepWhileRunning, confirmCloseDuringRun, notifications, sendShortcut, ...preferences } = snapshot.preferences;
+    assert.deepEqual({ preventSleepWhileRunning, confirmCloseDuringRun, notifications, sendShortcut }, { preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run",
+      notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" }, sendShortcut: "enter" });
+    return { ...snapshot, preferences, preferencesFingerprint: sha256Hex(canonicalJsonStringify(preferences)) };
+  });
+}
+
+/** The row as a store wrote it before the assistant send shortcut existed (schemas 32 through 34). */
+export function preSendShortcutSettingsRow(table: string, input: unknown): Record<string, unknown> {
+  return predecessorSettingsRow(table, input, PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH, snapshot => {
+    const { sendShortcut, ...preferences } = snapshot.preferences;
+    assert.equal(sendShortcut, "enter");
     return { ...snapshot, preferences, preferencesFingerprint: sha256Hex(canonicalJsonStringify(preferences)) };
   });
 }
@@ -79,6 +88,7 @@ function restorePredecessorSettingsRows(database: DatabaseSync, predecessor: (ta
 
 export function restorePrePreferencesSettingsRows(database: DatabaseSync): void { restorePredecessorSettingsRows(database, prePreferencesSettingsRow); }
 export function restorePreRunsNotificationsSettingsRows(database: DatabaseSync): void { restorePredecessorSettingsRows(database, preRunsNotificationsSettingsRow); }
+export function restorePreSendShortcutSettingsRows(database: DatabaseSync): void { restorePredecessorSettingsRows(database, preSendShortcutSettingsRow); }
 
 export function removeSchema16PersonPreferences(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 16);

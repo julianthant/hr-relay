@@ -601,7 +601,12 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...["work-study", "work-study-transaction"].flatMap(id => [
     ...workStudyPlanLeaves(workflowResult(id), "plan."), ...open(workflowResult(id), "state"), ...workStudyProofLeaves(workflowResult(id), "receipt."),
   ]),
-  ...["work-study", "work-study-ucpath-auth", "work-study-transaction"].flatMap(id => [...person(workflowInput(id), "emplId"), ...open(workflowInput(id), "effectiveDate")]),
+  ...["work-study", "work-study-ucpath-auth", "work-study-transaction", "work-study-reference-check"].flatMap(id => [...person(workflowInput(id), "emplId"), ...open(workflowInput(id), "effectiveDate")]),
+  /* The reference review stores only that the operator continued; whether to ask is a flag. */
+  ...["work-study", "work-study-reference-check", "separations", "separations-reference-check"].flatMap(id => open(gateResult(id, "reference-check-review"), "decision")),
+  ...["work-study", "separations"].flatMap(store => open(taskOutput(`workflow:${store}/read-reference-stop`), "ask")),
+  ...["work-study-reference-check", "separations-reference-check"].flatMap(id => open(workflowResult(id), "check", "check.state", "check.result", "check.checks")),
+  ...person(workflowInput("separations-reference-check"), "emplId", "employeeName"),
   ...approvedOcrRecordLeaves(taskOutput("ocr/read-approved-record"), "record."),
   ...approvedOcrSnapshotLeaves(taskOutput("ocr/read-approved-snapshot")),
   ...approvedOcrSnapshotLeaves(workflowResult("emergency-contact-read-document")),
@@ -616,16 +621,17 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(taskOutput("ucpath/stage-emergency-contact"), "stagedPageState"),
   ...contactProofLeaves(taskOutput("ucpath/save-emergency-contact"), "proof."),
   ...contactProofLeaves(writeProof("ucpath/save-emergency-contact"), ""),
-  ...["emergency-contact-member", "emergency-contact-member-contact-plan", "emergency-contact-member-contact-preview"].flatMap(id => [
+  ...["emergency-contact-member", "emergency-contact-member-contact-plan", "emergency-contact-member-contact-preview", "emergency-contact-member-onbase-filing"].flatMap(id => [
     ...approvedOcrReferenceLeaves(workflowInput(id), "approval."), ...approvedOcrRecordLeaves(workflowInput(id), "record."),
+    ...ocrArtifactLeaves(workflowInput(id), "document."), ...open(workflowInput(id), "sourcePage", "onbaseFiling"),
   ]),
-  ...["emergency-contact-member", "emergency-contact-member-contact-preview"].flatMap(id => [
+  ...["emergency-contact-member", "emergency-contact-member-contact-preview", "emergency-contact-member-onbase-filing"].flatMap(id => [
     ...open(workflowResult(id), "disposition"), ...contactProofLeaves(workflowResult(id), "proof."),
   ]),
   ...contactPlannedOutputLeaves(workflowResult("emergency-contact-member-contact-plan")),
   ...["emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."), ...ocrRosterLeaves(workflowInput(id), "roster."),
-    ...open(workflowInput(id), "reading.kind"), ...ocrPrivateLeaves(workflowInput(id), "fileName", "readingId", "reading.actorId", "reading.assertions"),
+    ...open(workflowInput(id), "reading.kind", "onbaseFiling"), ...ocrPrivateLeaves(workflowInput(id), "fileName", "readingId", "reading.actorId", "reading.assertions"),
   ]),
   ...[workflowResult("emergency-contact"), workflowResult("emergency-contact-members"), taskOutput("workflow:emergency-contact/read-result")].flatMap(scope => [
     ...approvedOcrReferenceLeaves(scope, "approval."), ...ocrPrivateLeaves(scope, "members"),
@@ -817,7 +823,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
 
   /* person-lookup ingress */
   ...[PERSON_LOOKUP_INPUT,
-    ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates"].map(workflowInput),
+    ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates", "person-lookup-reference-check"].map(workflowInput),
   ].flatMap(scope => [
     ...person(scope, "name", "emplId", "lastName", "firstName", "dob"),
     { scope, path: "ssn", classification: "direct-identifier", transform: "digest" },
@@ -851,6 +857,9 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(workflowResult("person-lookup-cross-verify"), "verifiedCrm.state", "verifiedCrm.code", "verifiedCrm.reason"),
   ...activeStatusLeaves(workflowResult("person-lookup-active-status"), ""),
   ...personLookupResultLeaves(workflowResult("person-lookup-crm-dates")),
+  /* The reference check names the picked spreadsheet, its sheet, the outcome and the row number; it carries no value from a row. */
+  ...open(taskOutput("workbooks/verify-person"), "state", "result", "checks"),
+  ...open(workflowResult("person-lookup-reference-check"), "check", "check.state", "check.result", "check.checks"),
 
         /* These describe the READ, not about the person, so they are open. */
   ...person(KRONOS_TIMECARD_INPUT, "emplId", "expectedName"),

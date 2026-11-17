@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it } from "vitest";
 import { z } from "zod";
 import { configureWritableConnection } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, type WorkbookOperationState } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, type WorkbookOperationState, WORKBOOK_PAYLOAD_TABLE } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-error.js";
 import { type WorkbookOperation, type WorkbookOperationReceipt } from "../../../../src/models/dashboard/workbooks.js";
@@ -65,7 +65,7 @@ function open(): Opened {
   const database = new DatabaseSync(":memory:");
   databases.push(database);
   configureWritableConnection(database, 5000);
-  for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(statement);
+  for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(statement);
   const tx = <T>(work: () => T): T => {
     database.exec("BEGIN IMMEDIATE");
     try { const value = work(); database.exec("COMMIT"); return value; }

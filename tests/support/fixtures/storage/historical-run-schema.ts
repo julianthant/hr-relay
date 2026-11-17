@@ -7,6 +7,9 @@ import { z } from "zod";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
+import { SavedWorkbookWireSchema } from "../../../../src/models/dashboard/workbooks.js";
+import { WorkbookLibrarySnapshotSchema } from "../../../../src/models/dashboard/workbook-library.js";
+import { migrateWorkbookPayloads, WORKBOOK_PAYLOAD_MIGRATION, WORKBOOK_PAYLOAD_TABLE } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 
 /** Returns `commands` to its schema-32 table, keeping every row: `executing` allowed, state not tied to outcome, an errored bulk child held as `refused`. The schema version is left to the caller. */
 function restoreSchema32CommandTable(database: DatabaseSync): void {
@@ -19,18 +22,81 @@ function restoreSchema32CommandTable(database: DatabaseSync): void {
   for (const statement of owned) database.exec(statement);
 }
 
-/** Steps a current authority back to schema 33: none of the query indexes, and checkpoint replay keeps its own index. */
-export function restoreSchema33QueryIndexes(database: DatabaseSync): void {
-  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 34);
+const PAYLOAD_TABLES = [["workbook_library", SavedWorkbookWireSchema], ["workbook_creations", SavedWorkbookWireSchema],
+  ["workbook_library_history", SavedWorkbookWireSchema], ["workbook_library_snapshots", WorkbookLibrarySnapshotSchema]] as const;
+/** The three guards that refuse rewriting retained workbook rows, as migration 37 recreates them. */
+const RETAINED_GUARDS = WORKBOOK_PAYLOAD_MIGRATION.statements.filter(statement => statement.startsWith("CREATE TRIGGER workbook_") && !statement.startsWith("CREATE TRIGGER workbook_payloads_"));
+function withoutRetainedGuards(database: DatabaseSync, work: () => void): void {
+  assert.equal(RETAINED_GUARDS.length, 3);
+  for (const statement of RETAINED_GUARDS) database.exec(`DROP TRIGGER ${String(/^CREATE TRIGGER (\w+)/u.exec(statement)?.[1])}`);
+  work();
+  for (const statement of RETAINED_GUARDS) database.exec(statement);
+}
+
+/** Embeds every stored workbook in its rows again, byte for byte as schemas 18 to 36 wrote them, and drops workbook_payloads; the schema version is left to the caller. */
+function embedWorkbookPayloads(database: DatabaseSync): void {
+  withoutRetainedGuards(database, () => {
+    for (const [table, schema] of PAYLOAD_TABLES) {
+      for (const raw of database.prepare(`SELECT rowid AS row_id,payload_json FROM ${table}`).all()) {
+        const row = z.object({ row_id: z.number(), payload_json: z.string() }).parse(raw);
+        const { workbookDigest, ...envelope } = z.looseObject({ workbookDigest: z.string() }).parse(JSON.parse(row.payload_json));
+        const workbook = z.object({ payload_json: z.string() }).parse(database.prepare("SELECT payload_json FROM workbook_payloads WHERE digest=?").get(workbookDigest)).payload_json;
+        database.prepare(`UPDATE ${table} SET payload_json=? WHERE rowid=?`).run(JSON.stringify(schema.parse({ ...envelope, workbook: JSON.parse(workbook) })), row.row_id);
+      }
+    }
+  });
+  database.exec("DROP TABLE workbook_payloads");
+}
+
+/** Creates workbook_payloads in a store whose rows embed their workbooks and moves each workbook into it, as migration 37 does. */
+export function moveWorkbookPayloads(database: DatabaseSync): void {
+  for (const statement of WORKBOOK_PAYLOAD_TABLE.statements) database.exec(statement);
+  withoutRetainedGuards(database, () => migrateWorkbookPayloads(database));
+}
+
+/**
+ * Runs current workbook repository work against a store of schema 18 to 36: its workbooks move into workbook_payloads for the work
+ * and are embedded back afterwards, so the store keeps its own layout.
+ */
+export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () => T): T {
+  moveWorkbookPayloads(database);
+  try { return work(); } finally { embedWorkbookPayloads(database); }
+}
+
+/** Steps a current authority back to schema 36: every workbook row embeds its workbook again and workbook_payloads did not exist. */
+export function restoreSchema36WorkbookPayloads(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 37);
+  embedWorkbookPayloads(database);
+  database.exec("UPDATE database_states SET schema_version=36; PRAGMA user_version=36");
+}
+
+/** Steps a current authority back to schema 35: none of the query indexes, and checkpoint replay keeps its own index. */
+export function restoreSchema35QueryIndexes(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 37) restoreSchema36WorkbookPayloads(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 36);
   const replay = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE INDEX checkpoints_replay_idx [^;]+/u)?.[0];
   assert.ok(replay);
   for (const name of Object.keys(QUERY_INDEXES)) database.exec(`DROP INDEX ${name}`);
-  database.exec(`${replay}; UPDATE database_states SET schema_version=33; PRAGMA user_version=33`);
+  database.exec(`${replay}; UPDATE database_states SET schema_version=35; PRAGMA user_version=35`);
+}
+
+/** Steps a current authority back to schema 34: schema 35 converts settings records in place and keeps the same layout. */
+export function regressSchema35SendShortcut(database: DatabaseSync): void {
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 36) restoreSchema35QueryIndexes(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 35);
+  database.exec("UPDATE database_states SET schema_version=34; PRAGMA user_version=34");
+}
+
+/** Steps a current authority back to schema 33: schema 34 strips failure notes from stored commands in place and keeps the same layout. */
+export function regressSchema34FailureNotes(database: DatabaseSync): void {
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 35) regressSchema35SendShortcut(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 34);
+  database.exec("UPDATE database_states SET schema_version=33; PRAGMA user_version=33");
 }
 
 /** Steps a current authority back to schema 32. */
 export function restoreSchema32CommandRows(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 34) restoreSchema33QueryIndexes(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 34) regressSchema34FailureNotes(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 33);
   const nested = database.isTransaction;
   if (!nested) database.exec("BEGIN");

@@ -11,6 +11,7 @@ export const readPayPathPositionTask = defineTask(ucpathDriver, UcpathReadPayPat
     const read = await ctx.driver.readPayPathPosition({ emplId: input.emplId }).catch((error: unknown) => {
       if (ctx.signal.aborted || !(error instanceof UcpathPayPathRefusedError)) throw error;
       if (error.code === "paypath-alert-shown") ctx.recordData({ direction: "read", field: "alertText", value: error.alertText ?? "" });
+      if (error.code === "unexpected-page-state") ctx.recordData({ direction: "write", field: "emplId", value: input.emplId });
       return ctx.fail(error.code, operatorFailureSentence(failureCodeFromTaskCode(error.code)), { cause: error });
     });
     if (read.emplId !== input.emplId) {

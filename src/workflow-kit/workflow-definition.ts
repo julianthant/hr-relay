@@ -809,6 +809,7 @@ export interface WorkflowDefinition<
   readonly kind: "workflow-definition";
   readonly requiredWorkbookFields: readonly string[];
   readonly workbookReference?: WorkflowDefinitionPresentation<InputSchema, ResultSchema, Completion>["workbookReference"];
+  readonly workbookCheck?: WorkflowDefinitionPresentation<InputSchema, ResultSchema, Completion>["workbookCheck"];
   readonly input: InputSchema;
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
@@ -843,6 +844,7 @@ export function inheritStepProof<Input extends z.ZodType>(parent: WorkflowDefini
   return {
     requiredWorkbookFields: parent.requiredWorkbookFields,
     ...(parent.workbookReference === undefined ? {} : { workbookReference: parent.workbookReference }),
+    ...(parent.workbookCheck === undefined ? {} : { workbookCheck: parent.workbookCheck }),
     ...(parent.referenceKeys === undefined ? {} : { referenceKeys: parent.referenceKeys }),
     version: 1,
     icon: parent.icon,
@@ -897,7 +899,7 @@ export function defineWorkflow<
 ): WorkflowDefinition<InputSchema, ResultSchema, Completion> {
   const id = WorkflowIdSchema.parse(spec.id);
   WorkflowModuleRoleSchema.parse(spec.role);
-  const { requiredWorkbookFields, workbookReference } = parseWorkbookRequirement(spec.requiredWorkbookFields, spec.workbookReference);
+  const { requiredWorkbookFields, workbookReference, workbookCheck } = parseWorkbookRequirement(spec.requiredWorkbookFields, spec.workbookReference, spec.workbookCheck);
   const { steps: authorSteps, input, role, intake, ...presentation } = spec;
   const authored = authorSteps(workflowAuthor<InputSchema>(spec.capabilities?.delegationDisplay));
   validateSteps(id, authored.steps, authored.result.references);
@@ -908,6 +910,7 @@ export function defineWorkflow<
     ...presentation,
     requiredWorkbookFields,
     ...(workbookReference === undefined ? {} : { workbookReference }),
+    ...(workbookCheck === undefined ? {} : { workbookCheck }),
     kind: "workflow-definition",
     input,
     role,
@@ -1190,6 +1193,7 @@ export function compileWorkflow<
       contracts,
       requiredWorkbookFields: definition.requiredWorkbookFields,
       workbookReference: definition.workbookReference,
+      workbookCheck: definition.workbookCheck,
     }),
     flow: compileFlow(definition),
     ...(usesDefaultTimeline ? {} : { timeline }),

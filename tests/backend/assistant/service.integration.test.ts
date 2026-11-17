@@ -13,6 +13,10 @@ import { AssistantAuthorizationError } from "../../../src/backend/assistant/auth
 import { assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
 import { ASSISTANT_FAILURES, AssistantInferenceRequestSchema, type AssistantFailureCode } from "../../../src/models/dashboard/assistant.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
+import { createAssistantProposals } from "../../../src/backend/assistant/proposals.js";
+import { createStartPlanService } from "../../../src/backend/runs/commands/start-plan-service.js";
+import { PreflightAdmissionRefusal } from "../../../src/rules/preflight/preflight-admission.js";
+import { seedInitialSettingsRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
 
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
@@ -23,7 +27,8 @@ const WireSchema = AssistantInferenceRequestSchema.safeExtend({ store: z.literal
   include: z.tuple([z.literal("reasoning.encrypted_content")]) });
 
 type Step = string | ((body: z.infer<typeof AssistantInferenceRequestSchema>) => string);
-async function world(input: { tools?: readonly AssistantTool[]; options?: Partial<AssistantServiceOptions> } = {}) {
+async function world(input: { tools?: readonly AssistantTool[] | ((db: Awaited<ReturnType<typeof openBoundDatabaseFixture>>) => readonly AssistantTool[]);
+  options?: Partial<AssistantServiceOptions> } = {}) {
   const db = await openBoundDatabaseFixture("assistant-service-test", systemClock, 250, undefined, undefined, undefined, profiles.create);
   const owned = await chatGptFixture(db.profile.admission);
   const f = { ...owned, async cleanup() { await owned.cleanup(); await db.close(); } };
@@ -43,7 +48,7 @@ async function world(input: { tools?: readonly AssistantTool[]; options?: Partia
   const echo: AssistantTool = { kind: "read", tier: "read", name: "echo", description: "Echo a value with references expanded.", parameters: Echo, output: EchoOutput,
     privacy: [{ path: "value", origin: "repository-authored" }],
     async invoke(value, context) { invoked.push("echo"); return { value: context.references.expandArgument(Echo.parse(value).value, ["E"]) }; } };
-  const plugin: AssistantPlugin = { domain: "test", tools: input.tools ?? [echo] };
+  const plugin: AssistantPlugin = { domain: "test", tools: typeof input.tools === "function" ? input.tools(db) : input.tools ?? [echo] };
   const service = createAssistantService({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => FACTS,
     owner: () => ({ profileId: "11111111-1111-4111-8111-111111111111", epoch: 1 }), plugins: () => [plugin],
     selectedModel: () => ({ preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent: () => { if (!preferenceCurrent) throw new Error("assistant-model-preference-changed"); } }),
@@ -531,5 +536,49 @@ it("refuses a changed selected row before inference instead of issuing a generic
     assert.deepEqual(await w.ask("Explain", undefined, undefined, { subjectRef: `run_${randomUUID()}_1` }),
       { state: "refused", code: "ASSISTANT_READ_STALE", message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
     assert.equal(w.posts(), 0);
+  } finally { await w.f.cleanup(); }
+});
+
+/** The served proposal owner over the real start planner; Separations readiness is blocked, as on a profile whose Separations checks fail. */
+function separationsProposalTools(db: Awaited<ReturnType<typeof openBoundDatabaseFixture>>, readiness: () => void) {
+  seedInitialSettingsRuntimeConfig(db.database, systemClock);
+  const config = db.database.authority.runtimeConfig.get(); assert.ok(config);
+  const resolve = (id: string) => DESCRIPTORS.find(descriptor => descriptor.id === id);
+  const unused = () => { throw new Error("unused before readiness"); };
+  const plans = createStartPlanService({ authority: db.database, authorityRead: db.database, descriptors: { resolve }, clock: systemClock, ids: { uuid: randomUUID },
+    planTtlMs: 600_000, configFingerprint: config.configFingerprint, configSnapshotId: config.configSnapshotId, plannedBy: "local-operator",
+    preflight: { prepare: () => Promise.resolve(undefined as never), read: unused, assertReady: readiness } });
+  return createAssistantProposals({ database: db.database, plans, descriptors: { resolve }, served: () => true, actorId: "local-operator", clock: systemClock, assertCurrent() {},
+    authorization: unused as never, kernel: unused as never, commands: unused as never, workbooks: unused, attachment: unused, ocrSources: unused,
+    runs: { read: unused }, rerunValues: unused }).plugin.tools;
+}
+
+it("hands the model a Separations dry-run proposal refused by readiness under its readiness code and logs it", async () => {
+  const events: Record<string, unknown>[] = [];
+  const w = await world({ tools: db => separationsProposalTools(db, () => { throw new PreflightAdmissionRefusal("blocked", "Preflight blocks this scope: PRIVATE_CANARY."); }),
+    options: { debugEvents: { emit(event) { events.push(event); } } } });
+  try {
+    w.script.push(call("propose_workflow_start", { workflow: "separations", entries: ["1234"] }), body => {
+      assert.deepEqual(lastOutput(body), { error: "RUN_START_READINESS_BLOCKED", text: ASSISTANT_FAILURES.RUN_START_READINESS_BLOCKED });
+      return assistantMessageStream("Separations is not ready to start.");
+    });
+    assert.deepEqual(await w.ask("Prepare an unconfirmed Separations dry-run proposal for Kuali document 1234."),
+      { state: "refused", code: "RUN_START_READINESS_BLOCKED", message: ASSISTANT_FAILURES.RUN_START_READINESS_BLOCKED });
+    assert.ok(events.some(event => event.code === "RUN_START_READINESS_BLOCKED" && event.area === "assistant-tool"));
+    assert.equal(JSON.stringify(events).includes("CANARY"), false);
+  } finally { await w.f.cleanup(); }
+});
+
+it("logs an unclassified tool failure before answering that the assistant is unavailable", async () => {
+  const events: Record<string, unknown>[] = [];
+  const w = await world({ tools: db => separationsProposalTools(db, () => { throw new Error("PRIVATE_CANARY 1234"); }),
+    options: { debugEvents: { emit(event) { events.push(event); } } } });
+  try {
+    w.script.push(call("propose_workflow_start", { workflow: "separations", entries: ["1234"] }));
+    assert.deepEqual(await w.ask("Prepare a Separations dry run for 1234."),
+      { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE });
+    assert.ok(events.some(event => event.code === "ASSISTANT_UNAVAILABLE" && event.area === "assistant-turn"));
+    assert.ok(events.some(event => event.message === "Error"));
+    assert.equal(JSON.stringify(events).includes("CANARY"), false);
   } finally { await w.f.cleanup(); }
 });

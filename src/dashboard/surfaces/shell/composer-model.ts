@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { AssistantFile } from './assistant-panel-model.js';
+import type { PersonPreferences } from '../../../models/config/person-preferences.js';
 
 export const ASSISTANT_MODEL = 'GPT-6.1 Sol';
 export const ASSISTANT_EFFORTS = ['Light', 'Medium', 'High', 'xHigh', 'Max'] as const;
@@ -12,6 +13,17 @@ export type ComposerMenu = 'attach' | 'approval' | 'model' | 'voice';
 export interface ComposerValue { readonly text: string; readonly files: readonly AssistantFile[]; readonly model: string; readonly effort: string; readonly approval: string }
 export interface ComposerDraft { readonly text: string; readonly files: readonly AssistantFile[] }
 export interface ComposerDraftPort { read(): ComposerDraft; retain(draft: ComposerDraft): void }
+
+/**
+ * What an Enter press does under the person's send shortcut: send, add a new line the textarea would not add itself
+ * (Command- or Ctrl-Enter), or leave the textarea its own new line. Shift-Enter and IME composition never send.
+ */
+export function composerEnterAction(shortcut: PersonPreferences['sendShortcut'], key: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'isComposing'>): 'send' | 'new-line' | 'native' {
+  if (key.key !== 'Enter' || key.shiftKey || key.isComposing) return 'native';
+  const modified = key.metaKey || key.ctrlKey;
+  if (shortcut === 'enter') return modified ? 'new-line' : 'send';
+  return modified ? 'send' : 'native';
+}
 export function useComposer({ onSend, draft, initialText = '', settlementKey }: { settlementKey?: string; onSend: (value: ComposerValue) => Promise<boolean>; initialText?: string; draft?: ComposerDraftPort }) {
   const [text, setText] = useState(() => draft?.read().text ?? initialText);
   const [files, setFiles] = useState<readonly AssistantFile[]>(() => draft?.read().files ?? []);
