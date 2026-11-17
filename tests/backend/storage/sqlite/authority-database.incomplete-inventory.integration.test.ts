@@ -131,7 +131,7 @@ for (const problem of ["operator-command", "operator-audit", "extra-audit", "com
             .run(audit.auditId, app.initialization.commandId, JSON.stringify(audit), initial.capturedAt);
         }
         if (problem === "command-parent") corruptFixture(database, "UPDATE commands SET parent_id=id");
-        if (problem === "command-unfinished") database.prepare("UPDATE commands SET state='executing',outcome_json=NULL").run();
+        if (problem === "command-unfinished") database.prepare("UPDATE commands SET state='admitted',outcome_json=NULL").run();
         if (problem === "command-outcome") database.prepare("UPDATE commands SET outcome_json=json_set(outcome_json,'$.auditId',?)").run(randomUUID());
         if (problem === "saved-settings") {
           const saved = { revision: 2, settings: {}, settingsFingerprint: app.initialization.settings.settingsFingerprint, commandId: app.initialization.commandId,

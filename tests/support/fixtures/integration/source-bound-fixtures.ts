@@ -16,7 +16,7 @@ import { RunRecordService, workerRunLifecyclePort, runContinuationPort, requireL
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/execution/durable-child-executor.js";
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
-import { createWriteResolutionExecutor, createWriteRecoveryService } from "../../../../src/backend/runtime/writes/write-recovery.js";
+import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { ActorIdSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -103,7 +103,6 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
       resolveTarget: id => { const target = descriptors.resolve(id); if (target === undefined) throw new Error("fixture-child-descriptor-missing"); return target; } }),
     clock, ids, scheduler: new ManualScheduler(clock), taskDeadlineMs: 60_000, log: recordingLogger().log };
   const sequencer = createWriteSequencer({ ...common, operator: "local-operator"  });
-  const recovery = createWriteRecoveryService({ ...common, continuation: runContinuationPort(lifecycle), operator: "local-operator"  });
   function proposal(source?: RunRecord, acknowledgment?: string, dryRun = false, eid = WRITE_FIXTURE_EID, memo?: string) {
     const selectedStepKeys = descriptor.timeline.map((step) => step.key);
     return planner.plan({ workflowId: descriptor.id, submissions: [{ eid, ...(memo === undefined ? {} : { memo }) }], dryRun, selectedStepKeys,
@@ -156,7 +155,7 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
     return readTimelineRecords(database.authority.timelineEvents).records.flatMap((record) =>
       record.payload.kind === "span" && record.payload.event.t === "run.queued" ? [record.payload.event] : []);
   }, lifecycle, kernel, planner, world, stores, manager,
-    proposal, command, start, execute, fresh, resolution, recovery,
+    proposal, command, start, execute, fresh, resolution,
     dispose: async () => {
       if (disposeAttempted) { if (disposeFailure !== undefined) throw disposeFailure; return; }
       disposeAttempted = true;

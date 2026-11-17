@@ -1,5 +1,5 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { COMMAND_ROW_STATE_MIGRATION, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { CHANGE_LOG_OBJECTS } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -8,8 +8,31 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
-/** Steps a current authority back to schema 30: the change log, its run references, its triggers and indexes did not exist. */
+/** Returns `commands` to its schema-32 table, keeping every row: `executing` allowed, state not tied to outcome, an errored bulk child held as `refused`. The schema version is left to the caller. */
+function restoreSchema32CommandTable(database: DatabaseSync): void {
+  const table = /CREATE TABLE commands \([^;]+?\) STRICT/u.exec(SQLITE_MIGRATIONS[0].statements.join("\n"))?.[0];
+  assert.ok(table);
+  const owned = COMMAND_ROW_STATE_MIGRATION.statements.filter(statement => /^CREATE (?:INDEX|TRIGGER) /u.test(statement));
+  database.exec(`PRAGMA defer_foreign_keys=ON; CREATE TEMP TABLE commands_capture AS SELECT * FROM commands; DROP TABLE commands; ${table};
+    INSERT INTO commands SELECT * FROM commands_capture; DROP TABLE commands_capture;
+    UPDATE commands SET state='refused' WHERE state='uncertain' AND json_extract(outcome_json,'$.result.code')='bulk-child-errored'`);
+  for (const statement of owned) database.exec(statement);
+}
+
+/** Steps a current authority back to schema 32. */
+export function restoreSchema32CommandRows(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 33);
+  const nested = database.isTransaction;
+  if (!nested) database.exec("BEGIN");
+  restoreSchema32CommandTable(database);
+  database.exec("UPDATE database_states SET schema_version=32; PRAGMA user_version=32");
+  if (!nested) database.exec("COMMIT");
+}
+
+/** Steps a current authority back to schema 30: the change log, its run references, its triggers and indexes did not exist. Schema 32 changed no table, index or trigger. */
 export function removeSchema31ChangeLog(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 33) restoreSchema32CommandRows(database);
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 32) database.exec("UPDATE database_states SET schema_version=31; PRAGMA user_version=31");
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 31);
   const objects = z.array(z.object({ type: z.string(), name: z.string() })).parse(database.prepare("SELECT type,name FROM sqlite_schema").all())
     .filter(({ name }) => CHANGE_LOG_OBJECTS.includes(name));
@@ -30,7 +53,7 @@ function removeSchema30WorkbookPinTags(database: DatabaseSync): void {
 
 /** Steps a current authority back to schema 29: library states and recorded actions carried no pin or tags. */
 export function restoreSchema29WorkbookPinTags(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 31) removeSchema31ChangeLog(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 31) removeSchema31ChangeLog(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 30);
   removeSchema30WorkbookPinTags(database);
   database.exec("UPDATE database_states SET schema_version=29; PRAGMA user_version=29");
@@ -76,6 +99,8 @@ export function removeEmptySchema26AssistantHistory(database: DatabaseSync): voi
 export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
   removeSchema30WorkbookPinTags(database);
+  // The schema comparison below drops every changed table; `commands` goes back first so its rows stay.
+  restoreSchema32CommandTable(database);
   // Rebuilding worker_slots briefly orphans the Duo and exclusive-session leases that reference it; the caller's transaction checks them at commit.
   database.exec("PRAGMA defer_foreign_keys=ON");
   const slots = z.array(z.object({ id: z.string(), workflow: z.string(), ordinal: z.number(), pool_index: z.number(), retired_at: z.string().nullable(),

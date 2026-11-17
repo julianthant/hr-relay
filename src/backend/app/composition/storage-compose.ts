@@ -1,6 +1,7 @@
 import { acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { createCredentialSecretSource, readAdmittedProfileIdentity } from "../../runtime/settings/settings-runtime.js";
 import { assertMaintenanceCustodyAvailable, StorageMaintenanceCustodyUnavailableError } from "../../storage/maintenance/custody-availability.js";
+import { createSessionBackups } from "../../storage/maintenance/session-backups.js";
 import { hasPendingShutdownBackupRetirement, resumeShutdownBackupRetirement } from "../../storage/maintenance/clean-shutdown-backups.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
@@ -47,7 +48,7 @@ import { systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { createRunQueueProjection } from "../../runs/projections/run-queue-projection.js";
 import { OfflineSpanRootRepairService,type SpanRootRepairReport } from "../../runs/recovery/span-root-repair.js";
-import { findRunHolder } from "../../transports/cli/person-stores.js";
+import { findRunHolder, PERSON_STORE_SIGN_IN_REQUIRED, selectPersonStores } from "../../transports/cli/person-stores.js";
 import { createNativeBrowserProbe } from "../../runtime/browser/native-browser.js";
 import { requireStoppedPool, type WorkerPool } from "../../runtime/workers/worker-pool.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
@@ -887,6 +888,7 @@ export function composeSelectedProfileStorage(input: Readonly<{
     path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "selected-profile-runtime",
   }, input.clock, undefined, undefined, undefined, input.credentials, slowOperations.hook);
   attachStorageSlowOperations(slowOperations, database, input.clock, stateRoot);
+  const sessionBackups = createSessionBackups({ admission, database, clock: input.clock, directory: join(stateRoot, "backups", "authority") });
   try {
     database.withAuthorityTransaction(repositories => {
       assertCurrent();
@@ -923,9 +925,10 @@ export function composeSelectedProfileStorage(input: Readonly<{
         return account.revalidateAuthority(captured, admission);
       },
     });
-    return Object.freeze({ admission, profileEpoch: selected.epoch, credentials: input.credentials, database, account, accountAuthority, settings, protectedSecrets, assertCurrent, resolveSettings,
+    return Object.freeze({ admission, profileEpoch: selected.epoch, credentials: input.credentials, database, account, accountAuthority, settings, protectedSecrets, assertCurrent, resolveSettings, sessionBackups,
       attachSlowOperations: (debugEvents: { emit(input: unknown): unknown }) => { slowOperations.attach(debugEvents); } });
   } catch (error) {
+    sessionBackups.requestCancellation();
     try { database.close(); }
     catch (closeError) { throw new RuntimeCustodyUncertainError([error, closeError]); }
     throw error;
@@ -959,10 +962,15 @@ export function composeProfileRuntime(input: Readonly<{
     const selected = captureSelectedProfileStorage(machine), entry = resources.get(selected.profileId)?.ordinary;
     if (entry === undefined || expected !== undefined && expected !== entry.admission) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     if (entry.state !== "open" || entry.preparation !== undefined || session.duoReenrolCommitHeld(selected.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
-    entry.context ??= composeSelectedProfileStorage({ machineAdmission: machine, admission: entry.admission, credentials: entry.credentials,
-      hostFacts: input.hostFacts, clock: input.clock, assertOrdinaryOwner: () => {
-        if (entry.state !== "open" || session.duoReenrolCommitHeld(selected.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
-      } });
+    if (entry.context === undefined) {
+      const created = composeSelectedProfileStorage({ machineAdmission: machine, admission: entry.admission, credentials: entry.credentials,
+        hostFacts: input.hostFacts, clock: input.clock, assertOrdinaryOwner: () => {
+          if (entry.state !== "open" || session.duoReenrolCommitHeld(selected.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+        } });
+      entry.context = created;
+      (entry.commandActivities ??= new Set()).add({ hasUnquiescedWork: () => created.sessionBackups.hasUnquiescedWork(),
+        requestCancellation: () => { created.sessionBackups.requestCancellation(); }, awaitCancellation: () => created.sessionBackups.awaitCancellation() });
+    }
     return entry.context;
   };
   const initializeOwners = (profileId: string, expected: RuntimeAdmission): Owned => {
@@ -1711,15 +1719,20 @@ export async function composeStorageCommand(
     const report = await doctor(admission, credentials);
     return { output: json ? JSON.stringify(report, null, 2) : formatReport(report), exitCode: healthy(report) ? 0 : 1 };
   }
-  // Each person keeps their own store under the machine root, so the machine admission checks every ready person in turn.
+  const { ready, signedIn, notChecked } = selectPersonStores(admission);
+  if (signedIn === null) {
+    return { output: `storage doctor REFUSED — ${PERSON_STORE_SIGN_IN_REQUIRED}`, exitCode: 1 };
+  }
   const profiles: Array<{ profileId: string; report: StorageDoctorReport }> = [];
-  for (const { profileId } of admission.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready")) {
+  for (const profileId of [signedIn]) {
     const owner = admission.admitProfile(profileId);
     try { profiles.push({ profileId, report: await doctor(owner, createCredentialStore({ admission: owner, stateRoot: owner.stateRoot })) }); }
     finally { owner.release(); }
   }
   return {
-    output: json ? JSON.stringify({ profiles }, null, 2) : profiles.map(({ profileId, report }) => `person ${profileId}\n${formatReport(report)}`).join("\n\n"),
+    output: json ? JSON.stringify({ profiles, ...(ready.length > 1 ? { notChecked } : {}) }, null, 2)
+      : [...profiles.map(({ profileId, report }) => `person ${profileId}\n${formatReport(report)}`),
+        ...(ready.length > 1 ? notChecked.map(({ profileId }) => `person ${profileId}: not checked, signed out`) : [])].join("\n\n"),
     exitCode: profiles.every(({ report }) => healthy(report)) ? 0 : 1,
   };
 }

@@ -150,3 +150,18 @@ it("fills unknown subjects from queue titles and lists library sheets", () => {
   const sheet = (libraryId: string, name: string, version: number, savedAt: string) => ({ libraryId, version, savedAt, workbook: { name } }) as never;
   assert.deepEqual(paletteSheets([sheet("x", "Old", 1, "2026-11-01T12:00:00Z"), sheet("y", "New", 3, "2026-11-08T12:00:00Z")]).map(item => [item.name, item.detail]), [["New", "v3 · Updated Nov 8"], ["Old", "v1 · Updated Nov 1"]]);
 });
+
+it("uses the durable display name before indexed subject text", async () => {
+  const named = CrossDateSearchPageSchema.parse({ ...zeroMatchSearchPage(), totalMatches: 1,
+    results: [{ ...result(1), displayTitle: "Intake packet" }] });
+  const snapshot = await readSearchSnapshot({ searchRuns: async () => named }, { q: "" }, new AbortController().signal);
+  assert.equal(searchResults(snapshot)[0].subject, "Intake packet");
+});
+
+it("never uses an unregistered workflow's raw id as its display label", async () => {
+  const historical = CrossDateSearchPageSchema.parse({ ...zeroMatchSearchPage(), totalMatches: 1,
+    results: [{ ...result(1), workflowId: "historical-workflow",
+      registration: { state: "unregistered", reason: "workflow declaration unavailable" } }] });
+  const snapshot = await readSearchSnapshot({ searchRuns: async () => historical }, { q: "" }, new AbortController().signal);
+  assert.equal(searchResults(snapshot)[0].workflow, "Unregistered workflow");
+});
