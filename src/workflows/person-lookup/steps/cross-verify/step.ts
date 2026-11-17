@@ -3,7 +3,7 @@ import { CrmReadOnboardingResults } from "../../../../models/systems/crm/read-on
 import { CrmSearchOnboardingRecords } from "../../../../models/systems/crm/search-onboarding-records.js";
 import { CrmVerifyOnboardingRecord } from "../../../../models/systems/crm/verify-onboarding-record.js";
 import { SearchPersonMatch } from "../../../../models/systems/ucpath/search-person-match.js";
-import { SearchPersonOrg } from "../../../../models/systems/ucpath/search-person-org.js";
+import { SearchPersonOrg, type SearchPersonOrgOutput, type UcpathCandidate } from "../../../../models/systems/ucpath/search-person-org.js";
 import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { PERSON_LOOKUP_EXAMPLE_EID, PersonLookupInput, personLookupTitle } from "../../../../models/workflows/person-lookup/input.js";
 import { ReadResolvedIdentity, ResolvedIdentitySchema } from "../../../../models/workflows/person-lookup/read-resolved-identity.js";
@@ -16,6 +16,11 @@ import { buildSearching, lookupMethodDisplay } from "../searching/step.js";
 export function crmQuery(input: z.output<typeof PersonLookupInput>, person?: z.output<typeof SearchPersonOrg.output>, match?: z.output<typeof SearchPersonMatch.output>) {
   const name = input.mode === "match" ? personLookupTitle(input) : "name" in input ? input.name : person?.selection.selected?.name;
   return { ...(name === undefined ? {} : { name }), ...("emplId" in input ? { eid: input.emplId } : input.mode === "match" ? { eid: match?.confirmed[0]?.emplId } : {}) };
+}
+
+/** Match mode reads no UCPath person; one the UCPath identity already holds (typed by hand) is the person the CRM check resolves over. */
+function matchModePerson(selected: UcpathCandidate | null | undefined): SearchPersonOrgOutput | undefined {
+  return selected == null ? undefined : { results: [selected], selection: { status: "resolved", selected, candidateEids: [selected.emplId] } };
 }
 
 export const CROSS_VERIFY_NODE = "cross-verify";
@@ -159,7 +164,7 @@ export function buildCrossVerify(author: WorkflowAuthor<typeof PersonLookupInput
   const { task, result } = author;
   const { searching, matching, initial } = search;
   const crossVerify = task(crossVerifyNode, [initial, searching, matching], ({ input, outputs }) => crmQuery(input, outputs.searching, outputs.matching));
-  const identity = task(crmIdentityNode, [initial, crossVerify, searching, matching], ({ input, outputs }) => ({ input, person: outputs.searching, match: outputs.matching, crm: outputs["cross-verify"] }));
+  const identity = task(crmIdentityNode, [initial, crossVerify, searching, matching], ({ input, outputs }) => ({ input, person: outputs.searching ?? matchModePerson(outputs["search-identity"]?.selected), match: outputs.matching, crm: outputs["cross-verify"] }));
   const selectedRecord = task(selectedRecordNode, [identity], ({ outputs }) => {
     const record = requireFact(outputs["crm-identity"]?.crmRecord, "crm-identity", "crmRecord"); return record;
   });

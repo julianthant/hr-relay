@@ -215,6 +215,22 @@ describe("Person Lookup Search for person typed by hand", () => {
     assert.equal(typedLeaves(identity).step, "searching");
   });
 
+  it("keeps the typed person through the Match mode CRM check to the result", async () => {
+    const f = await world.fixture();
+    const settled = await f.run({ mode: "match", lastName: "Nobody", firstName: "Here", dob: "01/15/2000", crmCheck: true, includeCrmDates: false }, [], except("searching", "crm-dates"), [{ step: "searching", facts: PERSON }]);
+    assert.equal(settled.run.lifecycle.state, "terminal");
+    assert.deepEqual(f.database.authority.failures.listByRun(settled.run.envelope.runId).map(failure => `${failure.code}: ${failure.summary}`), []);
+    const crmIdentity = f.database.authority.runCheckpoints.listByAttempt(settled.run.envelope.workflow, settled.run.envelope.itemId, "crm-identity", settled.run.envelope.attempt)
+      .filter(row => row.runId === settled.run.envelope.runId).at(-1);
+    assert.deepEqual((crmIdentity?.output.value as { selected: unknown }).selected,
+      { ...PERSON, startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" });
+    const stored = f.database.authority.runResults.get(settled.run.envelope.runId);
+    assert.ok(stored);
+    const { activeStatus } = PersonLookupResultSchema.parse(stored.result.value);
+    assert.deepEqual([activeStatus.state, activeStatus.hdh, activeStatus.details.eid, activeStatus.details.name, activeStatus.details.department, activeStatus.details.hrStatus, activeStatus.details.crm],
+      ["found", PERSON.hdh, PERSON.emplId, PERSON.name, PERSON.department, PERSON.hrStatus, "Found"]);
+  });
+
   it("refuses a typed Employee ID that is not the one searched", async () => {
     const f = await world.fixture();
     const settled = await f.run(SEARCH, [], except("searching"), [{ step: "searching", facts: { ...PERSON, emplId: "10000002" } }]);
