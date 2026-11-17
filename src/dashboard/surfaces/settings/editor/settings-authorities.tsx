@@ -56,7 +56,7 @@ function CredentialsSection({ editor, profileName, embedded }: { editor: Editor;
             const description = PROTECTED_DESCRIPTION[row.name] ?? row.purpose;
             const onRemove = (hasSaved: boolean, removeLabel: string): void => askRemove({ name: row.name, label: removeLabel, hasSaved });
             return embedded
-              ? <ProtectedPencilRow key={row.name} editor={editor} name={row.name} label={label} description={description} onRemove={onRemove} />
+              ? <ProtectedPencilRow key={row.name} editor={editor} name={row.name} label={row.name === "ucpathUserId" ? "Username" : "Password"} thing={row.name === "ucpathUserId" ? "UCPath username" : "UCPath password"} description={description} onRemove={onRemove} />
               : <ProtectedSettingField key={row.name} editor={editor} name={row.name} description={description} onRemove={onRemove} />;
           })}
         </FormGroup>
