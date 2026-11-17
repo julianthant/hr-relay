@@ -506,9 +506,14 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
       runDetail: async () => { reads++; throw new DashboardClientError({ kind: "network", message: "private transport detail" }); },
     }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.ok(reads > 0);
-    assert_m1.ok(document.body.textContent?.includes("The dashboard could not load this from the local service. Try again."));
-    assert_m1.match(document.body.textContent ?? "", /Could not load logs|Logs unavailable/);
+    assert_m1.ok(document.body.textContent?.includes("Relay could not load this run's logs."));
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Is this the right person\?|private transport detail/);
+    const retryLogs = [...document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Retry");
+    assert_m1.ok(retryLogs, "the logs notice offers Retry");
+    const readsBeforeRetry = reads;
+    await act_m1(async () => { retryLogs.click(); });
+    await settle();
+    assert_m1.ok(reads > readsBeforeRetry, "Retry reads the logs again");
     const failedReads = reads;
     await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client,
       children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
@@ -606,8 +611,9 @@ try {
 
   const {DashboardClientError}=await import("../../../src/dashboard/client/index.js");
   await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}`,{subscribeDay(input){input.onState({state:"stopped",error:new DashboardClientError({kind:"network",message:"Queue transport failed"})});return{close(){}};}});
-  assert_m1.match(document.body.textContent??"",/Could not load queue/);
-  assert_m1.ok(document.body.textContent?.includes(formatErrorCatalogFailure(createErrorCatalogFailure("TASK_UNHANDLED_FAILURE", {})).text));
+  assert_m1.equal((document.body.textContent??"").split("Relay could not load the queue.").length-1,1,"one queue failure notice");
+  assert_m1.doesNotMatch(document.body.textContent??"",/Run unavailable/);
+  assert_m1.ok([...document.querySelectorAll("button")].some(button => button.textContent?.trim()==="Retry"),"the queue notice offers Retry");
   assert_m1.doesNotMatch(document.body.textContent ?? "", /Queue transport failed/);
   assert_m1.equal(document.querySelector('[aria-label="Filter the queue by status"]') === null, true, "failed authority must not expose zero-count status controls");
 
