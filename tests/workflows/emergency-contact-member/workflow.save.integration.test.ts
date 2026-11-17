@@ -50,7 +50,7 @@ const contact = approvedEmergencyContact(approved.record);
 const desired = contactEffect(contact);
 
 type FailurePoint = "pending" | "save-before" | "save-after" | "partial" | "primary-conflict" | "unreadable" | "mismatch" | "staged-readback" | "stale-readback" | "verifier" | "prepare" | "identity" | "drift" | "capture-before" | "capture-after" | "read" | "probe" | "capture-prepare" | "staged-page-drift" | "timeout" | "lost-page" | "unknown-response" | "foreign-eid" | "foreign-name" | "identity-before-click";
-async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]; failure?: FailurePoint; priorWrite?: "attempting" | "parked"; interrupt?: boolean; dryRun?: boolean; sourcePage?: number | null; onbaseUnavailable?: true } = {}) {
+async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]; failure?: FailurePoint; priorWrite?: "attempting" | "parked"; interrupt?: boolean; dryRun?: boolean; sourcePage?: number | null; onbaseUnavailable?: true; onbaseFiling?: "file" | "skip" } = {}) {
   const browser = defineBrowserStore("ucpath", ucpathDriver, ucpathSession, { readContacts: readEmergencyContactsTask,
     stageContact: stageEmergencyContactTask, probeContact: probeEmergencyContactTask, verifyContact: verifyEmergencyContactTask, saveContact: saveEmergencyContactTask });
   const service = defineServiceStore("ocr", { readRecord: readApprovedOcrRecordTask });
@@ -147,7 +147,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
   } }, database, path, id => id === compiled.descriptor.id ? compiled.descriptor : id === "onbase" ? onbaseModule.descriptor : undefined);
   const prior = options.priorWrite === undefined ? undefined : seedUnknownContactWrite(database, { ...contact, plan: planEmergencyContact(interpretContactPage(page, contact), desired) }, clock.now().toISOString(), options.priorWrite === "parked");
   // A second record of the same person comes from another page, so its OnBase filing is a different child item.
-  const member = (recordId: string = approved.record.recordId, sourcePage: number | null = options.sourcePage === undefined ? 2 : options.sourcePage) => ({ ...approved, record: { ...approved.record, recordId }, document: filing.document, sourcePage });
+  const member = (recordId: string = approved.record.recordId, sourcePage: number | null = options.sourcePage === undefined ? 2 : options.sourcePage) => ({ ...approved, record: { ...approved.record, recordId }, document: filing.document, sourcePage, onbaseFiling: options.onbaseFiling ?? "file" });
   const run = execution.start(compiled.descriptor, member(), { dryRun: options.dryRun ?? false });
   const signal = new AbortController();
   let settled = false;
@@ -194,6 +194,22 @@ it("emergency-contact/verified-save — commits the declared primary demotion an
   assert.deepEqual(children[0]?.input.parsed.value, { ucpathId: contact.emplId, document: f.filing.document, sourcePage: 2 });
   assert.ok(children[0]?.lifecycle.state === "terminal" && children[0].lifecycle.outcome === "done");
   assert.equal(f.database.authority.writeIntents.listByRun(children[0].envelope.runId)[0]?.status, "committed");
+});
+it("do-not-file-save — a run picked \"do not file\" commits its Save, admits no filing child, clicks no Import and settles done with no failure", async () => {
+  const f = await memberFixture({ onbaseFiling: "skip" });
+  assert.deepEqual(f.failures, []);
+  assert.deepEqual(f.result.outcomes.map(outcome => outcome.state), ["done"]);
+  assert.equal(f.persistence.submissions.length, 1);
+  const stored = f.database.authority.runs.get(f.run.envelope.runId);
+  assert.ok(stored?.lifecycle.state === "terminal" && stored.lifecycle.outcome === "done");
+  assert.equal(f.database.authority.writeIntents.listByRun(f.run.envelope.runId)[0]?.status, "committed");
+  assert.equal(EmergencyContactMemberResultSchema.parse(f.database.authority.runResults.get(f.run.envelope.runId)?.result.value).proof.contacts.observation, "persisted");
+  assert.deepEqual(f.children(), []);
+  assert.equal(f.filing.imports(), 0);
+  // The filing step is unavailable in this fixture: a "do not file" member never reaches it.
+  const unavailable = await memberFixture({ onbaseFiling: "skip", onbaseUnavailable: true });
+  assert.deepEqual(unavailable.failures, []);
+  assert.deepEqual(unavailable.children(), []);
 });
 it("shared-page-save — a committed Save with no page to file admits no filing child and clicks no Import", async () => {
   const f = await memberFixture({ sourcePage: null });
