@@ -5,7 +5,7 @@ import type { Clock } from "../../../rules/time/clock.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { fsyncPath } from "../private-path.js";
-import type { AuthorityDatabase } from "../sqlite/authority-database.js";
+import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { AuthorityBackupService, parseBackupManifestFile, verifyBackupBytesAtPath, type AuthorityBackupSource } from "../sqlite/backup-service.js";
 import { backupThreadIdle, copyAuthorityOffThread } from "../sqlite/backup-inspection-worker.js";
 import { hasUnprovedSourceClosure } from "../source-closure.js";
@@ -83,13 +83,15 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
   let lastFailureMonotonicMs: number | undefined, closureFailure: { error: unknown } | undefined;
   const passed = new Map<string, string>();
 
-  /** Manifests of this profile whose backup bytes verify, newest first; a passed verdict stands while both files keep their identity. */
+  /** Manifests of this profile and authority database, named for their backup, whose bytes verify, newest first; a passed verdict stands while both files keep their identity. */
   const newestVerified = async (only?: RegExp): Promise<VerifiedManifest | undefined> => {
     if (!existsSync(directory)) return undefined;
+    const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
     const binding = admission.profileBinding, nowMs = clock.nowMs(), candidates: Array<VerifiedManifest & { manifestPath: string; backup: NonNullable<ReturnType<typeof readManifest>> }> = [];
     for (const name of readdirSync(directory).filter(entry => entry.endsWith(ManifestSuffix) && (only === undefined || only.test(entry)))) {
       const manifestPath = join(directory, name), manifest = readManifest(manifestPath);
-      if (manifest === undefined || manifest.installationId !== binding.installationId || manifest.profileId !== binding.profileId || Date.parse(manifest.createdAt) > nowMs) continue;
+      if (manifest === undefined || name !== `${manifest.backupFileName}${ManifestSuffix}` || manifest.installationId !== binding.installationId
+        || manifest.profileId !== binding.profileId || manifest.sourceDatabaseIdentity !== sourceIdentity || Date.parse(manifest.createdAt) > nowMs) continue;
       candidates.push({ name, createdAt: manifest.createdAt, authorityGeneration: manifest.authorityGeneration, manifestPath, backup: manifest });
     }
     candidates.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt) || right.name.localeCompare(left.name));
@@ -131,6 +133,7 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
 
   const take = async (): Promise<SessionBackupCheck> => {
     const copies: string[] = [];
+    let closureUnproved = false;
     try {
       const service = new AuthorityBackupService(admission, source(copies), { directory, purpose: "in-session" }, clock, controller.signal);
       const result = await service.request({ trigger: "interval", requiredGeneration: database.getMeta().authorityGeneration });
@@ -138,13 +141,17 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
       if (fresh === undefined) throw new Error("session-backup-result-missing");
       retainOnlyNewestSessionBackup(admission, directory, fresh.backupFileName);
       return "taken";
+    } catch (error) {
+      closureUnproved = hasUnprovedSourceClosure(error);
+      throw error;
     } finally {
       // An aborted worker may still create its file after the request's own cleanup ran.
       lingeringThread = true;
       const idle = backupThreadIdle();
       void idle.then(() => {
         lingeringThread = false;
-        if (controller.signal.aborted) for (const copy of copies) { try { removeBackupFiles(copy); } catch { /* The next start's sweep owns leftovers. */ } }
+        // A copy whose descriptor close is unproved stays where the retained closure left it.
+        if (controller.signal.aborted && !closureUnproved && closureFailure === undefined) for (const copy of copies) { try { removeBackupFiles(copy); } catch { /* The next start's sweep owns leftovers. */ } }
       });
     }
   };

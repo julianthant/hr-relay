@@ -8,9 +8,29 @@ import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/b
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
+// Fails the close of the next descriptor opened on a temporary backup copy, after the descriptor really closed.
+const closeFault = vi.hoisted(() => ({ armed: undefined as (() => void) | undefined, descriptors: new Set<number>() }));
+vi.mock("node:fs", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const openSync = ((path: Parameters<typeof actual.openSync>[0], ...rest: unknown[]) => {
+    const descriptor = (actual.openSync as (...args: unknown[]) => number)(path, ...rest);
+    if (closeFault.armed !== undefined && String(path).endsWith(".sqlite.tmp")) closeFault.descriptors.add(descriptor);
+    return descriptor;
+  }) as typeof actual.openSync;
+  const closeSync = ((descriptor: number) => {
+    actual.closeSync(descriptor);
+    const onFault = closeFault.armed;
+    if (onFault === undefined || !closeFault.descriptors.delete(descriptor)) return;
+    closeFault.armed = undefined;
+    onFault();
+    throw Object.assign(new Error("injected close failure"), { code: "EIO" });
+  }) as typeof actual.closeSync;
+  return { ...actual, default: { ...actual, openSync, closeSync }, openSync, closeSync };
+});
+
 const MINUTE = 60_000;
 const cleanups: (() => void | Promise<void>)[] = [];
-afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+afterEach(async () => { closeFault.armed = undefined; closeFault.descriptors.clear(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 async function fixture() {
   const bound = await createBoundProfileFixture();
@@ -132,6 +152,14 @@ describe("hourly in-session backup", () => {
       expect(f.sessionBackups.hasUnquiescedWork()).toBe(true);
       await expect(f.sessionBackups.awaitCancellation()).rejects.toBeInstanceOf(AuthoritySourceClosureUnprovedError);
     });
+    it("keeps the copy it could not prove closed when a cancellation races the failure", async () => {
+      const f = await fixture();
+      closeFault.armed = () => f.sessionBackups.requestCancellation();
+      await expect(f.sessionBackups.check()).resolves.toBe("failed");
+      await expect(f.sessionBackups.awaitCancellation()).rejects.toBeInstanceOf(AuthoritySourceClosureUnprovedError);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      expect(readdirSync(f.directory).filter(name => name.endsWith(".sqlite.tmp"))).toHaveLength(1);
+    });
   });
 
   describe("newest verified backup", () => {
@@ -168,6 +196,25 @@ describe("hourly in-session backup", () => {
       await f.sessionBackup();
       const newest = f.names(".session.sqlite").find(name => `${name}.manifest.json` !== older)!;
       f.damage(newest);
+      await expect(f.sessionBackups.check()).resolves.toBe("unchanged");
+      expect(f.names(".session.sqlite.manifest.json")).toEqual([older]);
+      expect(f.names(".session.sqlite")).toEqual([older.slice(0, -".manifest.json".length)]);
+    });
+    it.each(["foreign source identity", "renamed manifest"] as const)("keeps the older usable pair when the newest manifest has a %s", async fault => {
+      const f = await fixture();
+      await f.sessionBackup();
+      const older = f.names(".session.sqlite.manifest.json")[0];
+      f.clock.advanceWall(SESSION_BACKUP_INTERVAL_MS + 1);
+      await f.sessionBackup();
+      const newest = f.names(".session.sqlite.manifest.json").find(name => name !== older)!, newestPath = join(f.directory, newest);
+      const manifest = JSON.parse(readFileSync(newestPath, "utf8")) as { sourceDatabaseIdentity: string };
+      if (fault === "foreign source identity") {
+        manifest.sourceDatabaseIdentity = `${manifest.sourceDatabaseIdentity.startsWith("0") ? "1" : "0"}${manifest.sourceDatabaseIdentity.slice(1)}`;
+        writeFileSync(newestPath, JSON.stringify(manifest));
+      } else {
+        writeFileSync(join(f.directory, newest.replace(/-[0-9a-f-]{36}\.session/u, "-00000000-0000-4000-8000-000000000000.session")), readFileSync(newestPath));
+        rmSync(newestPath);
+      }
       await expect(f.sessionBackups.check()).resolves.toBe("unchanged");
       expect(f.names(".session.sqlite.manifest.json")).toEqual([older]);
       expect(f.names(".session.sqlite")).toEqual([older.slice(0, -".manifest.json".length)]);
