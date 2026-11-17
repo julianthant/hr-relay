@@ -10,7 +10,7 @@ import type { NavbarData, NavbarSearchResult } from "../surfaces/shell/search/na
 import type { PaletteSheet } from "../surfaces/shell/search/search-palette-model.js";
 import type { SavedWorkbook } from "../../models/dashboard/workbooks.js";
 
-export const searchMessage = (code: "SEARCH_LOADING" | "SEARCH_UNAVAILABLE" | "SEARCH_LIBRARY_UNAVAILABLE" | "SEARCH_SUBJECT_UNAVAILABLE") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
+export const searchMessage = (code: "SEARCH_UNAVAILABLE" | "SEARCH_LIBRARY_UNAVAILABLE" | "SEARCH_SUBJECT_UNAVAILABLE") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 export async function readSearchSnapshot(client: Pick<DashboardClient, "searchRuns">, input: CrossDateSearchQueryInput, signal: AbortSignal) {
   const query = CrossDateSearchQuerySchema.parse(input);
@@ -83,7 +83,7 @@ export function useLibrarySheets(client: Pick<DashboardClient, "workbookList">, 
   }, [client, enabled]);
   // Loaded rows stay while a re-read is pending or failed; only a settled read is a verified list.
   if (state.read === "ready") return { sheets: state.sheets };
-  return { sheets: state.sheets, unavailable: searchMessage(state.read === "failed" ? "SEARCH_LIBRARY_UNAVAILABLE" : "SEARCH_LOADING") };
+  return state.read === "failed" ? { sheets: state.sheets, unavailable: searchMessage("SEARCH_LIBRARY_UNAVAILABLE") } : { sheets: state.sheets };
 }
 
 const NO_TITLES: ReadonlyMap<string, string> = new Map();
@@ -103,7 +103,7 @@ export function useSearchWiring({ client, enabled, query, today, epoch, workflow
     return () => controller.abort();
   }, [client, enabled, query, today, workflows, request]);
   return useMemo(() => {
-    const data = settled?.request === request ? settled.data : { today, counts: {}, results: [], unavailable: searchMessage("SEARCH_LOADING") };
+    const data = settled?.request === request ? settled.data : { today, counts: {}, results: [], loading: true };
     return { ...data, results: withQueueSubjects(data.results, titles) };
   }, [settled, request, today, titles]);
 }

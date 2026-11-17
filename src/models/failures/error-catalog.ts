@@ -526,7 +526,6 @@ export const ERROR_CATALOG = Object.freeze({
     "The failure could not be formatted safely. Review local diagnostic evidence.",
     EmptyParametersSchema,
   ),
-  SEARCH_LOADING: catalogEntry("Loading runs…", EmptyParametersSchema),
   SEARCH_UNAVAILABLE: catalogEntry("Search is unavailable. Reopen search and try again.", EmptyParametersSchema),
   SEARCH_LIBRARY_UNAVAILABLE: catalogEntry("Spreadsheets are unavailable. Reopen search and try again.", EmptyParametersSchema),
   SEARCH_SUBJECT_UNAVAILABLE: catalogEntry("Subject unavailable", EmptyParametersSchema),
@@ -534,7 +533,6 @@ export const ERROR_CATALOG = Object.freeze({
   NOTIFICATION_HISTORY_INCOMPLETE: catalogEntry("Notification history is incomplete. Reconcile the affected work before relying on it.", EmptyParametersSchema),
   NOTIFICATION_OBSERVATION_FAILED: catalogEntry("Notification observation failed. Some updates may be unavailable.", EmptyParametersSchema),
   NOTIFICATION_RECEIPT_MISSING: catalogEntry("Notification receipt evidence is missing. Some updates may be unavailable.", EmptyParametersSchema),
-  NOTIFICATION_CONTEXT_UNAVAILABLE: catalogEntry("Notification context unavailable", EmptyParametersSchema),
   NOTIFICATION_REFRESH_PENDING: catalogEntry("Refreshing notifications…", EmptyParametersSchema),
   NOTIFICATION_COMMAND_PENDING: catalogEntry("Notification change pending.", EmptyParametersSchema),
   NOTIFICATION_TARGET_UNAVAILABLE: catalogEntry(
