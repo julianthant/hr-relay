@@ -82,11 +82,11 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
   const signInExpired = displayed.state === "sign-in-expired";
   const connected = displayed.state === "connected";
   const plan = connected ? displayed.planUsage : undefined;
-  const label = connected ? "ChatGPT" : "Use your ChatGPT plan";
+  const label = "ChatGPT";
   const description = connected ? <><span className="block">{displayed.name}</span>{plan !== "enabled" && <span className="block">{plan === "limit-reached" ? "Usage limit reached" : "ChatGPT plan access not enabled"}</span>}</>
     : signingIn ? "Waiting for you to finish signing in in your browser"
       : signInExpired ? "Your sign-in attempt expired. Sign in to try again."
-        : "Not connected. Connect your ChatGPT account to Relay.";
+        : "Not connected";
   return <BodySection title="Connected account">
       {account.state === "unavailable" && <Notice sticky tone="warning" title="ChatGPT account unavailable" description={account.message} />}
       {disconnectError !== undefined && <Notice tone="danger" title="ChatGPT not disconnected" description={disconnectError} />}
@@ -101,7 +101,7 @@ export function ChatGptAccountSettings({ port: override }: { port?: ChatGptAccou
               <Button variant="ghost" disabled={pending !== undefined} loading={pending === "cancel"} onClick={() => { void perform("cancel"); }}>Cancel</Button>
             </>}
             {connected && account.state === "connected" && <Button variant="secondary" data-destructive disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => setConfirming(true)}>Disconnect</Button>}
-            {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : "Connect ChatGPT"}</Button>}
+            {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : "Connect"}</Button>}
           </div>} />}
       {account.state !== "loading" && connected && plan !== "disabled" && <ResultRow controlWidth="wide" label="Manage" value={<div className="flex items-center justify-end gap-2">
         <ButtonLink variant={plan === "limit-reached" ? "primary" : "secondary"} href={CHATGPT_USAGE_URL} target="_blank" rel="noopener noreferrer" iconAfter={<ExternalLink aria-hidden className={dsIcon.sm} />}>Manage usage</ButtonLink>

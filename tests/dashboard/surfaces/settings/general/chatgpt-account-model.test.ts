@@ -34,8 +34,8 @@ describe("General ChatGPT account", () => {
     const port = createPreviewChatGptAccountPort();
     const signIn = vi.spyOn(port, "signIn");
     await mount(port);
-    button("Connect ChatGPT").focus();
-    await click("Connect ChatGPT");
+    button("Connect").focus();
+    await click("Connect");
     assert.equal(signIn.mock.calls.length, 1);
     assert.deepEqual(signIn.mock.calls[0], [{ usePlan: true }]);
     assert.equal(document.querySelector('[role="dialog"]'), null);
@@ -58,7 +58,7 @@ describe("General ChatGPT account", () => {
     assert.equal(identity.planUsage, "disabled");
     assert.match(host?.textContent ?? "", /ChatGPT plan access not enabled/u);
     assert.equal(host?.querySelector(`a[href="${CHATGPT_USAGE_URL}"]`), null);
-    await click("Connect ChatGPT");
+    await click("Connect");
     assert.equal(document.querySelector('[role="dialog"]'), null);
     assert.match(host?.textContent ?? "", /jordan.lee@example\.com/u);
     assert.doesNotMatch(host?.textContent ?? "", /Using ChatGPT plan|Preview/u);
@@ -87,15 +87,15 @@ describe("General ChatGPT account", () => {
       calls += 1; return new Promise<void>((_resolve, refuse) => { reject = refuse; });
     } });
     await mount(port);
-    await click("Connect ChatGPT");
-    assert.equal(button("Connect ChatGPT").disabled, true);
-    await click("Connect ChatGPT");
+    await click("Connect");
+    assert.equal(button("Connect").disabled, true);
+    await click("Connect");
     assert.equal(calls, 1);
     assert.equal(document.querySelector('[role="dialog"]'), null);
     assert.equal(port.getSnapshot().state, "signed-out");
     await act(async () => reject(new Error("synthetic-refusal")));
     assert.match(host?.textContent ?? "", /ChatGPT sign-in could not be completed/u);
-    assert.equal(button("Connect ChatGPT").disabled, false);
+    assert.equal(button("Connect").disabled, false);
     assert.equal(port.getSnapshot().state, "signed-out");
   });
 
@@ -117,7 +117,7 @@ describe("General ChatGPT account", () => {
     let finish!: () => void;
     const port = controlledPort({ state: "signed-out" }, { signIn: () => new Promise<void>(resolve => { finish = resolve; }) });
     await mount(port);
-    await click("Connect ChatGPT");
+    await click("Connect");
     act(() => root?.unmount()); root = undefined;
     await act(async () => finish());
     assert.equal(port.getSnapshot().state, "signed-out");

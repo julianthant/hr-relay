@@ -20,7 +20,7 @@ export function ProtectedSettingField({ editor, name, description, controlWidth 
   const credentials = editor.protectedEditor;
   const operation = credentials.draft[name];
   const stored = authority.state === "available" ? authority.entries[name] : undefined;
-  const value = operation?.kind === "set" ? operation.raw : operation?.kind === "clear" ? "" : stored === undefined ? "" : formatSetting(stored.value);
+  const value = operation?.kind === "set" ? operation.raw : operation?.kind === "clear" ? "" : stored === undefined || name !== "ucpathUserId" ? "" : formatSetting(stored.value);
   const disabled = credentials.locked || authority.state !== "available" || editor.readProblem !== undefined;
   const canRemove = stored !== undefined || operation?.kind === "set";
   const visible = name === "ucpathUserId";
