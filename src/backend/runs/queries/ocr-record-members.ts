@@ -290,7 +290,7 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
       return { ...row, status: waiting.status, statusLabel: waiting.status === "failed" ? "Failed" : "Blocked",
         childRunIds: [...new Set([...row.childRunIds,...member.history,...waiting.history])],
         target: { runId: run.envelope.runId, workflowId: run.envelope.workflow,
-          partitionDay: LocalDateSchema.parse(localDatePart(new Date(run.envelope.enqueuedAt))), label: resolve(run.envelope.workflow)?.label ?? run.envelope.workflow,
+          partitionDay: LocalDateSchema.parse(searchPartitionDay(new Date(run.envelope.enqueuedAt))), label: resolve(run.envelope.workflow)?.label ?? run.envelope.workflow,
           status: waiting.status, panelKind: panelKindOf(run.envelope.shape, false), section: "logs" } };
     }
     const child = member.child, descriptor = resolve(child.envelope.workflow);
