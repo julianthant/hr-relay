@@ -267,7 +267,7 @@ describe("registered Person Lookup and Separations served launch", () => {
     const plan = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.deepEqual(plan.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "123456789",
       crmCheck: false, includeCrmDates: false }]);
-    assert.deepEqual(plan.selectedStepKeys, ["searching", "active-status"]);
+    assert.deepEqual(plan.selectedStepKeys, ["searching", "active-status", "reference-check"]);
     // The harness keeps the dialog mounted after Start; the applied dialog returns to Input and echoes what was typed there.
     assert.equal(readiness.text().replace("Example, Person, x, 123456789", "").includes("123456789"), false);
   });
