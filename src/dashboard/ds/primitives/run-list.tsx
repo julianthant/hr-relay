@@ -1,10 +1,13 @@
 import type { ReactNode } from "react";
 import { DsBodyScope } from "./primitives-layout.js";
 import { Switch } from "./primitives-form.js";
+import { Skeleton } from "./primitives-core.js";
 import { cn } from "../../lib/utils.js";
 
 const TITLE = "text-[length:var(--ds-row-title)] font-normal leading-[var(--ds-row-title-lh)] text-[color:var(--ds-fg)]";
 const NOTE = "mt-[var(--ds-row-gap)] truncate text-[length:var(--ds-row-desc)] font-normal leading-[var(--ds-row-desc-lh)] text-[color:var(--ds-fg-secondary)]";
+
+const NOTE_WRAP = "mt-[var(--ds-row-gap)] text-[length:var(--ds-row-desc)] font-normal leading-[var(--ds-row-desc-lh)] text-[color:var(--ds-fg-secondary)]";
 
 function RunHeading({ title, description, aside }: { title: string; description?: ReactNode; aside?: ReactNode }) {
   return <div className="flex flex-col gap-0.5"><div className="flex items-baseline justify-between gap-3"><h4 className="m-0 text-[length:var(--ds-row-heading)] font-normal leading-[var(--ds-row-heading-lh)] text-[color:var(--ds-fg)]">{title}</h4>{aside && <span className="text-[13px] text-ui-muted">{aside}</span>}</div>{description && <p className="m-0 text-[13px] leading-4 text-[color:var(--ds-fg-secondary)]">{description}</p>}</div>;
@@ -24,8 +27,8 @@ export function RunSection({ title, description, children }: { title: string; de
 }
 
 /** One row: a title with its grey line directly under it on the left, controls vertically centred on the right. `check` puts an include toggle at the far right, `locked` a disabled on toggle, `lead` an icon. */
-export function RunListRow({ title, description, check, locked, lead, dimmed, below, children }: {
-  title: ReactNode; description?: ReactNode;
+export function RunListRow({ title, description, wrapNote, check, locked, lead, dimmed, below, children }: {
+  title: ReactNode; description?: ReactNode; wrapNote?: boolean;
   check?: { checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean };
   locked?: boolean; lead?: ReactNode; dimmed?: boolean; below?: ReactNode; children?: ReactNode;
 }) {
@@ -39,10 +42,18 @@ export function RunListRow({ title, description, check, locked, lead, dimmed, be
     <div className="flex items-center justify-between gap-4">
       <div className="flex min-w-0 items-center gap-[var(--ds-space-base)]">
         {lead}
-        <div className="min-w-0"><div className={TITLE}>{title}</div>{description && <div className={NOTE}>{description}</div>}</div>
+        <div className="min-w-0"><div className={TITLE}>{title}</div>{description && <div className={wrapNote ? NOTE_WRAP : NOTE} title={typeof description === "string" ? description : undefined}>{description}</div>}</div>
       </div>
       {(children || toggle) && <div className="flex shrink-0 items-center gap-3">{children}{toggle}</div>}
     </div>
     {below}
   </div>;
+}
+
+/** Placeholder rows at the height of a two-line row (title and grey line), so a list that loads does not jump. */
+export function RunListSkeleton({ rows }: { rows: number }) {
+  return <>{Array.from({ length: rows }, (_, index) =>
+    <div key={index} aria-hidden className="ds-run-row flex min-h-[var(--ds-row-h-2)] flex-col justify-center gap-[var(--ds-row-gap)] border-b border-ui-stroke py-[var(--ds-row-pad-y)] last:border-b-0">
+      <Skeleton className="h-3.5 w-40" /><Skeleton className="w-64 max-w-full" />
+    </div>)}</>;
 }

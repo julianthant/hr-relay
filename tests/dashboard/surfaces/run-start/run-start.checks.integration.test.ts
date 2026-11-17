@@ -96,6 +96,33 @@ describe("the Run dialog's Checks step", () => {
     assert.deepEqual(fixes, ["account"]);
   });
 
+  it("holds the list's place while checking: one Checking indicator over eight placeholder rows", async () => {
+    const pending = Promise.withResolvers<ReturnType<typeof h.readiness>>();
+    const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
+    await slow.type(h.TYPED);
+    await slow.press("Continue");
+    await slow.press("Continue");
+    const section = document.body.querySelector('section[aria-label="Checks"]');
+    assert.equal(((section?.textContent ?? "").match(/Checking/gu) ?? []).length, 1, "the Checks section says Checking once");
+    assert.equal(document.body.querySelectorAll('[aria-label="Checking"] .ds-run-row').length, 8);
+    await act(async () => { pending.resolve(h.readiness([PASSING])); });
+    assert.equal(document.body.querySelector('[aria-label="Checking"]'), null);
+  });
+
+  it("draws a failed check's fix as a button beside a Failed status, with its whole summary readable", async () => {
+    const { client } = served(h.readiness([FIXABLE, PASSING]));
+    const dialog = await h.openDialog(client);
+    await dialog.rerender({ onFixCheck: () => undefined });
+    await reachChecks(dialog);
+    const row = document.body.querySelector('[aria-label="Check results"] .ds-run-row');
+    assert.ok(row?.textContent?.includes("Failed"), "the status stays beside the button");
+    const fix = fixButton("Add password");
+    assert.ok(fix && fix.tagName === "BUTTON" && fix.querySelector("svg") === null, "a plain button, not a status pill with an icon");
+    const summary = [...(row?.querySelectorAll("div") ?? [])].find(node => node.textContent === FIXABLE.summary);
+    assert.equal(summary?.getAttribute("title"), FIXABLE.summary);
+    assert.ok(!summary?.className.includes("truncate"), "the summary wraps instead of cutting");
+  });
+
   it("keeps everything typed and the stage while Settings is open over it, and reads the checks again on return", async () => {
     const { reads, client } = served(h.readiness([FIXABLE, PASSING]), h.readiness([PASSING, { ...FIXABLE, status: "pass" }]));
     const dialog = await h.openDialog(client);
