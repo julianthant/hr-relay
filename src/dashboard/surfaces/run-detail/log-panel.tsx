@@ -5,6 +5,9 @@ import type { LogStep } from "./logs/log-feed-model.js";
 import { LogTimeline } from "./logs/log-timeline.js";
 import { LogActionButton } from "./logs/log-action-button.js";
 import { LogHeaderCompact } from "./logs/log-header-compact.js";
+import { LinkedRunsButton } from "./linked-runs.js";
+import type { LinkedRunEntry } from "./linked-runs-model.js";
+import type { LinkedRunWire } from "../queue/queue-model.js";
 import { runHeaderAction } from "./run-header-model.js";
 import type { LogTimelineStage } from "./logs/log-timeline-model.js";
 
@@ -31,16 +34,17 @@ function LogHeader({ title, children }: { title: string; children: ReactNode }) 
 }
 
 /** The production log layout accepts presentation data and has no transport dependency. */
-export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar, onDecision, onCancelRun, onReview, initialStepId, navigation, content, afterStep, footerActions }: {
+export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar, linkedRuns, onOpenLinkedRun, onDecision, onCancelRun, onReview, initialStepId, navigation, content, afterStep, footerActions }: {
   onDecision?: LogDecisionHandler;
   onCancelRun?: (entryId: string) => void;
   onReview?: () => void;
+  linkedRuns?: readonly LinkedRunEntry[]; onOpenLinkedRun?: (target: LinkedRunWire) => void;
   title: string; steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; toolbar?: ReactNode; initialStepId?: string;
   footerActions?: ReactNode; navigation?: ReactNode; content?: ReactNode; afterStep?: (id: string) => ReactNode;
 }) {
   const action = runHeaderAction(steps, timeline);
   const header = (jump?: (stepId: string, entryId?: string) => void) => <LogHeader title={title}>
-    {action && jump && <LogActionButton label={action.label} variant={action.label === 'Review' ? 'primary' : undefined} icon={headerIcon(action.label)} onClick={() => action.label === 'Review' && onReview ? onReview() : jump(action.stepId, action.entryId)} />}{toolbar}
+    {action && jump && <LogActionButton label={action.label} variant={action.label === 'Review' ? 'primary' : undefined} icon={headerIcon(action.label)} onClick={() => action.label === 'Review' && onReview ? onReview() : jump(action.stepId, action.entryId)} />}{toolbar}{linkedRuns && <LinkedRunsButton entries={linkedRuns} onOpen={onOpenLinkedRun} />}
   </LogHeader>;
   return <section aria-label="Selected run logs" className="ui-theme-scope flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-fg:var(--ui-primary)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
     {content ? <>{header()}{navigation}{content}{footerActions && <footer className="flex shrink-0 items-center justify-end gap-1 border-t border-ui-stroke bg-ui-panel px-3 py-2">{footerActions}</footer>}</> : <LogFeed steps={steps} afterStep={afterStep} footerActions={footerActions} initialStepId={initialStepId} onDecision={onDecision} onCancelRun={onCancelRun}

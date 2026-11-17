@@ -89,7 +89,7 @@ async function fixture() {
     }
     return record;
   };
-  const input = { database, clock, descriptors: { resolve: () => undefined }, ledger: createTransactionHistory(database.authority), timeZone: "UTC" };
+  const input = { database, clock, descriptors: { resolve: () => undefined }, ledger: createTransactionHistory(database.authority) };
   const service = createActivityPopulationService(input);
   cleanup.push(async () => { raw.close(); database.close(); await profile.close(); });
   return { database, clock, raw, add, publish, service, input };
@@ -166,7 +166,6 @@ describe("selected Analytics population", () => {
     const report = queryActivitySummaries(f.database, { from: "2026-10-01", to: "2026-10-02", generatedAt: at }, {
       descriptors: { resolve: workflow => workflow === "person-lookup" ? personLookupDescriptor : undefined },
       ledger: { foldActivityRange: () => ({ systems: [] }) },
-      timeZone: "UTC",
     });
     expect(report.outcomeSplit).toEqual({ done: 3, failed: 1, attention: 1 });
     expect(report.days).toEqual([
@@ -191,7 +190,6 @@ describe("selected Analytics population", () => {
     const report = queryActivitySummaries(f.database, { ...range, generatedAt: at }, {
       descriptors: { resolve: () => undefined },
       ledger: { foldActivityRange: () => ({ systems: [] }) },
-      timeZone: "UTC",
     });
     const attention = { done: 0, failed: 0, attention: 3 };
     const day = { day: "2026-10-01", runs: 7, outcomes: attention };
@@ -252,7 +250,6 @@ describe("selected Analytics population", () => {
     const report = queryActivitySummaries(f.database, { ...range, generatedAt: at }, {
       descriptors: { resolve: () => undefined },
       ledger: { foldActivityRange: () => ({ systems: [] }) },
-      timeZone: "UTC",
     });
     const failedSplit = { done: 0, failed: 7, attention: 0 };
     const day = { day: "2026-10-01", runs: 7, outcomes: failedSplit };

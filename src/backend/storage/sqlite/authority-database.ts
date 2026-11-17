@@ -129,6 +129,7 @@ import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { ASSISTANT_HISTORY_MIGRATION, assistantConversationFromRow, assistantMessageFromRow, createAssistantHistoryRepository } from "./assistant-history.js";
 import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow, migrateAssistantEffortScale } from "./assistant-effort-migration.js";
+import { FAILURE_NOTE_REMOVAL_CONVERSION_ID, FAILURE_NOTE_REMOVAL_SCHEMA_VERSION, convertFailureNoteRow, migrateFailureNotes } from "./failure-note-removal-migration.js";
 import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE, assertNoAssistantGrantHistory } from "./assistant-grant-retirement.js";
 import { assistantAttachmentFromRow, byteAwareRow } from "./assistant-attachments.js";
 import { RECOGNIZED_AUTHORITY_SCHEMA_VERSIONS } from "../../../models/config/authority-schema-versions.js";
@@ -298,6 +299,8 @@ type SettingsCurrentRepository = Readonly<{
 
 type DependencyRepository = Readonly<{
   authenticateGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup>;
+  /** The open read snapshot's authentications, for the database's own repositories only; undefined in a write transaction and outside a snapshot. */
+  snapshotMemo(repositories: AuthorityRepositories): DelegationAuthenticationMemo | undefined;
   parents(envelopes: readonly RunRecord["envelope"][]): ReturnType<typeof readQueueParents>;
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof DependencyRecordSchema>>;
   get(dependencyId: string): z.infer<typeof DependencyRecordSchema> | undefined;
@@ -1344,7 +1347,8 @@ function storedRowContext(database: DatabaseSync, expectedSchemaVersion: number)
   const convertPreferences = (table: string, row: unknown) => {
     const person = expectedSchemaVersion < SETTINGS_RECORD_CONVERSION_VERSION ? convertSettingsRecordRow(table, row) : row;
     const effort = expectedSchemaVersion < ASSISTANT_EFFORT_SCALE_VERSION ? convertAssistantEffortRow(table, person) : person;
-    return expectedSchemaVersion < COMMAND_ROW_STATE_SCHEMA_VERSION ? convertPredecessorCommandRowState(table, effort) : effort;
+    const state = expectedSchemaVersion < COMMAND_ROW_STATE_SCHEMA_VERSION ? convertPredecessorCommandRowState(table, effort) : effort;
+    return expectedSchemaVersion < FAILURE_NOTE_REMOVAL_SCHEMA_VERSION ? convertFailureNoteRow(table, state) : state;
   };
   return { database, read, expectedSchemaVersion, predecessorCustody, convertPreferences };
 }
@@ -1903,6 +1907,7 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
       execMigrationStatement(database, statement);
       if (isSettingsRecordConversionMarker(statement)) migrateSettingsRecords(database);
       if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
+      if (statement === `SELECT '${FAILURE_NOTE_REMOVAL_CONVERSION_ID}'`) migrateFailureNotes(database);
       if (statement === `SELECT '${WORKER_CUSTODY_SCAN_ID}'`) assertWorkerCustodyConverted(database);
     }
   }
@@ -5928,6 +5933,8 @@ export class AuthorityDatabase implements Disposable {
       }),
       dependencies: Object.freeze({
         authenticateGroup: (manifest: DelegationManifest) => this.#readDelegationGroup(manifest),
+        snapshotMemo: (repositories: AuthorityRepositories) =>
+          repositories === this.authority && this.#transactionMode === "read" ? this.#delegationReadSnapshot?.memo : undefined,
         parents: (envelopes: readonly RunRecord["envelope"][]) => readQueueParents(this.authority, envelopes),
         groups: (parentRunId: string, selection: "current" | "retained" = "current") => {
           const parent = this.authority.runs.get(parentRunId);

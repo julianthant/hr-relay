@@ -124,10 +124,10 @@ async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean
   const descriptors={resolve:()=>undefined},ledger=createTransactionHistory(database.authority),sourceIdentity=database.getSourceDatabaseIdentity();
   let shiftVolumeSeries=false;
   const readSummary=(from:string,to:string,generatedAt:string)=>{
-    const report=queryActivitySummaries(database,{from,to,generatedAt},{descriptors,ledger,timeZone:"UTC"});
+    const report=queryActivitySummaries(database,{from,to,generatedAt},{descriptors,ledger});
     return shiftVolumeSeries?shiftActivityVolumeSeries(report):report;
   };
-  const { activityPopulation, activity: composedActivity } = composeActivity({database,clock,descriptors,ledger,timeZone:"UTC"});
+  const { activityPopulation, activity: composedActivity } = composeActivity({database,clock,descriptors,ledger});
   const activity=options.dynamicVolumeSeries
     ?createActivitySelectionService({database,clock,read:readSummary})
     :composedActivity;
@@ -142,6 +142,18 @@ async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean
   registerShellRoutes(app,{bootstrap:{} as ShellRouteDeps["bootstrap"],search,xlsxExports:xlsx,hub:{} as ShellRouteDeps["hub"]});
   return {database,clock,activity,activityPopulation,search,xlsx,artifacts,sourceIdentity,app,activityDays,setShiftVolumeSeries:(value:boolean)=>{shiftVolumeSeries=value;}};
 }
+
+it("serves Analytics on Pacific days when the machine zone is not Pacific",async()=>{
+  const prior=process.env.TZ;
+  try{
+    process.env.TZ="UTC";
+    const f=await fixture();
+    const report=ActivityReportSelectionSchema.parse(await (await f.app.request("http://localhost/api/v1/reports/activity?from=2026-09-20&to=2026-09-20")).json());
+    assert.equal(report.totalRuns,3);
+    assert.equal(report.volume?.timeZone,"America/Los_Angeles");
+    assert.equal(report.volume?.interval.start,"2026-09-20T00:00:00.000-07:00");
+  }finally{if(prior===undefined)delete process.env.TZ;else process.env.TZ=prior;}
+});
 
 it("serves and exports the same reviewed Activity summary snapshot and refuses substitution after mutation",async()=>{
   const f=await fixture();await f.artifacts.ready;

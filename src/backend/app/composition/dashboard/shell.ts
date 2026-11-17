@@ -1,3 +1,4 @@
+import type { RunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
 import { exportSearchMetadata } from "../../../runs/exports/search-metadata-export.js";
 import { createCalendarQuery } from "../../../runs/queries/calendar.js";
 import { randomBytes } from "node:crypto";
@@ -13,12 +14,12 @@ import { composeGeneratedExports } from "./generated-exports.js";
 
 /** Shell bootstrap, search, export and subscription use the same production authority. */
 export function composeShell(input: Pick<BootstrapQueryDeps,
-  "appVersion" | "actorLabel" | "clock" | "timeZone" | "descriptorSetHash" | "preflightReport" | "workbookCompatibility">
+  "appVersion" | "actorLabel" | "clock" | "descriptorSetHash" | "preflightReport" | "workbookCompatibility">
   & Pick<OperatorXlsxExportServiceDependencies, "ids" | "artifacts">
   & DashboardStreamHubDeps
-  & { activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
+  & { projection: Pick<RunQueueProjection, "queueSurfaces">; activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
 ): ShellRouteDeps {
-  const { database, projection, clock, ids, artifacts, descriptors } = input;
+  const { database, projection, clock, ids, artifacts } = input;
   const catalogModules = READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module)
     || module.descriptor.capabilities?.review === true);
   database.registerRunSearchDeclarations(WORKFLOW_MODULES.map(({ descriptor }) => ({
@@ -26,14 +27,24 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
     subjectProjection: descriptor.subjectProjection ?? null,
   })));
   const search = createCrossDateSearchService({ clock,
-    sourceIdentity: database.getSourceDatabaseIdentity(), cursorSigningKey: randomBytes(32), descriptors,
+    sourceIdentity: database.getSourceDatabaseIdentity(), cursorSigningKey: randomBytes(32),
+    descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor },
     authority: { readSnapshot: read => database.withAuthorityReadSnapshot(() => read({
       authorityGeneration: database.getMeta().authorityGeneration,
-      searchRuns: searchInput => database.authority.runs.search(searchInput),
+      searchRuns: searchInput => {
+        const page = database.authority.runs.search(searchInput);
+        const surfaces = new Map(projection.queueSurfaces(page.rows.map(row => row.record.envelope.runId))
+          .map(surface => [surface.runId, surface]));
+        return { ...page, rows: page.rows.map(row => {
+          const surface = surfaces.get(row.record.envelope.runId);
+          if (surface === undefined) throw new Error(`search-queue-surface-unavailable: ${row.record.envelope.runId}`);
+          return { ...row, displayTitle: surface.displayName.state === "present" ? surface.displayName.value : surface.title };
+        }) };
+      },
     })) },
   });
   return {
-    bootstrap: { appVersion: input.appVersion, actorLabel: input.actorLabel, clock, timeZone: input.timeZone, modules: catalogModules,
+    bootstrap: { appVersion: input.appVersion, actorLabel: input.actorLabel, clock, modules: catalogModules,
       descriptorSetHash: input.descriptorSetHash, settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       preflightReport: input.preflightReport, projection, authorityMeta: () => database.getMeta(),
       workbookCompatibility: input.workbookCompatibility },

@@ -6,7 +6,7 @@ import { it } from "vitest";
 import { WorkflowBootstrapPrimitiveSchema, WorkflowStartReadinessSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { ServerClockWireSchema } from "../../../src/models/dashboard/bootstrap.js";
-import { runtimeTimeZone } from "../../../src/rules/time/clock.js";
+import { PACIFIC_TIME_ZONE } from "../../../src/models/dashboard/search-calendar.js";
 
 {
 
@@ -24,6 +24,17 @@ describe("dashboard wire primitives", () => {
     assert.equal(WorkflowStartReadinessSchema.safeParse({ ...needed, defaultWorkbookId: "roster" }).success, false);
     assert.equal(WorkflowStartReadinessSchema.safeParse({ scope: "all-dependencies", state: "ready" }).success, false);
     assert.equal(WorkflowStartReadinessSchema.safeParse({ scope: "workbook-sources", state: "ready", fixAction: needed }).success, false);
+  });
+
+  it("serves the optional reference check beside or without a required reference, ready with no pick", () => {
+    const ready = { scope: "workbook-sources", state: "ready" }, workbookCheck = { id: "reference-check", keyFieldId: "eid" };
+    const checkOnly = { ...WORKFLOW_PRIMITIVE, start: { ...WORKFLOW_PRIMITIVE.start, requiredWorkbookFields: [], workbookCheck, readiness: ready } };
+    assert.deepEqual(WorkflowBootstrapPrimitiveSchema.parse(checkOnly).start.workbookCheck, workbookCheck);
+    const both = { ...WORKFLOW_PRIMITIVE, start: { ...WORKFLOW_PRIMITIVE.start, requiredWorkbookFields: ["eid"], workbookCheck,
+      workbookReference: { id: "roster", keyFieldId: "eid", mode: "all", writableFields: [] }, readiness: ready } };
+    assert.equal(WorkflowBootstrapPrimitiveSchema.safeParse(both).success, true);
+    assert.equal(WorkflowBootstrapPrimitiveSchema.safeParse({ ...both, start: { ...both.start, workbookCheck: { id: "roster", keyFieldId: "eid" } } }).success, false);
+    assert.equal(WorkflowBootstrapPrimitiveSchema.safeParse({ ...checkOnly, start: { ...checkOnly.start, workbookCheck: { ...workbookCheck, optional: true } } }).success, false);
   });
 
   it("refuses a served chunk harness whose composition is not in the same document", () => {
@@ -85,10 +96,9 @@ describe("dashboard wire primitives", () => {
 
 describe("Activity volume range policy and boundary skeleton", () => {
 
-  it("shares the runtime's resolved IANA zone with the bootstrap clock contract", () => {
-    const timeZone = runtimeTimeZone();
-    assert.equal(timeZone, new Intl.DateTimeFormat().resolvedOptions().timeZone);
-    assert.equal(ServerClockWireSchema.safeParse({ now: "2026-09-26T06:30:00.000Z", zone: timeZone }).success, true);
+  it("accepts the Pacific calendar zone in the bootstrap clock contract", () => {
+    assert.equal(PACIFIC_TIME_ZONE, "America/Los_Angeles");
+    assert.equal(ServerClockWireSchema.safeParse({ now: "2026-09-26T06:30:00.000Z", zone: PACIFIC_TIME_ZONE }).success, true);
     assert.equal(ServerClockWireSchema.safeParse({ now: "2026-09-26T06:30:00.000Z", zone: "Mars/Olympus" }).success, false);
   });
 });

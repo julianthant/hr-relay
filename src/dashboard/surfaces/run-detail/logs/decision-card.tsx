@@ -19,17 +19,17 @@ const answeredGlyph = {
  * Answered, the card stays with all its content and the actions become one line: glyph, outcome, then time and who in grey. `preview` (Explorer) shows the card without actions.
  * `inline` drops the box for a pick whose control is the step's own page card: the question follows it as a step line.
  */
-export function DecisionCard({ title, context, tone, confirmLabel = "Confirm", confirmDisabled = false, answered, preview = false, inline = false, onConfirm, onCancel, children }: {
+export function DecisionCard({ title, context, tone, confirmLabel = "Confirm", confirmDisabled = false, noConfirm = false, answered, preview = false, inline = false, onConfirm, onCancel, children }: {
   title: string; context?: string; tone?: "danger";
-  confirmLabel?: string; confirmDisabled?: boolean; answered?: DecisionAnswered; preview?: boolean; inline?: boolean;
+  confirmLabel?: string; confirmDisabled?: boolean; noConfirm?: boolean; answered?: DecisionAnswered; preview?: boolean; inline?: boolean;
   onConfirm?: () => void; onCancel?: () => void; children?: ReactNode;
 }) {
   const actions = answered ? <p className="m-0 flex items-center gap-2 text-body text-ui-secondary" data-answered={answered.kind}>
     {answeredGlyph[answered.kind]}
     <span><span className="font-medium text-ui-primary">{answered.outcome}</span> · <span className="tabular-nums">{answered.time}</span> · {answered.by}</span>
   </p> : !preview && <div className="flex flex-wrap gap-2">
-    <Button type="submit" variant="primary" disabled={confirmDisabled}>{confirmLabel}</Button>
-    {onCancel && <Button type="button" onClick={onCancel}>Cancel run</Button>}
+    {!noConfirm && <Button type="submit" variant="primary" disabled={confirmDisabled}>{confirmLabel}</Button>}
+    {onCancel && <Button type="button" variant="secondary" onClick={onCancel}>Cancel run</Button>}
   </div>;
   const submit = (event: FormEvent) => { event.preventDefault(); if (!preview && !answered && !confirmDisabled) onConfirm?.(); };
   if (inline) return <form aria-label={title} onSubmit={submit} className="flex flex-col gap-3">

@@ -19,18 +19,25 @@ function restoreSchema32CommandTable(database: DatabaseSync): void {
   for (const statement of owned) database.exec(statement);
 }
 
-/** Steps a current authority back to schema 33: none of the query indexes, and checkpoint replay keeps its own index. */
-export function restoreSchema33QueryIndexes(database: DatabaseSync): void {
-  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 34);
+/** Steps a current authority back to schema 34: none of the query indexes, and checkpoint replay keeps its own index. */
+export function restoreSchema34QueryIndexes(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 35);
   const replay = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE INDEX checkpoints_replay_idx [^;]+/u)?.[0];
   assert.ok(replay);
   for (const name of Object.keys(QUERY_INDEXES)) database.exec(`DROP INDEX ${name}`);
-  database.exec(`${replay}; UPDATE database_states SET schema_version=33; PRAGMA user_version=33`);
+  database.exec(`${replay}; UPDATE database_states SET schema_version=34; PRAGMA user_version=34`);
+}
+
+/** Steps a current authority back to schema 33: schema 34 strips failure notes from stored commands in place and keeps the same layout. */
+export function regressSchema34FailureNotes(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 35) restoreSchema34QueryIndexes(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 34);
+  database.exec("UPDATE database_states SET schema_version=33; PRAGMA user_version=33");
 }
 
 /** Steps a current authority back to schema 32. */
 export function restoreSchema32CommandRows(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 34) restoreSchema33QueryIndexes(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 34) regressSchema34FailureNotes(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 33);
   const nested = database.isTransaction;
   if (!nested) database.exec("BEGIN");

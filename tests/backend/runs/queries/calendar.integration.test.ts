@@ -12,6 +12,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { summaryFixture } from "../../../support/helpers/backend/served-database-surfaces-fixtures.js";
 import { foundationFixture,id } from "../../../support/helpers/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 
 it("reads bounded real month counts and chronological bounds without whole-history readers or writes", async () => {
   const f = await summaryFixture();
@@ -55,6 +56,16 @@ it("reads bounded real month counts and chronological bounds without whole-histo
       assert.doesNotMatch(JSON.stringify(plan), /SCAN runs|TEMP B-TREE/u);
     } finally { raw.close(); }
   } finally { await f.dispose(); }
+});
+
+it("reads today as the Pacific day when the machine zone is not Pacific", async () => {
+  const f = await summaryFixture(), prior = process.env.TZ;
+  try {
+    process.env.TZ = "UTC";
+    const query = createCalendarQuery(f.db, manualClock(new Date("2026-09-09T03:00:00.000Z")));
+    assert.equal(query.read({ month: "2026-09", day: "2026-09-08" }).today, "2026-09-08");
+    assert.throws(() => query.read({ month: "2026-09", day: "2026-09-09" }), /calendar-future-day/u);
+  } finally { if (prior === undefined) delete process.env.TZ; else process.env.TZ = prior; await f.dispose(); }
 });
 
 it("refuses invalid queries and unavailable/corrupt publications instead of reporting empty history", async () => {

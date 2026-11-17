@@ -46,7 +46,7 @@ it("uses only the linked run's compatible declared subject checkpoint", async ()
     { state: "available", workflow: "Person lookup", subject: "Alice" });
   assert.deepEqual(notificationDisplayContext(row, await deps([checkpoint({ attempt: 3, output: { schemaHash: HASH_A, value: { person: { name: "Later" } } } })], descriptor, world)), { state: "workflow-only", workflow: "Person lookup" });
   assert.deepEqual(notificationDisplayContext(row, await deps([checkpoint({ contractFingerprint: HASH_B })], descriptor, world)), { state: "workflow-only", workflow: "Person lookup" });
-  assert.deepEqual(notificationDisplayContext(row, await deps([checkpoint()], { ...descriptor, contractFingerprint: HASH_B }, world)), { state: "unavailable" });
+  assert.deepEqual(notificationDisplayContext(row, await deps([checkpoint()], { ...descriptor, contractFingerprint: HASH_B }, world)), { state: "workflow-only", workflow: "Person lookup" });
   assert.deepEqual(notificationDisplayContext(row, await deps([], descriptor, world)), { state: "workflow-only", workflow: "Person lookup" });
 });
 
@@ -72,11 +72,11 @@ it("displays an older run's exact subject after a structurally compatible workfl
     { state: "available", workflow: "Person lookup", subject: "Alice" });
 });
 
-it.each([HASH_A, HASH_B])("withholds notification display when the run's checkpoint node is absent from the live timeline (%s)", async fingerprint => {
+it.each([HASH_A, HASH_B])("withholds the subject but keeps the workflow when the run's checkpoint node is absent from the live timeline (%s)", async fingerprint => {
   const current = { ...descriptor, version: descriptor.version + 1, contractFingerprint: fingerprint,
     timeline: [{ key: "replacement", label: "Replacement", nodes: [{ id: "replacement", label: "Replacement" }] }] };
   const regular = await deps([checkpoint()]);
-  assert.deepEqual(notificationDisplayContext(row, { ...regular, descriptor: () => current }), { state: "unavailable" });
+  assert.deepEqual(notificationDisplayContext(row, { ...regular, descriptor: () => current }), { state: "workflow-only", workflow: "Person lookup" });
 });
 
 it("propagates evidence read failures instead of treating corruption as incompatible presentation", async () => {
@@ -107,11 +107,11 @@ it("does no compatibility evidence reads for a current-version notification whil
   assert.equal(subjectReads, 1);
 });
 
-it("withholds a version-only older notification with an unmapped checkpoint node", async () => {
+it("withholds a version-only older subject with an unmapped checkpoint node", async () => {
   const regular = await deps([checkpoint()]);
   const current = { ...descriptor, version: descriptor.version + 1,
     timeline: [{ key: "replacement", label: "Replacement", nodes: [{ id: "replacement", label: "Replacement" }] }] };
-  assert.deepEqual(notificationDisplayContext(row, { ...regular, descriptor: () => current }), { state: "unavailable" });
+  assert.deepEqual(notificationDisplayContext(row, { ...regular, descriptor: () => current }), { state: "workflow-only", workflow: "Person lookup" });
 });
 
 it("resolves command notices that target a run the way that run resolves, and a batch as not applicable", async () => {

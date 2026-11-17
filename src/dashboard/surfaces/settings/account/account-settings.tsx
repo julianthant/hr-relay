@@ -1,5 +1,5 @@
 import { Pencil } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { z } from "zod";
 import { BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, FormGroup, IconButton, Input, PageHeading, ResultRow, SecretField, dsIcon, useToasts } from "../../../ds/ui.js";
 import { operatorFailureSentence } from "../../../../models/failures/error-catalog.js";
@@ -33,8 +33,11 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     toast({ tone: "danger", title: `${title} not changed`, description: operatorFailureSentence(result.code) });
     return false;
   };
-  const details = (label: string, shown: string, request: (next: string) => ProfileDetailsChangeRequest) =>
-    <EditableRow label={label} value={shown} onSave={next => save(request(next), label)} />;
+  const details = (label: string, shown: string, request: (next: string) => ProfileDetailsChangeRequest) => {
+    const thing = label.toLowerCase();
+    return <PencilRow label={label} shown={shown} pencilLabel={`Edit ${thing}`} title={`Edit ${thing}`}
+      dialog={close => <EditTextDialog label={label} value={shown} close={close} onSave={next => save(request(next), label)} />} />;
+  };
   return <section className="settings-compact-page settings-account-page">
     <PageHeading title="Account" />
     <Group label="Relay account" description="How you sign in to Relay.">
@@ -59,29 +62,43 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
 export type ProfileDetailsChangeRequest = z.infer<typeof ProfileDetailsChangeRequestSchema>;
 export type ProfileDetailsChangeResult = z.infer<typeof ProfileDetailsChangeResultSchema>;
 
-/** A value row whose pencil swaps the value for an inline field: Enter saves, Escape cancels, and focus returns to the pencil. */
-function EditableRow({ label, value, onSave }: { label: string; value: string; onSave: (next: string) => Promise<boolean> }) {
-  const [draft, setDraft] = useState<string | undefined>();
+/** A value row whose pencil opens a dialog; Cancel and Escape close it and return focus to the pencil. */
+export function PencilRow({ label, shown, pencilLabel, title, disabled, dialog }: {
+  label: string; shown: string; pencilLabel: string; title: string; disabled?: boolean;
+  dialog: (close: () => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
   const pencil = useRef<HTMLButtonElement>(null);
-  const editing = draft !== undefined;
-  const refocus = useRef(false);
-  useEffect(() => { if (!editing && refocus.current) { refocus.current = false; pencil.current?.focus({ preventScroll: true }); } }, [editing]);
-  const finish = async (save: boolean): Promise<void> => {
-    const next = draft?.trim();
-    refocus.current = true;
-    setDraft(undefined);
-    if (save && next !== undefined && next !== value) await onSave(next);
+  const close = (): void => setOpen(false);
+  return <>
+    <ResultRow label={label} value={<span className="inline-flex items-center justify-end gap-3 -mr-0.5">
+      <span className="text-ui-muted">{shown}</span>
+      <IconButton ref={pencil} type="button" label={pencilLabel} variant="ghost" size="sm" disabled={disabled === true} icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(true)} />
+    </span>} />
+    {open && <Dialog open onOpenChange={next => { if (!next) close(); }}>
+      <DialogContent size="sm" hideClose title={title} onCloseAutoFocus={event => { event.preventDefault(); pencil.current?.focus({ preventScroll: true }); }}>
+        {dialog(close)}
+      </DialogContent>
+    </Dialog>}
+  </>;
+}
+
+/** One text field in a dialog: Save stays off while it is empty and writes only a changed value. */
+function EditTextDialog({ label, value, close, onSave }: { label: string; value: string; close: () => void; onSave: (next: string) => Promise<boolean> }) {
+  const [draft, setDraft] = useState(value);
+  const next = draft.trim();
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    close();
+    if (next !== value) void onSave(next);
   };
-  return <ResultRow label={label} value={editing
-    ? <Input aria-label={label} value={draft} autoFocus spellCheck={false} onChange={event => setDraft(event.target.value)}
-        onKeyDown={event => {
-          if (event.key === "Enter") { event.preventDefault(); void finish(true); }
-          else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); void finish(false); }
-        }} />
-    : <span className="inline-flex items-center justify-end gap-3 -mr-0.5">
-        <span className="text-ui-muted">{value}</span>
-        <IconButton ref={pencil} type="button" label={`Edit ${label}`} variant="ghost" size="sm" icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setDraft(value)} />
-      </span>} />;
+  return <form onSubmit={submit} className="flex min-h-0 flex-col">
+    <DialogBody><Input autoFocus aria-label={label} autoComplete="off" spellCheck={false} value={draft} onChange={event => setDraft(event.target.value)} /></DialogBody>
+    <DialogFooter>
+      <Button type="button" variant="muted" onClick={close}>Cancel</Button>
+      <Button type="submit" variant="primary" disabled={next === ""}>Save</Button>
+    </DialogFooter>
+  </form>;
 }
 
 export type ProfileLoginChangeResult = z.infer<typeof ProfileLoginChangeResultSchema>;
@@ -95,22 +112,12 @@ export interface RelayLogin {
 type Kind = "username" | "password";
 const LABEL: Record<Kind, string> = { username: "Relay username", password: "Relay password" };
 
-/** Username and Password rows of the Relay account; each pencil opens a dialog that proves the current password. Typed values live only in the dialog's uncontrolled inputs. */
+/** Username and Password rows of the Relay account; each pencil opens a dialog that proves the current password. Typed values live only in the open dialog. */
 export function RelayLoginRows({ login }: { login: RelayLogin }) {
   const { toast } = useToasts();
-  const [open, setOpen] = useState<Kind | null>(null);
   const [changedUsername, setChangedUsername] = useState<string | undefined>();
-  const [problem, setProblem] = useState<string | undefined>();
   const username = changedUsername ?? login.username;
-  const close = (): void => { setOpen(null); setProblem(undefined); };
-  const submit = async (kind: Kind, event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const text = (name: string): string => { const value = data.get(name); return typeof value === "string" ? value : ""; };
-    const currentPassword = text("currentPassword");
-    const next = text(kind === "password" ? "newPassword" : "newUsername");
-    if (kind === "username" && !isRelayUsername(next)) { setProblem("Use one @ucsd.edu email with no spaces."); return; }
-    close();
+  const apply = async (kind: Kind, currentPassword: string, next: string): Promise<void> => {
     let result: ProfileLoginChangeResult;
     try {
       result = kind === "password" ? await login.changePassword({ currentPassword, newPassword: next }) : await login.changeUsername({ currentPassword, newUsername: next });
@@ -120,27 +127,57 @@ export function RelayLoginRows({ login }: { login: RelayLogin }) {
       toast({ tone: "success", title: `${LABEL[kind]} changed`, duration: 3000 });
     } else toast({ tone: result.state === "unknown" ? "warning" : "danger", title: `${LABEL[kind]} not changed`, description: operatorFailureSentence(result.code) });
   };
-  const row = (kind: Kind, shown: string) => <ResultRow label={kind === "username" ? "Username" : "Password"} value={<span className="inline-flex items-center justify-end gap-3 -mr-0.5">
-    <span className="text-ui-muted">{shown}</span>
-    <IconButton type="button" label={`Edit ${LABEL[kind]}`} variant="ghost" size="sm" disabled={kind === "username" && username === undefined}
-      icon={<Pencil aria-hidden className={dsIcon.sm} />} onClick={() => setOpen(kind)} />
-  </span>} />;
   return <>
-    {row("username", username ?? "Not set")}
-    {row("password", "••••••••")}
-    {open !== null && <Dialog open onOpenChange={next => { if (!next) close(); }}>
-      <DialogContent size="sm" title={LABEL[open]} description="Enter your current password to confirm.">
-        <DialogBody><form id="relay-login-form" autoComplete="off" onSubmit={event => { void submit(open, event); }}>
-          <Field label="Current password" orientation="horizontal"><SecretField label="Current password" name="currentPassword" required maxLength={1024} autoComplete="current-password" /></Field>
-          {open === "password"
-            ? <Field label="New password" orientation="horizontal"><SecretField label="New password" name="newPassword" required maxLength={RELAY_SIGN_IN_FIELD_MAX} autoComplete="new-password" /></Field>
-            : <Field label="New username" orientation="horizontal" error={problem}><Input type="text" name="newUsername" required maxLength={RELAY_SIGN_IN_FIELD_MAX} spellCheck={false} autoComplete="username" /></Field>}
-        </form></DialogBody>
-        <DialogFooter>
-          <Button variant="secondary" onClick={close}>Cancel</Button>
-          <Button type="submit" form="relay-login-form">Save</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>}
+    <PencilRow label="Username" shown={username ?? "Not set"} pencilLabel="Edit username" title="Edit username" disabled={username === undefined}
+      dialog={close => <UsernameDialog close={close} onSave={(current, next) => apply("username", current, next)} />} />
+    <PencilRow label="Password" shown="••••••••" pencilLabel="Change Relay password" title="Change password"
+      dialog={close => <PasswordDialog close={close} onSave={(current, next) => apply("password", current, next)} />} />
   </>;
+}
+
+function UsernameDialog({ close, onSave }: { close: () => void; onSave: (currentPassword: string, next: string) => Promise<void> }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [problem, setProblem] = useState<string | undefined>();
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    if (!isRelayUsername(next)) { setProblem("Use one @ucsd.edu email with no spaces."); return; }
+    close();
+    void onSave(current, next);
+  };
+  return <form autoComplete="off" onSubmit={submit} className="flex min-h-0 flex-col">
+    <DialogBody className="flex flex-col gap-3">
+      <Field label="Current password" orientation="horizontal"><SecretField label="Current password" name="currentPassword" autoFocus required maxLength={1024} autoComplete="current-password" value={current} onChange={event => setCurrent(event.target.value)} /></Field>
+      <Field label="New username" orientation="horizontal" error={problem}><Input type="text" name="newUsername" required maxLength={RELAY_SIGN_IN_FIELD_MAX} spellCheck={false} autoComplete="username" value={next} onChange={event => setNext(event.target.value)} /></Field>
+    </DialogBody>
+    <DialogFooter>
+      <Button type="button" variant="muted" onClick={close}>Cancel</Button>
+      <Button type="submit" variant="primary" disabled={current === "" || next.trim() === ""}>Save</Button>
+    </DialogFooter>
+  </form>;
+}
+
+/** The Relay password asks for the current one, then the new one twice; Save stays off until all three are filled and the new ones match. */
+function PasswordDialog({ close, onSave }: { close: () => void; onSave: (currentPassword: string, next: string) => Promise<void> }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const mismatch = again !== "" && again !== next;
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    close();
+    void onSave(current, next);
+  };
+  return <form autoComplete="off" onSubmit={submit} className="flex min-h-0 flex-col">
+    <DialogBody className="flex flex-col gap-3">
+      <SecretField label="Current password" name="currentPassword" autoFocus placeholder="Current password" maxLength={1024} autoComplete="current-password" value={current} onChange={event => setCurrent(event.target.value)} />
+      <SecretField label="New password" name="newPassword" placeholder="New password" maxLength={RELAY_SIGN_IN_FIELD_MAX} autoComplete="new-password" value={next} onChange={event => setNext(event.target.value)} />
+      <SecretField label="Confirm new password" name="confirmPassword" placeholder="Confirm new password" maxLength={RELAY_SIGN_IN_FIELD_MAX} autoComplete="new-password" aria-invalid={mismatch || undefined} value={again} onChange={event => setAgain(event.target.value)} />
+      {mismatch && <p role="status" className="m-0 text-[12px] leading-4 text-ui-muted">The passwords don’t match.</p>}
+    </DialogBody>
+    <DialogFooter>
+      <Button type="button" variant="muted" onClick={close}>Cancel</Button>
+      <Button type="submit" variant="primary" disabled={current === "" || next === "" || next !== again}>Save</Button>
+    </DialogFooter>
+  </form>;
 }
