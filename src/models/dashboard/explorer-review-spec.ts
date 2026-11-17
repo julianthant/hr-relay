@@ -9,23 +9,26 @@ import { BrowserSystemIdSchema } from "../../rules/identity/ids.js";
 
 const TextSchema = z.string().min(1);
 const IdSchema = z.string().min(1);
-export const ExplorerSpecConditionSchema = z.record(IdSchema, z.array(TextSchema).min(1));
+export const ExplorerSpecConditionSchema = z.record(IdSchema, z.array(z.string()).min(1));
 export const ExplorerSpecWhenSchema = z.array(ExplorerSpecConditionSchema).min(1);
 const Gate = { when: ExplorerSpecWhenSchema.optional() };
 export type ExplorerSpecGate = Readonly<{ when?: z.infer<typeof ExplorerSpecWhenSchema> }>;
 /** A value that follows an option or decision: `values[by]`, else `otherwise`. */
 export const ExplorerSpecValueSchema = z.union([TextSchema,
-  z.strictObject({ by: IdSchema, values: z.record(TextSchema, TextSchema), otherwise: TextSchema })]);
+  z.strictObject({ by: IdSchema, values: z.record(z.string(), TextSchema), otherwise: TextSchema })]);
 export type ExplorerSpecValue = z.infer<typeof ExplorerSpecValueSchema>;
 const SystemSchema = z.union([BrowserSystemIdSchema, z.literal("local")]);
 const TextLineSchema = z.strictObject({ text: TextSchema, ...Gate });
+const DecisionInitialSchema = z.union([z.string(),
+  z.strictObject({ by: IdSchema, values: z.record(z.string(), z.string()), otherwise: z.string() })]);
 
-export const ExplorerSpecOutcomeSchema = z.strictObject({ value: TextSchema, label: TextSchema, then: TextSchema, stops: z.boolean(), ...Gate });
+export const ExplorerSpecOutcomeSchema = z.strictObject({ value: z.string(), label: TextSchema, then: TextSchema, stops: z.boolean(), ...Gate });
 const BlockSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("card"), id: IdSchema, title: TextSchema, mode: z.enum(["fill", "read"]), ...Gate,
     rows: z.array(z.strictObject({ id: IdSchema, label: TextSchema, value: ExplorerSpecValueSchema.optional(), source: IdSchema, ...Gate })) }),
   z.strictObject({ kind: z.literal("click"), target: TextSchema, ...Gate }),
-  z.strictObject({ kind: z.literal("decision"), id: IdSchema, label: TextSchema, initial: ExplorerSpecValueSchema, ...Gate,
+  z.strictObject({ kind: z.literal("starts"), workflowId: IdSchema, title: TextSchema, each: TextSchema, ...Gate }),
+  z.strictObject({ kind: z.literal("decision"), id: IdSchema, label: TextSchema, initial: DecisionInitialSchema, ...Gate,
     outcomes: z.array(ExplorerSpecOutcomeSchema).min(1) }),
 ]);
 
@@ -88,6 +91,9 @@ export const ExplorerReviewSpecSchema = z.strictObject({
       if (new Set(outcomes).size !== outcomes.length) issue(blockPath, `decision ${block.id} repeats an outcome`);
       block.outcomes.forEach((outcome, index) => { checkGate(outcome, [...blockPath, "outcomes", index]); });
       checkValue(block.initial, [...blockPath, "initial"]);
+      if (typeof block.initial !== "string" && !known.has(block.initial.by)) {
+        issue([...blockPath, "initial"], `decision initial follows ${block.initial.by}, which is no earlier option or decision`);
+      }
       for (const initial of candidates(block.initial)) {
         if (!block.outcomes.some(outcome => outcome.value === initial && !outcome.stops)) issue([...blockPath, "initial"], `decision ${block.id} starts at ${initial}, which is no continuing outcome`);
       }

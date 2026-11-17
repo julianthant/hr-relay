@@ -6,7 +6,7 @@ import { OperatorFieldDisplaySchema } from "./presentation.js";
 const ReviewIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
 const ReviewTextSchema = z.string().trim().min(1);
 /** Shows a part when any alternative holds: each key (an Explorer option or decision id) holds one of its values. */
-export const ReviewWhenSchema = z.array(z.record(z.string().min(1), z.array(z.string().min(1)).min(1))).min(1);
+export const ReviewWhenSchema = z.array(z.record(z.string().min(1), z.array(z.string()).min(1))).min(1);
 const Gate = { when: ReviewWhenSchema.optional() };
 const ReviewReadLocationSchema = z.strictObject({
   stepKey: ReviewIdSchema,
@@ -30,7 +30,7 @@ const LabelledFieldSchema = { ...FieldSchema, label: ReviewTextSchema, example: 
 export const WorkflowReviewFieldSchema = z.union([
   z.strictObject({ ...FieldSchema, operatorField: ReviewTextSchema }),
   z.strictObject({ ...LabelledFieldSchema, display: OperatorFieldDisplaySchema.optional(), transactionFields: z.array(NodeFieldSchema).min(1) }),
-  z.strictObject({ ...LabelledFieldSchema, taskFields: z.array(NodeFieldSchema).min(1) }),
+  z.strictObject({ ...LabelledFieldSchema, display: OperatorFieldDisplaySchema.optional(), taskFields: z.array(NodeFieldSchema).min(1) }),
   /** A value the operator typed when the run started, read from the workflow input. */
   z.strictObject({ ...LabelledFieldSchema, inputField: ContractFieldPathSchema }),
   z.strictObject({ ...LabelledFieldSchema,
@@ -62,15 +62,16 @@ export const WorkflowReviewDecisionSchema = z.strictObject({
   reads: z.strictObject({ nodeId: NodeIdSchema, fieldPath: ContractFieldPathSchema }),
   /** The step's nodes whose declared failures stop the run at this decision point. */
   nodeIds: z.array(NodeIdSchema).min(1),
-  initial: z.string().min(1),
+  initial: z.union([z.string(), z.strictObject({ by: ReviewIdSchema, values: z.record(z.string(), z.string()), otherwise: z.string() })]),
   ...Gate,
-  outcomes: z.array(z.strictObject({ value: z.string().min(1), label: ReviewTextSchema.optional(), then: ReviewTextSchema.optional(),
+  outcomes: z.array(z.strictObject({ value: z.string(), label: ReviewTextSchema.optional(), then: ReviewTextSchema.optional(),
     stops: z.literal(true).optional(), ...Gate })).min(1),
 });
 export const WorkflowStepReviewSchema = z.strictObject({
   /** When the step runs, beyond what its selection, omission and input conditions already say; for conditions on earlier outcomes. */
   ...Gate,
   pages: z.array(WorkflowReviewPageSchema),
+  starts: z.array(z.strictObject({ nodeId: NodeIdSchema, each: ReviewTextSchema, ...Gate })).optional(),
   branchLabels: z.array(z.strictObject({ nodeId: NodeIdSchema, outcome: ReviewTextSchema, label: ReviewTextSchema })),
   decisions: z.array(WorkflowReviewDecisionSchema).optional(),
 });

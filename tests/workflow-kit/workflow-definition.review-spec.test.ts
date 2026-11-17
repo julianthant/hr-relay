@@ -7,6 +7,8 @@ import { compileWorkflow } from "../../src/workflow-kit/workflow-definition.js";
 import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
 import { onboardingWorkflow } from "../../src/workflows/onboarding/workflow.js";
 import { separationsWorkflow } from "../../src/workflows/separations/workflow.js";
+import { i9CheckStartWorkflow } from "../../src/workflows/i9-check-start/workflow.js";
+import { i9CheckWorkflow } from "../../src/workflows/i9-check/workflow.js";
 import { createSearchWorkflowDefinitionFixtures } from "../support/helpers/search-workflow-definition-fixtures.js";
 
 const review = Object.freeze({ pages: Object.freeze([Object.freeze({
@@ -20,6 +22,33 @@ function compileReview(candidate: WorkflowStepReview) {
   return compileWorkflow({ ...personLookupWorkflow, steps: personLookupWorkflow.steps.map(([group, entries], index) =>
     [{ ...group, review: index === 0 ? candidate : undefined }, entries] as const) });
 }
+
+it("validates starts against a real delegate in its own step and requires one scope phrase", () => {
+  const compile = (starts: WorkflowStepReview["starts"]) => compileWorkflow({ ...i9CheckStartWorkflow,
+    steps: i9CheckStartWorkflow.steps.map(([group, entries]) => {
+      assert.ok(group.review);
+      return [{ ...group, review: group.key === "documents" ? { ...group.review, starts } : group.review }, entries] as const;
+    }) });
+  const start = { nodeId: "read-documents", each: "Each attached PDF" };
+  assert.doesNotThrow(() => compile([start]));
+  assert.throws(() => compile([{ ...start, nodeId: "read-people" }]), /not a child run/u);
+  assert.throws(() => compile([{ ...start, nodeId: "check-people" }]), /unknown or outside node/u);
+  assert.throws(() => compile([start, start]), /repeats started workflow/u);
+  assert.equal(WorkflowStepReviewSchema.safeParse({ pages: [], branchLabels: [], starts: [{ ...start, each: "" }] }).success, false);
+});
+
+it("accepts a declared blank retention action with words and conditional continuing initials, and rejects invented values", () => {
+  const compile = (edit: (review: WorkflowStepReview) => WorkflowStepReview) => compileWorkflow({ ...i9CheckWorkflow,
+    steps: i9CheckWorkflow.steps.map(([group, entries]) => {
+      assert.ok(group.review);
+      return [{ ...group, review: group.key === "roster-match" ? edit(group.review) : group.review }, entries] as const;
+    }) });
+  assert.doesNotThrow(() => compile(candidate => candidate));
+  assert.throws(() => compile(candidate => ({ ...candidate, decisions: candidate.decisions?.map(decision =>
+    decision.id === "retention-action" ? { ...decision, initial: { by: "retention-identity", values: { ambiguous: "invented" }, otherwise: "Keep" } } : decision) })), /not one of its continuing outcomes/u);
+  assert.throws(() => compile(candidate => ({ ...candidate, decisions: candidate.decisions?.map(decision =>
+    decision.id === "retention-action" ? { ...decision, outcomes: [...decision.outcomes, { value: "invented", label: "Invented" }] } : decision) })), /never holds/u);
+});
 
 it("freezes nested review data when the authored review is already shallow-frozen", () => {
   const authoredReview = Object.freeze({ pages: [{ id: "search", title: "Employee search", mode: "Read only", nodeIds: ["search"],

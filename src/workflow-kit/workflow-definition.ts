@@ -1286,6 +1286,13 @@ export function compileWorkflow<
         }
       }
     }
+    assertUnique((review.starts ?? []).map(start => start.nodeId), "started workflow");
+    for (const start of review.starts ?? []) {
+      assertOwnNode(start.nodeId);
+      if (ownNodes.find(node => node.id === start.nodeId)?.kind !== "child-run") {
+        throw new Error(`workflow ${definition.id} review starts ${start.nodeId}, which is not a child run`);
+      }
+    }
     const decisions = review.decisions ?? [];
     assertUnique(decisions.map(decision => decision.id), "decision id");
     for (const decision of decisions) {
@@ -1300,8 +1307,9 @@ export function compileWorkflow<
         if (!values.includes(outcome.value)) throw new Error(`${owner} names ${outcome.value}, which ${decision.reads.fieldPath} never holds`);
         if (outcome.stops === true && outcome.then === undefined) throw new Error(`${owner} stops at ${outcome.value} without saying what the run does`);
       }
-      if (!decision.outcomes.some(outcome => outcome.value === decision.initial && outcome.stops !== true)) {
-        throw new Error(`${owner} starts at ${decision.initial}, which is not one of its continuing outcomes`);
+      const initials = typeof decision.initial === "string" ? [decision.initial] : [...Object.values(decision.initial.values), decision.initial.otherwise];
+      for (const initial of initials) if (!decision.outcomes.some(outcome => outcome.value === initial && outcome.stops !== true)) {
+        throw new Error(`${owner} starts at ${initial}, which is not one of its continuing outcomes`);
       }
     }
   }

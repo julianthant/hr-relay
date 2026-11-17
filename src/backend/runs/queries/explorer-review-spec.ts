@@ -288,6 +288,15 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
       }
     }
 
+    for (const start of review?.starts ?? []) {
+      const node = runtimeNode(start.nodeId);
+      if (node.kind !== "child-run") throw new Error(`workflow ${descriptor.id} review starts ${start.nodeId}, which is not a child run`);
+      const child = modules.find(candidate => candidate.descriptor.id === node.target.id);
+      if (child === undefined) throw new Error(`workflow ${descriptor.id} review starts absent workflow ${node.target.id}`);
+      blocks.push({ kind: "starts", workflowId: node.target.id, title: child.descriptor.label, each: start.each,
+        ...gated(both(known, start.when, nodeGate(node.id))) });
+    }
+
     const decisions: { block: Decision; nodeIds: readonly string[] }[] = [];
     const continuing = (value: string, label: string, when?: When): Outcome => ({ value, label, then: continueText(index), stops: false, ...gated(when) });
     for (const decision of review?.decisions ?? []) {
