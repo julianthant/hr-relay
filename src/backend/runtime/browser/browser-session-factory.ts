@@ -348,7 +348,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
           try {
             const proof = await binding.verifyAuthenticated({ page, config, recordEvidence, assertCurrent });
             assertCurrent();
-            if (!proof.authenticated) return unavailable("authentication-unverified");
+            if (!proof.authenticated) return unavailable("authentication-unverified", `sign-in-check-${proof.check}`);
             stage = "secret-check";
             const frames = page.frames();
             const secretControls = 'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"], input[autocomplete="new-password"]';

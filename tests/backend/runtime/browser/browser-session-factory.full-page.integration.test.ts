@@ -195,6 +195,7 @@ describe("whole-page factory screenshots", () => {
         assert.equal(evidence?.state, "unavailable");
         assert.ok(evidence?.state === "unavailable");
         assert.equal(evidence.reason, reason);
+        if (reason === "authentication-unverified") assert.equal(evidence.detail, "sign-in-check-application-route");
         assert.equal("bytes" in evidence, false);
       }, reason !== "authentication-unverified");
     });

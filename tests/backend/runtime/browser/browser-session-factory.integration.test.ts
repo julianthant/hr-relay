@@ -248,6 +248,7 @@ describe("worker browser session factory", () => {
             state: "unavailable", reason: refusal, pageVersion: 2,
             sessionId: SESSION_ID, observedAt: CLOCK.now().toISOString(),
             ...(refusal === "verification-failed" ? { detail: "sign-in-check-error" } : {}),
+            ...(refusal === "authentication-unverified" ? { detail: "sign-in-check-application-route" } : {}),
           });
           assert.equal(imageReads, refusal === "page-changed" ? 1 : 0);
         } finally { await resource.close({ reason: "worker-stop" }); }
