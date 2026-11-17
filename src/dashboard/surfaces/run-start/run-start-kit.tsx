@@ -481,7 +481,7 @@ export function RunReferenceRows({ checkRows, requiredLabel, sheets, chosenLibra
   return <div className="flex min-w-0 flex-col gap-3">
     {catalogError ? <RunSection title="Reference spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${requiredLabel}.`}><ReferenceFailure onRefresh={onRefresh} /></RunSection>
     : <><RunList title="Reference spreadsheets" description={`Spreadsheets this run looks people up in. Needs ${requiredLabel}.`}>
-      {chosen && <RunListRow title={chosen.name} description={missingSheet ? "Previous worksheet unavailable; choose again" : current ?? (worksheetsState === "loading" ? "Loading worksheets…" : undefined)}>
+      {chosen && <RunListRow title={chosen.name} description={missingSheet ? "Previous worksheet unavailable; choose again" : current === undefined && worksheetsState === "loading" ? "Loading worksheets…" : worksheets.length > 1 ? `${worksheets.length} worksheets fit` : undefined}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="outline" disabled={busy || worksheetsState !== "ready"} aria-label={`${chosen.name} worksheet, ${current ?? "none chosen"}`} className="ds-menu-trigger w-[150px] min-w-0 justify-between" iconAfter={<ChevronDown aria-hidden />}><span className="min-w-0 truncate">{current ?? "Choose worksheet"}</span></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[280px] max-h-[320px] overflow-y-auto"><DropdownMenuGroup>
@@ -519,6 +519,8 @@ export function RunReferenceRows({ checkRows, requiredLabel, sheets, chosenLibra
   </div>;
 }
 
+/** Fitting spreadsheets listed before "Show more", so the card never pushes Add spreadsheet below the fold. */
+const CHECK_ROWS_SHOWN = 4;
 const worksheetsLabel = (names: readonly string[]) => names.length === 1 ? names[0] : `${names.length} worksheets`;
 interface CheckCallbacks {
   onAdd: (libraryId: string) => void; onVersion: (libraryId: string, versionId: string) => void;
@@ -527,7 +529,11 @@ interface CheckCallbacks {
 
 /** The optional check's rows, one per fitting library spreadsheet: an unpicked row adds in place; a picked row has its worksheet menu, version select and a remove ×, as the approved mock draws it. */
 export function RunCheckRows({ sheets, busy, onAdd, onVersion, onSheets, onRemove }: { sheets: readonly CheckSheet[]; busy: boolean } & CheckCallbacks) {
-  return <>{sheets.map(sheet => {
+  const [expanded, setExpanded] = useState(false);
+  const ordered = [...sheets.filter(sheet => sheet.pickedSheetIds !== undefined), ...sheets.filter(sheet => sheet.pickedSheetIds === undefined)];
+  const shown = expanded ? ordered : ordered.slice(0, Math.max(CHECK_ROWS_SHOWN, ordered.filter(sheet => sheet.pickedSheetIds !== undefined).length));
+  const hidden = ordered.length - shown.length;
+  return <>{shown.map(sheet => {
     const picked = sheet.pickedSheetIds;
     if (picked === undefined) return <RunListRow key={sheet.libraryId} title={sheet.name} description={`${sheet.worksheets.map(worksheet => worksheet.sheetName).join(", ")} · ${sheet.versionName}`}>
       <Button variant="outline" disabled={busy} aria-label={`Use ${sheet.name}`} onClick={() => onAdd(sheet.libraryId)}>Use</Button>
@@ -551,7 +557,9 @@ export function RunCheckRows({ sheets, busy, onAdd, onVersion, onSheets, onRemov
       </Select>
       <IconButton size="xs" label={`Remove ${sheet.name}`} icon={<X aria-hidden className={dsIcon.md} />} onClick={() => onRemove(sheet.libraryId)} />
     </RunListRow>;
-  })}</>;
+  })}
+  {(hidden > 0 || expanded && ordered.length > CHECK_ROWS_SHOWN) && <div className="flex min-h-[var(--ds-row-h-1)] items-center py-[var(--ds-row-pad-y-1)]">
+    <Button size="sm" variant="ghost" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "Show fewer" : `Show ${hidden} more`}</Button></div>}</>;
 }
 
 /** The reference card of a workflow with no required spreadsheet: the check rows alone, and the Add spreadsheet menu as the mock draws it (Pinned first when the search is empty; typing searches every spreadsheet and worksheet name, A-Z). */

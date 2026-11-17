@@ -10,7 +10,7 @@ import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
-const { setup, text, button, press, reachChecks, checkbox, field, fill, mount, cleanup, unmount } = createMountedRerunWorld(profileFixtures.create);
+const { setup, text, button, press, reachChecks, checkbox, field, fill, mount, cleanup, unmount, openedRuns } = createMountedRerunWorld(profileFixtures.create);
 afterEach(cleanup);
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {
@@ -45,6 +45,12 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.ok(!text().includes("Start applied")); assert.match(text(), /needs readback/u);
     await press("Replay exact submission"); assert.equal(h.finalCommands.length, 2);
     assert.deepEqual(h.finalCommands[1], h.finalCommands[0]); assert.equal(h.queueRoots.length, 2);
+  });
+  it("the started toast opens the new run's Logs", async () => {
+    const h = await setup(); const source = await h.completeSource(); await mount(h, source); await press("Continue"); await press("Confirm"); await press("Continue");
+    await act(async () => checkbox("Dry run").click()); await press("Start dry run");
+    assert.equal(document.querySelector('[role="dialog"]'), null); assert.match(text(), /Rerun created/u);
+    await press("Open run"); assert.equal(openedRuns.length, 1); assert.match(openedRuns[0], /\S/u);
   });
   it("a stale source refuses in the mounted launcher before warning navigation or plan allocation", async () => {
     const h = await setup(); const source = await h.completeSource();
