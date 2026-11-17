@@ -1,5 +1,5 @@
 import { Bell, Check, Mail, MailOpen, MoreHorizontal, X } from "lucide-react";
-import { forwardRef, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { forwardRef, useEffect, useRef, type ReactNode } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, IconButton, Skeleton, Tooltip, dsFocus, dsIcon, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { LoadingRegion } from "../shared/loading/loading.js";
@@ -94,32 +94,4 @@ export function NotificationPing({ item }: { item: NotificationItem }) {
   const sent = useRef(false);
   useEffect(() => { if (sent.current) return; sent.current = true; toast({ tone: "success", title: item.title, description: `${item.subject} · ${item.workflow}`}); }, [item, toast]);
   return null;
-}
-
-/** A short two-note chime from the browser's own audio; a runtime without audio plays nothing. */
-export function playNotificationSound(): void {
-  const Context = typeof AudioContext === "undefined" ? undefined : AudioContext;
-  if (Context === undefined) return;
-  const audio = new Context();
-  const oscillator = audio.createOscillator(), gain = audio.createGain();
-  oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(880, audio.currentTime);
-  oscillator.frequency.setValueAtTime(660, audio.currentTime + 0.12);
-  gain.gain.setValueAtTime(0.08, audio.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.3);
-  oscillator.connect(gain).connect(audio.destination);
-  oscillator.onended = () => { void audio.close(); };
-  oscillator.start();
-  oscillator.stop(audio.currentTime + 0.3);
-}
-
-/** Delivers a gated alert as a short toast (never a panel): success for a finished run, the item's own tone otherwise. */
-export function useNotificationAlert(play: () => void = playNotificationSound) {
-  const { toast } = useToasts();
-  return useCallback((item: NotificationItem, sound: boolean) => {
-    const finished = item.tone === "positive";
-    toast({ tone: finished ? "success" : item.tone === "danger" ? "danger" : item.tone === "warning" ? "warning" : "info", title: item.title,
-      description: finished ? `${item.subject} · ${item.workflow}` : item.detail, ...(item.tone === "danger" ? { duration: 6000 } : {}) });
-    if (sound) play();
-  }, [toast, play]);
 }
