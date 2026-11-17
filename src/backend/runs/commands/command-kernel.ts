@@ -70,7 +70,7 @@ import { activeRunsForItem,fanOutQueuedRuns,requireApplied,runTarget,type Target
 import { lifecycleCommandId,type RelatedRunChange,type RunMutationOutcome,type RunRecordService } from "../lifecycle/run-record-service.js";
 import { dryRunRefusalMessage,resolveInstances,supportsDryRun } from "../start/plan.js";
 import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
-import { bindRunWorkbookReference, parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
+import { bindRunWorkbookReference, parseRunWorkbookReference, runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 import { createWorkbookReferenceCapture } from "../../workbooks/workbook-library-service.js";
 import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
@@ -525,8 +525,10 @@ function readStartPlan(
   for (const planned of plan.planned) {
     const captured = planned.workbookReferences ?? [];
     const sources: { libraryId: string; sheetId: string }[] = [];
-    const requirement = descriptor.workbookReference;
-    if (requirement === undefined ? captured.length !== 0 : captured.length < 1 || captured.length > MAX_SELECTED_WORKBOOK_SOURCES) {
+    const requirement = descriptor.workbookReference, check = descriptor.workbookCheck;
+    const checkCount = check === undefined ? 0 : captured.filter(bound => parseRunWorkbookReference(bound).request.typeId === check.id).length;
+    const requiredCount = captured.length - checkCount;
+    if (requirement === undefined ? requiredCount !== 0 : requiredCount < 1 || requiredCount > MAX_SELECTED_WORKBOOK_SOURCES) {
       reject(request, "replan-required", "Workbook source selection changed; review a fresh plan before starting");
     }
     for (const bound of captured) {
@@ -534,9 +536,17 @@ function readStartPlan(
         const reference = parseRunWorkbookReference(bound);
         const snapshot = reference.snapshot;
         const worksheet = snapshot.worksheets[0];
-        if (requirement === undefined || snapshot.worksheets.length !== 1 || worksheet === undefined
-          || !("versionId" in snapshot) || snapshot.versionId === undefined
-          || reference.request.typeId !== requirement.id) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        if (snapshot.worksheets.length !== 1 || worksheet === undefined
+          || !("versionId" in snapshot) || snapshot.versionId === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        if (check !== undefined && reference.request.typeId === check.id) {
+          const recaptured = captureReference({ kind: "selected-source", typeId: check.id, keyFieldId: check.keyFieldId,
+            fields: [check.keyFieldId], writableFields: [], mode: "keys", keys: [], libraryId: snapshot.libraryId,
+            versionId: snapshot.versionId, sheetId: worksheet.sheetId, expectedVersion: snapshot.version });
+          if (canonicalJsonStringify(bindRunWorkbookReference(reference.request, recaptured)) !== canonicalJsonStringify(bound))
+            throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
+          continue;
+        }
+        if (requirement === undefined || reference.request.typeId !== requirement.id) throw new WorkbookLibraryError("WORKBOOK_INVALID");
         const refreshed = captureReference({
           kind: "selected-source", typeId: requirement.id, keyFieldId: requirement.keyFieldId,
           fields: descriptor.requiredWorkbookFields, writableFields: requirement.writableFields,
@@ -1909,7 +1919,7 @@ function gateEvidenceScope(
     return outputs[nodeId]!;
   };
   for (const dependency of gate.dependsOn) buildOutput(String(dependency));
-  return { input, outputs, checkpoints };
+  return { input, outputs, checkpoints, references: runWorkbookReferenceTypeIds(run.input.workbookReferences) };
 }
 
 function valueAtPath(value: unknown, path: string): unknown {

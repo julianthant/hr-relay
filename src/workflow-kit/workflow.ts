@@ -209,6 +209,7 @@ export interface WorkflowDescriptor<
   /** Existing references or linked masters this workflow directly needs. */
   readonly requiredWorkbookFields: readonly string[];
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
+  readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   readonly referenceKeys?: (input: z.output<InputSchema>) => readonly string[];
   readonly plannedOutputs?: (input: z.output<InputSchema>, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
   readonly code: string;
@@ -268,6 +269,7 @@ export interface AnyWorkflowDescriptor {
   readonly contractFingerprint: Fingerprint;
   readonly requiredWorkbookFields: readonly string[];
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
+  readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   readonly referenceKeys?: (input: never) => readonly string[];
   readonly plannedOutputs?: (input: never, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
   readonly code: string;
@@ -344,6 +346,7 @@ export interface WorkflowDescriptorSpec<
   readonly contractFingerprint: string;
   readonly requiredWorkbookFields?: readonly string[];
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
+  readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   /** Parsed into branded `ScenarioId`s by the factory, the way contracts do. */
   readonly scenarios: readonly [string, ...string[]];
    // Optional; declaring it demands every node exactly once.
@@ -368,6 +371,7 @@ export interface WorkflowDescriptorSpec<
 export interface WorkflowProjections {
   readonly requiredWorkbookFields: readonly string[];
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
+  readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   readonly steps: readonly StepProjection[];
   readonly gates: readonly GateProjectionDefinition[];
   /** Browser systems only — service and `workflow:<id>` stores contribute none. */
@@ -502,6 +506,7 @@ export function bindWorkflowDelegationTargets(descriptors: readonly AnyWorkflowD
 export interface WorkflowPlanning {
   readonly requiredWorkbookFields: readonly string[];
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
+  readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   readonly plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
   readonly parseInput: (raw: unknown) => Readonly<{ input: unknown; lookups: readonly WorkbookReferenceLookup[] }>;
   readonly parseCanonicalInput: (value: unknown) => unknown;
@@ -1039,16 +1044,19 @@ function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSur
   }
 }
 
-export function parseWorkbookRequirement(requiredWorkbookFields: unknown, workbookReference: unknown): Readonly<{
+export function parseWorkbookRequirement(requiredWorkbookFields: unknown, workbookReference: unknown, workbookCheck: unknown): Readonly<{
   requiredWorkbookFields: readonly string[];
   workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
+  workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
 }> {
   const parsed = WorkbookRequirementDeclarationSchema.parse({
     requiredWorkbookFields: requiredWorkbookFields === undefined ? [] : requiredWorkbookFields,
     ...(workbookReference === undefined ? {} : { workbookReference }),
+    ...(workbookCheck === undefined ? {} : { workbookCheck }),
   });
   return deepFreeze({ requiredWorkbookFields: parsed.requiredWorkbookFields,
-    ...(parsed.workbookReference === undefined ? {} : { workbookReference: parsed.workbookReference }) });
+    ...(parsed.workbookReference === undefined ? {} : { workbookReference: parsed.workbookReference }),
+    ...(parsed.workbookCheck === undefined ? {} : { workbookCheck: parsed.workbookCheck }) });
 }
 
 function requireReferenceKeys<Input>(callback: ((input: Input) => readonly string[]) | undefined, input: Input): readonly string[] {
@@ -1068,7 +1076,7 @@ export function defineWorkflowDescriptor<
 ): WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D> {
   const id = WorkflowIdSchema.parse(spec.id);
   const contractFingerprint = FingerprintSchema.parse(spec.contractFingerprint);
-  const { requiredWorkbookFields, workbookReference } = parseWorkbookRequirement(spec.requiredWorkbookFields, spec.workbookReference);
+  const { requiredWorkbookFields, workbookReference, workbookCheck } = parseWorkbookRequirement(spec.requiredWorkbookFields, spec.workbookReference, spec.workbookCheck);
   const referenceKeys = spec.referenceKeys;
   if (workbookReference?.mode === "all" && referenceKeys !== undefined
     || workbookReference?.mode === "keys" && referenceKeys === undefined
@@ -1127,6 +1135,12 @@ export function defineWorkflowDescriptor<
     if (condition.of.from === "input") {
       if (rule === "offers") assertSchemaOffersPath(spec.flow.input, String(condition.of.path), `${id}: ${owner}`);
       else assertSchemaOwnsPath(spec.flow.input, String(condition.of.path), `${id}: ${owner}`);
+      continue;
+    }
+    if (condition.of.from === "reference") {
+      if (condition.of.typeId !== workbookReference?.id && condition.of.typeId !== workbookCheck?.id) {
+        throw new Error(`${id}: ${owner} reads picked spreadsheets for undeclared reference ${condition.of.typeId}`);
+      }
       continue;
     }
     const upstream = String(condition.of.nodeId);
@@ -1359,6 +1373,7 @@ export function defineWorkflowDescriptor<
     contractFingerprint,
     requiredWorkbookFields,
     ...(workbookReference === undefined ? {} : { workbookReference }),
+    ...(workbookCheck === undefined ? {} : { workbookCheck }),
     surfaces,
     input: spec.flow.input,
     result: spec.flow.result,
@@ -1375,6 +1390,7 @@ export function defineWorkflowDescriptor<
   PROJECTIONS.set(descriptor, { ownDryRun: dryRun, support: dryRun, projections: Object.freeze({
     requiredWorkbookFields,
     ...(workbookReference === undefined ? {} : { workbookReference }),
+    ...(workbookCheck === undefined ? {} : { workbookCheck }),
     steps,
     gates,
     systems,
@@ -1387,6 +1403,7 @@ export function defineWorkflowDescriptor<
   PLANNING.set(descriptor, Object.freeze({
     requiredWorkbookFields,
     ...(workbookReference === undefined ? {} : { workbookReference }),
+    ...(workbookCheck === undefined ? {} : { workbookCheck }),
     plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => PlannedRunOutputSchema.array().parse(spec.plannedOutputs?.(spec.canonicalInput.parse(parsed), references) ?? []),
     parseInput: (raw: unknown) => {
       const input = spec.flow.input.parse(raw);

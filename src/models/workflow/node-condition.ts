@@ -10,6 +10,12 @@ export const NodeConditionOperandSchema = z.discriminatedUnion("from", [
   z.strictObject({ from: z.literal("node"), nodeId: NodeIdSchema, path: ContractFieldPathSchema }),
 ]);
 export type NodeConditionOperand = z.infer<typeof NodeConditionOperandSchema>;
+/** Whether the run picked a spreadsheet for one declared workbook reference; only presence can be asked of it. */
+const NodeConditionPresenceOperandSchema = z.discriminatedUnion("from", [
+  ...NodeConditionOperandSchema.options,
+  z.strictObject({ from: z.literal("reference"), typeId: z.string().min(1) }),
+]);
+type NodeConditionPresenceOperand = z.infer<typeof NodeConditionPresenceOperandSchema>;
 
 /** What a comparison arm may compare against — a JSON scalar, never a shape. */
 export const NodeConditionValueSchema = z.union([z.string(), z.number(), z.boolean()]);
@@ -29,8 +35,8 @@ export const NodeConditionSchema = z.discriminatedUnion("kind", [
     of: NodeConditionOperandSchema,
     value: NodeConditionValueSchema,
   }),
-  z.strictObject({ kind: z.literal("is-present"), of: NodeConditionOperandSchema }),
-  z.strictObject({ kind: z.literal("is-absent"), of: NodeConditionOperandSchema }),
+  z.strictObject({ kind: z.literal("is-present"), of: NodeConditionPresenceOperandSchema }),
+  z.strictObject({ kind: z.literal("is-absent"), of: NodeConditionPresenceOperandSchema }),
 ]);
 export type NodeCondition = z.infer<typeof NodeConditionSchema>;
 
@@ -40,7 +46,8 @@ export type NodeConditionOperandSpec =
   | Readonly<{ from: "node"; nodeId: string; path: string }>;
 
 export type NodeConditionSpec =
-  | Readonly<{ kind: "is-true" | "is-false" | "is-present" | "is-absent"; of: NodeConditionOperandSpec }>
+  | Readonly<{ kind: "is-true" | "is-false"; of: NodeConditionOperandSpec }>
+  | Readonly<{ kind: "is-present" | "is-absent"; of: NodeConditionOperandSpec | Readonly<{ from: "reference"; typeId: string }> }>
   | Readonly<{ kind: "equals" | "not-equals"; of: NodeConditionOperandSpec; value: NodeConditionValue }>;
 
 /** Parse an authored condition into its branded runtime value, or throw. */
@@ -54,10 +61,11 @@ export function nodeConditionDependency(condition: NodeCondition): string | unde
 }
 
 /** The operand, in the words an operator reads it in. */
-function describeOperand(operand: NodeConditionOperand): string {
+function describeOperand(operand: NodeConditionPresenceOperand): string {
   return operand.from === "input"
     ? `the run's input field ${String(operand.path)}`
-    : `${String(operand.nodeId)}'s output field ${String(operand.path)}`;
+    : operand.from === "reference" ? `a spreadsheet picked for ${operand.typeId}`
+      : `${String(operand.nodeId)}'s output field ${String(operand.path)}`;
 }
 
 function describeValue(value: NodeConditionValue): string {
@@ -66,6 +74,9 @@ function describeValue(value: NodeConditionValue): string {
 
 /** The condition in words — a projection of the declaration, never a second authoring of it; the switch is exhaustive, so the refusal lives in the type system. */
 export function describeNodeCondition(condition: NodeCondition): string {
+  if ((condition.kind === "is-present" || condition.kind === "is-absent") && condition.of.from === "reference") {
+    return `runs when ${condition.kind === "is-present" ? "a" : "no"} spreadsheet is picked for ${condition.of.typeId}`;
+  }
   const subject = describeOperand(condition.of);
   switch (condition.kind) {
     case "is-true": return `runs when ${subject} is true`;
@@ -78,7 +89,7 @@ export function describeNodeCondition(condition: NodeCondition): string {
 }
 
 /** The scope a condition is evaluated against, spelled inline rather than imported so the graph module does not import back into a cycle. */
-type NodeConditionScope = Readonly<{ input: JsonValue; outputs: JsonObject }>;
+type NodeConditionScope = Readonly<{ input: JsonValue; outputs: JsonObject; references?: readonly string[] }>;
 
 const ABSENT = Symbol("node-condition-absent");
 
@@ -88,10 +99,14 @@ function isJsonObject(value: JsonValue): value is JsonObject {
 
 /** Read the operand, or `ABSENT`; a path that traverses a NON-object throws rather than reporting absence, so a descriptor defect cannot look like an ordinary false. */
 function readOperand(
-  operand: NodeConditionOperand,
+  operand: NodeConditionPresenceOperand,
   scope: NodeConditionScope,
   tolerateMissingUpstream = false,
 ): JsonValue | typeof ABSENT {
+  if (operand.from === "reference") {
+    if (scope.references === undefined) throw new Error(`node condition reads ${describeOperand(operand)}, but this scope carries no picked spreadsheets`);
+    return scope.references.includes(operand.typeId) ? true : ABSENT;
+  }
   const upstream = operand.from === "node" ? scope.outputs[String(operand.nodeId)] : undefined;
   if (operand.from === "node" && upstream === undefined) {
     if (tolerateMissingUpstream) return ABSENT;
