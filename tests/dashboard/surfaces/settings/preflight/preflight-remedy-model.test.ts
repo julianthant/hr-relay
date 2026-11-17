@@ -60,6 +60,10 @@ describe('the Run dialog Fix mapping', () => {
     }
   });
 
+  it('has readiness copy for every check a Fix can open Settings for, so the Settings banner can name it', () => {
+    for (const id of ids) if (runCheckFix(id) !== null) assert.ok(CHECK_COPY[id]?.name, `${id} has a Fix but no readiness copy`);
+  });
+
   it('gives every check without a Fix a plain hint, and none to a check that has one', () => {
     for (const id of ids) {
       if (runCheckFix(id) === null) assert.match(runCheckHint(id), /^Cannot be fixed in Settings\. /u, id);

@@ -29,8 +29,8 @@ export const CURRENT_FISCAL_TARGET = 'annualDates.current';
 
 const at = (section: string, label: string, target: string): RunCheckFix => ({ section, label, target });
 
-const NO_ADDRESS_CONTROL = 'Cannot be fixed in Settings. Tell the operator to change this address.';
-const NO_PROVIDER_CONTROL = 'Cannot be fixed in Settings. Tell the operator if it keeps failing.';
+const NO_ADDRESS_CONTROL = 'Cannot be fixed in Settings. Restart Relay, then check again.';
+const NO_PROVIDER_CONTROL = 'Cannot be fixed in Settings. Restart Relay, then check again.';
 
 /** Every registered check id has an explicit entry; a test fails when one is missing. */
 export const RUN_CHECK_FIXES: Readonly<Record<string, RunCheckFix>> = Object.freeze({
@@ -61,11 +61,11 @@ export const RUN_CHECK_FIXES: Readonly<Record<string, RunCheckFix>> = Object.fre
 export const RUN_CHECK_HINTS: Readonly<Record<string, string>> = Object.freeze({
   'runtime.compatibility': 'Cannot be fixed in Settings. Reinstall Relay or update Node.js.',
   'browser.assets': 'Cannot be fixed in Settings. Reinstall Relay to restore its browser files.',
-  'config.valid': 'Cannot be fixed in Settings. Restart Relay; if it fails again, tell the operator.',
+  'config.valid': 'Cannot be fixed in Settings. Restart Relay, then check again.',
   'filesystem.health': 'Cannot be fixed in Settings. Free up disk space, then check again.',
-  'authority.health': 'Cannot be fixed in Settings. Restart Relay; if it fails again, tell the operator.',
+  'authority.health': 'Cannot be fixed in Settings. Restart Relay, then check again.',
   'ports.available': 'Cannot be fixed in Settings. Close the program using the port.',
-  'secrets.sharepoint-roster': 'Cannot be fixed in Settings. Tell the operator to set the roster location.',
+  'secrets.sharepoint-roster': 'Cannot be fixed in Settings. Restart Relay, then check again.',
   'endpoint.ucpath.prod': NO_ADDRESS_CONTROL,
   'endpoint.crm.prod': NO_ADDRESS_CONTROL,
   'endpoint.onbase.prod': NO_ADDRESS_CONTROL,

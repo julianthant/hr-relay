@@ -104,7 +104,7 @@ describe("the Run dialog's Checks step", () => {
     await reachChecks(dialog);
     assert.equal(h.buttons().filter(button => button.hasAttribute("data-run-check-fix")).length, 0);
     assert.match(dialog.text(), /Cannot be fixed in Settings\. Free up disk space, then check again\. Relay is out of disk space\./u);
-    assert.match(dialog.text(), /Cannot be fixed in Settings\. Tell the operator to change this address\. The CRM address is invalid\./u);
+    assert.match(dialog.text(), /Cannot be fixed in Settings\. Restart Relay, then check again\. The CRM address is invalid\./u);
   });
 
   it("keeps everything typed and the stage while Settings is open over it, and reads the checks again on return", async () => {
