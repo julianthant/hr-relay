@@ -64,7 +64,7 @@ import { DESCRIPTORS,READABLE_WORKFLOW_MODULES,descriptorSetHash,SERVER_REGISTRY
 
 import { lstatSync } from "node:fs";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
-import { recoverFixedLayoutPublication,withDefaultLayoutSource,type FixedLayoutPublication } from "../../storage/admission/installation.js";
+import { readAuthorityRestoreJournal,recoverFixedLayoutPublication,withDefaultLayoutSource,type FixedLayoutPublication } from "../../storage/admission/installation.js";
 import { file as layoutFile,hash as layoutHash } from "../../storage/maintenance/existing-data-backup-files.js";
 import { activateFixedLayoutProfiles,assertFixedLayoutSourceFence,createFixedLayoutDirectory,fixedLayoutEntries,FixedLayoutIntentSchema,FixedLayoutRefusedError,fixedLayoutOutputPaths,fixedLayoutUnfinished,readFixedLayoutIntent,type FixedLayoutActivation } from "../../storage/maintenance/fixed-layout.js";
 import { bindErrorOrigin,causeChainToken,serializeErrorCauses } from "../../../models/failures/error-origins.js";
@@ -237,9 +237,8 @@ export async function resumePendingAutomaticRestore(workspace: string, lifetime:
   lifetime.assertExclusiveWorkspaceTarget(workspace);
   const path = join(workspace, ".tracker", "control", "journal.json");
   if (existsSync(path)) assertMaintenanceCustodyAvailable("restore");
-  const file = readPrivateFile(path, { label: "lock", maxBytes: 16 * 1024 * 1024 });
-  if (file === undefined) return;
-  const pending = z.object({ schemaVersion: z.literal(3), phase: z.literal("restoring"), restore: z.object({ operationId: z.uuid() }) }).parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+  const pending = readAuthorityRestoreJournal(workspace);
+  if (pending === undefined) return;
   const operation = lifetime.beginOfflineMaintenance(workspace);
   let admission: RuntimeAdmission | undefined;
   try {

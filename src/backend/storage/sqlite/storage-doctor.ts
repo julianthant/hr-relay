@@ -28,7 +28,7 @@ import { verifyBackupManifestAtPath } from "./backup-service.js";
 import { isAuthoritySourceChanged, withActiveAuthorityObservation, type AuthorityImageOwner } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import {
-BackupHealthSchema,ProtectedSettingsInspectionSchema,RestoreCandidateSchema,
+ProtectedSettingsInspectionSchema,RestoreCandidateSchema,
 SpanAuthorityReconciliationSchema,
 StorageHealthCauseSchema,
 type RestoreCandidate,
@@ -41,7 +41,9 @@ type AuthorityCopyInspection,
 type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot,type StorageDoctorReport
 } from "./recovery-contracts.js";
 import { validateSamePersonRestoreCandidate } from "./same-person-restore-candidate.js";
-import { inspectRestoreEligibility,inspectStorageRecovery } from "./storage-recovery-status.js";
+import { inspectStorageRecovery,recoveryInspectionOf } from "./storage-recovery-status.js";
+import { backupHealthOf } from "../../../rules/storage/backup-health.js";
+import { restoreEligibilityOf, type RestoreEligibility, type RestoreEligibilityFacts } from "../../../rules/storage/restore-eligibility.js";
 import { TimelineRecordError } from "./timeline-repository.js";
 import { inspectAuthorityUpgradeStatus } from "./upgrade-status.js";
 import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
@@ -713,6 +715,12 @@ export function summarizeSpanAuthorityReconciliation(input: unknown): SpanAuthor
 }
 
 
+/** One verified candidate's eligibility, decided only while the admission that inspected it is live. */
+export function candidateRestoreEligibility(admission: RuntimeAdmission, facts: RestoreEligibilityFacts): RestoreEligibility {
+  admission.assertLive();
+  return restoreEligibilityOf(facts);
+}
+
 type CandidateWithMtime = Readonly<{
   candidate: RestoreCandidate;
   modifiedMs: number;
@@ -747,17 +755,13 @@ async function inspectCandidates(
             state: "known" as const,
             value: Math.max(0, authorityInspection.authorityGeneration - verified.manifest.authorityGeneration),
           };
-      let restoreEligibility = inspectRestoreEligibility(admission,{ schemaVersion: verified.manifest.schemaVersion,
-        backupPath: verified.backupPath,
-        backupSha256: verified.manifest.sha256, stateRoot, authorityAvailable: authorityInspection !== undefined });
-      if (restoreEligibility.state === "eligible") {
-        try {
-          validateSamePersonRestoreCandidate({ admission, activeAuthorityPath: join(stateRoot, "state.db"),
-            verifiedBackup: verified });
-        } catch {
-          restoreEligibility = { state: "unavailable", reason: "Backup does not prove the current person and installation." };
-        }
-      }
+      const restoreEligibility = candidateRestoreEligibility(admission, { schemaVersion: verified.manifest.schemaVersion,
+        authorityAvailable: authorityInspection !== undefined, samePersonValid: () => {
+          try {
+            validateSamePersonRestoreCandidate({ admission, activeAuthorityPath: join(stateRoot, "state.db"), verifiedBackup: verified });
+            return true;
+          } catch { return false; }
+        } });
       candidates.push({
         modifiedMs,
         candidate: RestoreCandidateSchema.parse({
@@ -864,39 +868,8 @@ async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unkno
       ))
       .sort((left, right) => Date.parse(right.candidate.createdAt) - Date.parse(left.candidate.createdAt))[0];
 
-    let backup: z.infer<typeof BackupHealthSchema>;
-    if (candidateInspectionFailed) {
-      backup = BackupHealthSchema.parse({ state: "invalid", cause: { code: "backup-invalid",
-        summary: "Backup directory inspection is unavailable; no restore selection can be established." } });
-    } else if (first?.candidate.state === "invalid") {
-      backup = BackupHealthSchema.parse({ state: "invalid", cause: first.candidate.cause });
-    } else if (latestVerified === undefined) {
-      backup = BackupHealthSchema.parse({
-        state: candidates.length === 0 ? "missing" : "invalid",
-        cause: StorageHealthCauseSchema.parse({
-          code: candidates.length === 0 ? "backup-missing" : "backup-invalid",
-          summary: candidates.length === 0
-            ? `no authority backup manifests exist in ${basename(backupDirectory)}`
-            : `no verified compatible authority backup exists in ${basename(backupDirectory)}`,
-        }),
-      });
-    } else {
-      const generationGap = latestVerified.candidate.generationGap;
-      const stale = generationGap.state === "known" && generationGap.value > 0;
-      const gapSummary = generationGap.state === "known"
-        ? String(generationGap.value)
-        : generationGap.reason;
-      backup = BackupHealthSchema.parse(stale
-        ? {
-            state: "stale",
-            latest: latestVerified.candidate,
-            cause: StorageHealthCauseSchema.parse({
-              code: "backup-stale",
-              summary: `latest verified backup is ${String(latestVerified.candidate.ageMs)}ms old with authority generation gap ${gapSummary}`,
-            }),
-          }
-        : { state: "current", latest: latestVerified.candidate });
-    }
+    const backup = backupHealthOf({ inspectionFailed: candidateInspectionFailed, newest: first?.candidate,
+      latestVerified: latestVerified?.candidate, manifestCount: candidates.length, directoryName: basename(backupDirectory) });
 
     if (authorityInspection === undefined && authorityCause === undefined) {
       throw new Error("authority doctor produced neither an inspection nor a failure cause");
@@ -941,8 +914,7 @@ async function inspectAuthorityStorage(admission: RuntimeAdmission, input: unkno
     if (readiness) return StorageReadinessReportSchema.parse({ authority, spanAuthority, protectedSettings, authorityUpgrades });
     const finalRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
     const recovery = initialRecovery.identity === finalRecovery.identity ? finalRecovery.report
-      : { state: "unavailable", findings: finalRecovery.report.state === "clear" ? [] : finalRecovery.report.findings,
-        cause: { code: "authority-unavailable", summary: "Recovery evidence changed during inspection. Run the doctor again before deciding recovery." } };
+      : recoveryInspectionOf({ inspection: "changed", findings: finalRecovery.report.state === "clear" ? [] : finalRecovery.report.findings });
     return StorageDoctorReportSchema.parse({
       recovery,
       authorityUpgrades,
