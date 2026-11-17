@@ -4,6 +4,7 @@ import type { z } from "zod";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { createWorkbookLibraryAdapter } from "../../../../src/backend/processing/providers/workbook-library-adapter.js";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
+import { resolveGateArmAnswer } from "../../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
 import type { RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
@@ -14,11 +15,10 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import type { ActionDescriptorWire } from "../../../../src/models/dashboard/actions.js";
 import type { WorkbookActiveSelectionSchema } from "../../../../src/models/dashboard/workbook-library.js";
-import { REFERENCE_CHECK_REVIEW_GATE, ReferenceCheckReviewSchema } from "../../../../src/models/processing/workbooks/reference-check-stop.js";
+import { REFERENCE_CHECK_REVIEW_GATE } from "../../../../src/models/processing/workbooks/reference-check-stop.js";
 import { REFERENCE_CHECK, VerifyWorkbookPerson } from "../../../../src/models/processing/workbooks/verify-person.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
-import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { CommandRequestSchema, GateArmAnswerRequestSchema } from "../../../../src/rules/commands/commands.js";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { PREFERENCES_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { testRunLifecycle, testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
@@ -75,10 +75,14 @@ export function createReferenceCheckWriteWorld() {
     const current = (run: RunRecord) => { const stored = database.authority.runs.get(run.envelope.runId); assert.ok(stored); return stored; };
     const command = (run: RunRecord, request: Readonly<Record<string, unknown>>) => execution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(),
       requestedAt: clock.now().toISOString(), requestedBy: "local-operator", ...request }));
-    /** Answers the parked reference review with its one gate answer, "Continue anyway". */
-    const continueAnyway = (run: RunRecord) => command(run, { source: "dashboard", family: "gate", type: "resolve-gate",
-      target: { runId: run.envelope.runId, gateId: REFERENCE_CHECK_REVIEW_GATE, expectedVersion: current(run).version },
-      payload: { result: { schemaHash: deriveSchemaHash(ReferenceCheckReviewSchema, "output"), value: { decision: "continue" } } } });
+    /** Answers the parked reference review as the dashboard does: the card's "continue" arm, translated by the served gate-arm answer path, then applied. */
+    const continueAnyway = (run: RunRecord) => {
+      const answer = GateArmAnswerRequestSchema.parse({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+        family: "gate", type: "answer-gate-arm", target: { runId: run.envelope.runId, gateId: REFERENCE_CHECK_REVIEW_GATE, expectedVersion: current(run).version }, payload: { arm: "continue" } });
+      const resolution = resolveGateArmAnswer(gateDeps, answer, undefined);
+      assert.ok(resolution.state === "accepted", JSON.stringify(resolution));
+      return execution.kernel.execute(resolution.request);
+    };
     const cancel = (run: RunRecord) => command(run, { source: "queue-row", family: "run", type: "cancel", target: { runId: run.envelope.runId, expectedVersion: current(run).version } });
     const retry = (run: RunRecord) => command(run, { source: "queue-row", family: "run", type: "retry", target: { runId: run.envelope.runId, expectedVersion: current(run).version } });
     const events = (run: RunRecord) => database.authority.timelineEvents.page({}).filter(event => event.scope.kind === "run" && event.scope.runId === run.envelope.runId);
