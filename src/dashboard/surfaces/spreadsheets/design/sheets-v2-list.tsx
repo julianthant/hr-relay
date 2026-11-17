@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { BodySection } from '../../../ds/ui.js';
+import { BodySection, Skeleton } from '../../../ds/ui.js';
+import { LoadingRegion, SkeletonText } from '../../shared/loading/loading.js';
 import { type Sheet, stamp } from './sheets-v2-model.js';
 import { DownloadIcon, SheetMenu, TagsFit, V2Button, type MenuAction } from './sheets-v2-ui.js';
 
@@ -24,7 +25,7 @@ export function SheetRow({ sheet, narrow, actions }: { sheet: Sheet; narrow: boo
     </div>
     <TagsFit sheet={sheet} />
     <div className="truncate text-ui-muted"><SourceCell sheet={sheet} /></div>
-    <div onClick={stop}><V2Button look="plain" className="-ml-3 tabular-nums" aria-label={`Versions of ${sheet.name}, now v${sheet.version}`} onClick={() => actions.version(sheet.id)}>v{sheet.version}</V2Button></div>
+    <div onClick={stop}><V2Button look="outline" className="tabular-nums" aria-label={`Versions of ${sheet.name}, now v${sheet.version}`} onClick={() => actions.version(sheet.id)}>v{sheet.version}</V2Button></div>
     <div className="flex justify-end" onClick={stop}>{!narrow && <DownloadIcon name={sheet.name} onClick={() => actions.menu(sheet.id, 'download')} />}<SheetMenu sheet={sheet} label={sheet.name} withDownload={narrow} onAction={action => actions.menu(sheet.id, action)} /></div>
   </li>;
 }
@@ -39,4 +40,17 @@ export function SheetTable({ title, sheets, narrow, actions, limit }: { title: s
     </div>
     {limit && sheets.length > limit && <V2Button look="plain" className="mt-1" onClick={() => setExpanded(current => !current)}>{expanded ? 'Show fewer' : `Show ${sheets.length - limit} more`}</V2Button>}
   </BodySection>;
+}
+
+/** The loading frame of the list: the same card, header row and row height as a loaded table, so the page does not jump. */
+export function SheetsSkeleton({ narrow }: { narrow: boolean }) {
+  return <LoadingRegion label="Loading spreadsheets"><div aria-hidden><BodySection title={<SkeletonText className="w-24" />}>
+    <div className="overflow-hidden sv2-card border border-ui-stroke bg-[var(--ds-card-bg)]">
+      <div className={`${cols(narrow)} sv2-head bg-ui-table text-ui-muted`}>{['Spreadsheet', 'Tags', 'Source', 'Version'].map(head => <div key={head}>{head}</div>)}<div /></div>
+      {[0, 1, 2].map(index => <div key={index} className={`${cols(narrow)} sv2-row border-t border-ui-stroke text-[13px]`}>
+        <div className="min-w-0"><SkeletonText className="w-3/5 sv2-row-title" /><SkeletonText className="sv2-row-desc w-2/5" /></div>
+        <Skeleton className="h-5 w-24" /><SkeletonText className="w-20" /><SkeletonText className="w-8" /><div />
+      </div>)}
+    </div>
+  </BodySection></div></LoadingRegion>;
 }
