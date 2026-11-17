@@ -217,7 +217,7 @@ for (const mutation of ["forged-source-version", "missing-source-table", "extra-
   const f = await fixture();
   try {
     const report = await new AuthorityBackupService(f.admission, f.context.database,
-      { directory: join(f.stateRoot, "backups", "authority") }, f.clock).request({ trigger: "operator", requiredGeneration: f.context.database.getMeta().authorityGeneration });
+      { directory: join(f.stateRoot, "backups", "authority") }, f.clock).request({ trigger: "schema-migration", requiredGeneration: f.context.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0]; assert.ok(manifest);
     const path = join(f.stateRoot, "backups", "authority", manifest.backupFileName);
     const manifestPath = `${path}.manifest.json`;

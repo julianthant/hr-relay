@@ -80,8 +80,8 @@ export async function backupStoppedAuthority(browserClosure: ProfileBrowserClosu
   processLockRoot: string, heldRestore?: Parameters<typeof realBackupStoppedAuthority>[5]) {
   const admission = syntheticStateRoot(stateRoot);
   return heldRestore === undefined
-    ? withOfflineMaintenance(admission, operation => prepareStoppedBackupClosure(browserClosure, admission, operation, clock, processLockRoot).then(closure => realBackupStoppedAuthority(closure, admission, stateRoot, clock, processLockRoot, operation)))
-    : prepareStoppedBackupClosure(browserClosure, admission, heldRestore, clock, processLockRoot).then(closure => realBackupStoppedAuthority(closure, admission, stateRoot, clock, processLockRoot, heldRestore));
+    ? withOfflineMaintenance(admission, operation => prepareStoppedBackupClosure(browserClosure, admission, operation, clock, processLockRoot).then(closure => realBackupStoppedAuthority(closure, admission, stateRoot, clock, processLockRoot, operation, "schema-migration")))
+    : prepareStoppedBackupClosure(browserClosure, admission, heldRestore, clock, processLockRoot).then(closure => realBackupStoppedAuthority(closure, admission, stateRoot, clock, processLockRoot, heldRestore, "schema-migration"));
 }
 
 export async function upgradeStorage(browserClosure: ProfileBrowserClosure, input: Parameters<typeof realUpgradeStorage>[2], clock: Parameters<typeof realUpgradeStorage>[3],

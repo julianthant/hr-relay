@@ -12,8 +12,10 @@ import {
   AuthorityPendingCountsSchema,
   AuthorityUpgradeInspectionSchema,
   BackupHealthSchema,
+  DegradedDoctorAuthoritySchema,
   DeletedSpanAuthoritySchema,
   DoctorCountsSchema,
+  HealthyAuthorityStateSchema,
   MalformedAuthorityRecordSchema,
   MalformedSpanAuthorityRunSchema,
   MissingSpanAuthorityRunSchema,
@@ -133,7 +135,7 @@ export const AuthorityBackupManifestSchema = AuthorityBackupManifestV4Schema;
 export const StoppedAuthorityBackupManifestSchema = z.union([AuthorityBackupManifestSchema, UnboundPredecessorBackupManifestSchema]);
 
 export const AuthorityBackupRequestSchema = z.strictObject({
-  trigger: z.enum(["interval", "schema-migration", "graceful-drain", "operator"]),
+  trigger: z.enum(["interval", "schema-migration", "graceful-drain"]),
   requiredGeneration: NonNegativeIntSchema,
 });
 
@@ -223,8 +225,8 @@ export const AuthorityBootReportSchema = z.discriminatedUnion("state", [
 ]);
 
 const DoctorAuthoritySchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("healthy"), inspection: AuthorityCopyInspectionSchema }),
-  z.strictObject({ state: z.literal("degraded"), cause: StorageHealthCauseSchema }),
+  z.strictObject({ state: HealthyAuthorityStateSchema, inspection: AuthorityCopyInspectionSchema }),
+  DegradedDoctorAuthoritySchema,
 ]);
 
 export const StorageDoctorReportSchema = z.strictObject({

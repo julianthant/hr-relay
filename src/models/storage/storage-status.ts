@@ -177,9 +177,14 @@ export const AuthorityInspectionSummarySchema = z.strictObject({
   pageCount: PositiveIntSchema,
 });
 
+/** The one doctor-authority vocabulary: the backend report and the wire build their arms from these. */
+export const StorageAuthorityStateSchema = z.enum(["healthy", "degraded"]);
+export const HealthyAuthorityStateSchema = StorageAuthorityStateSchema.extract(["healthy"]);
+export const DegradedDoctorAuthoritySchema = z.strictObject({ state: StorageAuthorityStateSchema.extract(["degraded"]), cause: StorageHealthCauseSchema });
+
 export const DoctorAuthorityWireSchema = z.discriminatedUnion("state", [
-  AuthorityInspectionSummarySchema.extend({ state: z.literal("healthy") }),
-  z.strictObject({ state: z.literal("degraded"), cause: StorageHealthCauseSchema }),
+  AuthorityInspectionSummarySchema.extend({ state: HealthyAuthorityStateSchema }),
+  DegradedDoctorAuthoritySchema,
 ]);
 
 /** Whether the bootstrap could read authority metadata: a different fact from doctor health. */

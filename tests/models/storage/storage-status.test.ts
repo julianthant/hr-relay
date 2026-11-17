@@ -1,18 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { AuthorityCopyInspectionSchema, StorageDoctorReportSchema } from "../../../src/backend/storage/sqlite/recovery-contracts.js";
+import { AuthorityBackupRequestSchema, AuthorityCopyInspectionSchema, StorageDoctorReportSchema } from "../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { createFrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
 import { StorageDoctorWireSchema } from "../../../src/models/dashboard/storage.js";
 import {
   AuthorityUpgradeInspectionSchema,
   BackupHealthSchema,
   BackupServiceStateSchema,
+  DegradedDoctorAuthoritySchema,
   DoctorAuthorityWireSchema,
   DoctorCountsSchema,
+  HealthyAuthorityStateSchema,
   ProtectedSettingsInspectionSchema,
   RestoreCandidateSchema,
   RestoreEligibilitySchema,
   SpanAuthorityReconciliationSchema,
+  StorageAuthorityStateSchema,
   StorageAuthoritySummarySchema,
   StorageHealthCauseSchema,
   StorageRecoveryInspectionSchema,
@@ -51,6 +54,16 @@ describe("one storage status definition", () => {
     expect(StorageDoctorWireSchema.shape.authority).toBe(DoctorAuthorityWireSchema);
     const bootstrap = createFrontendBootstrapWireSchema({ workflow: z.never(), systemInstance: z.never(), settingsSection: z.never() });
     expect(bootstrap.shape.storage).toBe(StorageAuthoritySummarySchema);
+  });
+
+  it("builds the backend and wire doctor authority arms from one state vocabulary", () => {
+    const [backendHealthy, backendDegraded] = StorageDoctorReportSchema.shape.authority.options;
+    const [wireHealthy, wireDegraded] = DoctorAuthorityWireSchema.options;
+    expect(backendDegraded).toBe(DegradedDoctorAuthoritySchema);
+    expect(wireDegraded).toBe(DegradedDoctorAuthoritySchema);
+    expect(backendHealthy.shape.state).toBe(HealthyAuthorityStateSchema);
+    expect(wireHealthy.shape.state).toBe(HealthyAuthorityStateSchema);
+    expect([...HealthyAuthorityStateSchema.options, ...DegradedDoctorAuthoritySchema.shape.state.options]).toEqual(StorageAuthorityStateSchema.options);
   });
 
   it("picks the doctor authority wire fields from the backend copy inspection", () => {
@@ -106,6 +119,9 @@ describe("every arm parses and every never-produced or contradictory arm is refu
     ["authority degraded", DoctorAuthorityWireSchema, { state: "degraded", cause: cause("authority-corrupt") }],
     ["summary healthy", StorageAuthoritySummarySchema, { authority: "healthy" }],
     ["summary unavailable", StorageAuthoritySummarySchema, { authority: "unavailable" }],
+    ["backup trigger interval", AuthorityBackupRequestSchema, { trigger: "interval", requiredGeneration: 0 }],
+    ["backup trigger schema-migration", AuthorityBackupRequestSchema, { trigger: "schema-migration", requiredGeneration: 0 }],
+    ["backup trigger graceful-drain", AuthorityBackupRequestSchema, { trigger: "graceful-drain", requiredGeneration: 0 }],
   ];
   it.each(accepted)("accepts %s", (_name, schema, value) => {
     expect(schema.parse(value)).toEqual(value);
@@ -124,6 +140,8 @@ describe("every arm parses and every never-produced or contradictory arm is refu
     ["the pre-journal-schema reason", AuthorityUpgradeInspectionSchema, { state: "absent", reason: "pre-journal-schema" }],
     ["a healthy authority at an older schema", DoctorAuthorityWireSchema, { state: "healthy", schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION - 1, authorityGeneration: 3, pageCount: 9 }],
     ["an unknown summary", StorageAuthoritySummarySchema, { authority: "degraded" }],
+    ["the never-produced operator backup trigger", AuthorityBackupRequestSchema, { trigger: "operator", requiredGeneration: 0 }],
+    ["the never-produced external-write backup trigger", AuthorityBackupRequestSchema, { trigger: "external-write", requiredGeneration: 0 }],
   ];
   it.each(refused)("refuses %s", (_name, schema, value) => {
     expect(schema.safeParse(value).success).toBe(false);

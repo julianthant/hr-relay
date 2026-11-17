@@ -569,7 +569,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "CredentialStoreApplyOutcome", schema: CredentialStoreApplyOutcomeSchema, fixtures: [{ state: "applied", record: initialProtectedStoreRecord() }] },
   { name: "SettingsRecord", schema: SettingsRecordSchema, fixtures: [initialSettingsFileRecord()] },
   { name: "AuthorityBackupManifest", schema: AuthorityBackupManifestSchema, fixtures: [BACKUP_MANIFEST] },
-  { name: "AuthorityBackupRequest", schema: AuthorityBackupRequestSchema, fixtures: [{ trigger: "operator", requiredGeneration: 4 }] },
+  { name: "AuthorityBackupRequest", schema: AuthorityBackupRequestSchema, fixtures: [{ trigger: "schema-migration", requiredGeneration: 4 }] },
   { name: "AuthorityBackupRunReport", schema: AuthorityBackupRunReportSchema, fixtures: [{ state: "verified", requestedGeneration: 4, finalGeneration: 4, coalescedRequests: 1, followUpPerformed: false, manifests: [BACKUP_MANIFEST] }] },
   { name: "StorageHealthCause", schema: StorageHealthCauseSchema, fixtures: [HEALTH_CAUSE] },
   { name: "AuthorityBootReport", schema: AuthorityBootReportSchema, fixtures: [

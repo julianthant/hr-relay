@@ -539,7 +539,7 @@ function maintenanceOperation(root: string) {
 async function createBackup(database: AuthorityDatabase, directory: string) {
   const service = new AuthorityBackupService(admissionFor(directory), database, { directory }, CLOCK);
   const report = await service.request({
-    trigger: "operator",
+    trigger: "schema-migration",
     requiredGeneration: database.getMeta().authorityGeneration,
   });
   const paths = manifestPaths(directory);
@@ -653,7 +653,7 @@ describe("verified native online backups", () => {
     };
     const service = new AuthorityBackupService(admissionFor(directory), failingSource, { directory }, CLOCK);
     await assert.rejects(
-      service.request({ trigger: "operator", requiredGeneration: 0 }),
+      service.request({ trigger: "schema-migration", requiredGeneration: 0 }),
       /injected native backup failure/,
     );
     assert.deepEqual(readdirSync(directory), []);

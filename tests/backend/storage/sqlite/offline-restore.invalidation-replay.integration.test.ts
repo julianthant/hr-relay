@@ -28,7 +28,7 @@ for (const boundary of ["before", "after"] as const) for (const mutation of ["re
       let manifestPath: string;
       try {
         const directory = join(f.stateRoot, "backups", "authority");
-        const report = await new AuthorityBackupService(f.admission, database, { directory }).request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+        const report = await new AuthorityBackupService(f.admission, database, { directory }).request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
         const manifest = report.manifests[0]; assert.ok(manifest); manifestPath = join(directory, manifest.backupFileName + ".manifest.json");
       } finally { database.close(); }
       const before = f.machine.readProfileRegistry();
