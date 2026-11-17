@@ -35,9 +35,9 @@ function migrateTo35(database: DatabaseSync): void {
 }
 
 describe("query index migration 35", () => {
-  it("is schema version 35, the current schema, and changes no table", () => {
+  it("is schema version 35, under the workbook payloads' current 36, and changes no table", () => {
     assert.equal(QUERY_INDEX_SCHEMA_VERSION, 35);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 35);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 36);
     assert.deepEqual(migrationTableNames(35), migrationTableNames(34));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });
@@ -50,7 +50,7 @@ describe("query index migration 35", () => {
       assert.ok(prior.some(object => object.name === "checkpoints_replay_idx"));
       migrateTo35(database);
       const after = schemaObjects(database);
-      assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES)), prior.filter(object => object.name !== "checkpoints_replay_idx"));
+      assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES) && object.tbl_name !== "workbook_payloads"), prior.filter(object => object.name !== "checkpoints_replay_idx"));
       assert.deepEqual(after.filter(object => object.name in QUERY_INDEXES).map(object => [object.name, object.sql]).sort(),
         Object.entries(QUERY_INDEXES).map(([name, index]) => [name, `CREATE INDEX ${name} ON ${index.on}`]).sort());
       assert.deepEqual(rows(database), stored);
@@ -72,7 +72,7 @@ describe("query index migration 35", () => {
     } finally { database.close(); }
   });
 
-  it("upgrades a schema-34 store to 35 through the store upgrade", async () => {
+  it("upgrades a schema-34 store through the store upgrade", async () => {
     const f = await storageRecoveryFixture(7);
     try {
       const database = new DatabaseSync(f.path);
@@ -88,8 +88,8 @@ describe("query index migration 35", () => {
       assert.equal((await f.run()).state, "upgraded");
       const upgraded = new DatabaseSync(f.path, { readOnly: true });
       try {
-        assert.equal(upgraded.prepare("PRAGMA user_version").get()?.user_version, 35);
-        assert.equal(inspectNativeAuthority(upgraded).schemaVersion, 35);
+        assert.equal(upgraded.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+        assert.equal(inspectNativeAuthority(upgraded).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
         const names = indexNames(upgraded);
         assert.equal(names.includes("checkpoints_replay_idx"), false);
         assert.deepEqual(Object.keys(QUERY_INDEXES).filter(name => !names.includes(name)), []);

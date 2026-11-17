@@ -66,6 +66,7 @@ export const AuthorityTableNameSchema = z.enum([
   "workbook_library_state",
   "workbook_library_actions",
   "workbook_library_snapshots",
+  "workbook_payloads",
 ]);
 
 /** The change log every connection reads after another connection commits; derived, never evidence: outside the registry, fingerprints and inspection lists, and rebaselined at open. */

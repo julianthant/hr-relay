@@ -1,5 +1,7 @@
 import { applyOlderBuildStatements } from '../../../support/fixtures/storage/older-build-authority.js';
 import { installRetainedMergeFixture } from '../../../support/fixtures/storage/retained-workbook-merge.js';
+import { withCurrentWorkbookLayout } from '../../../support/fixtures/storage/historical-run-schema.js';
+import { applyAuthorityMigrationsAfter } from '../../../../src/backend/storage/sqlite/authority-database.js';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { expect, it } from 'vitest';
@@ -14,15 +16,12 @@ import { WriteIntentRecordSchema, WriteAttemptRecordSchema } from '../../../../s
 import { sha256Hex } from '../../../../src/rules/validation/sha256.js';
 
 const at = '2026-11-02T00:00:00.000Z';
-function fixture(version: 23 | 25 = 23) {
+/** A schema-23 store, the selection migration's predecessor, or a current store upgraded from schema 24. */
+function fixture(version: 23 | 'current' = 23) {
   const database = new DatabaseSync(':memory:');
   database.exec('PRAGMA foreign_keys=ON');
-  applyOlderBuildStatements(database, version === 25 ? 24 : 23);
-  if (version === 25) {
-    const migration = SQLITE_MIGRATIONS.find(migration => migration.version === 25);
-    if (!migration) throw new Error('selection migration missing');
-    for (const statement of migration.statements) database.exec(statement);
-  }
+  applyOlderBuildStatements(database, version === 'current' ? 24 : 23);
+  if (version === 'current') applyAuthorityMigrationsAfter(database, 24, { now: at, captureFile: () => { throw new Error('no capture expected'); } });
   const transaction = <T>(work: () => T): T => {
     database.exec('BEGIN EXCLUSIVE');
     try { const result = work(); database.exec('COMMIT'); return result; }
@@ -61,16 +60,18 @@ it('adds an empty selection authority at 25 and preserves prior mappings, metada
   const f = fixture(), fresh = fixture();
   upgrade(fresh);
   try {
-    const first = source(f), other = source(f, 'other');
-    f.repository.putType({ id: 'roster', name: 'Roster', keyFieldId: 'eid', fields: ['eid'], defaultWorkbookId: null });
-    f.repository.operation(first.libraryId, { operationId: 'metadata', source: { kind: 'operator' }, at,
-      change: { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'roster', sharePoint: null } } });
-    f.repository.operation(other.libraryId, { operationId: 'metadata-other', source: { kind: 'operator' }, at,
-      change: { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'roster', sharePoint: null } } });
-    const revision = f.repository.revision(first.libraryId, 1);
+    const { first, revision } = withCurrentWorkbookLayout(f.database, () => {
+      const first = source(f), other = source(f, 'other');
+      f.repository.putType({ id: 'roster', name: 'Roster', keyFieldId: 'eid', fields: ['eid'], defaultWorkbookId: null });
+      f.repository.operation(first.libraryId, { operationId: 'metadata', source: { kind: 'operator' }, at,
+        change: { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'roster', sharePoint: null } } });
+      f.repository.operation(other.libraryId, { operationId: 'metadata-other', source: { kind: 'operator' }, at,
+        change: { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'roster', sharePoint: null } } });
+      return { first, revision: f.repository.revision(first.libraryId, 1) };
+    });
     const merge = installRetainedMergeFixture(f.database);
-    const mergedRevision = f.repository.revision(merge.libraryId, 2);
-    const sourceRevision = f.repository.revision('historical-source', 1);
+    const { mergedRevision, sourceRevision } = withCurrentWorkbookLayout(f.database, () => ({
+      mergedRevision: f.repository.revision(merge.libraryId, 2), sourceRevision: f.repository.revision('historical-source', 1) }));
     expect(mergedRevision.workbook.name).toBe('Merged.xlsx');
     const authorityReason = { version: 1, code: 'post-click-verifier-unknown', evidence: { kind: 'probe', digest: 'a'.repeat(64) } };
     const intent = WriteIntentRecordSchema.parse({ ...WRITE_INTENT_ATTEMPTING, status: 'parked', parkedCode: 'unknown', message: 'fixture unresolved submit', authorityReason });
@@ -83,15 +84,17 @@ it('adds an empty selection authority at 25 and preserves prior mappings, metada
     const before = rows(f);
     upgrade(f);
     expect(rows(f)).toEqual(before);
-    expect(f.repository.revision(first.libraryId, 1)).toEqual(revision);
-    expect(f.repository.libraryActionRecord(merge.libraryId, merge.action.operationId)).toEqual(merge);
-    expect(f.repository.revision(merge.libraryId, 2)).toEqual(mergedRevision);
-    expect(f.repository.revision('historical-source', 1)).toEqual(sourceRevision);
-    expect(f.repository.libraryState('historical-source').removed).toBe(true);
-    expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
+    withCurrentWorkbookLayout(f.database, () => {
+      expect(f.repository.revision(first.libraryId, 1)).toEqual(revision);
+      expect(f.repository.libraryActionRecord(merge.libraryId, merge.action.operationId)).toEqual(merge);
+      expect(f.repository.revision(merge.libraryId, 2)).toEqual(mergedRevision);
+      expect(f.repository.revision('historical-source', 1)).toEqual(sourceRevision);
+      expect(f.repository.libraryState('historical-source').removed).toBe(true);
+      expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
+    });
     expect(f.repository.lastUsed('person-lookup')).toBeUndefined();
     expect(f.database.prepare('SELECT * FROM workflow_workbook_selections').all()).toEqual([]);
-    expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(35);
+    expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(36);
     expect(migrationTableNames(25).filter(table => !migrationTableNames(24).includes(table))).toEqual(['workflow_workbook_selections']);
     expect(tableClassification('workflow_workbook_selections')).toBe('authority');
     expect(auditMigrationTableCoverage()).toEqual([]);
@@ -102,7 +105,7 @@ it('adds an empty selection authority at 25 and preserves prior mappings, metada
 });
 
 it('persists ordered unique source identities with strict idempotence, revisions and conflicts, retaining stale selections', () => {
-  const f = fixture(25);
+  const f = fixture('current');
   try {
     source(f);
     const value = selection(), before = f.changes();
@@ -122,7 +125,7 @@ it('persists ordered unique source identities with strict idempotence, revisions
     f.repository.libraryAction('library', { operationId: 'remove', expectedRevision: 1, expectedVersion: 1, change: { kind: 'remove' } }, at);
     f.database.exec('DELETE FROM runs; DELETE FROM deleted_runs');
     expect(f.repository.lastUsed(value.workflowId)).toEqual(retained);
-    const other = fixture(25);
+    const other = fixture('current');
     try { expect(other.repository.lastUsed(value.workflowId)).toBeUndefined(); } finally { other.database.close(); }
     for (const invalid of [{ ...value, sources: [] }, { ...value, sources: [value.sources[0], value.sources[0]] },
       { ...value, sources: [{ ...value.sources[0], versionId: 'original' }] }, { ...value, profileId: randomUUID() }]) {
@@ -133,7 +136,7 @@ it('persists ordered unique source identities with strict idempotence, revisions
 });
 
 it.each(['workflow_id', 'revision', 'accepted_command_id', 'used_at', 'payload_json'] as const)('refuses selection scalar/payload corruption in %s', column => {
-  const f = fixture(25);
+  const f = fixture('current');
   try {
     const record = f.repository.rememberLastUsed(selection());
     const row = f.database.prepare('SELECT * FROM workflow_workbook_selections').get();
@@ -155,11 +158,10 @@ it.each([
 ] as const)('inventories pending $kind/$id without replay; refused=$refused', ({ id, kind, refused }) => {
   const f = fixture();
   try {
-    source(f);
     const operation = { operationId: id, source: kind === 'run' ? { kind, runId: randomUUID() } : { kind }, at,
       change: kind === 'run' ? { kind: 'patch', expectedVersion: 1, key: '10000001', values: { eid: '10000001' } }
         : { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'general', sharePoint: null } } };
-    f.repository.enqueue('library', operation);
+    withCurrentWorkbookLayout(f.database, () => { source(f); f.repository.enqueue('library', operation); });
     const before = rows(f), layout = f.database.prepare('SELECT * FROM sqlite_schema ORDER BY name').all();
     if (refused) {
       expect(() => upgrade(f)).toThrow(/workflow_workbook_selection_pending_library_operation/u);
@@ -193,7 +195,7 @@ function capturedSource(f: ReturnType<typeof fixture>, extra: Record<string, unk
 }
 
 it('applies captured write authority to a General workbook and replays its historical revision and receipt without type ownership', () => {
-  const f = fixture(25);
+  const f = fixture('current');
   try {
     capturedSource(f);
     const operation = capturedPatch();
@@ -218,7 +220,7 @@ it('applies captured write authority to a General workbook and replays its histo
 
 it.each(['read-field', 'foreign-sheet', 'missing-version', 'missing-selection', 'missing-cas', 'selection-cas', 'empty-values', 'duplicate-fields', 'missing-key', 'outside-required', 'extra-authority', 'add', 'operator'] as const)(
   'refuses invalid captured authority before journal effects: %s', fault => {
-  const f = fixture(25);
+  const f = fixture('current');
   try {
     capturedSource(f);
     const operation = capturedPatch();
@@ -243,7 +245,7 @@ it.each(['read-field', 'foreign-sheet', 'missing-version', 'missing-selection', 
 });
 
 it.each(['stale', 'prefilled', 'formula', 'unsupported'] as const)('retains captured write safety refusal for %s', fault => {
-  const f = fixture(25);
+  const f = fixture('current');
   try {
     capturedSource(f, fault === 'formula' ? { hasFormulas: true } : fault === 'unsupported' ? { unsupportedMetadata: true } : {}, fault === 'prefilled' ? '10000002' : null);
     const operation = capturedPatch();
@@ -265,7 +267,7 @@ it('retains the exact JSON and digest of a predecessor workbook operation', () =
 });
 
 it('requires resolution to retain the complete captured source authority and digest', () => {
-  const f = fixture(25);
+  const f = fixture('current');
   try {
     capturedSource(f);
     const operation = capturedPatch();

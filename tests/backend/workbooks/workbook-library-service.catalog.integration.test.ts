@@ -4,7 +4,7 @@ import { projectWorkflowStartReadiness } from '../../../src/backend/runs/queries
 import { ERROR_CATALOG } from '../../../src/models/failures/error-catalog.js';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it, vi } from 'vitest';
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, validateWorkbookLibrary } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, validateWorkbookLibrary, WORKBOOK_PAYLOAD_TABLE } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService, projectWorkbookCompatibilityFromRepository, verifyRetainedNamedWorkbookReference } from '../../../src/backend/workbooks/workbook-library-service.js';
 import { WorkbookLibraryOriginSchema, WorkbookLibraryChangeSchema, WorkbookLibraryEntrySchema, WorkbookCompatibilitySchema, projectWorkbookCompatibility } from '../../../src/models/dashboard/workbook-library.js';
 import { manualClock } from '../../../src/rules/time/clock.js';
@@ -18,7 +18,7 @@ const databases: DatabaseSync[] = [];
 afterEach(() => databases.splice(0).forEach(database => database.close()));
 function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync, options: Pick<Parameters<typeof createWorkbookLibraryService>[0], 'resultRun'> = {}) {
   const database = new DatabaseSync(':memory:'); databases.push(database);
-  for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(sql);
+  for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(sql);
   const selectionTable = SQLITE_MIGRATIONS.find(migration => migration.version === 25)?.statements
     .find(statement => statement.startsWith('CREATE TABLE workflow_workbook_selections'));
   if (selectionTable === undefined) throw new Error('current workbook selections migration unavailable');
