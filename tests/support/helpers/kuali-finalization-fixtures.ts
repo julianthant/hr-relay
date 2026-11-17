@@ -191,7 +191,7 @@ export const FINALIZATION_JOB_SUMMARY_READ = UcpathJobSummaryReadSchema.parse({
       {
         rowIndex: 0,
         emplRecord: "0",
-        hrStatus: "Active",
+        hrStatus: { state: "present", value: "Active" },
         businessUnit: "SDCMP",
         effectiveDate: { state: "present", value: "06/01/2026" },
         positionNumber: { state: "present", value: "40012345" },

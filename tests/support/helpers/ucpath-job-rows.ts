@@ -12,7 +12,7 @@ export function jobRowFromCells(cells: readonly string[], rowIndex: number): Ucp
   return UcpathJobRowSchema.parse({
     rowIndex,
     emplRecord,
-    hrStatus,
+    hrStatus: cell(hrStatus ?? ""),
     businessUnit,
     effectiveDate: cell(effectiveDate ?? ""),
     positionNumber: cell(positionNumber ?? ""),

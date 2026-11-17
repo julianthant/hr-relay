@@ -123,6 +123,7 @@ export const IDENTITY_REVIEW_TEXT = Object.freeze({
   value: {
     noFormEid: "Not on the form",
     oneActiveJob: "1 active job",
+    soleRecord: "1 job, status not shown",
     noActiveJob: "No active job",
     unknownJob: "A job status Relay does not recognize",
     noMatch: "No match",

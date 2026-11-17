@@ -9,14 +9,14 @@ export const UcpathJobCellSchema = z.discriminatedUnion("state", [
 ]);
 export type UcpathJobCell = z.infer<typeof UcpathJobCellSchema>;
 
-/** One employee record, verbatim; `hrStatus` is deliberately a free string, because UCPath's own wording is the evidence an operator reads at the gate. */
+/** One employee record, verbatim; a present `hrStatus` is UCPath's own wording, the evidence an operator reads at the gate. */
 export const UcpathJobRowSchema = z.strictObject({
   /** 0-based position in the read — the row's read identity. */
   rowIndex: z.number().int().nonnegative(),
   /** Empl Record number, verbatim (`"0"`, `"1"`, …). */
   emplRecord: z.string().min(1),
-  /** HR Status, VERBATIM — `Active`, `Inactive`, `Terminated`, … */
-  hrStatus: z.string().min(1),
+  /** Status, VERBATIM — `Active`, `Terminated`, …; absent when UCPath opened the only record directly, where no status column shows. */
+  hrStatus: UcpathJobCellSchema,
   /** Business unit, e.g. `SDCMP`. Structural: every row carries one. */
   businessUnit: z.string().min(1),
   effectiveDate: UcpathJobCellSchema,

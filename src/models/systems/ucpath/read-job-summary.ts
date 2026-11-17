@@ -46,7 +46,7 @@ export const UcpathReadJobSummary = defineTaskContract({
     jobRows: [{
       rowIndex: 0,
       emplRecord: "0",
-      hrStatus: "Active",
+      hrStatus: { state: "present", value: "Active" },
       businessUnit: "SDCMP",
       effectiveDate: { state: "present", value: "07/01/2025" },
       positionNumber: { state: "present", value: "40012345" },

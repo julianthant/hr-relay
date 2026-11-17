@@ -18,6 +18,7 @@ import { EidSchema, LocalDateSchema } from "../../../../../src/rules/identity/id
 const EID = EidSchema.parse("10800003");
 const OBSERVED_AT = "2026-11-17T10:00:00.000Z";
 const NAME = "Rivera Quinn";
+const ACTIVE = { state: "present", value: "Active" } as const;
 
 /** Left frozen row: Org Relationship, Empl Record, Effective Date, Seq. */
 const left = (record: string, date: string, seq = "0") => ["EMP", record, date, seq];
@@ -119,11 +120,11 @@ describe("deriveWorkforceJobRow", () => {
   assert.ok(first);
 
   it("reads every Work Location and Job Information value and says FTE and Empl Class are not read", () => {
-    const row = deriveWorkforceJobRow(first, "Active", 0);
+    const row = deriveWorkforceJobRow(first, ACTIVE, 0);
     assert.deepEqual(row, {
       rowIndex: 0,
       emplRecord: "0",
-      hrStatus: "Active",
+      hrStatus: ACTIVE,
       businessUnit: "SDCMP",
       effectiveDate: { state: "present", value: "01/31/2025" },
       positionNumber: { state: "present", value: "40000001" },
@@ -138,26 +139,26 @@ describe("deriveWorkforceJobRow", () => {
   });
 
   it("reports an empty department cell as absent with its reason", () => {
-    const row = deriveWorkforceJobRow({ ...first, workLocation: location("40000001", "STDT 2", "000412", "") }, "Active", 0);
+    const row = deriveWorkforceJobRow({ ...first, workLocation: location("40000001", "STDT 2", "000412", "") }, ACTIVE, 0);
     assert.deepEqual(row.department, { state: "absent", reason: "the Workforce Job Summary Department cell rendered empty" });
   });
 
   it("refuses a row without a Business Unit", () => {
     const noUnit = location("40000001", "STDT 2").map((value, index) => (index === 6 ? "" : value));
-    assert.throws(() => deriveWorkforceJobRow({ ...first, workLocation: noUnit }, "Active", 0), /no Business Unit/u);
+    assert.throws(() => deriveWorkforceJobRow({ ...first, workLocation: noUnit }, ACTIVE, 0), /no Business Unit/u);
   });
 
   it("refuses when the Job Information row does not start with a Job Code", () => {
-    assert.throws(() => deriveWorkforceJobRow({ ...first, jobInformation: ["STDT 2", "004921"] }, "Active", 0), /does not start with a Job Code/u);
+    assert.throws(() => deriveWorkforceJobRow({ ...first, jobInformation: ["STDT 2", "004921"] }, ACTIVE, 0), /does not start with a Job Code/u);
   });
 
   it("refuses when the Work Location row does not start with a Position Number", () => {
-    assert.throws(() => deriveWorkforceJobRow({ ...first, workLocation: location("STDT 2", "UCS") }, "Active", 0), /does not start with a Position Number/u);
+    assert.throws(() => deriveWorkforceJobRow({ ...first, workLocation: location("STDT 2", "UCS") }, ACTIVE, 0), /does not start with a Position Number/u);
   });
 
   it("refuses a Job Information row with two dates", () => {
     const twoDates = job("004921", "STDT 2", "06/30/2025").map((value, index) => (index === 4 ? "07/01/2025" : value));
-    assert.throws(() => deriveWorkforceJobRow({ ...first, jobInformation: twoDates }, "Active", 0), /shows 2 dates/u);
+    assert.throws(() => deriveWorkforceJobRow({ ...first, jobInformation: twoDates }, ACTIVE, 0), /shows 2 dates/u);
   });
 });
 
@@ -212,8 +213,8 @@ describe("readWorkforceJobSummaryWithPagePort", () => {
     assert.equal(read.summary.displayedName, NAME);
     assert.deepEqual(read.summary.renderContext, { entry: "drilled-from-grid", searchResultRows: 2, employmentInstances: "already-complete" });
     assert.deepEqual(read.summary.jobRows.map((row) => [row.rowIndex, row.emplRecord, row.hrStatus, row.jobTitle, row.effectiveDate]), [
-      [0, "0", "Active", { state: "present", value: "STDT 3" }, { state: "present", value: "06/12/2026" }],
-      [1, "1", "Terminated", { state: "present", value: "STDT 2" }, { state: "present", value: "09/01/2025" }],
+      [0, "0", ACTIVE, { state: "present", value: "STDT 3" }, { state: "present", value: "06/12/2026" }],
+      [1, "1", { state: "present", value: "Terminated" }, { state: "present", value: "STDT 2" }, { state: "present", value: "09/01/2025" }],
     ]);
     assert.equal(read.summary.rowCount, 2);
   });
@@ -251,8 +252,18 @@ describe("readWorkforceJobSummaryWithPagePort", () => {
     await assert.rejects(readWorkforceJobSummaryWithPagePort(port, { emplId: EID }, OBSERVED_AT), /lists empl record 0 on more than one result row/u);
   });
 
-  it("refuses a single auto-opened record, whose page has no verified status column", async () => {
-    const { port } = scriptedPage({ kind: "detail" }, [{ displayedName: NAME, ...recordZero }]);
-    await assert.rejects(readWorkforceJobSummaryWithPagePort(port, { emplId: EID }, OBSERVED_AT), /no verified status for empl record 0/u);
+  it("reads a single auto-opened record with its status not shown", async () => {
+    const { port, calls } = scriptedPage({ kind: "detail" }, [{ displayedName: NAME, ...recordZero }]);
+    const read = await readWorkforceJobSummaryWithPagePort(port, { emplId: EID, asOf: LocalDateSchema.parse("2026-03-01") }, OBSERVED_AT);
+    assert.deepEqual(calls, [`search ${EID}`, "read"]);
+    assert.ok(read.state === "read");
+    assert.deepEqual(read.summary.renderContext, { entry: "auto-detail", searchResultRows: 0, employmentInstances: "already-complete" });
+    const [row] = read.summary.jobRows;
+    assert.ok(row !== undefined && read.summary.rowCount === 1);
+    assert.deepEqual(row.hrStatus, {
+      state: "absent",
+      reason: "Workforce Job Summary opened the only employment record directly, and its detail page shows no status",
+    });
+    assert.deepEqual([row.effectiveDate, row.jobTitle], [{ state: "present", value: "01/31/2025" }, { state: "present", value: "STDT 2" }]);
   });
 });

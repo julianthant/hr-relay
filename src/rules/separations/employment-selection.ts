@@ -1,4 +1,4 @@
-/** Which employment row a separation is filed against: exactly one active row or refuse, computed unconditionally from the grid classification, while the operator still sees every row at the gate. */
+/** Which employment row a separation is filed against: exactly one active row, or the only record when UCPath shows no status for it, or refuse; computed from the classification while the operator still sees every row at the gate. */
 import { z } from "zod";
 import type { UcpathJobRow } from "../../models/ui/ucpath-job-summary.js";
 import { UcpathJobCellSchema } from "../../models/ui/ucpath-job-summary.js";
@@ -28,7 +28,7 @@ export const SelectedEmploymentSchema = z.strictObject({
   rowIndex: z.number().int().nonnegative(),
   /** The `Empl Record` the UCPath termination is filed against. */
   emplRecord: z.string().min(1),
-  /** HR Status, VERBATIM — the word UCPath used, which is what the operator reads. */
+  /** HR Status, VERBATIM — the word UCPath used, which is what the operator reads — or why no status shows. */
   hrStatus: z.string().min(1),
   businessUnit: z.string().min(1),
   /** The Dept ID cell, PASSED THROUGH — `match-department-option` owns its refusal. */
@@ -56,7 +56,7 @@ export type EmploymentSelection = z.infer<typeof EmploymentSelectionSchema>;
 
 function describeRows(rows: readonly UcpathJobRow[]): string {
   return rows
-    .map((row) => `#${String(row.rowIndex)} empl record ${row.emplRecord} — ${row.hrStatus}`)
+    .map((row) => `#${String(row.rowIndex)} empl record ${row.emplRecord} — ${row.hrStatus.state === "present" ? row.hrStatus.value : "status not shown"}`)
     .join("; ");
 }
 
@@ -95,11 +95,12 @@ export function selectSeparationEmployment(
     });
   }
 
+  const selectedTier = classification.disposition === "sole-record" ? "not-shown" : "active";
   const active = rows.find((row) => classification.rows
-    .some((classified) => classified.rowIndex === row.rowIndex && classified.tier === "active"));
+    .some((classified) => classified.rowIndex === row.rowIndex && classified.tier === selectedTier));
   if (active === undefined) {
     throw new Error(
-      "the job-summary classification reported exactly one active row and no grid row carries its "
+      "the job-summary classification reported exactly one selectable row and no grid row carries its "
       + "index; the two are derived from one list, so this is a fabricated classification",
     );
   }
@@ -135,7 +136,7 @@ export function selectSeparationEmployment(
     employment: {
       rowIndex: active.rowIndex,
       emplRecord: active.emplRecord,
-      hrStatus: active.hrStatus,
+      hrStatus: active.hrStatus.state === "present" ? active.hrStatus.value : `Not shown (${active.hrStatus.reason})`,
       businessUnit: active.businessUnit,
       deptId: active.deptId,
       department: active.department,

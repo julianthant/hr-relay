@@ -145,6 +145,12 @@ function cell(raw: string | undefined, label: string): UcpathJobCell {
     : { state: "present", value };
 }
 
+/** A search that matches one record opens its detail page directly; only the results grid carries a status column. */
+const STATUS_NOT_SHOWN: UcpathJobCell = {
+  state: "absent",
+  reason: "Workforce Job Summary opened the only employment record directly, and its detail page shows no status",
+};
+
 const NOT_READ_FROM_WORKFORCE_JOB_SUMMARY = (label: string): UcpathJobCell => ({
   state: "absent",
   reason: `Workforce Job Summary has no verified ${label} column, so this read does not report it`,
@@ -153,7 +159,7 @@ const NOT_READ_FROM_WORKFORCE_JOB_SUMMARY = (label: string): UcpathJobCell => ({
 /** Projects the picked row of one employee record onto the job-summary row shape; a missing structural cell refuses. */
 export function deriveWorkforceJobRow(
   picked: JobSummaryGridRow,
-  hrStatus: string,
+  hrStatus: UcpathJobCell,
   rowIndex: number,
 ): UcpathJobRow {
   const location = picked.workLocation;
@@ -215,7 +221,8 @@ function uniqueRecords(rows: readonly WorkforceJobSummaryResultRow[], emplId: Ei
 
 /**
  * Reads every employee record of one EID from Workforce Job Summary. One record opens the detail page directly; several render a
- * results grid, and each record not yet seen on a detail page is drilled from a fresh search. Each record reports the row in effect on `asOf`.
+ * results grid, and each record not yet seen on a detail page is drilled from a fresh search. Each record reports the row in effect on `asOf`,
+ * with the grid's Payroll Status as its status; the directly opened single record has none.
  */
 export async function readWorkforceJobSummaryWithPagePort(
   pagePort: WorkforceJobSummaryPagePort,
@@ -279,13 +286,11 @@ export async function readWorkforceJobSummaryWithPagePort(
   const records = [...new Set(gridRows.map(({ emplRecord }) => emplRecord))];
   const jobRows = records.map((record, rowIndex) => {
     const status = statusByRecord.get(record);
-    if (status === undefined) {
-      throw new Error(
-        `Workforce Job Summary shows no verified status for empl record ${record}: the results grid's Payroll Status `
-        + "is the only status column read, and a single-record search opens the detail page without it",
-      );
-    }
-    return deriveWorkforceJobRow(pickRowInEffect(gridRows.filter(({ emplRecord }) => emplRecord === record), input.asOf), status, rowIndex);
+    return deriveWorkforceJobRow(
+      pickRowInEffect(gridRows.filter(({ emplRecord }) => emplRecord === record), input.asOf),
+      status === undefined ? STATUS_NOT_SHOWN : { state: "present", value: status },
+      rowIndex,
+    );
   });
   return UcpathJobSummaryReadSchema.parse({
     state: "read",

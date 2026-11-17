@@ -47,7 +47,7 @@ export function createSeparationTaskFixtures() {
     return {
       rowIndex: 0,
       emplRecord: "0",
-      hrStatus: "Active",
+      hrStatus: cell("Active"),
       businessUnit: "SDCMP",
       effectiveDate: cell("07/01/2025"),
       positionNumber: cell("40012345"),
