@@ -1,4 +1,6 @@
 import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
+import { queryAssistantUsage } from "../../../../src/backend/assistant/usage-counts.js";
+import { runtimeTimeZone } from "../../../../src/rules/time/clock.js";
 import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
@@ -290,6 +292,7 @@ export async function makeWorld(input?: Readonly<{
   };
   const scheduledRebuilds: (() => void)[] = [];
   const projection = createRunQueueProjection({
+    assistantUsage: (from, to, generatedAt) => queryAssistantUsage(database, { from, to, generatedAt }, runtimeTimeZone()),
     timeline: input?.timeline ?? timeline,
     reader: runReader,
     stateRoot,
