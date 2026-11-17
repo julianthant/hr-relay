@@ -5,13 +5,13 @@ import type { IdentityGateDetailWire } from "../../../../../src/models/dashboard
 import { buildIdentityEvidencePacket } from "../../../../../src/rules/separations/identity-evidence.js";
 import type { IdentityEvidencePacket } from "../../../../../src/rules/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../../../src/rules/separations/write-plan.js";
-import { deriveJobRowFromCells } from "../../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
+import { jobRowFromCells } from "../../ucpath-job-rows.js";
 
 export function createFixtureGateSetup() {
   const FIXTURE_GATE_CHECKED_EID = "10688204";
 
   function packetOf(input: Readonly<{ documentName: string; observedAt: string }>): IdentityEvidencePacket {
-    const rows = [deriveJobRowFromCells([
+    const rows = [jobRowFromCells([
       "0", "07/01/2025", "Active", "SDCMP", "40012345", "000414",
       "Housing Dining Hospitality", "004920", "STDT 3", "", "0.500000", "Student",
     ], 0)];
@@ -22,7 +22,7 @@ export function createFixtureGateSetup() {
       emplIdSource: "name-resolved",
       documentEidConflicts: false,
       jobSummary: {
-        pageStateId: "ucpath.person-org.detail-ready",
+        pageStateId: "ucpath.workforce-job-summary.detail-ready",
         emplId: FIXTURE_GATE_CHECKED_EID as never,
         displayedName: "Morrow, Bea",
         jobRows: rows,

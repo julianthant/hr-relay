@@ -14,7 +14,7 @@ import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
 import { existsSync,statSync } from "node:fs";
 import { basename,dirname,join } from "node:path";
-import { DatabaseSync,backup as sqliteBackup,type SQLInputValue } from "node:sqlite";
+import { DatabaseSync,backup as sqliteBackup,type SQLInputValue,type SQLTagStore } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ArtifactRefSchema,type ArtifactRef } from "../../../models/artifacts/artifacts.js";
@@ -2377,12 +2377,16 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
       return Object.freeze([...references.values()].sort((a, b) => a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0).map(reference => Object.freeze(reference)));
 }
 
+/** The WAL file is cut back to this size whenever a checkpoint lets it restart: two automatic checkpoints' worth of 4 KiB pages. */
+export const AUTHORITY_WAL_SIZE_LIMIT_BYTES = 8 * 1024 * 1024;
+
 export function configureWritableConnection(database: DatabaseSync, busyTimeoutMs: number): void {
   database.exec("PRAGMA foreign_keys = ON");
   // Enable secure deletion so freed SQLite pages do not retain deleted run bytes.
   database.exec("PRAGMA secure_delete = ON");
   database.exec("PRAGMA journal_mode = WAL");
   database.exec("PRAGMA synchronous = FULL");
+  database.exec(`PRAGMA journal_size_limit = ${String(AUTHORITY_WAL_SIZE_LIMIT_BYTES)}`);
   database.exec(`PRAGMA busy_timeout = ${String(busyTimeoutMs)}`);
 }
 
@@ -2395,6 +2399,8 @@ export class AuthorityDatabase implements Disposable {
   #busyTimeoutMs: number;
   #credentialCommandIds: (commandId: string) => boolean;
   #closed = false;
+  /** Statements reused across reads: only the run lookup a queue read repeats per row, used with get(), never iterate(). */
+  #statements: SQLTagStore;
   #openedFileIdentity: DirectoryIdentity | undefined;
   #coldLogout: Readonly<{ machine: RuntimeAdmission; operationId: string; admission: RuntimeAdmission; restore: OfflineMaintenanceOperation;
     sourcePath: string; owner: RuntimeAdmission; inspection: ReturnType<RuntimeAdmission["capturePendingLogoutSnapshot"]> }> | undefined;
@@ -2501,6 +2507,7 @@ export class AuthorityDatabase implements Disposable {
       allowUnknownNamedParameters: false,
       defensive: true,
     });
+    this.#statements = this.#database.createTagStore(1);
 
     const admittedDataVersion = readIntPragma(this.#database, "data_version");
     try {
@@ -5075,7 +5082,7 @@ export class AuthorityDatabase implements Disposable {
       return row === undefined ? undefined : schema.parse(commandFromRow(row));
     }
     if (table === "runs") {
-      const row = this.#database.prepare("SELECT * FROM runs WHERE id = ?").get(recordKey);
+      const row = this.#statements.get`SELECT * FROM runs WHERE id = ${recordKey}`;
       if (row === undefined) return undefined;
       const record = runRecordFromRow(row);
       return Object.is(schema, RunRecordSchema) ? structuredClone(record) as z.output<Schema> : schema.parse(record);

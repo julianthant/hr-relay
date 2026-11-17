@@ -492,9 +492,18 @@ export function toggleStepSelection(
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
   selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,
   eligibleSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[], writable: boolean,
-  selectedRows?: { typeId: string; rows: readonly { sheetId: string; rowId: string }[] }) {
+  selectedRows?: { typeId: string; rows: readonly { sheetId: string; rowId: string }[] },
+  checks?: { typeId: string; picks: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[] }) {
   if (requiredTypes.length > 1 || selectedRows !== undefined && (selectedRows.rows.length !== submissionCount || !requiredTypes.includes(selectedRows.typeId))) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
-  return Array.from({ length: submissionCount }, (_, index) => requiredTypes.map(typeId => {
+  const checkEntries = (index: number) => (checks?.picks ?? []).map(pick => {
+    const entry = catalog.find(candidate => candidate.libraryId === pick.libraryId);
+    if (!entry || entry.state.removed || entry.state.origin.kind !== 'local' || !entry.state.versions.some(version => version.id === pick.versionId)
+      || !eligibleSources.some(source => source.libraryId === pick.libraryId && source.versionId === pick.versionId && source.sheetId === pick.sheetId))
+      throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
+    return WorkbookActiveSelectionSchema.parse({ typeId: checks?.typeId, entry: index + 1, libraryId: entry.libraryId, versionId: pick.versionId,
+      sheetId: pick.sheetId, expectedVersion: entry.version });
+  });
+  return Array.from({ length: submissionCount }, (_, index) => [...requiredTypes.map(typeId => {
     const selection = selections[typeId];
     const entry = catalog.find(entry => entry.libraryId === selection?.libraryId);
     if (!entry || entry.state.removed || entry.state.origin.kind !== 'local'
@@ -505,5 +514,5 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
     return WorkbookActiveSelectionSchema.parse({ entry: index + 1, libraryId: entry.libraryId, versionId: selection.versionId,
       sheetId: selection.sheetId, expectedVersion: entry.version,
       ...(selectedRows?.typeId === typeId ? { selectedRow: { sheetId: selectedRows.rows[index].sheetId, rowId: selectedRows.rows[index].rowId } } : {}) });
-  })).flat();
+  }), ...checkEntries(index)]).flat();
 }

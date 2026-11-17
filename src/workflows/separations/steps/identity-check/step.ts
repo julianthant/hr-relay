@@ -20,7 +20,7 @@ import {
 import {
   SeparationsVerifyIdentityApproval
 } from "../../../../models/workflows/separations/verify-identity-approval.js";
-import { EidSchema } from "../../../../rules/identity/ids.js";
+import { EidSchema, LocalDateSchema } from "../../../../rules/identity/ids.js";
 import {
   IdentityApprovalResultSchema,
   ResolvedIdentitySubjectSchema,
@@ -99,7 +99,7 @@ const IDENTITY_CHECK_DISPLAY = {
       },
       {
         id: "job-summary",
-        title: "Person Organizational Summary detail",
+        title: "Workforce Job Summary",
         mode: "Read only",
         nodeIds: ["job-summary", "employment", "department-option"],
         lines: [
@@ -114,7 +114,7 @@ const IDENTITY_CHECK_DISPLAY = {
               origin: "UCPath",
               detail: "HR status for the selected active employment.",
               chain: [],
-              read: { stepKey: "identity-check", page: "Person Organizational Summary detail", field: "HR status" }
+              read: { stepKey: "identity-check", page: "Workforce Job Summary", field: "HR status" }
             }
           },
           {
@@ -124,7 +124,7 @@ const IDENTITY_CHECK_DISPLAY = {
               origin: "UCPath",
               detail: "Department for the selected active employment.",
               chain: [],
-              read: { stepKey: "identity-check", page: "Person Organizational Summary detail", field: "Department" }
+              read: { stepKey: "identity-check", page: "Workforce Job Summary", field: "Department" }
             }
           },
           {
@@ -134,7 +134,7 @@ const IDENTITY_CHECK_DISPLAY = {
               origin: "UCPath",
               detail: "Payroll title for the selected active employment.",
               chain: [],
-              read: { stepKey: "identity-check", page: "Person Organizational Summary detail", field: "Payroll title" }
+              read: { stepKey: "identity-check", page: "Workforce Job Summary", field: "Payroll title" }
             }
           },
           {
@@ -147,11 +147,11 @@ const IDENTITY_CHECK_DISPLAY = {
                 {
                   label: "UCPath department",
                   detail: "Read from the selected active job.",
-                  read: { stepKey: "identity-check", page: "Person Organizational Summary detail", field: "Department" }
+                  read: { stepKey: "identity-check", page: "Workforce Job Summary", field: "Department" }
                 },
                 { label: "Kuali options", detail: "Read from the separation request." }
               ],
-              read: { stepKey: "identity-check", page: "Person Organizational Summary detail", field: "Kuali department option" }
+              read: { stepKey: "identity-check", page: "Workforce Job Summary", field: "Kuali department option" }
             }
           }
         ]
@@ -365,12 +365,20 @@ export function resolveSubject({ task }: Author, extraction: Extraction) {
 }
 export function readJobs({ task, group }: Author, extraction: Extraction, resolved: Subject) {
   const { document } = extraction, { nameSearch, subject } = resolved;
-  const jobSummary = task(jobSummaryNode, [subject], ({ outputs }) => ({
-    emplId: outputs[SUBJECT_NODE].emplId,
-  }));
+  const jobSummary = task(jobSummaryNode, [document, subject], ({ outputs }) => {
+    const separationDate = outputs["document"].separation.separationDate;
+    return {
+      emplId: outputs[SUBJECT_NODE].emplId,
+      ...(separationDate.state === "present" ? { asOf: LocalDateSchema.parse(separationDate.value) } : {}),
+    };
+  });
   const employment = task(employmentNode, [document, jobSummary], ({ input, outputs }) => ({
     documentNumber: input.documentNumber,
     jobSummary: outputs[JOB_SUMMARY_NODE],
+    request: {
+      studentTitleCode: outputs["document"].employee.studentTitleCode,
+      additionalComments: outputs["document"].separation.additionalComments,
+    },
   }));
   const departmentOption = task(
     departmentOptionNode,

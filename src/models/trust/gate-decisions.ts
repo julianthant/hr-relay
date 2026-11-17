@@ -71,14 +71,14 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     arms: [{ value: "selected", outcome: "taken", summary: "an operator selected retained worksheet rows for the CRM document batch",
       label: "Use the selected rows", hint: "Download documents for the rows picked for each person." }],
   })),
-  ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-hire-writes"].map(workflowId => ({
+  ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-hire-writes", "onboarding-reference-check"].map(workflowId => ({
     workflowId, gateId: "roster-choice", decisionPath: "decision", boundEvidencePath: "row.binding.referenceDigest",
     resolution: { source: "workbook-reference", boundInputPath: "roster.binding.referenceDigest",
       inputCondition: { path: "roster.state", equals: "resolve-required" } },
     arms: [{ value: "selected", outcome: "taken", summary: "an operator selected this roster row for the hire review",
       label: "Use this roster row", hint: "Continue the hire review with the picked roster row." }],
   })),
-  ...["onboarding", "onboarding-hire-writes"].map(workflowId => ({
+  ...["onboarding", "onboarding-hire-writes", "onboarding-reference-check"].map(workflowId => ({
     workflowId, gateId: "hire-review", decisionPath: "decision", resolution: { source: "operator" },
     arms: [
       { value: "new-hire", outcome: "approved", summary: "an operator reviewed the complete transaction findings, ruled out every UCPath match and approved a new hire",
@@ -190,7 +190,7 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     boundEvidencePath: "evidenceDigest",
   },
     /* A picked reference spreadsheet did not confirm the person; "Cancel run" is the run's own cancel, so continuing is the only stored answer. */
-  ...["work-study", "work-study-reference-check", "separations", "separations-reference-check"].map(workflowId => ({
+  ...["work-study", "work-study-reference-check", "separations", "separations-reference-check", "onboarding", "onboarding-reference-check", "emergency-contact-member", "emergency-contact-member-reference-check"].map(workflowId => ({
     workflowId, gateId: "reference-check-review", decisionPath: "decision", resolution: { source: "operator" },
     arms: [{ value: "continue", outcome: "approved", label: "Continue anyway", hint: "Relay goes on with this person.",
       summary: "an operator continued although a picked reference spreadsheet did not confirm this person" }],

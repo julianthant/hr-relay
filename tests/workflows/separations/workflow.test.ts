@@ -266,7 +266,7 @@ describe("workflow definition public equivalence characterization", () => {
         { id: "termination-type", kind: "task", dependsOn: ["document"] },
         { id: "name-search", kind: "task", dependsOn: ["plan"] },
         { id: "subject", kind: "task", dependsOn: ["document", "plan", "name-search"] },
-        { id: "job-summary", kind: "task", dependsOn: ["subject"] },
+        { id: "job-summary", kind: "task", dependsOn: ["document", "subject"] },
         { id: "employment", kind: "task", dependsOn: ["document", "job-summary"] },
         { id: "department-option", kind: "task", dependsOn: ["document", "employment"] },
         { id: "timecard-search", kind: "task", dependsOn: ["subject"] },

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DashboardClient } from "../../client/index.js";
 import { readWithDeadline } from "../../client/read-deadline.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../../models/failures/error-catalog.js";
@@ -140,4 +140,35 @@ export function useWorkbookVersionSources(client: Pick<DashboardClient, "workboo
   return loaded?.token !== token ? { state: "loading" as const, sources: [], error: null } : loaded.error !== null
     ? { state: "error" as const, sources: [], error: loaded.error }
     : { state: "ready" as const, sources: loaded.sources, error: null };
+}
+
+export type CheckVersionSheets = Readonly<{ state: "loading" | "ready" | "error"; sheets: readonly Readonly<{ sheetId: string; sheetName: string }>[] }>;
+export const checkVersionKey = (libraryId: string, versionId: string): string => JSON.stringify([libraryId, versionId]);
+
+/** The worksheets of each named version the check picked that map its key field; a version is read once while the dialog holds the same client. */
+export function useCheckVersionSheets(client: Pick<DashboardClient, "workbookLibraryVersion">, authority: object,
+  wanted: readonly Readonly<{ libraryId: string; versionId: string }>[], keyFieldId: string | undefined): Readonly<Record<string, CheckVersionSheets>> {
+  const token = useMemo(() => ({ client, authority, keyFieldId }), [client, authority, keyFieldId]);
+  const latest = useRef(token); latest.current = token;
+  const [store, setStore] = useState<{ token: object; byKey: Readonly<Record<string, CheckVersionSheets>> }>();
+  const wantedKey = JSON.stringify(wanted.map(entry => [entry.libraryId, entry.versionId]));
+  const known = store?.token === token ? store.byKey : undefined;
+  useEffect(() => {
+    if (keyFieldId === undefined) return;
+    const todo = (JSON.parse(wantedKey) as [string, string][]).filter(([libraryId, versionId]) => known?.[checkVersionKey(libraryId, versionId)] === undefined);
+    if (todo.length === 0) return;
+    const patch = (entries: Record<string, CheckVersionSheets>) => {
+      if (latest.current !== token) return;
+      setStore(previous => ({ token, byKey: { ...(previous?.token === token ? previous.byKey : {}), ...entries } }));
+    };
+    patch(Object.fromEntries(todo.map(([libraryId, versionId]) => [checkVersionKey(libraryId, versionId), { state: "loading" as const, sheets: [] }])));
+    for (const [libraryId, versionId] of todo) {
+      void readWithDeadline(() => client.workbookLibraryVersion(libraryId, versionId), "DASHBOARD_READ_FAILED", undefined, new AbortController().signal).then(view => {
+        const sheets = view.workbook.sheets.filter(sheet => (sheet.columnBindings ?? []).some(binding => binding.fieldId === keyFieldId && binding.basis !== "unmapped"))
+          .map(sheet => ({ sheetId: sheet.id, sheetName: sheet.name }));
+        patch({ [checkVersionKey(libraryId, versionId)]: { state: "ready", sheets } });
+      }).catch(() => patch({ [checkVersionKey(libraryId, versionId)]: { state: "error", sheets: [] } }));
+    }
+  }, [client, token, wantedKey, known, keyFieldId]);
+  return known ?? {};
 }

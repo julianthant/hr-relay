@@ -80,13 +80,13 @@ describe("onboarding workflow", () => {
     assert.equal(childWorkflowModuleOf("onboarding", "i9-lookup").descriptor.id, "i9-lookup");
     assert.deepEqual(STEP_PROOF_MODULES.filter(module => module.role.kind === "chunk-harness" && module.role.of === "onboarding")
       .map(module => module.descriptor.id), registration.proofs.map(proof => proof.definition.id));
-    assert.deepEqual(descriptor.timeline.map(step => step.key), ["crm-data", "ucpath-search", "i9-search", "hire-review", "i9-creation", "ucpath-hire", "master-results"]);
+    assert.deepEqual(descriptor.timeline.map(step => step.key), ["crm-data", "ucpath-search", "i9-search", "hire-review", "reference-check", "i9-creation", "ucpath-hire", "master-results"]);
     assert.deepEqual(onboardingWorkflow.steps.map(([, entries]) => entries.map(entry => entry.id)), [
-      ["roster-choice", "crm-source", "hire-plan"], ["ucpath-source", "hire-subject"], ["i9-lookup-child", "i9-lookup"], ["hire-findings", "hire-review"],
+      ["roster-choice", "crm-source", "hire-plan"], ["ucpath-source", "hire-subject"], ["i9-lookup-child", "i9-lookup"], ["hire-findings", "hire-review"], ["reference-check", "reference-stop", "reference-check-review"],
       ["write-plan", "i9-route", "i9-profile-plan", "i9-profile-save", "i9-remote-create"], ["hire-create", "hire-receipt", "concurrent-hire-create", "concurrent-hire-receipt"], ["master-results", "concurrent-master-results"],
     ]);
     for (const [index, proof] of registration.proofs.entries()) {
-      assert.deepEqual(proof.definition.role, { kind: "chunk-harness", of: "onboarding", step: ["crm-data", "ucpath-search", "i9-search", "hire-review"][index] });
+      assert.deepEqual(proof.definition.role, { kind: "chunk-harness", of: "onboarding", step: ["crm-data", "ucpath-search", "i9-search", "hire-review", "reference-check"][index] });
     }
     assert.equal(onboardingWorkflow.steps[0]?.[1][1]?.contracts[0], CrmReadHireData);
     assert.equal(onboardingWorkflow.steps[1]?.[1][0]?.contracts[0], SearchPersonMatch);
@@ -105,14 +105,17 @@ describe("onboarding workflow", () => {
       { id: "i9-lookup", kind: "task", nodeIds: ["i9-lookup"], dependsOn: ["hire-plan", "hire-subject", "i9-lookup-child"], taskIds: ["workflow:onboarding/read-i9-lookup"] },
       { id: "hire-findings", kind: "task", nodeIds: ["hire-findings"], dependsOn: ["hire-plan", "hire-subject", "i9-lookup"], taskIds: ["ucpath/read-hire-findings"] },
       { id: "hire-review", kind: "gate", nodeIds: ["hire-review"], dependsOn: ["hire-plan", "ucpath-source", "hire-subject", "i9-lookup", "hire-findings"], taskIds: [] },
+      { id: "reference-check", kind: "task", nodeIds: ["reference-check"], dependsOn: ["hire-plan", "hire-review"], taskIds: ["workbooks/verify-person"] },
+      { id: "reference-stop", kind: "task", nodeIds: ["reference-stop"], dependsOn: ["reference-check"], taskIds: ["workflow:onboarding/read-reference-stop"] },
+      { id: "reference-check-review", kind: "gate", nodeIds: ["reference-check-review"], dependsOn: ["reference-stop"], taskIds: [] },
       { id: "write-plan", kind: "task", nodeIds: ["write-plan"], dependsOn: ["hire-plan", "ucpath-source", "hire-subject", "i9-lookup", "hire-findings", "hire-review"], taskIds: ["workflow:onboarding/read-write-plan"] },
       { id: "i9-route", kind: "branch", nodeIds: ["i9-route"], dependsOn: ["write-plan"], taskIds: [] },
       { id: "i9-profile-plan", kind: "task", nodeIds: ["i9-profile-plan"], dependsOn: ["hire-plan", "i9-lookup", "write-plan"], taskIds: ["workflow:onboarding/read-i9-profile-plan"] },
-      { id: "i9-profile-save", kind: "transaction", nodeIds: ["i9-profile-save"], dependsOn: ["write-plan", "hire-review"], taskIds: ["i9/stage-profile", "i9/create-profile"] },
+      { id: "i9-profile-save", kind: "transaction", nodeIds: ["i9-profile-save"], dependsOn: ["write-plan", "hire-review", "reference-check-review"], taskIds: ["i9/stage-profile", "i9/create-profile"] },
       { id: "i9-remote-create", kind: "transaction", nodeIds: ["i9-remote-create"], dependsOn: ["write-plan", "i9-profile-save"], taskIds: ["i9/stage-remote-record", "i9/create-remote-record"] },
       { id: "hire-create", kind: "transaction", nodeIds: ["hire-create"], dependsOn: ["write-plan", "hire-review", "i9-profile-save", "i9-remote-create"], taskIds: ["ucpath/stage-hire", "ucpath/create-hire"] },
       { id: "hire-receipt", kind: "task", nodeIds: ["hire-receipt"], dependsOn: ["write-plan", "hire-create"], taskIds: ["ucpath/read-hire-receipt"] },
-      { id: "concurrent-hire-create", kind: "transaction", nodeIds: ["concurrent-hire-create"], dependsOn: ["write-plan", "hire-review", "i9-profile-plan"], taskIds: ["ucpath/stage-hire", "ucpath/create-hire"] },
+      { id: "concurrent-hire-create", kind: "transaction", nodeIds: ["concurrent-hire-create"], dependsOn: ["write-plan", "hire-review", "i9-profile-plan", "reference-check-review"], taskIds: ["ucpath/stage-hire", "ucpath/create-hire"] },
       { id: "concurrent-hire-receipt", kind: "task", nodeIds: ["concurrent-hire-receipt"], dependsOn: ["write-plan", "concurrent-hire-create"], taskIds: ["ucpath/read-hire-receipt"] },
       { id: "master-results", kind: "task", nodeIds: ["master-results"], dependsOn: ["write-plan", "hire-receipt", "i9-remote-create"], taskIds: ["workbooks/read-result"] },
       { id: "concurrent-master-results", kind: "task", nodeIds: ["concurrent-master-results"], dependsOn: ["write-plan", "concurrent-hire-receipt"], taskIds: ["workbooks/read-result"] },
@@ -123,18 +126,22 @@ describe("onboarding workflow", () => {
   it("preserves proof identities, shared ingress and every safety prerequisite", () => {
     assert.deepEqual(registration.proofs.map(proof => [proof.definition.id, proof.definition.code, proof.order]), [
       ["onboarding-crm-data", "onc", 15], ["onboarding-ucpath-search", "onu", 16],
-      ["onboarding-i9-search", "onis", 17], ["onboarding-hire-writes", "onhw", 18],
+      ["onboarding-i9-search", "onis", 17], ["onboarding-hire-writes", "onhw", 18], ["onboarding-reference-check", "onrc", 38],
     ]);
     const entryIds = ["roster-choice", "crm-source", "hire-plan", "ucpath-source", "hire-subject", "i9-lookup-child", "i9-lookup", "i9-profile-plan"];
     const proofSizes = [3, 5, 7, 8];
     const targets = ["hire-plan", "hire-subject", "i9-lookup", "i9-profile-plan"];
+    const referenceProofEntries = ["roster-choice", "crm-source", "hire-plan", "ucpath-source", "hire-subject", "i9-lookup-child", "i9-lookup",
+      "hire-findings", "hire-review", "reference-check", "reference-stop", "reference-check-review"];
+    const referenceStepEntries = new Set(["reference-check", "reference-stop", "reference-check-review"]);
+    const writesProofEntries = onboardingWorkflow.steps.flatMap(([, entries]) => entries.map(entry => entry.id)).filter(id => !referenceStepEntries.has(id));
     for (const [index, proof] of registration.proofs.entries()) {
       assert.equal(proof.definition.input, onboardingWorkflow.input);
       assert.equal(proof.definition.canonicalInput, onboardingWorkflow.canonicalInput);
       assert.deepEqual(proof.definition.steps.flatMap(([, entries]) => entries.map(entry => entry.id)), index === 3
-        ? onboardingWorkflow.steps.flatMap(([, entries]) => entries.map(entry => entry.id)) : entryIds.slice(0, proofSizes[index]));
+        ? writesProofEntries : index === 4 ? referenceProofEntries : entryIds.slice(0, proofSizes[index]));
       assert.deepEqual(proof.definition.result.references.map(reference => reference.id), index === 3
-        ? onboardingWorkflow.result.references.map(reference => reference.id) : [targets[index]]);
+        ? onboardingWorkflow.result.references.map(reference => reference.id) : index === 4 ? ["reference-check"] : [targets[index]]);
     }
   });
 
