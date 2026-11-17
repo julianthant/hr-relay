@@ -12,7 +12,7 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { AuthorityBootStore } from "../../../../src/backend/storage/sqlite/authority-boot.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
+import { AUTHORITY_DERIVED_TABLES, AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
 import { readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { SettingsCurrentRecordSchema } from "../../../../src/models/config/settings-current.js";
@@ -45,7 +45,7 @@ afterEach(_afterEachFixture0);
     authority.close();
     const reopened=f.open();expect(reopened.getMeta().schemaVersion).toBe(CURRENT_AUTHORITY_SCHEMA_VERSION);reopened.close();
     const db=new DatabaseSync(f.path,{readOnly:true});
-    try { expect(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()).toHaveLength(AUTHORITY_TABLE_REGISTRY.length); }
+    try { expect(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()).toHaveLength(AUTHORITY_TABLE_REGISTRY.length + AUTHORITY_DERIVED_TABLES.length); }
     finally {db.close();}
   });
   it("keeps initialization, nested rollback, publication generation and after-commit callbacks atomic",async()=>{

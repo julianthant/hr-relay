@@ -11,14 +11,12 @@ export const REBUILD_COVERAGE_INCLUDE = ["src/**/*.ts", "src/**/*.tsx"] as const
 export const REBUILD_UNIT_TEST_INCLUDE = ["tests/**/*.test.ts"] as const;
 const UNIT_EXCLUDE_GLOBS = [
   "tests/**/*.integration.test.ts",
-  "tests/**/*.local.test.ts",
   "tests/architecture/**",
   "tests/mocks/**",
   "tests/perf/**",
 ] as const;
 export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/**/*.integration.test.ts"] as const;
 const INTEGRATION_EXCLUDE_GLOBS = [
-  "tests/**/*.local.integration.test.ts",
   "tests/perf/**",
 ] as const;
 
@@ -46,20 +44,9 @@ export const REBUILD_INTEGRATION_TEST_EXCLUDE = [...INTEGRATION_EXCLUDE_GLOBS, .
 export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
   "tests/architecture/**/*.test.ts",
 ] as const;
-export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [
-  "tests/**/*.local.test.ts",
-  "tests/**/*.local.integration.test.ts",
-] as const;
+export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [] as const;
 export const REBUILD_PERF_TEST_INCLUDE = ["tests/perf/**/*.test.ts"] as const;
-export const REBUILD_PERF_TEST_EXCLUDE = [
-  "tests/**/*.local.test.ts",
-  "tests/**/*.local.integration.test.ts",
-] as const;
-export const REBUILD_LOCAL_TEST_INCLUDE = [
-  "tests/**/*.local.test.ts",
-  "tests/**/*.local.integration.test.ts",
-] as const;
-export const REBUILD_LOCAL_TEST_EXCLUDE = ["tests/mocks/**"] as const;
+export const REBUILD_PERF_TEST_EXCLUDE = [] as const;
 export const REBUILD_TEST_PROJECTS = [
   { name: "unit", include: REBUILD_UNIT_TEST_INCLUDE, exclude: REBUILD_UNIT_TEST_EXCLUDE },
   { name: "integration", include: REBUILD_INTEGRATION_TEST_INCLUDE, exclude: REBUILD_INTEGRATION_TEST_EXCLUDE },
@@ -69,17 +56,17 @@ export const REBUILD_TEST_PROJECTS = [
     exclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
   },
   { name: "perf", include: REBUILD_PERF_TEST_INCLUDE, exclude: REBUILD_PERF_TEST_EXCLUDE },
-  { name: "local", include: REBUILD_LOCAL_TEST_INCLUDE, exclude: REBUILD_LOCAL_TEST_EXCLUDE },
 ] as const;
 export const REBUILD_TEST_EXEC_ARGV = ["--no-experimental-webstorage"] as const;
 export const REBUILD_TEST_REPORTERS = ["verbose"] as const;
-export const REBUILD_COVERAGE_EXCLUSIONS = [
-  {
-    pattern: "src/generated/**/*.ts",
-    activation: { ownerRoot: "src/generated", status: "planned" },
-    reason: "Generated projections are verified by determinism guards.",
-  },
-] as const;
+export const REBUILD_COVERAGE_EXCLUSIONS: readonly {
+  readonly pattern: string;
+  readonly activation: {
+    readonly ownerRoot: string;
+    readonly status: "planned" | "active";
+  };
+  readonly reason: string;
+}[] = [];
 
 export const REBUILD_COVERAGE_FLOORS = {
   global: { lines: 60, statements: 60, functions: 60 },
@@ -96,8 +83,6 @@ const sharedConfig = defineConfig({
   test: {
     env: { TZ: "America/Los_Angeles" },
     setupFiles: ["tests/support/duo-ceremony-setup.ts"],
-    // Cloud and perf projects fail when a selected run collects nothing. The
-    // local project may be empty; test:local passes --passWithNoTests=true.
     passWithNoTests: false,
     // One human stream for every Vitest entry point: project, file, suite and
     // full behavior/refusal title. Commands do not layer a second reporter on
@@ -136,7 +121,7 @@ const sharedConfig = defineConfig({
         "src/backend/runs/lifecycle/run-record-service.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/lifecycle/run-result.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/settings/run-settings.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/projections/run-summary.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/rules/runs/summary-derivation.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/provenance/task-provenance.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/lifecycle/terminal-authorization.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/provenance/test-data-usage.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
