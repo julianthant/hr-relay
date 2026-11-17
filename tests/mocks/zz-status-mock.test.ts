@@ -121,7 +121,7 @@ for (const theme of THEMES) test(`status mock @ ${theme} ${WIDTH}`, async ({ pag
     if (id === "general-a-browser") await page.getByRole("combobox", { name: "Browser window" }).or(page.getByRole("button", { name: "Browser window" })).first().click();
     if (id === "general-a-date") await page.getByRole("button", { name: /Choose job end date/i }).first().click();
     if (settings === "keyboard") await expect(page.getByRole("searchbox", { name: "Search shortcuts" })).toBeVisible();
-    if (settings === "activity") await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
+    if (settings === "activity") await expect(page.getByRole("heading", { name: "Runs", exact: true })).toBeVisible();
     await settle(page);
     // Toasts stack collapsed at the top centre; only the "-open" frame hovers the stack.
     if (id === "rail-min-tooltip") { await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: "Emergency Contact", exact: true }).hover(); await expect(page.getByRole("tooltip")).toBeVisible(); }
@@ -396,7 +396,7 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&settings=activity`);
-  await expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Runs", exact: true })).toBeVisible();
   const shot = async (name: string) => { await page.waitForTimeout(300); await page.screenshot({ path: join(OUT, `analytics-${name}-${theme}-${WIDTH}.png`) }); };
   const scroller = page.locator("#dashboard-settings-content");
   const scrollTo = (top: number) => scroller.evaluate((node, value) => { node.scrollTop = value; }, top);
@@ -484,7 +484,7 @@ test("sidebar click-through shows the mock pages", async ({ page }) => {
     Account: () => expect(page.getByRole("group", { name: "Relay account", exact: true })).toBeVisible(),
     Spreadsheets: () => expect(page.getByRole("region", { name: "Spreadsheets", exact: true })).toBeVisible(),
     Explorer: () => expect(page.locator("#dashboard-settings-content")).toBeVisible(),
-    Analytics: () => expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible(),
+    Analytics: () => expect(page.getByRole("heading", { name: "Runs", exact: true })).toBeVisible(),
     Keyboard: () => expect(page.getByRole("searchbox", { name: "Search shortcuts" })).toBeVisible(),
   };
   for (const [name, check] of Object.entries(marks)) {
