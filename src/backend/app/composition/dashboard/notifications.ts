@@ -43,8 +43,11 @@ export function readGateParks(database: AuthorityDatabase, reader: TrustRunReade
 export function createTrustNotifications(input: { admission?: RuntimeAdmission; database: AuthorityDatabase; clock: Clock; ids: IdFactory; reader: Pick<RunRecordService, "read" | "list">; stateRoot?: string }) {
   const { database, clock, ids, stateRoot } = input;
   const inbox = createNotificationInbox({ authority: database, clock, ids, runReader: input.reader, actorId: LOCAL_OPERATOR_ACTOR_ID });
-  const observer = createNotificationObserver({ inbox, read: () => readNotificationSources(database, input.reader),
-    health: stateRoot === undefined ? async () => {} : createNotificationHealthObserver({ database, clock, inbox, read: () => readNotificationHealth({ admission: requireRuntimeAdmission(input.admission), database, clock, reader: input.reader, stateRoot }) }),
+  // A stop ends a backup inspection still running in the health pass instead of waiting for it.
+  const healthStop = new AbortController(), signal = healthStop.signal;
+  const observation = createNotificationObserver({ inbox, read: () => readNotificationSources(database, input.reader),
+    health: stateRoot === undefined ? async () => {} : createNotificationHealthObserver({ database, clock, inbox, signal, read: () => readNotificationHealth({ admission: requireRuntimeAdmission(input.admission), database, clock, reader: input.reader, stateRoot, signal }) }),
   });
+  const observer = Object.freeze({ ...observation, async stop() { healthStop.abort(); await observation.stop(); } });
   return { observer, inbox, backfillGapNotifier: createBackfillGapNotifier({ inbox }), gateParkNotifier: createGateParkNotifier({ inbox }), readParks: () => readGateParks(database, input.reader) };
 }

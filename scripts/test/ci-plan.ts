@@ -3,7 +3,7 @@ import { isDirectExecution } from "./scope-files.js";
 
 const suiteNames = ["unit", "integration", "architecture"] as const;
 const contextSchema = z.object({
-  workflow: z.enum(["portable", "release"]), event: z.enum(["pull_request", "workflow_dispatch"]),
+  workflow: z.enum(["fast", "portable", "release"]), event: z.enum(["pull_request", "workflow_dispatch"]),
   base: z.string(), head: z.string(), draft: z.boolean(), filters: z.record(z.string(), z.string()),
 });
 const matrixSchema = z.object({ include: z.array(z.object({
@@ -11,8 +11,8 @@ const matrixSchema = z.object({ include: z.array(z.object({
   shard: z.number().int().positive(), shards: z.number().int().positive(),
 })) });
 export const ciPlanSchema = z.object({
-  workflow: z.enum(["portable", "release"]), fullRelease: z.boolean(),
-  perf: z.boolean(), smoke: z.boolean(),
+  workflow: z.enum(["fast", "portable", "release"]), fullRelease: z.boolean(),
+  lint: z.boolean(), perf: z.boolean(), smoke: z.boolean(),
   unit: z.boolean(), integration: z.boolean(), architecture: z.boolean(),
   ubuntu: matrixSchema, macos: matrixSchema,
   testJobs: z.number().int().nonnegative(),
@@ -23,6 +23,10 @@ export type CiPlan = z.infer<typeof ciPlanSchema>;
 export function createCiPlan(input: unknown): CiPlan {
   const context = contextSchema.parse(input);
   const manual = context.event === "workflow_dispatch";
+  const fast = context.workflow === "fast";
+  if (fast && (manual || context.base !== "development")) {
+    throw new Error("Fast CI requires a development pull request.");
+  }
   if (context.workflow === "portable" && (manual || context.base !== "staging")) {
     throw new Error("Portable CI requires a staging pull request.");
   }
@@ -36,6 +40,7 @@ export function createCiPlan(input: unknown): CiPlan {
   const enabled = (suite: typeof suiteNames[number]) =>
     manual || context.filters.shared === "true" || context.filters[suite] === "true";
   const selected = { unit: enabled("unit"), integration: enabled("integration"), architecture: enabled("architecture") };
+  if (fast) selected.integration = false;
   if (!manual && context.draft) {
     selected.integration = false;
     selected.architecture = false;
@@ -50,7 +55,8 @@ export function createCiPlan(input: unknown): CiPlan {
   const nativeShards = selected.integration ? 5 : selected.unit ? 1 : 0;
   const macos = fullRelease ? jobs("native", nativeShards) : [];
   return ciPlanSchema.parse({ ...selected, workflow: context.workflow, fullRelease,
-    perf: !manual && !context.draft, smoke: !manual && !context.draft,
+    lint: !fast || !context.draft,
+    perf: !fast && !manual && !context.draft, smoke: !fast && !manual && !context.draft,
     ubuntu: { include: ubuntu }, macos: { include: macos },
     testJobs: ubuntu.length + macos.length,
   });
@@ -77,7 +83,12 @@ export function verifyUnitProof(input: unknown, outcomes: unknown): void {
 export function verifyProofs(input: unknown, outcomes: unknown): void {
   const plan = ciPlanSchema.parse(input);
   const results = resultsSchema.parse(outcomes);
-  for (const job of ["changes", "lint", "static", "privacy", "integration", "architecture"]) requireResult(results, job, "success");
+  for (const job of ["changes", "static", "privacy"]) requireResult(results, job, "success");
+  requireResult(results, "lint", plan.lint ? "success" : "skipped");
+  for (const job of ["integration", "architecture"]) requireResult(results, job, plan.workflow === "fast" ? "skipped" : "success");
+  if (plan.workflow === "fast") {
+    for (const job of ["macos", "unit-proofs", "unit"]) requireResult(results, job, "skipped");
+  }
   requireResult(results, "ubuntu", plan.unit || plan.integration || plan.architecture ? "success" : "skipped");
   if (plan.workflow === "release") {
     requireResult(results, "unit-proofs", "success");

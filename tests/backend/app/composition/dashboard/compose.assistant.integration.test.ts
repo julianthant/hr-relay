@@ -208,7 +208,7 @@ it('serves the read tools through authenticated composition without private prov
     assert.deepEqual(z.object({ status: z.string(), version: z.number(), attempt: z.number(), workflow: z.string() }).parse(read),
       { status: detail.header.status, version: detail.rowRevision, attempt: detail.header.attempt, workflow: detail.header.workflowId });
     assert.deepEqual(z.strictObject({ total: z.number(), steps: z.array(z.unknown()) }).parse(logs),
-      { total: 12, steps: detail.timeline.events.slice(-5).map(event => ({ at: event.at, label: event.label, state: event.state, skipped: event.notRun.state === 'present' ? event.notRun.reason : null })) });
+      { total: 12, steps: detail.timeline.events.slice(-5).map(event => ({ at: event.at, label: event.label, stepLabel: 'Search for person', state: event.state, skipped: event.notRun.state === 'present' ? event.notRun.reason : null })) });
     const foreign = await originalFetch(`${origin}/api/v1/assistant/respond`, { method: 'POST', headers: { Origin: 'https://foreign.invalid', 'Content-Type': 'application/json' },
       body: JSON.stringify({ conversationId: randomUUID(), expectedRevision: 1, messageId: randomUUID(), message: 'run status', subjectRef }) });
     assert.equal(foreign.status, 403); assert.equal(turns, 3);
