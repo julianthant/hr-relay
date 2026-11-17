@@ -72,12 +72,16 @@ describe("Settings > General groups", () => {
   });
   it("saves each switch through the served setting and shows the saved value after a reload of the data", async () => {
     const h = await setup();
+    let saved = 0;
     for (const path of ["preferences.preventSleepWhileRunning", "preferences.notifications.needsYou", "preferences.notifications.failures"]) {
       const input = h.host.querySelector<HTMLElement>(`[data-settings-path="${path}"] [role="switch"], [data-settings-path="${path}"] input[type="checkbox"]`);
       assert.ok(input, path);
       await settingsAction(() => input.click());
       await settingsAction(() => h.controller().submit());
-      assert.equal(h.controller().save.state, "applied", path);
+      assert.equal(h.controller().save.state, "idle", path);
+      assert.equal(h.notices.length, ++saved, path);
+      assert.match(h.notices.at(-1)?.title ?? "", /^Saved /u, path);
+      assert.deepEqual(h.problems, [], path);
       assert.equal(leafValue(h.authority, path), false, path);
       await settingsAction(() => { void h.controller().reload(); });
       const reread = h.host.querySelector(`[data-settings-path="${path}"] [role="switch"], [data-settings-path="${path}"] input[type="checkbox"]`);
@@ -86,12 +90,16 @@ describe("Settings > General groups", () => {
   });
   it("saves each choice row through the served setting", async () => {
     const h = await setup();
+    let saved = 0;
     for (const [path, value] of [["preferences.confirmCloseDuringRun", "never"], ["preferences.notifications.runFinished", "always"], ["preferences.notifications.sound", "none"]] as const) {
       const trigger = h.host.querySelector(`[data-settings-path="${path}"] button[aria-label]`);
       assert.ok(trigger, path);
       await choose(trigger, value);
       await settingsAction(() => h.controller().submit());
-      assert.equal(h.controller().save.state, "applied", path);
+      assert.equal(h.controller().save.state, "idle", path);
+      assert.equal(h.notices.length, ++saved, path);
+      assert.match(h.notices.at(-1)?.title ?? "", /^Saved /u, path);
+      assert.deepEqual(h.problems, [], path);
       assert.equal(leafValue(h.authority, path), value, path);
       assert.equal(h.host.querySelector(`[data-settings-path="${path}"] button[aria-label]`)?.getAttribute("data-value"), value);
     }
