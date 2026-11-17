@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ownedDiagnostics } from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import { GATE_PARK_WATCH_MS } from "../../../../../src/backend/app/composition/dashboard/timeline.js";
-import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import * as authorityInspection from "../../../../../src/backend/storage/sqlite/authority-inspection-off-thread.js";
 import * as backupInspectionWorker from "../../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import * as canonicalRuns from "../../../../../src/backend/runs/queries/canonical-runs.js";
 import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
@@ -31,7 +31,7 @@ async function idleReads(backups: number, stalls = false): Promise<ReturnType<ty
       await service.request({ trigger: "schema-migration", requiredGeneration: f.db.getMeta().authorityGeneration });
       f.clock.advanceWall(1_000);
     }
-    const stores = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    const stores = vi.spyOn(authorityInspection, "inspectAuthorityOffThread");
     const backupCopies = vi.spyOn(backupInspectionWorker, "inspectAuthorityBackupOffThread");
     const liveRunLists = vi.spyOn(canonicalRuns, "listCanonicalRuns");
     try {
