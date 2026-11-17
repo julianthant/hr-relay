@@ -27,9 +27,23 @@ export const REFERENCE_CHECK_STEP = Object.freeze({
         { id: "check-person", kind: "check", text: "Confirm the reviewed Employee ID, and the name when the sheet has one, in each picked spreadsheet.", nodeIds: [REFERENCE_CHECK_NODE] },
         { id: "ask-before-saving", kind: "check", text: "In a live run, ask before the first save when a picked spreadsheet does not hold the person or names them differently.", nodeIds: [REFERENCE_STOP_NODE, REFERENCE_CHECK_REVIEW_GATE] },
       ],
-      fields: [],
+      fields: [{ id: "reference-line", label: "Reference spreadsheet", example: "Example eligibility · Awards: name differs in row 3",
+        taskFields: [{ nodeId: REFERENCE_CHECK_NODE, kind: "output", fieldPath: "checks.line" }],
+        source: { origin: "Picked reference spreadsheets", detail: "The reviewed Employee ID and name checked against the versions picked for this run.", chain: [] } }],
     }],
     branchLabels: [],
+    decisions: [
+      { id: "reference-result", label: "Reference check", reads: { nodeId: REFERENCE_CHECK_NODE, fieldPath: "result" },
+        nodeIds: [REFERENCE_CHECK_NODE, REFERENCE_STOP_NODE], initial: { by: "hire-approval", values: { "new-hire": "no-person" }, otherwise: "confirmed" }, outcomes: [
+          { value: "confirmed", label: "Person confirmed", then: "Continues to the approved hire plan." },
+          { value: "unconfirmed", label: "Person not confirmed", then: "In a live run, waits for your review in Logs before the first save; a dry run continues without asking." },
+          { value: "no-person", label: "No person to check", then: "A new hire has no Employee ID yet, so the run continues without a reference match." },
+        ] },
+      { id: "reference-check-review", label: "Review reference spreadsheets", reads: { nodeId: REFERENCE_CHECK_REVIEW_GATE, fieldPath: "decision" },
+        nodeIds: [REFERENCE_CHECK_REVIEW_GATE], initial: "continue", when: [{ "dry-run": ["false"], "reference-result": ["unconfirmed"] }],
+        outcomes: [{ value: "continue", label: "Continue anyway", then: "Continues to the approved hire plan after you approve in Logs." }],
+        cancellation: { label: "Cancel run", then: "Cancels the run before any I-9 or UCPath change is saved." } },
+    ],
   } as const,
 });
 

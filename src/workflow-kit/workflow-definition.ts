@@ -1286,11 +1286,14 @@ export function compileWorkflow<
         }
       }
     }
-    assertUnique((review.starts ?? []).map(start => start.nodeId), "started workflow");
-    for (const start of review.starts ?? []) {
-      assertOwnNode(start.nodeId);
-      if (ownNodes.find(node => node.id === start.nodeId)?.kind !== "child-run") {
-        throw new Error(`workflow ${definition.id} review starts requires a child-run source ${start.nodeId}`);
+    assertUnique((review.branches ?? []).map(branch => branch.nodeId), "review branch");
+    for (const branch of review.branches ?? []) {
+      assertOwnNode(branch.nodeId);
+      const node = ownNodes.find(node => node.id === branch.nodeId);
+      if (node?.kind !== "branch") throw new Error(`workflow ${definition.id} review branch requires a branch source ${branch.nodeId}`);
+      const initials = typeof branch.initial === "string" ? [branch.initial] : [...Object.values(branch.initial.values), branch.initial.otherwise];
+      for (const initial of initials) if (!Object.hasOwn(node.cases, initial)) {
+        throw new Error(`workflow ${definition.id} review branch ${branch.nodeId} starts at unknown outcome ${initial}`);
       }
     }
     assertUnique((review.outcomes ?? []).map(outcome => `${outcome.nodeId}/${outcome.value}`), "review outcome");
@@ -1299,6 +1302,24 @@ export function compileWorkflow<
       assertSchemaOffersCollectionPath(definition.input, field, `workflow ${definition.id} inherited review option`);
     }
     const decisions = review.decisions ?? [];
+    assertUnique((review.picks ?? []).map(pick => pick.nodeId), "review pick");
+    for (const pick of review.picks ?? []) {
+      assertOwnNode(pick.nodeId);
+      const node = ownNodes.find(node => node.id === pick.nodeId);
+      if (node?.kind !== "task" && !(node?.kind === "gate" && node.resolvedBy === "operator")) {
+        throw new Error(`workflow ${definition.id} review pick requires a task or operator gate source ${pick.nodeId}`);
+      }
+      if (pick.rows.some(row => row.cells.length !== pick.columns.length)) {
+        throw new Error(`workflow ${definition.id} review pick ${pick.nodeId} row width differs from its columns`);
+      }
+    }
+    assertUnique((review.starts ?? []).map(start => start.nodeId), "started workflow");
+    for (const start of review.starts ?? []) {
+      assertOwnNode(start.nodeId);
+      if (ownNodes.find(node => node.id === start.nodeId)?.kind !== "child-run") {
+        throw new Error(`workflow ${definition.id} review starts requires a child-run source ${start.nodeId}`);
+      }
+    }
     assertUnique(decisions.map(decision => decision.id), "decision id");
     for (const decision of decisions) {
       const owner = `workflow ${definition.id} review decision ${decision.id}`;
@@ -1315,8 +1336,15 @@ export function compileWorkflow<
         if (!values.includes(outcome.value)) throw new Error(`${owner} names ${outcome.value}, which ${decision.reads.fieldPath} never holds`);
         if (outcome.stops === true && outcome.then === undefined) throw new Error(`${owner} stops at ${outcome.value} without saying what the run does`);
       }
-      if (!decision.outcomes.some(outcome => outcome.value === decision.initial && outcome.stops !== true)) {
-        throw new Error(`${owner} starts at ${decision.initial}, which is not one of its continuing outcomes`);
+      const initials = typeof decision.initial === "string" ? [decision.initial] : [...Object.values(decision.initial.values), decision.initial.otherwise];
+      const defaultInitial = typeof decision.initial === "string" ? decision.initial : decision.initial.otherwise;
+      for (const initial of initials) {
+        // An earlier choice may force a declared task failure; the ordinary default must continue.
+        const forcedFailure = initial !== defaultInitial && ownNodes.some(candidate => decision.nodeIds.includes(candidate.id)
+          && candidate.kind === "task" && candidate.uses.errorCodes.some(code => code === initial));
+        if (!forcedFailure && !decision.outcomes.some(outcome => outcome.value === initial && outcome.stops !== true)) {
+          throw new Error(`${owner} starts at ${initial}, which is not one of its continuing outcomes`);
+        }
       }
     }
   }

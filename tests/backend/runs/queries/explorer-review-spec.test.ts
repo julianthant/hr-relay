@@ -14,6 +14,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { compileWorkflow, composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { personLookupWorkflow } from "../../../../src/workflows/person-lookup/workflow.js";
+import { onboardingWorkflow } from "../../../../src/workflows/onboarding/workflow.js";
 import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
 
 const clock = manualClock(new Date("2026-08-09T12:00:00.000Z"));
@@ -104,6 +105,12 @@ it("rejects forged gates, values, initial outcomes and missing failures without 
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "card" ? { ...block, when: [{ "search-result": ["not-found"] }] } : block))).success, true);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, when: [{ "search-result": ["not-found"] }] } : block))).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, initial: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" } : block))).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block,
+    initial: { by: "mode", values: { match: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" }, otherwise: "resolved" } } : block))).success, true);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block,
+    initial: { by: "mode", values: { match: "FORGED_FAILURE" }, otherwise: "resolved" } } : block))).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block,
+    initial: { by: "mode", values: { match: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" }, otherwise: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" } } : block))).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "card" ? { ...block, rows: block.rows.map(row => ({ ...row, source: "missing" })) } : block))).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse({ ...spec, sessions: [{ system: "ucpath", acquired: true }] }).success, false);
   const dropped = withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, outcomes: block.outcomes.filter(outcome => outcome.value !== "PERSON_LOOKUP_UCPATH_SEARCH_FAILED") } : block));
@@ -119,6 +126,24 @@ it("refuses a Search by option whose choice no review row reads", () => {
   const original = deps.modules.find(module => module.descriptor.id === "person-lookup"); assert.ok(original);
   const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
   assert.throws(() => buildWorkflowExplorer({ ...deps, modules: [module] }), /option search-by has no review row that reads input field emplId/u);
+});
+
+it("applies a task's outcome explanation to every decision that owns it", () => {
+  const then = "Stops before using unverified hire findings.";
+  const definition = { ...onboardingWorkflow, steps: onboardingWorkflow.steps.map(([group, entries]) =>
+    [group.key !== "i9-creation" || group.review === undefined ? group : { ...group, review: { ...group.review,
+      outcomes: [{ nodeId: "write-plan", value: "ONBOARDING_WRITE_REVIEW_REFUSED", then }],
+    } }, entries] as const) };
+  const deps = explorerQueryDeps(clock, hash);
+  const original = deps.modules.find(module => module.descriptor.id === "onboarding"); assert.ok(original);
+  const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
+  const entry = buildWorkflowExplorer({ ...deps, modules: deps.modules.map(candidate => candidate === original ? module : candidate) })
+    .workflows.find(workflow => workflow.id === "onboarding"); assert.ok(entry);
+  for (const id of ["write-path", "existing-write-path"]) {
+    const outcome = decision(entry.reviewSpec, id).outcomes.find(outcome => outcome.value === "ONBOARDING_WRITE_REVIEW_REFUSED");
+    assert.ok(outcome);
+    assert.deepEqual([outcome.then, outcome.stops], [then, true]);
+  }
 });
 
 const GENERATOR = "src/backend/runs/queries/explorer-review-spec.ts";

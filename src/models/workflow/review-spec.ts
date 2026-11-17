@@ -5,6 +5,9 @@ import { OperatorFieldDisplaySchema } from "./presentation.js";
 
 const ReviewIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
 const ReviewTextSchema = z.string().trim().min(1);
+/** A sample or initial choice that follows an option or an earlier decision. */
+export const ReviewValueSchema = z.union([ReviewTextSchema,
+  z.strictObject({ by: ReviewTextSchema, values: z.record(ReviewTextSchema, ReviewTextSchema), otherwise: ReviewTextSchema })]);
 /** Shows a part when any alternative holds: each key (an Explorer option or decision id) holds one of its values. */
 export const ReviewWhenSchema = z.array(z.record(z.string().min(1), z.array(z.string().min(1)).min(1))).min(1);
 const Gate = { when: ReviewWhenSchema.optional() };
@@ -26,11 +29,11 @@ const FieldSchema = {
   source: WorkflowReviewSourceSchema,
   ...Gate,
 };
-const LabelledFieldSchema = { ...FieldSchema, label: ReviewTextSchema, example: ReviewTextSchema.optional() };
+const LabelledFieldSchema = { ...FieldSchema, label: ReviewTextSchema, example: ReviewValueSchema.optional() };
 export const WorkflowReviewFieldSchema = z.union([
   z.strictObject({ ...FieldSchema, operatorField: ReviewTextSchema }),
   z.strictObject({ ...LabelledFieldSchema, display: OperatorFieldDisplaySchema.optional(), transactionFields: z.array(NodeFieldSchema).min(1) }),
-  z.strictObject({ ...LabelledFieldSchema, taskFields: z.array(NodeFieldSchema).min(1) }),
+  z.strictObject({ ...LabelledFieldSchema, display: OperatorFieldDisplaySchema.optional(), taskFields: z.array(NodeFieldSchema).min(1) }),
   /** A value the operator typed when the run started, read from the workflow input. */
   z.strictObject({ ...LabelledFieldSchema, inputField: ContractFieldPathSchema }),
   z.strictObject({ ...LabelledFieldSchema,
@@ -62,22 +65,31 @@ export const WorkflowReviewDecisionSchema = z.strictObject({
   reads: z.strictObject({ nodeId: NodeIdSchema, fieldPath: ContractFieldPathSchema }),
   /** The step's nodes whose declared failures stop the run at this decision point. */
   nodeIds: z.array(NodeIdSchema).min(1),
-  initial: z.string().min(1),
+  initial: ReviewValueSchema,
   /** Cancelling the run is an operator action, not a stored gate result. */
   cancellation: z.strictObject({ label: ReviewTextSchema, then: ReviewTextSchema }).optional(),
   ...Gate,
   outcomes: z.array(z.strictObject({ value: z.string().min(1), label: ReviewTextSchema.optional(), then: ReviewTextSchema.optional(),
     stops: z.literal(true).optional(), ...Gate })).min(1),
 });
+export const ReviewPickContentSchema = z.strictObject({
+  title: ReviewTextSchema,
+  columns: z.array(ReviewTextSchema).min(1),
+  rows: z.array(z.strictObject({ cells: z.array(ReviewTextSchema).min(1), warning: z.boolean().optional() })).min(1),
+  other: z.strictObject({ label: ReviewTextSchema, placeholder: ReviewTextSchema }).optional(),
+  question: z.strictObject({ title: ReviewTextSchema, context: ReviewTextSchema }),
+});
 export const WorkflowStepReviewSchema = z.strictObject({
   /** When the step runs, beyond what its selection, omission and input conditions already say; for conditions on earlier outcomes. */
   ...Gate,
   pages: z.array(WorkflowReviewPageSchema),
   branchLabels: z.array(z.strictObject({ nodeId: NodeIdSchema, outcome: ReviewTextSchema, label: ReviewTextSchema })),
+  branches: z.array(z.strictObject({ nodeId: NodeIdSchema, label: ReviewTextSchema.optional(), initial: ReviewValueSchema })).optional(),
   decisions: z.array(WorkflowReviewDecisionSchema).optional(),
   starts: z.array(z.strictObject({ nodeId: NodeIdSchema, each: ReviewTextSchema, ...Gate })).optional(),
   optionsFrom: z.array(z.strictObject({ workflowId: WorkflowIdSchema, fields: z.array(ContractFieldPathSchema).min(1) })).optional(),
   outcomes: z.array(z.strictObject({ nodeId: NodeIdSchema, value: z.string().min(1), then: ReviewTextSchema, stops: z.boolean().optional() })).optional(),
+  picks: z.array(ReviewPickContentSchema.extend({ nodeId: NodeIdSchema, ...Gate })).optional(),
 });
 type ReadonlyReview<Value> = Value extends readonly (infer Item)[] ? readonly ReadonlyReview<Item>[]
   : Value extends object ? { readonly [Key in keyof Value]: ReadonlyReview<Value[Key]> } : Value;
