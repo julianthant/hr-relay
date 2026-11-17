@@ -150,7 +150,7 @@ function PreviewLogSample({ selection, onAction }: { selection?: LogSelection; o
     });
   };
   const cancelPreview = (id: string) => setEdited(current => ({ basis, timeline: current?.basis === basis ? current.timeline : scenario.timeline, steps: answerSteps(current, id, "cancel-run", "Cancel run") }));
-  return <LogPanel key={basis} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : cancelPreview} footerActions={scenarioId === "preview" || scenarioId === "selected" ? <>{selection && <MemberRunControls selection={selection} onAction={onAction} preview />}{rerunFooterButton(selection, onAction)}</> : undefined} />;
+  return <LogPanel key={basis} status={selection === undefined ? undefined : <RunStateChips row={selection.row} />} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : cancelPreview} footerActions={scenarioId === "preview" || scenarioId === "selected" ? <>{selection && <MemberRunControls selection={selection} onAction={onAction} preview />}{rerunFooterButton(selection, onAction)}</> : undefined} />;
 }
 
 /** A fixture has no clock; the preview answer carries a fixed instant. */
