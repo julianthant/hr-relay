@@ -13,6 +13,7 @@ import { existsSync,mkdirSync,readFileSync,readdirSync,rmSync,writeFileSync } fr
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it,vi } from "vitest";
+import { z } from "zod";
 import { backupStoppedAuthority,upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { verifyStoppedBackupManifestAtPath, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION, isWorkerCustodyDroppedTable } from "../../../../src/backend/storage/sqlite/migrations.js";
@@ -154,7 +155,11 @@ describe("stopped native upgrade admission",()=>{
   try {
    for(const [table,rows] of Object.entries(f.workbookRows)) {
      const columns = table === 'workbook_library' ? 'id,version,created_at,saved_at,payload_json' : 'workbook_id,version,created_at,saved_at,payload_json';
-     assert.deepEqual(stored.prepare(`SELECT ${columns} FROM ${table} ORDER BY rowid`).all(),rows);
+     const resolved = stored.prepare(`SELECT ${columns},(SELECT payload_json FROM workbook_payloads WHERE digest=json_extract(${table}.payload_json,'$.workbookDigest')) AS workbook_json FROM ${table} ORDER BY rowid`).all()
+      .map(raw => { const { payload_json, workbook_json, ...row } = z.looseObject({ payload_json: z.string(), workbook_json: z.string() }).parse(raw);
+        const { workbookDigest: _digest, ...envelope } = z.looseObject({ workbookDigest: z.string() }).parse(JSON.parse(payload_json));
+        return { ...row, payload: { ...envelope, workbook: JSON.parse(workbook_json) } }; });
+     assert.deepEqual(resolved,rows.map(raw => { const { payload_json, ...row } = z.looseObject({ payload_json: z.string() }).parse(raw); return { ...row, payload: JSON.parse(payload_json) }; }));
     }
    const row=stored.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
    const record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));assert.ok(record.phase==="settled");

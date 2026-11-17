@@ -48,13 +48,18 @@ function embedWorkbookPayloads(database: DatabaseSync): void {
   database.exec("DROP TABLE workbook_payloads");
 }
 
+/** Creates workbook_payloads in a store whose rows embed their workbooks and moves each workbook into it, as migration 36 does. */
+export function moveWorkbookPayloads(database: DatabaseSync): void {
+  for (const statement of WORKBOOK_PAYLOAD_TABLE.statements) database.exec(statement);
+  withoutRetainedGuards(database, () => migrateWorkbookPayloads(database));
+}
+
 /**
  * Runs current workbook repository work against a store of schema 18 to 35: its workbooks move into workbook_payloads for the work
  * and are embedded back afterwards, so the store keeps its own layout.
  */
 export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () => T): T {
-  for (const statement of WORKBOOK_PAYLOAD_TABLE.statements) database.exec(statement);
-  withoutRetainedGuards(database, () => migrateWorkbookPayloads(database));
+  moveWorkbookPayloads(database);
   try { return work(); } finally { embedWorkbookPayloads(database); }
 }
 

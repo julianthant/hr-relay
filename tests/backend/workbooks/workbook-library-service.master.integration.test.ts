@@ -13,6 +13,7 @@ import { encodeSavedWorkbook, type WorkbookOperation } from '../../../src/models
 import { manualClock } from '../../../src/rules/time/clock.js';
 import { IsoInstantSchema } from '../../../src/rules/identity/ids.js';
 import { importWorkbook } from '../../../src/rules/spreadsheets/workbook-io.js';
+import { moveWorkbookPayloads } from '../../support/fixtures/storage/historical-run-schema.js';
 const at = IsoInstantSchema.parse('2026-11-02T00:00:00.000Z');
 const roots: string[] = [], databases: DatabaseSync[] = [];
 afterEach(() => { databases.splice(0).forEach(db => db.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
@@ -365,7 +366,8 @@ it('migrates every retained revision with explicit migration provenance without 
     const json = JSON.stringify(encodeSavedWorkbook(record));
     db.prepare('INSERT INTO workbook_library_history(workbook_id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(record.libraryId, record.version, record.createdAt, record.savedAt, json);
   }
-  for (const sql of [...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) db.exec(sql);
+  for (const sql of [...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.statements]) db.exec(sql);
+  moveWorkbookPayloads(db);
   expect(db.prepare('SELECT name,provenance,version FROM workbook_library_history ORDER BY version').all()).toEqual([
     { name: 'Saved revision 1', provenance: 'migration', version: 1 }, { name: 'Saved revision 2', provenance: 'migration', version: 2 }]);
   expect(validateWorkbookLibrary(db)).toBeGreaterThan(0);
