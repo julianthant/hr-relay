@@ -1415,7 +1415,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       <RunLaunchHost
         controller={launch}
         hidden={route.settings !== undefined}
-        onFixCheck={section => setRoute(current => ({ ...current, settings: section, settingsTarget: undefined, settingsFrom: "run" }))}
+        onFixCheck={(section, settingsTarget) => setRoute(current => ({ ...current, settings: section, settingsTarget, settingsFrom: "run" }))}
         catalog={workflowCatalog}
         previewLaunch={mockLaunch ?? undefined}
         previewRuns={mockRuns}

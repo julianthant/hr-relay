@@ -35,10 +35,11 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     toast({ key: `account-details-${title}`, tone: "warning", title: `${title} not confirmed`, description: operatorFailureSentence(result.code) });
     return undefined;
   };
-  const details = (label: string, shown: string, request: (next: string) => ProfileDetailsChangeRequest) => {
+  const details = (label: string, shown: string, request: (next: string) => ProfileDetailsChangeRequest, settingsPath?: string) => {
     const thing = label.toLowerCase();
-    return <PencilRow label={label} shown={shown} pencilLabel={`Edit ${thing}`} title={`Edit ${thing}`}
+    const row = <PencilRow label={label} shown={shown} pencilLabel={`Edit ${thing}`} title={`Edit ${thing}`}
       dialog={close => <EditTextDialog label={label} value={shown} close={close} onSave={next => save(request(next), label)} />} />;
+    return settingsPath === undefined ? row : <div data-settings-path={settingsPath}>{row}</div>;
   };
   return <section className="settings-compact-page settings-account-page">
     <PageHeading title="Account" />
@@ -50,8 +51,8 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
     </Group>
     {ucpath}
     <Group label="Workflow configuration">
-      {details("Timekeeper name", values.timekeeper, timekeeperName => ({ timekeeperName }))}
-      {details("Timekeeper initials", values.timekeeperInitials, timekeeperInitials => ({ timekeeperInitials }))}
+      {details("Timekeeper name", values.timekeeper, timekeeperName => ({ timekeeperName }), "profile.displayName")}
+      {details("Timekeeper initials", values.timekeeperInitials, timekeeperInitials => ({ timekeeperInitials }), "profile.initials")}
     </Group>
     <Group label="Security">
       <ResultRow label="Duo" className="!min-h-[52px]" value={<span className="inline-flex items-center justify-end gap-3"><span>Ready</span>{onDuoSetup && <Button variant="secondary" onClick={() => { void onDuoSetup().then(failure => { if (failure !== undefined) toast({ tone: "danger", title: "Duo setup not opened", description: failure }); }); }}>Set up again</Button>}</span>} />
