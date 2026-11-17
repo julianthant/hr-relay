@@ -17,9 +17,9 @@ export const CONTACT_PREVIEW_STEP = Object.freeze({ ...defineWorkflowStep({ key:
         nodeIds: ["contact-preview"],
         lines: [
           { id: "verify-contact-set", kind: "check", text: "Confirm the saved contact set still matches the approved plan.", nodeIds: ["contact-preview"] },
-          { id: "stage-primary-changes", kind: "action", text: "Fill the ordered primary contact changes in the editor.", nodeIds: ["contact-preview"] },
-          { id: "inspect-staged-contact", kind: "check", text: "Read the contact set back and verify the prepared changes.", nodeIds: ["contact-preview"] },
-          { id: "save-contact", kind: "click", target: "Save", when: [{ "dry-run": ["false"] }], nodeIds: ["contact-preview"] }
+          { id: "stage-primary-changes", kind: "action", text: "Fill the ordered primary contact changes in the editor.", when: [{ "contact-preview": ["saved", "unconfirmed", "saved-effect-mismatch", "dry-run"] }], nodeIds: ["contact-preview"] },
+          { id: "inspect-staged-contact", kind: "check", text: "Read the contact set back and verify the prepared changes.", when: [{ "contact-preview": ["saved", "unconfirmed", "saved-effect-mismatch", "dry-run"] }], nodeIds: ["contact-preview"] },
+          { id: "save-contact", kind: "click", target: "Save", when: [{ "dry-run": ["false"], "contact-preview": ["saved", "unconfirmed", "saved-effect-mismatch"] }], nodeIds: ["contact-preview"] }
         ],
         fields: [
           {

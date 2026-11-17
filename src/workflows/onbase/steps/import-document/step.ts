@@ -16,14 +16,15 @@ export const ONBASE_IMPORT_STEP = Object.freeze({ ...defineWorkflowStep({ key: "
         mode: "Fill form",
         nodeIds: ["import-document"],
         lines: [
-          { id: "stage-selected-page", kind: "action", text: "Stage the selected PDF page and its Emergency Contact document type.", nodeIds: ["import-document"] },
+          { id: "stage-selected-page", kind: "action", text: "Stage the selected PDF page and its Emergency Contact document type.", when: [{ "import-document": ["saved", "unconfirmed", "ONBASE_IMPORT_UNPROVED", "dry-run"] }], nodeIds: ["import-document"] },
           {
             id: "check-keywords",
             kind: "check",
             text: "Confirm the selected employee and required document keywords before importing.",
+            when: [{ "import-document": ["saved", "unconfirmed", "ONBASE_IMPORT_UNPROVED", "dry-run"] }],
             nodeIds: ["import-document"]
           },
-          { id: "import-pdf", kind: "click", target: "Import", when: [{ "dry-run": ["false"] }], nodeIds: ["import-document"] }
+          { id: "import-pdf", kind: "click", target: "Import", when: [{ "dry-run": ["false"], "import-document": ["saved", "unconfirmed", "ONBASE_IMPORT_UNPROVED"] }], nodeIds: ["import-document"] }
         ],
         fields: [
           {

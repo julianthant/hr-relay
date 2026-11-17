@@ -72,13 +72,16 @@ it("retains failed pages and members for review, while a failed document stops b
   assert.equal(walk(ocr, { "approve-records": "cancelled" }).stop?.value, "cancelled");
 });
 
-it("explains correctable contact values, an unconfirmed Save and filing-only retry without saving the contact twice", async () => {
+it("explains locked approved contacts, an unconfirmed Save and filing-only retry without saving the contact twice", async () => {
   const member = await review("emergency-contact-member");
   const invalid = outcome(member, "contact-plan", "CONTACT_APPROVED_FIELDS_INVALID");
   assert.equal(invalid.stops, true);
-  assert.match(invalid.then, /before Save.*Correct.*approve/u);
+  for (const value of ["CONTACT_APPROVED_FIELDS_INVALID", "relationship-unmapped", "address-choice-unresolved"]) {
+    const rejected = outcome(member, "contact-plan", value);
+    assert.equal(rejected.stops, true);
+    assert.match(rejected.then, /before Save.*locked for this run.*operator.*retrying this person cannot change the approved record/u);
+  }
   assert.deepEqual(walk(member, { "contact-plan-result": "CONTACT_APPROVED_FIELDS_INVALID", onbaseFiling: "file" }).steps, ["contact-plan"]);
-  assert.match(outcome(member, "contact-plan", "relationship-unmapped").then, /Correct.*retry/u);
   const mismatch = outcome(member, "contact-preview", "saved-effect-mismatch");
   assert.equal(mismatch.stops, true);
   assert.match(mismatch.then, /does not retry.*Save/u);
@@ -142,11 +145,27 @@ it("serves all five workflows with Logs titles, descriptions, complete fictional
   assert.equal(fill.mode, "fill");
   assert.deepEqual(fill.rows.slice(0, 4).map(row => [row.label, row.value]), [["Contact name", "Example Contact"], ["Relationship", "Parent"], ["Phone", "202-555-0148"], ["Primary contact", "Yes"]]);
   const save = blocks(member.reviewSpec, "contact-preview", "click");
-  assert.deepEqual(save.filter(block => applies(block, { "dry-run": "false" })).map(block => block.target), ["Save"]);
-  assert.deepEqual(save.filter(block => applies(block, { "dry-run": "true" })), []);
+  assert.deepEqual(save.filter(block => applies(block, { "dry-run": "false", "contact-preview": "saved" })).map(block => block.target), ["Save"]);
+  assert.deepEqual(save.filter(block => applies(block, { "dry-run": "true", "contact-preview": "dry-run" })), []);
   const onbase = workflows.find(workflow => workflow.id === "onbase"); assert.ok(onbase);
-  assert.deepEqual(blocks(onbase.reviewSpec, "import-document", "click").filter(block => applies(block, { "dry-run": "false" })).map(block => block.target), ["Import"]);
-  assert.deepEqual(blocks(onbase.reviewSpec, "import-document", "click").filter(block => applies(block, { "dry-run": "true" })), []);
+  const importClicks = blocks(onbase.reviewSpec, "import-document", "click");
+  assert.deepEqual(importClicks.filter(block => applies(block, { "dry-run": "false", "import-document": "saved" })).map(block => block.target), ["Import"]);
+  assert.deepEqual(importClicks.filter(block => applies(block, { "dry-run": "true", "import-document": "dry-run" })), []);
+});
+
+it("serves no staging or Save/Import click when the change is already present, since nothing is saved again", async () => {
+  const member = await review("emergency-contact-member");
+  const present = { "dry-run": "false", "contact-preview": "already-present" };
+  assert.deepEqual(blocks(member, "contact-preview", "click").filter(block => applies(block, present)), []);
+  const preview = member.steps.find(step => step.id === "contact-preview"); assert.ok(preview);
+  const shown = [...preview.description, ...preview.checks].filter(line => applies(line, present)).map(line => line.text);
+  assert.equal(shown.some(text => /Fill the ordered primary contact changes|prepared changes/u.test(text)), false);
+  assert.ok(shown.includes("Confirm the saved contact set still matches the approved plan."));
+  const onbase = await review("onbase");
+  const filed = { "dry-run": "false", "import-document": "already-present" };
+  assert.deepEqual(blocks(onbase, "import-document", "click").filter(block => applies(block, filed)), []);
+  const importing = onbase.steps.find(step => step.id === "import-document"); assert.ok(importing);
+  assert.equal([...importing.description, ...importing.checks].some(line => applies(line, filed) && /Stage the selected PDF page|keywords before importing/u.test(line.text)), false);
 });
 
 it("shows the original source page and proposed person before OCR approval, and the independently retrieved filing only after a live import", async () => {

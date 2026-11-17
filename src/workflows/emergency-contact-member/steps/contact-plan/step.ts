@@ -61,9 +61,9 @@ export const CONTACT_PLAN_STEP = Object.freeze({ ...defineWorkflowStep({ key: "c
     ],
     branchLabels: [],
     outcomes: [
-      { nodeId: "map-contact", value: "CONTACT_APPROVED_FIELDS_INVALID", then: "Stops this person's run before Save. Correct and approve the PDF record again before retrying this person." },
-      { nodeId: "contact-plan", value: "relationship-unmapped", then: "Stops before Save. Correct the relationship in the PDF review, approve it again, then retry this person." },
-      { nodeId: "contact-plan", value: "address-choice-unresolved", then: "Stops before Save. Choose the contact address in the PDF review, approve it again, then retry this person." },
+      { nodeId: "map-contact", value: "CONTACT_APPROVED_FIELDS_INVALID", then: "Stops this person's run before Save because the approved contact fields are not valid. The approved PDF record is locked for this run, so an operator must resolve it in Logs; retrying this person cannot change the approved record." },
+      { nodeId: "contact-plan", value: "relationship-unmapped", then: "Stops before Save because the approved relationship has no matching UCPath option. The approved PDF record is locked for this run, so an operator must resolve it in Logs; retrying this person cannot change the approved record." },
+      { nodeId: "contact-plan", value: "address-choice-unresolved", then: "Stops before Save because the approved record does not settle the contact address. The approved PDF record is locked for this run, so an operator must resolve it in Logs; retrying this person cannot change the approved record." },
       { nodeId: "contact-plan", value: "contact-plan-refused", then: "Stops before Save. Review the existing contacts and the approved contact before retrying this person." },
     ],
   } as const,
