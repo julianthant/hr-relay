@@ -177,10 +177,10 @@ describe("run search publication transition table", () => {
 });
 
 describe("run search publication derivation", () => {
-  const progress = (generation: number) => `run-after-${String(generation)}`;
+  const progress = (generation: number) => `30000000-0000-4000-8000-${String(generation).padStart(12, "0")}`;
   it.each([
     [{ authority_generation: 4, search_generation: 4, search_state: "ready" }, { state: "published", sourceGeneration: 4, afterRun: null }],
-    [{ authority_generation: 4, search_generation: 3, search_state: "invalid" }, { state: "building", sourceGeneration: 3, afterRun: "run-after-3" }],
+    [{ authority_generation: 4, search_generation: 3, search_state: "invalid" }, { state: "building", sourceGeneration: 3, afterRun: "30000000-0000-4000-8000-000000000003" }],
     [{ authority_generation: 4, search_generation: null, search_state: "invalid" }, { state: "invalid", sourceGeneration: 4, afterRun: null }],
     [{ authority_generation: 4, search_generation: null, search_state: "unbuilt" }, { state: "invalid", sourceGeneration: 4, afterRun: null }],
   ] as const)("derives %j as %j", (row, publication) => {
