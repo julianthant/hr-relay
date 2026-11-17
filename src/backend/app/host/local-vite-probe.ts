@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { Clock } from "../../../rules/time/clock.js";
 import {
+  DASHBOARD_FRONTEND_HOST,
   DASHBOARD_FRONTEND_OWNER_PATH,
   DashboardLaunchNonceSchema,
 } from "../../../models/dashboard/dashboard-frontend-owner.js";
@@ -94,7 +95,7 @@ export async function probeOwnedViteServer(input: Readonly<{
     return { state: "not-owned", reason: "probe-deadline-expired" };
   }
   const signal = AbortSignal.any([input.signal, AbortSignal.timeout(remainingMs)]);
-  const origin = `http://127.0.0.1:${String(input.port)}`;
+  const origin = `http://${DASHBOARD_FRONTEND_HOST}:${String(input.port)}`;
 
   const owner = await fetchProbeText(
     `${origin}${DASHBOARD_FRONTEND_OWNER_PATH}`,

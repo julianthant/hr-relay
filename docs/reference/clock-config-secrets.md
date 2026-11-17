@@ -42,7 +42,12 @@ budgets and durations and are not serialized as wall instants.
 `todayLocal()` returns `YYYY-MM-DD`. `timeOfDayCode()` returns local `HHMMSS`.
 `localDatePart(at)` and `formatTraceTimestamp(at)` are pure formatters.
 The fiscal year runs July 1 through June 30 and takes the ending calendar year's number.
-`runtimeTimeZone()` validates the runtime's IANA zone or throws `runtime-time-zone-unavailable`.
+Calendar days are Pacific days whatever zone the machine is set to. `PACIFIC_TIME_ZONE` in
+`src/models/dashboard/search-calendar.ts` is the one definition of that zone. The stored and summary
+run day, the queue, calendar, notification, OCR-member and data days and the calendar's today all
+read `searchPartitionDay`; Analytics day buckets, the served `serverClock.zone` and Separations'
+Pacific calendar day read the constant. `todayLocal()`, `timeOfDayCode()` and `localDatePart()` read
+the process zone; timeline `retentionDate` writes and the timeline prune keep it.
 `machineMonotonicMs()` uses `process.hrtime.bigint()` for backend IPC deadlines that need one
 machine-wide monotonic basis across processes.
 
@@ -564,7 +569,7 @@ Fresh workbook storage contains one General type seed. Incomplete-profile invent
 The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29 and 30. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 31` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 32` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during

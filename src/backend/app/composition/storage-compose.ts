@@ -49,7 +49,7 @@ import { systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { createRunQueueProjection } from "../../runs/projections/run-queue-projection.js";
 import { OfflineSpanRootRepairService,type SpanRootRepairReport } from "../../runs/recovery/span-root-repair.js";
-import { findRunHolder } from "../../transports/cli/person-stores.js";
+import { findRunHolder, PERSON_STORE_SIGN_IN_REQUIRED, selectPersonStores } from "../../transports/cli/person-stores.js";
 import { createNativeBrowserProbe } from "../../runtime/browser/native-browser.js";
 import { requireStoppedPool, type WorkerPool } from "../../runtime/workers/worker-pool.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
@@ -1741,15 +1741,20 @@ export async function composeStorageCommand(
     const report = await doctor(admission, credentials);
     return { output: json ? JSON.stringify(report, null, 2) : formatReport(report), exitCode: healthy(report) ? 0 : 1 };
   }
-  // Each person keeps their own store under the machine root, so the machine admission checks every ready person in turn.
+  const { ready, signedIn, notChecked } = selectPersonStores(admission);
+  if (signedIn === null) {
+    return { output: `storage doctor REFUSED — ${PERSON_STORE_SIGN_IN_REQUIRED}`, exitCode: 1 };
+  }
   const profiles: Array<{ profileId: string; report: StorageDoctorReport }> = [];
-  for (const { profileId } of admission.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready")) {
+  for (const profileId of [signedIn]) {
     const owner = admission.admitProfile(profileId);
     try { profiles.push({ profileId, report: await doctor(owner, createCredentialStore({ admission: owner, stateRoot: owner.stateRoot })) }); }
     finally { owner.release(); }
   }
   return {
-    output: json ? JSON.stringify({ profiles }, null, 2) : profiles.map(({ profileId, report }) => `person ${profileId}\n${formatReport(report)}`).join("\n\n"),
+    output: json ? JSON.stringify({ profiles, ...(ready.length > 1 ? { notChecked } : {}) }, null, 2)
+      : [...profiles.map(({ profileId, report }) => `person ${profileId}\n${formatReport(report)}`),
+        ...(ready.length > 1 ? notChecked.map(({ profileId }) => `person ${profileId}: not checked, signed out`) : [])].join("\n\n"),
     exitCode: profiles.every(({ report }) => healthy(report)) ? 0 : 1,
   };
 }

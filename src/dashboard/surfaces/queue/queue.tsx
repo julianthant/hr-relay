@@ -49,6 +49,7 @@ import {
   canViewAllMembers,
   queueMemberLines,
   queueMemberPresentation,
+  queueWarningTitle,
   type QueueMemberLine,
   queueMemberKey,
   queueMemberRollup,
@@ -223,7 +224,7 @@ function HeaderChips({
       {/* Missing warning counts imply at least one only for warning-complete rows; other statuses invent no count. */}
       {(surface.warnings.state === "present" || status === "doneWarnings") && (
         <span
-          title={surface.warnings.state === "present" ? surface.warnings.first : "Finished with warnings"}
+          title={queueWarningTitle(surface) ?? "Finished with warnings"}
           className={rowChip("warning")}
         >
           <AlertTriangle aria-hidden className={dsIcon.sm} />
@@ -373,15 +374,16 @@ function MemberWell({
   );
 }
 
-function MemberLine({ line, selectedRunId, selected, bulkSelected, onSelect, onSelectRun }: {
+function MemberLine({ line, workflowLabel, selectedRunId, selected, bulkSelected, onSelect, onSelectRun }: {
   line: QueueMemberLine;
+  workflowLabel: string;
   selectedRunId?: string;
   selected: boolean;
   bulkSelected?: boolean;
   onSelect?: () => void;
   onSelectRun: (runId: string) => void;
 }) {
-  const view = queueMemberPresentation(line, selectedRunId);
+  const view = queueMemberPresentation(line, selectedRunId, workflowLabel);
   const status = dsStatusOf(view.status);
   const spec = PROPOSED_STATUS[view.paused ? "queued" : status];
   const Icon = view.paused ? Pause : spec.icon;
@@ -427,7 +429,9 @@ function GroupMemberList({
   membersOf,
   state,
   handlers,
+  workflowLabelOf,
 }: {
+  workflowLabelOf: (workflowId: string) => string;
   surface: OperationSurfaceWire | QueueBatch;
   itemKey: string;
   members: readonly QueueSurfaceWire[];
@@ -442,6 +446,7 @@ function GroupMemberList({
   /** Offer roster navigation only when its destination handler exists. */
   const batch = "kind" in surface ? surface : undefined;
   const title = "kind" in surface ? "Person Lookup" : queueRowTitle(surface);
+  const workflowLabel = "kind" in surface ? title : workflowLabelOf(surface.workflowId);
   const canOpenRoster = batch === undefined && canViewAllMembers(rollup.total) && handlers.onOpenRoster !== undefined;
   const { onToggleWell, onOpenRoster } = handlers;
 
@@ -518,7 +523,7 @@ function GroupMemberList({
           {ordered.map(line => {
             if (line.kind === "record") {
               const selected = state.selectedMember !== undefined && queueMemberKey(state.selectedMember) === line.key;
-              return <MemberLine key={line.key} line={line} selected={selected} onSelectRun={handlers.onSelect}
+              return <MemberLine key={line.key} line={line} workflowLabel={workflowLabel} selected={selected} onSelectRun={handlers.onSelect}
                 onSelect={handlers.onOpenMember === undefined ? undefined : () => handlers.onOpenMember?.(line.member)} />;
             }
             const item = line.item;
@@ -526,7 +531,7 @@ function GroupMemberList({
             const visible = bulkMember ? item.representative : item.attempts.find(attempt => String(attempt.runId) === state.selectedRunId) ?? item.representative;
             const selected = item.attempts.some(attempt => String(attempt.runId) === state.selectedRunId);
             return <Fragment key={line.key}>
-              <MemberLine line={line} selectedRunId={bulkMember ? undefined : state.selectedRunId} selected={selected}
+              <MemberLine line={line} workflowLabel={workflowLabel} selectedRunId={bulkMember ? undefined : state.selectedRunId} selected={selected}
                 bulkSelected={bulkMember ? state.bulkIds?.has(item.representative.runId) === true : undefined}
                 onSelect={() => bulkMember ? handlers.onToggleBulk?.(item.representative.runId) : handlers.onSelect(String(visible.runId))}
                 onSelectRun={handlers.onSelect} />
@@ -536,7 +541,7 @@ function GroupMemberList({
                 </div>}
                 {visible.surfaceKind === "operation" && (visible.memberRunIds.length > 0 || (visible.recordMembers?.members.length ?? 0) > 0) && <GroupMemberList
                   surface={visible} itemKey={item.key} members={membersOf?.get(visible.runId) ?? NO_MEMBERS}
-                  membersOf={membersOf} state={state} handlers={handlers} />}
+                  membersOf={membersOf} state={state} handlers={handlers} workflowLabelOf={workflowLabelOf} />}
               </td></tr>}
             </Fragment>;
           })}
@@ -878,6 +883,7 @@ export function QueueRow({
                   membersOf={membersOf}
                   state={state}
                   handlers={handlers}
+                  workflowLabelOf={workflowLabelOf}
                 />
               </div>
             )}

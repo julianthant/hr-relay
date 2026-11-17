@@ -27,7 +27,6 @@ async function setup(createPreflight?: Parameters<typeof launchHarness>[4]) { co
 type Harness = Awaited<ReturnType<typeof setup>>;
 const text = () => document.body.textContent ?? "";
 function button(name: string): HTMLButtonElement {
-  if (name === "Continue" && [...document.querySelectorAll("button")].some(node => node.textContent?.trim() === "Preview plan")) name = "Preview plan";
   const matches = [...document.querySelectorAll("button")].filter((node) => (node.textContent?.trim() === name || node.getAttribute("aria-label") === name));
   assert.equal(matches.length, 1, `one button ${name}: ${text()}`); return matches[0];
 }

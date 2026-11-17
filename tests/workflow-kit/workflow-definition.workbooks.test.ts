@@ -149,6 +149,41 @@ describe("workbook field requirements", () => {
     expect(workflowPlanning(compileWorkflow(definition).descriptor).requiredWorkbookFields).toEqual(["email", "eid"]);
   });
 
+  it("declares an optional check beside the required reference without changing the lookups", () => {
+    const check = { id: "reference-check", keyFieldId: "eid" };
+    const alone = compileWorkflow(defineWorkflow({ ...base, workbookCheck: check })).descriptor;
+    expect(alone.requiredWorkbookFields).toEqual([]);
+    expect(alone.workbookReference).toBeUndefined();
+    expect(alone.workbookCheck).toEqual(check);
+    expect(workflowPlanning(alone).workbookCheck).toEqual(check);
+    expect(workflowPlanning(alone).parseInput({ value: "fixture" }).lookups).toEqual([]);
+    const both = compileWorkflow(defineWorkflow({ ...base, requiredWorkbookFields: ["email", "eid"],
+      workbookReference: requirement, referenceKeys: input => [input.value], workbookCheck: check })).descriptor;
+    expect(both.workbookReference).toEqual(requirement);
+    expect(both.workbookCheck).toEqual(check);
+    expect(Object.isFrozen(both.workbookCheck)).toBe(true);
+    expect(workflowPlanning(both).parseInput({ value: "fixture" }).lookups).toEqual([{ typeId: "onboarding-roster", keys: ["fixture"], fields: ["email", "eid"] }]);
+    const lowLevel = defineWorkflowDescriptor({ ...descriptorSpec, workbookCheck: check });
+    expect(lowLevel.workbookCheck).toEqual(check);
+    const plain = compileWorkflow(defineWorkflow(base)).descriptor;
+    expect(plain.workbookCheck).toBeUndefined();
+    expect(alone.contractFingerprint).not.toBe(plain.contractFingerprint);
+    expect(alone.contractFingerprint).not.toBe(compileWorkflow(defineWorkflow({ ...base, workbookCheck: { ...check, keyFieldId: "email" } })).descriptor.contractFingerprint);
+  });
+
+  it("rejects a check that shares the required reference's id or names an unknown key field", () => {
+    expect(() => defineWorkflow({ ...base, requiredWorkbookFields: ["email", "eid"], workbookReference: requirement,
+      referenceKeys: input => [input.value], workbookCheck: { id: requirement.id, keyFieldId: "eid" } })).toThrow();
+    expect(() => defineWorkflow({ ...base, workbookCheck: { id: "reference-check", keyFieldId: "unknown" } })).toThrow();
+  });
+
+  it("inherits the check into a step proof", () => {
+    const parent = defineWorkflow({ ...base, role: { kind: "composition" }, workbookCheck: { id: "reference-check", keyFieldId: "eid" } });
+    const { definition } = defineStepProof(parent, { group, proof: { id: "workbook-requirements-proof", order: 1,
+      build: actual => ({ ...inheritStepProof(actual), code: "wbp", label: "Workbook proof", steps: authored }) } });
+    expect(definition.workbookCheck).toEqual(parent.workbookCheck);
+  });
+
   it.each(currentDefinitions)("preserves $id declared fields", definition => {
     const expected = definition.id === "ocr" ? [...OCR_ROSTER_FIELDS] : [];
     expect(Object.hasOwn(definition, "requiredWorkbookFields")).toBe(true);

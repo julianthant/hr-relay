@@ -55,7 +55,6 @@ export function createActivityPopulationService(input: {
   database: AuthorityDatabase; clock: Clock;
   descriptors: Parameters<typeof queryActivitySummaries>[2]["descriptors"];
   ledger: Parameters<typeof queryActivitySummaries>[2]["ledger"];
-  timeZone?: string;
 }) {
   const { database, clock } = input;
   const reports = createActivitySelectionService({ database, clock, read: (from, to, generatedAt) => queryActivitySummaries(database, { from, to, generatedAt }, input) });

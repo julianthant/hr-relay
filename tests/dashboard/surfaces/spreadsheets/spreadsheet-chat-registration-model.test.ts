@@ -16,6 +16,8 @@ function world() {
   const client = {
     workbookResults: vi.fn<WorkbookLibraryQueries['workbookResults']>(async () => { throw new Error('Unexpected workbookResults call'); }),
     workbookImport: vi.fn<WorkbookLibraryQueries['workbookImport']>(async () => { throw new Error('Unexpected workbookImport call'); }),
+    workbookClone: vi.fn<WorkbookLibraryQueries['workbookClone']>(async () => { throw new Error('Unexpected workbookClone call'); }),
+    workbookImportSharePoint: vi.fn<WorkbookLibraryQueries['workbookImportSharePoint']>(async () => { throw new Error('Unexpected workbookImportSharePoint call'); }),
     workbookList: vi.fn(async () => versions.length ? [versions.at(-1)!] : []),
     workbookOpen: vi.fn(async () => { const saved = versions.at(-1); if (!saved) throw new Error('not found'); return saved; }),
     workbookCreate: vi.fn(async (workbook: unknown) => { const saved = record(workbook, 1); versions.push(saved); return saved; }),

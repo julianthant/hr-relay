@@ -596,7 +596,7 @@
   "tests/backend/storage/sqlite/offline-restore.integration.test.ts": 9.2,
   "tests/backend/storage/sqlite/offline-restore.invalidation-replay.integration.test.ts": 20.8,
   "tests/backend/storage/sqlite/offline-restore.profile-continuity.integration.test.ts": 96.4,
-  "tests/backend/storage/sqlite/person-preferences-migration.test.ts": 0.4,
+  "tests/backend/storage/sqlite/settings-record-conversion.person-preferences.test.ts": 0.4,
   "tests/backend/storage/sqlite/profile-local-databases.file-identities.integration.test.ts": 0.1,
   "tests/backend/storage/sqlite/profile-local-databases.integration.test.ts": 0,
   "tests/backend/storage/sqlite/profile-local-databases.readonly-binding.integration.test.ts": 61.9,

@@ -89,6 +89,7 @@ describe("Person Lookup task implementations", () => {
         "ucpath/verify-termination-filing-present",
         "workbooks/read-reference",
         "workbooks/read-result",
+        "workbooks/verify-person",
         "workflow:crm-doc-download/read-document-rows",
         "workflow:crm-doc-download/read-worksheet-archives",
         "workflow:emergency-contact-member/read-approved-contact",
@@ -121,11 +122,13 @@ describe("Person Lookup task implementations", () => {
         "workflow:separations/match-identity",
         "workflow:separations/match-separation-subject",
         "workflow:separations/match-termination-type",
+        "workflow:separations/read-reference-stop",
         "workflow:separations/read-separation-dates",
         "workflow:separations/read-separation-plan",
         "workflow:separations/verify-identity-approval",
         "workflow:separations/verify-termination-receipt",
 
+        "workflow:work-study/read-reference-stop",
         "workflow:work-study/read-transaction-plan",
       ],
     );

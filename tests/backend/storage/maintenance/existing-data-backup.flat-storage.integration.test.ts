@@ -1,5 +1,5 @@
 import { prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
-import { convertPersonPreferencesRow } from "../../../../src/backend/storage/sqlite/person-preferences-migration.js";
+import { convertSettingsRecordRow } from "../../../../src/backend/storage/sqlite/settings-record-conversion.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import assert from "node:assert/strict";
@@ -428,7 +428,7 @@ for (const key of ["stateRoot", "artifactRoot", "reportsDir"] as const) {
     const f = await createHistoricalFlatProfileFixture(), database = new DatabaseSync(f.databasePath);
     try {
       const row = database.prepare("SELECT payload_json FROM settings_snapshots LIMIT 1").get(); assert.equal(typeof row?.payload_json, "string");
-      const inspected = convertPersonPreferencesRow("settings_snapshots", row);
+      const inspected = convertSettingsRecordRow("settings_snapshots", row);
       assert.ok(typeof inspected.payload_json === "string");
       const original = ConfigSnapshotRecordSchema.parse(JSON.parse(inspected.payload_json));
       const config = { ...original.config, paths: { ...original.config.paths, [key]: join(f.workspace, "unsupported") } };

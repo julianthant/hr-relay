@@ -432,7 +432,7 @@ describe("redaction surface scan — the declaration audit", () => {
     assert.deepEqual(surfaces.map(surface => surface.id).sort(), [
       "durable/editable-workbook", "durable/saved-workbook", "durable/workbook-operation", "request/workbook-create", "request/workbook-intake",
       "request/workbook-operation", "request/workbook-reference", "request/workbook-save", "wire/editable-workbook", "wire/intake-command-result", "wire/saved-workbook",
-      "wire/workbook-history", "wire/workbook-intake", "wire/workbook-list", "wire/workbook-metadata", "wire/workbook-named-version",
+      "wire/workbook-history", "wire/workbook-import-result", "wire/workbook-intake", "wire/workbook-list", "wire/workbook-metadata", "wire/workbook-named-version",
       "wire/workbook-operation-receipt", "wire/workbook-reference", "wire/workbook-type",
     ]);
     assert.equal(SURFACE_MODULE_DISPOSITIONS.find(entry => entry.module === module)?.state, "audited");

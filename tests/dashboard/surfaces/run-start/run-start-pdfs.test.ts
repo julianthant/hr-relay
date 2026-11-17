@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { previewPdfRun } from "../../../../src/dashboard/surfaces/run-start/run-start-pdfs.js";
+import { previewPdfRun, unpickedPdfRunField } from "../../../../src/dashboard/surfaces/run-start/run-start-pdfs.js";
 import { I9CheckStartInput, I9_CHECK_START_EXAMPLE } from "../../../../src/models/workflows/i9-check/start.js";
 import { i9CheckStartWorkflow } from "../../../../src/workflows/i9-check-start/workflow.js";
 import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
@@ -32,9 +32,17 @@ it("plans one strict Emergency Contact input per attached PDF with its stable re
   if (surface === undefined) throw new Error("PDF start not declared");
   const files = [["first.pdf", "a", "00000000-0000-4000-8000-000000000011"], ["second.pdf", "c", "00000000-0000-4000-8000-000000000012"]].map(([fileName, digit, readingId]) => ({ readingId,
     source: OcrSourceUploadSchema.parse({ artifact: { ...OCR_INPUT_EXAMPLE.document, sha256: digit.repeat(64) }, fileName, uploadedAt: "2026-11-03T00:00:00.000Z", uploadedBy: "local-operator" }) }));
-  const preview = previewPdfRun(surface, { files, asOf: "2026-11-03", reviewer: "Example Reviewer" });
+  const draft = { files, asOf: "2026-11-03", reviewer: "Example Reviewer" };
+  // File to OnBase has no default: until it is picked the attached PDFs are listed and nothing can be planned.
+  expect(unpickedPdfRunField(surface, {})?.label).toBe("File to OnBase");
+  expect(unpickedPdfRunField(surface, { onbaseFiling: "maybe" })?.label).toBe("File to OnBase");
+  expect(previewPdfRun(surface, draft).entries).toHaveLength(2);
+  expect(previewPdfRun(surface, draft).submissions).toEqual([]);
+  expect(unpickedPdfRunField(surface, { onbaseFiling: "skip" })).toBeNull();
+  expect(previewPdfRun(surface, draft, { onbaseFiling: "skip" }).submissions.map(submission => EmergencyContactInputSchema.parse(submission).onbaseFiling)).toEqual(["skip", "skip"]);
+  const preview = previewPdfRun(surface, draft, { onbaseFiling: "file" });
   expect(preview.entries.map(entry => entry.sourceText)).toEqual(["first.pdf", "second.pdf"]);
   expect(preview.submissions.map(submission => EmergencyContactInputSchema.parse(submission)))
-    .toMatchObject(files.map(file => ({ fileName: file.source.fileName, readingId: file.readingId, roster: null, reading: { kind: "subscription" } })));
+    .toMatchObject(files.map(file => ({ fileName: file.source.fileName, readingId: file.readingId, roster: null, reading: { kind: "subscription" }, onbaseFiling: "file" })));
   expect(previewPdfRun(surface, null).submissions).toHaveLength(0);
 });
