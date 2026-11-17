@@ -33,12 +33,20 @@ const READ_TYPED: StepManualDeclaration = {
 };
 
 /** The child reads then finishes; the parent releases one member, two for mode "repeat", and an ok and a failing one for "confirmed". */
-function workflows() {
-  const child = compileWorkflow(defineWorkflow({ ...common, id: CHILD, code: "ftc", steps: ({ task, group, result }) => {
+function workflows(nested = false) {
+  const leaf = compileWorkflow(defineWorkflow({ ...common, id: "fixture-typed-child-leaf", code: "ftl", steps: ({ task, result }) => {
     const read = task({ id: "read", contract: plan1Contract, replay: "checkpoint" }, [], ({ input }) => input);
-    const finish = task({ id: "finish", contract: plan1Contract, replay: "checkpoint" }, [read], ({ input }) => input);
+    return { steps: [[{ key: "reading", label: "Reading" }, [read]]], result: result(Plan1Output, [read], ({ outputs }) => outputs.read) };
+  } }));
+  const child = compileWorkflow(defineWorkflow({ ...common, id: CHILD, code: "ftc", steps: ({ task, delegate, group, result }) => {
+    const read = task({ id: "read", contract: plan1Contract, replay: "checkpoint" }, [], ({ input }) => input);
+    const finish = nested ? delegate({ id: "finish", target: { id: leaf.descriptor.id, input: Plan1Input, result: Plan1Output }, edgeId: "leaf",
+      cardinality: "many", await: "terminal", join: "all",
+      policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" } }, [read], {
+      bind: ({ input }) => [input], deriveChildItemId: (_input, identity) => identity.canonicalItemId,
+    }) : task({ id: "finish", contract: plan1Contract, replay: "checkpoint" }, [read], ({ input }) => input);
     return { steps: [[group({ key: "reading", label: "Reading" }, { manual: READ_TYPED }), [read]], [{ key: "finish", label: "Finish" }, [finish]]],
-      result: result(Plan1Output, [read, finish], ({ outputs }) => outputs.read) };
+      result: result(Plan1Output, nested ? [read] : [read, finish], ({ outputs }) => outputs.read) };
   } }));
   const parent = compileWorkflow(defineWorkflow({ ...common, id: "fixture-typed-child-parent", code: "ftp",
     rows: [
@@ -58,13 +66,14 @@ function workflows() {
       });
       return { steps: [[{ key: "members", label: "Members" }, [members]]], result: result(Plan1Input, [], ({ input }) => input) };
     } }));
-  const modules = [composeWorkflowModule(child, plan1Stores.stores), composeWorkflowModule(parent, plan1Stores.stores)];
+  const modules = [composeWorkflowModule(child, plan1Stores.stores), composeWorkflowModule(parent, plan1Stores.stores),
+    ...(nested ? [composeWorkflowModule(leaf, plan1Stores.stores)] : [])];
   bindWorkflowDelegationTargets(modules.map((module) => module.descriptor));
   return { parent, modules };
 }
 
-async function harness() {
-  const { parent, modules } = workflows();
+async function harness(nested = false) {
+  const { parent, modules } = workflows(nested);
   const h = await world.executorHarness({ descriptor: parent.descriptor, stores: plan1Stores });
   const { database, clock, path, stateRoot } = h.authority;
   const patch = { "actor.label": { set: "Synthetic operator" } } as const;
@@ -156,4 +165,18 @@ it("serves a child row's steps from the least advanced of several child runs", a
   assert.equal(run.lifecycle.outcome, "failed");
   assert.deepEqual(rerun(root.envelope.runId).children?.map(({ workflow, steps }) => [workflow, stepStates(steps)]),
     [[CHILD, [["reading", "failed"], ["finish", "unfinished"]]]]);
+});
+
+it("reports completed delegation nodes in both a parent row and a nested child row", async () => {
+  const { execution, parent, rerun } = await harness(true);
+  const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "ok" }, { dryRun: false });
+  const { run } = await execution.execute(root, world.SIGNAL);
+  assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
+  const snapshot = rerun(root.envelope.runId);
+  assert.deepEqual(snapshot.steps, [{ key: "members", state: "completed", nodes: [
+    { nodeId: "members", state: "completed", reason: "delegation-settled" },
+  ] }]);
+  assert.deepEqual(snapshot.children?.[0]?.steps.find(({ key }) => key === "finish"), {
+    key: "finish", state: "completed", nodes: [{ nodeId: "finish", state: "completed", reason: "delegation-settled" }],
+  });
 });
