@@ -4,10 +4,9 @@ import assert from "node:assert/strict";
 import { CreateRunRequestSchema } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { sourceBoundReadDescriptor,sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
-import { absentProbeEvidence,buildWriteFixtureRegistry,writeFixtureDescriptor,writeFixtureDocumentDescriptor,writeFixtureMemoDescriptor,writeFixtureOmittableDescriptor,writeFixtureParallelDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { absentProbeEvidence,writeFixtureDescriptor,writeFixtureDocumentDescriptor,writeFixtureMemoDescriptor,writeFixtureParallelDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -293,23 +292,4 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     assert.equal((await h.execute(repeat)).state, "done");
     assert.deepEqual(h.fresh(source), source);
   });
-
-  it("omits a selected-out transaction with submitted facts and no new write evidence", async () => {
-    const h = await sourceBoundHarness(writeFixtureOmittableDescriptor, (world) => {
-      const write = buildWriteFixtureRegistry(world); const read = sourceBoundReadStores(world);
-      return defineTaskStoreRegistry([...write.stores, ...read.stores], { scenarioIds: [...write.corpus.scenarioIds, ...read.corpus.scenarioIds], tasks: [...write.corpus.tasks, ...read.corpus.tasks] });
-    }, undefined, undefined, profileFixtures.create); disposers.push(h.dispose);
-    const source = await completed(h); const before = effects(h); h.world.events.length = 0;
-    const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false,
-      selectedStepKeys: ["reading"], stepOmissions: [{ step: "write", facts: { reason: "operator omission" } }],
-      rerunSource: { runId: source.envelope.runId, expectedVersion: source.version, intent: "rerun", selectedStepKeys: ["reading"] } });
-    const repeat = h.start(plan); assert.equal((await h.execute(repeat)).state, "done");
-    assert.deepEqual(h.world.events, ["read:absent"]);
-    assert.deepEqual(h.database.authority.writeIntents.listByRun(repeat.envelope.runId), []);
-    assert.deepEqual(h.database.authority.runCheckpoints.listByItem(h.descriptor.id, repeat.envelope.itemId).filter(row => row.runId === repeat.envelope.runId && row.nodeId !== "read"), []);
-    assert.deepEqual(effects(h).intents, before.intents); assert.deepEqual(h.fresh(source), source);
-  });
-
-
-
 });

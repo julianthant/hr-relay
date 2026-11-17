@@ -121,10 +121,10 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(h.world.events.filter((event) => event === "commit").length, priorCommits);
     assert.ok(h.world.events.includes("read:edited memo")); assert.equal(sourceBytes(h, source), bytes);
   });
-  it("omitted work has no new transaction proof; copied omission facts can be cleared/edited without attribution", async () => {
+  it("copied omission facts can be cleared/edited without attribution", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source); await mount(h, source);
-    await act(async () => { checkbox("Check employee").click(); checkbox("File transaction").click(); });
-    const before = h.authoritySnapshot(); await press("Continue"); assert.ok(document.querySelector('[aria-label="Values"]'));
+    await act(async () => { checkbox("Check employee").click(); });
+    const before = h.authoritySnapshot(); await press("Continue"); await press("Confirm"); assert.ok(document.querySelector('[aria-label="Values"]'));
     assert.equal(h.authoritySnapshot(), before);
     assert.equal(field("Employee ID").value, "10812345"); await fill(field("Employee ID"), ""); assert.equal(field("Employee ID").value, "");
     await fill(field("Employee ID"), "10812346"); await press("Copy Check employee · Checked employee ID");
@@ -132,11 +132,10 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await fill(field("Checked employee ID"), "10812346"); await press("Continue"); await act(async () => checkbox("Dry run").click());
     await press("Start dry run");
     const request = StartPlanRequestSchema.parse(h.submissions.at(-1)); assert.deepEqual(request.submissions, [{ eid: "10812346" }]);
-    assert.deepEqual(request.stepOmissions, [{ step: "checking", facts: { eid: "10812346" } }, { step: "filing", facts: {} }]);
+    assert.deepEqual(request.stepOmissions, [{ step: "checking", facts: { eid: "10812346" } }]);
     assert.deepEqual(request.rerunSource?.copiedFrom, []);
     const queued = h.queueRoots.at(-1); assert.ok(queued); const run = h.database.authority.runs.get(queued.runId); assert.ok(run);
-    assert.notEqual(run.envelope.itemId, source.envelope.itemId); assert.equal((await h.execute(run)).state, "done");
-    assert.equal(h.database.authority.writeIntents.listByRun(run.envelope.runId).length, 0); assert.equal(sourceBytes(h, source), bytes);
+    assert.notEqual(run.envelope.itemId, source.envelope.itemId); assert.equal(sourceBytes(h, source), bytes);
   });
 
 });

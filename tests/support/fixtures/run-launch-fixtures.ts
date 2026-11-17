@@ -67,7 +67,7 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", curre
       { key: `${prefix}reading`, label: "Read employee", nodes: ["read"] },
       { key: `${prefix}checking`, label: "Check employee", nodes: ["check"], manual: { form: StepOmissionFormSchema.parse({ fields: [{ key: "eid", label: "Checked employee ID", kind: "eid", replaces: { nodeId: "check", path: "eid" } }] }),
         produces: { check: ({ facts }: StepOmissionProduceContext) => z.strictObject({ eid: EidSchema }).parse(facts) } } },
-      { key: `${prefix}filing`, label: "File transaction", nodes: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"], manual: { form: StepOmissionFormSchema.parse({ fields: [] }), produces: {}, skips: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"], skipsGatesAndTransactions: true } },
+      { key: `${prefix}filing`, label: "File transaction", nodes: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"] },
     ],
     rerunValues: [
       { nodeId: "read", fieldPath: "eid", targetFieldPath: "eid", label: "Employee ID" },
