@@ -2385,8 +2385,6 @@ export class AuthorityDatabase implements Disposable {
   #busyTimeoutMs: number;
   #credentialCommandIds: (commandId: string) => boolean;
   #closed = false;
-  /** An ordinary read-write connection keeps planner statistics: it optimizes when it opens and again when it closes. */
-  #keepsPlannerStatistics = false;
   /** Statements reused across reads: only the run lookup a queue read repeats per row, used with get(), never iterate(). */
   #statements: SQLTagStore;
   #openedFileIdentity: DirectoryIdentity | undefined;
@@ -2515,11 +2513,6 @@ export class AuthorityDatabase implements Disposable {
         if (!existed && purpose !== "stopped-restore-projection") this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#configureConnection();
         if (existed && purpose === "ordinary") this.#initializeSchema(existingVersion, options.migrationOwner);
-        // After any upgrade and before the change-log baseline below, which records the schema cookie that the first statistics move.
-        if (purpose === "ordinary") {
-          this.#database.exec("PRAGMA optimize=0x10002");
-          this.#keepsPlannerStatistics = true;
-        }
       }
       this.#database.exec("BEGIN");
       if (readOnlyNoMigrate) this.#validateReadOnlyNoMigrateDatabase(existingVersion);
@@ -3612,15 +3605,9 @@ export class AuthorityDatabase implements Disposable {
   close(): void {
     if (this.#closed) return;
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");
-    let optimizeFailure: { error: unknown } | undefined;
-    if (this.#keepsPlannerStatistics) {
-      try { this.#database.exec("PRAGMA optimize"); }
-      catch (error) { optimizeFailure = { error }; }
-    }
     try { this.#database.close(); }
-    catch (error) { this.#failNativeClosure(optimizeFailure === undefined ? [error] : [optimizeFailure.error, error]); }
+    catch (error) { this.#failNativeClosure([error]); }
     this.#closed = true;
-    if (optimizeFailure !== undefined) throw new Error("authority-close-optimize-failed", { cause: optimizeFailure.error });
   }
 
   [Symbol.dispose](): void {

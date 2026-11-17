@@ -11,43 +11,24 @@ import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
-async function seededStore(runs: number) {
+async function seededStore() {
   const bound = await createBoundProfileFixture();
   cleanups.push(() => bound.close());
-  const open = () => AuthorityDatabase.open(bound.admission, { path: bound.path, busyTimeoutMs: 1000, migrationOwner: "connection-tuning" },
+  const database = AuthorityDatabase.open(bound.admission, { path: bound.path, busyTimeoutMs: 1000, migrationOwner: "connection-tuning" },
     undefined, undefined, undefined, undefined, boundProfileCredentials(bound.admission));
-  const database = open();
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   let seed = 0;
   /** Enqueues `count` runs in one transaction: a burst of writes. */
   const enqueue = (count: number) => database.withAuthorityTransaction(() => {
     for (let index = 0; index < count; index += 1) database.authority.runs.enqueue(runRecordOf({ seed: ++seed, workflow: "person-lookup" }));
   });
-  enqueue(runs);
-  return { bound, database, open, enqueue };
-}
-
-/** Tables the planner has statistics for, read from another connection. */
-function analyzedTables(path: string): readonly string[] {
-  const raw = new DatabaseSync(path, { readOnly: true });
-  try {
-    if (raw.prepare("SELECT name FROM sqlite_schema WHERE name='sqlite_stat1'").get() === undefined) return [];
-    return raw.prepare("SELECT DISTINCT tbl FROM sqlite_stat1 ORDER BY tbl").all().map(row => String(row.tbl));
-  } finally { raw.close(); }
+  enqueue(1);
+  return { bound, database, enqueue };
 }
 
 describe("authority connection tuning", () => {
-  it("leaves planner statistics for the runs it wrote after a session that read them", async () => {
-    const { bound, database } = await seededStore(200);
-    database.summaryWorkflows();
-    database.authority.runs.search({ q: "EID", scope: "trace", facets: {}, limit: 25 });
-    expect(analyzedTables(bound.path)).not.toContain("runs");
-    database.close();
-    expect(analyzedTables(bound.path)).toContain("runs");
-  });
-
   it("returns the WAL to its size limit after a burst written while a backup copy runs", async () => {
-    const { bound, database, enqueue } = await seededStore(1);
+    const { bound, database, enqueue } = await seededStore();
     cleanups.push(() => { database.close(); });
     const directory = join(bound.stateRoot, "backups", "authority");
     mkdirSync(directory, { recursive: true, mode: 0o700 });
