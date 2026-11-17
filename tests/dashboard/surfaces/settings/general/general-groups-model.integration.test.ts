@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach,describe,it,vi } from "vitest";
 import { SettingsSectionSkeleton } from "../../../../../src/dashboard/surfaces/settings/settings-loading.js";
 import { searchSettings,settingsSearchIndex } from "../../../../../src/dashboard/surfaces/settings/navigation/settings-search-model.js";
-import { buildSettingsNav } from "../../../../../src/dashboard/surfaces/settings/settings-model.js";
+import { buildSettingsNav,resolveSettingsSection } from "../../../../../src/dashboard/surfaces/settings/settings-model.js";
 import { mountSettingsHarness,settingsAction,syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
 
 const cleanups: (() => void | Promise<void>)[] = [];
@@ -32,14 +32,43 @@ async function choose(trigger: Element, value: string): Promise<void> {
 }
 
 describe("Settings > General groups", () => {
-  it("draws General, Runs and Notifications with the six rows in the mock's order, labels and descriptions", async () => {
+  it("draws the ChatGPT card first and Permissions second, above General, Runs and Notifications with the six rows in the mock's order, labels and descriptions", async () => {
     const h = await setup();
-    assert.deepEqual(headings(h.host), ["General", "Runs", "Notifications"]);
+    assert.deepEqual(headings(h.host), ["ChatGPT", "Permissions", "General", "Runs", "Notifications"]);
     const rows = [...h.host.querySelectorAll('[data-settings-path^="preferences."]')];
     assert.deepEqual(rows.map(row => row.getAttribute("data-settings-path")), ROWS.map(row => row[0]));
     rows.forEach((row, index) => { assert.ok(row.textContent?.includes(ROWS[index][1]), ROWS[index][1]); assert.ok(row.textContent?.includes(ROWS[index][2]), ROWS[index][2]); });
     const sectionOf = (row: Element) => { let node: Element | null = row; while (node !== null && node.querySelector(".ds-body-section-heading") === null) node = node.parentElement; return node?.querySelector(".ds-body-section-heading")?.firstChild?.textContent; };
     assert.deepEqual(rows.map(sectionOf), ["Runs", "Runs", "Notifications", "Notifications", "Notifications", "Notifications"]);
+  });
+  it("puts the ChatGPT status row before the Full access switch and no Subscription page in the nav", async () => {
+    const h = await setup();
+    const card = h.host.querySelector('[data-settings-path="chatgpt.account"]');
+    const permission = h.host.querySelector('[data-settings-path="assistant.fullAccess"]');
+    assert.ok(card && permission);
+    assert.ok(card.compareDocumentPosition(permission) & Node.DOCUMENT_POSITION_FOLLOWING);
+    assert.ok(permission.textContent?.includes("Full access"));
+    const document = h.authority.read();
+    const ids = buildSettingsNav(document).flatMap(group => group.entries.map(entry => entry.id));
+    assert.equal(ids.includes("subscription"), false);
+    assert.equal(resolveSettingsSection(buildSettingsNav(document), "subscription").state === "open" && (resolveSettingsSection(buildSettingsNav(document), "subscription") as { entry: { id: string } }).entry.id, "general");
+  });
+  it("flips Full access for the assistant's approval menu", async () => {
+    const h = await setup();
+    const input = h.host.querySelector<HTMLElement>('[data-settings-path="assistant.fullAccess"] [role="switch"], [data-settings-path="assistant.fullAccess"] input[type="checkbox"]');
+    assert.ok(input);
+    const before = input.getAttribute("aria-checked") === "true" || (input as HTMLInputElement).checked === true;
+    await settingsAction(() => input.click());
+    const after = h.host.querySelector<HTMLElement>('[data-settings-path="assistant.fullAccess"] [role="switch"], [data-settings-path="assistant.fullAccess"] input[type="checkbox"]');
+    assert.equal(after?.getAttribute("aria-checked") === "true" || (after as HTMLInputElement).checked === true, !before);
+    await settingsAction(() => input.click());
+  });
+  it("finds the ChatGPT card and Full access through the page's search", async () => {
+    const h = await setup();
+    const document = h.authority.read();
+    const index = settingsSearchIndex(buildSettingsNav(document), document);
+    assert.ok(searchSettings(index, "ChatGPT").some(result => result.entry.id === "general" && result.target === "chatgpt.account"));
+    assert.ok(searchSettings(index, "Full access").some(result => result.entry.id === "general" && result.target === "assistant.fullAccess"));
   });
   it("saves each switch through the served setting and shows the saved value after a reload of the data", async () => {
     const h = await setup();

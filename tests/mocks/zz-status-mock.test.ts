@@ -453,7 +453,7 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
   expect(errors).toEqual([]);
 });
 
-// General's toggles and pickers on the mock fixtures; served Account and Subscription controls are covered in settings-served-pages.test.ts.
+// General's toggles and pickers on the mock fixtures; served Account controls are covered in settings-served-pages.test.ts.
 test("general interactions", async ({ page }) => {
   test.setTimeout(120_000);
   const errors: string[] = [];
@@ -482,7 +482,6 @@ test("sidebar click-through shows the mock pages", async ({ page }) => {
   const marks: Record<string, () => Promise<void>> = {
     General: () => expect(page.getByRole("group", { name: "General", exact: true }).getByText("Browser window", { exact: true })).toBeVisible(),
     Account: () => expect(page.getByRole("group", { name: "Relay account", exact: true })).toBeVisible(),
-    Subscription: () => expect(page.getByRole("group", { name: "Connected account" })).toBeVisible(),
     Spreadsheets: () => expect(page.getByRole("region", { name: "Spreadsheets", exact: true })).toBeVisible(),
     Explorer: () => expect(page.locator("#dashboard-settings-content")).toBeVisible(),
     Analytics: () => expect(page.getByRole("heading", { name: "Why runs failed" })).toBeVisible(),

@@ -966,7 +966,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   /** Settings navigation creates history so Back returns to the previous view. */
   const [sessionsOpen, setSessionsOpen] = useViewState("sessions", false);
   const [logoutOpen, setLogoutOpen] = useState(false);
-  const openSettings = useCallback((section = ""): void => {
+  const openSettings = useCallback((section = "", settingsTarget?: string): void => {
     setRoute(current => ({
       ...current,
       intake: undefined,
@@ -979,6 +979,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       catalog: undefined,
       catalogView: undefined,
       settings: section,
+      settingsTarget,
     }));
   }, [setRoute]);
   const shownPreflight = useRef(new Set<string>());
@@ -1118,7 +1119,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       return;
     }
     if (destination.kind === "settings") {
-      leaveSettings(() => { setRoute({ ...routeWithoutTakeovers(routeRef.current), settings: destination.section }); opened(); });
+      leaveSettings(() => { setRoute({ ...routeWithoutTakeovers(routeRef.current), settings: destination.section, settingsTarget: destination.target }); opened(); });
       return;
     }
     if (destination.kind === "none") return;
