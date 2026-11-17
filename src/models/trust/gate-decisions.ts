@@ -192,7 +192,7 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     /* A picked reference spreadsheet did not confirm the person; "Cancel run" is the run's own cancel, so continuing is the only stored answer. */
   ...["work-study", "work-study-reference-check", "separations", "separations-reference-check"].map(workflowId => ({
     workflowId, gateId: "reference-check-review", decisionPath: "decision", resolution: { source: "operator" },
-    arms: [{ value: "continue", outcome: "approved", label: "Continue anyway", hint: "Relay goes on and writes for this person.",
+    arms: [{ value: "continue", outcome: "approved", label: "Continue anyway", hint: "Relay goes on with this person.",
       summary: "an operator continued although a picked reference spreadsheet did not confirm this person" }],
   })),
 ].map((entry) => Object.freeze(GateDecisionDeclarationSchema.parse(entry))));
