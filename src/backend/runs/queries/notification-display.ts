@@ -30,12 +30,13 @@ export function notificationDisplayContext(record: NotificationRecord, deps: {
   const { workflow, itemId } = current.run.envelope;
   const descriptor = deps.descriptor(workflow);
   if (descriptor === undefined) return { state: "unavailable" };
+  const workflowOnly = { state: "workflow-only", workflow: descriptor.label } as const;
   if (descriptor.version !== current.run.envelope.descriptorVersion || descriptor.contractFingerprint !== current.run.envelope.contractFingerprint) {
-    if (descriptor.timeline === undefined) return { state: "unavailable" };
+    if (descriptor.timeline === undefined) return workflowOnly;
     try {
       assertRunTimelineCompatible(current.run, descriptor.timeline, deps.presentation);
     } catch (error) {
-      if (error instanceof LogIdentityRefusedError) return { state: "unavailable" };
+      if (error instanceof LogIdentityRefusedError) return workflowOnly;
       throw error;
     }
   }
@@ -43,9 +44,9 @@ export function notificationDisplayContext(record: NotificationRecord, deps: {
   if (descriptor.titleProjection !== undefined) {
     try {
       const subject = resolveResultTitle(descriptor, current.run, deps.receipt(current.run.envelope.runId));
-      return subject === undefined ? { state: 'unavailable' } : { state: 'available', workflow: descriptor.label, subject };
+      return subject === undefined ? workflowOnly : { state: 'available', workflow: descriptor.label, subject };
     } catch (error) {
-      if (error instanceof ProjectionDegradedError) return { state: 'unavailable' };
+      if (error instanceof ProjectionDegradedError) return workflowOnly;
       throw error;
     }
   }

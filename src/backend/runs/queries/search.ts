@@ -61,6 +61,7 @@ const RunSearchAuthorityPageSchema = z.strictObject({
   coverage: SearchCoverageSchema,
   rows: z.array(z.strictObject({
     record: RunRecordSchema,
+    displayTitle: CrossDateSearchResultSchema.shape.displayTitle,
     metadata: SearchMetadataSchema,
     matchRank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
   })).max(CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
@@ -342,6 +343,7 @@ function resultOf(
   record: RunRecord,
   matchRank: number,
   metadata: z.infer<typeof SearchMetadataSchema>,
+  displayTitle?: string,
 ): CrossDateSearchResult {
   const descriptor = deps.descriptors.resolve(record.envelope.workflow);
   const enqueuedAt = canonicalUtcInstant(record.envelope.enqueuedAt);
@@ -351,6 +353,7 @@ function resultOf(
   return CrossDateSearchResultSchema.parse({
     runId: record.envelope.runId,
     traceId: record.envelope.traceId,
+    ...(displayTitle === undefined ? {} : { displayTitle }),
     workflowId: record.envelope.workflow,
     registration: descriptor === undefined
       ? {
@@ -432,7 +435,7 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
           return {
             totalMatches: authorityPage.totalMatches,
             coverage: authorityPage.coverage,
-            results: visibleRows.map(({ record, matchRank, metadata }) => resultOf(deps, record, matchRank, metadata)),
+            results: visibleRows.map(({ record, matchRank, metadata, displayTitle }) => resultOf(deps, record, matchRank, metadata, displayTitle)),
             next: lastVisible === undefined || !hasLaterPage ? undefined : {
               matchRank: lastVisible.matchRank,
               enqueuedAt: canonicalUtcInstant(lastVisible.record.envelope.enqueuedAt),

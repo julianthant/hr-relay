@@ -16,6 +16,8 @@ function setup() {
   const client = {
     workbookResults: vi.fn<WorkbookLibraryQueries['workbookResults']>(async () => { throw new Error('Unexpected workbookResults call'); }),
     workbookImport: vi.fn<WorkbookLibraryQueries['workbookImport']>(async () => { throw new Error('Unexpected workbookImport call'); }),
+    workbookClone: vi.fn<WorkbookLibraryQueries['workbookClone']>(async () => { throw new Error('Unexpected workbookClone call'); }),
+    workbookImportSharePoint: vi.fn<WorkbookLibraryQueries['workbookImportSharePoint']>(async () => { throw new Error('Unexpected workbookImportSharePoint call'); }),
     workbookCompatibility: vi.fn<WorkbookLibraryQueries['workbookCompatibility']>(async () => WorkbookCompatibilitySchema.parse({ workflows: [], libraries: [
       { libraryId: 'saved', versionId: 'original', sheets: [{ sheetId: 'sheet', sheetName: 'People', mappings: [], workflows: [] }] },
     ] })),
@@ -301,9 +303,9 @@ describe('spreadsheet page writes', () => {
     client.workbookOpen.mockRejectedValueOnce(new Error('lost'));
     assert.equal((await importWorkbook(adapter, missing)).state, 'pending');
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...missing, libraryId: 'generated' }));
-    assert.deepEqual(await importWorkbook(adapter, valid), { state: 'added', name: 'Roster.csv', rowsWithoutEid: 2 });
+    assert.deepEqual(await importWorkbook(adapter, valid), { state: 'added', name: 'Roster.csv', libraryId: 'generated', rowsWithoutEid: 2 });
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...valid, libraryId: 'generated' }));
-    assert.deepEqual(await importWorkbook(adapter, valid), { state: 'added', name: 'Roster.csv', rowsWithoutEid: 0 });
+    assert.deepEqual(await importWorkbook(adapter, valid), { state: 'added', name: 'Roster.csv', libraryId: 'generated', rowsWithoutEid: 0 });
   });
   it('joins an import that is still saving instead of creating again', async () => {
     const { client, adapter } = setup(); const document = newEditableWorkbook();

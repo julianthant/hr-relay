@@ -64,7 +64,7 @@ it("refuses each foreign receipt identity without falling back to typed input or
     { workflowId: "synthetic-other-workflow" }, { descriptorFingerprint: "f".repeat(64) }, { configFingerprint: "f".repeat(64) },
   ]) {
     f.w.authority.receipts.set(f.run.envelope.runId, RunEvidenceReceiptSchema.parse({ ...receipt, ...replacement }));
-    assert.deepEqual(f.context(), { state: "unavailable" });
+    assert.deepEqual(f.context(), { state: "workflow-only", workflow: "Person Lookup" });
   }
 });
 
@@ -76,7 +76,7 @@ it("keeps forbidden protected input unavailable even when a matching result rece
     value: { ...value, documentNumber: f.run.envelope.runId },
     protectedBindings: [{ kind: "test-data-local", inputPath: "documentNumber", name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: f.run.envelope.runId }],
   } } }));
-  assert.deepEqual(f.context(), { state: "unavailable" });
+  assert.deepEqual(f.context(), { state: "workflow-only", workflow: "Person Lookup" });
 });
 
 it("preserves descriptor compatibility refusal before receipt access and propagates unrelated read failures", async () => {
@@ -97,7 +97,7 @@ it("preserves descriptor compatibility refusal before receipt access and propaga
   let receiptReads = 0;
   assert.deepEqual(notificationDisplayContext(f.record, { ...f.deps,
     receipt: () => { receiptReads++; return f.w.authority.getReceipt(f.run.envelope.runId); },
-  }), { state: "unavailable" });
+  }), { state: "workflow-only", workflow: "Person Lookup" });
   assert.equal(receiptReads, 0);
   f.w.authority.put(f.run);
   const failure = new Error("synthetic-receipt-read-failure");
