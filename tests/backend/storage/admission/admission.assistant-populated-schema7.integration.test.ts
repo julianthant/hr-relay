@@ -1,5 +1,5 @@
 import { prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
-import { PRE_PREFERENCES_SETTINGS_SCHEMA_HASH } from "../../../../src/backend/storage/sqlite/person-preferences-migration.js";
+import { PRE_PREFERENCES_SETTINGS_SCHEMA_HASH } from "../../../../src/backend/storage/sqlite/settings-record-conversion.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { retainedBrowserProfiles } from "../../../../src/backend/storage/maintenance/profile-custody.js";
 import { join } from "node:path";

@@ -92,7 +92,7 @@ it("refuses a Windows backup before publishing or capturing source data", async 
     const before = files(f.stateRoot), directory = join(f.stateRoot, "backups", "authority");
     const request = new AuthorityBackupService(f.admission, database, { directory }, clock);
     let failure: unknown;
-    try { await request.request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration }); }
+    try { await request.request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration }); }
     catch (error) { failure = error; }
     assert.deepEqual(files(f.stateRoot), before, "unavailable Windows custody must preserve backup/source bytes and membership");
     assert.equal(failure instanceof Error && "code" in failure && failure.code, "STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE");
@@ -110,7 +110,7 @@ for (const platform of ["darwin", "linux"]) it(`preserves successful backup beha
   try {
     const directory = join(f.stateRoot, "backups", "authority");
     const result = await new AuthorityBackupService(f.admission, database, { directory }, clock)
-      .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+      .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
     assert.equal(result.manifests.length, 1);
     assert.ok(result.manifests[0]);
     assert.ok(existsSync(join(directory, result.manifests[0].backupFileName)));
@@ -127,7 +127,7 @@ it("refuses a readable Windows restore before retaining suspect copies or changi
     const unknown = parkedUnknown(database, f.path, f.stateRoot);
     const directory = join(f.stateRoot, "backups", "authority");
     const backup = await new AuthorityBackupService(f.admission, database, { directory }, clock)
-      .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+      .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
     database.close();
     const manifest = backup.manifests[0]; assert.ok(manifest);
     operation = f.admission.acquireOfflineMaintenance();
@@ -581,7 +581,7 @@ for (const kind of ["newest restore", "stopped backup"] as const) it(`refuses Wi
     undefined, undefined, undefined, boundProfileCredentials(f.admission));
   try {
     await new AuthorityBackupService(f.admission, database, { directory: join(f.stateRoot, "backups", "authority") }, clock)
-      .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+      .request({ trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
   } finally { database.close(); }
   const operation = f.admission.acquireOfflineMaintenance();
   const processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
@@ -600,7 +600,7 @@ for (const kind of ["newest restore", "stopped backup"] as const) it(`refuses Wi
     let failure: unknown;
     try {
       if (kind === "newest restore") await restore.restoreNewest(operation);
-      else { assert.ok(closure); await backupStoppedAuthority(closure, f.admission, f.stateRoot, clock, processLockRoot, operation); }
+      else { assert.ok(closure); await backupStoppedAuthority(closure, f.admission, f.stateRoot, clock, processLockRoot, operation, "schema-migration"); }
     } catch (error) { failure = error; }
     assert.equal(captures, 0, "refused operation must not derive an owner by capturing source bytes");
     observed.mockRestore(); syncBuiltinESMExports(); assert.deepEqual(files(f.workspace), before);

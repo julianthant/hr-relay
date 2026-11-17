@@ -67,6 +67,8 @@ and name fields; the I-9 PDF parent requires Action History fields.
 the one key field a picked worksheet must map. A run may pick none. A start selection names the
 declaration it answers with `typeId`; an absent `typeId` means the required reference. Check picks
 are captured by their key field only and retained with the run's other references.
+A delegated child whose target declares `workbookCheck` receives the parent's check picks, never
+its required reference, so each person child checks its own Employee ID.
 `workbooks/verify-person` looks the found Employee ID up in each picked check worksheet at its
 retained version and returns, per spreadsheet, `found`, `not-found` or `name-differs` with the row
 number. The name is compared when the worksheet maps a name column and the run found a name; a
@@ -383,6 +385,30 @@ A delegated child with no transaction inherits `dryRun: true` and executes its n
 graph, including its gates and nested delegation. It returns the normal typed observational result
 and receipt for its parent to consume. A child with an unsupported transaction still refuses; child
 and parent dry-run flags must match. This exception does not offer standalone read-only previews.
+
+An awaited delegate may follow a transaction in node order without depending on it: a refused,
+UNKNOWN or parked write stops the run before the delegate, and in a dry run the delegate still runs
+and the run stores a delegated preview. The Emergency Contact member files this way. After its Save
+settles committed or already-present, `onbase-filing` starts one hidden OnBase child with the mapped
+Employee ID, the run's PDF and the record's first source page, so an Emergency Contact run needs an
+OnBase session. In a dry run the Save and the filing are both previewed and nothing is imported.
+
+A failed filing never fails the member. The filing edge is `block-parent` with `resume-parent`, so
+the member stays open on its committed Save and waits `blocked` at `onbase-filing`, and the
+Emergency Contact run waits with it while every other person settles normally. The person's line
+reads Failed and opens the failed filing's logs, where the failure names its cause and Retry is
+served. Retry replaces the filing alone: it is served only for the current failed child of a
+`block-parent` join whose parent is still open, and only while none of the filing's writes was
+issued. The replacement imports once, the member then finishes without another Save, and the run
+settles. Retry is accepted while the run is active or paused; a paused run continues after Resume.
+The member itself is never retried once its Save was issued. An Import with an unsure result parks
+the filing for the Saved / Not saved decision; the line reads Blocked, no Retry is served and the
+Import is not clicked again. Stop on the run cancels the waiting member and a filing that is queued
+or running again, from one press: a running filing that has not fenced its Import ends with no
+Import; a filing whose Import is fenced finishes and settles that Import once, then ends. The member
+and the run then settle cancelled. While an Import's result is unsure, or its fence has no live
+claim, Stop is refused and the Import is never clicked again. A run with a failed filing does not
+settle until the filing is retried or the run is stopped.
 
 ### 2.1 Preview terminal result
 

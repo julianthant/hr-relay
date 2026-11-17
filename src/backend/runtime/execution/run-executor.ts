@@ -806,6 +806,8 @@ export async function executeClaimedRun(
           ? ownRecord
           : undefined;
         plan.set(String(node.id), replay === undefined ? { mode: "asserted" } : { mode: "asserted", replay });
+        // This run's own assertion row is its output; later conditions read it as known.
+        if (replay !== undefined) outputs[String(node.id)] = JsonValueSchema.parse(replay.output.value);
         continue;
       }
       // A dry run re-derives a publication boundary and everything behind it; stored state never stands in.
@@ -838,7 +840,8 @@ export async function executeClaimedRun(
         let conditionKnown = true;
         for (const dependency of node.dependsOn) {
           const dependencyEntry = plan.get(String(dependency));
-          if (dependencyEntry === undefined || dependencyEntry.mode === "execute" || dependencyEntry.mode === "asserted"
+          if (dependencyEntry === undefined || dependencyEntry.mode === "execute"
+            || dependencyEntry.mode === "asserted" && dependencyEntry.replay === undefined
             || !Object.hasOwn(outputs, String(dependency))) {
             conditionKnown = false;
           }

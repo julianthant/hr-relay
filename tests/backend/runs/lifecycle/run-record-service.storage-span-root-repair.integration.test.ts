@@ -172,7 +172,6 @@ describe("offline missing run.queued recovery", () => {
       stateRoot: f.stateRoot,
       authorityPath: f.authorityPath,
       backupDirectory: join(f.stateRoot, "backups", "authority"),
-      maxBackupAgeMs: 60_000,
       busyTimeoutMs: 500,
     }, f.clock);
     assert.equal(doctor.spanAuthority.state, "reconciled");

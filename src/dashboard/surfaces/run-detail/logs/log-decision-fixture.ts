@@ -566,21 +566,6 @@ export const logDecisionExamples = [
           "title": "A step failed",
           "choiceLabel": "Next step",
           "options": [
-            {
-              "id": "add-note",
-              "label": "Add note",
-              "hint": "Record what you found. The run stays failed.",
-              "send": {
-                "via": "command",
-                "family": "failure-resolution",
-                "type": "annotate-failure"
-              },
-              "recommended": true,
-              "input": {
-                "kind": "text",
-                "label": "Note"
-              }
-            }
           ]
         }
       }
@@ -647,20 +632,6 @@ export const logDecisionExamples = [
                 "type": "annotate-failure"
               },
               "recommended": true
-            },
-            {
-              "id": "add-note",
-              "label": "Add note",
-              "hint": "Record what you found. The run stays failed.",
-              "send": {
-                "via": "command",
-                "family": "failure-resolution",
-                "type": "annotate-failure"
-              },
-              "input": {
-                "kind": "text",
-                "label": "Note"
-              }
             }
           ]
         }
@@ -729,20 +700,6 @@ export const logDecisionExamples = [
                 "type": "annotate-failure"
               },
               "recommended": true
-            },
-            {
-              "id": "add-note",
-              "label": "Add note",
-              "hint": "Record what you found. The run stays failed.",
-              "send": {
-                "via": "command",
-                "family": "failure-resolution",
-                "type": "annotate-failure"
-              },
-              "input": {
-                "kind": "text",
-                "label": "Note"
-              }
             }
           ]
         }
@@ -800,21 +757,6 @@ export const logDecisionExamples = [
           "title": "A step failed",
           "choiceLabel": "Next step",
           "options": [
-            {
-              "id": "add-note",
-              "label": "Add note",
-              "hint": "Record what you found. The run stays failed.",
-              "send": {
-                "via": "command",
-                "family": "failure-resolution",
-                "type": "annotate-failure"
-              },
-              "recommended": true,
-              "input": {
-                "kind": "text",
-                "label": "Note"
-              }
-            }
           ]
         }
       }

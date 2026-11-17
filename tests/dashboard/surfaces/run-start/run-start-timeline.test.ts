@@ -11,7 +11,6 @@ describe("run-start timeline", () => {
     assert.deepEqual(runStartStages(false), [
       { label: "Input", number: 1 },
       { label: "Options", number: 2 },
-      { label: "Confirm", number: 3 },
     ]);
   });
 
@@ -21,10 +20,10 @@ describe("run-start timeline", () => {
       { label: "Input", number: 1 },
       { label: "Options", number: 2 },
       { label: "Steps", number: 3 },
-      { label: "Confirm", number: 4 },
     ]);
     assert.equal(adjacentRunStartStage(stages, "Input", "next"), "Options");
     assert.equal(adjacentRunStartStage(stages, "Options", "next"), "Steps");
+    assert.equal(adjacentRunStartStage(stages, "Steps", "next"), null);
     assert.equal(adjacentRunStartStage(stages, "Input", "previous"), null);
   });
 

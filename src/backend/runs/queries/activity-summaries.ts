@@ -4,7 +4,7 @@ import { z } from "zod";
 import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { RunSummaryQuerySchema } from "../../storage/sqlite/run-summaries.js";
-import { runtimeTimeZone } from "../../../rules/time/clock.js";
+import { PACIFIC_TIME_ZONE } from "../../../models/dashboard/search-calendar.js";
 import { deriveRunStatus } from "../../../rules/runs/run-status.js";
 import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
 type SummaryRow = ReturnType<AuthorityDatabase["queryRunSummaries"]>["items"][number];
@@ -70,19 +70,17 @@ function bucketForInstant(buckets:readonly {start:string;endExclusive:string}[],
 export function queryActivitySummaries(database:AuthorityDatabase,input:{from:string;to:string;generatedAt:string},deps:{
   descriptors:{resolve(workflow:string):AnyWorkflowDescriptor|undefined};
   ledger:{foldActivityRange(from:string,to:string):ActivityReportWire["ledger"]};
-  timeZone?:string;
 }):ActivityReportWire {
   const bounds=z.strictObject({from:z.iso.date(),to:z.iso.date(),generatedAt:z.iso.datetime({offset:true})}).parse(input);
   if(bounds.from>bounds.to)throw new Error("run-summary-range-invalid");
-  const timeZone=deps.timeZone??runtimeTimeZone();
   return database.withAuthorityReadSnapshot(()=>{
     const start=bounds.from,end=bounds.to;
-    const volumeSkeleton=buildActivityVolumeBoundarySkeleton({from:start,to:end},timeZone);
+    const volumeSkeleton=buildActivityVolumeBoundarySkeleton({from:start,to:end},PACIFIC_TIME_ZONE);
     const volumeCounts=volumeSkeleton.buckets.map(()=>0);
     const volumeStart=Date.parse(volumeSkeleton.interval.start),volumeEnd=Date.parse(volumeSkeleton.interval.endExclusive);
     const inRange:SummaryRow[]=[];
     const identities=new Set<string>();let evidenceRows=0,unavailableRows=0;
-    visitActivitySummaryRange(database,start,end,timeZone,row=>{
+    visitActivitySummaryRange(database,start,end,PACIFIC_TIME_ZONE,row=>{
       if(row.workflow==="separations" && row.shape!=="operation") {
         if(row.person.state==="available"){identities.add(row.person.identity);evidenceRows++;}
         else unavailableRows++;

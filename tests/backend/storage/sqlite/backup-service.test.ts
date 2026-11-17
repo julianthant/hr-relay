@@ -69,7 +69,7 @@ describe("native authority backup", () => {
     const audit = f.database.authority.commandAudits.findSettingsHistory(command.commandId);
     expect(audit?.result).toEqual(accepted);
     const credentialPath = join(f.root, "credentials", "protected.json"), bytes = readFileSync(credentialPath), before = statSync(credentialPath);
-    const report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    const report = await f.service.request({ trigger: "schema-migration", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
     f.database.close(); const processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
     const operation = f.admission.acquireOfflineMaintenance();
@@ -91,7 +91,7 @@ describe("native authority backup", () => {
     } finally { reopened.close(); }
   });
   it("restores authenticated native populated authority and preserves the suspect original and independent credential custody", async () => {
-    const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    const f = await fixture(), report = await f.service.request({ trigger: "schema-migration", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
     f.database.close();
     const original = readFileSync(f.path), credentials = join(f.root, "credentials"), credentialPath = join(f.root, "files", "offline-custody.bin");
@@ -116,7 +116,7 @@ describe("native authority backup", () => {
     expect(statSync(credentialPath).ino).toBe(credentialStat.ino); expect(statSync(credentialPath).mtimeMs).toBe(credentialStat.mtimeMs);
   });
   it.each(["before-swap", "after-swap"] as const)("preserves authenticated suspect evidence and reports the actual authority outcome on %s failure", async phase => {
-    const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    const f = await fixture(), report = await f.service.request({ trigger: "schema-migration", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
     f.database.close(); const original = readFileSync(f.path), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), suspects = join(f.root, "backups", "suspects");
     const operation = f.admission.acquireOfflineMaintenance();
@@ -139,7 +139,7 @@ describe("native authority backup", () => {
   });
   it.each([false,true])("keeps exact SQLite companion custody on rollback and retains an unfinished operation on rollback fault: %s", async rollbackFault => {
     const f = await fixture(); f.database.authority.runtimeConfig.initialize(f.configSnapshot);
-    const report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    const report = await f.service.request({ trigger: "schema-migration", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
     const companions = ["-wal","-shm"].map(suffix => ({ suffix, bytes: readFileSync(`${f.path}${suffix}`) }));
     f.database.close();
@@ -168,7 +168,7 @@ describe("native authority backup", () => {
     }
   });
   it("retains a durable restore barrier after ambiguous replacement and staged disappearance, then settles only the exact verified replacement", async () => {
-    const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    const f = await fixture(), report = await f.service.request({ trigger: "schema-migration", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
     f.database.close(); const original = readFileSync(f.path), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
     const operation = f.admission.acquireOfflineMaintenance();
@@ -219,7 +219,7 @@ describe("native authority backup", () => {
     finally { reopened.release(); }
   });
   it("publishes authenticated populated current bytes with the exact generation and table registry", async () => {
-    const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    const f = await fixture(), report = await f.service.request({ trigger: "schema-migration", requiredGeneration: f.database.getMeta().authorityGeneration });
     expect(report.manifests).toHaveLength(1);
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
     const verified = await verifyBackupManifestAtPath(f.admission, manifestPath);
@@ -232,7 +232,7 @@ describe("native authority backup", () => {
     } finally { copy.release(); }
   });
   it("refuses changed backup bytes and altered authenticated manifest identity", async () => {
-    const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: 0 });
+    const f = await fixture(), report = await f.service.request({ trigger: "schema-migration", requiredGeneration: 0 });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
     writeFileSync(manifestPath, JSON.stringify({ ...manifest, authorityGeneration: manifest.authorityGeneration + 1 }));
     await expect(verifyBackupManifestAtPath(f.admission, manifestPath)).rejects.toThrow();
@@ -242,7 +242,7 @@ describe("native authority backup", () => {
     await expect(verifyBackupManifestAtPath(f.admission, manifestPath)).rejects.toThrow(/checksum/u);
   });
   it("refuses historical manifests, non-current database versions and an extra physical authority object", async () => {
-    const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: 0 });
+    const f = await fixture(), report = await f.service.request({ trigger: "schema-migration", requiredGeneration: 0 });
     const manifest = report.manifests[0];
     expect(AuthorityBackupManifestSchema.safeParse({ ...manifest, manifestVersion: 1 }).success).toBe(false);
     expect(AuthorityBackupManifestSchema.safeParse({ ...manifest, schemaVersion: 56 }).success).toBe(false);
@@ -261,7 +261,7 @@ describe("native authority backup", () => {
     const f = await fixture(), expected = f.database.getMeta(); f.database.close();
     const source = openAuthorityBackupSourceReadOnly(f.admission, f.path);
     try { expect(source.getMeta()).toEqual({ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityGeneration: expected.authorityGeneration, updatedAt: expected.updatedAt, installationId: expected.installationId, profileId: expected.profileId });
-      const report = await new AuthorityBackupService(f.admission, source, { directory: f.directory }, f.clock).request({ trigger: "operator", requiredGeneration: expected.authorityGeneration });
+      const report = await new AuthorityBackupService(f.admission, source, { directory: f.directory }, f.clock).request({ trigger: "schema-migration", requiredGeneration: expected.authorityGeneration });
       expect(report.finalGeneration).toBe(expected.authorityGeneration);
     } finally { source.close(); }
   });
@@ -271,14 +271,14 @@ describe("native authority backup", () => {
       plantOldBuildArtifact(processLockRoot, role);
       const operation = f.admission.acquireOfflineMaintenance(), before = readFileSync(f.path);
       try {
-        await expect(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, f.clock, processLockRoot, operation))).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
+        await expect(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, f.clock, processLockRoot, operation, "schema-migration"))).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
         await expect(upgradeStorage(profileBrowserClosure, f.admission, { stateRoot: f.root, processLockRoot, plan: false }, f.clock, operation)).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
         expect(readFileSync(f.path)).toEqual(before);
       } finally { operation.release(); }
     }
     const oldOperation = f.admission.acquireOfflineMaintenance();
     try {
-      await expect(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, oldOperation, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, f.clock, processLockRoot, oldOperation))).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
+      await expect(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, oldOperation, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, f.clock, processLockRoot, oldOperation, "schema-migration"))).rejects.toBeInstanceOf(OldBuildRuntimeArtifactsError);
     } finally { oldOperation.release(); }
     const clean = await fixture(); clean.database.close();
     const cleanRoot = join(clean.workspace, rebuildRuntimeIsolation.processLockRoot), upgrade = clean.admission.acquireOfflineMaintenance();
@@ -287,7 +287,7 @@ describe("native authority backup", () => {
     } finally { upgrade.release(); }
     const backup = clean.admission.acquireOfflineMaintenance();
     try {
-      await expect(prepareStoppedBackupClosure(profileBrowserClosure, clean.admission, backup, clean.clock, cleanRoot).then(closure => backupStoppedAuthority(closure, clean.admission, clean.root, clean.clock, cleanRoot, backup))).resolves.toMatchObject({ state: "verified" });
+      await expect(prepareStoppedBackupClosure(profileBrowserClosure, clean.admission, backup, clean.clock, cleanRoot).then(closure => backupStoppedAuthority(closure, clean.admission, clean.root, clean.clock, cleanRoot, backup, "schema-migration"))).resolves.toMatchObject({ state: "verified" });
       expect(() => clean.admission.beginOfflineMaintenance()).toThrow(/offline-maintenance-busy/u);
     } finally { backup.release(); }
   });
@@ -307,7 +307,7 @@ describe("native authority backup", () => {
       const f = prepared.get(fault);
       if (f === undefined) throw new Error("backup-suspect-fixture-owner-missing");
       f.database.authority.runtimeConfig.initialize(f.configSnapshot);
-      const report=await f.service.request({trigger:"operator",requiredGeneration:f.database.getMeta().authorityGeneration});
+      const report=await f.service.request({trigger:"schema-migration",requiredGeneration:f.database.getMeta().authorityGeneration});
       const manifest=report.manifests[0],manifestPath=join(f.directory,`${manifest.backupFileName}.manifest.json`);
       const companions=["-wal","-shm"].map(suffix=>({suffix,bytes:readFileSync(`${f.path}${suffix}`)}));f.database.close();
       for(const row of companions)writeFileSync(`${f.path}${row.suffix}`,row.bytes,{mode:0o600});

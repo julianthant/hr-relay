@@ -17,11 +17,9 @@ describe("automatic worker forms", () => {
     } }));
     await dialog.type(h.TYPED); await dialog.press("Continue");
     assert.equal(document.querySelector('button[aria-label$=" Workers"]') === null, true, "Workers picker must be absent");
-    await dialog.press("Continue");
+    await dialog.press("Start run");
     assert.ok(submitted !== null && typeof submitted === "object");
     assert.equal(Object.hasOwn(submitted, "workers"), false);
-    assert.equal(dialog.stage(), "Confirm");
-    assert.equal([...document.querySelectorAll("dt")].some(node => node.textContent === "Workers"), false);
   });
 
   it("offers no worker choice in Rerun and omits workers from its request", async () => {
@@ -48,9 +46,8 @@ describe("automatic worker forms", () => {
     await dialog.press("Continue"); await dialog.press("Continue");
     assert.equal(dialog.stage(), "Options");
     assert.equal(document.querySelector('button[aria-label$=" Workers"]') === null, true, "Workers picker must be absent");
-    await dialog.press("Continue");
+    await dialog.press("Start run");
     assert.ok(submitted !== null && typeof submitted === "object");
     assert.equal(Object.hasOwn(submitted, "workers"), false);
-    assert.equal(dialog.stage(), "Confirm");
   });
 });

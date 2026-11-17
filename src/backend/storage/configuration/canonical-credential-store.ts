@@ -7,6 +7,7 @@ import { z } from "zod";
 import { DuoCredentialRecordSchema, DuoEnrollmentScopeSchema, DuoReenrolCommitIntentSchema, DuoStoredCredentialSchema, type DuoCredentialRecord, type DuoEnrollmentScope, type DuoReenrolCommitIntent, type DuoStoredCredential } from "../../../models/config/duo-credential-store.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import type { SignUpOperation } from "../../../models/profiles/profile.js";
+import { credentialHeadStateOf, credentialHeadTransition, type CredentialHeadInconsistency, type CredentialHeadRefusal, type CredentialOperationFile } from "../../../rules/storage/credential-head.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
@@ -61,6 +62,7 @@ const Frame = Binding.extend({ schemaVersion: z.literal(1), kind: z.enum(["prote
   ciphertext: z.string().min(4).max(24 * 1024 * 1024).regex(/^[A-Za-z0-9+/]+={0,2}$/u) });
 const PlainFrame = z.strictObject({ revision: Revision, value: z.unknown() });
 type Head = z.infer<typeof ActiveHead>;
+export type CanonicalCredentialHead = z.infer<typeof CanonicalCredentialHeadSchema>;
 export const MAX_CANONICAL_CREDENTIAL_BYTES = 25 * 1024 * 1024;
 const maxBytes = MAX_CANONICAL_CREDENTIAL_BYTES;
 const kinds = ["protected", "duo", "chatgpt"] as const;
@@ -133,6 +135,26 @@ const ErasePlan = Binding.extend({ schemaVersion: z.literal(1), kind: z.literal(
   priorHead: ActiveHead, priorHeadFile: EraseFile.omit({ kind: true }), head: ErasedHeadBody, files: z.array(EraseFile).length(3) });
 const EraseOperation = ErasePlan.extend({ head: ErasedHead });
 export const CanonicalCredentialOperationSchema = z.discriminatedUnion("kind", [CreateOperation, EraseOperation]);
+
+function headRefusal(code: CredentialHeadRefusal): CanonicalCredentialError | CredentialMaintenanceHold {
+  return code === "CREDENTIAL_CONVERSION_REQUIRED" || code === "CREDENTIAL_ABANDONED_SIGNUP_HELD" ? new CredentialMaintenanceHold(code) : new CanonicalCredentialError(code);
+}
+/** The head narrowed to its derived state: `credentialHeadStateOf` decides, and the discriminant only narrows the type. */
+export function canonicalCredentialHeadReading(head: CanonicalCredentialHead | "absent" | "unparseable", operation: CredentialOperationFile):
+  Readonly<{ state: "active"; head: Head }> | Readonly<{ state: "erased"; head: z.infer<typeof ErasedHead> }>
+  | Readonly<{ state: "absent" | "creating" | "erasing" }> | CredentialHeadInconsistency {
+  const state = credentialHeadStateOf(head, operation);
+  if (typeof state !== "string") return state;
+  if (state !== "active" && state !== "erased") return { state };
+  if (typeof head === "string" || head.state !== state) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+  return head.state === "active" ? { state: "active", head } : { state: "erased", head };
+}
+/** A head this reader requires active; any other head fails the strict active parse with the same error as before. */
+function activeHeadOf(value: unknown, operation: CredentialOperationFile): Head {
+  const parsed = CanonicalCredentialHeadSchema.safeParse(value), reading = canonicalCredentialHeadReading(parsed.success ? parsed.data : "unparseable", operation);
+  if ("head" in reading && reading.state === "active") return reading.head;
+  throw ActiveHead.safeParse(value).error ?? new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+}
 
 function canonicalPaths(admission: RuntimeAdmission) {
   const binding = admission.profileBinding, context = admission.readInstallationContext();
@@ -378,10 +400,12 @@ function captureAbandonedSignUpHead(paths: ReturnType<typeof fixedCanonicalPaths
     || readdirSync(directory).some(name => name.startsWith(`.${profileId}.`) && name !== `.${profileId}.writer.lock` && name !== `.${profileId}.chatgpt.lock`)) throw held();
   const file = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
   if (file === undefined) throw held();
-  const head = CanonicalCredentialHeadSchema.safeParse(parse(file.bytes));
-  if (!head.success || head.data.state !== "erased" || head.data.installationId !== installationId || head.data.profileId !== profileId
-    || head.data.key.installationId !== installationId || head.data.key.profileId !== profileId) throw held();
-  try { credentialKeyCustody.assertAbsent({ installationId, profileId, keyId: head.data.key.keyId }); } catch (cause) { throw held(cause); }
+  const parsed = CanonicalCredentialHeadSchema.safeParse(parse(file.bytes)), head = parsed.success ? parsed.data : "unparseable";
+  const state = credentialHeadStateOf(head, "absent");
+  if (typeof head === "string" || typeof state !== "string" || "refused" in credentialHeadTransition(state, "remove-tombstone")
+    || head.installationId !== installationId || head.profileId !== profileId
+    || head.key.installationId !== installationId || head.key.profileId !== profileId) throw held();
+  try { credentialKeyCustody.assertAbsent({ installationId, profileId, keyId: head.key.keyId }); } catch (cause) { throw held(cause); }
   return () => {
     guard();
     if (!readPrivateFile(paths.headPath, { label: "lock", maxBytes })?.bytes.equals(file.bytes)) throw held();
@@ -443,9 +467,12 @@ export function captureCanonicalCredentialStartupLocks(lifetime: RuntimeLifetime
     } else {
       const file = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
       if (file === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      const head = CanonicalCredentialHeadSchema.parse(parse(file.bytes));
-      if (head.installationId !== installationId || head.profileId !== profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      if (head.state === "active") {
+      const parsed = CanonicalCredentialHeadSchema.parse(parse(file.bytes));
+      if (parsed.installationId !== installationId || parsed.profileId !== profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      const reading = canonicalCredentialHeadReading(parsed, "absent");
+      if ("inconsistent" in reading) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      if (reading.state === "active") {
+        const head = reading.head;
         guard(); const key = authenticateHead(head);
         // A re-enrolment stage never became authority: its operation rolls forward from the intent, head and record, so boot removes it.
         inspectCanonicalNamespace(paths, head, key, new Map(), guard, ancestry, true);
@@ -489,7 +516,7 @@ function captureCredentialPublication(machine: RuntimeAdmission, profile: Runtim
     if (!noSymlinkAncestry(paths.directory, ancestry)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     const headFile = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
     if (headFile === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-    const head = ActiveHead.parse(parse(headFile.bytes));
+    const head = activeHeadOf(parse(headFile.bytes), "unread");
     if (head.profileId !== source.binding.profileId || head.installationId !== source.binding.installationId
       || head.key.keyId !== operation.credentials.keyId || head.generation !== operation.credentials.generation) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     assertCurrent(); const key = authenticateHead(head);
@@ -535,7 +562,7 @@ export function captureStoppedCanonicalCredentialHead(admission: RuntimeAdmissio
     if (readPrivateFile(paths.operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
     const file = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
     if (file === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
-    const head = ActiveHead.parse(parse(file.bytes));
+    const head = activeHeadOf(parse(file.bytes), "absent");
     if (head.installationId !== paths.binding.installationId || head.profileId !== paths.binding.profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     assertCurrent(); const key = authenticateHead(head);
     inspectCanonicalNamespace(paths, head, key, new Map(), assertCurrent, ancestry); assertCurrent();
@@ -562,7 +589,7 @@ export function captureStoppedIncompleteCredentials(admissionInput: RuntimeAdmis
     if (readPrivateFile(paths.operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
     const source = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
     if (source === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
-    const head = ActiveHead.parse(parse(source.bytes));
+    const head = activeHeadOf(parse(source.bytes), "absent");
     if (head.installationId !== paths.binding.installationId || head.profileId !== paths.binding.profileId
       || head.counters.length !== 0 || head.retired.length !== 0) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     const key = authenticateHead(head);
@@ -601,7 +628,7 @@ export function readStoppedProtectedRecord(admissionInput: RuntimeAdmission, pur
     if (readPrivateFile(paths.operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
     const source = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
     if (source === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-    const head = ActiveHead.parse(parse(source.bytes));
+    const head = activeHeadOf(parse(source.bytes), "absent");
     if (head.installationId !== paths.binding.installationId || head.profileId !== paths.binding.profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     const key = authenticateHead(head);
     inspectCanonicalNamespace(paths, head, key, new Map(), current);
@@ -687,7 +714,7 @@ export function inspectStoppedCurrentCanonicalCredentials(admission: RuntimeAdmi
     if (readPrivateFile(paths.operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
     const headFile = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
     if (headFile === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-    const head = ActiveHead.parse(parse(headFile.bytes));
+    const head = activeHeadOf(parse(headFile.bytes), "absent");
     if (head.installationId !== paths.binding.installationId || head.profileId !== paths.binding.profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     const key = authenticateHead(head), keyDocument = credentialKeyCustody.read(head.key);
     inspectCanonicalNamespace(paths, head, key, new Map(), current, ancestry);
@@ -828,16 +855,17 @@ export function initializeCanonicalCredentials(machine: RuntimeAdmission, profil
     if (saved === undefined) {
       const head = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
       if (head !== undefined) {
-        const current = CanonicalCredentialHeadSchema.safeParse(parse(head.bytes));
-        if (!current.success || current.data.state !== "active" || current.data.installationId !== paths.binding.installationId
-          || current.data.profileId !== paths.binding.profileId || current.data.key.keyId !== initialization.keyId) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
-        const key = authenticateHead(current.data);
-        inspectCanonicalNamespace(paths, current.data, key, new Map(), assertCurrent, ancestry);
+        const parsed = CanonicalCredentialHeadSchema.safeParse(parse(head.bytes));
+        const reading = canonicalCredentialHeadReading(parsed.success ? parsed.data : "unparseable", "absent");
+        if (!("head" in reading) || reading.state !== "active" || reading.head.installationId !== paths.binding.installationId
+          || reading.head.profileId !== paths.binding.profileId || reading.head.key.keyId !== initialization.keyId) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
+        const current = reading.head, key = authenticateHead(current);
+        inspectCanonicalNamespace(paths, current, key, new Map(), assertCurrent, ancestry);
         for (const kind of kinds) {
           assertCurrent();
           const file = readPrivateFile(paths.records[kind], { label: "protected.json", maxBytes });
           if (file === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-          open(current.data, key, kind, file.bytes);
+          open(current, key, kind, file.bytes);
         }
         return;
       }
@@ -885,7 +913,7 @@ export function verifyCanonicalCredentialBytes(admission: RuntimeAdmission, kind
     owner.assertCurrent();
     const file = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
     if (file === undefined || bytes.byteLength > maxBytes) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-    const head = ActiveHead.parse(parse(file.bytes));
+    const head = activeHeadOf(parse(file.bytes), "absent");
     if (head.installationId !== paths.binding.installationId || head.profileId !== paths.binding.profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     owner.assertCurrent(); const key = authenticateHead(head);
     open(head, key, kind, bytes); owner.assertCurrent();
@@ -902,7 +930,10 @@ export function captureCanonicalDraftErasure(machine: RuntimeAdmission, profile:
     if (abort === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     const file = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
     if (file === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-    const head = ErasedHead.parse(parse(file.bytes));
+    const value = parse(file.bytes), stored = CanonicalCredentialHeadSchema.safeParse(value);
+    const reading = canonicalCredentialHeadReading(stored.success ? stored.data : "unparseable", "unread");
+    if (!("head" in reading) || reading.state !== "erased") throw ErasedHead.safeParse(value).error ?? new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    const head = reading.head;
     assertHeadKeyBinding(head);
     if (head.installationId !== paths.binding.installationId || head.profileId !== paths.binding.profileId
       || head.key.keyId !== operation.credentials.keyId || head.operationId !== abort.operationId
@@ -955,14 +986,19 @@ export function eraseCanonicalDraftCredentials(machine: RuntimeAdmission, profil
     if (saved === undefined) {
       const file = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
       if (file === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      const parsed = CanonicalCredentialHeadSchema.parse(parse(file.bytes));
-      if (parsed.installationId !== paths.binding.installationId || parsed.profileId !== paths.binding.profileId
-        || parsed.key.keyId !== input.credentials.keyId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      if (parsed.state === "erased") {
-        if (parsed.operationId !== abort.operationId || parsed.generation !== abort.generation) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      const stored = CanonicalCredentialHeadSchema.parse(parse(file.bytes));
+      if (stored.installationId !== paths.binding.installationId || stored.profileId !== paths.binding.profileId
+        || stored.key.keyId !== input.credentials.keyId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      const reading = canonicalCredentialHeadReading(stored, "absent");
+      if ("inconsistent" in reading) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      if (reading.state === "erased") {
+        const erased = reading.head;
+        if (erased.operationId !== abort.operationId || erased.generation !== abort.generation) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
         for (const path of Object.values(paths.records)) if (readPrivateFile(path, { label: "protected.json", maxBytes }) !== undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-        guard(); assertHeadKeyBinding(parsed); credentialKeyCustody.delete(parsed.key); return;
+        guard(); assertHeadKeyBinding(erased); credentialKeyCustody.delete(erased.key); return;
       }
+      if (reading.state !== "active") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      const parsed = reading.head;
       if (parsed.generation !== input.credentials.generation || abort.generation !== increment(parsed.generation)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       guard(); const key = authenticateHead(parsed);
       inspectCanonicalNamespace(paths, parsed, key, new Map(), guard);
@@ -1075,12 +1111,15 @@ function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
       assertAccess();
       if (readPrivateFile(operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CanonicalCredentialError("CREDENTIAL_BUSY");
       const file = readPrivateFile(headPath, { label: "lock", maxBytes });
-      if (file === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
-      const parsed = CanonicalCredentialHeadSchema.safeParse(parse(file.bytes));
-      if (!parsed.success) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
-      const head = parsed.data;
-      if (head.installationId !== binding.installationId || head.profileId !== binding.profileId || head.state !== "active") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      const key = authenticateHead(head);
+      const parsed = file === undefined ? undefined : CanonicalCredentialHeadSchema.safeParse(parse(file.bytes));
+      const reading = canonicalCredentialHeadReading(parsed === undefined ? "absent" : parsed.success ? parsed.data : "unparseable", "absent");
+      // An unparseable head is a person that still needs conversion, as an absent one does.
+      if ("inconsistent" in reading) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
+      if ("head" in reading && (reading.head.installationId !== binding.installationId || reading.head.profileId !== binding.profileId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      const access = credentialHeadTransition(reading.state, "read");
+      if ("refused" in access) throw headRefusal(access.refused);
+      if (reading.state !== "active") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      const head = reading.head, key = authenticateHead(head);
       inspectCanonicalNamespace(canonical, head, key, ownedStages, assertAccess, ancestry);
       if (capturedGeneration !== undefined && (head.generation !== capturedGeneration.generation || head.key.keyId !== capturedGeneration.keyId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       capturedGeneration ??= { generation: head.generation, keyId: head.key.keyId };
