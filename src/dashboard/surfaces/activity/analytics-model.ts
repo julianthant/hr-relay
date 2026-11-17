@@ -70,3 +70,9 @@ export function analyticsPeriodLabel(range: ActivityDateRange): string {
 }
 
 export const analyticsClock = (seconds: number | null) => seconds === null ? "—" : `${Math.floor(seconds / 60)}m ${String(Math.round(seconds % 60)).padStart(2, "0")}s`;
+
+/** Counts in multiples of 6 so four ticks fall on whole numbers. */
+export function countScale(max: number) {
+  const top = Math.max(6, Math.ceil(max / 6) * 6);
+  return { top, ticks: [top, top * 2 / 3, top / 3, 0].map(value => ({ value, label: String(value) })) };
+}
