@@ -2,6 +2,23 @@ import assert from 'node:assert/strict';
 import { it } from 'vitest';
 import { auditSurfaceOrigins, decidableLeaves, REDACTION_SURFACES, SURFACE_LEAF_ORIGINS } from './helpers/redaction-surface-audit.js';
 
+it('classifies clone and import names, tags and workbook content for operator loopback only', () => {
+  const ids = ['request/workbook-clone', 'request/workbook-import', 'wire/workbook-import-result'];
+  const surfaces = REDACTION_SURFACES.filter(surface => ids.includes(surface.id));
+  assert.deepEqual(surfaces.map(surface => surface.id).sort(), [...ids].sort());
+  const origins = SURFACE_LEAF_ORIGINS.filter(entry => ids.includes(entry.surface));
+  assert.deepEqual(auditSurfaceOrigins(surfaces, origins), []);
+  for (const surface of surfaces) assert.equal(surface.egress, 'operator-loopback');
+  for (const id of ids.slice(0, 2)) for (const path of ['name', 'tags[]']) {
+    const entry = origins.find(entry => entry.surface === id && entry.path === path);
+    assert.ok(entry);
+    assert.equal(entry.origin, 'captured-hr-value');
+    assert.equal(auditSurfaceOrigins(surfaces, origins.filter(candidate => candidate !== entry)).length, 1);
+  }
+  for (const egress of ['process-egress', 'os-notification'] as const)
+    assert.ok(auditSurfaceOrigins(surfaces.map(surface => ({ ...surface, egress })), origins).length > 0);
+});
+
 it('pins all mutable type and values-action origins and rejects each omission or foreign egress', () => {
   const workbookPaths = [
     'libraryId', 'name', 'sheets[].columnBindings[].fieldId', 'sheets[].columnBindings[].id',
