@@ -38,7 +38,8 @@ describe("D capture identity and served resolution", () => {
           receipts:sql.prepare("SELECT * FROM run_receipts ORDER BY id").all()});
         const before = immutable();
         const note = "SYNTHETIC_PROTECTED_TEXT_10999999";
-        assert.equal(f.kernel.execute(resolutionCommand({ payload: { action: "resolve", note } })).state, "applied");
+        f.db.authority.failureResolution.update({ runId: f.record.runId, failureId: f.record.failureId, expectedVersion: 1,
+          resolution: { status: "resolved", version: 2, by: "local-operator", at: f.clock.now().toISOString(), note } });
         assert.equal(immutable(), before);
         assert.deepEqual(deps.trust.ensureReceipt(f.record.runId), receipt);
         const raw = deps.trust.failureResolution?.read(f.record.runId, f.record.failureId); assert.ok(raw);

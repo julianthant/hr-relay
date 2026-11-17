@@ -52,9 +52,9 @@ function seed(database: DatabaseSync): void {
 }
 
 describe("command row state migration 33", () => {
-  it("is schema version 33, the current schema", () => {
+  it("is schema version 33, under the failure note removal's current 34", () => {
     assert.equal(COMMAND_ROW_STATE_SCHEMA_VERSION, 33);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 33);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 34);
     assert.deepEqual(migrationTableNames(33), migrationTableNames(32));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });
