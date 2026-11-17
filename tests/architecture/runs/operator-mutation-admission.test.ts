@@ -27,6 +27,7 @@ const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
   "/api/v1/workbooks": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/types": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/import": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/workbooks/:libraryId/clone": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/:libraryId/operations": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/:libraryId/library-actions": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/:libraryId/sync": { guard: "operatorMutationIngressGuard" },
@@ -38,6 +39,7 @@ const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
   "/api/v1/commands/bulk": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/chatgpt-account/sign-in": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/settings/chatgpt-account/sign-out": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/chatgpt-account/test-ocr": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/path-picker": { guard: "operatorMutationIngressGuard" },
 });
