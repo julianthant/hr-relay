@@ -195,11 +195,13 @@ describe("Person Lookup Search for person typed by hand", () => {
 
   it("takes the typed Employee ID as the person when the search is by name", async () => {
     const f = await world.fixture();
-    const settled = await f.run({ name: "Someone, Else" }, [], except("searching"), [{ step: "searching", facts: PERSON }]);
+    const settled = await f.run({ name: "Someone, Else" }, [], except("searching"), [{ step: "searching", facts: { ...PERSON, name: REFERENCE_PERSON.name } }]);
     const stored = f.database.authority.runResults.get(settled.run.envelope.runId);
     assert.ok(stored);
     const { activeStatus } = PersonLookupResultSchema.parse(stored.result.value);
-    assert.deepEqual([activeStatus.state, activeStatus.details.eid, activeStatus.details.name, activeStatus.details.crm], ["inactive", PERSON.emplId, PERSON.name, "Found"]);
+    assert.deepEqual([activeStatus.state, activeStatus.details.eid, activeStatus.details.name, activeStatus.details.crm], ["inactive", PERSON.emplId, REFERENCE_PERSON.name, "Found"]);
+    // CRM is searched by the typed name, not the searched text.
+    assert.deepEqual(f.crmQueries, [{ name: REFERENCE_PERSON.name }]);
   });
 
   it("records the typed person as the Match mode identity without reading UCPath", async () => {

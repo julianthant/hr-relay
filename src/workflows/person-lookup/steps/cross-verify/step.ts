@@ -11,10 +11,11 @@ import { personLookupKnownEid, typedCrmIdentity } from "../../../../rules/matchi
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep, requireFact } from "../../../../workflow-kit/workflow.js";
-import { buildSearching, lookupMethodDisplay } from "../searching/step.js";
+import { buildSearching, lookupMethodDisplay, SEARCHING_NODE } from "../searching/step.js";
 
-export function crmQuery(input: z.output<typeof PersonLookupInput>, person?: z.output<typeof SearchPersonOrg.output>, match?: z.output<typeof SearchPersonMatch.output>) {
-  const name = input.mode === "match" ? personLookupTitle(input) : "name" in input ? input.name : person?.selection.selected?.name;
+/** The CRM search for this person; a person typed by hand under Search for person is searched by the typed name. */
+export function crmQuery(input: z.output<typeof PersonLookupInput>, person?: z.output<typeof SearchPersonOrg.output>, match?: z.output<typeof SearchPersonMatch.output>, typedPerson = false) {
+  const name = input.mode === "match" ? personLookupTitle(input) : "name" in input && !typedPerson ? input.name : person?.selection.selected?.name;
   return { ...(name === undefined ? {} : { name }), ...("emplId" in input ? { eid: input.emplId } : input.mode === "match" ? { eid: match?.confirmed[0]?.emplId } : {}) };
 }
 
@@ -163,13 +164,13 @@ export const crmResultsNode = crossVerifyEntries.task(CRM_RESULTS_NODE, CrmReadO
 export function buildCrossVerify(author: WorkflowAuthor<typeof PersonLookupInput>, search: ReturnType<typeof buildSearching>) {
   const { task, result } = author;
   const { searching, matching, initial } = search;
-  const crossVerify = task(crossVerifyNode, [initial, searching, matching], ({ input, outputs }) => crmQuery(input, outputs.searching, outputs.matching));
+  const crossVerify = task(crossVerifyNode, [initial, searching, matching], ({ input, outputs, asserted }) => crmQuery(input, outputs.searching, outputs.matching, asserted?.includes(SEARCHING_NODE)));
   const identity = task(crmIdentityNode, [initial, crossVerify, searching, matching], ({ input, outputs }) => ({ input, person: outputs.searching ?? matchModePerson(outputs["search-identity"]?.selected), match: outputs.matching, crm: outputs["cross-verify"] }));
   const selectedRecord = task(selectedRecordNode, [identity], ({ outputs }) => {
     const record = requireFact(outputs["crm-identity"]?.crmRecord, "crm-identity", "crmRecord"); return record;
   });
-  const crmResults = task(crmResultsNode, [initial, identity, searching, matching], ({ input, outputs }) => ({
-    query: crmQuery(input, outputs.searching, outputs.matching), records: requireFact(outputs["crm-identity"]?.unselectedCrmRecords, "crm-identity", "unselectedCrmRecords"),
+  const crmResults = task(crmResultsNode, [initial, identity, searching, matching], ({ input, outputs, asserted }) => ({
+    query: crmQuery(input, outputs.searching, outputs.matching, asserted?.includes(SEARCHING_NODE)), records: requireFact(outputs["crm-identity"]?.unselectedCrmRecords, "crm-identity", "unselectedCrmRecords"),
   }));
   return {
     crossVerify, identity, selectedRecord, crmResults, steps: [[CROSS_VERIFY_STEP, [crossVerify, identity, selectedRecord, crmResults]]] as const,

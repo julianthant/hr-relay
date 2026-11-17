@@ -38,9 +38,15 @@ const CRM_RECORD = CrmDiscoveredRecordSchema.parse({ recordId: "ONB-1", recordUr
 export function createPersonLookupReferenceWorld() {
   const world = createRunExecutorTestWorld();
   return { cleanup: world.cleanup, async fixture() {
-    const sessions = sessionFactoryHarness({ crm: () => createDeterministicCrmOnboardingDriver({ discovery: [CRM_RECORD],
+    /** Every CRM onboarding search this world served; a search finds the record under its Employee ID, else under its name. */
+    const crmQueries: Readonly<{ name?: string; eid?: string }>[] = [];
+    const sessions = sessionFactoryHarness({ crm: () => ({ ...createDeterministicCrmOnboardingDriver({ discovery: [CRM_RECORD],
       record: { state: "found", record: { recordId: CRM_RECORD.recordId, emplId: CRM_RECORD.emplId, fullName: CRM_RECORD.name, rawStage: "Completed" } },
-      dates: ReadOnboardingDatesOutputSchema.parse({ emplId: REFERENCE_PERSON.emplId, state: "read", employmentDate: "2026-07-01", oathDate: "2026-06-25", reason: "" }) }), ucpath: (): UcpathPersonOrgDriver => ({ ...createDeterministicUcpathPersonOrgDriver(),
+      dates: ReadOnboardingDatesOutputSchema.parse({ emplId: REFERENCE_PERSON.emplId, state: "read", employmentDate: "2026-07-01", oathDate: "2026-06-25", reason: "" }) }),
+      async searchOnboardingRecords(query: Readonly<{ name?: string; eid?: string }>) {
+        crmQueries.push(query);
+        return [CRM_RECORD].filter(record => query.eid === undefined ? record.name === query.name : record.emplId === query.eid);
+      } }), ucpath: (): UcpathPersonOrgDriver => ({ ...createDeterministicUcpathPersonOrgDriver(),
       async searchPersonOrg(input) { return i9Search([REFERENCE_PERSON].filter(person => input.kind === "by-name" ? person.name === input.name : person.emplId === input.emplId)); },
       async searchPersonMatch(input) {
         const confirmed = [REFERENCE_PERSON].filter(person => person.name === `${input.lastName}, ${input.firstName}`).map(({ emplId, name }) => ({ emplId, name }));
@@ -79,6 +85,6 @@ export function createPersonLookupReferenceWorld() {
       const events = database.authority.timelineEvents.page({}).filter(event => event.scope.kind === "run" && event.scope.runId === started.envelope.runId);
       return { run: settled, outcomes, events };
     };
-    return { harness, database, descriptor, spreadsheet, run, canonical };
+    return { harness, database, descriptor, spreadsheet, run, canonical, crmQueries };
   } };
 }
