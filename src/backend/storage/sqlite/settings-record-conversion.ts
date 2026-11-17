@@ -80,14 +80,12 @@ function snapshotRow(row: Record<string, unknown>) {
   if (stored === undefined ? Object.hasOwn(value, "preferencesFingerprint") : value.preferencesFingerprint !== sha256Hex(canonicalJsonStringify(stored))) {
     throw new Error("settings-record-predecessor-shape-invalid");
   }
-  let preferences = stored;
-  for (const entry of SETTINGS_RECORD_CONVERSIONS) {
-    const present = Object.keys(entry.adds).filter(key => preferences !== undefined && Object.hasOwn(preferences, key));
-    if (present.length === Object.keys(entry.adds).length) continue;
-    if (present.length !== 0) throw new Error("settings-record-predecessor-shape-invalid");
-    preferences = { ...preferences, ...entry.adds };
-  }
-  if (preferences === stored) return row;
+  // A stored snapshot has no preferences, or exactly the members of the first conversions up to the one its build had.
+  const members = (count: number) => SETTINGS_RECORD_CONVERSIONS.slice(0, count).flatMap(entry => Object.keys(entry.adds)).sort().join();
+  const held = stored === undefined ? 0 : SETTINGS_RECORD_CONVERSIONS.findIndex((_entry, index) => members(index + 1) === Object.keys(stored).sort().join()) + 1;
+  if (stored !== undefined && held === 0) throw new Error("settings-record-predecessor-shape-invalid");
+  if (held === SETTINGS_RECORD_CONVERSIONS.length) return row;
+  const preferences = SETTINGS_RECORD_CONVERSIONS.slice(held).reduce<Record<string, unknown>>((filled, entry) => ({ ...filled, ...entry.adds }), { ...stored });
   return { ...row, payload_json: canonicalJsonStringify(ConfigSnapshotRecordSchema.parse({ ...value, preferences,
     preferencesFingerprint: derivePersonPreferencesFingerprint(preferences) })) };
 }

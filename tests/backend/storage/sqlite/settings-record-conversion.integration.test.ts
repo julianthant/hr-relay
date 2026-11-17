@@ -10,6 +10,7 @@ import { migrateSettingsRecords, readAppSettings } from "../../../../src/backend
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { preRunsNotificationsSettingsRow, restorePreRunsNotificationsSettingsRows } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
@@ -121,6 +122,31 @@ it("refuses a snapshot whose stored preferences were altered, and leaves the sto
     const before = tables(f.raw);
     assert.throws(() => upgrade(f.raw), /settings-record-predecessor-shape-invalid/u);
     assert.deepEqual(tables(f.raw), before);
+  } finally { f.raw.close(); }
+});
+
+it.each([
+  ["no members", () => ({})],
+  ["only the members this upgrade adds", () => SIX_DEFAULTS],
+  ["one member short", (stored: Record<string, unknown>) => Object.fromEntries(Object.entries(stored).filter(([key]) => key !== "theme"))],
+  ["an unknown member", (stored: Record<string, unknown>) => ({ ...stored, extra: true })],
+])("refuses a snapshot whose preferences no build wrote (%s), though its fingerprint matches, and leaves the store as it was", async (_name, malformed) => {
+  const f = await schema31Store();
+  try {
+    f.raw.exec("DROP TRIGGER settings_snapshots_immutable");
+    const [first] = f.raw.prepare("SELECT id,payload_json FROM settings_snapshots ORDER BY id LIMIT 1").all();
+    const record = z.record(z.string(), z.unknown()).parse(JSON.parse(PayloadSchema.parse(first).payload_json));
+    const preferences = malformed(z.record(z.string(), z.unknown()).parse(record.preferences));
+    f.raw.prepare("UPDATE settings_snapshots SET payload_json=? WHERE id=?").run(
+      canonicalJsonStringify({ ...record, preferences, preferencesFingerprint: sha256Hex(canonicalJsonStringify(preferences)) }), z.string().parse(first?.id));
+    f.raw.exec("CREATE TRIGGER settings_snapshots_immutable BEFORE UPDATE ON settings_snapshots BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END");
+    const before = tables(f.raw), priorTriggers = triggers(f.raw);
+    const altered = f.raw.prepare("SELECT * FROM settings_snapshots ORDER BY id LIMIT 1").get();
+    assert.throws(() => convertSettingsRecordRow("settings_snapshots", altered), /settings-record-predecessor-shape-invalid/u);
+    assert.throws(() => upgrade(f.raw), /settings-record-predecessor-shape-invalid/u);
+    assert.deepEqual(tables(f.raw), before);
+    assert.deepEqual(triggers(f.raw), priorTriggers);
+    assert.equal(f.raw.prepare("PRAGMA user_version").get()?.user_version, 31);
   } finally { f.raw.close(); }
 });
 
