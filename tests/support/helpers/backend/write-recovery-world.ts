@@ -7,11 +7,10 @@ import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService,runContinuationPort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { type WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
-import { createWriteRecoveryService,createWriteResolutionExecutor,type WriteRecoveryService } from "../../../../src/backend/runtime/writes/write-recovery.js";
+import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
 
 import { type RunRecord } from "../../../../src/models/run/record.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock,type TestClock } from "../../../../src/rules/time/clock.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { NO_INTAKE_PROJECTIONS,UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
@@ -19,7 +18,7 @@ import { CONFIG_SNAPSHOT,UUID_5,UUID_6,UUID_7,UUID_8 } from "../../fixtures/phas
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { testRunContinuation, testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
 import {WRITE_FIXTURE_ITEM_ID,WRITE_FIXTURE_KEY,WRITE_FIXTURE_KEY_DIGEST,WRITE_FIXTURE_NODE_ID,WRITE_FIXTURE_NOW,WRITE_FIXTURE_OBSERVATION,WRITE_FIXTURE_RUN_ID,WRITE_FIXTURE_STAGED_STATE,WRITE_FIXTURE_WORKER_ID,WRITE_FIXTURE_WORKFLOW_ID,buildWriteFixtureRegistry,createWriteFixtureWorld,writeFixtureDescriptor,writeFixtureQueuedRun,writeFixtureSessionManager,writeFixtureSessions,type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
-import { ManualScheduler,recordingLogger,type SessionFactoryHarness } from "../phase1f-executor-harness.js";
+import { ManualScheduler,type SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { boundFixtureWorker, detachBoundFixtureWorkers } from "../synthetic-database-admission.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
@@ -31,7 +30,6 @@ interface Harness {
   readonly clock: TestClock;
   readonly manager: WorkerSessionManager;
   readonly ids: ReturnType<typeof sequentialIdFactory>;
-  readonly recovery: WriteRecoveryService;
 
   readonly openedFingerprints: () => readonly string[];
   readonly restart: () => void;
@@ -46,8 +44,8 @@ export function createWriteRecoveryTestWorld(profileFixture: () => Promise<Bound
 
   const SIGNAL = new AbortController().signal;
 
-  async function harness(refuseContinuation = false): Promise<Harness> {
-    const held: { profile?: BoundProfileStorageFixture; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; manager?: WorkerSessionManager; world?: WriteFixtureWorld; recovery?: WriteRecoveryService; primary?: unknown; failure?: Error } = {};
+  async function harness(): Promise<Harness> {
+    const held: { profile?: BoundProfileStorageFixture; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; manager?: WorkerSessionManager; world?: WriteFixtureWorld; primary?: unknown; failure?: Error } = {};
     retainedWriteRecoveryOwners.add(held);
     try {
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
@@ -91,27 +89,9 @@ export function createWriteRecoveryTestWorld(profileFixture: () => Promise<Bound
       openGate: input => duoCeremonyGatesOver(database, clock, scheduler).openGate(input),
     }); held.manager = manager;
     const ids = sequentialIdFactory("c");
-    const recovery = createWriteRecoveryService({
-      continuation: { transition: (input) => {
-        if (refuseContinuation) {
-          assert.ok(database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID));
-          return { state: "refused", refusal: { reason: "conflict", currentVersion: PositiveIntSchema.parse(input.expectedVersion + 1) } };
-        }
-        return testRunContinuation(database, clock).transition(input);
-      } },
-      stores: registry,
-      authority: database,
-      sessions: manager,
-      clock,
-      ids,
-      scheduler: new ManualScheduler(clock),
-      taskDeadlineMs: 60_000,
-      operator: "local-operator",
-      log: recordingLogger().log
-    }); held.recovery = recovery;
     retainedWriteRecoveryOwners.delete(held);
     return {
-      world, workerId: slot.workerId, get database(){return database;}, clock, manager, ids, recovery,
+      world, workerId: slot.workerId, get database(){return database;}, clock, manager, ids,
       restart:()=>{try { database.close(); database=open(); held.database=database; } catch(error) { held.primary=error; retainedWriteRecoveryOwners.add(held); held.failure=retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }},
       openedFingerprints: () => Object.freeze([...opened]),
     };
