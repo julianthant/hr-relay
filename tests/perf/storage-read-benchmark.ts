@@ -148,18 +148,32 @@ export function measureStorageRead(fixture: StorageReadFixture, read: StorageRea
   };
 }
 
+export interface IdleMeasurement {
+  readonly total: Distribution;
+  /** Share of the read's own time spent inside `prepare()`, median over iterations: what statement reuse could save. */
+  readonly prepareShare: number;
+  /** Prepared statements per read; one value means every read did the same work. */
+  readonly statements: readonly number[];
+}
+
 /** The same read with no commit before it: the store check returns at once, so this is the read's own cost. */
-export function measureIdleRead(fixture: StorageReadFixture, read: StorageReadId, iterations: number): Distribution {
-  const subject = STORAGE_READS[read], total: number[] = [];
+export function measureIdleRead(fixture: StorageReadFixture, read: StorageReadId, iterations: number): IdleMeasurement {
+  const subject = STORAGE_READS[read], total: number[] = [], prepareShare: number[] = [];
+  const statements = new Set<number>();
   subject.read(fixture);
   for (let index = 0; index < iterations; index += 1) {
     const started = systemClock.monotonicMs();
     const traced = traceSqliteStatements(() => subject.read(fixture));
-    total.push(systemClock.monotonicMs() - started);
+    const elapsed = systemClock.monotonicMs() - started;
+    total.push(elapsed);
     subject.served(traced.value, fixture);
     if (traced.statements.some(statement => statement.sql === CHECK_FIRST_STATEMENT)) throw new Error(`the idle ${read} read ran the store check, so a commit preceded it`);
+    prepareShare.push(traced.statements.reduce((sum, statement) => sum + statement.endedAt - statement.startedAt, 0) / elapsed);
+    statements.add(traced.statements.length);
   }
-  return distribution(total);
+  const sorted = [...prepareShare].sort((a, b) => a - b);
+  return { total: distribution(total), prepareShare: Math.round(sorted[Math.floor((sorted.length - 1) / 2)] * 1000) / 1000,
+    statements: [...statements].sort((a, b) => a - b) };
 }
 
 /** Commits whose post-commit check the benchmark times: a heartbeat, a completion, and a heartbeat of a run with a long journal. */
@@ -257,7 +271,7 @@ export async function runStorageReadBenchmark(): Promise<void> {
   const commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   const trackedTreeClean = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { encoding: "utf8" }).trim() === "";
   const measurements: ReadMeasurement[] = [];
-  const idle: { read: StorageReadId; runCount: number; total: Distribution }[] = [];
+  const idle: ({ read: StorageReadId; runCount: number } & IdleMeasurement)[] = [];
   const commits: (ReadMeasurement & { kind: CommitKind })[] = [];
   const appends: { runCount: number; append: Distribution }[] = [];
   const seeds: { runCount: number; seedMs: number }[] = [];
@@ -270,7 +284,7 @@ export async function runStorageReadBenchmark(): Promise<void> {
       for (const read of Object.keys(STORAGE_READS) as StorageReadId[]) {
         measureStorageRead(fixture, read, 1, []); // discarded warm-up: module-level lazy costs
         measurements.push(measureStorageRead(fixture, read, iterations, appendMs));
-        idle.push({ read, runCount, total: measureIdleRead(fixture, read, iterations) });
+        idle.push({ read, runCount, ...measureIdleRead(fixture, read, iterations) });
       }
       appends.push({ runCount, append: distribution(appendMs) });
       // After the three reads: these commits add runs, which the run search's served count would not expect.
@@ -299,11 +313,12 @@ export async function runStorageReadBenchmark(): Promise<void> {
     "|---|---|---|---|---|---|---|",
     ...measurements.map(entry => `| ${entry.read} | ${entry.runCount.toLocaleString("en-US")} | ${cell(entry.total)} | ${cell(entry.check)} | ${cell(entry.query)} `
       + `| ${(entry.prepareShare * 100).toFixed(1)}% / ${(entry.checkPrepareShare * 100).toFixed(1)}% | ${entry.checkStatements.join(", ")} |`),
-    "", "| Read | Runs | after a commit / with none, median total ms | ratio |", "|---|---|---|---|",
+    "", "| Read | Runs | after a commit / with none, median total ms | ratio | prepare share with none | statements with none |", "|---|---|---|---|---|---|",
     ...measurements.map(entry => {
       const quiet = idle.find(value => value.read === entry.read && value.runCount === entry.runCount);
       if (quiet === undefined) throw new Error(`no idle ${entry.read} read at ${String(entry.runCount)} runs`);
-      return `| ${entry.read} | ${entry.runCount.toLocaleString("en-US")} | ${entry.total.medianMs.toFixed(2)} / ${quiet.total.medianMs.toFixed(2)} | ${(entry.total.medianMs / quiet.total.medianMs).toFixed(2)} |`;
+      return `| ${entry.read} | ${entry.runCount.toLocaleString("en-US")} | ${entry.total.medianMs.toFixed(2)} / ${quiet.total.medianMs.toFixed(2)} | ${(entry.total.medianMs / quiet.total.medianMs).toFixed(2)} `
+        + `| ${(quiet.prepareShare * 100).toFixed(1)}% | ${quiet.statements.join(", ")} |`;
     }),
     "", "| Commit before the read | Runs | check ms median / p95 | check statements |", "|---|---|---|---|",
     ...commits.map(entry => `| ${entry.kind} | ${entry.runCount.toLocaleString("en-US")} | ${cell(entry.check)} | ${entry.checkStatements.join(", ")} |`),
