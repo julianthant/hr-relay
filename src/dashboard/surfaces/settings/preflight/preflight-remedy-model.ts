@@ -29,8 +29,8 @@ export const CURRENT_FISCAL_TARGET = 'annualDates.current';
 
 const at = (section: string, label: string, target: string): RunCheckFix => ({ section, label, target });
 
-const NO_ADDRESS_CONTROL = 'Settings has no control for this address. Tell the operator; Relay cannot reach this system until it is changed.';
-const NO_PROVIDER_CONTROL = 'Settings has no control for this lookup. It does not stop a run; tell the operator if it keeps failing.';
+const NO_ADDRESS_CONTROL = 'Cannot be fixed in Settings. Tell the operator to change this address.';
+const NO_PROVIDER_CONTROL = 'Cannot be fixed in Settings. Tell the operator if it keeps failing.';
 
 /** Every registered check id has an explicit entry; a test fails when one is missing. */
 export const RUN_CHECK_FIXES: Readonly<Record<string, RunCheckFix>> = Object.freeze({
@@ -59,13 +59,13 @@ export const RUN_CHECK_FIXES: Readonly<Record<string, RunCheckFix>> = Object.fre
 
 /** What to do about a failed check that has no Fix button; every null entry above has one. */
 export const RUN_CHECK_HINTS: Readonly<Record<string, string>> = Object.freeze({
-  'runtime.compatibility': 'Cannot be fixed in Settings. Reinstall Relay or update Node.js, then check again.',
-  'browser.assets': 'Cannot be fixed in Settings. Reinstall Relay to restore its browser files, then check again.',
-  'config.valid': 'Cannot be fixed in Settings. No single setting repairs this; restart Relay, and tell the operator if it fails again.',
-  'filesystem.health': 'Cannot be fixed in Settings. Free disk space or restore the missing folder on this computer, then check again.',
-  'authority.health': 'Cannot be fixed in Settings. Restart Relay, and tell the operator if it fails again.',
-  'ports.available': 'Cannot be fixed in Settings. Close the other program using the port, then check again.',
-  'secrets.sharepoint-roster': 'Settings has no control for the roster location. Tell the operator; this workflow cannot run until it is set.',
+  'runtime.compatibility': 'Cannot be fixed in Settings. Reinstall Relay or update Node.js.',
+  'browser.assets': 'Cannot be fixed in Settings. Reinstall Relay to restore its browser files.',
+  'config.valid': 'Cannot be fixed in Settings. Restart Relay; if it fails again, tell the operator.',
+  'filesystem.health': 'Cannot be fixed in Settings. Free up disk space, then check again.',
+  'authority.health': 'Cannot be fixed in Settings. Restart Relay; if it fails again, tell the operator.',
+  'ports.available': 'Cannot be fixed in Settings. Close the program using the port.',
+  'secrets.sharepoint-roster': 'Cannot be fixed in Settings. Tell the operator to set the roster location.',
   'endpoint.ucpath.prod': NO_ADDRESS_CONTROL,
   'endpoint.crm.prod': NO_ADDRESS_CONTROL,
   'endpoint.onbase.prod': NO_ADDRESS_CONTROL,

@@ -62,7 +62,7 @@ describe('the Run dialog Fix mapping', () => {
 
   it('gives every check without a Fix a plain hint, and none to a check that has one', () => {
     for (const id of ids) {
-      if (runCheckFix(id) === null) assert.match(runCheckHint(id), /^(Cannot be fixed in Settings|Settings has no control)/u, id);
+      if (runCheckFix(id) === null) assert.match(runCheckHint(id), /^Cannot be fixed in Settings\. /u, id);
       else assert.ok(!Object.hasOwn(RUN_CHECK_HINTS, id), `${id} has a Fix and a hint`);
     }
     assert.throws(() => runCheckHint('new.check'), /no cannot-fix-here hint/u);

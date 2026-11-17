@@ -31,7 +31,7 @@ export function runCheckRows(wire: PreflightReadinessWire): RunChecksState {
     if (copy === undefined) throw new Error(`Run check "${result.check}" has no readiness copy`);
     const fix = result.status === "fail" ? runCheckFix(result.check) : null;
     const description = result.status === "pass" ? copy.description
-      : result.status === "fail" && fix === null ? `${result.summary} ${runCheckHint(result.check)}` : result.summary;
+      : result.status === "fail" && fix === null ? `${runCheckHint(result.check)} ${result.summary}` : result.summary;
     return { check: result.check, title: copy.name, description,
       verdict: result.status, ...(fix === null ? {} : { fix }) };
   });

@@ -257,7 +257,7 @@ export function SettingsPage({
 
       <div id="dashboard-settings-content" data-settings-target={target} tabIndex={-1} ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
         <SettingsSearchTargetContext.Provider value={searchContext}><DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
-        {openedForCheck !== undefined && <Notice tone="info" title={`Opened for the ${openedForCheckName} check`} description="Change the highlighted setting, then press Back to run." />}
+        {openedForCheck !== undefined && <Banner tone="info" title={`Opened for the ${openedForCheckName} check`}>Change the highlighted setting, then press Back to run.</Banner>}
         {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && <Notice tone="warning" title="Setting unavailable" description="Not on the selected page." />}
         {editor.editor.state === "failed" && !isDataSection && activeId !== "spreadsheets" && (
           <FailureNotice sentence="Relay could not read your settings." stillWorks="Nothing was changed."
