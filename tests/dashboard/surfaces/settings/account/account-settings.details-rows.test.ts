@@ -107,25 +107,44 @@ describe("Settings > Account details rows", () => {
     assert.equal(dialog(), null);
   });
 
-  it("shows the backend's reason as a toast and keeps the old value when a change is refused", async () => {
+  for (const field of FIELDS.filter(item => item.row.includes("nitials"))) it(`keeps the ${field.row} dialog open with the typed value and the reason under the field when a change is refused`, async () => {
     await mount(async () => ({ state: "refused", code: "PROFILE_INITIALS_REFUSED" } satisfies ProfileDetailsChangeResult));
+    await click(field.pencil);
+    await typeInto(field.row, "!!");
+    await press("Save");
+    await settle();
+    assert.ok(dialog(), "dialog stays open");
+    assert.equal(input(field.row).value, "!!");
+    assert.equal(dialog()?.querySelector('[role="alert"]')?.textContent, ERROR_CATALOG.PROFILE_INITIALS_REFUSED.text);
+    assert.equal(dialogButton("Save").disabled, false);
+    await typeInto(field.row, "AB");
+    assert.equal(dialog()?.querySelector('[role="alert"]'), null);
+  });
+
+  it("closes the dialog once a retried value is saved", async () => {
+    let result: ProfileDetailsChangeResult = { state: "refused", code: "PROFILE_INITIALS_REFUSED" };
+    await mount(async () => result);
     await click("Edit initials");
     await typeInto("Initials", "!!");
     await press("Save");
     await settle();
-    assert.match(text(), new RegExp(ERROR_CATALOG.PROFILE_INITIALS_REFUSED.text.slice(0, 30), "u"));
-    assert.match(text(), /InitialsJL/u);
+    result = { state: "changed", account: account({ initials: "AB" }) };
+    await typeInto("Initials", "AB");
+    await press("Save");
+    await settle();
     assert.equal(dialog(), null);
+    assert.match(text(), /InitialsAB/u);
   });
 
-  it("treats a failed request as a refusal that keeps the old value", async () => {
+  it("reports a failed request as an unconfirmed change with the details sentence and keeps the old value", async () => {
     await mount(async () => { throw new Error("offline"); });
     await click("Edit name");
     await typeInto("Name", "Sam Rivera");
     await press("Save");
     await settle();
     assert.match(text(), /NameJordan Lee/u);
-    assert.match(text(), /not changed/iu);
+    assert.match(text(), /Name not confirmed/u);
+    assert.match(text(), new RegExp(ERROR_CATALOG.PROFILE_DETAILS_CHANGE_UNKNOWN.text.slice(0, 30), "u"));
   });
 
   for (const how of ["Cancel", "Escape"] as const) it(`${how} sends no write and returns focus to the pencil`, async () => {
