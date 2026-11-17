@@ -60,7 +60,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
   const world = profileFixture === undefined ? createRunExecutorTestWorld() : createRunExecutorTestWorld(profileFixture);
   return {
     cleanup: world.cleanup,
-    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number;
+    async fixture(options: Readonly<{ actorId?: string; onbaseFiling?: "file" | "skip"; record?: boolean; release?: boolean; pageCount?: number;
       retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule; ocr?: WorkflowModule;
       lookupNames?: readonly string[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; holdPages?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
       failManualPageOnce?: number; stopAfterPageFailure?: boolean;
@@ -254,7 +254,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         formType, roster: null, approval: options.release === true ? "release" : "review-only",
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
       assert.ok(roster);
-      const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading }), { dryRun: options.dryRun ?? false,
+      const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading, onbaseFiling: options.onbaseFiling ?? "file" }), { dryRun: options.dryRun ?? false,
           ...(options.retainedProducer === true || root.descriptor.workbookReference?.id !== "ocr-roster" ? {} : {
             workbookReferences: [{ entry: 1, libraryId: roster.libraryId,
               versionId: database.authority.workbooks.libraryState(roster.libraryId).selectedVersionId,

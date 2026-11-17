@@ -16,7 +16,7 @@ export const READ_DOCUMENT_STEP = Object.freeze({ key: "read-document", label: "
   review: { pages: [], branchLabels: [] } as const,
 });
 export function buildEmergencyContactRecords(author: WorkflowAuthor<typeof EmergencyContactInputSchema>) {
-  const graph = buildApprovedOcrRecords(author, { ocrInput: input => ({ ...input, formType: "emergency-contact" }),
+  const graph = buildApprovedOcrRecords(author, { ocrInput: ({ onbaseFiling: _onbaseFiling, ...input }) => ({ ...input, formType: "emergency-contact" }),
       target: { id: WorkflowIdSchema.parse("emergency-contact-member"), input: EmergencyContactMemberInputSchema, result: EmergencyContactMemberResultSchema },
       memberSystem: "ucpath", memberLabel: "Preview approved Emergency Contacts", filter: approvedRecordHasEid,
       validate: records => {
@@ -38,7 +38,7 @@ export function buildEmergencyContactRecords(author: WorkflowAuthor<typeof Emerg
         const filing = (record: typeof approved.record) => ({ emplId: approvedEmergencyContact(record).emplId, page: ocrRecordSourcePages(ocr.review.records, record)[0] });
         const own = filing(approved.record), index = records.findIndex(record => record.recordId === approved.record.recordId);
         const filed = records.slice(0, index).some(record => { const other = filing(record); return other.emplId === own.emplId && other.page === own.page; });
-        return { ...approved, document: input.document, sourcePage: filed ? null : own.page };
+        return { ...approved, document: input.document, sourcePage: filed ? null : own.page, onbaseFiling: input.onbaseFiling };
       } });
   return { ...graph, steps: [[READ_DOCUMENT_STEP, graph.steps[0][1]]] as const,
     result: author.result(ReadApprovedOcrSnapshot.output, [graph.approved], ({ outputs }) => outputs["approved-records"]) };

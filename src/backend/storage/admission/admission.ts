@@ -29,7 +29,7 @@ import { assertSourceClosuresProved,AuthoritySourceClosureUnprovedError,hasUnpro
 import type { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
 import type { AuthorityBackupExpectedSource } from "../sqlite/database-identity.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS } from "../sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, OPENABLE_AUTHORITY_SCHEMA_VERSIONS, isOpenableAuthoritySchemaVersion, isUpgradeableAuthoritySchemaVersion, type MaintenanceAuthoritySchemaVersion, type OpenableAuthoritySchemaVersion } from "../../../models/config/authority-schema-versions.js";
 import { assertCanonicalProfileBinding,assertLiveProfileDatabaseBinding,assertProfileRestoreDatabaseBinding,readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
 import { registerRuntimeAdmission,requireRuntimeAdmission } from "./admission-identity.js";
@@ -132,7 +132,7 @@ type AdmissionScope = "profile-layout" | "profile-maintenance" | "flat-backup" |
   | "verified-copy" | "synthetic-verified-copy" | "synthetic"
   | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-pending-logout-inventory" | "stopped-control-inventory" | "stopped-incomplete-profile-inventory";
 
-type ReadyProfileUpgrade = Readonly<{ purpose: "manual" | "startup" | "layout"; sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30; copyPath?: string;
+type ReadyProfileUpgrade = Readonly<{ purpose: "manual" | "startup" | "layout"; sourcePath: string; processLockRoot: string; sourceSchemaVersion: MaintenanceAuthoritySchemaVersion; copyPath?: string;
   capture: ReturnType<InstallationLease["captureStoppedProfileUpgrade"]>;
   qualification: { current: Readonly<{ kind: "inspection" }> | Readonly<{ kind: "qualified"; sourceFingerprint: string }> | Readonly<{ kind: "revoked" }> } }>;
 
@@ -162,7 +162,7 @@ export class RuntimeAdmission {
   readonly #profileParent: RuntimeAdmission | undefined;
   readonly #pendingLogout: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }> | undefined;
   #automaticRestore: AuthorityRestoreInput | undefined;
-  #repairSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | undefined;
+  #repairSchemaVersion: OpenableAuthoritySchemaVersion | undefined;
   readonly #readyUpgrade: ReadyProfileUpgrade | undefined;
   #protectedSettingsUpgrade: { readonly kind: "inspection" } | { readonly kind: "backed"; readonly assertCurrent: () => Readonly<{ sourceFingerprint: string; backupSha256: string }> } | { readonly kind: "revoked" } | undefined;
   readonly #flatBackup: Readonly<{ sourcePath: string; processLockRoot: string }> | undefined;
@@ -265,7 +265,7 @@ export class RuntimeAdmission {
     const path = join(root, "state.db");
     const binding = { installationId: this.locator.installationId, profileId: id };
     const observed = readProfileDatabaseBinding(path);
-    if (observed.state !== "bound" || observed.schemaVersion === 7 || (!UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(observed.schemaVersion) && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION)) throw new Error("profile-stopped-upgrade-bound-required");
+    if (observed.state !== "bound" || !isOpenableAuthoritySchemaVersion(observed.schemaVersion)) throw new Error("profile-stopped-upgrade-bound-required");
     if (purpose === "layout" && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("fixed-layout-current-schema-required");
     assertCanonicalProfileBinding(path, binding);
     if (observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) assertMaintenanceCustodyAvailable("schema-upgrade");
@@ -401,7 +401,7 @@ export class RuntimeAdmission {
     if (this.#readyUpgrade !== undefined) {
       if (this.#readyUpgrade.purpose === "layout") throw new Error("fixed-layout-schema-mutation-refused");
       this.assertStoppedProfileUpgrade(path, this.#readyUpgrade.processLockRoot);
-      if (!UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(this.#readyUpgrade.sourceSchemaVersion) || sourceVersion !== this.#readyUpgrade.sourceSchemaVersion) throw new Error("profile-stopped-upgrade-version-refused");
+      if (!isUpgradeableAuthoritySchemaVersion(this.#readyUpgrade.sourceSchemaVersion) || sourceVersion !== this.#readyUpgrade.sourceSchemaVersion) throw new Error("profile-stopped-upgrade-version-refused");
       const proof = this.#readyUpgrade.qualification.current;
       if (proof.kind !== "qualified" || sourceFingerprint !== undefined && sourceFingerprint !== proof.sourceFingerprint) {
         this.#readyUpgrade.qualification.current = { kind: "revoked" };
@@ -478,7 +478,7 @@ export class RuntimeAdmission {
     if (this.#profileBinding === undefined) throw new Error("authority-backup-profile-binding-required");
     return Object.freeze({ kind: "profile", binding: this.#profileBinding });
   }
-  profileMaintenanceSchemaVersion(): 6 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 {
+  profileMaintenanceSchemaVersion(): MaintenanceAuthoritySchemaVersion {
     if (this.#repairSchemaVersion !== undefined) { this.assertLive(); return this.#repairSchemaVersion; }
     this.assertLive();
     if (this.#flatBackup !== undefined) return 6;
@@ -490,7 +490,7 @@ export class RuntimeAdmission {
       if (observed.state !== "unbound" || observed.schemaVersion !== 6) throw new Error("existing-data-owner-source-changed");
       return 6;
     }
-    if (observed.state !== "bound" || observed.schemaVersion === 7 || (!UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS.includes(observed.schemaVersion) && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || observed.binding.installationId !== this.profileBinding.installationId
+    if (observed.state !== "bound" || !isOpenableAuthoritySchemaVersion(observed.schemaVersion) || observed.binding.installationId !== this.profileBinding.installationId
       || observed.binding.profileId !== this.profileBinding.profileId) throw new Error("profile-stopped-upgrade-binding-changed");
     return observed.schemaVersion;
   }
@@ -1067,7 +1067,7 @@ export class RuntimeAdmission {
     if (maintenance !== undefined) { this.assertOfflineMaintenance(maintenance); verifyStoppedClaim(); }
     else claim.verify(publication ? "custody" : "issue");
     const root = join(this.#stateRoot, "profiles", claim.profileId);
-    let repairSchema: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | undefined;
+    let repairSchema: OpenableAuthoritySchemaVersion | undefined;
     this.assertStateRoot(root);
     if (claim.phase === "setup" && !publication) {
       ensureChildDirectory(this.#stateRoot, join(this.#stateRoot, "profiles"), "profiles", 0o700, 0o700);
@@ -1079,7 +1079,7 @@ export class RuntimeAdmission {
       }
     } else if (repair) {
       assertProfileRestoreDatabaseBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
-      repairSchema = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(25), z.literal(26), z.literal(27), z.literal(28), z.literal(29), z.literal(30)]).parse(readProfileDatabaseBinding(join(root, "state.db")).schemaVersion);
+      repairSchema = z.literal(OPENABLE_AUTHORITY_SCHEMA_VERSIONS).parse(readProfileDatabaseBinding(join(root, "state.db")).schemaVersion);
     }
     else if (!publication && claim.phase === "runtime") assertLiveProfileDatabaseBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
     else if (!publication) assertCanonicalProfileBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
@@ -1246,7 +1246,7 @@ export class RuntimeAdmission {
       if (path === ":memory:" || backup.copyPath !== undefined && path !== backup.copyPath) throw new Error("profile-stopped-upgrade-path-refused");
       if (backup.copyPath === undefined && path !== backup.sourcePath
         && (dirname(path) !== join(this.#stateRoot, "backups", "authority")
-          || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite)$/u.test(path.slice(dirname(path).length + 1)))) throw new Error("profile-stopped-upgrade-path-refused");
+          || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown|\.session)?\.sqlite)$/u.test(path.slice(dirname(path).length + 1)))) throw new Error("profile-stopped-upgrade-path-refused");
     }
     if (this.#scope === "profile-pending-logout-inventory") {
       if (path === ":memory:" || this.#pendingLogout?.copyPath !== undefined && path !== this.#pendingLogout.copyPath) throw new Error("profile-pending-logout-path-refused");
@@ -1263,7 +1263,7 @@ export class RuntimeAdmission {
     const parent = dirname(checked);
     if (parent === join(this.#stateRoot, "backups", "suspects") && /^suspect-\d{17}-[0-9a-f-]{36}\.sqlite$/u.test(checked.slice(parent.length + 1))) return;
     if (parent === join(this.#stateRoot, "backups", "authority")
-      && /^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite)$/u.test(checked.slice(parent.length + 1))) {
+      && /^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown|\.session)?\.sqlite)$/u.test(checked.slice(parent.length + 1))) {
       this.assertStateRoot(parent);
       return;
     }
@@ -1520,7 +1520,7 @@ export class RuntimeAdmission {
     if (this.#readyUpgrade !== undefined && (this.#readyUpgrade.copyPath !== undefined
       || !isAbsolute(path) || resolve(path) !== path
       || dirname(resolve(path)) !== join(this.#stateRoot, "backups", "authority")
-      || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite)$/u.test(resolve(path).slice(dirname(resolve(path)).length + 1)))) throw new Error("profile-stopped-upgrade-copy-refused");
+      || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown|\.session)?\.sqlite)$/u.test(resolve(path).slice(dirname(resolve(path)).length + 1)))) throw new Error("profile-stopped-upgrade-copy-refused");
     if (this.#pendingLogout?.copyPath !== undefined) throw new Error("profile-pending-logout-copy-delegation-refused");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot delegate copy authority");
     if (!/^[0-9a-f]{64}$/u.test(expectedSha256)) throw new Error("runtime-admission: invalid copy digest");

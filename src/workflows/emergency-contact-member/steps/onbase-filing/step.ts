@@ -11,6 +11,7 @@ import { buildContactPreview } from "../contact-preview/step.js";
 export const ONBASE_FILING_STEP = Object.freeze({ ...defineWorkflowStep({ key: "onbase-filing", label: "Import to OnBase" }), system: "onbase" as const,
   review: { pages: [], branchLabels: [] } as const,
 });
+// Runs only when the run's pick is "file": a "skip" member binds no child and finishes on its Save.
 // Declared after the Save and independent of it: the Save's failure or park stops the run first, and a dry run still previews the filing.
 // A failed filing holds the member open on its committed Save: Retry replaces the filing alone and the member then finishes without another Save.
 // It maps the Employee ID from input with map-contact's rule: the approved-record and mapped-contact reads allow 0 ms of age at admission.
@@ -19,7 +20,7 @@ export function buildOnbaseFiling(author: WorkflowAuthor<typeof EmergencyContact
     target: { id: WorkflowIdSchema.parse("onbase"), input: OnbaseInputSchema, result: OnbaseResultSchema },
     edgeId: "onbase-filing", cardinality: "many", await: "terminal", join: "all",
     policy: { onChildFailed: "block-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "hidden-unless-failed" },
-  }, [], { bind: ({ input }) => input.sourcePage === null ? [] : [{ ucpathId: approvedEmergencyContact(input.record).emplId, document: input.document, sourcePage: input.sourcePage }],
+  }, [], { bind: ({ input }) => input.onbaseFiling !== "file" || input.sourcePage === null ? [] : [{ ucpathId: approvedEmergencyContact(input.record).emplId, document: input.document, sourcePage: input.sourcePage }],
     deriveChildItemId: (_input, context) => context.canonicalItemId });
   return { filing, steps: [[ONBASE_FILING_STEP, [filing]]] as const };
 }

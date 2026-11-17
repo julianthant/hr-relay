@@ -6,7 +6,7 @@ import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.j
 import { emergencyContactWorkflow } from "../../../src/workflows/emergency-contact/workflow.js";
 import { EMERGENCY_CONTACT_MEMBER_EXAMPLE, EmergencyContactMemberInputSchema } from "../../../src/models/workflows/emergency-contact-member/input.js";
 import { ReadApprovedOcrSnapshot } from "../../../src/models/processing/ocr/read-approved-snapshot.js";
-import { OCR_INPUT_EXAMPLE } from "../../../src/models/workflows/ocr/input.js";
+import { OCR_INPUT_EXAMPLE, OcrInputSchema } from "../../../src/models/workflows/ocr/input.js";
 import { ReadOcrReviewSeed } from "../../../src/models/workflows/ocr/read-review-seed.js";
 import { OcrWorkflowResultSchema } from "../../../src/models/workflows/ocr/result.js";
 import { descriptorRuntimeNodes, workflowPlanning } from "../../../src/workflow-kit/workflow.js";
@@ -24,12 +24,12 @@ const reviewed = (recordIds: readonly string[], pageOf = (index: number) => inde
   extractionId: "c".repeat(64), subjectName: null, assertedEid: null, identitySource: "document" as const, rosterMatch: null,
   lookup: { state: "unavailable" as const, reason: "missing-identity" as const }, issues: ["identity-unverified" as const] })) });
 const recordIds = [1, 2, 3].map(index => `${"b".repeat(64)}#emergency-contact#${String(index)}`);
-function scope(different = false, pageOf?: (index: number) => number): RuntimeScope {
+function scope(different = false, pageOf?: (index: number) => number, onbaseFiling: "file" | "skip" = "file"): RuntimeScope {
   const second = { ...first, recordId: `${"b".repeat(64)}#emergency-contact#2`, fields: { ...first.fields,
     answers: first.fields.answers.map(answer => different && answer.path === "contact.name" && answer.state === "read"
       ? { ...answer, raw: "Different Contact", value: "Different Contact" } : answer) } };
   const { sourceRunId: _sourceRunId, formType: _formType, approval: _approval, ...input } = OCR_INPUT_EXAMPLE;
-  return { input: EmergencyContactInputSchema.parse(input), outputs: {
+  return { input: EmergencyContactInputSchema.parse({ ...input, onbaseFiling }), outputs: {
     "read-document": { state: "done", runId: EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval.sourceRunId, itemId: OCR_INPUT_EXAMPLE.readingId,
       output: OcrWorkflowResultSchema.parse({ review: reviewed(recordIds, pageOf), identities: [],
         approvedSnapshot: EMERGENCY_CONTACT_MEMBER_EXAMPLE.approval }) },
@@ -76,11 +76,33 @@ it("files a person's page once: a later equal-effect record on the same first pa
   assert.deepEqual(apart.map(member => member.sourcePage), [2, 3]);
 });
 
+it("carries the run's OnBase pick to every member and keeps it out of the OCR child's input", () => {
+  for (const pick of ["file", "skip"] as const) {
+    const picked = scope(false, undefined, pick);
+    assert.deepEqual(z.array(EmergencyContactMemberInputSchema).parse(members.bind(picked)).map(member => member.onbaseFiling), [pick, pick]);
+    const ocr = descriptorRuntimeNodes(descriptor).find(node => node.id === "read-document");
+    assert.ok(ocr?.kind === "child-run");
+    assert.equal("onbaseFiling" in OcrInputSchema.parse(ocr.bind({ input: picked.input, outputs: {} })), false);
+  }
+});
+
+it("refuses a run input without an OnBase pick: the pick has no default", () => {
+  const { sourceRunId: _sourceRunId, formType: _formType, approval: _approval, ...input } = OCR_INPUT_EXAMPLE;
+  assert.equal(EmergencyContactInputSchema.safeParse(input).success, false);
+  assert.equal(EmergencyContactInputSchema.safeParse({ ...input, onbaseFiling: "file" }).success, true);
+  assert.equal(EmergencyContactInputSchema.safeParse({ ...input, onbaseFiling: "maybe" }).success, false);
+});
+
+it("declares File to OnBase as a required launch field with two choices", () => {
+  assert.deepEqual(descriptor.surfaces.uploadRun?.fields, [{ kind: "select", field: "onbaseFiling", label: "File to OnBase", required: true,
+    options: [{ value: "file", label: "File" }, { value: "skip", label: "Do not file" }] }]);
+});
+
 it("titles an Emergency Contact run by its PDF name, else the generic PDF title", () => {
   const { title } = workflowPlanning(compileWorkflow(emergencyContactWorkflow).descriptor);
   const { sourceRunId: _sourceRunId, formType: _formType, approval: _approval, ...input } = OCR_INPUT_EXAMPLE;
-  assert.equal(title({ ...input, fileName: "Contacts.pdf" }), "Contacts.pdf");
-  assert.equal(title(input), "Emergency Contact PDF");
+  assert.equal(title({ ...input, onbaseFiling: "file", fileName: "Contacts.pdf" }), "Contacts.pdf");
+  assert.equal(title({ ...input, onbaseFiling: "file" }), "Emergency Contact PDF");
 });
 
 it("declares one PDF start door whose fields and fixed values the input schema accepts", () => {

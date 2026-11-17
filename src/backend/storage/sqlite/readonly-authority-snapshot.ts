@@ -3,7 +3,7 @@ import { createPrivateDirectory, privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, isRetainedSnapshot, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, backup as sqliteBackup } from "node:sqlite";
 import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
@@ -278,6 +278,13 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string, owner?: AuthorityImag
     catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { snapshot }); }
     throw error;
   }
+}
+
+/** Copies a database opened read-only into a new file in one backup step, so the copy is one consistent read and never restarts. */
+export async function backupReadOnlyDatabase(sourcePath: string, destinationPath: string, busyTimeoutMs: number): Promise<void> {
+  const database = openReadOnlyDatabase(sourcePath, busyTimeoutMs);
+  try { await sqliteBackup(database, z.string().min(1).parse(destinationPath), { rate: 2 ** 31 - 1 }); }
+  finally { database.close(); }
 }
 
 export function openReadOnlyDatabase(path: string, busyTimeoutMs: number): DatabaseSync {

@@ -43,3 +43,15 @@ it("binds no filing child when another record of the person already files the pa
   assert.ok(node?.kind === "child-run");
   assert.deepEqual(node.bind({ input: { ...EMERGENCY_CONTACT_MEMBER_EXAMPLE, sourcePage: null }, outputs: {} }), []);
 });
+
+it("binds no filing child when the run's pick is \"do not file\", whatever the source page", () => {
+  const node = nodes.find(candidate => candidate.id === "onbase-filing");
+  assert.ok(node?.kind === "child-run");
+  assert.deepEqual(node.bind({ input: { ...EMERGENCY_CONTACT_MEMBER_EXAMPLE, onbaseFiling: "skip" }, outputs: {} }), []);
+  assert.equal(EMERGENCY_CONTACT_MEMBER_EXAMPLE.onbaseFiling, "file");
+});
+
+it("refuses a member input without the run's OnBase pick", () => {
+  const { onbaseFiling: _onbaseFiling, ...unpicked } = EMERGENCY_CONTACT_MEMBER_EXAMPLE;
+  assert.equal(emergencyContactMemberWorkflow.input.safeParse(unpicked).success, false);
+});

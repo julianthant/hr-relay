@@ -61,7 +61,6 @@ helpers that hide test registrations behind a helper-style name.
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
 | Mock scenes | `tests/mocks/`; `npm run mocks` | `/ui-mock` frames rendered from the mock build. Not a test gate; CI never runs it. |
 | Performance | `tests/perf/**/*.test.ts`; Vitest `perf` via `npm run test:perf`. `tests/perf/dashboard-benchmark.ts` via `npm run perf:dashboard`. | Fixture performance checks outside coverage, deterministic structural counters, and separately reported host-dependent timings. |
-| Local | `<module>.local.test.ts` and `<module>.local.integration.test.ts`; Vitest `local` via `npm run test:local`. | Tests that need the operator's machine or accounts: a live dry run against UCPath, Kuali, CRM or Duo, the real login Keychain, or the real store. The topic name `local` is that marker. |
 
 A test that opens a database, including `:memory:`, starts a process or socket, drives a browser,
 or executes a composed workflow belongs in integration unless it is a repository-wide architecture
@@ -87,19 +86,16 @@ use the same zone, so reviewed local dates and times do not depend on the host's
 
 ## 2. Vitest selection and commands
 
-`vitest.config.ts` defines five named projects. `guard-manifest.test.ts` audits exact includes,
-excludes, reporters, and single ownership of the test corpus. Unit, integration, architecture and
-perf fail when empty. The local project may be empty: that is the absence of an operator-machine
-test, and `npm run test:local` passes `--passWithNoTests=true` for it. Cloud runs select unit,
-integration and architecture only. Coverage stays on those three and does not select local.
+`vitest.config.ts` defines four named projects. `guard-manifest.test.ts` audits exact includes,
+excludes, reporters, and single ownership of the test corpus. Every project fails when empty.
+Cloud runs and coverage select unit, integration and architecture.
 
 | Project | Include | Exclude |
 | --- | --- | --- |
-| `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/**/*.local.test.ts`, `tests/architecture/**`, `tests/mocks/**`, `tests/perf/**` |
-| `integration` | `tests/**/*.integration.test.ts` | `tests/**/*.local.integration.test.ts`, `tests/perf/**` |
-| `architecture` | `tests/architecture/**/*.test.ts` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` |
-| `perf` | `tests/perf/**/*.test.ts` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` |
-| `local` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` | `tests/mocks/**` |
+| `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/architecture/**`, `tests/mocks/**`, `tests/perf/**` |
+| `integration` | `tests/**/*.integration.test.ts` | `tests/perf/**` |
+| `architecture` | `tests/architecture/**/*.test.ts` | None |
+| `perf` | `tests/perf/**/*.test.ts` | None |
 
 `tests/mocks/` is outside Vitest. There is no scenario project or current `tests/scenario/`
 corpus. Scenario declarations retained in workflow/contracts are graph metadata, not execution
@@ -107,11 +103,10 @@ results. Role-derived scenario paths do not prove that a file exists.
 
 | Command | Exact package script or purpose |
 | --- | --- |
-| `npm run test -- <paths>` | `vitest run --project unit --project integration --project architecture --project perf`. A bare run does not select `local`. |
+| `npm run test -- <paths>` | `vitest run --project unit --project integration --project architecture --project perf`. |
 | `npm run test:unit -- <paths>` | `vitest run --project unit --passWithNoTests=false`. |
 | `npm run test:integration -- <paths>` | `vitest run --project integration --passWithNoTests=false`. |
 | `npm run test:architecture -- <paths>` | `vitest run --project architecture --passWithNoTests=false`. |
-| `npm run test:local -- <paths>` | `vitest run --project local --passWithNoTests=true`. |
 | `npm run test:coverage` | Local only: `vitest run --coverage --project unit --project integration --project architecture`. No workflow runs coverage; floors are unchanged. |
 | `npm run test:perf` | `vitest run --project perf --passWithNoTests=false`. |
 | `npm run test:watch` | Interactive `vitest` on unit, integration, architecture and perf. |
@@ -128,14 +123,17 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-`staging.yml` (`Staging`) triggers for staging pull requests and pushes to `staging` and admits the `checks.yml`
-call with kind `portable`; its `staging` gate fails when `names` or `checks` failed or was cancelled.
-The merge train runs after that gate, on a push and on auto-merge, outside admission. `production.yml`
-(`Production`) triggers for main pull requests or an operator manual start with a required `title` input
-and admits `checks.yml` with kind `release`, which plans the native and complete release pipeline; its
-`production` gate fails when `checks` failed or was cancelled, and for a pull request head other than `staging` or `hotfix/*`.
-Both workflows call the same file, which uses shared typed
-selection/result/timing policy from `scripts/test/ci-plan.ts` and explicitly retain test budgets.
+`development.yml` (`Development`) calls `checks.yml` with kind `fast`: names and plan together,
+lint, static, privacy, three unit shards, two architecture shards and the `development` gate,
+at most ten runner jobs. It starts no integration, perf, smoke or macOS job. Its gate folds the
+unit and architecture proofs into the final job and fails failed or cancelled dependencies.
+`staging.yml` (`Staging`) runs only on pull requests from `development` into `staging` and admits
+`checks.yml` with kind `portable`; its `staging` gate needs `names` and `checks`.
+`production.yml` (`Production`) keeps main pull requests, CodeQL on main pushes and operator
+manual starts with a required title. It calls `checks.yml` with kind `release`; the `production`
+gate refuses failed/cancelled checks and pull request heads other than `staging` or `hotfix/*`.
+All three call the same test job definitions and typed selection/result/timing policy in
+`scripts/test/ci-plan.ts`, retaining explicit budgets.
 The root check rules own platform placement and release authorization.
 `scripts/test/ci-files.ts` names the native
 files: `NATIVE_FILES` (storage closure, backup and restore proofs requiring native runners, unit and
@@ -161,8 +159,8 @@ Other native files count half because two workers share them.
 | unit | Ubuntu | 3 | unit files except `NATIVE_FILES`, plus `LINUX_NATIVE_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
 | integration | Ubuntu | 30 | integration files except `NATIVE_FILES` and `SERIAL_FILES`, plus `LINUX_NATIVE_FILES` |
-| perf | Ubuntu | 1 | `npm run test:perf` on ready pull requests |
-| smoke | Ubuntu | 1 | `npm run test:smoke` on the built dashboard on ready pull requests |
+| perf | Ubuntu | 1 | `npm run test:perf` on ready Staging/Production pull requests |
+| smoke | Ubuntu | 1 | `npm run test:smoke` on the built dashboard on ready Staging/Production pull requests |
 | native | macOS, operator-started full releases only | 5 | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
 
 Full staging runs also include `lint`, `static`, `privacy`, `perf` and `smoke`. The job-level whole-pipeline FIFO
@@ -182,10 +180,10 @@ Both platforms select from this one list; platform refusals remain failures unti
 ### Pre-push tests on the PC
 
 The PC runner executes the whole portable architecture suite and the unit and integration tests
-affected by the diff against `origin/staging` in WSL Ubuntu. Before a push is cleared, the main Mac
+affected by the diff against `origin/development` in WSL Ubuntu. Before a push is cleared, the main Mac
 runs `npm run test:pc` without file arguments. A backend host runs
 `npx vitest run --project architecture`, then
-`npx vitest run --project unit --project integration --changed=origin/staging` in the ticket checkout
+`npx vitest run --project unit --project integration --changed=origin/development` in the ticket checkout
 under its assigned test slot.
 The [root check rules](../../AGENTS.md#checks) and assigned local operations note govern its use:
 
@@ -202,10 +200,10 @@ satisfying `package.json`, Git, flock, and Chromium's libraries installed with
 Normal SSH host verification applies.
 
 With no file arguments, Vitest lists the architecture project in full and lists unit and integration
-with `--changed=origin/staging`. With file arguments, it lists all three projects without a changed
+with `--changed=origin/development`. With file arguments, it lists all three projects without a changed
 filter and selects only the requested paths or globs. The runner subtracts `NATIVE_FILES`,
 `SERIAL_FILES` and `SERIAL_STORAGE_FILES`, except `LINUX_NATIVE_FILES`, with one skip note. Those files run in GitHub CI. Each leased slot fetches
-`origin/staging`'s pinned commit directly from the public GitHub repository. The Mac verifies that
+`origin/development`'s pinned commit directly from the public GitHub repository. The Mac verifies that
 base is advertised by origin before sending a binary Git patch of the allowed candidate tree.
 The patch includes committed-but-unpushed, staged, unstaged and untracked non-ignored files,
 deletions, renames, executable modes and binary bytes. Credentials, private inputs, runtime state,
@@ -268,8 +266,9 @@ Vitest test and hook limits, test wait helpers and the browser deadlines tests p
 Local runs use 1. Product defaults are unchanged. Remaining steps run after a failed serial proof
 unless the workflow is cancelled, preserving failure visibility, and any shard failure fails its suite.
 
-PR filtering uses these rules. Lint, static and privacy always run, including on a draft pull request. Every ready pull request also runs
-perf and smoke in separate Ubuntu jobs, including Markdown-only changes. Both jobs install Chromium,
+PR filtering uses these rules. Static and privacy always run. Lint runs except on draft Development
+pull requests. Ready Staging and Production pull requests also run perf and smoke in separate
+Ubuntu jobs, including Markdown-only changes. Both jobs install Chromium,
 build the dashboard and use tmpfs for test temp, like an Ubuntu integration shard. Drafts and
 manual releases select neither job. Draft PRs select only affected unit files;
 `ready_for_review` triggers all applicable suites. Only operator-started manual full-release
@@ -284,39 +283,34 @@ dispatches bypass the draft limit.
 | Architecture test files only | Architecture. |
 | Mock scene files only | Architecture. |
 | Mock scene helpers, fixtures or entrypoints | Unit, integration and architecture; unit and integration also import these. |
-| Local or perf test files only | Architecture; local remains machine-only. Ready PRs also run perf and smoke. |
+| Local or perf test files only | Architecture; local remains machine-only. Ready Staging/Production PRs also run perf and smoke. |
 
-Select the union for mixed changes. Staging PRs execute the portable plan plus perf and smoke.
+Select the union for mixed changes. Development selects unit and architecture only; drafts select
+unit only. Staging PRs from `development` execute the portable plan plus perf and smoke.
 Valid `staging` or `hotfix/*` → `main` releases also select native work. Other heads into main omit
 native work and fail the required source-head check. Operator manual releases select all routine
 native suites. Machine-readable docs count as configuration. Release authorization belongs to the
 root check rules. Protected branch pushes do not repeat CI.
 
-Both event entries use per-PR/manual-branch workflow concurrency with cancellation enabled. New
-pushes supersede older runs for the same workflow/PR-or-ref key. Each entry admits one complete
-reusable check call with `queue: max` and `cancel-in-progress: false`. Staging uses the `ci-runners`
-FIFO. Release runs in its own lane and neither waits behind nor blocks staging pull-request runs.
-Every mandatory proof, including perf and smoke, and timing publication remains
-inside that callee; no callee reacquires admission. Merge train follows the five top summaries
-outside the admitted call; the standalone staging-push train is unchanged.
+All three event entries use per-PR/manual-branch workflow concurrency with cancellation enabled.
+New pushes supersede older runs for the same key. Development has no shared admission lane;
+four runs of at most ten jobs fit the forty job slots. Staging admits one complete reusable call
+through the `ci-runners` FIFO; Production uses `release-runners`. Both use `queue: max` and
+`cancel-in-progress: false`; no callee reacquires admission.
 
-`checks.yml` is the only file that defines test jobs and has no `timings` job. Its jobs are `changes`, `lint`, `static`,
-`privacy`, `ubuntu`, `macos`, `unit-proofs`, `integration`, `architecture`, `perf`, `smoke` and `unit`; the plan
-empties `macos` outside a full release, and `unit-proofs` runs only for the release kind. Its `unit` runs unless cancelled, with one checkout and one install.
-It checks proofs, merges durations, uploads `ci-timings` only when every proof passed, then runs
-final verification, rejecting failed, cancelled or missing outcomes. Cancellation stops its checkout/install work.
-It requires successful perf and smoke results on ready PRs, and exactly skipped results when omitted. The required outer `unit` always validates
-both the complete call result and inner unit output as success. Train is excluded from the inner
-fence because it runs downstream. Portable selected suites require Ubuntu success. Selected
-eligible full-release unit/integration require both native platforms to succeed, regardless of
-matrix absence or emptiness; native omission is valid only outside such a selected suite.
-An expected omission must be exactly skipped. Invalid
-selectors, matrix counts and missing outputs never become successful defaults.
+`checks.yml` defines test jobs once. Development runs its `development` gate in the caller using
+the shared plan and job results.
+Fast plans skip the shared `unit` and integration/architecture summary jobs and fold their proofs
+into the caller gate. Other kinds retain those summaries and release unit proofs. Selected portable
+suites require Ubuntu success; selected full-release unit/integration also require native
+success. Expected omissions must be exactly skipped; malformed selectors, matrix counts and
+missing outputs fail. The shared final job for portable and release plans uses one checkout/install to check proofs,
+merge durations, publish timings only after all proofs pass, and perform final verification. It has no separate timings job.
 
-Timing discovery first enumerates registered IDs for exactly the CI and release workflow paths.
-It can therefore use CI history before a new release workflow is registered, without ignoring a
-404 or any other API error. Both successful feeds are sorted together; the newest retained timing
-artifact wins, and no-history/no-retained-artifact is the valid committed-seed case.
+Fast plans reuse full-check timings without publishing an artifact. Timing discovery enumerates
+registered IDs for Staging and Production, orders their
+successful histories together and uses the newest retained artifact. Valid no-history or
+no-retained-artifact cases use the committed seed. API and download errors fail CI.
 
 Membership verification compares an unsharded `vitest list --filesOnly --json` for unit,
 integration and architecture with the union of the exact CI selections. `tests/scripts/test/ci-files.test.ts`
@@ -326,7 +320,7 @@ proves the selections give each file to exactly one job, so selected paths need 
 selection/history adapters and actual summary-shell failures for staging, source/head, Markdown
 and manual cases. Source/API-list checks are not the Actions graph proof: the operator reviews
 the actual published staging graph to confirm no release workflow is loaded.
-Coverage is local only through `npm run test:coverage`, with unchanged floors. Local project selection is unchanged.
+Coverage is local only through `npm run test:coverage`, with unchanged floors.
 
 ## 3. Private test temporary directory
 
@@ -434,13 +428,13 @@ executable enforcement.
 
 `names-check` (`tests/architecture/tooling/names-check.test.ts`) runs the shipped `names:check`
 command over the shared table in `tests/support/helpers/names-check-cases.ts`. A wrong name was
-reaching CI and spending a full run. Allowed branches are `main`, `staging`, `dependabot/*`,
-`feature/<kebab>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `chore/<kebab>-<kebab>`, and `design/<kebab>`. A staging pull request head must be `feature/*`, `fix/*` or `chore/*`, except
-`dependabot/*`. A non-dependabot title must be `<Area>: <text>`; a conventional title such as
+reaching CI and spending a full run. Allowed branches are `main`, `staging`, `development`, `dependabot/*`,
+`feature/<kebab>`, `task/<kebab>/<kebab>`, `fix/<kebab>-<kebab>`, `chore/<kebab>-<kebab>`, `hotfix/<kebab>-<kebab>`, and `design/<kebab>`. A development pull request head must be `feature/*`, `fix/*`, `chore/*` or
+`dependabot/*`; only `development` targets `staging`. A pull request title must be `<Area>: <text>`; a conventional title such as
 `feat(ci): add names check` is rejected. An origin branch that already matches
 `task/<feature>/<lane>` stays valid when its lane is an older name. A worktree folder is
-`.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. `.github/workflows/staging.yml` runs that
-command as its first job, and every other job waits on it. `pull_request` includes `edited`, so a
+`.worktrees/<feature>` or `.worktrees/<feature>.<lane>`. Staging runs that command in its first job; Development combines it with planning in
+`checks.yml`, and every other started job waits on it. `pull_request` includes `edited`, so a
 title change at the same head runs the check again. `--all` lists off-pattern local branches and
 worktrees, and a local branch or linked worktree whose Concord ticket is `complete` or `closed`,
 including a detached worktree named by `tasks.worktree`. An open ticket that owns the path, an
@@ -527,10 +521,9 @@ maintenance. Its broad patterns include `src/**/*write-sequencer*.ts`,
 `coverage.thresholds` contains no branch threshold. Those constants do not create a branch gate.
 The global configured floor is 60, not 80.
 
-The sole exclusion is `src/generated/**/*.ts`, declared planned with owner `src/generated` and
-reason "Generated projections are verified by determinism guards." The manifest verifies the
-serialized exclusion-list SHA-256 from `guard-inventory.json`. A planned owner must not exist or
-match files. An active owner must exist and match files. Owners must be exact, independent paths,
+The coverage exclusion list is empty. The manifest verifies its serialized SHA-256 from
+`guard-inventory.json` and audits exclusion activation with independent fixtures. A planned owner
+must not exist or match files. An active owner must exist and match files. Owners must be exact, independent paths,
 with nonempty reasons. An exclusion cannot silently grow into a parent scope.
 
 ## 7. Mock scenes
