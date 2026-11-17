@@ -6,6 +6,7 @@ import type { RunDecisionWire } from "../../../models/dashboard/run-decision.js"
 import { projectDecision, rowActionOption } from "../decisions/project-decision.js";
 import { availableSections } from "./run-detail/availability.js";
 import { buildRunGate } from "./run-detail/gate-park.js";
+import { projectTypedSteps, type TypedStepView } from "./run-detail/typed-values.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
 import { ocrChildRetryAvailable,readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
 import { aggregateMemberRetryAvailable } from "./run-retry.js";
@@ -123,6 +124,7 @@ function buildTimelineSteps(
   runCancelled: boolean,
   replaySource: (nodeId: string) => { attempt: number; claimGeneration?: number } | undefined,
   wait: DelegationWaitState | null | undefined,
+  typed: ReadonlyMap<string, TypedStepView>,
 ): TimelineStepWire[] {
   type SpanFold = RunFoldRecord["taskSpans"][number];
   const spansByNode = new Map<string, SpanFold[]>();
@@ -206,6 +208,7 @@ function buildTimelineSteps(
         ...(member.replayedFrom === undefined ? {} : { replayedFrom: member.replayedFrom }),
         ...(member.notRunReason === undefined ? {} : { notRunReason: member.notRunReason }),
       })),
+      ...(category.key === undefined ? {} : typed.get(category.key)),
     });
   });
   if (runCancelled) {
@@ -425,6 +428,8 @@ export function buildRunDetail(
             authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "cancelled",
             (nodeId) => replaySourceOf(checkpoints, authority, nodeId),
             delegationWait,
+            // Canonical-backed like the review read: the typed values are read against the exact descriptor and its graph.
+            canonical === undefined ? new Map() : projectTypedSteps(authority, canonical.descriptors.resolve(authority.envelope.workflow)),
           ),
         }),
     },
