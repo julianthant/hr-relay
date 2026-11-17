@@ -27,17 +27,26 @@ import { assertServedBundle, MOCK_DIST_DIR } from "./bundle.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { protectedSecretSource } from "../../support/helpers/protected-secret-source.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "./fixture-start.js";
+import { createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/run-detail.js";
+import { dataOriginViewsOf, gateNodeViewsOf, writeContractViewsOf } from "../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
+import { registerRunDetailRoutes } from "../../../src/backend/transports/http/routes/run-detail.js";
+import { registerTrustRoutes } from "../../../src/backend/transports/http/routes/trust.js";
+import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 
 const retainedRunRerunFixtureOwners = new Set<object>();
 
-export type RerunSourceKind = "completed" | "failed" | "cancelled";
+export type RerunSourceKind = "completed" | "failed" | "cancelled" | "dry-run" | "queued";
 
 export async function startRunRerunServer(sourceKind: RerunSourceKind = "completed") {
   assertServedBundle(MOCK_DIST_DIR, { proof: "working-tree" });
-  const h = await launchHarness("reject-active", seedInitialSettingsRuntimeConfig);
+  const h = await launchHarness("reject-active", seedInitialSettingsRuntimeConfig, undefined, undefined, undefined, true);
   const held: { harness: typeof h; primary?: unknown; server?: ReturnType<typeof createServer> } = { harness: h };
   retainedRunRerunFixtureOwners.add(held);
-  try { const source = sourceKind === "failed" ? await h.failedSource() : sourceKind === "cancelled" ? h.cancelledSource() : await h.completeSource(); return await serveLaunchAuthority(h, source, undefined, held); }
+  try {
+    const source = sourceKind === "failed" ? await h.failedSource() : sourceKind === "cancelled" ? h.cancelledSource()
+      : sourceKind === "queued" ? h.start(h.proposal()) : await h.completeSource(sourceKind === "dry-run");
+    return await serveLaunchAuthority(h, source, undefined, held);
+  }
   catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
 }
 
@@ -72,6 +81,16 @@ async function serveLaunchAuthority<Source>(h: Awaited<ReturnType<typeof launchH
     },
   });
   projection.rebuildFromTimeline();
+  const descriptors = { resolve: (id: string) => id === h.descriptor.id ? h.descriptor : undefined };
+  const runDetail = { ...createOperatorRunDetail({ database, stateRoot, projection, runReader: h.lifecycle,
+    canonical: { database, reader: h.lifecycle, descriptors },
+    trust: createReceiptService({ database, runReader: h.lifecycle, descriptors: [h.descriptor] }),
+  }), descriptors: { resolve: (id: string) => id === h.descriptor.id ? { ...h.descriptor,
+    gateNodes: gateNodeViewsOf(h.descriptor), writeContracts: writeContractViewsOf(h.descriptor),
+    dataOrigins: dataOriginViewsOf({ descriptor: h.descriptor, stores: h.stores.stores }),
+  } : undefined } };
+  registerRunDetailRoutes(h.app, { runDetail });
+  registerTrustRoutes(h.app, { runDetail });
   const snapshot = () => { projection.ingestFromTimeline(); return projection.buildDashboardDayWire(day); };
   const bootstrap = FrontendBootstrapWireSchema.parse({ ...(catalog ?? FIXTURE_BOOTSTRAP), descriptorHash,
     projectionGeneration: projection.generation(), serverClock: { now: h.clock.now().toISOString(), zone: "America/Los_Angeles" },
@@ -112,7 +131,7 @@ async function serveLaunchAuthority<Source>(h: Awaited<ReturnType<typeof launchH
         const body = req.method === "GET" || req.method === "HEAD" ? undefined : new Uint8Array(Buffer.concat(chunks));
         const request = new Request(url, { method: req.method, headers: Object.fromEntries(Object.entries(req.headers)
           .filter((entry): entry is [string, string] => typeof entry[1] === "string")), ...(body === undefined ? {} : { body }) });
-        const launch = /^\/api\/v1\/(?:commands|start-plans|rerun-warnings|runs\/[^/]+\/(?:rerun-values|attempt-history))$/u.test(url.pathname);
+        const launch = /^\/api\/v1\/(?:commands|start-plans|rerun-warnings|runs\/[^/]+(?:\/[^/]+)?)$/u.test(url.pathname);
         if (url.pathname === "/api/v1/commands") commands.push(await request.clone().json());
         const response = await (launch ? h.app : fixtures.app).fetch(request);
         if (url.pathname === "/api/v1/commands") {
