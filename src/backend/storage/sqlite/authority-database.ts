@@ -2387,7 +2387,7 @@ export class AuthorityDatabase implements Disposable {
   #closed = false;
   /** An ordinary read-write connection keeps planner statistics: it optimizes when it opens and again when it closes. */
   #keepsPlannerStatistics = false;
-  /** Statements reused across reads: only lookups a read repeats per row, each used with get(), never iterate(). */
+  /** Statements reused across reads: only the run lookup a queue read repeats per row, used with get(), never iterate(). */
   #statements: SQLTagStore;
   #openedFileIdentity: DirectoryIdentity | undefined;
   #coldLogout: Readonly<{ machine: RuntimeAdmission; operationId: string; admission: RuntimeAdmission; restore: OfflineMaintenanceOperation;
@@ -2495,7 +2495,7 @@ export class AuthorityDatabase implements Disposable {
       allowUnknownNamedParameters: false,
       defensive: true,
     });
-    this.#statements = this.#database.createTagStore(8);
+    this.#statements = this.#database.createTagStore(1);
 
     const admittedDataVersion = readIntPragma(this.#database, "data_version");
     try {
@@ -6764,7 +6764,7 @@ export class AuthorityDatabase implements Disposable {
       get: (runId: string) => this.#readRunRow(runId),
       search: (input: unknown) => this.withAuthorityReadSnapshot(() => {
         this.#validateExternalQuerySources();
-        return createRunSearchIndex(this.#database, this.#statements).search(input, this.getMeta().authorityGeneration);
+        return createRunSearchIndex(this.#database).search(input, this.getMeta().authorityGeneration);
       }),
 
       listPage: (input: Readonly<{ workflow?: string; offset: number; limit: number }>) => {

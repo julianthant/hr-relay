@@ -278,7 +278,7 @@ export async function runStorageReadBenchmark(): Promise<void> {
   for (const runCount of STORAGE_READ_SIZES) {
     const fixture = await seedStorageReadFixture(runCount);
     try {
-      assertStatementCounterObserves({ prepareProbe: () => { fixture.reader.authority.runs.get("00000000-0000-4000-8000-000000000001"); } });
+      assertStatementCounterObserves({ prepareProbe: () => { fixture.reader.getMeta(); } });
       seeds.push({ runCount, seedMs: round(fixture.seedMs) });
       const appendMs: number[] = [];
       for (const read of Object.keys(STORAGE_READS) as StorageReadId[]) {

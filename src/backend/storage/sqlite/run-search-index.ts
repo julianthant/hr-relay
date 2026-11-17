@@ -2,7 +2,7 @@ import { AssistantM1NativeCommandAuditSchema, convertAssistantCommandPairToM1 } 
 import { CURRENT_RUN_SETTLEMENT_SQL } from "./run-settlement-row.js";
 import { CHANGE_LOG_SCHEMA_VERSION } from "./authority-change-log.js";
 import { RUN_REFERENCES_TABLE } from "../../../models/config/authority.js";
-import type { DatabaseSync, SQLTagStore } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
@@ -89,8 +89,7 @@ function safeSubject(database: DatabaseSync, run: PredecessorRunRecord, declarat
   return { state: "available", value: value.trim() };
 }
 
-/** `statements` reuses the per-row lookups a search repeats; an authority connection passes the store it keeps for its lifetime. */
-export function createRunSearchIndex(database: DatabaseSync, statements?: SQLTagStore) {
+export function createRunSearchIndex(database: DatabaseSync) {
   const schemaVersion = z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version;
   const prepareTemporaryState = () => {
     database.exec("CREATE TEMP TABLE IF NOT EXISTS search_actor_dirty(run_id TEXT PRIMARY KEY) WITHOUT ROWID");
@@ -358,14 +357,13 @@ export function createRunSearchIndex(database: DatabaseSync, statements?: SQLTag
       const summary = pass.find(row => row.kind === "summary");
       if (summary === undefined) throw new Error("run-search-summary-missing");
       const coverage = z.object({ count: z.number().int(), subject_missing: z.number().int(), actor_missing: z.number().int() }).parse(JSON.parse(summary.payload));
-      const lookups = statements ?? database.createTagStore(2);
       const rows = pass.filter(row => row.kind === "row").map(row => {
         const indexed = IndexRowSchema.parse(JSON.parse(row.payload));
 
-        const source = lookups.get`SELECT * FROM runs WHERE id = ${indexed.id}`;
+        const source = database.prepare("SELECT * FROM runs WHERE id=?").get(indexed.id);
         if (source === undefined) throw new Error("run-search-source-missing");
         const record = runRecordFromRow(source);
-        const metadata = runSearchIndexFromRow(lookups.get`SELECT * FROM run_search WHERE run_id = ${indexed.id}`,record);
+        const metadata = runSearchIndexFromRow(database.prepare("SELECT * FROM run_search WHERE run_id=?").get(indexed.id),record);
         if (indexed.payload_json !== canonicalJsonStringify(metadata)) throw new Error("run-search-index-corrupt");
         return { record, metadata: metadata.metadata, matchRank: indexed.match_rank };
       });
