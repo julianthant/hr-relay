@@ -8,18 +8,23 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
-/** Steps a current authority back to schema 31: `commands` allowed `executing`, did not tie state to outcome, and held an errored bulk child as `refused`. */
-export function restoreSchema31CommandRows(database: DatabaseSync): void {
-  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 32);
+/** Returns `commands` to its schema-31 table, keeping every row: `executing` allowed, state not tied to outcome, an errored bulk child held as `refused`. The schema version is left to the caller. */
+function restoreSchema31CommandTable(database: DatabaseSync): void {
   const table = /CREATE TABLE commands \([^;]+?\) STRICT/u.exec(SQLITE_MIGRATIONS[0].statements.join("\n"))?.[0];
   assert.ok(table);
   const owned = COMMAND_ROW_STATE_MIGRATION.statements.filter(statement => /^CREATE (?:INDEX|TRIGGER) /u.test(statement));
-  const nested = database.isTransaction;
-  if (!nested) database.exec("BEGIN");
   database.exec(`PRAGMA defer_foreign_keys=ON; CREATE TEMP TABLE commands_capture AS SELECT * FROM commands; DROP TABLE commands; ${table};
     INSERT INTO commands SELECT * FROM commands_capture; DROP TABLE commands_capture;
     UPDATE commands SET state='refused' WHERE state='uncertain' AND json_extract(outcome_json,'$.result.code')='bulk-child-errored'`);
   for (const statement of owned) database.exec(statement);
+}
+
+/** Steps a current authority back to schema 31. */
+export function restoreSchema31CommandRows(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 32);
+  const nested = database.isTransaction;
+  if (!nested) database.exec("BEGIN");
+  restoreSchema31CommandTable(database);
   database.exec("UPDATE database_states SET schema_version=31; PRAGMA user_version=31");
   if (!nested) database.exec("COMMIT");
 }
@@ -93,6 +98,8 @@ export function removeEmptySchema26AssistantHistory(database: DatabaseSync): voi
 export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
   removeSchema30WorkbookPinTags(database);
+  // The schema comparison below drops every changed table; `commands` goes back first so its rows stay.
+  restoreSchema31CommandTable(database);
   // Rebuilding worker_slots briefly orphans the Duo and exclusive-session leases that reference it; the caller's transaction checks them at commit.
   database.exec("PRAGMA defer_foreign_keys=ON");
   const slots = z.array(z.object({ id: z.string(), workflow: z.string(), ordinal: z.number(), pool_index: z.number(), retired_at: z.string().nullable(),
