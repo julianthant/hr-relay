@@ -44,9 +44,9 @@ type DelegationGroupProof = { parent: RunRecord; invocation: OriginalDelegationP
     terminal: (Exclude<ReturnType<typeof readChildTerminalSettlement>, undefined> & { run: RunRecord }) | undefined;
   })[] };
 type MemoizedProofs<Proof> = Map<string, { manifest: string; proof: Proof }>;
-/** Results already authenticated against one repositories object, each bound to the exact manifest or run it was authenticated for. */
+/** Successful authentications against one repositories object, each bound to the exact manifest or run it was authenticated for; a refused home is not kept. */
 export type DelegationAuthenticationMemo = { originals: MemoizedProofs<OriginalDelegationProof>; groups: MemoizedProofs<DelegationGroupProof>;
-  roots: Map<string, { run: string; proof: RootRunProof }>; homes: Map<string, { run: string; home: boolean }> };
+  roots: Map<string, { run: string; proof: RootRunProof }>; homes: Map<string, string> };
 
 export const newDelegationAuthenticationMemo = (): DelegationAuthenticationMemo => ({ originals: new Map(), groups: new Map(), roots: new Map(), homes: new Map() });
 
@@ -313,10 +313,10 @@ function readInvocationEvidence(repositories: AuthorityRepositories, commandId: 
 export function authenticateDescendantHome(repositories: AuthorityRepositories, candidate: RunRecord, homeWorkflow: string): boolean {
   const homes = repositories.dependencies.snapshotMemo(repositories)?.homes;
   if (homes === undefined) return authenticateHome(repositories, candidate, homeWorkflow);
-  const key = canonicalJsonStringify([candidate.envelope.runId, homeWorkflow]), run = canonicalJsonStringify(candidate), cached = homes.get(key);
-  if (cached?.run === run) return cached.home;
+  const key = canonicalJsonStringify([candidate.envelope.runId, homeWorkflow]), run = canonicalJsonStringify(candidate);
+  if (homes.get(key) === run) return true;
   const home = authenticateHome(repositories, candidate, homeWorkflow);
-  homes.set(key, { run, home });
+  if (home) homes.set(key, run);
   return home;
 }
 

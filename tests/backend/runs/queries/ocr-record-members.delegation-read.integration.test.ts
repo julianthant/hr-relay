@@ -3,9 +3,11 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it, vi } from "vitest";
 import { readOcrQueueMembers } from "../../../../src/backend/runs/queries/ocr-record-members.js";
+import { authenticateDelegationGroup } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { authenticateRootRun } from "../../../../src/backend/storage/sqlite/delegation-root-authority.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
+import { ActorIdSchema, NodeIdSchema } from "../../../../src/rules/identity/ids.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { EXECUTOR_EID, healthyCrmDriver, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
@@ -94,4 +96,25 @@ it("shows a lookup that settles between two reads in the second read", async () 
   assert.equal(settled.run.envelope.workflow, "person-lookup");
   assert.equal(settled.outcome.state, "done");
   assert.deepEqual(labels(), ["Verified", "Looking up", "Verified"]);
+});
+
+it("keeps the read snapshot's authentications out of write transactions and repository copies, and hands out copies", async () => {
+  const f = await lookupFixture();
+  const authority = f.database.authority;
+  const root = [authenticateRootRun(authority, f.run).create.commandId];
+  const twice = (repositories: typeof authority) => { authenticateRootRun(repositories, f.run); authenticateRootRun(repositories, f.run); };
+  assert.deepEqual(countCommandReads(root, () => f.database.withAuthorityReadSnapshot(() => twice(authority))).reads, [1]);
+  assert.deepEqual(countCommandReads(root, () => f.database.withAuthorityTransaction(repositories => twice(repositories))).reads, [2]);
+  assert.deepEqual(countCommandReads(root, () => f.database.withAuthorityReadSnapshot(() => twice({ ...authority }))).reads, [2]);
+
+  const manifest = authority.dependencies.groups(f.run.envelope.runId).find(({ group }) => group.invocation.nodeId === "read-pages")?.manifest;
+  assert.ok(manifest);
+  f.database.withAuthorityReadSnapshot(() => {
+    const proof = authenticateRootRun(authority, f.run), requestedBy = proof.command.requestedBy;
+    proof.command.requestedBy = ActorIdSchema.parse("someone-else");
+    assert.equal(authenticateRootRun(authority, f.run).command.requestedBy, requestedBy);
+    const group = authenticateDelegationGroup(authority, manifest);
+    group.invocation.nodeId = NodeIdSchema.parse("another-node");
+    assert.equal(authenticateDelegationGroup(authority, manifest).invocation.nodeId, "read-pages");
+  });
 });
