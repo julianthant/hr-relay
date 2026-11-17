@@ -249,6 +249,12 @@ export const StepOmissionsSchema = z.array(StepOmissionEntrySchema).min(1).super
 const RequestedOmissionsSchema = z.array(StepOmissionEntrySchema).superRefine(uniqueSteps);
 export type StepOmissions = z.infer<typeof StepOmissionsSchema>;
 
+/** A released child's own entries: the parent's entries for the child's workflow, without the workflow; absent when there are none. */
+export function delegatedStepOmissions(entries: readonly StepOmissionEntry[] | undefined, workflow: string): StepOmissions | undefined {
+  const own = (entries ?? []).flatMap(({ workflow: target, ...entry }) => target === workflow ? [entry] : []);
+  return own.length === 0 ? undefined : StepOmissionsSchema.parse(own);
+}
+
 /** The arm a workflow RESULT carries where an omitted write step's proof would be: no disposition is invented, the step is named. */
 export const OmittedStepResultArmSchema = z.strictObject({
   state: z.literal("omitted"),
