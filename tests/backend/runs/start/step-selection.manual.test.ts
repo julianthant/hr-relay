@@ -42,6 +42,8 @@ interface Options {
   readonly publishCheck?: boolean;
   /** reading gains a switch on `extra`: declared, or inferred from one input condition on each of its tasks */
   readonly readingSwitch?: "declared" | "inferred";
+  /** reading gains an operator gate after read: always, or only when `extra` is true */
+  readonly readingGate?: "always" | "when-extra";
   /** read's output gains an optional `odd` value under this schema */
   readonly oddLeaf?: z.ZodType<string | number | undefined>;
 }
@@ -59,7 +61,7 @@ function fixture(options: Options = {}) {
     } } },
     ...(options.rows === undefined ? {} : { rows: options.rows }),
     ...(options.rerunValues === undefined ? {} : { rerunValues: options.rerunValues }),
-    steps: ({ task, transaction, group, result }) => {
+    steps: ({ task, gate, transaction, group, result }) => {
       const when = options.readingSwitch === "inferred" ? { when: { kind: "is-true" as const, of: { from: "input" as const, path: "extra" } } } : {};
       const search = task({ id: "search", contract: SearchPersonOrg, replay: "checkpoint", ...when }, [], ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }));
       const readContract = options.oddLeaf === undefined ? plan1Contract : defineTaskContract({ ...plan1Definition,
@@ -68,6 +70,8 @@ function fixture(options: Options = {}) {
       const check = options.publishCheck === true
         ? task({ id: "check", contract: publishContract, replay: "checkpoint", dryRun: "stop-before-publish", ...when }, [read], ({ input }) => input)
         : task({ id: "check", contract: plan1Contract, replay: "checkpoint", ...when }, [read], ({ input }) => input);
+      const review = options.readingGate === undefined ? undefined : gate({ id: "review", label: "Review", result: ReviewResult,
+        ...(options.readingGate === "when-extra" ? { when: { kind: "is-true" as const, of: { from: "input" as const, path: "extra" } } } : {}) }, [read]);
       const save = transaction({ id: "save", label: "Save", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
         dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 }, [read], {
         prepareBind: ({ input }) => ({ eid: input.emplId }), commitBind: ({ input }) => ({ eid: input.emplId }),
@@ -82,7 +86,7 @@ function fixture(options: Options = {}) {
         steps: [
           [options.reading === undefined && options.locked === undefined && options.readingSwitch === undefined ? reading : group(reading, {
             ...(options.reading === undefined ? {} : { manual: options.reading }), ...(options.locked === undefined ? {} : { locked: options.locked }),
-          }), [search, read, check]],
+          }), review === undefined ? [search, read, check] : [search, read, check, review]],
           [options.saving === undefined ? saving : group(saving, { manual: options.saving }), [save, receipt]],
           [options.extra === undefined ? extra : group(extra, { manual: options.extra }), [more]],
         ],
@@ -92,6 +96,7 @@ function fixture(options: Options = {}) {
   })).descriptor;
 }
 
+const ReviewResult = z.strictObject({ approved: z.boolean() });
 const VALUE: StepOmissionField = { key: "disposition", label: "Disposition", kind: "text", replaces: { nodeId: "read", path: "disposition" } };
 const READ_TYPED: StepManualDeclaration = {
   form: { fields: [VALUE] },
@@ -250,6 +255,15 @@ describe("start row kinds and lock reasons", () => {
       assert.deepEqual([reading?.kind, reading?.lockReason], ["switch", undefined]);
     }
     assert.deepEqual(projectStartRows(fixture({ publishCheck: true, readingSwitch: "declared" }))[0]?.kind, "switch");
+  });
+
+  it("refuses a switch on a step whose approval gate keeps running beside typed values, and locks it for approval without one", () => {
+    for (const readingGate of ["always", "when-extra"] as const) {
+      assert.throws(() => fixture({ readingGate, readingSwitch: "declared", reading: READ_TYPED }),
+        /step "reading" omission keeps gate node "review" running, so the step cannot also be switched off/u);
+      const [reading] = projectStartRows(fixture({ readingGate, reading: READ_TYPED }));
+      assert.deepEqual([reading?.kind, reading?.includedByDefault, reading?.lockReason], ["locked-manual", true, "approval"]);
+    }
   });
 
   it("serves a step whose other nodes still run as locked with Enter manually", () => {

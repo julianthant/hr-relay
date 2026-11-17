@@ -818,7 +818,7 @@ function selectedByOneInputCondition(id: string, nodes: readonly RuntimeFlowNode
 }
 
 // Manual producers cannot mint gate or transaction authority, typed values stand for exactly the leaves they replace,
-// and a step whose publishing task or transaction keeps running cannot also be switched off.
+// and a step whose gate, publishing task or transaction keeps running cannot also be switched off.
 function deriveStepOmissions(
   id: string,
   nodes: readonly RuntimeFlowNode[],
@@ -866,7 +866,7 @@ function deriveStepOmissions(
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), owner);
       const read = node.dependsOn.find((dependency) => skipped.has(String(dependency)));
       if (read !== undefined) throw new Error(`${id}: ${owner} runs node "${member}", which reads skipped node "${String(read)}"`);
-      if (switchable && isPreviewBoundary(node)) {
+      if (switchable && (isPreviewBoundary(node) || node.kind === "gate")) {
         throw new Error(`${id}: ${owner} keeps ${node.kind} node "${member}" running, so the step cannot also be switched off`);
       }
     }
