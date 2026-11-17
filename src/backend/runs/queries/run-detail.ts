@@ -34,6 +34,7 @@ import {
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
 import { requireCanonicalRun } from "./run-read.js";
 import { assertRunTimelineCompatible } from "./run-timeline-compatibility.js";
+import { readDelegationCancellation } from "../../storage/sqlite/delegation-authority.js";
 
 export { availableSections } from "./run-trust.js";
 export { buildRunSection, readRunSection } from "./run-sections.js";
@@ -118,6 +119,7 @@ function buildTimelineSteps(
   timeline: NonNullable<RunDetailDescriptorView["timeline"]>,
   row: RunFoldRecord,
   runTerminal: boolean,
+  runCancelled: boolean,
   replaySource: (nodeId: string) => { attempt: number; claimGeneration?: number } | undefined,
   wait: DelegationWaitState | null | undefined,
 ): TimelineStepWire[] {
@@ -181,7 +183,7 @@ function buildTimelineSteps(
     };
   };
 
-  return timeline.map((category) => {
+  const steps = timeline.map((category) => {
     const members = category.nodes.map(memberOf);
     const measured = members.filter((member) => member.durationMs !== undefined);
     const totalMs = measured.reduce((sum, member) => sum + (member.durationMs ?? 0), 0);
@@ -205,6 +207,11 @@ function buildTimelineSteps(
       })),
     });
   });
+  if (runCancelled) {
+    const unfinished = steps.find(step => ["pending", "active", "blocked", "cancelled"].includes(step.state));
+    if (unfinished !== undefined) unfinished.state = "cancelled";
+  }
+  return steps;
 }
 
 export function buildRunDetail(
@@ -355,6 +362,14 @@ export function buildRunDetail(
     : { state: "absent", reason: `run is ${status}` };
 
   const canonical = deps.canonical;
+  let cancellation: RunDetailWire["cancellation"];
+  if (lifecycle.state === "terminal" && lifecycle.outcome === "cancelled") {
+    const requestedBy = canonical !== undefined && canonical.database.authority.lifecycleJournal.findCancellation(runId) !== undefined
+      ? readDelegationCancellation(canonical.database.authority, runId).cancelledBy : "unavailable";
+    cancellation = { title: "Run cancelled", at: lifecycle.endedAt, requestedBy,
+      outcome: requestedBy === "parent" ? "This run was cancelled when its parent was stopped."
+        : requestedBy === "operator" ? "You cancelled this run." : "This run was cancelled." };
+  }
   const review = canonical === undefined ? undefined : canonical.database.withAuthorityReadSnapshot(() => {
     const ocrRunId = authority.envelope.workflow === "ocr" ? runId : hostedOcrRun(canonical.database.authority, authority)?.envelope.runId;
     return ocrRunId === undefined ? undefined : readOcrReviewAuthority(canonical.database.authority, canonical.reader, ocrRunId);
@@ -406,6 +421,7 @@ export function buildRunDetail(
             descriptorView.timeline,
             row,
             authority.lifecycle.state === "terminal",
+            authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "cancelled",
             (nodeId) => replaySourceOf(checkpoints, authority, nodeId),
             delegationWait,
           ),
@@ -413,6 +429,7 @@ export function buildRunDetail(
     },
     gate,
     outcome,
+    ...(cancellation === undefined ? {} : { cancellation }),
     context: {
       // Every done task recorded provenance-validated data (1f mandate); a settled delegation join records no checkpoint and observed nothing.
       // The evidence service is 2g, so its count is genuinely zero today.

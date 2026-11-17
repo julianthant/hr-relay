@@ -280,6 +280,12 @@ export const RunDetailWireSchema = z.strictObject({
   timeline: TimelineWireSchema,
   gate: GateDecisionWireSchema,
   outcome: OutcomeWireSchema,
+  cancellation: z.strictObject({
+    title: z.literal("Run cancelled"),
+    at: IsoInstantSchema,
+    requestedBy: z.enum(["operator", "parent", "unavailable"]),
+    outcome: z.enum(["You cancelled this run.", "This run was cancelled when its parent was stopped.", "This run was cancelled."]),
+  }).optional(),
   context: ContextSummaryWireSchema,
   ocrReviewChanges: z.array(OcrReviewChangeSchema).min(1).optional(),
   ocrRecordCount: z.number().int().nonnegative().optional(),
@@ -295,6 +301,15 @@ export const RunDetailWireSchema = z.strictObject({
   decision: RunDecisionWireSchema.optional(),
   availableSections: z.array(RunDetailSectionSchema),
 }).superRefine((detail, context) => {
+  if (detail.cancellation !== undefined && (detail.header.status !== "cancelled"
+    || detail.outcome.state !== "terminal" || detail.outcome.result !== "cancelled"
+    || detail.outcome.completedAt !== detail.cancellation.at
+    || detail.cancellation.requestedBy === "parent" && detail.header.parentRunId === undefined
+    || detail.cancellation.outcome !== (detail.cancellation.requestedBy === "parent"
+      ? "This run was cancelled when its parent was stopped."
+      : detail.cancellation.requestedBy === "operator" ? "You cancelled this run." : "This run was cancelled."))) {
+    context.addIssue({ code: "custom", path: ["cancellation"], message: "cancellation requires the cancelled run's recorded time and requester" });
+  }
   refineDecisionActions(detail.decision, detail.childRetry === undefined ? [] : [detail.childRetry], context, ["decision"]);
   if (detail.childRetry !== undefined && (detail.header.parentRunId === undefined || detail.header.status !== "failed"
     || detail.childRetry.expectedVersion !== detail.rowRevision)) {
