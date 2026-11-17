@@ -124,3 +124,24 @@ it("validates transaction input, staged-output, constant and clickable source re
     constant: { nodeIds: ["clear-pending"], value: true }, source: input.source }] }] }), /outside page/u);
   assert.equal(WorkflowStepReviewSchema.safeParse({ ...candidate, pages: [{ ...page, fields: [{ ...input, transactionFields: [{ nodeId: "file-termination", kind: "input", fieldPath: "template", extra: true }] }] }] }).success, false);
 });
+
+it("validates run input rows, task input rows, click lines and declared decisions against the definition", () => {
+  const page = review.pages[0]; assert.ok(page);
+  const source = { origin: "Run input", detail: "The name entered when the run starts.", chain: [] };
+  const candidate = (fields: WorkflowStepReview["pages"][number]["fields"], decisions?: WorkflowStepReview["decisions"]) => ({ ...review,
+    pages: [{ ...page, lines: [{ id: "search", kind: "click" as const, target: "Search", nodeIds: ["searching"] }], fields }], ...(decisions === undefined ? {} : { decisions }) });
+  assert.doesNotThrow(() => compileReview(candidate([{ id: "name", label: "Name", example: "Morrow, Bea", inputField: "name", source },
+    { id: "query", label: "Query", taskFields: [{ nodeId: "searching", kind: "input", fieldPath: "kind" }], source }])));
+  assert.throws(() => compileReview(candidate([{ id: "name", label: "Name", inputField: "missingField", source }])), /schema field missingField/u);
+  assert.throws(() => compileReview(candidate([{ id: "query", label: "Query", taskFields: [{ nodeId: "active-status", kind: "input", fieldPath: "input" }], source }])), /unknown or outside node/u);
+  assert.throws(() => compileReview(candidate([{ id: "query", label: "Query", taskFields: [{ nodeId: "searching", kind: "output", fieldPath: "missingField" }], source }])), /schema field missingField/u);
+  const found = { value: "resolved", label: "One person found" }, missing = { value: "not-found", label: "Nobody found", then: "The run ends as Not found." };
+  const decision = { id: "search-result", label: "Search result", reads: { nodeId: "search-identity", fieldPath: "state" }, nodeIds: ["searching"], initial: "resolved",
+    outcomes: [found, missing] };
+  assert.doesNotThrow(() => compileReview(candidate([], [decision])));
+  assert.throws(() => compileReview(candidate([], [{ ...decision, reads: { nodeId: "search-identity", fieldPath: "candidateEids" } }])), /no closed set of values/u);
+  assert.throws(() => compileReview(candidate([], [{ ...decision, outcomes: [...decision.outcomes, { value: "sideways", label: "Sideways" }] }])), /never holds/u);
+  assert.throws(() => compileReview(candidate([], [{ ...decision, initial: "not-found", outcomes: [found, { ...missing, stops: true as const }] }])), /not one of its continuing outcomes/u);
+  assert.throws(() => compileReview(candidate([], [{ ...decision, outcomes: [found, { value: "not-found", label: "Nobody found", stops: true as const }] }])), /without saying what the run does/u);
+  assert.throws(() => compileReview(candidate([], [{ ...decision, nodeIds: ["active-status"] }])), /unknown or outside node/u);
+});

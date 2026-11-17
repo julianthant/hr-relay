@@ -35,29 +35,37 @@ export const SEARCHING_STEP = Object.freeze({
     pages: [
       {
         id: "person-search",
-        title: "Person Organizational Summary search",
+        title: "Person Organizational Summary",
         mode: "Fill form",
         nodeIds: ["searching"],
-        lines: [{ id: "search", kind: "action", text: "In Search mode, enter the requested employee ID or name and search.", nodeIds: ["searching"] }],
-        fields: []
+        lines: [
+          { id: "keep-hdh", kind: "check", text: "Keeps HDH departments only", nodeIds: ["searching"], when: [{ "search-by": ["name"] }] },
+          { id: "search", kind: "click", target: "Search", nodeIds: ["searching"] }
+        ],
+        fields: [
+          { id: "search-employee-id", label: "Employee ID", example: PERSON_LOOKUP_EXAMPLE_EID, inputField: "emplId", source: { origin: "Run input", detail: "The employee ID entered when the run starts.", chain: [] } },
+          { id: "search-name", label: "Name", example: "Morrow, Bea", inputField: "name", source: { origin: "Run input", detail: "The name entered when the run starts.", chain: [] } }
+        ]
       },
       {
         id: "person-match",
         title: "Smart HR person search",
         mode: "Fill form",
         nodeIds: ["matching"],
-        lines: [{ id: "match", kind: "action", text: "In Match mode, search by name with the supplied date of birth or SSN.", nodeIds: ["matching"] }],
-        fields: []
+        lines: [{ id: "search", kind: "click", target: "Search", nodeIds: ["matching"] }],
+        fields: [
+          { id: "last-name", label: "Last name", example: "Morrow", inputField: "lastName", source: { origin: "Run input", detail: "The last name entered when the run starts.", chain: [] } },
+          { id: "first-name", label: "First name", example: "Bea", inputField: "firstName", source: { origin: "Run input", detail: "The first name entered when the run starts.", chain: [] } },
+          { id: "date-of-birth", label: "Date of birth", example: "01/15/2000", inputField: "dob", source: { origin: "Run input", detail: "The date of birth entered when the run starts.", chain: [] } }
+        ]
       },
       {
         id: "person-details",
         title: "Person Organizational Summary detail",
         mode: "Read only",
         nodeIds: ["searching", "matching", "search-identity"],
-        lines: [
-          { id: "read-person", kind: "read", text: "Read candidate names, employee IDs and employment assignments.", nodeIds: ["searching", "matching"] },
-          { id: "confirm-person", kind: "check", text: "Confirm a unique identity or retain the unresolved matches.", nodeIds: ["search-identity"] }
-        ],
+        when: [{ "search-result": ["resolved"] }],
+        lines: [],
         fields: [
           {
             id: "employee-id",
@@ -112,7 +120,21 @@ export const SEARCHING_STEP = Object.freeze({
         ]
       }
     ],
-    branchLabels: []
+    branchLabels: [],
+    decisions: [
+      {
+        id: "search-result",
+        label: "Search result",
+        reads: { nodeId: "search-identity", fieldPath: "state" },
+        nodeIds: ["searching", "matching", "search-identity"],
+        initial: "resolved",
+        outcomes: [
+          { value: "resolved", label: "One person found" },
+          { value: "multiple-matches", label: "Several people match", then: "Continues; unless the CRM cross-check narrows it to one person, the run ends as Multiple matches." },
+          { value: "not-found", label: "Nobody found", then: "Continues; unless CRM has an onboarding record for the person, the run ends as Not found." }
+        ]
+      }
+    ]
   } as const,
 } as const);
 
