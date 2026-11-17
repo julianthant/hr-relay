@@ -4,7 +4,7 @@ import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { readWithDeadline } from "../../client/read-deadline.js";
 import type { PreflightQueries } from "../../client/queries/preflight-queries.js";
 import { CHECK_COPY } from "../settings/preflight/preflight-check-copy.js";
-import { runCheckFix } from "../settings/preflight/preflight-remedy-model.js";
+import { runCheckFix, runCheckHint } from "../settings/preflight/preflight-remedy-model.js";
 
 export type RunCheckVerdict = "pass" | "warning" | "fail";
 export interface RunCheckRow {
@@ -13,7 +13,7 @@ export interface RunCheckRow {
   readonly description: string;
   readonly verdict: RunCheckVerdict;
   /** The Settings section a failed, fixable check opens, and the button's name; absent means nothing to fix here. */
-  readonly fix?: Readonly<{ section: string; label: string }>;
+  readonly fix?: Readonly<{ section: string; label: string; target?: string }>;
 }
 
 export type RunChecksState =
@@ -30,7 +30,9 @@ export function runCheckRows(wire: PreflightReadinessWire): RunChecksState {
     const copy = CHECK_COPY[result.check];
     if (copy === undefined) throw new Error(`Run check "${result.check}" has no readiness copy`);
     const fix = result.status === "fail" ? runCheckFix(result.check) : null;
-    return { check: result.check, title: copy.name, description: result.status === "pass" ? copy.description : result.summary,
+    const description = result.status === "pass" ? copy.description
+      : result.status === "fail" && fix === null ? `${result.summary} ${runCheckHint(result.check)}` : result.summary;
+    return { check: result.check, title: copy.name, description,
       verdict: result.status, ...(fix === null ? {} : { fix }) };
   });
   return { state: "ready", rows: rows.map((row, index) => ({ row, index })).sort((a, b) => RANK[a.row.verdict] - RANK[b.row.verdict] || a.index - b.index).map(({ row }) => row) };
