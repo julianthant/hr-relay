@@ -96,11 +96,29 @@ describe("whole-page factory screenshots", () => {
       await withPage(body, async (page, resource) => {
         const evidence = await resource.screenshot?.();
         assert.ok(evidence?.state === "unavailable");
-        assert.equal(evidence.reason, "verification-failed");
+        assert.equal(evidence.reason, "horizontal-overflow");
         assert.deepEqual(page.viewportSize(), { width: 800, height: 600 });
       });
     });
   }
+  it("captures a fixed-width grid viewport that scrolls on both axes, as the Kronos timecard does", async () => {
+    // New Kronos renders its timecard in an Angular ui-grid: a pinned date viewport beside a data viewport wider than its box.
+    const quadrants = '<div style="display:grid;grid-template-columns:1200px 1200px;grid-template-rows:1200px 1200px">'
+      + '<div style="background:rgb(210,20,30)"></div><div style="background:rgb(20,210,30)"></div>'
+      + '<div style="background:rgb(20,30,210)"></div><div style="background:rgb(230,200,20)"></div></div>';
+    const grid = '<div style="display:flex;width:780px"><div class="ui-grid-viewport" style="width:80px;height:500px;overflow:hidden"><div style="height:2400px"></div></div>'
+      + `<div class="ui-grid-viewport" id="data" style="width:700px;height:500px;overflow:auto">${quadrants}</div></div>`;
+    await withPage(grid, async (page, resource) => {
+      const png = await image(resource);
+      assert.deepEqual(pixel(png, 10, 10), [210, 20, 30]);
+      assert.deepEqual(pixel(png, png.width - 10, 10), [20, 210, 30]);
+      assert.deepEqual(pixel(png, 10, png.height - 10), [20, 30, 210]);
+      assert.deepEqual(pixel(png, png.width - 10, png.height - 10), [230, 200, 20]);
+      assert.ok(png.width >= 2400 && png.height >= 2400, `stitched ${png.width}x${png.height}`);
+      assert.deepEqual(await page.locator("#data").evaluate(el => [el.scrollLeft, el.scrollTop]), [0, 0]);
+      assert.deepEqual(page.viewportSize(), { width: 800, height: 600 });
+    });
+  });
   for (const target of ["element", "iframe"] as const) {
     it(`captures the final20px of near-viewport ${target} overflow`, async () => {
       const nearViewport = '<div style="height:600px;background:rgb(210,20,30)"></div><div style="height:20px;background:rgb(20,30,210)"></div>';
@@ -177,6 +195,7 @@ describe("whole-page factory screenshots", () => {
         assert.equal(evidence?.state, "unavailable");
         assert.ok(evidence?.state === "unavailable");
         assert.equal(evidence.reason, reason);
+        if (reason === "authentication-unverified") assert.equal(evidence.detail, "sign-in-check-application-route");
         assert.equal("bytes" in evidence, false);
       }, reason !== "authentication-unverified");
     });
@@ -369,7 +388,7 @@ describe("whole-page factory screenshots", () => {
       };
       const evidence = await resource.screenshot?.();
       assert.ok(evidence?.state === "unavailable");
-      assert.equal(evidence.reason, "verification-failed");
+      assert.deepEqual([evidence.reason, evidence.detail], ["verification-failed", "page-capture-error"]);
       assert.deepEqual(page.viewportSize(), { width: 800, height: 600 });
       assert.equal(await page.evaluate(() => window.scrollY), 220);
       assert.equal(await page.locator("header").evaluate(el => el.style.display), "");
@@ -384,7 +403,7 @@ describe("whole-page factory screenshots", () => {
       };
       const evidence = await resource.screenshot?.();
       assert.ok(evidence?.state === "unavailable");
-      assert.equal(evidence.reason, "verification-failed");
+      assert.equal(evidence.reason, "observer-unavailable");
     });
   });
   it("refuses a capture that cannot reach the content bottom", async () => {
@@ -392,7 +411,22 @@ describe("whole-page factory screenshots", () => {
       await page.evaluate(() => { window.scrollTo = () => undefined; });
       const evidence = await resource.screenshot?.();
       assert.ok(evidence?.state === "unavailable");
-      assert.equal(evidence.reason, "verification-failed");
+      assert.equal(evidence.reason, "content-bottom-unreached");
+    });
+  });
+  it("names an unpainted gap when scroll snapping moves a band past the covered content", async () => {
+    const sections = Array.from({ length: 6 }, () => '<section style="height:700px;scroll-snap-align:start;background:rgb(20,30,210)"></section>').join("");
+    await withPage(`<main style="height:600px;overflow:auto;scroll-snap-type:y mandatory">${sections}</main>`, async (_page, resource) => {
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "unpainted-gap");
+    });
+  });
+  it("names the band limit for a page too long to capture", async () => {
+    await withPage('<div style="height:48000px;background:rgb(20,30,210)"></div>', async (_page, resource) => {
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "band-limit");
     });
   });
   it("preserves an undefined capture failure and skips final authentication", async () => {

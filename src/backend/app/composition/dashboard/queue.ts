@@ -10,11 +10,13 @@ import { createRunQueueProjection } from "../../../runs/projections/run-queue-pr
 import { hostedOcrRun, readQueueRecordMembers } from "../../../runs/queries/ocr-record-members.js";
 import { readOcrReviewAuthority } from "../../../runs/lifecycle/ocr-review-authority.js";
 import { workflowQueueCapabilities } from "../../registries/workflow-registry.js";
+import { queryAssistantUsage } from "../../../assistant/usage-counts.js";
 
-export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
+export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline" | "assistantUsage"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
   workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
   return createRunQueueProjection({
+    assistantUsage: (from, to, generatedAt) => queryAssistantUsage(database, { from, to, generatedAt }),
     timeline: database.authority.timelineEvents,
     stateRoot,
     clock,

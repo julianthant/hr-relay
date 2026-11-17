@@ -8,12 +8,13 @@ import {
   candidateText, defaultRerunSteps, initialRerunValueDrafts, partialRerunTypedInput, plainRerunInputText, type RerunValueDraft,
 } from "./run-start-rerun-model.js";
 import {
-  changeTypedInput, initialStepOmissionDraft, restoreTypedInput, toggleStepSelection, typedInputDefaults, typedInputText,
+  changeTypedInput, initialStepOmissionDraft, restoreTypedInput, toggleStepSelection, typedInputDefaults, typedInputText, typedDateControls, usDateText,
   type BrowserMode, type StartPriority, type StepOmissionDraft, type StepOmissionFactDraft,
 } from "./run-start-model.js";
 import type { WorkbookRowChoice } from "./run-workbook-rows-model.js";
 
 export type ReferenceSelection = Readonly<{ libraryId: string; versionId: string; sheetId: string }>;
+export type CheckPick = Readonly<{ versionId: string; sheetIds: readonly string[] }>;
 export type ReferenceDraft = Readonly<{ libraryId: string; versionId?: string }>;
 
 /** Everything the operator has entered into the Run and Rerun dialog. The PDF files stay with their upload hook. */
@@ -27,11 +28,14 @@ export type LaunchDraft = Readonly<{
   stepDrafts: Readonly<Record<string, StepOmissionDraft>>;
   touchedFacts: ReadonlySet<string>;
   factsAttempted: boolean;
-  priority: StartPriority;
+  /** Undefined until the operator picks; `effectivePriority` supplies the default. */
+  priority: StartPriority | undefined;
   dryRunRequested: boolean;
   browserMode: BrowserMode;
   referenceSelections: Readonly<Record<string, ReferenceSelection>>;
   referenceDrafts: Readonly<Record<string, ReferenceDraft>>;
+  /** The optional check's picked spreadsheets: library id to the named version and the worksheets chosen in it. */
+  checkPicks: Readonly<Record<string, CheckPick>>;
   selectedWorkbookRows?: Readonly<{ source: string; choices: readonly WorkbookRowChoice[] }>;
   /** Declared launch fields by key; a field is absent until the operator picks it. */
   launchFields: Readonly<Record<string, string>>;
@@ -42,9 +46,13 @@ export type LaunchDraft = Readonly<{
 const NO_TYPED_DRAFT: TypedInputDraft = {};
 const typedDeclarationOf = (workflow: RunStartWorkflow | undefined) =>
   workflow?.inputRun.state === "present" ? workflow.inputRun.surface.typedInput : undefined;
-const typedDefaultsOf = (workflow: RunStartWorkflow | undefined): TypedInputDraft => {
+/** A required date starts on the dashboard day; clearing it still refuses. */
+const typedDefaultsOf = (workflow: RunStartWorkflow | undefined, today: string | undefined): TypedInputDraft => {
   const declaration = typedDeclarationOf(workflow);
-  return declaration === undefined ? {} : typedInputDefaults(declaration);
+  if (declaration === undefined) return {};
+  const defaults = typedInputDefaults(declaration);
+  const day = today === undefined ? undefined : usDateText(today);
+  return day === undefined ? defaults : { ...defaults, ...Object.fromEntries(typedDateControls(declaration, String(defaults[declaration.modeField] ?? declaration.initialMode)).filter(control => control.required).map(control => [control.field, day])) };
 };
 const defaultStepKeys = (workflow: RunStartWorkflow | undefined): string[] =>
   workflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? [];
@@ -52,12 +60,12 @@ const omit = <T>(record: Readonly<Record<string, T>>, key: string): Record<strin
   Object.fromEntries(Object.entries(record).filter(([entry]) => entry !== key));
 const withSteps = (draft: LaunchDraft, workflowId: string, keys: readonly string[]): LaunchDraft => ({ ...draft, stepSelection: { workflowId, keys } });
 
-export function freshLaunchDraft(workflow: RunStartWorkflow | undefined): LaunchDraft {
+export function freshLaunchDraft(workflow: RunStartWorkflow | undefined, today?: string): LaunchDraft {
   return {
-    text: "", typed: { workflowId: workflow?.workflowId ?? "", draft: typedDefaultsOf(workflow) }, sourceInputUnchanged: false,
+    text: "", typed: { workflowId: workflow?.workflowId ?? "", draft: typedDefaultsOf(workflow, today) }, sourceInputUnchanged: false,
     stepSelection: undefined, stepDrafts: {}, touchedFacts: new Set(), factsAttempted: false,
-    priority: "interactive", dryRunRequested: false, browserMode: "headed",
-    referenceSelections: {}, referenceDrafts: {}, selectedWorkbookRows: undefined, launchFields: {},
+    priority: undefined, dryRunRequested: false, browserMode: "headed",
+    referenceSelections: {}, referenceDrafts: {}, checkPicks: {}, selectedWorkbookRows: undefined, launchFields: {},
     valueDrafts: {}, copiedOmissions: {},
   };
 }
@@ -72,8 +80,8 @@ export function selectedStepKeys(draft: LaunchDraft, workflow: RunStartWorkflow 
 }
 
 /** Another workflow cannot reuse the old one's input, steps, facts or options; reference picks and rerun values stay. */
-export function changeWorkflow(draft: LaunchDraft, workflow: RunStartWorkflow | undefined): LaunchDraft {
-  return { ...freshLaunchDraft(workflow), referenceDrafts: draft.referenceDrafts, valueDrafts: draft.valueDrafts, copiedOmissions: draft.copiedOmissions };
+export function changeWorkflow(draft: LaunchDraft, workflow: RunStartWorkflow | undefined, today?: string): LaunchDraft {
+  return { ...freshLaunchDraft(workflow, today), referenceDrafts: draft.referenceDrafts, valueDrafts: draft.valueDrafts, copiedOmissions: draft.copiedOmissions };
 }
 
 export function changeText(draft: LaunchDraft, text: string): LaunchDraft {
@@ -139,6 +147,9 @@ export function changeValueText(draft: LaunchDraft, index: number, text: string)
   return { ...draft, valueDrafts: { ...draft.valueDrafts, [index]: { text, copied: false } } };
 }
 
+export function effectivePriority(choice: StartPriority | undefined, people: number): StartPriority {
+  return choice ?? (people > 1 ? "bulk" : "interactive");
+}
 export function changePriority(draft: LaunchDraft, priority: StartPriority): LaunchDraft { return { ...draft, priority }; }
 export function changeDryRun(draft: LaunchDraft, dryRunRequested: boolean): LaunchDraft { return { ...draft, dryRunRequested }; }
 export function changeBrowserMode(draft: LaunchDraft, browserMode: BrowserMode): LaunchDraft { return { ...draft, browserMode }; }
@@ -163,6 +174,14 @@ export function pickWorksheet(draft: LaunchDraft, typeId: string, selection: Ref
 
 export function removeReference(draft: LaunchDraft, typeId: string): LaunchDraft {
   return { ...draft, referenceDrafts: omit(draft.referenceDrafts, typeId), referenceSelections: omit(draft.referenceSelections, typeId) };
+}
+
+export function pickCheck(draft: LaunchDraft, libraryId: string, pick: CheckPick): LaunchDraft {
+  return { ...draft, checkPicks: { ...draft.checkPicks, [libraryId]: pick } };
+}
+
+export function removeCheck(draft: LaunchDraft, libraryId: string): LaunchDraft {
+  return { ...draft, checkPicks: omit(draft.checkPicks, libraryId) };
 }
 
 export function selectWorkbookRows(draft: LaunchDraft, source: string, choices: readonly WorkbookRowChoice[]): LaunchDraft {

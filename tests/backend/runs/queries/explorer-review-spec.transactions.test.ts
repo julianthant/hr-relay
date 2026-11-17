@@ -45,7 +45,7 @@ it("discloses every approved UCPath termination and Kuali finalization form fiel
     assert.deepEqual(field.sources, [{ nodeId: "finalize-kuali", kind: "constant", value }]);
   }
   assert.deepEqual(finalization.fields.find(field => field.label === "Department")?.source.read,
-    { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Kuali department option" });
+    { stepKey: "identity-check", page: "Workforce Job Summary", field: "Kuali department option" });
   assert.deepEqual(finalization.fields.find(field => field.label === "Transaction number")?.source.read,
     { stepKey: "ucpath-transaction", page: "SS Smart HR transaction detail", field: "Transaction number" });
   assert.deepEqual(page("ucpath-transaction", "termination-setup").fields.find(field => field.label === "Template")?.options, ["UC_INVOL_TERM", "UC_VOL_TERM"]);

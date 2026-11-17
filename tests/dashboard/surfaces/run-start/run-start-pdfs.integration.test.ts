@@ -75,6 +75,7 @@ it("uploads both original PDFs through the typed client and plans one parent wit
   expect(dialog.disabled("Continue")).toBe(false);
   await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
   await dialog.press("Continue");
+  await dialog.press("Continue");
   expect(dialog.text()).toContain("Action History.xlsx · Fall review");
   await dialog.press("Start live run");
   expect(plans).toHaveLength(1);
@@ -107,6 +108,7 @@ it("offers the Dry run switch for the PDF workflow and plans and confirms a dry 
   expect(dryRunSwitch.closest(".ds-run-row")?.textContent).toContain("Dry run");
   expect(dryRunSwitch.closest(".ds-run-row")?.textContent).toContain("Fill and check every step without submitting or saving.");
   await act(async () => dryRunSwitch.click()); await h.settle();
+  await dialog.press("Continue");
   expect(dialog.text()).toContain("Start dry run");
   await dialog.press("Start dry run");
   expect(StartPlanRequestSchema.parse(plans[0]).dryRun).toBe(true);
@@ -122,7 +124,7 @@ it("keeps the accepted selection and refuses invalid PDFs before planning or upl
   } }), { workflows: [workflow], panelWorkflowId: workflow.workflowId });
   await attach([pdf("accepted.pdf", "%PDF accepted")]);
   await attach([new File(["wrong"], "wrong.txt", { type: "text/plain" })]);
-  expect(uploads).toBe(1); expect(dialog.text()).toContain("PDF selection refused");
+  expect(uploads).toBe(1); expect(dialog.text()).toContain("PDF selection refused"); expect(dialog.text()).toContain("Choose valid PDF files.");
   expect(dialog.text()).toContain("accepted.pdf"); expect(dialog.disabled("Continue")).toBe(true);
   await dialog.press("Remove accepted.pdf");
   expect(dialog.text()).toContain("No PDFs selected"); expect(dialog.disabled("Continue")).toBe(true);
@@ -186,11 +188,11 @@ it("plans one Emergency Contact run per uploaded PDF", async () => {
   const picks = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"][name^="File to OnBase-"]')];
   expect(picks.map(radio => [radio.value, radio.checked])).toEqual([["file", false], ["skip", false]]);
   expect(picks[0]?.closest(".ds-run-row")?.textContent).toContain("File to OnBase");
-  expect(dialog.disabled("Start dry run")).toBe(true);
+  expect(dialog.disabled("Continue")).toBe(true);
   expect(dialog.text()).toContain("Pick File to OnBase.");
   expect(plans).toHaveLength(0);
   const skip = picks[1]; assert.ok(skip); await act(async () => skip.click());
-  expect(dialog.disabled("Start dry run")).toBe(false);
+  expect(dialog.disabled("Continue")).toBe(false);
   await dialog.press("Start dry run");
   const request = StartPlanRequestSchema.parse(plans[0]);
   expect(request.dryRun).toBe(true);

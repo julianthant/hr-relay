@@ -252,7 +252,7 @@ function rejectedSpanScopeForMeasuredRun(fixture: PerfFixture, runId: string): {
 function selfCheckStatementCounter(fixture: PerfFixture): void {
   assertStatementCounterObserves({
     prepareProbe: () => {
-      fixture.database.authority.runs.get(fixture.runIds.measuredRun);
+      fixture.database.getMeta();
     },
   });
 }

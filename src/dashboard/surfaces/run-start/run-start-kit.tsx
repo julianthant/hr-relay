@@ -34,7 +34,7 @@ import { fmtClock } from "../shared/status/format.js";
 import type { StartPlanResponse } from "../../client/index.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
 import { RunList, RunListRow, RunSection } from "../../ds/primitives/run-list.js";
-import { DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../ds/primitives/dropdown-menu.js";
+import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../ds/primitives/dropdown-menu.js";
 import { typedInputMode, typedInputDefaults, inputRunFieldLabel, inputRunDelimiterHint, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft } from "./run-start-model.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 /** the non-default run flags shown in the preview and confirmation */
@@ -448,10 +448,18 @@ export function TypedInput({
 }
 
 export interface ReferenceSheet { readonly libraryId: string; readonly name: string; readonly versions: readonly { readonly id: string; readonly name: string }[]; readonly currentVersionId: string; readonly worksheets: readonly string[] }
+/** One library spreadsheet that fits the optional check, as the card draws it: its named versions, the version in use and the worksheets of that version that map the key field. `pickedSheetIds` is absent while the row is unpicked. */
+export interface CheckSheet {
+  readonly libraryId: string; readonly name: string; readonly pinned: boolean;
+  readonly versions: readonly { readonly id: string; readonly name: string }[]; readonly versionId: string; readonly versionName: string;
+  readonly worksheets: readonly ReferenceWorksheet[]; readonly worksheetsState: "loading" | "ready" | "error";
+  readonly pickedSheetIds?: readonly string[];
+}
 export interface ReferenceWorksheet { readonly sheetId: string; readonly sheetName: string }
 
 /** The served Run and Rerun dialogs' reference spreadsheet list: the approved rows (spreadsheet, worksheet picker, version picker, remove ×) and the Add spreadsheet search menu, over the library the run reads. One spreadsheet per run: adding another replaces the current one. */
-export function RunReferenceRows({ requiredLabel, sheets, chosenLibraryId, chosenVersionId, chosenSheetId, worksheets, worksheetsState, worksheetsError, busy, catalogError, onPick, onVersion, onWorksheet, onRemove, onRefresh }: {
+export function RunReferenceRows({ checkRows, requiredLabel, sheets, chosenLibraryId, chosenVersionId, chosenSheetId, worksheets, worksheetsState, worksheetsError, busy, catalogError, onPick, onVersion, onWorksheet, onRemove, onRefresh }: {
+  checkRows?: ReactNode;
   requiredLabel: string; sheets: readonly ReferenceSheet[];
   chosenLibraryId?: string; chosenVersionId?: string; chosenSheetId: string;
   worksheets: readonly ReferenceWorksheet[]; worksheetsState: "loading" | "ready" | "error"; worksheetsError: string | null;
@@ -486,6 +494,7 @@ export function RunReferenceRows({ requiredLabel, sheets, chosenLibraryId, chose
         </Select>
         <IconButton size="xs" label={`Remove ${chosen.name}`} icon={<X aria-hidden className={dsIcon.md} />} onClick={onRemove} />
       </RunListRow>}
+      {checkRows}
     </RunList>
     {worksheetsState === "error" && <p role="alert" className="m-0 text-caption text-ui-danger">{worksheetsError}</p>}
     {chosen && worksheetsState === "ready" && worksheets.length === 0 && <p role="status" className="m-0 text-caption text-ui-muted">No worksheets in this version have {requiredLabel}.</p>}
@@ -503,6 +512,69 @@ export function RunReferenceRows({ requiredLabel, sheets, chosenLibraryId, chose
             <DropdownMenuItemCopy title={sheet.name} description={description} />
           </DropdownMenuItem>;
         })}
+      </DropdownMenuContent>
+    </DropdownMenu></div>
+  </div>;
+}
+
+const worksheetsLabel = (names: readonly string[]) => names.length === 1 ? names[0] : `${names.length} worksheets`;
+interface CheckCallbacks {
+  onAdd: (libraryId: string) => void; onVersion: (libraryId: string, versionId: string) => void;
+  onSheets: (libraryId: string, sheetIds: readonly string[]) => void; onRemove: (libraryId: string) => void;
+}
+
+/** The optional check's rows, one per fitting library spreadsheet: an unpicked row adds in place; a picked row has its worksheet menu, version select and a remove ×, as the approved mock draws it. */
+export function RunCheckRows({ sheets, busy, onAdd, onVersion, onSheets, onRemove }: { sheets: readonly CheckSheet[]; busy: boolean } & CheckCallbacks) {
+  return <>{sheets.map(sheet => {
+    const picked = sheet.pickedSheetIds;
+    if (picked === undefined) return <RunListRow key={sheet.libraryId} title={sheet.name} description={`${sheet.worksheets.map(worksheet => worksheet.sheetName).join(", ")} · ${sheet.versionName}`}>
+      <Button variant="outline" disabled={busy} aria-label={`Use ${sheet.name}`} onClick={() => onAdd(sheet.libraryId)}>Use</Button>
+    </RunListRow>;
+    const names = sheet.worksheets.filter(worksheet => picked.includes(worksheet.sheetId)).map(worksheet => worksheet.sheetName);
+    const toggle = (sheetId: string, on: boolean) => {
+      const next = on ? [...picked, sheetId] : picked.filter(id => id !== sheetId);
+      if (next.length > 0) onSheets(sheet.libraryId, next);
+    };
+    return <RunListRow key={sheet.libraryId} title={sheet.name} description={sheet.worksheetsState === "loading" ? "Loading worksheets…" : sheet.worksheetsState === "error" ? "Worksheets unavailable"
+      : names.length > 0 ? names.join(", ") : "No worksheet in this version has Employee ID"}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild><Button variant="outline" disabled={busy || sheet.worksheetsState !== "ready"} aria-label={`${sheet.name} worksheets, ${worksheetsLabel(names)}`} className="ds-menu-trigger w-[150px] min-w-0 justify-between" iconAfter={<ChevronDown aria-hidden />}><span className="min-w-0 truncate">{names.length === 0 ? "Choose worksheet" : worksheetsLabel(names)}</span></Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-[280px] max-h-[320px] overflow-y-auto"><DropdownMenuGroup>
+          <DropdownMenuLabel>{sheet.name}</DropdownMenuLabel>
+          {sheet.worksheets.map(worksheet => <DropdownMenuCheckboxItem key={worksheet.sheetId} checked={picked.includes(worksheet.sheetId)} onCheckedChange={on => toggle(worksheet.sheetId, on === true)}>{worksheet.sheetName}</DropdownMenuCheckboxItem>)}
+        </DropdownMenuGroup></DropdownMenuContent>
+      </DropdownMenu>
+      <Select aria-label={`${sheet.name} version`} variant="toolbar" className="min-w-[76px] max-w-[150px]" disabled={busy} value={sheet.versionId} onChange={event => onVersion(sheet.libraryId, event.target.value)}>
+        {sheet.versions.map(version => <option key={version.id} value={version.id}>{version.name}</option>)}
+      </Select>
+      <IconButton size="xs" label={`Remove ${sheet.name}`} icon={<X aria-hidden className={dsIcon.md} />} onClick={() => onRemove(sheet.libraryId)} />
+    </RunListRow>;
+  })}</>;
+}
+
+/** The reference card of a workflow with no required spreadsheet: the check rows alone, and the Add spreadsheet menu as the mock draws it (Pinned first when the search is empty; typing searches every spreadsheet and worksheet name, A-Z). */
+export function RunCheckCard({ sheets, busy, catalogError, onRefresh, ...callbacks }: { sheets: readonly CheckSheet[]; busy: boolean; catalogError: string | null; onRefresh: () => void } & CheckCallbacks) {
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
+  const unpicked = sheets.filter(sheet => sheet.pickedSheetIds === undefined);
+  const available = needle === "" ? unpicked.filter(sheet => sheet.pinned)
+    : unpicked.filter(sheet => [sheet.name, ...sheet.worksheets.map(worksheet => worksheet.sheetName)].some(name => name.toLowerCase().includes(needle))).toSorted((a, b) => a.name.localeCompare(b.name));
+  return <div className="flex min-w-0 flex-col gap-3">
+    {catalogError && <Banner tone="danger" title="Reference data unavailable">{catalogError}<Button onClick={onRefresh}>Refresh</Button></Banner>}
+    <RunList title="Reference spreadsheets" description="Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.">
+      <RunCheckRows sheets={sheets} busy={busy} {...callbacks} />
+    </RunList>
+    <div><DropdownMenu onOpenChange={open => { if (open) setQuery(""); }}>
+      <DropdownMenuTrigger asChild><Button variant="outline" disabled={busy} className="ds-menu-trigger" iconAfter={<ChevronDown aria-hidden />}>Add spreadsheet</Button></DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-[320px] max-h-[320px] overflow-y-auto">
+        <div className="ds-menu-search-row" onKeyDown={event => { if (event.key !== "Escape") event.stopPropagation(); }}>
+          <Search aria-hidden /><input aria-label="Find a spreadsheet" placeholder="Find a spreadsheet" value={query} onChange={event => setQuery(event.target.value)} autoComplete="off" spellCheck={false} />
+        </div>
+        {needle === "" && available.length > 0 && <DropdownMenuGroup><DropdownMenuLabel>Pinned</DropdownMenuLabel></DropdownMenuGroup>}
+        {available.length === 0 && <p className="m-0 px-2 py-2 text-[13px] leading-[18px] text-ui-muted">{needle === "" ? "Pin spreadsheets in Spreadsheets to list them here. Search finds the rest." : "No spreadsheets match."}</p>}
+        {available.map(sheet => <DropdownMenuItem key={sheet.libraryId} onClick={() => callbacks.onAdd(sheet.libraryId)}>
+          <DropdownMenuItemCopy title={sheet.name} description={sheet.worksheets.map(worksheet => worksheet.sheetName).join(", ")} />
+        </DropdownMenuItem>)}
       </DropdownMenuContent>
     </DropdownMenu></div>
   </div>;

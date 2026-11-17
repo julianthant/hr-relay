@@ -70,6 +70,7 @@ export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[]
     ...(entry.start.uploadRun === undefined ? {} : { uploadRun: entry.start.uploadRun }),
     requiredWorkbookFields: entry.start.requiredWorkbookFields,
     workbookReference: entry.start.workbookReference,
+    workbookCheck: entry.start.workbookCheck,
     referenceSources: projection?.sources ?? [],
     inputRun: entry.start.inputRun === undefined ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
       : { state: "present", surface: entry.start.inputRun } };
@@ -263,6 +264,6 @@ async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardD
 }
 
 export function runLaunchAppliedToast(input: Readonly<{ label: string; count?: number; rerun: boolean }>) {
-  return { tone: "success" as const, title: input.count === undefined ? "Run submission confirmed" : input.rerun ? "Rerun started"
-    : input.count === 1 ? "Run started" : `${input.count} runs started`, description: input.label };
+  return { tone: "success" as const, title: input.count === undefined ? "Run submission confirmed" : input.rerun ? "Rerun created" : "Run started",
+    description: input.count === undefined ? input.label : `${String(input.count)} ${input.label} ${input.count === 1 ? "run" : "runs"} created.` };
 }

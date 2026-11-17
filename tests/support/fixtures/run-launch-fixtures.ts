@@ -1,3 +1,4 @@
+import { healthyDashboardPreflightReport } from "./preflight-seams.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { InputRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
 import { StepOmissionFormSchema, type StepOmissionProduceContext } from "../../../src/models/workflow/step-omission.js";
@@ -66,7 +67,7 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", curre
       { key: `${prefix}reading`, label: "Read employee", nodes: ["read"] },
       { key: `${prefix}checking`, label: "Check employee", nodes: ["check"], manual: { form: StepOmissionFormSchema.parse({ fields: [{ key: "eid", label: "Checked employee ID", kind: "eid", replaces: { nodeId: "check", path: "eid" } }] }),
         produces: { check: ({ facts }: StepOmissionProduceContext) => z.strictObject({ eid: EidSchema }).parse(facts) } } },
-      { key: `${prefix}filing`, label: "File transaction", nodes: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"], manual: { form: StepOmissionFormSchema.parse({ fields: [] }), produces: {}, skips: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"], skipsGatesAndTransactions: true } },
+      { key: `${prefix}filing`, label: "File transaction", nodes: current.gateDependency ? ["approval", "submit-write"] : ["submit-write"] },
     ],
     rerunValues: [
       { nodeId: "read", fieldPath: "eid", targetFieldPath: "eid", label: "Employee ID" },
@@ -108,6 +109,8 @@ export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", in
     appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(h.database.authority),
     descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined } });
   registerQueueRoutes(app, { queue: { day: day => { projection.rebuildFromTimeline(); return projection.buildDashboardDayWire(day); } }, startPlans: h.planner });
+  /** The Run dialog's Checks step reads the workflow's readiness; this fixture's checks all pass. */
+  app.get("/api/v1/preflight", (c) => c.json({ state: "present", report: healthyDashboardPreflightReport(h.clock) }));
   app.get("/api/v1/runs/:id/rerun-values", (c) => {
     const response = readRerunValues({ reader: h.lifecycle, database: h.database, descriptors: { resolve: () => h.descriptor } },
       { runId: c.req.param("id"), expectedVersion: Number(c.req.query("expectedVersion")) });

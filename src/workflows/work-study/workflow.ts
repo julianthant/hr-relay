@@ -13,7 +13,7 @@ export const workStudyWorkflow = defineWorkflow({
   requiredWorkbookFields: [], workbookCheck: REFERENCE_CHECK,
   input: WorkStudyInput, canonicalInput: WorkStudyCanonicalInput, inputSubject: "eid",
   surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
-  surfaces: { inputRun: { placeholder: "10000001, 10000002", parser: WORK_STUDY_INPUT_PARSER, typedInput: WORK_STUDY_TYPED_INPUT } },
+  surfaces: { inputRun: { placeholder: "10000001; 10000002", parser: WORK_STUDY_INPUT_PARSER, typedInput: WORK_STUDY_TYPED_INPUT } },
   role: defineWorkflowRole({ kind: "composition" }), scenarios: ["work-study/planned-transaction", "work-study/verified-save", "work-study/already-filed", "work-study/unknown", "work-study/reference-check"],
   identity: { matchKey: input => `${input.emplId}:${input.effectiveDate}` },
   presentation: { title: input => input.emplId, subtitle: () => "PayPath work-study transaction" },

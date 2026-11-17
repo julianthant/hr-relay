@@ -27,6 +27,8 @@ describe("served Work Study last stage", () => {
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(date, "08/03/2026"); date.dispatchEvent(new Event("input", { bubbles: true })); });
     await dialog.press("Continue");
     assert.equal(dialog.stage(), "Options");
+    await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Checks");
     assert.match(dialog.text(), /Effective date08\/03\/2026/u);
   });
   it("restores a rerun's stored ISO effective date as MM/DD/YYYY and shows it before Start", async () => {
@@ -43,8 +45,8 @@ describe("served Work Study last stage", () => {
     }), { workflows: [workStudy], panelWorkflowId: descriptor.id, rerunSource: source });
     await dialog.press("Continue");
     assert.equal(document.body.querySelector<HTMLInputElement>('input[aria-label="Effective date"]')?.value, "08/03/2026");
-    for (let guard = 0; guard < 4 && dialog.stage() !== "Options"; guard += 1) await dialog.press("Continue");
-    assert.equal(dialog.stage(), "Options");
+    for (let guard = 0; guard < 5 && dialog.stage() !== "Checks"; guard += 1) await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Checks");
     assert.match(dialog.text(), /Effective date08\/03\/2026/u);
   });
 });

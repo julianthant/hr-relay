@@ -96,6 +96,22 @@ function spanNotRunReason(
 }
 
 
+/** Nodes whose latest span skipped a branch this run did not take; the served timeline leaves them out of both stages and events. */
+function untakenBranchNodes(row: RunFoldRecord | undefined): ReadonlySet<string> {
+  const latest = new Map<string, RunFoldRecord["taskSpans"][number]>();
+  for (const span of row?.taskSpans ?? []) {
+    const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
+    if (nodeId === undefined) continue;
+    const held = latest.get(nodeId);
+    if (held === undefined || (held.startedAt ?? held.endedAt ?? "").localeCompare(span.startedAt ?? span.endedAt ?? "") <= 0) latest.set(nodeId, span);
+  }
+  return new Set([...latest].flatMap(([nodeId, span]) => {
+    const reason = spanNotRunReason(span, nodeId);
+    return reason === "condition-false" || reason === "branch-not-selected" ? [nodeId] : [];
+  }));
+}
+
+
 function replaySourceOf(
   checkpoints: SubjectCheckpointSource,
   authority: RunRecord,
@@ -125,6 +141,7 @@ function buildTimelineSteps(
   replaySource: (nodeId: string) => { attempt: number; claimGeneration?: number } | undefined,
   wait: DelegationWaitState | null | undefined,
   typed: ReadonlyMap<string, TypedStepView>,
+  untaken: ReadonlySet<string>,
 ): TimelineStepWire[] {
   type SpanFold = RunFoldRecord["taskSpans"][number];
   const spansByNode = new Map<string, SpanFold[]>();
@@ -186,12 +203,13 @@ function buildTimelineSteps(
     };
   };
 
-  const steps = timeline.map((category) => {
-    const members = category.nodes.map(memberOf);
+  const steps = timeline.flatMap((category) => {
+    const members = category.nodes.filter(node => !untaken.has(node.id)).map(memberOf);
+    if (members.length === 0) return [];
     const measured = members.filter((member) => member.durationMs !== undefined);
     const totalMs = measured.reduce((sum, member) => sum + (member.durationMs ?? 0), 0);
     const maxExecutions = Math.max(...members.map((member) => member.executions));
-    return TimelineStepWireSchema.parse({
+    return [TimelineStepWireSchema.parse({
       key: category.key,
       label: category.label,
       ...(category.system === undefined ? {} : { system: category.system }),
@@ -209,7 +227,7 @@ function buildTimelineSteps(
         ...(member.notRunReason === undefined ? {} : { notRunReason: member.notRunReason }),
       })),
       ...(category.key === undefined ? {} : typed.get(category.key)),
-    });
+    })];
   });
   if (runCancelled) {
     const unfinished = steps.find(step => ["pending", "active", "blocked", "cancelled"].includes(step.state));
@@ -293,10 +311,13 @@ export function buildRunDetail(
     state: "absent",
     reason: "a gate is not a task span; the executor measures no duration for it",
   } as const;
+  const untaken = untakenBranchNodes(row);
   for (const span of row?.taskSpans ?? []) {
+    const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
+    if (nodeId !== undefined && untaken.has(nodeId)) continue;
     const state = taskStateOf(span.outcome);
     // A skip without its recorded reason cannot imply a guarded condition or cancellation.
-    const spanReason = spanNotRunReason(span, nodeIdOfTaskSpanPath(span.spanPath));
+    const spanReason = spanNotRunReason(span, nodeId);
     const notRun = state !== "skipped"
       ? { state: "absent", reason: "this step ran" } as const
       : spanReason === undefined
@@ -307,7 +328,6 @@ export function buildRunDetail(
       || record.payload.event.spanPath !== span.spanPath || record.payload.event.attempt !== span.attempt) {
       throw new LogIdentityRefusedError("task span has no exact native event identity");
     }
-    const nodeId = nodeIdOfTaskSpanPath(span.spanPath);
     timelineEvents.push({
       native: nativeOf(record, nodeId),
       categoryKey: categoryOf(nodeId),
@@ -430,6 +450,7 @@ export function buildRunDetail(
             delegationWait,
             // Canonical-backed like the review read: the typed values are read against the exact descriptor and its graph.
             canonical === undefined ? new Map() : projectTypedSteps(authority, canonical.descriptors.resolve(authority.envelope.workflow)),
+            untaken,
           ),
         }),
     },

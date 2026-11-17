@@ -182,8 +182,6 @@ export interface StepManualDeclaration {
   readonly skips?: readonly string[];
   /** Cross-field rules checked by the server at plan time, after the form parses. */
   readonly refine?: (facts: JsonObject) => readonly StepManualIssue[];
-  /** Allows `skips` to name the step's gates and transactions: the typed values stand for their decision or write. */
-  readonly skipsGatesAndTransactions?: true;
 }
 
 /** The descriptor-retained form of one declaration, bound to its step key. */

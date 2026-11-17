@@ -21,7 +21,6 @@ const WRITING: StepOmissionSpec = {
   form: { fields: [{ key: "transactionNumber", label: "Transaction number", kind: "text" }] },
   produces: { receipt: ({ facts }) => ({ transactionNumber: facts.transactionNumber }) },
   skips: ["write"],
-  skipsGatesAndTransactions: true,
 };
 
 function graph(overrides: Partial<StepOmissionGraphView> = {}): StepOmissionGraphView {
@@ -148,7 +147,7 @@ describe("stepOmissionCascade", () => {
     const chained = stepOmissionCascade(graph({
       stepOmissions: [
         { ...READING, produces: {}, skips: ["read", "fold"] },
-        { step: "deciding", form: { fields: [] }, produces: { approve: () => ({}) }, skips: ["gate"], skipsGatesAndTransactions: true },
+        { step: "deciding", form: { fields: [] }, produces: { approve: () => ({}) }, skips: ["gate"] },
         WRITING,
       ],
     }));

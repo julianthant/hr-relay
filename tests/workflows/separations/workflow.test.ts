@@ -105,10 +105,11 @@ describe("workflow definition public equivalence characterization", () => {
         ],
         surfaces: {
           inputRun: {
-            placeholder: "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
+            placeholder: "Enter Kuali document numbers separated by a semicolon or Shift+Enter (e.g. 4502; 4510)",
             parser: {
               split: { kind: "delimited", delimiters: [";", "\n"] },
               rules: [{ when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" }],
+              unmatched: "Kuali ID must contain digits.",
             },
             examples: [
               { key: "one-document", label: "One document", text: "4502", note: "the ordinary case — one run for one Kuali separation document" },
@@ -145,12 +146,6 @@ describe("workflow definition public equivalence characterization", () => {
           {
             key: "identity-check", label: "Identity check", nodes: [
               { id: "name-search", label: "Name Search" }, { id: "subject", label: "Separation Subject" },
-              { id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" },
-              { id: "approval", label: "Approval Check" },
-            ]
-          },
-          {
-            key: "job-summary", label: "Job summary", nodes: [
               { id: "job-summary", label: "Job Summary" }, { id: "employment", label: "Employment" },
               { id: "department-option", label: "Department Option" },
             ]
@@ -159,6 +154,12 @@ describe("workflow definition public equivalence characterization", () => {
             key: "kronos-timecard", label: "Kronos timecard", nodes: [
               { id: "timecard-search", label: "Timecard Search" }, { id: "timecard", label: "Timecard" },
               { id: "dates", label: "Reconciled Dates" },
+            ]
+          },
+          {
+            key: "identity-review", label: "Identity approval", nodes: [
+              { id: "comparison", label: "Identity Comparison" }, { id: "identity-approval", label: "Identity Approval" },
+              { id: "approval", label: "Approval Check" },
             ]
           },
           {
@@ -190,17 +191,6 @@ describe("workflow definition public equivalence characterization", () => {
             },
             produces: ["dates"],
           },
-          {
-            step: "ucpath-transaction",
-            form: {
-              fields: [
-                { key: "transactionNumber", label: "UCPath transaction number", help: "The T-number of the termination already filed in UCPath (T followed by 6–12 digits). This run files nothing in UCPath.", kind: "text" },
-                { key: "approvalStatus", label: "Approval status", help: "The transaction's approval status as UCPath shows it now. Only a status that means the termination took effect can be asserted.", kind: "enum", values: ["Approved", "Manually Processed", "Pending"], replaces: { nodeId: "receipt", path: "approvalStatus" } },
-              ]
-            },
-            produces: ["receipt"],
-          },
-          { step: "kuali-finalization", form: { fields: [] }, produces: [] },
         ],
       },
       module: {
@@ -265,7 +255,7 @@ describe("workflow definition public equivalence characterization", () => {
         { id: "termination-type", kind: "task", dependsOn: ["document"] },
         { id: "name-search", kind: "task", dependsOn: ["plan"] },
         { id: "subject", kind: "task", dependsOn: ["document", "plan", "name-search"] },
-        { id: "job-summary", kind: "task", dependsOn: ["subject"] },
+        { id: "job-summary", kind: "task", dependsOn: ["document", "subject"] },
         { id: "employment", kind: "task", dependsOn: ["document", "job-summary"] },
         { id: "department-option", kind: "task", dependsOn: ["document", "employment"] },
         { id: "timecard-search", kind: "task", dependsOn: ["subject"] },
@@ -286,8 +276,8 @@ describe("workflow definition public equivalence characterization", () => {
       ],
       omissions: {
         kronos: { asserted: [{ node: "dates", step: "kronos-timecard" }], omitted: [["timecard-search", "kronos-timecard"], ["timecard", "kronos-timecard"]], refusals: [] },
-        ucpath: { asserted: [{ node: "receipt", step: "ucpath-transaction" }], omitted: [["pending-set", "ucpath-transaction"], ["clear-pending", "ucpath-transaction"], ["file-termination", "ucpath-transaction"]], refusals: [] },
-        kuali: { asserted: [], omitted: [["filing-presence", "kuali-finalization"], ["finalize-kuali", "kuali-finalization"]], refusals: [] },
+        ucpath: { asserted: [], omitted: [], refusals: [{ code: "step-not-omittable", step: "ucpath-transaction", message: 'step "ucpath-transaction" declares no omission; it must run' }] },
+        kuali: { asserted: [], omitted: [], refusals: [{ code: "step-not-omittable", step: "kuali-finalization", message: 'step "kuali-finalization" declares no omission; it must run' }] },
       },
       steps: [
         { key: "resolve-action", nodeId: "resolve-action", label: "Kuali Action", kind: "task", taskId: "kuali/search-separation-action", conditional: false },

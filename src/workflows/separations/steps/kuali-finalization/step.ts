@@ -34,7 +34,6 @@ import { UcpathApprovalStatusSchema } from "../../../../models/ui/ucpath-ss-smar
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
 import { DRY_RUN_TRANSACTION_NUMBER } from "../../../../models/workflow/dry-run.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
-import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import {
   SeparationsMatchDepartmentOption,
 } from "../../../../models/workflows/separations/match-department-option.js";
@@ -131,7 +130,7 @@ const KUALI_FINALIZATION_DISPLAY = {
               origin: "Matched department option",
               detail: "The Kuali option matched to the active UCPath department.",
               chain: [],
-              read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Kuali department option" }
+              read: { stepKey: "identity-check", page: "Workforce Job Summary", field: "Kuali department option" }
             }
           },
           {
@@ -148,7 +147,7 @@ const KUALI_FINALIZATION_DISPLAY = {
               origin: "UCPath employment",
               detail: "The payroll title read from the selected active job.",
               chain: [],
-              read: { stepKey: "job-summary", page: "Person Organizational Summary detail", field: "Payroll title" }
+              read: { stepKey: "identity-check", page: "Workforce Job Summary", field: "Payroll title" }
             }
           },
           {
@@ -265,13 +264,6 @@ export const finalizeKualiNode = kualiFinalizationEntries.transaction(FINALIZE_N
   probePolicy: "always",
   probeToFenceMaxMs: 45_000,
 });
-
-export const KUALI_FINALIZATION_OMISSION: StepManualDeclaration = {
-  form: { fields: [] },
-  produces: {},
-  skips: [FILING_PRESENCE_NODE, FINALIZE_NODE],
-  skipsGatesAndTransactions: true,
-};
 
 
 const FinalizationInputShape = {
@@ -401,7 +393,7 @@ export function buildFinalization({ task, transaction, group }: Author, extracti
       return { prepare: value, commit: value, samples: [] };
     },
   });
-  return { finalizeKuali, steps: [[group(KUALI_FINALIZATION_STEP, { ...KUALI_FINALIZATION_DISPLAY, manual: KUALI_FINALIZATION_OMISSION }), [filingPresence, finalizeKuali]]] as const };
+  return { finalizeKuali, steps: [[group(KUALI_FINALIZATION_STEP, KUALI_FINALIZATION_DISPLAY), [filingPresence, finalizeKuali]]] as const };
 }
 
 export const separationsKualiFinalizationDefinition = defineStep({

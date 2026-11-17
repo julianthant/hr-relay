@@ -6,7 +6,8 @@ import {
   type StepOmissionField,
   type StepOmissionForm,
 } from "../../../models/workflow/step-omission.js";
-import { inputRunValueNoun, parseInputRunText, toRawSubmission, type InputParserSpec, type InputRunSurface, parseTypedDate, type TypedDateControl, type TypedInputSurface, type TypedInputDraft } from "../../../models/workflow/ingress.js";
+import { z } from "zod";
+import { inputRunValueNoun, parseInputRunText, splitEntries, toRawSubmission, type InputParserSpec, type InputRunSurface, parseTypedDate, type TypedDateControl, type TypedInputSurface, type TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { CANONICAL_FIELDS } from "../../../models/fields/registry.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
@@ -153,8 +154,8 @@ function parseTypedEntries(surface: TypedInputSurface, text: string, draft: Type
   if (parser.kind === "entries") return parseInputRunText(parser.spec, text).map(entry => JsonValueSchema.parse({ ...toRawSubmission(entry), ...named, ...options }));
   return text.split(parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
     const fields = entry.split(",").map(field => field.trim());
-    const fail = () => new Error(formatErrorCatalogFailure(createErrorCatalogFailure(parser.missingIdentifiersCode, {})).text);
-    if (fields.length < parser.identifiers.length + 1) throw fail();
+    const fail = (sentence?: string) => new Error(sentence ?? formatErrorCatalogFailure(createErrorCatalogFailure(parser.missingIdentifiersCode, {})).text);
+    if (fields.length < parser.identifiers.length + 1 || fields.some(field => field === "")) throw fail(parser.shapeRefusal);
     const identifiers = fields.splice(-parser.identifiers.length);
     const legalName = fields.join(", ");
     const parts = legalName.split(",").map(part => part.trim());
@@ -163,9 +164,9 @@ function parseTypedEntries(surface: TypedInputSurface, text: string, draft: Type
     const values = Object.fromEntries(parser.identifiers.flatMap((identifier, index) => {
       const value = identifiers[index];
       if (!value || value.toLowerCase() === parser.missing.toLowerCase()) return [];
-      return [[identifier.field, identifier.canonicalField === "ssn" ? CANONICAL_FIELDS.ssn.schema.parse(value) : value]];
+      return [[identifier.field, identifier.canonicalField === "ssn" ? CANONICAL_FIELDS.ssn.schema.parse(value.replaceAll("-", "")) : value]];
     }));
-    if (Object.keys(values).length === 0) throw fail();
+    if (Object.keys(values).length === 0) throw fail(parser.missingRefusal);
     return JsonValueSchema.parse({ ...named,
       [parser.familyName]: CANONICAL_FIELDS.fullName.schema.parse(family), [parser.givenName]: CANONICAL_FIELDS.fullName.schema.parse(given), ...values, ...options });
   });
@@ -196,8 +197,29 @@ export function previewRunInput(surface: InputRunSurface, text: string, draft: T
     const entries = parseInputRunText(surface.parser, text);
     return { entries, submissions: entries.map(entry => JsonValueSchema.parse(toRawSubmission(entry))), problem: null };
   } catch (caught) {
-    return { entries: [], submissions: [], problem: caught instanceof Error ? caught.message : String(caught) };
+    return { entries: refusedRows(surface, text, draft), submissions: [], problem: plainRefusal(caught) };
   }
+}
+
+/** One sentence for the operator: a validation issue list prints its first message only. */
+function plainRefusal(caught: unknown): string {
+  if (caught instanceof z.ZodError) return caught.issues[0]?.message ?? "This entry is not valid.";
+  return caught instanceof Error ? caught.message : String(caught);
+}
+
+/** The rows a refused text still shows, split as the workflow splits it; an identifier column is masked. */
+function refusedRows(surface: InputRunSurface, text: string, draft: TypedInputDraft): RunInputPreview["entries"] {
+  const typed = surface.typedInput;
+  const chosen = typed === undefined ? undefined : draft[typed.modeField] ?? typed.initialMode;
+  const parser = typed?.modes.find(candidate => candidate.value === chosen)?.parser;
+  const texts = parser === undefined ? splitEntries(surface.parser, text)
+    : parser.kind === "entries" ? splitEntries(parser.spec, text)
+      : text.split(parser.delimiter).map(entry => entry.trim()).filter(Boolean).map(entry => {
+        const fields = entry.split(",").map(field => field.trim());
+        return fields.length > parser.identifiers.length && fields.at(-1)?.toLowerCase() !== parser.missing.toLowerCase() && fields.at(-1) !== ""
+          ? [...fields.slice(0, -1), "[masked]"].join(", ") : fields.join(", ");
+      });
+  return texts.map((sourceText, index) => ({ index, sourceText }));
 }
 
 export function inputRunFieldLabel(parser: InputParserSpec): string {
@@ -246,7 +268,8 @@ export interface StartRequestShape {
   dryRun: boolean;
   browserMode: BrowserMode;
   captureBrowserScreenshots: boolean;
-  priority: StartPriority;
+  /** Undefined until the operator picks; the text already fixes the default it implies. */
+  priority: StartPriority | undefined;
   selectedStepKeys: readonly string[];
   /** Raw omission drafts identify the request; partially typed edits must invalidate plans before parsing succeeds. */
   stepOmissionDrafts: readonly Readonly<{ step: string; draft: StepOmissionDraft }>[];
@@ -470,9 +493,18 @@ export function toggleStepSelection(
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
   selections: Readonly<Record<string, { libraryId: string; versionId: string; sheetId: string }>>, submissionCount: number,
   eligibleSources: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[], writable: boolean,
-  selectedRows?: { typeId: string; rows: readonly { sheetId: string; rowId: string }[] }) {
+  selectedRows?: { typeId: string; rows: readonly { sheetId: string; rowId: string }[] },
+  checks?: { typeId: string; picks: readonly Readonly<{ libraryId: string; versionId: string; sheetId: string }>[] }) {
   if (requiredTypes.length > 1 || selectedRows !== undefined && (selectedRows.rows.length !== submissionCount || !requiredTypes.includes(selectedRows.typeId))) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
-  return Array.from({ length: submissionCount }, (_, index) => requiredTypes.map(typeId => {
+  const checkEntries = (index: number) => (checks?.picks ?? []).map(pick => {
+    const entry = catalog.find(candidate => candidate.libraryId === pick.libraryId);
+    if (!entry || entry.state.removed || entry.state.origin.kind !== 'local' || !entry.state.versions.some(version => version.id === pick.versionId)
+      || !eligibleSources.some(source => source.libraryId === pick.libraryId && source.versionId === pick.versionId && source.sheetId === pick.sheetId))
+      throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
+    return WorkbookActiveSelectionSchema.parse({ typeId: checks?.typeId, entry: index + 1, libraryId: entry.libraryId, versionId: pick.versionId,
+      sheetId: pick.sheetId, expectedVersion: entry.version });
+  });
+  return Array.from({ length: submissionCount }, (_, index) => [...requiredTypes.map(typeId => {
     const selection = selections[typeId];
     const entry = catalog.find(entry => entry.libraryId === selection?.libraryId);
     if (!entry || entry.state.removed || entry.state.origin.kind !== 'local'
@@ -483,5 +515,5 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
     return WorkbookActiveSelectionSchema.parse({ entry: index + 1, libraryId: entry.libraryId, versionId: selection.versionId,
       sheetId: selection.sheetId, expectedVersion: entry.version,
       ...(selectedRows?.typeId === typeId ? { selectedRow: { sheetId: selectedRows.rows[index].sheetId, rowId: selectedRows.rows[index].rowId } } : {}) });
-  })).flat();
+  }), ...checkEntries(index)]).flat();
 }
