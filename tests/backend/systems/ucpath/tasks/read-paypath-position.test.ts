@@ -85,6 +85,37 @@ describe("UCPath read-paypath-position task", () => {
     assert.deepEqual(observed[0]?.values.map(value => value.classification), ["direct-identifier"]);
   });
 
+  it.each([true, false])("retains the supplied ID on early refusal, preserving read provenance on success (refused: %s)", async refused => {
+    const descriptor = compileWorkflow(workStudyWorkflow).descriptor;
+    const observed: ObservedDataPoint[] = [];
+    const collector = createTaskProvenanceCollector({
+      descriptor, execution: { runId: "aaaaaaaa-0001-4000-8000-000100000000", traceId: "ws-190000-aaaa", attempt: 1,
+        workflowId: descriptor.id, nodeId: "paypath-position", taskId: UcpathReadPayPathPosition.id },
+      upstreamEvidence: { checkpoints: [] }, clock: manualClock(new Date("2026-11-01T12:01:00Z")),
+      onRecord: batch => { observed.push(...redactObservedDataPoints(UcpathReadPayPathPosition.id, batch.points)); },
+    });
+    const run = () => readPayPathPositionTask.impl.run({ input: { emplId: EMPL_ID }, ctx: {
+      captureScreenshot: async () => undefined, signal: new AbortController().signal,
+      log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
+      fail: (code: string, message: string): never => { throw new Failed(code, message); }, recordData: collector.recordData,
+      driver: { ...createDeterministicUcpathPersonOrgDriver(), ...deterministicPayPathOperations(refused
+        ? { refusal: "unexpected-page-state" } : { read: READ }) },
+    } });
+    if (refused) {
+      await assert.rejects(run(), (error: unknown) => error instanceof Failed && error.code === "unexpected-page-state");
+      assert.deepEqual(observed.map(point => ({ direction: point.direction, field: point.field, values: point.values })), [
+        { direction: "write", field: "emplId", values: [
+          { key: "emplId", state: "allowed", classification: "direct-identifier", transform: "allow", value: "10000001" },
+        ] },
+      ]);
+    } else {
+      const read = await run();
+      assert.deepEqual(read, READ);
+      assert.ok(collector.finalizeRead(read).points.every(point => point.direction === "read"));
+      assert.deepEqual(observed.filter(point => point.field === "emplId").map(point => point.direction), ["read"]);
+    }
+  });
+
   it("refuses a read for another Empl ID", async () => {
     const h = harness({ read: UcpathPayPathReadSchema.parse({ ...READ, emplId: "10000002" }) });
     await assert.rejects(h.run(), (error: unknown) => error instanceof Failed && error.code === "subject-mismatch");

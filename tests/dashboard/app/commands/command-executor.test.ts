@@ -323,18 +323,17 @@ it("a pending bulk blocks single children and reserves the child command identit
 });
 
 
-it("retains schema-transformed payload bytes through mutation and explicit replay", async () => {
+it("retains failure resolution payload bytes through mutation and explicit replay", async () => {
   const h = harness();
   h.setReply(request => ({ state: "pending", commandId: request.commandId }));
   const input = { ...command(), family: "failure-resolution", type: "annotate-failure", target: { runId: RUN, failureId: id(90), expectedVersion: 1 },
-    payload: { action: "resolve", note: "  Reviewed evidence  " } };
+    payload: { action: "resolve" } };
   assert.equal((await h.executor.execute(input, h.options())).kind, "uncertain");
   const parsed = CommandRequestSchema.parse(JSON.parse(h.sent[0]));
   assert.equal(parsed.family, "failure-resolution");
   if (parsed.family !== "failure-resolution") assert.fail("expected failure-resolution");
   assert.equal(parsed.payload.action, "resolve");
-  assert.ok(parsed.payload.action === "resolve" && parsed.payload.note === "Reviewed evidence");
-  input.payload.note = "Changed";
+  input.payload.action = "reopen";
   await h.executor.replay(input.commandId, h.options());
   assert.equal(h.sent[0], h.sent[1]);
   assert.equal(h.executor.retainedAttempts().length, 1);

@@ -6,6 +6,7 @@ import { onboardingCrmDataDefinition } from "./steps/crm-data/step.js";
 import { onboardingUcpathSearchDefinition } from "./steps/ucpath-search/step.js";
 import { onboardingI9SearchDefinition } from "./steps/i9-search/step.js";
 import { onboardingHireWritesDefinition } from "./steps/hire-review/step.js";
+import { onboardingReferenceCheckDefinition } from "./steps/reference-check/step.js";
 
 export const registration = deepFreeze({
   definition: onboardingWorkflow, store: onboardingStore,
@@ -14,5 +15,6 @@ export const registration = deepFreeze({
     defineStepProof(onboardingWorkflow, onboardingUcpathSearchDefinition),
     defineStepProof(onboardingWorkflow, onboardingI9SearchDefinition),
     defineStepProof(onboardingWorkflow, onboardingHireWritesDefinition),
+    defineStepProof(onboardingWorkflow, onboardingReferenceCheckDefinition),
   ],
 } as const);

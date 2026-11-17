@@ -71,7 +71,7 @@ describe("authority.health readiness pass", () => {
   it("does not verify retained backups", async () => {
     const f = await fixture();
     const backups = await new AuthorityBackupService(f.admission, f.database, { directory: f.options.backupDirectory })
-      .request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+      .request({ trigger: "schema-migration", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = backups.manifests[0];
     assert.ok(manifest !== undefined);
     appendFileSync(join(f.options.backupDirectory, manifest.backupFileName), "tampered");

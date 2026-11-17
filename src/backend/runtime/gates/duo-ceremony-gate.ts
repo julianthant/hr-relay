@@ -77,8 +77,8 @@ export interface DuoCeremonyGateHandle extends DuoCeremonyGate {
 
 export interface DuoCeremonyGateFactory {
   openGate(input: DuoCeremonyLeaseHolder & Readonly<{
-    /** The monotonic instant this acquisition's `sessionAcquireMs` envelope fires. */
-    envelopeDeadlineMonotonicMs: number;
+    /** The monotonic instant this acquisition's `sessionAcquireMs` envelope fires, read on every poll because the acquisition may extend it while it waits. */
+    envelopeDeadlineMonotonicMs: () => number;
     /** The acquisition's abort channel: how a TTL expiry cancels an in-flight ceremony. */
     cancelCeremony: (reason: Error) => void;
     signal: AbortSignal;
@@ -145,7 +145,7 @@ type GateOptions = DuoCeremonyLeaseHolder & {
   readonly ttlMs: number;
   readonly graceMs: number;
   readonly pollIntervalMs: number;
-  readonly envelopeDeadlineMonotonicMs: number;
+  readonly envelopeDeadlineMonotonicMs: () => number;
   readonly cancelCeremony: (reason: Error) => void;
   readonly signal: AbortSignal;
 }
@@ -252,11 +252,11 @@ class Gate implements DuoCeremonyGateHandle {
 
   async #acquire(): Promise<Hold> {
     const { leases, clock, credentialKey, ttlMs, graceMs, pollIntervalMs, workerId, commandId, system, signal } = this.#options;
-    const budgetDeadline = this.#options.envelopeDeadlineMonotonicMs - graceMs;
     const started = clock.monotonicMs();
     for (;;) {
       if (signal.aborted) throw abortReason(signal, system);
       const now = clock.monotonicMs();
+      const budgetDeadline = this.#options.envelopeDeadlineMonotonicMs() - graceMs;
       const outcome = leases.acquire({
         credentialKey, workerId, commandId, system, now: clock.now().toISOString(), ttlMs,
       });

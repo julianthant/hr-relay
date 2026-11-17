@@ -52,7 +52,7 @@ function button(name: string, within: ParentNode = document): HTMLButtonElement 
 it("enables the served account control and deletes only after explicit confirmation", async () => {
   const response = Promise.withResolvers<Response>();
   const { requests } = await mount(() => response.promise);
-  const trigger = button("Delete account");
+  const trigger = button("Delete");
   assert.equal(trigger.disabled, false);
   assert.doesNotMatch(document.querySelector('[aria-label="Account"]')?.textContent ?? "", /Try again when connected/u);
   assert.deepEqual(requests, []);
@@ -82,25 +82,25 @@ for (const outcome of ["refused", "error", "cancelling", "lost"] as const) it(`k
     return Response.json(outcome === "cancelling" ? { state: "cancelling", operationId: "00000000-0000-4000-8000-000000000002" }
       : { state: outcome, code: "PROFILE_ACCOUNT_DELETION_REFUSED" });
   });
-  await act(async () => button("Delete account").click());
+  await act(async () => button("Delete").click());
   const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
   await act(async () => button("Delete account", dialog).click());
   const message = operatorFailureSentence("PROFILE_ACCOUNT_DELETION_REFUSED");
   assert.equal(document.querySelector('[aria-label="Account"] [role="alert"]')?.textContent, message);
-  assert.equal(button("Delete account").disabled, true);
-  await act(async () => button("Delete account").click());
+  assert.equal(button("Delete").disabled, true);
+  await act(async () => button("Delete").click());
   for (const name of ["General", "Account"]) {
     const link = [...document.querySelectorAll<HTMLAnchorElement>(".settings-nav-group a")].find(candidate => candidate.textContent === name);
     assert.ok(link); await act(async () => link.click());
   }
   assert.equal(document.querySelector('[aria-label="Account"] [role="alert"]')?.textContent, message);
-  assert.equal(button("Delete account").disabled, true);
+  assert.equal(button("Delete").disabled, true);
   assert.doesNotMatch(document.body.textContent ?? "", /private transport diagnostic|Create your profile/u);
   assert.equal(requests.length, 1);
 });
 
 it("does not invent deletion authority for the mock profile source", async () => {
   const { requests } = await mount(async () => { throw new Error("mock deletion must never dispatch"); }, "mock");
-  assert.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent?.trim() === "Delete account"), false);
+  assert.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent?.trim() === "Delete"), false);
   assert.deepEqual(requests, []);
 });

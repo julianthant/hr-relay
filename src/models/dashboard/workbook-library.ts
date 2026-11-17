@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { IsoInstantSchema, RunIdSchema, WorkflowIdSchema, DateOnlySchema, CommandIdSchema } from "../../rules/identity/ids.js";
-import { WorkbookIdSchema, WorkbookRevisionSchema, WorkbookMetadataSchema, WorkbookTypeSchema, EditableWorkbookWireSchema, WorkbookLinkSchema } from "./workbooks.js";
+import { WorkbookIdSchema, WorkbookRevisionSchema, WorkbookMetadataSchema, WorkbookTypeSchema, EditableWorkbookWireSchema, WorkbookLinkSchema, WorkbookImportRequestSchema } from "./workbooks.js";
 import { SPREADSHEET_FIELDS } from "../fields/workbook-fields.js";
 
 export const WorkbookSourceSelectionSchema = z.strictObject({
@@ -210,6 +210,11 @@ const NameSchema = z.string().refine(value => value.trim().length > 0);
 /** Tags the operator typed; workflow-derived tags come from `origin` and are never stored here. */
 export const WorkbookLibraryTagsSchema = z.array(z.string().min(1).max(40).refine(tag => tag.trim() === tag, { message: "tags are trimmed" })).max(20)
   .refine(tags => new Set(tags.map(tag => tag.toLowerCase())).size === tags.length, { message: "tags must be unique" });
+export const WorkbookCloneRequestSchema = z.strictObject({ name: NameSchema, tags: WorkbookLibraryTagsSchema.optional() });
+export const WorkbookLocalImportRequestSchema = WorkbookImportRequestSchema.safeExtend({ tags: WorkbookLibraryTagsSchema.optional() });
+export const WorkbookSharePointImportRequestSchema = z.strictObject({ source: z.literal('sharepoint'),
+  url: WorkbookLinkSchema.shape.url, name: NameSchema, tags: WorkbookLibraryTagsSchema.optional() });
+export const WorkbookLibraryImportRequestSchema = z.union([WorkbookLocalImportRequestSchema, WorkbookSharePointImportRequestSchema]);
 export const WorkbookLibraryOriginSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("local") }),
   z.strictObject({ kind: z.literal("workflow"), runId: RunIdSchema, partitionDay: DateOnlySchema, workflowId: WorkflowIdSchema, workflowLabel: NameSchema,

@@ -4,6 +4,7 @@ import { separationsIdentityCheckDefinition } from "./steps/identity-check/step.
 import { separationsKronosTimecardDefinition } from "./steps/kronos-timecard/step.js";
 import { separationsKualiReadDefinition } from "./steps/kuali-extraction/step.js";
 import { separationsKualiFinalizationDefinition } from "./steps/kuali-finalization/step.js";
+import { separationsReferenceCheckDefinition } from "./steps/reference-check/step.js";
 import { separationsUcpathTerminationDefinition } from "./steps/ucpath-transaction/step.js";
 import { separationsStore } from "./task-registry.js";
 import { separationsWorkflow } from "./workflow.js";
@@ -17,5 +18,6 @@ export const registration = deepFreeze({
     defineStepProof(separationsWorkflow, separationsIdentityCheckDefinition),
     defineStepProof(separationsWorkflow, separationsUcpathTerminationDefinition),
     defineStepProof(separationsWorkflow, separationsKualiFinalizationDefinition),
+    defineStepProof(separationsWorkflow, separationsReferenceCheckDefinition),
   ],
 } as const);

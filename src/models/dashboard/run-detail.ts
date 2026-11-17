@@ -9,7 +9,7 @@ import { FailureCorrectionSchema } from "../workflow/failure-correction.js";
 import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema, OcrReviewCommandRequestSchema, GateCommandRequestSchema, CommandResultSchema, WorkbookRowChoiceTargetSchema, WorkbookReferenceRowChoiceTargetSchema } from "../../rules/commands/commands.js";
 import { WorkbookOperationReceiptSchema, WorkbookCellValuesSchema } from "./workbooks.js";
 import { UcpathFindingsDetailSchema } from "./ucpath-findings.js";
-import { FailureDisplaySchema } from "./failure-display.js";
+import { FailureDisplaySchema, FailureRetryWireSchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
 import { FailureResolutionCaptureSchema } from "../trust/failure-resolution.js";
 import { PublicTransactionKeyDigestSchema } from "../write-safety/protected-input.js";
@@ -314,6 +314,12 @@ export const RunDetailWireSchema = z.strictObject({
   timeline: TimelineWireSchema,
   gate: GateDecisionWireSchema,
   outcome: OutcomeWireSchema,
+  cancellation: z.strictObject({
+    title: z.literal("Run cancelled"),
+    at: IsoInstantSchema,
+    requestedBy: z.enum(["operator", "parent", "unavailable"]),
+    outcome: z.enum(["You cancelled this run.", "This run was cancelled when its parent was stopped.", "This run was cancelled."]),
+  }).optional(),
   context: ContextSummaryWireSchema,
   ocrReviewChanges: z.array(OcrReviewChangeSchema).min(1).optional(),
   ocrRecordCount: z.number().int().nonnegative().optional(),
@@ -329,6 +335,15 @@ export const RunDetailWireSchema = z.strictObject({
   decision: RunDecisionWireSchema.optional(),
   availableSections: z.array(RunDetailSectionSchema),
 }).superRefine((detail, context) => {
+  if (detail.cancellation !== undefined && (detail.header.status !== "cancelled"
+    || detail.outcome.state !== "terminal" || detail.outcome.result !== "cancelled"
+    || detail.outcome.completedAt !== detail.cancellation.at
+    || detail.cancellation.requestedBy === "parent" && detail.header.parentRunId === undefined
+    || detail.cancellation.outcome !== (detail.cancellation.requestedBy === "parent"
+      ? "This run was cancelled when its parent was stopped."
+      : detail.cancellation.requestedBy === "operator" ? "You cancelled this run." : "This run was cancelled."))) {
+    context.addIssue({ code: "custom", path: ["cancellation"], message: "cancellation requires the cancelled run's recorded time and requester" });
+  }
   refineDecisionActions(detail.decision, detail.childRetry === undefined ? [] : [detail.childRetry], context, ["decision"]);
   if (detail.childRetry !== undefined && (detail.header.parentRunId === undefined || detail.header.status !== "failed"
     || detail.childRetry.expectedVersion !== detail.rowRevision)) {
@@ -671,6 +686,7 @@ const ReceiptSectionSchema = RunEvidenceReceiptSchema;
 export const FailureDetailWireSchema = z.strictObject({
   native: NativeRunEventWireSchema.optional(),
   display: FailureDisplaySchema.optional(),
+  retry: FailureRetryWireSchema.optional(),
   recovery: z.strictObject({
     correction: FailureCorrectionSchema, expectedVersion: z.number().int().positive(),
     /* The rejected value; served only when the correction is declared display-safe. */
@@ -730,7 +746,11 @@ export const FailureDetailWireSchema = z.strictObject({
       || source.failureCorrection?.failureId !== failure.failureId || source.failureCorrection.inputField !== recovery.correction.inputField
       || recovery.request.workflowId !== failure.workflowId) context.addIssue({ code: "custom", path: ["recovery"], message: "Failure recovery must target this exact failure and revision" });
   }
-  refineDecisionActions(failure.decision, failure.recovery === undefined ? [] : [failure.recovery.retry], context, ["decision"]);
+  if (failure.retry !== undefined && (failure.writeState !== "not-attempted" || recovery !== undefined)) {
+    context.addIssue({ code: "custom", path: ["retry"], message: "Failure retry requires an unwritten failure without a correction" });
+  }
+  refineDecisionActions(failure.decision, [...(failure.retry === undefined ? [] : [failure.retry]),
+    ...(recovery === undefined ? [] : [recovery.retry])], context, ["decision"]);
   if (failure.sameFingerprintSeen < 1) {
     context.addIssue({
       code: "custom",

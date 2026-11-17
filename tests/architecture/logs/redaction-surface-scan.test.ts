@@ -10,7 +10,7 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
-import { SpanAuthorityReconciliationWireSchema } from "../../../src/models/dashboard/storage.js";
+import { SpanAuthorityReconciliationSchema } from "../../../src/models/storage/storage-status.js";
 import { ClearRunHistoryRequestSchema, RunHistoryStatusSchema, ClearRunHistoryResultSchema } from "../../../src/models/dashboard/run-history.js";
 import { redactDiagnosticFields, redactValue } from "../../../src/rules/redaction/redaction.js";
 import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
@@ -371,7 +371,6 @@ describe("redaction surface scan — the declaration audit", () => {
       state: "degraded",
       streamRunCount: 1,
       liveRunCount: 0,
-      archived: [],
       deleted: [],
       problems: [{
         state: "malformed",
@@ -380,21 +379,21 @@ describe("redaction surface scan — the declaration audit", () => {
         summary: `span root contained EID ${canonicalEid}`,
       }],
     };
-    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
+    assert.equal(SpanAuthorityReconciliationSchema.safeParse({
       ...sensitiveDetail,
       problems: sensitiveDetail.problems.map((problem) => ({ ...problem, summary: "span root has a malformed identity" })),
     }).success, true, "the control must be a valid rich span_stream wire arm");
-    assert.deepEqual(SpanAuthorityReconciliationWireSchema.parse(sensitiveDetail), sensitiveDetail);
-    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
+    assert.deepEqual(SpanAuthorityReconciliationSchema.parse(sensitiveDetail), sensitiveDetail);
+    assert.equal(SpanAuthorityReconciliationSchema.safeParse({
       state: "unavailable",
       cause: { code: "span-authority-unavailable", summary: "authority lookup failed strict validation" },
     }).success, true);
-    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
+    assert.equal(SpanAuthorityReconciliationSchema.safeParse({
       state: "unavailable",
       cause: { code: "span-authority-unavailable", summary: `authority lookup failed for EID ${canonicalEid}` },
     }).success, true);
-    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({state:"unavailable",cause:{code:"span-authority-unavailable",summary:""}}).success,false);
-    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({...sensitiveDetail,undeclared:"not admitted"}).success,false);
+    assert.equal(SpanAuthorityReconciliationSchema.safeParse({state:"unavailable",cause:{code:"span-authority-unavailable",summary:""}}).success,false);
+    assert.equal(SpanAuthorityReconciliationSchema.safeParse({...sensitiveDetail,undeclared:"not admitted"}).success,false);
   });
 
   it("holds exact membership for current operation, action, display and notification leaves", () => {
@@ -433,7 +432,7 @@ describe("redaction surface scan — the declaration audit", () => {
     assert.deepEqual(surfaces.map(surface => surface.id).sort(), [
       "durable/editable-workbook", "durable/saved-workbook", "durable/workbook-operation", "request/workbook-create", "request/workbook-intake",
       "request/workbook-operation", "request/workbook-reference", "request/workbook-save", "wire/editable-workbook", "wire/intake-command-result", "wire/saved-workbook",
-      "wire/workbook-history", "wire/workbook-intake", "wire/workbook-list", "wire/workbook-metadata", "wire/workbook-named-version",
+      "wire/workbook-history", "wire/workbook-import-result", "wire/workbook-intake", "wire/workbook-list", "wire/workbook-metadata", "wire/workbook-named-version",
       "wire/workbook-operation-receipt", "wire/workbook-reference", "wire/workbook-type",
     ]);
     assert.equal(SURFACE_MODULE_DISPOSITIONS.find(entry => entry.module === module)?.state, "audited");

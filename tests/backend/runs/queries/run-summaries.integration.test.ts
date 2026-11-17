@@ -38,7 +38,8 @@ import { atomicWriteCheckpoint } from "../../../support/helpers/timeline-write-f
 import { DatabaseSync } from "node:sqlite";
 import { activityDatePartAtInstant } from "../../../../src/models/dashboard/activity-volume.js";
 
-import { runtimeTimeZone } from "../../../../src/rules/time/clock.js";
+import { visitActivitySummaryRange } from "../../../../src/backend/runs/queries/activity-summaries.js";
+import { PACIFIC_TIME_ZONE } from "../../../../src/models/dashboard/search-calendar.js";
 import { makeWorld, receiptWithWarningsOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
 import { randomUUID } from "node:crypto";
@@ -400,7 +401,7 @@ it("agrees with independent expected totals and the retained Activity projector 
 
     for(const row of f.db.readRunSummaries()) {const run=f.db.authority.runs.get(row.runId);assert.ok(run);world.authority.put(run);}
     const expected=world.projection.buildActivityReportWire("2026-09-09","2026-09-09");
-    const actual=queryActivitySummaries(f.db,{from:"2026-09-09",to:"2026-09-09",generatedAt:expected.generatedAt},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>expected.ledger},timeZone:runtimeTimeZone()});
+    const actual=queryActivitySummaries(f.db,{from:"2026-09-09",to:"2026-09-09",generatedAt:expected.generatedAt},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>expected.ledger}});
     assert.equal(actual.totalRuns,3);assert.equal(actual.terminalRuns,1);assert.equal(actual.durations.totalMs,5000);
     const {volume,...reportWithoutVolume}=actual;
     assert.deepEqual(reportWithoutVolume,expected);
@@ -422,8 +423,8 @@ it("bins the enqueue instant and refuses a timezone mismatch before an indexed d
     const claim=f.db.authority.runs.claimNext({workflow:"person-lookup",workerId,now:claimTime});
     assert.equal(claim.state,"claimed");
 
-    const timeZone=runtimeTimeZone(),day=activityDatePartAtInstant(enqueuedAt,timeZone);
-    const report=queryActivitySummaries(f.db,{from:day,to:day,generatedAt:NOW},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})},timeZone});
+    const day=activityDatePartAtInstant(enqueuedAt,PACIFIC_TIME_ZONE);
+    const report=queryActivitySummaries(f.db,{from:day,to:day,generatedAt:NOW},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})}});
     const enqueueBucket=report.volume?.buckets.find(bucket=>Date.parse(bucket.start)<=Date.parse(enqueuedAt)&&Date.parse(enqueuedAt)<Date.parse(bucket.endExclusive));
     assert.equal(enqueueBucket?.runs,1);
     const claimBucket=report.volume?.buckets.find(bucket=>Date.parse(bucket.start)<=Date.parse(claimTime)&&Date.parse(claimTime)<Date.parse(bucket.endExclusive));
@@ -432,15 +433,31 @@ it("bins the enqueue instant and refuses a timezone mismatch before an indexed d
     const mismatchTimeZone=activityDatePartAtInstant(enqueuedAt,"Etc/GMT+12")!==day?"Etc/GMT+12":"Pacific/Kiritimati";
     const mismatchDay=activityDatePartAtInstant(enqueuedAt,mismatchTimeZone);
     assert.notEqual(mismatchDay,day);
-    assert.throws(()=>queryActivitySummaries(f.db,{from:mismatchDay,to:mismatchDay,generatedAt:NOW},
-      {descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})},timeZone:mismatchTimeZone}),
+    assert.throws(()=>visitActivitySummaryRange(f.db,mismatchDay,mismatchDay,mismatchTimeZone,()=>undefined),
     /activity-summary-local-day-time-zone-mismatch/u);
   }finally{await f.dispose();}
 });
 
+it("puts the summary day and Analytics buckets on the Pacific day when the machine zone is not Pacific",async ()=>{
+  const f=await foundationFixture({ profileFixture: profileFixtures.create }),prior=process.env.TZ;try{
+    process.env.TZ="UTC";
+    const enqueuedAt="2026-09-09T03:00:00.000Z";
+    f.db.authority.runs.enqueue(RunRecordSchema.parse({...f.run,
+      envelope:{...f.run.envelope,runId:id(3250),itemId:id(3250),enqueuedAt},
+      lifecycle:{state:"queued"},version:1,claimGeneration:0,createdAt:enqueuedAt,updatedAt:enqueuedAt}));
+    assert.equal(f.db.readRunSummaries().find(row=>row.runId===id(3250))?.localDay,"2026-09-08");
+    const report=queryActivitySummaries(f.db,{from:"2026-09-08",to:"2026-09-08",generatedAt:NOW},
+      {descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})}});
+    assert.equal(report.totalRuns,1);
+    assert.deepEqual(report.days.map(day=>day.day),["2026-09-08"]);
+    assert.equal(report.volume?.timeZone,"America/Los_Angeles");
+    assert.equal(report.volume?.interval.start,"2026-09-08T00:00:00.000-07:00");
+    assert.equal(report.volume?.buckets.find(bucket=>bucket.start==="2026-09-08T20:00:00.000-07:00")?.runs,1);
+  }finally{if(prior===undefined)delete process.env.TZ;else process.env.TZ=prior;await f.dispose();}
+});
+
 it("folds real summary rows into inclusive DST-day boundaries, distinct repeated hours, and known-zero days",async ()=>{
   const f=await foundationFixture({ profileFixture: profileFixtures.create });try{
-    const zone="America/Los_Angeles";
     const enqueuedAt=[
       "2026-03-08T07:59:59.000Z",
       "2026-03-08T08:00:00.000Z",
@@ -462,7 +479,7 @@ it("folds real summary rows into inclusive DST-day boundaries, distinct repeated
     }
 
     const read=(day:string)=>queryActivitySummaries(f.db,{from:day,to:day,generatedAt:NOW},
-      {descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})},timeZone:zone});
+      {descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})}});
 
     const spring=read("2026-03-08");
     assert.equal(spring.totalRuns,4);
@@ -499,10 +516,10 @@ it("folds real summary rows into inclusive DST-day boundaries, distinct repeated
 it("keeps the minimum supported date inside its indexed candidate range",async ()=>{
   const f=await foundationFixture({ profileFixture: profileFixtures.create });try{
     const report=queryActivitySummaries(f.db,{from:"0000-02-29",to:"0000-02-29",generatedAt:NOW},
-      {descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})},timeZone:"UTC"});
+      {descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})}});
     assert.equal(report.totalRuns,0);
-    assert.equal(report.volume?.interval.start,"0000-02-29T00:00:00.000+00:00");
-    assert.equal(report.volume?.interval.endExclusive,"0000-03-01T00:00:00.000+00:00");
+    assert.equal(report.volume?.interval.start,"0000-02-29T07:52:58.000Z");
+    assert.equal(report.volume?.interval.endExclusive,"0000-03-01T07:52:58.000Z");
   }finally{await f.dispose();}
 });
 }

@@ -161,6 +161,36 @@ export const FixedLayoutIntentSchema = z.strictObject({
   }
 });
 export type FixedLayoutIntent = z.infer<typeof FixedLayoutIntentSchema>;
+export type FixedLayoutPhase = FixedLayoutIntent["phase"];
+export type FixedLayoutJournalState = FixedLayoutPhase | "absent";
+
+/** The phases a publication may write over each journal state: the same phase again, or the next one. */
+const FIXED_LAYOUT_TRANSITIONS = deepFreeze({
+  absent: { moving: "advance" },
+  moving: { moving: "unchanged", configuring: "advance" },
+  configuring: { configuring: "unchanged", complete: "advance" },
+  complete: { complete: "unchanged" },
+} as const satisfies Record<FixedLayoutJournalState, Partial<Record<FixedLayoutPhase, "advance" | "unchanged">>>);
+
+/** Installation admission per journal state; `configuring` is admitted only under stopped-control-forward maintenance. */
+const FIXED_LAYOUT_ADMISSION = deepFreeze({
+  absent: "admitted", moving: "refused", configuring: "stopped-control-forward", complete: "admitted",
+} as const satisfies Record<FixedLayoutJournalState, "admitted" | "stopped-control-forward" | "refused">);
+
+export function fixedLayoutTransition(from: FixedLayoutJournalState, to: FixedLayoutPhase): "advance" | "unchanged" | "refused" {
+  const row: Partial<Record<FixedLayoutPhase, "advance" | "unchanged">> = FIXED_LAYOUT_TRANSITIONS[from];
+  return row[to] ?? "refused";
+}
+
+export function fixedLayoutAdmits(state: FixedLayoutJournalState, stoppedControlForward: boolean): boolean {
+  const admission = FIXED_LAYOUT_ADMISSION[state];
+  return admission === "admitted" || admission === "stopped-control-forward" && stoppedControlForward;
+}
+
+/** A journal that exists and has not reached its terminal `complete` tombstone. */
+export function fixedLayoutUnfinished(state: FixedLayoutJournalState): boolean {
+  return state !== "absent" && Object.values(FIXED_LAYOUT_TRANSITIONS[state]).includes("advance");
+}
 
 
 export function readFixedLayoutIntent(workspace: string): FixedLayoutIntent | undefined {
@@ -177,8 +207,7 @@ export function readFixedLayoutIntent(workspace: string): FixedLayoutIntent | un
   const intent = document === undefined ? staged : parse(document.bytes);
   if (intent === undefined || staged !== undefined && (stageName !== `.fixed-layout-${staged.operationId}-${staged.phase}.stage`
     || canonicalJsonStringify({ ...staged, phase: intent.phase }) !== canonicalJsonStringify(intent)
-    || document === undefined && staged.phase !== "moving"
-    || document !== undefined && ["moving", "configuring", "complete"].indexOf(staged.phase) !== ["moving", "configuring", "complete"].indexOf(intent.phase) + 1)) throw new Error("fixed-layout-journal-stage-changed");
+    || fixedLayoutTransition(document === undefined ? "absent" : intent.phase, staged.phase) !== "advance")) throw new Error("fixed-layout-journal-stage-changed");
   if (intent.targetWorkspace !== workspace || intent.targetWorkspace === intent.sourceWorkspace) throw new Error("fixed-layout-workspace-mismatch");
   if (!noSymlinkAncestry(dirname(path), ancestry)) throw new Error("fixed-layout-journal-ancestry-changed");
   return deepFreeze(intent);
@@ -207,9 +236,8 @@ export function publishFixedLayoutIntent(operation: OfflineMaintenanceOperation,
   const path = join(directory, "fixed-layout.json"), stage = join(directory, `.fixed-layout-${intent.operationId}-${intent.phase}.stage`);
   const previous = readFixedLayoutIntent(intent.targetWorkspace);
   if (previous === undefined && readdirSync(directory).length !== 0) throw new Error("fixed-layout-target-not-empty");
-  if (previous !== undefined && (canonicalJsonStringify({ ...previous, phase: intent.phase }) !== canonicalJsonStringify(intent)
-    || ["moving", "configuring", "complete"].indexOf(intent.phase) < ["moving", "configuring", "complete"].indexOf(previous.phase)
-    || ["moving", "configuring", "complete"].indexOf(intent.phase) > ["moving", "configuring", "complete"].indexOf(previous.phase) + 1)) throw new Error("fixed-layout-journal-changed");
+  if (previous !== undefined && canonicalJsonStringify({ ...previous, phase: intent.phase }) !== canonicalJsonStringify(intent)
+    || fixedLayoutTransition(previous?.phase ?? "absent", intent.phase) === "refused") throw new Error("fixed-layout-journal-changed");
   const content = Buffer.from(`${JSON.stringify(intent)}\n`);
   if (lstatSync(path, { throwIfNoEntry: false }) !== undefined && previous?.phase === intent.phase) return previous;
   operation.assertHeld();

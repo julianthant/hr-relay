@@ -151,7 +151,7 @@ it("does not resurrect an approval copied back by the real stopped restore", asy
   const approved = f.authorization.approve(chat, proposal.id, proposal.revision);
   const directory = join(f.context.admission.stateRoot, "backups", "authority");
   const report = await new AuthorityBackupService(f.context.admission, f.database, { directory }, f.clock)
-    .request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
+    .request({ trigger: "schema-migration", requiredGeneration: f.database.getMeta().authorityGeneration });
   const manifest = report.manifests[0]; assert.ok(manifest);
   f.authorization.cancel(chat, proposal.id, approved.revision);
   await f.context.account.close(); f.database.close();

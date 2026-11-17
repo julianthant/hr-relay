@@ -33,7 +33,7 @@ describe("corruption → degraded → automatic restore → rebuild", () => {
       db.close();
       const backupDb = open();
       const backup = await new AuthorityBackupService(admission, backupDb, { directory: join(root, "backups", "authority") }, clock)
-        .request({ trigger: "operator", requiredGeneration: backupDb.getMeta().authorityGeneration });
+        .request({ trigger: "schema-migration", requiredGeneration: backupDb.getMeta().authorityGeneration });
       backupDb.close();
       db = open(); db.authority.notifications.updateState({ notificationId: report.notification.notificationId, expectedVersion: 2, status: "unread", snooze: { state: "not-snoozed" }, updatedAt: f.clock.now().toISOString() }); db.close();
 
@@ -74,7 +74,7 @@ describe("assistant history through backup and restore", () => {
       db.close();
       const backupDb = open();
       const backup = await new AuthorityBackupService(admission, backupDb, { directory: join(root, "backups", "authority") }, clock)
-        .request({ trigger: "operator", requiredGeneration: backupDb.getMeta().authorityGeneration });
+        .request({ trigger: "schema-migration", requiredGeneration: backupDb.getMeta().authorityGeneration });
       backupDb.close();
       db = open(); assert.equal(db.authority.assistantHistory.apply({ operation: "clear", conversationId: id, expectedRevision: expected.conversation?.revision ?? 0 }, now).state, "cleared"); db.close();
       const operation = admission.acquireOfflineMaintenance(), manifest = backup.manifests[0]; assert.ok(manifest);

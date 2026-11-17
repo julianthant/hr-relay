@@ -10,7 +10,12 @@ import type { CredentialStore } from "../../../models/config/credential-store.js
 import { resolveConfigWithProvenance, type AdmittedRuntimeStoragePair } from "../../app/config/resolve.js";
 import { SettingsRuntimeStatusSchema, SETTINGS_SCHEMA_HASH, initialSettingsFileRecord, settingsRuntimeIdentity, type SettingsFileRecord, type SettingsRuntimeIdentity, type SettingsRuntimeStatus } from "../../../models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, protectedSettingsReadback, type ProtectedSettingsReadback, type ProtectedStoreRecord } from "../../../models/config/protected-settings.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityDatabase, AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import { randomUUID } from "node:crypto";
+import { resolvePersonPreferences } from "../../../models/config/person-preferences.js";
+import type { RunRecordService } from "../../runs/lifecycle/run-record-service.js";
+import { listCanonicalRuns } from "../../runs/queries/canonical-runs.js";
+import { createKeepAwake, type KeepAwakeOptions } from "./keep-awake.js";
 
 /** SQLite is the sole ordinary authority. Revision one exists only before durable settings history. */
 export function readSettings(repositories: AuthorityRepositories): SettingsFileRecord {
@@ -143,4 +148,35 @@ export function activeSettingsRuntimeIdentity(repositories: AuthorityRepositorie
 }
 export function activeSettingsConfig(repositories: AuthorityRepositories) {
  return StoredConfigSchema.parse(selectActiveRunSettings(repositories).config);
+}
+
+/** The profile cancellation registry drains this observer before closing its authority. */
+export function startSettingsKeepAwake(input: KeepAwakeOptions & Readonly<{
+  database: AuthorityDatabase;
+  reader: Pick<RunRecordService, "list">;
+}>) {
+  const holder = createKeepAwake(input);
+  let closing: Promise<void> | undefined, closed = false;
+  const observe = async (): Promise<void> => {
+    if (closing !== undefined) return;
+    const needed = input.database.withAuthorityReadSnapshot(() => {
+      const settings = readSettings(input.database.authority);
+      return resolvePersonPreferences(settings.settings.preferences).preventSleepWhileRunning
+        && listCanonicalRuns(input.reader, "live").some(run => run.lifecycle.state !== "terminal");
+    });
+    await holder.update(needed);
+  };
+  const report = () => input.debugEvents.emit({ category: "boot", phase: "failed", area: "keep-awake",
+    reason: "keep-awake-observation-failed", correlationId: randomUUID() });
+  const timer = setInterval(() => { void observe().catch(report); }, 1000);
+  timer.unref();
+  void observe().catch(report);
+  const stop = (): Promise<void> => {
+    if (closing !== undefined) return closing;
+    clearInterval(timer);
+    closing = holder.stop().then(() => { closed = true; });
+    return closing;
+  };
+  return Object.freeze({ observe, hasUnquiescedWork: () => closing !== undefined && !closed,
+    requestCancellation() { void stop(); }, awaitCancellation: stop });
 }
