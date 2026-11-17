@@ -41,10 +41,10 @@ import {
 
 export const AuthorityBackupServiceOptionsSchema = z.strictObject({
   directory: z.string().min(1),
-  purpose: z.literal("clean-shutdown").optional(),
+  purpose: z.enum(["clean-shutdown", "in-session"]).optional(),
 });
 
-type AuthorityBackupSource = Pick<
+export type AuthorityBackupSource = Pick<
   AuthorityBackupSourceReadOnly,
   "getMeta" | "getSourceDatabaseIdentity" | "onlineBackupTo"
 >;
@@ -246,22 +246,29 @@ function verifyStoppedManifest(manifestPath: string, expected: AuthorityBackupEx
   return result;
 }
 
+function backupSuffix(purpose: "clean-shutdown" | "in-session" | undefined): string {
+  if (purpose === "clean-shutdown") return ".shutdown";
+  return purpose === "in-session" ? ".session" : "";
+}
+
 export class AuthorityBackupService {
   #admission: RuntimeAdmission;
   #source: AuthorityBackupSource;
   #directory: string;
-  #cleanShutdown: boolean;
+  #purpose: "clean-shutdown" | "in-session" | undefined;
+  #signal: AbortSignal | undefined;
   #clock: Clock;
   #inFlight: Promise<AuthorityBackupRunReport> | undefined;
   #requiredGeneration = 0;
   #coalescedRequests = 0;
 
-  constructor(admissionInput: RuntimeAdmission, source: AuthorityBackupSource, input: unknown, clock: Clock = systemClock) {
+  constructor(admissionInput: RuntimeAdmission, source: AuthorityBackupSource, input: unknown, clock: Clock = systemClock, signal?: AbortSignal) {
     this.#admission = requireRuntimeAdmission(admissionInput);
     const options = AuthorityBackupServiceOptionsSchema.parse(input);
     this.#source = source;
     this.#directory = resolve(options.directory);
-    this.#cleanShutdown = options.purpose === "clean-shutdown";
+    this.#purpose = options.purpose;
+    this.#signal = signal;
     this.#admission.assertStateRoot(this.#directory);
     this.#clock = clock;
   }
@@ -341,7 +348,12 @@ export class AuthorityBackupService {
       const inspectedDigest = await sha256File(temporaryBackupPath);
       const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, inspectedDigest);
       let inspection: ReturnType<typeof inspectAuthorityBackupReadOnly>;
-      try { inspection = inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath, this.#source.getMeta().schemaVersion); }
+      try {
+        const schemaVersion = this.#source.getMeta().schemaVersion;
+        inspection = this.#purpose === "in-session"
+          ? await inspectAuthorityBackupOffThread(copyAdmission, temporaryBackupPath, schemaVersion, { ...(this.#signal === undefined ? {} : { signal: this.#signal }) })
+          : inspectAuthorityBackupReadOnly(copyAdmission, temporaryBackupPath, schemaVersion);
+      }
       finally { copyAdmission.release(); }
       assertExpectedBackupSource(expected, inspection);
       removeReadOnlyInspectionCompanions(temporaryBackupPath);
@@ -350,7 +362,7 @@ export class AuthorityBackupService {
       const createdAt = this.#clock.now().toISOString();
       const compactTime = createdAt.replaceAll(/[^0-9]/g, "");
       const stem = `authority-g${String(inspection.authorityGeneration)}-${compactTime}-${token}`;
-      const backupFileName = `${stem}${this.#cleanShutdown ? ".shutdown" : ""}.sqlite`;
+      const backupFileName = `${stem}${backupSuffix(this.#purpose)}.sqlite`;
       const finalBackupPath = join(this.#directory, backupFileName);
       renameSync(temporaryBackupPath, finalBackupPath);
       finalPaths.push(finalBackupPath);

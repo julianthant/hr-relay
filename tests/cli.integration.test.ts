@@ -449,7 +449,7 @@ describe("the `storage transactions` CLI command", () => {
     try {
       assert.equal(await runTransactions(await installationOf(w.root), ["--help"]), "storage transactions --from YYYY-MM-DD --to YYYY-MM-DD [--system SYSTEM] --output PATH\n"
         + "Writes a deterministic JSON transaction report from one database snapshot; an existing output is refused.\n"
-        + "On an installation, each ready person's report is written beside PATH as NAME.<profile-id>.EXT.\n");
+        + "On an installation, the signed-in person's report is written beside PATH as NAME.<profile-id>.EXT; other ready people are not checked because they are signed out.\n");
     } finally { await w.dispose(); }
   });
 });
