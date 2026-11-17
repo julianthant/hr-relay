@@ -6,7 +6,7 @@ import { ASSISTANT_DEFAULT_EFFORT,ASSISTANT_DEFAULT_MODEL,AssistantModelPreferen
 import { BackupServiceStateWireSchema,type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
 import { systemIdFactory } from "../../../../rules/identity/identifiers.js";
 import { ActorIdSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
-import { runtimeTimeZone,systemClock } from "../../../../rules/time/clock.js";
+import { systemClock } from "../../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { createDebugEventWriter } from "../../../logs/debug-events.js";
 import { composeLoopDelayMonitor } from "../../../logs/loop-delay.js";
@@ -44,7 +44,6 @@ export function prepareDashboardEnvironment(input: DashboardComposeInput, custod
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const clock = input.clock ?? systemClock;
-  const timeZone = runtimeTimeZone();
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
   const machineAdmission = requireRuntimeAdmission(input.admission);
@@ -66,11 +65,11 @@ export function prepareDashboardEnvironment(input: DashboardComposeInput, custod
   ).version;
   // Validate the production bundle before opening authority, locks or sockets.
   const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
-  return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend };
+  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend };
 }
 
 export function prepareDashboardRuntime(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody, environment: ReturnType<typeof prepareDashboardEnvironment>, staticBundle: Awaited<ReturnType<typeof openStaticBundle>> | undefined) {
-  const { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend } = environment;
+  const { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend } = environment;
   const hostFacts = hostConfigFacts(env);
   let databaseClosed = true;
   startupCleanups.push(() => {
@@ -237,5 +236,5 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }

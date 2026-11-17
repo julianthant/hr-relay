@@ -13,7 +13,7 @@ import { composeGeneratedExports } from "./generated-exports.js";
 
 /** Shell bootstrap, search, export and subscription use the same production authority. */
 export function composeShell(input: Pick<BootstrapQueryDeps,
-  "appVersion" | "actorLabel" | "clock" | "timeZone" | "descriptorSetHash" | "preflightReport" | "workbookCompatibility">
+  "appVersion" | "actorLabel" | "clock" | "descriptorSetHash" | "preflightReport" | "workbookCompatibility">
   & Pick<OperatorXlsxExportServiceDependencies, "ids" | "artifacts">
   & DashboardStreamHubDeps
   & { activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
@@ -33,7 +33,7 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
     })) },
   });
   return {
-    bootstrap: { appVersion: input.appVersion, actorLabel: input.actorLabel, clock, timeZone: input.timeZone, modules: catalogModules,
+    bootstrap: { appVersion: input.appVersion, actorLabel: input.actorLabel, clock, modules: catalogModules,
       descriptorSetHash: input.descriptorSetHash, settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       preflightReport: input.preflightReport, projection, authorityMeta: () => database.getMeta(),
       workbookCompatibility: input.workbookCompatibility },

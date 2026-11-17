@@ -42,7 +42,11 @@ budgets and durations and are not serialized as wall instants.
 `todayLocal()` returns `YYYY-MM-DD`. `timeOfDayCode()` returns local `HHMMSS`.
 `localDatePart(at)` and `formatTraceTimestamp(at)` are pure formatters.
 The fiscal year runs July 1 through June 30 and takes the ending calendar year's number.
-`runtimeTimeZone()` validates the runtime's IANA zone or throws `runtime-time-zone-unavailable`.
+Calendar days are Pacific days whatever zone the machine is set to. `PACIFIC_TIME_ZONE` in
+`src/models/dashboard/search-calendar.ts` is the one definition of that zone: the stored and summary
+run day (`searchPartitionDay`), Analytics day buckets, the served `serverClock.zone` and Separations'
+Pacific calendar day all read it. `todayLocal()`, `timeOfDayCode()` and `localDatePart()` read the
+process zone.
 `machineMonotonicMs()` uses `process.hrtime.bigint()` for backend IPC deadlines that need one
 machine-wide monotonic basis across processes.
 
