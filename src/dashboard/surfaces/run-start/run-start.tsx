@@ -25,7 +25,7 @@ import type { LaunchDraft } from "./run-launch-draft-model.js";
 import { runDialogControls, useRunDialogMachine, visibleRunDialog, type AuthorityCheck, type LaunchGates, type LaunchRecovery, type RunDialogEvent, type RunDialogPrimaryInput, type RunDialogStep } from "./run-dialog-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, Check, Keyboard, ListChecks, Lock, Play } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Keyboard, ListChecks, Play } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { useToasts, BareButton, Badge, Banner, Button, Checkbox, Switch, Dialog, SegmentedChoice, DialogBody, DialogContent, DialogFooter, EmptyState, Field, Input, KeyValueList, MetaLine, Table, THead, TBody, TR, TH, TD, Skeleton, Well, dsFg, dsFocus, dsIcon, dsText } from "../../ds/ui.js";
 
@@ -589,12 +589,12 @@ export function RunStartDialog({
   const subjectCount = preview.entries.length;
   const multiSubject = subjectCount > 1;
   const multiSubjectOmissionReason = `Omitting a step describes one subject; this run would create ${String(subjectCount)}.`;
+  const missingFactLabels = omissionRows.flatMap(row => row.fold.state === "invalid"
+    ? row.form.fields.filter(field => field.key in row.fold.errors).map(field => field.label) : []);
   const stepsBlockedReason = customizeSteps && multiSubject && omissionRows.length > 0
     ? `${multiSubjectOmissionReason} Include every step, or type one value.`
     : customizeSteps && stepOmissions === null
-    ? omissionRows.length === 1
-      ? "Fill in the facts the omitted step asks for."
-      : "Fill in the facts every omitted step asks for."
+    ? `Fill in ${missingFactLabels.join(", ")}.`
     : null;
   /** A plan retaining different omissions describes another run; refuse its token. */
   const sentOmittedSteps = customizeSteps && stepOmissions !== null ? stepOmissions.map(({ step }) => step) : [];
@@ -781,7 +781,7 @@ export function RunStartDialog({
             )}
 
             {currentStage === "Steps" && <section className="flex flex-col gap-1">
-              <div className="flex items-baseline justify-between gap-3">
+              <div className="flex items-baseline justify-between gap-3 pr-[var(--ds-row-pad-x)]">
               <h3 className="text-heading font-semibold">Steps</h3>
               {workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} of {workflow.steps.length} included</span>}
               </div>
@@ -804,6 +804,7 @@ export function RunStartDialog({
                       onText={next => update(current => launchDraft.changeText(current, next))}
                       preview={preview}
                       inputRef={typedInputRef}
+                      autoFocus={!isRerun}
                       draft={typedValues}
                       rowInput={rowCapability === undefined ? undefined : <>
                         {referenceControls([rowCapability.typeId], true)}
@@ -875,7 +876,7 @@ export function RunStartDialog({
                     const step = snapshot?.steps.find((candidate) => candidate.nodes.some((node) => node.nodeId === entry.nodeId));
                     if (step === undefined) throw new Error("RERUN_WARNING_STEP_UNAVAILABLE");
                     return <Well key={`${entry.nodeId}:${entry.writeIntentId}`}>
-                      <KeyValueList items={[{ key: "Step", value: stepLabel(step.key) }, { key: "System", value: entry.system }]} />
+                      <KeyValueList items={[{ key: "Step", value: stepLabel(step.key) }, { key: "System", value: SYSTEM_NAME[entry.system] }]} />
                     </Well>;
                   })}
                 </section>
@@ -887,7 +888,7 @@ export function RunStartDialog({
                     {!isRerun && <RunListRow title="Customize steps" description="Choose optional steps."><Switch hideLabel label="Customize steps" checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     {supportsDryRun && <RunListRow title="Dry run" description={dryRunDescription}><Switch hideLabel label="Dry run" checked={dryRun} onCheckedChange={next => update(current => launchDraft.changeDryRun(current, next === true))} className="!min-h-0 !w-auto !py-0" /></RunListRow>}
                     {launchFields.map(field => <RunListRow key={field.field} title={field.label}><div className="w-[250px]"><SegmentedChoice hideLabel label={field.label} value={pdfInput.picks[field.field] ?? ""} onChange={value => pdfInput.pick(field.field, value)} options={field.options} /></div></RunListRow>)}
-                    <RunListRow title="Screenshots" description="Required by this workflow."><span className="inline-flex items-center gap-1.5 text-[12px] text-ui-secondary"><Lock aria-hidden className="size-3" />Always on</span></RunListRow>
+                    <RunListRow title="Screenshots" description="Required by this workflow."><span className="text-[12px] text-ui-secondary">Always on</span></RunListRow>
                   </>} />
               )}
 

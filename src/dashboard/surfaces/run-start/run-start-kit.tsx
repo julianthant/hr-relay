@@ -372,11 +372,14 @@ export function TypedInput({
   onText,
   preview,
   inputRef,
+  autoFocus = true,
   draft = {},
   onValue,
   rowInput,
 }: {
   rowInput?: ReactNode;
+  /** Focus the box on mount; Rerun leaves focus to the dialog, which puts it on Close. */
+  autoFocus?: boolean;
   surface: InputRunSurface;
   workflowId: string;
   text: string;
@@ -402,7 +405,7 @@ export function TypedInput({
   const entryText = (entries: RunInputPreview["entries"]) => entries.map(entry => entry.sourceText).join(separator);
   const inputLabel = mode?.inputLabel ?? inputRunFieldLabel(surface.parser);
   const hint = (mode?.hint ?? inputRunDelimiterHint(surface.parser)).replace(/semicolon or a new line\./u, "semicolon or Shift+Enter.");
-  const box = <Textarea key={workflowId} ref={inputRef} autoFocus rows={4} value={text} aria-label={inputLabel}
+  const box = <Textarea key={workflowId} ref={inputRef} autoFocus={autoFocus} rows={4} value={text} aria-label={inputLabel}
       placeholder={mode?.placeholder ?? (inputRunFieldLabel(surface.parser) === "Kuali ID" ? surface.placeholder.replaceAll("Kuali document numbers", "Kuali IDs") : surface.placeholder)}
       onChange={event => onText(event.target.value)}
       onBlur={() => {
