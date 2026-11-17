@@ -11,6 +11,7 @@ import { DashboardCommandRequestSchema, type DashboardCommandRequest } from "../
 import type { DecisionOptionWire } from "../../models/dashboard/run-decision.js";
 import { answeredRow, decisionAnswerValid, failureCardFacts, lookupTyped, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
+import { projectFailureDisplay } from "../../models/dashboard/failure-display.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
@@ -399,10 +400,11 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     } else if (section.section === "failure" && section.payload.state === "available") {
       const failure = section.payload.value;
       const message = operatorFailureSentence(failure.code);
+      const failureTitle = failure.display?.title ?? projectFailureDisplay(failure).title;
       const noScreenshot = failureScreenshotReason(failure);
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
-      steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failure.display?.title ?? failure.code,
-        entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failure.display?.title ?? failure.code,
+      steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failureTitle,
+        entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failureTitle,
           state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message, ...failureCardFacts(failure.display),
           ...(failure.writeState === "not-attempted" ? { footer: WRITE_STATE_NOTE[failure.writeState] } : { caution: WRITE_STATE_NOTE[failure.writeState] }),
           ...(noScreenshot === undefined ? {} : { unavailableCapture: noScreenshot }),
