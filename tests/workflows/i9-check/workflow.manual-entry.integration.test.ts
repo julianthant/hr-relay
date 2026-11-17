@@ -3,22 +3,27 @@ import { afterEach, describe, it } from "vitest";
 import { i9CheckModule } from "../../support/helpers/registered-workflows.js";
 import { i9Candidate, i9CheckInput, i9Search } from "../../support/fixtures/i9-check.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
-import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
+import { ActorIdSchema, FingerprintSchema, IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import type { JsonObject } from "../../../src/rules/validation/canonical-json.js";
 import type { StepOmissions } from "../../../src/models/workflow/step-omission.js";
 import type { UcpathPersonOrgDriver } from "../../../src/models/ui/ucpath-person-org.js";
 import { I9CheckInput } from "../../../src/models/workflows/i9-check/input.js";
 import { ReadEmploymentCandidates } from "../../../src/models/workflows/i9-check/read-employment-candidates.js";
 import { ReadRetentionRow } from "../../../src/models/workflows/i9-check/read-retention-row.js";
+import { deriveCheckpointOutputDigest } from "../../../src/models/run/result.js";
 import { i9RetentionRow } from "../../../src/rules/i9-check/retention.js";
 import { resolveStartStepOmissions } from "../../../src/backend/runs/start/step-selection.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
 import { buildQueuedRun } from "../../../src/backend/runs/start/enqueue.js";
 import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-executor.js";
+import { createOperatorProjection, createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/operator.js";
+import { buildRunDetail } from "../../../src/backend/runs/queries/run-detail.js";
+import { runQueuedSpanEvent } from "../../../src/backend/runs/commands/run-queued-span.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/systems/ucpath/driver/fake.js";
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
-import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -62,6 +67,7 @@ async function runCase(options: Readonly<{ useMatch: boolean; entries?: StepOmis
   testWorkerPorts(database, clock, { path, descriptor, poolIndex: 1 });
   const slot = database.authority.workerSlots.list(descriptor.id).find(member => member.poolIndex === 1 && member.retiredAt === null); assert.ok(slot);
   database.authority.runs.enqueue(queued);
+  harness.emitter.emitter.emit(runQueuedSpanEvent({ run: queued, actorId: ActorIdSchema.parse("local-operator"), title: input.person.name, subtitle: "I-9 retention check" }));
   const claimed = database.authority.runs.claimNext({ workflow: descriptor.id, workerId: slot.workerId, now: clock.now().toISOString() });
   assert.equal(claimed.state, "claimed");
   if (claimed.state !== "claimed") throw new Error("Fixture claim failed");
@@ -70,7 +76,17 @@ async function runCase(options: Readonly<{ useMatch: boolean; entries?: StepOmis
   assert.equal(result.state, options.failure ? "failed" : "done", JSON.stringify(failures));
   const terminal = database.authority.runResults.get(queued.envelope.runId);
   const checkpoints = database.authority.runCheckpoints.listByItem(descriptor.id, entry.itemId).filter(row => row.runId === queued.envelope.runId);
-  return { input, matches, searches, queued, terminal, failures, checkpoints, output: options.failure ? undefined : ReadRetentionRow.output.parse(terminal?.result.value) };
+  const served = () => {
+    const reader = testRunService(database, clock);
+    const descriptors = { resolve: (id: string) => id === descriptor.id ? descriptor : undefined };
+    const projection = createOperatorProjection({ database, stateRoot: harness.authority.stateRoot, clock, reader, appVersion: "0.1.0",
+      descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(database.authority), descriptors });
+    projection.ingestFromTimeline();
+    const deps = createOperatorRunDetail({ database, stateRoot: harness.authority.stateRoot, projection, runReader: reader,
+      canonical: { database, reader, descriptors } });
+    return buildRunDetail(deps, queued.envelope.runId);
+  };
+  return { input, matches, searches, queued, terminal, failures, checkpoints, served, output: options.failure ? undefined : ReadRetentionRow.output.parse(terminal?.result.value) };
 }
 
 function produced(step: string, facts: JsonObject) {
@@ -129,8 +145,16 @@ describe.each([false, true])("I-9 switch combinations, useMatch=%s", useMatch =>
     assert.equal(f.matches, useMatch && !entries?.some(entry => entry.step === "person-match") ? 1 : 0);
     if (eid === FOUND.eid) assert.deepEqual(f.output.identity, { status: "found", eid, name: FOUND.name });
     if (eid === CANDIDATE.emplId) assert.deepEqual(f.output.identity, { status: "found", eid, name: CANDIDATE.name });
+    const detail = f.served();
     for (const entry of entries ?? []) {
       assert.deepEqual(f.queued.envelope.stepOmissions?.find(stored => stored.step === entry.step)?.facts, entry.facts);
+      const fields: readonly (readonly [string, string])[] = entry.step === "person-match"
+        ? [["status", "Found in UCPath"], ["eid", "Matched Employee ID"], ["name", "UCPath name"]]
+        : [["emplId", "UCPath Employee ID"], ["name", "UCPath name"], ["hireDate", "UCPath hire date"]];
+      assert.deepEqual(detail.timeline.steps?.find(step => step.key === entry.step)?.typedValues, {
+        title: "Operator-entered values", reading: "Not run, typed by hand",
+        fields: fields.map(([key, label]) => ({ key, label, value: entry.facts[key] === null ? "(empty)" : entry.facts[key], mark: "Typed by hand" })),
+      });
       const spec = descriptor.stepOmissions?.find(candidate => candidate.step === entry.step); assert.ok(spec);
       for (const nodeId of Object.keys(spec.produces)) {
         if (nodeId === "initial-candidates" && useMatch) {
@@ -154,6 +178,22 @@ describe.each([false, true])("I-9 switch combinations, useMatch=%s", useMatch =>
     }
     const asserted = f.checkpoints.filter(row => row.assertion !== undefined).map(row => String(row.nodeId));
     assert.ok(asserted.every(id => !["identifier-match", "initial-name-search", "name-search"].includes(id)));
+    const expectedAssertions: [string, string][] = [];
+    if (entries?.some(entry => entry.step === "person-match")) {
+      expectedAssertions.push(["match-outcome", "person-match"]);
+      if (!useMatch) expectedAssertions.push(["initial-candidates", "person-match"]);
+    }
+    if (entries?.some(entry => entry.step === "person-lookup")) expectedAssertions.push(["employment-candidates", "person-lookup"]);
+    assert.ok(f.terminal);
+    assert.deepEqual(f.terminal.dependencies.filter(dependency => dependency.state === "asserted").map(dependency => [dependency.nodeId, dependency.step]), expectedAssertions);
+    for (const [nodeId, step] of expectedAssertions) {
+      const dependency = f.terminal.dependencies.find(candidate => String(candidate.nodeId) === nodeId);
+      const checkpoint = f.checkpoints.find(candidate => String(candidate.nodeId) === nodeId);
+      assert.ok(dependency?.state === "asserted");
+      assert.ok(checkpoint?.assertion);
+      assert.deepEqual(dependency, { state: "asserted", nodeId, step, assertedAt: checkpoint.assertion.assertedAt,
+        outputSchemaHash: checkpoint.output.schemaHash, outputDigest: deriveCheckpointOutputDigest(checkpoint.output) });
+    }
   });
 });
 

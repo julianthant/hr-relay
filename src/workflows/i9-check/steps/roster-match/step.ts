@@ -37,7 +37,8 @@ export function buildStep(author: I9Author, matched: ReturnType<typeof personMat
     input, initial: outputs["match-outcome"].identity, candidates: input.person.useMatch ? outputs["employment-candidates"]?.candidates
       : (outputs["employment-candidates"] ?? outputs["initial-candidates"])?.candidates,
   }));
-  return { row, steps: [[rosterMatch, [row]]] as const, result: result(ReadRetentionRow.output, [row], ({ outputs }) => outputs["retention-row"]) };
+  return { row, steps: [[rosterMatch, [row]]] as const,
+    result: result(ReadRetentionRow.output, [row, matched.initial, matched.candidates, looked.candidates], ({ outputs }) => outputs["retention-row"]) };
 }
 export const i9CheckRosterMatchDefinition = defineStep({
   group: rosterMatch, build: buildStep,
