@@ -156,6 +156,35 @@ const projectingDescriptor = fixtureDescriptor(
   }],
 );
 
+/** A typed step whose two readings each run for one input only, as Person Lookup's Search and Match nodes do. */
+function inputConditionedDescriptor(id: string, code: string, manual: StepManualDeclaration) {
+  const conditionedFlow = flow(FixtureInput)
+    .step("read", fixtureContract, { dependsOn: [], replay: "checkpoint", when: { kind: "equals", of: { from: "input", path: "name" }, value: "Battistessa, Johnnie" }, bind: () => ({ disposition: "observed" }) })
+    .step("other", fixtureContract, { dependsOn: [], replay: "checkpoint", when: { kind: "equals", of: { from: "input", path: "name" }, value: "Someone, Else" }, bind: () => ({ disposition: "other" }) })
+    .step("fold", fixtureContract, { dependsOn: ["read"], replay: "checkpoint", bind: ({ outputs }) => ({ disposition: outputs.read.providerState }) })
+    .build({ schema: z.strictObject({ folded: z.string().min(1) }), dependsOn: ["read", "other", "fold"], derive: ({ outputs }) => ({ folded: outputs.fold.providerState }) });
+  return defineWorkflowDescriptor({
+    id, version: 1, contractFingerprint: HASH_A, code, label: "Input-conditioned omission fixture", icon: "Search", category: "operations",
+    canonicalInput: FixtureCanonicalInput, inputSubject: "name", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
+    surfaces: {}, details: [], identity: { matchKey: (input: z.output<typeof FixtureInput>) => `name:${input.name}` },
+    presentation: { title: (input: z.output<typeof FixtureInput>) => input.name }, scenarios: [`${id}/happy`],
+    timeline: [{ key: "reading", label: "Reading", nodes: ["read", "other"], manual }, { key: "folding", label: "Folding", nodes: ["fold"] }],
+    flow: conditionedFlow,
+  });
+}
+const produced: string[] = [];
+const bothProducedDescriptor = inputConditionedDescriptor("omission-conditioned", "oc", {
+  form: FORM,
+  produces: {
+    read: ({ facts }) => { produced.push("read"); return { disposition: facts.value, providerState: facts.value }; },
+    other: ({ facts }) => { produced.push("other"); return { disposition: facts.value, providerState: facts.value }; },
+  },
+});
+const otherOnlyDescriptor = inputConditionedDescriptor("omission-conditioned-other", "oo", {
+  form: FORM,
+  produces: { other: ({ facts }) => { produced.push("other"); return { disposition: facts.value, providerState: facts.value }; } },
+});
+
 
 const ApprovalSchema = z.strictObject({ approved: z.boolean() });
 const gateOmissionFlow = flow(FixtureInput)
@@ -589,5 +618,37 @@ describe("executor step omission", () => {
     const run = database.authority.runs.get(RUN_ID);
     assert.ok(run !== undefined && run.lifecycle.state !== "terminal");
     assert.equal(database.authority.runResults.get(RUN_ID), undefined);
+  });
+});
+
+describe("executor step omission under an input condition", () => {
+  it("leaves a produced node this input never runs skipped by its condition, without calling its producer", async () => {
+    produced.length = 0;
+    invocations.length = 0;
+    const harness = await harnessFor(bothProducedDescriptor);
+    const { database } = harness.authority;
+    database.authority.runs.enqueue(queuedRunFor(bothProducedDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
+    const outcome = await executeClaimedRun(harness.deps, { ...claim(database, bothProducedDescriptor), signal: SIGNAL });
+    assert.deepEqual(outcome, { state: "done", runId: RUN_ID });
+    assert.deepEqual([produced, invocations], [["read"], ["typed"]]);
+    const result = database.authority.runResults.get(RUN_ID);
+    assert.deepEqual(result?.dependencies.map((dependency) => [dependency.nodeId, dependency.state, dependency.state === "not-run" ? dependency.reason : undefined]),
+      [["read", "asserted", undefined], ["other", "not-run", "condition-false"], ["fold", "resolved", undefined]]);
+    assert.equal(database.authority.runCheckpoints.latest(bothProducedDescriptor.id, QUEUED_RUN.envelope.itemId, "other"), undefined);
+  });
+
+  it("refuses typed values when this input runs none of the nodes they stand for", async () => {
+    produced.length = 0;
+    invocations.length = 0;
+    const harness = await harnessFor(otherOnlyDescriptor);
+    const { database } = harness.authority;
+    database.authority.runs.enqueue(queuedRunFor(otherOnlyDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
+    const outcome = await executeClaimedRun(harness.deps, { ...claim(database, otherOnlyDescriptor), signal: SIGNAL });
+    assert.equal(outcome.state, "failed");
+    assert.deepEqual([produced, invocations], [[], []]);
+    const run = database.authority.runs.get(RUN_ID);
+    const failureId = run?.lifecycle.state === "terminal" ? run.lifecycle.failureId : undefined;
+    assert.ok(failureId !== undefined);
+    assert.match(database.authority.failures.get(failureId)?.summary ?? "", /step "reading" carries typed values, but this input runs none of the nodes they stand for \(other\)/u);
   });
 });

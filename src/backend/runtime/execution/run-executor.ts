@@ -792,6 +792,11 @@ export async function executeClaimedRun(
         continue;
       }
       if (omissionPlan.asserted.has(String(node.id))) {
+        // A typed value stands for a reading that would have run: a node this input never runs stays skipped.
+        if (node.kind === "task" && node.when?.of.from === "input" && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
+          plan.set(String(node.id), { mode: "skipped-condition" });
+          continue;
+        }
         const own = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
         const ownRecord = own === undefined ? undefined : RunCheckpointRecordSchema.parse(own);
         const replay = ownRecord !== undefined
@@ -1036,6 +1041,13 @@ export async function executeClaimedRun(
 
     for (const refusal of omissionPlan.refusals) {
       problems.push(`step omission refused [${refusal.code}]: ${refusal.message}`);
+    }
+    const typedSteps = new Set([...omissionPlan.asserted.values()].map(({ step }) => step));
+    for (const step of typedSteps) {
+      const produced = [...omissionPlan.asserted].filter(([, assertion]) => assertion.step === step).map(([nodeId]) => nodeId);
+      if (produced.every((nodeId) => plan.get(nodeId)?.mode === "skipped-condition")) {
+        problems.push(`step "${step}" carries typed values, but this input runs none of the nodes they stand for (${produced.join(", ")})`);
+      }
     }
     if (problems.length > 0) {
       const failure = buildEntryValidationFailureRecord({
