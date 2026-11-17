@@ -24,8 +24,8 @@ import * as launchDraft from "./run-launch-draft-model.js";
 import type { LaunchDraft } from "./run-launch-draft-model.js";
 import { runDialogControls, useRunDialogMachine, visibleRunDialog, type AuthorityCheck, type LaunchGates, type LaunchRecovery, type RunDialogEvent, type RunDialogPrimaryInput, type RunDialogStep } from "./run-dialog-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Keyboard, Lock, Play } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowRight, Check, Keyboard, ListChecks, Lock, Play } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { useToasts, BareButton, Badge, Banner, Button, Checkbox, Switch, Dialog, SegmentedChoice, DialogBody, DialogContent, DialogFooter, EmptyState, Field, Input, KeyValueList, MetaLine, Table, THead, TBody, TR, TH, TD, Skeleton, Well, dsFg, dsFocus, dsIcon, dsText } from "../../ds/ui.js";
 
@@ -679,8 +679,8 @@ export function RunStartDialog({
   })}</>;
   /** The one thing that stops the operator, in the slot pinned under the stage tabs: a refused plan, unavailable checks or a failed PDF. */
   const planRefusal = onLastStage && plan !== null ? planRefusalNotice(plan.refused, preview.entries) : null;
-  const notice: { sentence: string; stillWorks: string; action?: { label: string; onClick: () => void } } | null = planRefusal !== null
-    ? { sentence: planRefusal.sentence, stillWorks: "Nothing was started.", ...(planRefusal.goesToQueue ? { action: { label: "Go to queue", onClick: () => closeAndReset(false) } } : {}) }
+  const notice: { sentence: string; stillWorks: string; action?: { label: string; onClick: () => void; icon?: ReactNode } } | null = planRefusal !== null
+    ? { sentence: planRefusal.sentence, stillWorks: "Nothing was started.", ...(planRefusal.goesToQueue ? { action: { label: "Go to queue", icon: <ListChecks aria-hidden className={dsIcon.md} />, onClick: () => closeAndReset(false) } } : {}) }
     : currentStage === "Checks" && checks.state.state === "unavailable"
     ? { sentence: checks.state.message, stillWorks: "Your choices are kept.", action: { label: "Check again", onClick: checks.recheck } }
     : currentStage === "Input" && pdfSurface !== undefined && pdfInput.error !== null
@@ -704,7 +704,7 @@ export function RunStartDialog({
     catch (caught) { setRequestProblem(caught instanceof Error ? caught.message : String(caught)); return; }
     if ("refused" in step && step.refused === "blocked" && currentStage === "Steps" && stepsBlockedReason !== null) update(launchDraft.attemptFacts);
   };
-  startRef.current = () => press(controls.primary.event);
+  startRef.current = () => { if (planRefusal === null) press(controls.primary.event); };
   /** What a workflow's last stage still shows before Start: its chosen references and typed dates. */
   const lastStageFacts = [
     ...(typedDeclaration === undefined ? [] : typedDateControls(typedDeclaration, typedInputMode(typedDeclaration, typedValues)?.value ?? "").flatMap(control => {
@@ -974,7 +974,7 @@ export function RunStartDialog({
               variant="primary"
               {...(onLastStage ? { icon: <Play aria-hidden className={dsIcon.md} /> } : { iconAfter: <ArrowRight aria-hidden className="size-[14px]" /> })}
               loading={controls.primary.loading}
-              disabled={!controls.primary.enabled}
+              disabled={!controls.primary.enabled || planRefusal !== null}
               onClick={() => press(controls.primary.event)}
             >
               {controls.primary.label}
