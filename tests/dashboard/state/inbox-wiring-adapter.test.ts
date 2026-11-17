@@ -7,7 +7,10 @@ import { inboxProjection, notificationDay, notificationPolicy, notificationTarge
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { CommandExecutor, type CommandExecutionScope } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
-import { NotificationWireSchema, type NotificationWire } from "../../../src/models/dashboard/projection.js";
+import { notificationWireOf, NotificationWireSchema, type NotificationWire } from "../../../src/models/dashboard/projection.js";
+import { NotificationRecordSchema } from "../../../src/models/notifications/notifications.js";
+import { projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
+import { itemPreview } from "../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 import { NotificationTargetSchema } from "../../../src/models/notifications/notification-target.js";
 import { CommandIdSchema } from "../../../src/rules/identity/ids.js";
 import { NotificationPublicationWireSchema, type NotificationPublicationWire } from "../../../src/models/dashboard/subscription.js";
@@ -92,6 +95,43 @@ it("defines all eight source policies with exact target kinds and honest gap/mis
   assert.match(inboxProjection([row("run-failed", { sourceEvent: { state: "unavailable" } })], now).notice, /source evidence is unavailable/);
   assert(notificationTargetMatches(row(), { kind: "storage" }));
   assert.equal(notificationTargetMatches(row(), { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: "2026-08-03" }), false);
+});
+it("shows retained failed-run workflow and reason without unavailable text or an inferred source policy", () => {
+  const summary = "UCPath could not be reached. Check the connection and review the run evidence.";
+  const retained = row("run-failed", { title: "Run failed", summary,
+    context: { state: "workflow-only", workflow: "Onboarding" }, sourceEvent: { state: "unavailable" } });
+  const projection = inboxProjection([retained], now);
+  assert(projection.state.state === "ready");
+  const item = projection.state.items[0];
+  assert.equal(item.workflow, "Onboarding");
+  assert.equal(item.subject, "");
+  assert.equal(item.detail, summary);
+  assert.equal(projection.notice, "");
+  assert.equal(notificationPolicy(retained), undefined);
+
+  const unavailable = inboxProjection([retained, row("run-failed", { notificationId: failureId, summary, context: { state: "unavailable" } })], now);
+  assert(unavailable.state.state === "ready");
+  assert.equal(unavailable.state.items[1].subject, "Notification context unavailable");
+  assert.match(unavailable.notice, /source evidence is unavailable/);
+});
+it("withholds raw subject-mismatch summaries when source evidence is unavailable", () => {
+  const projected = projectNotificationTrigger({ kind: "subject-mismatch", runId, workflowId: "person-lookup", failureId, failureFingerprint: "f".repeat(64) });
+  const record = NotificationRecordSchema.parse({ ...projected, notificationId: id, actorId: "local-operator", status: "unread", snooze: { state: "not-snoozed" },
+    count: 1, version: 1, lastSeenAt: now, createdAt: now, updatedAt: now });
+  assert(record.summary.includes(runId));
+  for (const state of ["available", "unavailable"] as const) {
+    const source = state === "available" ? { state, kind: "subject-mismatch" } : { state };
+    const wire = notificationWireOf(record, Date.parse(now), { state: "workflow-only", workflow: "Person Lookup" }, source);
+    const projection = inboxProjection([wire], now);
+    assert(projection.state.state === "ready");
+    const item = projection.state.items[0];
+    assert.equal(item.workflow, "Person Lookup");
+    assert.equal(itemPreview(item), state === "available"
+      ? "The subject identity did not match. Review the failure before continuing."
+      : "Notification source evidence is unavailable. Review the inbox before relying on this update.");
+    assert.equal(projection.notice, state === "available" ? "" : "Notification source evidence is unavailable. Review the inbox before relying on this update.");
+    if (state === "unavailable") assert.equal(notificationPolicy(wire), undefined);
+  }
 });
 it("confirms read, unread, snooze and unsnooze only through matching shared readback", async () => {
   const h = await harness();
