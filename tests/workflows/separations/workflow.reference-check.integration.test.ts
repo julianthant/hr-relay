@@ -153,8 +153,8 @@ describe("Separations composition with a reference spreadsheet", () => {
     const begin = (picks: Parameters<typeof f.start>[1], dryRun = false) => f.start({ documentNumber: COMPOSITION_DOCUMENT }, picks, dryRun, { stepOmissions: OMIT_KRONOS,
       selectedStepKeys: separationsDescriptor.timeline.map(step => step.key).filter(key => key !== "kronos-timecard") });
     const writeIntents = (run: RunRecord) => f.database.authority.writeIntents.listByRun(run.envelope.runId);
-    const holding = () => f.spreadsheet("Separations roster", "People", ["eid", "fullName"], [["10800009", "Blair Example"], [COMPOSITION_EID, COMPOSITION_UCPATH_NAME]]);
-    const missing = () => f.spreadsheet("Badge list", "Issued", ["eid"], [["10800009"]]);
+    const holding = () => f.spreadsheet("Separations roster", "People", ["eid", "fullName"], [["10000009", "Blair Example"], [COMPOSITION_EID, COMPOSITION_UCPATH_NAME]]);
+    const missing = () => f.spreadsheet("Badge list", "Issued", ["eid"], [["10000009"]]);
     const renamed = () => f.spreadsheet("Separations roster", "People", ["fullName", "eid"], [[ROW_ONLY_NAME, COMPOSITION_EID]]);
     const parkedAt = (run: RunRecord) => run.lifecycle.state === "parked-gate" ? String(run.lifecycle.gateId) : run.lifecycle.state;
     /** Executes, answering the name-only identity approval the way the operator's one-click approval does, and returns where the run stopped. */
