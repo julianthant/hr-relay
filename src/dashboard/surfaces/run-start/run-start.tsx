@@ -1,7 +1,7 @@
 import { StartPlanRequestSchema, type StartPlanRequest } from "../../../models/dashboard/start-plan.js";
 import { useWorkbookRows, useWorkbookVersionSources, useCheckVersionSheets, checkVersionKey, previewWorkbookRows, resolveWorkbookRowSelection, WORKBOOK_ROW_UNAVAILABLE_TEXT } from "./run-workbook-rows-model.js";
 import { spreadsheetField } from "../../../models/fields/workbook-fields.js";
-import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
+import { RunList, RunListRow, RunListSkeleton } from "../../ds/primitives/run-list.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
@@ -659,15 +659,17 @@ export function RunStartDialog({
     onRemove: (libraryId: string) => update(current => launchDraft.removeCheck(current, libraryId)),
   };
   const checkRows = <RunCheckRows sheets={checkSheets} busy={checkBusy} {...checkHandlers} />;
-  const referenceControls = (types: readonly string[], withCheck: boolean) => types.length === 0 ? (!withCheck || workbookCheck === undefined ? undefined : library.catalogLoading ? <p role="status">Loading reference data…</p>
+  const requiredLabelOf = (labels: readonly string[]) => labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels.join('');
+  const referenceLoading = (description: string) => <div role="status" aria-label="Loading reference data"><RunList title="Reference spreadsheets" description={description}><RunListSkeleton rows={2} /></RunList></div>;
+  const referenceControls = (types: readonly string[], withCheck: boolean) => types.length === 0 ? (!withCheck || workbookCheck === undefined ? undefined : library.catalogLoading ? referenceLoading("Spreadsheets this run also looks the person up in. Needs Employee ID. Optional.")
     : <RunCheckCard sheets={checkSheets} busy={checkBusy} catalogError={library.catalogError} {...checkHandlers} onRefresh={() => void library.adapter.refreshCatalog()} />)
-    : <>{library.catalogLoading ? <p role="status">Loading reference data…</p> : types.map(typeId => {
+    : <>{library.catalogLoading ? referenceLoading(`Spreadsheets this run looks people up in. Needs ${requiredLabelOf(selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [])}.`) : types.map(typeId => {
     const draft = referenceDrafts[typeId];
     const sheetOptions = versionSources.state === 'ready' ? versionSources.sources : [];
     const requiredFields = selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [];
     const sheets = library.catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed).map(entry => ({ libraryId: entry.libraryId, name: entry.name,
       versions: entry.state.versions, currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
-    return <RunReferenceRows key={typeId} checkRows={withCheck && workbookCheck !== undefined && checkSheets.length > 0 ? checkRows : undefined} requiredLabel={requiredFields.length > 1 ? `${requiredFields.slice(0, -1).join(', ')} and ${requiredFields[requiredFields.length - 1]}` : requiredFields.join('')}
+    return <RunReferenceRows key={typeId} checkRows={withCheck && workbookCheck !== undefined && checkSheets.length > 0 ? checkRows : undefined} requiredLabel={requiredLabelOf(requiredFields)}
       sheets={sheets} chosenLibraryId={draft?.libraryId} chosenVersionId={draft?.versionId} chosenSheetId={selectedReferences[typeId]?.sheetId ?? ''}
       worksheets={sheetOptions.map(source => ({ sheetId: source.sheetId, sheetName: source.sheetName }))} worksheetsState={versionSources.state} worksheetsError={versionSources.error}
       busy={library.catalogRefreshing || library.compatibility === undefined} catalogError={library.catalogError}
