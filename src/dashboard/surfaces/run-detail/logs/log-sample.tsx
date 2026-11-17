@@ -9,7 +9,7 @@ import type { WorkflowSource } from "../../../app/workflow-sources.js";
 import { Badge, Button, IconButton, Notice } from "../../../ds/ui.js";
 import type { DashboardActionHandler } from "../../shared/actions/actions.js";
 import { LogPanel } from "../log-panel.js";
-import { linkedRunEntries } from "../log-panel-model.js";
+import { linkedRunEntries } from "../linked-runs-model.js";
 import type { LinkedRunWire } from "../../queue/queue-model.js";
 import type { LogDecisionHandler } from "./log-feed.js";
 import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
