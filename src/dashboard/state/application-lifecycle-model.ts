@@ -14,7 +14,7 @@ export function useApplicationLifecycle(client: DashboardClient, authority: obje
   const refresh = useCallback(() => setRevision(value => value + 1), []);
   const request = useMemo(() => ({ client, authority }), [client, authority]);
   const [result, setResult] = useState<{ request: object; value: AsyncResource<ApplicationLifecycle> }>();
-  const shown = useRef<{ request: object; value: AsyncResource<ApplicationLifecycle> }>();
+  const shown = useRef<{ request: object; value: AsyncResource<ApplicationLifecycle> } | undefined>(undefined);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let close = () => {};

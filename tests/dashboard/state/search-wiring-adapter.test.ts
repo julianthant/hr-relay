@@ -7,7 +7,7 @@ import { SEARCH_PAUSE_MS, paletteSheets, readSearchSnapshot, searchResults, with
 import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../../../src/models/dashboard/search.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
-import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
+import { IsoInstantSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import type { NavbarData } from "../../../src/dashboard/surfaces/shell/search/navbar-view-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -153,7 +153,7 @@ it("fills unknown subjects from queue titles and lists library sheets", () => {
   const row = (id: string, subject: string) => ({ id, subject, workflow: "W", day: "2026-08-03", state: "Done" });
   const out = withQueueSubjects([row("a", searchMessage("SEARCH_SUBJECT_UNAVAILABLE")), row("b", searchMessage("SEARCH_SUBJECT_UNAVAILABLE")), row("c", "Kept")], new Map([["a", "EID 1"], ["c", "Other"]]));
   assert.deepEqual(out.map(result => result.subject), ["EID 1", searchMessage("SEARCH_SUBJECT_UNAVAILABLE"), "Kept"]);
-  const sheet = (libraryId: string, name: string, version: number, savedAt: string) => ({ libraryId, version, savedAt, name });
+  const sheet = (libraryId: string, name: string, version: number, savedAt: string) => ({ libraryId, version, savedAt: IsoInstantSchema.parse(savedAt), name });
   assert.deepEqual(paletteSheets([sheet("x", "Old", 1, "2026-11-01T12:00:00Z"), sheet("y", "New", 3, "2026-11-08T12:00:00Z")]).map(item => [item.name, item.detail]), [["New", "v3 · Updated Nov 8"], ["Old", "v1 · Updated Nov 1"]]);
 });
 
