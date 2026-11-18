@@ -6,15 +6,15 @@ type Settled = Readonly<{ source: string; attempt: number; url?: string; failed?
 
 const PROTECTED = /^\/(?:api\/v1|artifacts)\//u;
 
-function isProtected(source: string): boolean {
-  try { return PROTECTED.test(new URL(source, "http://dashboard.invalid").pathname) && !/^(?:data|blob):/iu.test(source); }
-  catch { return false; }
+function isProtected(url: URL): boolean {
+  return PROTECTED.test(url.pathname) && url.protocol !== "data:" && url.protocol !== "blob:";
 }
 
-/** Resolve an image URL to something an `<img>` can load: protected dashboard resources go through the authenticated fetch as an object URL, anything else passes through. */
+/** Protected dashboard images use authenticated object URLs. Other valid URLs pass through. */
 export function useAuthenticatedImage(source: string, attempt = 0): AuthenticatedImage {
   const client = useOptionalDashboardClient();
-  const fetched = client !== undefined && isProtected(source);
+  const parsed = URL.parse(source, "http://dashboard.invalid");
+  const fetched = client !== undefined && parsed !== null && isProtected(parsed);
   const [settled, setSettled] = useState<Settled>();
   useEffect(() => {
     if (!fetched) return;
@@ -27,6 +27,7 @@ export function useAuthenticatedImage(source: string, attempt = 0): Authenticate
     }, () => { if (!controller.signal.aborted) setSettled({ source, attempt, failed: true }); });
     return () => { controller.abort(); held?.release(); };
   }, [client, fetched, source, attempt]);
+  if (parsed === null) return { src: undefined, failed: true };
   if (!fetched) return { src: source, failed: false };
   if (settled?.source !== source || settled.attempt !== attempt) return { src: undefined, failed: false };
   return { src: settled.url, failed: settled.failed === true };

@@ -66,4 +66,10 @@ describe("authenticated image", () => {
     assert.equal(h.latest()?.src, "/logs-preview/form.svg");
     assert.equal((h.client.fetchAuthenticatedResource as unknown as { mock: { calls: unknown[] } }).mock.calls.length, 0);
   });
+  it("refuses an invalid source without handing it to the image element", async () => {
+    const h = setup();
+    await h.render("http://[");
+    assert.deepEqual(h.latest(), { src: undefined, failed: true });
+    assert.equal(h.pending.length, 0);
+  });
 });

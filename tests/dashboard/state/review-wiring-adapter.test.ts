@@ -44,8 +44,10 @@ function detail(selected = selection()) {
 
 it("opens the exact stable record, retains operator focus on refresh, and retries a changed source image", async () => {
   let revision = 1;
-  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async input => Response.json(
-    String(input).endsWith("/review") ? { section: "review", payload: ocrReviewPageFixture(SOURCE_RUN_ID, revision) } : detail(selection(revision))) });
+  const fetchImage = vi.fn(async (source: string) => ({ url: `blob:${source}`, release: vi.fn() }));
+  const client = { ...createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async input => Response.json(
+    String(input).endsWith("/review") ? { section: "review", payload: ocrReviewPageFixture(SOURCE_RUN_ID, revision) } : detail(selection(revision))) }),
+    fetchAuthenticatedResource: fetchImage };
   const record = ocrReviewPageFixture().ocr?.revision.records[1]; assert.ok(record);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   const render = () => createElement(DashboardClientProvider, { client,
@@ -56,12 +58,21 @@ it("opens the exact stable record, retains operator focus on refresh, and retrie
   assert.equal(cards.length, 2);
   const firstHeading = cards[0].querySelector<HTMLElement>("[data-ocr-review-heading]"); assert.ok(firstHeading);
   firstHeading.focus();
-  const image = cards[1].querySelector("img"); assert.ok(image);
+  const image = await vi.waitFor(() => {
+    const loaded = cards[1].querySelector("img");
+    assert.match(loaded?.getAttribute("src") ?? "", /^blob:.*revision=1$/u);
+    assert.ok(loaded);
+    return loaded;
+  });
   await act(async () => image.dispatchEvent(new Event("error")));
   assert.match(cards[1].textContent ?? "", /Source page unavailable/u);
   revision = 2;
   await act(async () => root?.render(render()));
-  await vi.waitFor(() => assert.ok(cards[1].querySelector<HTMLImageElement>("img")?.src.includes("revision=2")));
+  await vi.waitFor(() => assert.match(cards[1].querySelector("img")?.getAttribute("src") ?? "", /^blob:.*revision=2$/u));
+  assert.ok(fetchImage.mock.calls.some(([source]) => {
+    const target = new URL(source);
+    return target.pathname.startsWith(`/api/v1/runs/${SOURCE_RUN_ID}/ocr/pages/`) && target.searchParams.get("revision") === "2";
+  }));
   assert.equal(document.activeElement, firstHeading);
   assert.equal(host.querySelectorAll('input:not([disabled])').length, 0);
   assert.doesNotMatch(host.textContent ?? "", /Approved/u);

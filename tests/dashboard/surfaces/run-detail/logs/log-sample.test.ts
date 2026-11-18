@@ -14,7 +14,10 @@ import { queueParentFixture } from "../../../../support/helpers/dashboard/queue-
 import { DryRunPreviewWireSchema } from '../../../../../src/models/dashboard/run-detail.js';
 
 const { useRunWiring, projectRunLogs } = vi.hoisted(() => ({ useRunWiring: vi.fn(), projectRunLogs: vi.fn() }));
-vi.mock('../../../../../src/dashboard/state/client-context.js', () => ({ useDashboardClient: () => ({}), useDashboardCommandBinding: () => undefined }));
+vi.mock('../../../../../src/dashboard/state/client-context.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../../src/dashboard/state/client-context.js')>(),
+  useDashboardClient: () => ({}), useDashboardCommandBinding: () => undefined,
+}));
 vi.mock('../../../../../src/dashboard/state/run-wiring-adapter.js', () => ({ projectRunLogs, useRunWiring }));
 vi.mock('../../../../../src/dashboard/surfaces/run-detail/review/review.js', () => ({ RunReview: () => null }));
 

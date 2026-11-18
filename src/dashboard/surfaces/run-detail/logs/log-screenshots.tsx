@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, LockKeyhole, Minus, Monitor, Plus, RotateCw } from "lucide-react";
 import { Select, Button, Dialog, DialogContent, DialogTrigger, IconButton, SegmentedChoice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
@@ -12,7 +12,7 @@ function CaptureImage({ screenshot, className, style, eager = false, onFailure, 
   const [attempt, setAttempt] = useState(0);
   const image = useAuthenticatedImage(screenshot.src, attempt);
   const failure = problem ?? (image.failed ? "Screenshot could not be loaded." : undefined);
-  useEffect(() => { if (image.failed) onFailure?.(); }, [image.failed]);
+  useEffect(() => { if (image.failed) onFailure?.(); }, [image.failed, onFailure]);
   if (failure) return <div role="alert" className="log-image-error"><ImageOff aria-hidden className="size-4" /><span>{failure}</span>{retryable && <Button size="sm" variant="secondary" onClick={() => { setProblem(undefined); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</div>;
   if (image.src === undefined) return <div role="status" aria-label="Loading screenshot" className={className} style={{ ...style, aspectRatio: `${screenshot.width} / ${screenshot.height}` }} />;
   const loaded = image.src;
@@ -32,10 +32,11 @@ function CaptureThumb({ src }: { src: string }) {
 function CapturePreview({ screenshot, onChoose, submit = false }: { screenshot: LogScreenshot; submit?: boolean; onChoose: (button: HTMLButtonElement) => void }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const onFailure = useCallback(() => setFailed(true), []);
   return <figure className={cn("log-capture", submit && "log-capture--submit")} data-kind={screenshot.kind} data-log-capture-id={screenshot.logId}>
     {!submit && <div className="log-capture-header"><span><Monitor aria-hidden className="size-3.5" />{screenshot.system ?? "Capture"}</span><span>{captureKindLabel(screenshot.kind)}</span></div>}
     <DialogTrigger asChild><button type="button" onClick={event => onChoose(event.currentTarget)} className="log-capture-open" aria-label={`Enlarge screenshot captured at ${screenshot.time}`}>
-      <div className="log-capture-viewport"><CaptureImage key={`${screenshot.src}-${screenshot.width}-${screenshot.height}-${attempt}`} screenshot={screenshot} onFailure={() => setFailed(true)} /></div>
+      <div className="log-capture-viewport"><CaptureImage key={`${screenshot.src}-${screenshot.width}-${screenshot.height}-${attempt}`} screenshot={screenshot} onFailure={onFailure} /></div>
       {!failed && <span className="log-capture-expand"><Expand aria-hidden className="size-3.5" /></span>}
       {screenshot.kind === "form" && !failed && <span className="log-form-hint">Full form · open to scroll</span>}
     </button></DialogTrigger>
