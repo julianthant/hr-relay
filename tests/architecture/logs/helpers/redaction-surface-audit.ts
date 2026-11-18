@@ -919,6 +919,7 @@ const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }
   { path: "revision.seed.review.accounting.outcomes[].output.extraction.source.invocation", origin: "external-text" },
   { path: "revision.seed.review.accounting.outcomes[].output.extraction.source.modelId", origin: "external-text" },
   { path: "revision.seed.review.accounting.outcomes[].output.extraction.source.providerId", origin: "external-text" },
+  { path: "revision.seed.review.accounting.outcomes[]", origin: "captured-hr-value" },
   { path: "revision.seed.review.accounting.outcomes[].reason", origin: "external-text" },
   { path: "revision.seed.review.grouping.subjects[].displayName", origin: "captured-hr-value" },
   { path: "revision.seed.review.grouping.subjects[].matchKey", origin: "captured-hr-value" },
@@ -1703,6 +1704,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
   { surface: "wire/bootstrap", path: "workflows[].start.summary", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.uploadRun.fields[].label", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.uploadRun.fields[].description", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.uploadRun.fields[].options[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.uploadRun.fields[].options[].value", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.uploadRun.fields[].placeholder", origin: "repository-authored" },

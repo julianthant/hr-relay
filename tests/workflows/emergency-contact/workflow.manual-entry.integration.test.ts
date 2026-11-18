@@ -8,6 +8,7 @@ import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority
 import { createDeterministicContactPersistence } from "../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/systems/ucpath/driver/fake.js";
 import { ocrReviewDigest, operatorOcrFields } from "../../../src/models/ocr/review.js";
+import { OcrOperatorPagesSchema } from "../../../src/models/ocr/review-record.js";
 import { RunDelegatedDryRunPreviewResultSchema } from "../../../src/models/run/result.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { UcpathContactPageSnapshotSchema } from "../../../src/models/ui/ucpath-emergency-contact.js";
@@ -141,7 +142,7 @@ it.each([false, true])("starts Emergency Contact without OCR, reviews every page
   }
   assert.equal(f.ocrCalls(), 0);
   assert.deepEqual(f.pageReads, []);
-  const pages = [{ pageKind: "emergency-contact", sourcePage: 2 }] as const;
+  const pages = OcrOperatorPagesSchema.parse([{ pageKind: "emergency-contact", sourcePage: 2 }]);
   const envelope = { requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "ocr-review" };
   assert.equal(f.canonical.kernel.execute({ ...envelope, commandId: randomUUID(), type: "add-ocr-record",
     target: { runId: f.run.envelope.runId, expectedRevision: 1 }, payload: { pages } }).state, "applied");

@@ -28,6 +28,11 @@ export function pdfRunSwitchValue(field: Readonly<{ field: string; initial: bool
   const pick = picks[field.field];
   return typeof pick === "boolean" ? pick : field.initial;
 }
+/** The pick of a select launch field; empty when unpicked. */
+export function pdfRunSelectValue(field: Readonly<{ field: string }>, picks: PdfRunPicks): string {
+  const pick = picks[field.field];
+  return typeof pick === "string" ? pick : "";
+}
 /** The footer's OCR state: "OCR off" only when the declared switch is off; a PDF workflow without the switch always reads. */
 export function pdfRunOcrFooter(surface: UploadRunSurface, picks: PdfRunPicks): string {
   const field = pdfRunLaunchFields(surface).find(candidate => candidate.kind === "boolean" && candidate.field === "extractWithOcr");
