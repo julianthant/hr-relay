@@ -79,3 +79,28 @@ it("resets options to the new workflow's defaults when the workflow changes", as
   await choose('[aria-label="Explorer workflow"]', "person-lookup");
   assert.equal(host.querySelector('[aria-labelledby="option-crmCheck"]')?.getAttribute("data-value"), before);
 });
+
+it("reads the explorer wire once while moving between workflows", async () => {
+  let reads = 0;
+  const counting = { workflowExplorer: async () => { reads += 1; return FIXTURE_EXPLORER_WIRE; } } as never;
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(WorkflowExplorer, { catalog, client: counting }))));
+  await choose('[aria-label="Explorer workflow"]', "onboarding");
+  await choose('[aria-label="Explorer workflow"]', "separations");
+  await choose('[aria-label="Explorer workflow"]', "person-lookup");
+  assert.equal(reads, 1);
+});
+
+it("a starts link to a workflow the wire does not list says so in place instead of showing another workflow", async () => {
+  const partial = { ...FIXTURE_EXPLORER_WIRE, workflows: FIXTURE_EXPLORER_WIRE.workflows.filter(workflow => String(workflow.id) !== "i9-lookup") };
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(WorkflowExplorer, { catalog, client: { workflowExplorer: async () => partial } as never }))));
+  await choose('[aria-label="Explorer workflow"]', "onboarding");
+  const start = [...host.querySelectorAll("button")].find(button => button.textContent === "I-9 Lookup");
+  assert.ok(start, "the starts line names the child");
+  await click(start);
+  assert.ok(host.textContent?.includes("Workflow unavailable"));
+  assert.equal(host.querySelector('[aria-label="Explorer workflow"]')?.getAttribute("data-value"), "i9-lookup");
+});
