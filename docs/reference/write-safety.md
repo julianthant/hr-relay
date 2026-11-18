@@ -90,7 +90,7 @@ Natural keys remain private authority data. Public projections use digest refere
 | `ucpath/delete-pending-terminations` | `ucpath:pending-terminations-clear:v2\|<emplId>\|<set-digest>` | `ucpath/match-pending-terminations` | `ucpath/verify-pending-terminations-cleared` | `operator-only` |
 | `kuali/save-separation-finalization` | `kuali:<documentNumber>\|finalization\|<transactionNumber>` | `kuali/match-separation-finalization` | `kuali/verify-separation-finalization` | `stabilized`: 30,000 ms after fence, two reads at least 5,000 ms apart, same source state |
 | `ucpath/save-emergency-contact` | `ucpath:emergency-contact\|<employee-and-effect-sha256>` | `ucpath/match-emergency-contact-plan` | `ucpath/verify-emergency-contact-plan` | `operator-only` |
-| `i9/create-profile` | `i9:profile\|<email-lower>\|<first-name-lower>\|<last-name-lower>\|<dob>` | `i9/match-profile` | `i9/verify-profile` | `operator-only` |
+| `i9/create-profile` | `i9:profile\|<first-name-lower>\|<last-name-lower>\|<dob>` | `i9/match-profile` | `i9/verify-profile` | `operator-only` |
 | `i9/create-remote-record` | `i9:remote\|<profile-id>\|<start-date>` | `i9/match-remote-record` | `i9/verify-remote-record` | `operator-only` |
 
 These declarations live in `src/models/systems/ucpath/{create-termination,delete-pending-terminations,save-emergency-contact,submit-paypath-work-study}.ts` and `src/models/systems/kuali/save-separation-finalization.ts`.
@@ -145,10 +145,12 @@ as Employee. The synthetic fixture proves adapter behavior, not live selector va
 behaviors.
 
 I-9 declarations live in `src/models/systems/i9/{create-profile,create-remote-record}.ts`.
-Profile save and remote-record creation have separate intents and proofs. A saved profile cannot
-prove remote-record creation. Both proof schemas reject reserved preview values; remote submission
-also refuses a staged preview profile before clicking. A duplicate dialog is an uncertain save
-outcome, never authority to choose its first row or repeat the save.
+Profile save and remote-record creation have separate intents and proofs. The profile key protects
+unresolved attempts across email corrections. Fresh reuse of either saved effect requires an
+independent Tracker probe that proves the current target and matches the retained proof. Remote mode
+requires evidence from the saved record. When Tracker cannot verify that mode, fresh reuse and
+creation refuse before any click. Both proof schemas reject reserved preview values. A duplicate
+profile dialog leaves the save uncertain and held for review.
 
 ### Explicit repetition
 
