@@ -176,16 +176,20 @@ it('refreshes cached workbooks after own and cross-process commits and discards 
     assert.equal(repository.list()[0].workbook.name, 'Updated.xlsx');
     assert.equal(repository.catalog()[0].name, 'Updated.xlsx');
     assert.notStrictEqual(repository.catalog(), before);
+    const savedWire = service.listWire()[0];
+    assert.equal(savedWire.workbook.name, 'Updated.xlsx');
     assert.throws(() => database.withAuthorityTransaction(() => {
       service.save(first.libraryId, 2, { ...second.workbook, name: 'Rolled back.xlsx' });
       assert.equal(service.read(first.libraryId).workbook.name, 'Rolled back.xlsx');
       assert.equal(repository.list()[0].workbook.name, 'Rolled back.xlsx');
       assert.equal(repository.catalog()[0].name, 'Rolled back.xlsx');
+      assert.equal(service.listWire()[0].workbook.name, 'Rolled back.xlsx');
       throw new Error('rollback-cached-workbook');
     }), /rollback-cached-workbook/u);
     assert.deepEqual(service.read(first.libraryId), second);
     assert.equal(repository.list()[0].workbook.name, 'Updated.xlsx');
     assert.equal(repository.catalog()[0].name, 'Updated.xlsx');
+    assert.strictEqual(service.listWire()[0], savedWire);
     const key = database.changeKey();
     const operation = { operationId: 'external-workbook-save', source: { kind: 'operator' }, at: clock.now().toISOString(),
       change: { kind: 'save', expectedVersion: 2, workbook: { ...encodeSavedWorkbook(second).workbook, name: 'External.xlsx' } } };
@@ -212,6 +216,8 @@ it('refreshes cached workbooks after own and cross-process commits and discards 
     assert.equal(service.read(first.libraryId).workbook.name, 'External.xlsx');
     assert.equal(repository.list()[0].version, 3);
     assert.equal(repository.catalog()[0].name, 'External.xlsx');
+    assert.equal(service.listWire()[0].workbook.name, 'External.xlsx');
+    assert.equal(service.listWire()[0].version, 3);
     assert.strictEqual(service.read(first.libraryId), repository.list()[0]);
   } finally { database.close(); }
 });
