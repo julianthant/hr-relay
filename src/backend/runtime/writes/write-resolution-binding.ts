@@ -1,4 +1,8 @@
-import { readRunCheckpoint } from "../../storage/sqlite/run-continuation.js";
+import { originalCheckpoint, readContinuationGate, readRunCheckpoint } from "../../storage/sqlite/run-continuation.js";
+import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
+import { loadCheckpoint } from "../../../models/workflow/checkpoint.js";
+import { evaluateNodeCondition, nodeConditionDependency, type NodeCondition } from "../../../models/workflow/node-condition.js";
+import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 import { repeatOccurrenceKey } from "../../../models/run/rerun.js";
 // Resolve only the same workflow, node, schemas, permanent key and binding proof; whole-closure identity is sufficient, not necessary.
@@ -23,7 +27,7 @@ import { currentBuildId } from "../build-id.js";
 export type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transaction" }>;
 
 /** The durable-state readers a binding evaluation needs; nothing writes here. */
-export type WriteBindingRepositories = Pick<AuthorityRepositories, "runCheckpoints" | "gateResults">;
+export type WriteBindingRepositories = Pick<AuthorityRepositories, "runCheckpoints" | "gateResults" | "runs">;
 
 
 export const WriteResolutionArmSchema = z.enum([
@@ -204,43 +208,61 @@ function rebuildCommitInputWithoutFence(
   node: TransactionRuntimeNode,
   run: RunRecord,
 ): unknown {
-  const canonicalInput = descriptor.canonicalInput.parse(run.input.parsed.value);
-  const outputs: Record<string, JsonValue> = {};
-  const nodesById = new Map(descriptorRuntimeNodes(descriptor).map((candidate) => [String(candidate.id), candidate]));
-  for (const dependency of node.dependsOn) {
-    const dependencyNode = nodesById.get(String(dependency));
-    if (dependencyNode === undefined) {
-      throw new Error(`transaction "${node.id}" depends on unknown node "${dependency}"`);
-    }
-    if (dependencyNode.kind === "task") {
-      const checkpoint = readRunCheckpoint(repositories, run.envelope, String(dependency), true);
-      if (checkpoint === undefined) {
-        throw new WriteCommitInputRebuildError(
-          "missing-evidence",
-          `task-checkpoint:${String(dependency)}`,
-        );
-      }
-      outputs[String(dependency)] = JsonValueSchema.parse(checkpoint.output.value);
-      continue;
-    }
-    if (dependencyNode.kind === "gate") {
-      const stored = repositories.gateResults.get(`${run.envelope.runId}:${String(dependency)}`);
-      if (stored === undefined) {
-        throw new WriteCommitInputRebuildError(
-          "missing-evidence",
-          `gate-result:${String(dependency)}`,
-        );
-      }
-      outputs[String(dependency)] = JsonValueSchema.parse(dependencyNode.result.parse(stored.result.value));
-      continue;
-    }
-    throw new WriteCommitInputRebuildError(
-      "missing-evidence",
-      `unsupported-dependency:${dependencyNode.kind}:${String(dependency)}`,
-    );
+  const input = JsonValueSchema.parse(descriptor.canonicalInput.parse(run.input.parsed.value));
+  const nodesById = new Map(descriptorRuntimeNodes(descriptor).map(candidate => [String(candidate.id), candidate]));
+
+  function conditionHolds(when: NodeCondition): boolean {
+    const source = nodeConditionDependency(when);
+    const value = source === undefined ? undefined : dependencyOutput(source, true);
+    return evaluateNodeCondition(when, {
+      input, outputs: source !== undefined && value !== undefined ? { [source]: value } : {},
+      references: runWorkbookReferenceTypeIds(run.input.workbookReferences),
+    });
   }
-  const scope: RuntimeScope = { input: JsonValueSchema.parse(canonicalInput), outputs: Object.freeze(outputs),
-    protectedInputBindings: retainedRunProtectedBindings(run) };
+
+  function dependencyOutput(id: string, conditionSource: boolean): JsonValue | undefined {
+    const dependency = nodesById.get(id);
+    if (dependency === undefined) throw new Error(`transaction "${node.id}" depends on unknown node "${id}"`);
+    if (dependency.kind === "task") {
+      const checkpoint = conditionSource ? originalCheckpoint(repositories, run, id, run.claimGeneration)
+        : readRunCheckpoint(repositories, run.envelope, id, true);
+      if (checkpoint === undefined) {
+        if (conditionSource && dependency.when !== undefined && !conditionHolds(dependency.when)) return undefined;
+        throw new WriteCommitInputRebuildError("missing-evidence", `task-checkpoint:${id}`);
+      }
+      if (!conditionSource) return JsonValueSchema.parse(checkpoint.output.value);
+      const loaded = loadCheckpoint(checkpoint, {
+        descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
+        implFingerprint: taskImplFingerprint(dependency.uses), outputSchemaHash: deriveSchemaHash(dependency.uses.output, "output"),
+      }, dependency.uses.output);
+      if (!loaded.found) throw new WriteCommitInputRebuildError("schema-failure", `condition-checkpoint:${id}:${loaded.reason}`);
+      return JsonValueSchema.parse(loaded.output);
+    }
+    if (dependency.kind === "gate") {
+      const originalGraph = sameContractAndBuild(descriptor, run);
+      const stored = originalGraph && run.envelope.continuation !== undefined
+        ? readContinuationGate(repositories, run.envelope, id)
+        : repositories.gateResults.get(`${run.envelope.runId}:${id}`);
+      if (stored !== undefined) {
+        if (conditionSource && (stored.nodeId !== dependency.id || stored.result.schemaHash !== deriveSchemaHash(dependency.result, "output"))) {
+          throw new WriteCommitInputRebuildError("schema-failure", `condition-gate:${id}`);
+        }
+        return JsonValueSchema.parse(dependency.result.parse(stored.result.value));
+      }
+      // Only the original declaration can prove that this run never owed a gate result.
+      if (dependency.resolvedBy === "operator" && dependency.when !== undefined && originalGraph
+        && !conditionHolds(dependency.when)) return undefined;
+      throw new WriteCommitInputRebuildError("missing-evidence", `gate-result:${id}`);
+    }
+    throw new WriteCommitInputRebuildError("missing-evidence", `unsupported-dependency:${dependency.kind}:${id}`);
+  }
+
+  const outputs: Record<string, JsonValue> = {};
+  for (const dependency of node.dependsOn) {
+    const value = dependencyOutput(String(dependency), false);
+    if (value !== undefined) outputs[String(dependency)] = value;
+  }
+  const scope: RuntimeScope = { input, outputs: Object.freeze(outputs), protectedInputBindings: retainedRunProtectedBindings(run) };
   const commitContract = node.commit.uses;
   return commitContract.input.parse(node.commit.bind(scope));
 }
