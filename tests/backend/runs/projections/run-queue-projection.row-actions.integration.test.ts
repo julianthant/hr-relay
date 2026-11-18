@@ -5,6 +5,7 @@ import { createRunQueueProjectionTestWorld } from "../../../support/helpers/back
 import { claimEventOf, instantOffsetOf, taskEventsOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { RunPauseSchema, type RunRecord } from "../../../../src/models/run/record.js";
+import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
@@ -47,7 +48,7 @@ it("serves Resume in a paused run's footer with its current revision", async () 
   queuedEventOf(w, { seed: 1, descriptor: personLookupDescriptor });
   const run = w.authority.getRun(uuidOf(1));
   assert.ok(run);
-  w.authority.put({ ...run, version: 7, pause: RunPauseSchema.parse({ state: "paused", commandId: uuidOf(90),
+  w.authority.put({ ...run, version: PositiveIntSchema.parse(7), pause: RunPauseSchema.parse({ state: "paused", commandId: uuidOf(90),
     requestedAt: instantOffsetOf(0), pausedAt: instantOffsetOf(0) }) });
   w.projection.rebuildFromTimeline();
   const row = w.projection.queueSurface(uuidOf(1));

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { z } from "zod";
 import { afterAll, afterEach, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
@@ -6,16 +7,16 @@ import { DAY, instantOffsetOf, uuidOf } from "../../../support/helpers/backend/d
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { NotificationWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { NotificationRecordSchema } from "../../../../src/models/notifications/notifications.js";
-import { projectNotificationTrigger, type NotificationTriggerEvent } from "../../../../src/rules/notifications/notification-triggers.js";
+import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../../../src/rules/notifications/notification-triggers.js";
 
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
 const { world, cleanup, queuedEventOf } = createRunQueueProjectionTestWorld(profiles.create);
 afterEach(cleanup);
 
-function recordOf(event: NotificationTriggerEvent, seed: number, count = 1) {
+function recordOf(event: z.input<typeof NotificationTriggerEventSchema>, seed: number, count = 1) {
   const at = instantOffsetOf(0, seed * 1000);
-  return NotificationRecordSchema.parse({ ...projectNotificationTrigger(event),
+  return NotificationRecordSchema.parse({ ...projectNotificationTrigger(NotificationTriggerEventSchema.parse(event)),
     notificationId: uuidOf(7000 + seed), actorId: "local-operator", status: "unread",
     snooze: { state: "not-snoozed" }, count, version: seed,
     createdAt: instantOffsetOf(0), updatedAt: at, lastSeenAt: at });

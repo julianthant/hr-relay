@@ -20,7 +20,7 @@ function attachmentType(name: string): { mediaType: AssistantAttachmentMediaType
   return undefined;
 }
 export type AssistantScene = 'new' | 'conversation' | 'ask-read' | 'ask-write' | 'permission-changed' | 'working' | 'cancelling' | 'done' | 'failed' | 'handoff' | 'destructive' | 'delete-working' | 'resolved' | 'declined';
-export interface AssistantMessage { readonly role: 'operator' | 'assistant'; readonly text: string; readonly attachments?: readonly { readonly id: string; readonly name: string }[] }
+export interface AssistantMessage { readonly role: 'operator' | 'assistant'; readonly text: string; readonly code?: never; readonly attachments?: readonly { readonly id: string; readonly name: string }[] }
 export interface AssistantRow { readonly sheet: string; readonly row: number; readonly person: string; readonly values: Readonly<Record<string, string>>; readonly issue: string | null }
 export interface AssistantWorkflow { readonly workflowId: string; readonly label: string; readonly file: AssistantFile; readonly rows: readonly AssistantRow[]; readonly state: 'review' | 'running' | 'complete' | 'uncertain' | 'failed'; readonly outputs: readonly AssistantFile[]; readonly message?: string }
 export interface AssistantConversation { readonly id: string; readonly title: string; readonly source: 'mock'; readonly scene: AssistantScene; readonly messages: readonly AssistantMessage[]; readonly files: readonly AssistantFile[]; readonly workflow?: AssistantWorkflow }

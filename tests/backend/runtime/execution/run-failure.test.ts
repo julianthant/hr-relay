@@ -128,7 +128,7 @@ it.each(["not-attempted", "unknown"] as const)("shows the registered delegation 
   assert.ok(original.section === "failure" && original.payload.state === "available");
   const source = original.payload.value;
   const section = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: {
-    ...source, code: "DELEGATION_CONFIG_UNAVAILABLE", writeState, summary: "private retained snapshot details",
+    ...source, retry: undefined, code: "DELEGATION_CONFIG_UNAVAILABLE", writeState, summary: "private retained snapshot details",
   } } });
   const detail = FIXTURE_RUN_DETAILS[FIXTURE_IDS.failedRun]; assert.ok(detail);
   const logs = NotePageSchema.parse({ runId: detail.runId, rows: [], notes: [], nextCursor: { state: "absent", reason: "end-of-page" } });
