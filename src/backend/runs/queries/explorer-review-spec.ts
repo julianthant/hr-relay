@@ -237,12 +237,12 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
     const { shape } = nodeWire(id);
     const branches = nodes.flatMap((node): When[] => {
       if (node.shape.kind !== "branch") return [];
-      const selected = node.shape.cases.filter(branch => branch.nodes.some(node => node === id)).map(branch => branch.name);
+      const selected = node.shape.cases.filter(branch => branch.nodes.some(member => member === id)).map(branch => branch.name);
       return selected.length === 0 ? [] : [[{ [node.id]: selected }]];
     });
     return both(known, run.conditionGate(shape.kind === "task" || shape.kind === "gate" ? shape.condition : undefined), ...branches);
   };
-  const previewsOnDryRun = (node: ExplorerNodeWire): boolean => node.shape.kind === "transaction" && node.shape.dryRun === "stop-after-prepare" && known.has(DRY_RUN);
+  const previewsOnDryRun = (node: ExplorerNodeWire): boolean => "leaseScope" in node.shape && node.shape.dryRun === "stop-after-prepare" && known.has(DRY_RUN);
   const runtimeNode = (id: string): RuntimeNode => {
     const node = runtimeNodes.find(candidate => candidate.id === id);
     if (node === undefined) throw new Error(`workflow ${descriptor.id} review names unknown node ${id}`);
@@ -287,7 +287,7 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
       for (const reference of references) {
         if (reference.kind !== "output") continue;
         const node = runtimeNode(reference.nodeId);
-        const example = node.kind === "task" ? node.uses.example : node.kind === "transaction" ? node.prepare.uses.example : undefined;
+        const example = node.kind === "task" ? node.uses.example : "prepare" in node ? node.prepare.uses.example : undefined;
         const sample = sampleText(scalarAt(example, reference.fieldPath.split(".")), display);
         if (sample !== undefined) return sample;
       }
@@ -377,7 +377,7 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
           point("waits", [{ value: "waits", label: "Waits for you", then: "Waits for you to resolve it in Logs, then continues.", stops: false },
             { value: "cancelled", label: "Cancel run", then: "Cancels this run before the next step.", stops: true }]);
         }
-      } else if (shape.kind === "transaction") {
+      } else if ("leaseScope" in shape) {
         const live = previewsOnDryRun(node) ? LIVE : undefined;
         point(live === undefined ? "saved" : { by: DRY_RUN, values: { true: DRY_RUN }, otherwise: "saved" }, [continuing("saved", "Saved", live),
           { value: "already-present", label: "Already present", then: "Uses the verified existing change without saving it again, then continues.", stops: false },
@@ -449,7 +449,7 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
     for (const [stepIndex, group] of current.descriptor.timeline.entries()) for (const member of group.nodes) {
       const node = nodesOf.find(candidate => candidate.id === member.id);
       if (node === undefined) throw new Error(`workflow ${workflowId} review session names unknown node ${member.id}`);
-      const contracts = node.kind === "task" ? [node.uses] : node.kind === "transaction" ? [node.prepare.uses, node.commit.uses] : [];
+      const contracts = node.kind === "task" ? [node.uses] : "prepare" in node ? [node.prepare.uses, node.commit.uses] : [];
       for (const contract of contracts) for (const store of current.stores) for (const task of Object.values(store.tasks)) {
         if (task.contract !== contract || store.kind !== "browser") continue;
         for (const need of task.impl.sessions) sessions.set(need.system, [...sessions.get(need.system) ?? [], gate(stepIndex, node.id)]);
