@@ -115,7 +115,7 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
   useEffect(() => {
     if (!enabled || client === undefined) return;
     const controller = new AbortController();
-    void resource.read(signal => client.activityPopulation(request.from, request.to, signal), "DASHBOARD_READ_FAILED", undefined, controller.signal).catch(() => undefined);
+    void resource.read(signal => client.activityPopulation(request.from, request.to, signal), "DASHBOARD_READ_FAILED", undefined, controller.signal).catch(() => resource.snapshot());
     return () => controller.abort();
   }, [client, enabled, request, resource]);
   useEffect(() => {

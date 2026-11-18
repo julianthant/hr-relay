@@ -13,6 +13,16 @@ import type { RunRecordService } from "../../../runs/lifecycle/run-record-servic
 import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { isAuthoritySourceChanged } from "../../../storage/sqlite/readonly-authority-snapshot.js";
 
+type InspectionVerdict = "sound" | "failed" | "overtaken";
+/** The whole-store inspection runs on a worker thread because it takes seconds on a real store. An aborted pass throws; a refused inspection is a failed verdict the caller turns into a failed-health notification. */
+async function inspectStore(admission: RuntimeAdmission, path: string, signal: AbortSignal | undefined): Promise<InspectionVerdict> {
+  try { await inspectAuthorityOffThread(admission, path, { signal }); return "sound"; }
+  catch (error) {
+    if (signal?.aborted === true) throw error;
+    return isAuthoritySourceChanged(error) ? "overtaken" : "failed";
+  }
+}
+
 export interface NotificationHealthReading { freeBytes: number; walBytes: number; integrityFailed: boolean; backupFailed: boolean; leaseExpired: boolean }
 type ChangeKey = ReturnType<AuthorityDatabase["changeKey"]>;
 /** Integrity and live-run heartbeats both hold until the store changes; lease age is re-judged against the clock on every pass. */
@@ -57,23 +67,14 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
   if (prior !== undefined && sameKey(prior.key, opening)) ({ integrityFailed, heartbeats } = prior);
   else {
     heartbeats = listCanonicalRuns(input.reader, "live").flatMap(run => "heartbeatAt" in run.lifecycle ? [Date.parse(run.lifecycle.heartbeatAt)] : []);
-    integrityFailed = false;
-    let judged = true;
     const flight = { key: opening };
     inFlight.set(input.database, flight);
-    // On a worker thread: the whole-store inspection takes seconds on a real store.
-    try { await inspectAuthorityOffThread(input.admission, join(stateRoot, "state.db"), { signal: input.signal }); }
-    catch (error) {
-      if (input.signal?.aborted === true) throw error;
-      // A write that landed during the inspection is no verdict: the last one, remembered or stored, holds and the next pass inspects again.
-      if (isAuthoritySourceChanged(error)) {
-        judged = false;
-        integrityFailed = prior?.integrityFailed ?? input.database.authority.notificationHealth.get("integrity-check")?.active === true;
-      }
-      else integrityFailed = true;
-    }
+    let verdict: InspectionVerdict;
+    try { verdict = await inspectStore(input.admission, join(stateRoot, "state.db"), input.signal); }
     finally { if (inFlight.get(input.database) === flight) inFlight.delete(input.database); }
-    if (judged) inspected.set(input.database, { key: flight.key, integrityFailed, heartbeats });
+    // A write that landed during the inspection is no verdict: the last one, remembered or stored, holds and the next pass inspects again.
+    integrityFailed = verdict === "overtaken" ? prior?.integrityFailed ?? input.database.authority.notificationHealth.get("integrity-check")?.active === true : verdict === "failed";
+    if (verdict !== "overtaken") inspected.set(input.database, { key: flight.key, integrityFailed, heartbeats });
   }
   const leaseExpired = heartbeats.some(heartbeatAt => clock.nowMs() - heartbeatAt > 60_000);
   let backupFailed = false;
