@@ -2231,7 +2231,8 @@ async function executeWorkerPoolCommand(
       const result = transact(repositories => {
         if (!paused) repositories.runtimeConfig.requireSettingsCurrent();
         const member = requireActiveSlot(repositories, request, request.target.workerId, request.target.workflowId);
-        requireMemberFence(pool, request);
+        const state = requireMemberFence(pool, request);
+        if (!paused && state === "stopping") reject(request, "invalid-state", "WORKER_EXIT_UNOBSERVED");
         if (!paused && workerPauseHeldRuns(repositories, member.workerId, "requested").length !== 0) reject(request, "WORKER_PAUSE_SETTLING", ERROR_CATALOG.WORKER_PAUSE_SETTLING.text);
         const slot = repositories.workerSlots.setPaused({ workerId: member.workerId, paused, now });
         // Worker Pause holds its claimed run (the step restarts on Resume); Resume releases only the runs that pause held. A pending cancel wins.
