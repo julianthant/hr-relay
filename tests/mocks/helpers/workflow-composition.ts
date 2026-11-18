@@ -21,3 +21,10 @@ export function MOCK_WORKFLOW_COMPOSITION(workflows: readonly RunStartWorkflow[]
   const sources = servedFixtureSources(workflows);
   return Object.freeze({ sources, harness: harnessFor(), sessionsHarness: sessionsSampleHarness, useActivityReport: useActivitySampleReport, dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }) });
 }
+
+/** The mock composition with the served Logs panel: the harness keeps its other sample ports and drops the Logs preview. */
+export function servedLogsComposition(workflows: readonly RunStartWorkflow[]): WorkflowComposition {
+  const composition = MOCK_WORKFLOW_COMPOSITION(workflows);
+  const { LogPreview: _preview, ...harness } = composition.harness ?? {};
+  return Object.freeze({ ...composition, harness });
+}

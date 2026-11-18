@@ -9,7 +9,7 @@ import { createDashboardClient } from "../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../src/dashboard/state/client-context.js";
 import { DashboardApp } from "../../src/dashboard/app/dashboard-app.js";
 import { productWorkflowComposition } from "../../src/dashboard/app/workflow-sources.js";
-import { MOCK_WORKFLOW_COMPOSITION } from "./helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from "./helpers/workflow-composition.js";
 import "../../src/dashboard/app/index.css";
 
 Reflect.set(window, "relayMockSurfaces", true);
@@ -25,7 +25,7 @@ const ControlPreview = previewLoader ? lazy(() => previewLoader().then(module =>
 const composition = fixture === "product-workflows" || Reflect.get(window, "relayMockProductWorkflows") === true
   ? productWorkflowComposition
   : fixture === "picked-a"
-  ? (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => { const { LogPreview: _preview, ...harness } = MOCK_WORKFLOW_COMPOSITION(workflows).harness ?? {}; return { ...MOCK_WORKFLOW_COMPOSITION(workflows), harness }; }
+  ? servedLogsComposition
   : MOCK_WORKFLOW_COMPOSITION;
 const theme: unknown = Reflect.get(window, "relayMockTheme");
 const preferences = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: theme === "light" ? "light" : "dark", animations: Reflect.get(window, "relayMockMotion") !== false });
