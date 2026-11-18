@@ -35,3 +35,14 @@ it("keeps an unknown boolean distinct from an observed No in editable and read-o
   expect(readOnly).not.toContain('>No<');
   expect(readOnly).toContain('—');
 });
+
+it("marks an unconfirmed card and names each blocking record beside the disabled Approve", () => {
+  const view: RecordReviewProps = { runId: "synthetic-run", subject: "Synthetic document", readOnly: false, discarded: false, selectedCount: 0,
+    onApprove: () => {}, approvalError: "Resolve the selected records before approval.",
+    cards: [{ name: "Example, Avery", pages: [], record: { id: "synthetic-record", page: 3, kind: "emergency-contact", selected: true, warnings: [],
+      unconfirmed: "No UCPath match", blockers: ["No UCPath match"], fields: [] } }] };
+  const markup = renderToStaticMarkup(createElement(RecordReview, view));
+  expect(markup).toContain("Unconfirmed");
+  expect(markup).toContain("Identity not confirmed: No UCPath match");
+  expect(markup).toContain("Page 3 · Example, Avery: No UCPath match");
+});

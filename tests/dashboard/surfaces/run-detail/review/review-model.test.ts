@@ -66,3 +66,16 @@ it("projects operator-added provenance and original page choices without inventi
   assert.throws(() => correctedOcrRecord(page, manual.recordId, { sourcePage: "99" }), /ocr-operator-record-source-invalid/u);
   assert.throws(() => correctedOcrRecord(page, previous.records[0].recordId, { sourcePage: "2" }), /RUN_REVIEW_FIELD_UNAVAILABLE/u);
 });
+
+it("names why an unasserted record's identity is not confirmed and lists it as a blocker", () => {
+  const page = ocrReviewPageFixture(); assert.ok(page.ocr);
+  const cards = ocrReviewCards(page, (_id, _revision, source) => `/source/${source}`);
+  const [first] = cards; assert.ok(first);
+  assert.equal(first.record.unconfirmed, "Not looked up");
+  assert.deepEqual(first.record.blockers?.slice(0, 1), ["Not looked up"]);
+  const asserted = structuredClone(page);
+  asserted.ocr!.revision.records[0].assertedEid = "10800000";
+  asserted.ocr!.identityHolds = asserted.ocr!.identityHolds.filter(hold => hold.recordId !== asserted.ocr!.revision.records[0].recordId);
+  const confirmed = ocrReviewCards(asserted, (_id, _revision, source) => `/source/${source}`)[0];
+  assert.equal(confirmed.record.unconfirmed, undefined);
+});
