@@ -880,9 +880,10 @@ export function RunStartDialog({
                       const forcedBy = row.stepKey === undefined ? [] : forcedByStep.get(row.stepKey) ?? [];
                       const open = openRows.find(candidate => candidate.row.key === row.key);
                       const badge = isRerun && snapshot !== null ? sourceBadge(row, snapshot) : undefined;
-                      const disabled = forcedBy.length > 0 || inputDriven(row) || sending || lastIncludedSwitch(row, rows, selectedStepKeys, manualRows)
-                        || (multiSubject && row.form !== undefined && included);
-                      const note = forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.` : row.note;
+                      const oneSubjectOnly = multiSubject && row.form !== undefined && included;
+                      const disabled = forcedBy.length > 0 || inputDriven(row) || sending || lastIncludedSwitch(row, rows, selectedStepKeys, manualRows) || oneSubjectOnly;
+                      const note = forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.`
+                        : oneSubjectOnly ? `Typed values describe one person; this run would create ${String(subjectCount)}.` : row.note;
                       const failure = stepsFailure !== null && stepsFailure.rowKey === row.key ? { [stepsFailure.fieldKey]: stepsFailure.text } : {};
                       return <RunListRow key={row.key} title={row.label} description={note}
                         {...(row.kind === "switch" ? { check: { checked: included, disabled, onChange: next => toggleRow(row, next) } } : { locked: true })}
