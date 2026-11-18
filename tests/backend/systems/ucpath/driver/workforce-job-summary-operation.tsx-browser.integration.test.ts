@@ -16,12 +16,12 @@ const page = `<!doctype html><html><body>
   const right = document.getElementById("tdgbrWF_JOB_SUMM$0");
   const fill = cells => { right.innerHTML = "<tr>" + cells.map(cell => "<td>" + cell + "</td>").join("") + "</tr>"; };
   document.getElementById("search").onclick = () => { document.getElementById("detail").hidden = false; };
-  document.getElementById("wl").onclick = () => fill(["40000001", "STDT 2", "UCS", "000412", "HOUSING/DINING/HOSPITALITY", "6840-1", "SDCMP", "Avery Example", ""]);
-  document.getElementById("ji").onclick = () => fill(["004921", "STDT 2", "PSS", "Active", "Variable", "17.60", "0.440000", "Nonexempt", "06/30/2025", "", ""]);
+  document.getElementById("wl").onclick = () => fill(["&nbsp;", "Position description", "UCS", "000412", "HOUSING/DINING/HOSPITALITY", "6840-1", "SDCMP", "Avery Example", ""]);
+  document.getElementById("ji").onclick = () => setTimeout(() => fill(["", "STDT 2", "PSS", "Active", "Variable", "17.60", "0.440000", "Nonexempt", "06/30/2025", "", ""]), 100);
 </script></body></html>`;
 
 describe("Workforce Job Summary read in a real browser", () => {
-  it("reads the frozen job grid through the tsx loader the dashboard runs on", () => {
+  it("reads blank position and job code cells through the tsx loader the dashboard runs on", () => {
     // Vitest compiles without keepNames; tsx wraps named inner functions in a __name helper the page realm lacks.
     const output = execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
       import { chromium } from "playwright";
@@ -32,10 +32,17 @@ describe("Workforce Job Summary read in a real browser", () => {
         const page = await browser.newPage();
         await page.route(UCPATH_WORKFORCE_JOB_SUMMARY_UI.url, route => route.fulfill({ contentType: "text/html", body: ${JSON.stringify(page)} }));
         const read = await readWorkforceJobSummaryOnPage(() => undefined, page, { emplId: "10800003" }, "2026-11-17T10:00:00.000Z");
-        process.stdout.write(JSON.stringify({ state: read.state, rowCount: read.summary?.rowCount, jobTitle: read.summary?.jobRows[0]?.jobTitle }));
+        const row = read.summary?.jobRows[0];
+        process.stdout.write(JSON.stringify({ state: read.state, rowCount: read.summary?.rowCount, positionNumber: row?.positionNumber, jobCode: row?.jobCode, jobTitle: row?.jobTitle }));
       } catch (error) { process.stdout.write(JSON.stringify({ failed: error.message.split("\\n")[0] })); }
       finally { await browser.close(); }
     `], { cwd: fileURLToPath(new URL("../../../../..", import.meta.url)), encoding: "utf8" });
-    assert.deepEqual(JSON.parse(output), { state: "read", rowCount: 1, jobTitle: { state: "present", value: "STDT 2" } });
+    assert.deepEqual(JSON.parse(output), {
+      state: "read",
+      rowCount: 1,
+      positionNumber: { state: "absent", reason: "the Workforce Job Summary Position Number cell rendered empty" },
+      jobCode: { state: "absent", reason: "the Workforce Job Summary Job Code cell rendered empty" },
+      jobTitle: { state: "present", value: "STDT 2" },
+    });
   });
 });
