@@ -88,7 +88,7 @@ it("names why each record has no asserted identity", () => {
   assert.equal(hold(OcrResultSchema.parse({ ...seed, identities: [] })), "not-looked-up");
   seed = result();
   const cleared = initialOcrReviewRecords(seed).map(record => ({ ...record, assertedEid: null }));
-  assert.deepEqual(ocrIdentityHolds({ seed, records: cleared }).map(entry => entry.reason), ["operator-cleared"]);
+  assert.deepEqual(ocrIdentityHolds({ seed, records: cleared }).map(entry => entry.reason), ["awaiting-assertion"]);
 });
 
 function correctedReview() {

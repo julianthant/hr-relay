@@ -137,4 +137,11 @@ it("asserts a form naming the UCPath person with extra given or family names and
   assert.equal(eidRead.assertedEid, EXECUTOR_EID, "the searched EID agrees and UCPath's first and last names are on the form");
   assert.equal(nameOnly.assertedEid, null, "a name-only search needs the whole name to agree");
   assert.deepEqual(review.identityHolds, [{ recordId: nameOnly.recordId, reason: "name-differs" }]);
+  const correction = CommandRequestSchema.parse({ ...f.command("correct-ocr-record", 1),
+    payload: correctedOcrRecord(section.payload, nameOnly.recordId, { "employee.name": "Example, Avery" }) });
+  assert.equal(f.canonical.kernel.execute(correction).state, "applied");
+  const corrected = buildOcrReviewSection(deps, f.run.envelope.runId); assert.ok(corrected.section === "review");
+  assert.equal(corrected.payload.ocr?.revision.records[1]?.assertedEid, null, "a corrected name never asserts the identity by itself");
+  assert.deepEqual(corrected.payload.ocr?.identityHolds, [{ recordId: nameOnly.recordId, reason: "awaiting-assertion" }],
+    "the reason reads the corrected name the card shows");
 });

@@ -21,7 +21,7 @@ export function ocrRecordName(fields: AdmittedRecord): string | null {
   const first = fields.answers.find(answer => answer.path === "firstName"), last = fields.answers.find(answer => answer.path === "lastName");
   return first?.state === "read" && last?.state === "read" ? `${last.value}, ${first.value}` : null;
 }
-export const OcrIdentityHoldReasonSchema = z.enum(["lookup-failed", "not-looked-up", "no-match", "multiple-matches", "name-differs", "eid-differs", "operator-cleared"]);
+export const OcrIdentityHoldReasonSchema = z.enum(["lookup-failed", "not-looked-up", "no-match", "multiple-matches", "name-differs", "eid-differs", "awaiting-assertion"]);
 export const OcrIdentityHoldSchema = z.strictObject({ recordId: StableRecordIdSchema, reason: OcrIdentityHoldReasonSchema });
 type OcrSeed = z.output<typeof OcrResultSchema>;
 type IdentityAssessment = { readonly eid: z.output<typeof EidSchema> } | { readonly hold: z.output<typeof OcrIdentityHoldReasonSchema> };
@@ -59,14 +59,13 @@ export function initialOcrReviewRecords(seed: OcrSeed): z.output<typeof OcrRevie
   });
 }
 
-/** Why each record of a revision has no asserted identity, read against the lookup its seed retains. */
+/** Why each record of a revision has no asserted identity: its current fields read against the lookup its seed retains. */
 export function ocrIdentityHolds(revision: Pick<OcrReviewRevision, "seed" | "records">): z.output<typeof OcrIdentityHoldSchema>[] {
   return revision.records.flatMap(record => {
     if (record.assertedEid !== null) return [];
-    const source = record.provenance === undefined ? revision.seed.review.records.find(seed => seed.recordId === record.recordId) : undefined;
-    const assessment = source === undefined ? { hold: "not-looked-up" as const }
-      : assessOcrIdentity(revision.seed, record.recordId, source.subjectName, record.fields);
-    return [{ recordId: record.recordId, reason: "eid" in assessment ? "operator-cleared" as const : assessment.hold }];
+    const assessment = record.provenance === undefined ? assessOcrIdentity(revision.seed, record.recordId, ocrRecordName(record.fields), record.fields)
+      : { hold: "not-looked-up" as const };
+    return [{ recordId: record.recordId, reason: "eid" in assessment ? "awaiting-assertion" as const : assessment.hold }];
   });
 }
 
