@@ -116,6 +116,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       return next;
     });
   };
+  /** Drops every unsaved edit when the operator chooses to leave Settings without saving. */
+  const discard = (): void => setDraft({});
   /** Drops only what this save sent; an edit made while it was in flight stays and saves next. */
   const settle = (sent: SettingsDraft): void => setDraft(previous => Object.fromEntries(Object.entries(previous).filter(([path, operation]) => sent[path] !== operation)));
   const failed = (sent: SettingsDraft): void => {
@@ -182,5 +184,5 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const reload = (): void => { void refresh().catch(() => undefined); };
   return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: IDLE_SAVE, preflight, protectedEditor, leaves, readProblem,
     dirtyCount: Object.keys(draft).length, locked: !readReady || readProblem !== undefined,
-    update, reset, clear, submit, reload, rerunPreflight, onFieldBlur });
+    update, reset, clear, discard, submit, reload, rerunPreflight, onFieldBlur });
 }

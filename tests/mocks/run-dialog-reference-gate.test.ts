@@ -6,7 +6,7 @@ import type { DashboardApp } from "../../src/backend/transports/http/routes/api-
 import { registerWorkbookRoutes } from "../../src/backend/transports/http/routes/workbooks.js";
 import { createWorkbookLibraryService } from "../../src/backend/workbooks/workbook-library-service.js";
 import { WORKFLOW_MODULES } from "../../src/backend/app/registries/workflow-registry.js";
-import { FrontendBootstrapWireSchema } from "../../src/models/dashboard/bootstrap.js";
+import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from "../../src/models/dashboard/bootstrap.js";
 import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
 import { openAuthorityHarness } from "../support/helpers/phase1f-executor-harness.js";
 import { startSweepOverlay } from "./helpers/sweep-fixtures-server.js";
@@ -15,7 +15,7 @@ import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE } from ".
 const out = process.env.REFERENCE_GATE_OUT ?? "tests/mocks/.output/run-dialog-reference-gate";
 test.beforeAll(async () => { await mkdir(out, { recursive: true }); });
 const day = DashboardDayWireSchema.parse({ ...FIXTURE_START_PICKER_DAY_WIRE, queueSurfaces: [], attemptHistory: [], monthCounts: [], workflowCounts: [], statusCounts: [], notifications: [] });
-const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_START_PICKER_BOOTSTRAP, workflows: FIXTURE_START_PICKER_BOOTSTRAP.workflows.map(flow =>
+const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_START_PICKER_BOOTSTRAP, workflows: WorkflowBootstrapPrimitiveSchema.array().parse(FIXTURE_START_PICKER_BOOTSTRAP.workflows).map(flow =>
   flow.id === "emergency-contact" ? { ...flow, start: { ...flow.start, workbookCheck: { id: "reference-check", keyFieldId: "eid" } } } : flow) });
 const MISSING = "Add a reference spreadsheet first.";
 

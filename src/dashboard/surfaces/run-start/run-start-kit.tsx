@@ -174,22 +174,6 @@ function ReferenceFailure({ onRefresh }: { onRefresh: () => void }) {
   return <FailureNotice sentence="Relay could not load your spreadsheets." stillWorks="Your typed entries are kept." action={{ label: "Retry", onClick: onRefresh }} />;
 }
 
-/** The one plain sentence for the first refused entry of a plan, shown in the dialog's notice slot; no code, trace id or server text. */
-export function planRefusalNotice(refused: StartPlanResponse["refused"], sources?: RunInputPreview["entries"]): { sentence: string; goesToQueue: boolean } | null {
-  const entry = refused[0];
-  if (entry === undefined) return null;
-  const source = sources?.find(candidate => candidate.index + 1 === entry.entry)?.sourceText;
-  const name = source ?? (refused.length > 1 || entry.entry > 1 ? `Entry ${String(entry.entry)}` : "This item");
-  if (entry.code === "active-run-exists") {
-    if (entry.message.includes("already in this plan")) return { sentence: `${name} is listed twice. Remove the repeat.`, goesToQueue: false };
-    return { sentence: `${name} already has a run in progress. Find it in the queue or wait for it to finish.`, goesToQueue: true };
-  }
-  if (entry.code === "input-invalid") return { sentence: `Relay could not use ${name}. Fix it, then try again.`, goesToQueue: false };
-  if (entry.code === "dry-run-unsupported") return { sentence: "This workflow cannot do a dry run. Turn Dry run off to start it.", goesToQueue: false };
-  if (entry.code === "preflight-failed") return { sentence: "A check failed for this run. Go back to Checks to fix it.", goesToQueue: false };
-  return { sentence: "Relay cannot run this right now. Try again later.", goesToQueue: false };
-}
-
 export interface StageSpec {
   key: string;
   label: string;

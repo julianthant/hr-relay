@@ -47,14 +47,17 @@ it('settles actual answer presentation and never interprets Confirm as a request
   assert.equal(c.snapshot().messages.at(-1)?.text, 'Explanation');
   c.action({ type: 'confirm' }); assert.equal(calls, 1); assert.match(ASSISTANT_CONFIRM_HOLD, /before preparation/u);
 });
-it('does not retry an ambiguously lost response or let an edited draft redispatch it', async () => {
+it('fails a lost chat reply retryably, resends only the kept prompt and never lets an edited draft retry it', async () => {
   let calls = 0;
   const c = createAssistantController(resultClient({ async assistantRespond() { calls++; throw new Error('private transport reason'); } }), { authority: 'a' });
   c.action({ type: 'edit', value: 'Explain' }); c.action({ type: 'send' });
-  await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'unknown'));
-  c.action({ type: 'retry' }); c.action({ type: 'send' });
+  await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'failed'));
   assert.equal(calls, 1); assert.equal(c.snapshot().sequence, 1);
-  c.action({ type: 'edit', value: 'Changed' }); c.action({ type: 'retry' }); c.action({ type: 'send' }); assert.equal(calls, 1);
+  c.action({ type: 'retry' });
+  await vi.waitFor(() => assert.equal(calls, 2));
+  await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'failed'));
+  assert.equal(c.snapshot().sequence, 2);
+  c.action({ type: 'edit', value: 'Changed' }); c.action({ type: 'retry' }); assert.equal(calls, 2); assert.equal(c.snapshot().sequence, 2);
   assert.equal(JSON.stringify(c.snapshot()).includes('private transport'), false);
   assert.equal(JSON.stringify(c.snapshot()).includes('actionId'), false);
 });

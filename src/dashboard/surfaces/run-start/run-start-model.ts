@@ -8,6 +8,7 @@ import {
   type StepOmissionForm,
 } from "../../../models/workflow/step-omission.js";
 import { z } from "zod";
+import type { StartPlanWire } from "../../../models/dashboard/start-plan.js";
 import { inputRunValueNoun, parseInputRunText, splitEntries, toRawSubmission, type InputParserSpec, type InputRunSurface, parseTypedDate, type TypedDateControl, type TypedInputSurface, type TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { CANONICAL_FIELDS } from "../../../models/fields/registry.js";
@@ -524,7 +525,8 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
   });
   return Array.from({ length: submissionCount }, (_, index) => [...requiredTypes.map(typeId => {
     const selection = selections[typeId];
-    const entry = catalog.find(entry => entry.libraryId === selection?.libraryId);
+    if (selection === undefined) throw new Error(ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text);
+    const entry = catalog.find(entry => entry.libraryId === selection.libraryId);
     if (!entry || entry.state.removed || entry.state.origin.kind !== 'local'
       || !entry.state.versions.some(version => version.id === selection.versionId)
       || writable && entry.state.selectedVersionId !== selection.versionId
@@ -534,4 +536,20 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
       sheetId: selection.sheetId, expectedVersion: entry.version,
       ...(selectedRows?.typeId === typeId ? { selectedRow: { sheetId: selectedRows.rows[index].sheetId, rowId: selectedRows.rows[index].rowId } } : {}) });
   }), ...checkEntries(index)]).flat();
+}
+
+/** The one plain sentence for the first refused entry of a plan, shown in the dialog's notice slot; no code, trace id or server text. */
+export function planRefusalNotice(refused: StartPlanWire["refused"], sources?: RunInputPreview["entries"]): { sentence: string; goesToQueue: boolean } | null {
+  const entry = refused[0];
+  if (entry === undefined) return null;
+  const source = sources?.find(candidate => candidate.index + 1 === entry.entry)?.sourceText;
+  const name = source ?? (refused.length > 1 || entry.entry > 1 ? `Entry ${String(entry.entry)}` : "This item");
+  if (entry.code === "active-run-exists") {
+    if (entry.message.includes("already in this plan")) return { sentence: `${name} is listed twice. Remove the repeat.`, goesToQueue: false };
+    return { sentence: `${name} already has a run in progress. Find it in the queue or wait for it to finish.`, goesToQueue: true };
+  }
+  if (entry.code === "input-invalid") return { sentence: `Relay could not use ${name}. Fix it, then try again.`, goesToQueue: false };
+  if (entry.code === "dry-run-unsupported") return { sentence: "This workflow cannot do a dry run. Turn Dry run off to start it.", goesToQueue: false };
+  if (entry.code === "preflight-failed") return { sentence: "A check failed for this run. Go back to Checks to fix it.", goesToQueue: false };
+  return { sentence: "Relay cannot run this right now. Try again later.", goesToQueue: false };
 }

@@ -91,7 +91,9 @@ it("defines all eight source policies with exact target kinds and honest gap/mis
   assert.deepEqual(kinds.map(kind => notificationPolicy(row(kind))?.tone), ["danger", "danger", "warning", "warning", "danger", "warning", "positive", "warning"]);
   assert.equal(inboxProjection([row("backfill-gap")], now).state.state, "ready");
   assert.match(inboxProjection([row("backfill-gap")], now).notice, /history is incomplete/);
-  assert.match(inboxProjection([row("run-failed", { sourceEvent: { state: "unavailable" } })], now).notice, /source evidence is unavailable/);
+  const unsourced = row("run-failed", { sourceEvent: { state: "unavailable" } });
+  assert.equal(inboxProjection([unsourced], now).notice, "", "a missing source adds no inline panel");
+  assert.equal(notificationPolicy(unsourced), undefined);
   assert(notificationTargetMatches(row(), { kind: "storage" }));
   assert.equal(notificationTargetMatches(row(), { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: "2026-08-03" }), false);
 });
@@ -128,8 +130,9 @@ it("withholds raw subject-mismatch summaries when source evidence is unavailable
     assert.equal(item.workflow, "Person Lookup");
     assert.equal(itemPreview(item), state === "available"
       ? "The subject identity did not match. Review the failure before continuing."
-      : "Notification source evidence is unavailable. Review the inbox before relying on this update.");
-    assert.equal(projection.notice, state === "available" ? "" : "Notification source evidence is unavailable. Review the inbox before relying on this update.");
+      : "");
+    assert.equal(projection.notice, "");
+    assert.equal(item.detail.includes(runId), false);
     if (state === "unavailable") assert.equal(notificationPolicy(wire), undefined);
   }
 });
