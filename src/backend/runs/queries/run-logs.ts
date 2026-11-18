@@ -5,6 +5,7 @@ import { buildUiTaskLinks } from "../../systems/ui-task-links.js";
 import { LogDisplayRefusedError, LogIdentityRefusedError } from "../commands/refusals.js";
 import { readTimelineRecords, timelineNoteLocation } from "../../storage/events/timeline-reader.js";
 import { RedactedFieldSchema } from "../../../rules/redaction/redaction.js";
+import { maskObservedOcrSsn } from "../../../models/trust/evidence-classification.js";
 import { z } from "zod";
 import {
   DryRunPreviewWireSchema,
@@ -28,6 +29,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { resolveObservationOrigin } from "../../../models/events/data-observation-origin.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView, RunDetailDataOriginView } from "./run-detail-types.js";
+import { hasRunDescriptorDrift } from "./run-timeline-compatibility.js";
 
 const LOGS_PAGE_SIZE = 200;
 const UI_LABELS = new Map(buildUiTaskLinks().map(entry => [entry.id, entry]));
@@ -48,11 +50,13 @@ type RunAtRestNote = Readonly<{
   confirmedAction?: z.infer<typeof NoteAtRestSchema>["confirmedAction"];
 }>;
 
-type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system?: string; operatorFields?: RunDetailDataOriginView["operatorFields"] }>;
+type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system?: string;
+  operatorFields?: RunDetailDataOriginView["operatorFields"]; presentationUnavailable?: true }>;
 
 export type RunLogScanEntry =
   | Readonly<{ kind: "note"; line: TimelineLine; note: RunAtRestNote }>
-  | Readonly<{ kind: "observed"; line: TimelineLine; event: Extract<SpanEventWire, { t: "data.observed" }>; producer: RunLogProducer }>
+  | Readonly<{ kind: "observed"; line: TimelineLine; event: Extract<SpanEventWire, { t: "data.observed" }>;
+      producer: RunLogProducer; historical?: boolean }>
   | Readonly<{ kind: "transaction-fenced"; line: TimelineLine; event: Extract<SpanEventWire, { t: "transaction.fenced" }>; producer: RunLogProducer }>;
 
 /** @deprecated Kept for callers of the combined notes + fence snapshot cache. */
@@ -174,6 +178,7 @@ function producerOf(
   descriptor: RunDetailDescriptorView | undefined,
   event: Extract<SpanEventWire, { t: "data.observed" | "transaction.fenced" }>,
   line: TimelineLine,
+  historical: boolean,
 ): RunLogProducer {
   if (descriptor === undefined) {
     throw new Error(
@@ -184,6 +189,12 @@ function producerOf(
   const nodeId = event.t === "data.observed" ? event.nodeId : event.node;
   const matches = (descriptor.dataOrigins ?? []).filter((origin) =>
     origin.nodeId === nodeId && origin.taskId === event.taskId);
+  if (matches.length === 0 && historical) {
+    if (!event.spanPath.startsWith(`${event.traceId}/`) || nodeIdOfTaskSpanPath(event.spanPath) !== nodeId) {
+      throw new LogIdentityRefusedError(`node ${nodeId} disagrees with the recorded span at ${line.file.path}:${String(line.lineNumber)}`);
+    }
+    return { nodeId, step: nodeId, taskId: event.taskId, presentationUnavailable: true };
+  }
   if (matches.length !== 1) {
     throw new Error(
       `spans line ${line.file.path}:${String(line.lineNumber)} cannot resolve one system for ${event.t} node ${nodeId} `
@@ -252,22 +263,30 @@ function logLinesForRun(
       }
     }
     const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
+    const historical = hasRunDescriptorDrift(authority, descriptor);
     for (const { line, event } of deps.projection.runLogSnapshot(runId).entries) {
       if (event.t === "data.observed") {
         assertScopedSpanWorkflow(event, line);
         assertRunLogIdentity("span", event, line, runId, row, authority);
-        const producer = producerOf(descriptor, event, line);
-        const entry = { kind: "observed" as const, line, event, producer };
-        if (projectObservedOperatorFields(entry.event, entry.producer.operatorFields).length > 0) matches.push(entry);
+        const producer = producerOf(descriptor, event, line, historical);
+        const entry = { kind: "observed" as const, line, event: retainedObservation(event), producer, historical };
+        if (observedFieldsForLogs(entry).length > 0) matches.push(entry);
         continue;
       }
       assertScopedSpanWorkflow(event, line);
       assertRunLogIdentity("span", event, line, runId, row, authority);
-      matches.push({ kind: "transaction-fenced", line, event, producer: producerOf(descriptor, event, line) });
+      matches.push({ kind: "transaction-fenced", line, event, producer: producerOf(descriptor, event, line, historical) });
     }
     return matches.sort((left, right) => left.line.lineNumber - right.line.lineNumber);
   };
   return scan();
+}
+
+/** A retained observation as served; rows written before the OCR SSN rule are masked on read too. */
+function retainedObservation(event: Extract<SpanEventWire, { t: "data.observed" }>): Extract<SpanEventWire, { t: "data.observed" }> {
+  return { ...event, points: event.points.map((point) => ({ ...point,
+    values: point.values.map((value) => maskObservedOcrSsn(RedactedFieldSchema.parse(value))),
+  })) };
 }
 
 /** Run data retains every classified observation; Logs selects declared operator fields. */
@@ -278,15 +297,13 @@ export function runDataObservationsForRun(
 ): readonly z.infer<typeof ObservedLogRowWireSchema>[] {
   const row = deps.projection.runFold(runId);
   const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
+  const historical = hasRunDescriptorDrift(authority, descriptor);
   const observed: RunLogScanEntry[] = [];
   for (const { line, event } of deps.projection.runLogSnapshot(runId).entries) {
     if (event.t !== "data.observed") continue;
     assertScopedSpanWorkflow(event, line);
     assertRunLogIdentity("span", event, line, runId, row, authority);
-    const points = event.points.map((point) => ({ ...point,
-      values: point.values.map((value) => RedactedFieldSchema.parse(value)),
-    }));
-    observed.push({ kind: "observed", line, event: { ...event, points }, producer: producerOf(descriptor, event, line) });
+    observed.push({ kind: "observed", line, event: retainedObservation(event), producer: producerOf(descriptor, event, line, historical) });
   }
   // The projection already holds SQLite ingestion order. Stable sort keeps that
   // order for equal observation clocks, including across different day files.
@@ -303,8 +320,22 @@ function logIdOf(entry: RunLogScanEntry): string {
   return deterministicUuid(`log:${entry.line.file.path}:${String(entry.line.lineNumber)}`);
 }
 
+function historicalDisplayField(direction: "read" | "write", label: string, field: string) {
+  // Both the displayed field and its projected point omit the original value.
+  const value = "Unavailable for this historical run";
+  return { direction, label, value, point: { direction, field, values: [{ key: field, value,
+    state: "allowed" as const, classification: "safe-diagnostic" as const, transform: "allow" as const }] } };
+}
+
+function observedFieldsForLogs(entry: Extract<RunLogScanEntry, { kind: "observed" }>) {
+  if (entry.producer.presentationUnavailable) {
+    return entry.event.points.slice(0, 1).map(point => historicalDisplayField(point.direction, "Historical observation", point.field));
+  }
+  return projectObservedOperatorFields(entry.event, entry.producer.operatorFields, entry.historical);
+}
+
 export function projectObservedOperatorFields(event: Extract<SpanEventWire, { t: "data.observed" }>,
-  operatorFields: RunDetailDataOriginView["operatorFields"]) {
+  operatorFields: RunDetailDataOriginView["operatorFields"], historical = false) {
   const atPath = (value: unknown, path: readonly string[], order: readonly number[] = [], address: readonly (string | number)[] = []): readonly Readonly<{ observed: unknown; order: readonly number[]; address: readonly (string | number)[] }>[] => {
     if (Array.isArray(value)) return value.flatMap((member, index) => atPath(member, path, [...order, index], [...address, index]));
     if (path.length === 0) return [{ observed: value, order, address }];
@@ -320,6 +351,9 @@ export function projectObservedOperatorFields(event: Extract<SpanEventWire, { t:
         : value.state === "redacted" && field.fieldPath === value.key ? [{ observed: "Redacted", order: [], address: [] }] : [];
       return values.flatMap(({ observed, order, address }) => {
         if (typeof observed !== "string" && typeof observed !== "number" && typeof observed !== "boolean") return [];
+        if (value.state === "allowed" && field.display !== undefined && historical) {
+          return [{ order, field: historicalDisplayField(point.direction, field.label, field.fieldPath) }];
+        }
         const mapped = value.state === "allowed" && field.display !== undefined ? field.display.cases.find(entry => entry.value === observed) : undefined;
         if (value.state === "allowed" && field.display !== undefined && mapped === undefined) throw new LogDisplayRefusedError();
         const text = mapped?.text ?? String(observed);
@@ -405,9 +439,9 @@ function logRowOf(
       },
     };
   }
-  const { operatorFields: _operatorFields, ...producer } = entry.producer;
+  const { operatorFields: _operatorFields, presentationUnavailable: _presentationUnavailable, ...producer } = entry.producer;
   if (entry.kind === "observed") {
-    const fields = operatorOnly ? projectObservedOperatorFields(entry.event, entry.producer.operatorFields).map(field => authority?.envelope.dryRun && containsDryRunSample(field.value)
+    const fields = operatorOnly ? observedFieldsForLogs(entry).map(field => authority?.envelope.dryRun && containsDryRunSample(field.value)
       ? { ...field, label: `dry-run sample: ${field.label}` } : field) : undefined;
     return {
       kind: "observed",
