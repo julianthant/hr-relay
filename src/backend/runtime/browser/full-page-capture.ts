@@ -1,5 +1,6 @@
 import { PNG } from "pngjs";
 import type { Frame, Locator, Page } from "playwright";
+import type { BrowserCaptureFailure } from "../../../workflow-kit/session.js";
 
 const CAPTURE = { width: 1280, maxWidth: 6000, sliceHeight: 1200, sliceOverlap: 120, maxSlices: 30, maxPixels: 40_000_000 };
 
@@ -11,10 +12,15 @@ export class FullPageCaptureRefusedError extends Error {
   constructor(readonly reason: "secret-controls-present" | "page-changed") { super(reason); this.name = "FullPageCaptureRefusedError"; }
 }
 
-interface CaptureBand { buffer: Buffer; offsetCss: number; clipHeightCss: number }
+/** A capture the page's geometry or safety observer could not complete, named for the operator. */
+export class FullPageCaptureFailedError extends Error {
+  constructor(readonly reason: BrowserCaptureFailure, readonly detail?: string) { super(reason); this.name = "FullPageCaptureFailedError"; }
+}
+
+interface CaptureBand { buffer: Buffer; offsetCss: number; offsetXCss: number; clipHeightCss: number }
 interface CapturePlan { mode: "window" | "element" | "iframe"; scrollHeight: number; clientHeight: number }
 interface CaptureState {
-  scroll: (offset: number) => { x: number; y: number; width: number; height: number; offset: number };
+  scroll: (left: number, top: number) => { x: number; y: number; width: number; height: number; offset: number; offsetX: number; contentWidth: number };
   restore: () => void;
 }
 type CaptureWindow = Window & { __relayCapture?: CaptureState; __relayCaptureSecrets?: { observer: MutationObserver; seen: boolean; restore: () => void } };
@@ -29,19 +35,20 @@ function computeSliceOffsets(fullHeight: number, sliceHeight: number): number[] 
     offsets.push(clamped);
     if (clamped >= maxY) return offsets;
   }
-  throw new Error("Full-page capture exceeds the band limit");
+  throw new FullPageCaptureFailedError("band-limit");
 }
 
 function stitchCaptureBands(bands: CaptureBand[]): { bytes: Uint8Array; width: number; height: number } {
   const scale = bands[0].buffer.readUInt32BE(20) / bands[0].clipHeightCss;
   const tops = bands.map(band => Math.round(band.offsetCss * scale));
-  const width = Math.max(...bands.map(band => band.buffer.readUInt32BE(16)));
+  const lefts = bands.map(band => Math.round(band.offsetXCss * scale));
+  const width = Math.max(...bands.map((band, i) => lefts[i] + band.buffer.readUInt32BE(16)));
   const height = Math.max(...bands.map((band, i) => tops[i] + band.buffer.readUInt32BE(20)));
-  if (width * height > CAPTURE.maxPixels) throw new Error("Full-page capture exceeds the pixel limit");
+  if (width * height > CAPTURE.maxPixels) throw new FullPageCaptureFailedError("pixel-limit");
   const out = new PNG({ width, height });
   for (let i = 0; i < bands.length; i++) {
     const png = PNG.sync.read(bands[i].buffer);
-    PNG.bitblt(png, out, 0, 0, png.width, png.height, 0, tops[i]);
+    PNG.bitblt(png, out, 0, 0, png.width, png.height, lefts[i], tops[i]);
   }
   return { bytes: new Uint8Array(PNG.sync.write(out)), width, height };
 }
@@ -173,18 +180,22 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
         delete (window as CaptureWindow).__relayCapture;
         if (errors.length) throw new AggregateError(errors, "Full-page capture plan restoration failed");
       },
-      scroll(offset) {
-        if (mode === "element") target!.scrollTo({ left: 0, top: offset, behavior: "instant" });
-        else targetWindow.scrollTo({ left: 0, top: offset, behavior: "instant" });
+      scroll(left, top) {
+        if (mode === "element") target!.scrollTo({ left, top, behavior: "instant" });
+        else targetWindow.scrollTo({ left, top, behavior: "instant" });
         const r = target?.getBoundingClientRect() ?? { left: 0, top: 0, width: vw, height: Math.min(vh, scrollHeight) };
-        const x = Math.max(0, r.left + (target?.clientLeft ?? 0));
-        const y = Math.max(0, r.top + (target?.clientTop ?? 0));
-        const width = Math.min(target?.clientWidth ?? r.width, vw - x);
-        const height = Math.min(clientHeight, vh - y);
+        // Chromium paints a box at its pixel-snapped edges, scrolled content with it; a sub-pixel clip loses a band row.
+        const dpr = window.devicePixelRatio || 1;
+        const left0 = Math.max(0, r.left + (target?.clientLeft ?? 0));
+        const top0 = Math.max(0, r.top + (target?.clientTop ?? 0));
+        const x = Math.round(left0 * dpr) / dpr;
+        const y = Math.round(top0 * dpr) / dpr;
+        const width = Math.round(Math.min(left0 + (target?.clientWidth ?? r.width), vw) * dpr) / dpr - x;
+        const height = Math.round(Math.min(top0 + clientHeight, vh) * dpr) / dpr - y;
         const contentDocument = mode === "iframe" ? bestFrame!.contentDocument! : document;
-        const requiredWidth = mode === "element" ? target!.scrollWidth : Math.max(contentDocument.documentElement.scrollWidth, contentDocument.body?.scrollWidth ?? 0);
-        if (requiredWidth > width) throw new Error("Full-page capture has uncaptured horizontal overflow");
-        return { x, y, width, height, offset: mode === "element" ? target!.scrollTop : targetWindow.scrollY };
+        const contentWidth = mode === "element" ? target!.scrollWidth : Math.max(contentDocument.documentElement.scrollWidth, contentDocument.body?.scrollWidth ?? 0);
+        return { x, y, width, height, contentWidth,
+          offset: mode === "element" ? target!.scrollTop : targetWindow.scrollY, offsetX: mode === "element" ? target!.scrollLeft : targetWindow.scrollX };
       },
     };
     if (target) {
@@ -237,11 +248,12 @@ export async function captureFullPage(page: Page, options: Readonly<{
     await options.assertSafe();
     for (const frame of frames) {
       assertCurrent();
-      if (await frame.evaluate(() => {
+      const seen = await frame.evaluate(() => {
         const state = (window as CaptureWindow).__relayCaptureSecrets;
-        if (state === undefined || typeof state.seen !== "boolean" || !(state.observer instanceof MutationObserver)) throw new Error("Full-page capture safety observer is unavailable");
-        return state.seen;
-      })) throw new FullPageCaptureRefusedError("secret-controls-present");
+        return state === undefined || typeof state.seen !== "boolean" || !(state.observer instanceof MutationObserver) ? "unavailable" : state.seen;
+      });
+      if (seen === "unavailable") throw new FullPageCaptureFailedError("observer-unavailable");
+      if (seen) throw new FullPageCaptureRefusedError("secret-controls-present");
     }
     assertCurrent();
   };
@@ -254,24 +266,48 @@ export async function captureFullPage(page: Page, options: Readonly<{
     const plan = await planScrollCapture(page);
     assertCurrent();
     const bandHeight = Math.max(1, Math.min(plan.clientHeight, CAPTURE.sliceHeight));
+    const scrollTo = async (left: number, top: number) => {
+      assertCurrent();
+      const clip = await page.evaluate(([left, top]) => (window as CaptureWindow).__relayCapture!.scroll(left, top), [left, top] as const);
+      assertCurrent();
+      return clip;
+    };
+    // A target wider than its box, such as a timecard grid, is captured in columns as well as bands.
+    const first = await scrollTo(0, 0);
+    if (first.contentWidth > CAPTURE.maxWidth) throw new FullPageCaptureFailedError("horizontal-overflow");
+    const bandWidth = Math.max(1, first.width);
+    const rows = computeSliceOffsets(plan.scrollHeight, bandHeight);
+    const columns = computeSliceOffsets(first.contentWidth, bandWidth);
+    if (rows.length * columns.length > CAPTURE.maxSlices) throw new FullPageCaptureFailedError("band-limit");
     const bands: CaptureBand[] = [];
     let coveredTo = 0;
-    for (const offset of computeSliceOffsets(plan.scrollHeight, bandHeight)) {
-      assertCurrent();
-      const clip = await page.evaluate(offset => (window as CaptureWindow).__relayCapture!.scroll(offset), offset);
-      assertCurrent();
-      await page.waitForTimeout(250);
-      await assertSafe();
-      const { offset: actualOffset, ...rect } = clip;
-      rect.height = Math.min(rect.height, bandHeight);
-      if (actualOffset > coveredTo) throw new Error("Full-page capture has an unpainted gap");
-      coveredTo = Math.max(coveredTo, actualOffset + rect.height);
-      assertCurrent();
-      const buffer = await page.screenshot({ type: "png", clip: rect, mask: options.mask() });
-      await assertSafe();
-      bands.push({ buffer, offsetCss: actualOffset, clipHeightCss: rect.height });
+    let widest = first.contentWidth;
+    for (const top of rows) {
+      let rowOffset: number | undefined;
+      let coveredX = 0;
+      let rowHeight = 0;
+      for (const left of columns) {
+        const { offset: actualOffset, offsetX, contentWidth, ...rect } = await scrollTo(left, top);
+        await page.waitForTimeout(250);
+        await assertSafe();
+        rect.height = Math.min(rect.height, bandHeight);
+        rect.width = Math.min(rect.width, bandWidth);
+        widest = Math.max(widest, contentWidth);
+        if ((rowOffset ?? actualOffset) !== actualOffset || actualOffset > coveredTo || offsetX > coveredX) throw new FullPageCaptureFailedError("unpainted-gap");
+        rowOffset = actualOffset;
+        coveredX = Math.max(coveredX, offsetX + rect.width);
+        rowHeight = rect.height;
+        assertCurrent();
+        const buffer = await page.screenshot({ type: "png", clip: rect, mask: options.mask() });
+        await assertSafe();
+        bands.push({ buffer, offsetCss: actualOffset, offsetXCss: offsetX, clipHeightCss: rect.height });
+      }
+      if (coveredX < widest) throw new FullPageCaptureFailedError("horizontal-overflow");
+      coveredTo = Math.max(coveredTo, (rowOffset ?? 0) + rowHeight);
     }
-    if (coveredTo < plan.scrollHeight) throw new Error("Full-page capture did not reach the content bottom");
+    if (coveredTo < plan.scrollHeight) {
+      throw new FullPageCaptureFailedError("content-bottom-unreached", `page-capture-covered-${String(Math.floor(coveredTo))}-of-${String(plan.scrollHeight)}px`);
+    }
     assertCurrent();
     const image = stitchCaptureBands(bands);
     if ((options.sampleLabels?.length ?? 0) === 0) return image;
@@ -290,7 +326,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
     await assertSafe();
     const source = PNG.sync.read(Buffer.from(image.bytes));
     const width = Math.max(source.width, banner.width), height = source.height + banner.height;
-    if (width * height > CAPTURE.maxPixels) throw new Error("Labelled capture exceeds the pixel limit");
+    if (width * height > CAPTURE.maxPixels) throw new FullPageCaptureFailedError("pixel-limit");
     const labelled = new PNG({ width, height });
     labelled.data.fill(255);
     PNG.bitblt(banner, labelled, 0, 0, banner.width, banner.height, 0, 0);

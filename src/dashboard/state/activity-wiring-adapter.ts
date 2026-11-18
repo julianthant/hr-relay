@@ -41,7 +41,7 @@ function projectAnalytics(selection: ActivityPopulationSelection): AnalyticsData
       failedAt: workflow.failedAt.map(step => ({ label: step.state === "known" ? step.title : "Step not recorded", runs: step.runs })),
       days: workflow.days.map(day => ({ date: day.day, ...day.outcomes, seconds: day.typicalTime.medianMs.state === "present" ? day.typicalTime.medianMs.value / 1000 : null })),
     })),
-    reasons: report.failures.map(failure => ({ label: failure.sentence, workflow: label(failure), runs: failure.runs })),
+    assistant: { messages: report.assistantMessages.days.map(row => ({ date: row.day, count: row.count })), actions: report.assistantActions.days.map(row => ({ date: row.day, proposed: row.proposed })) },
   };
 }
 

@@ -507,7 +507,7 @@ export function Switch({
   className?: string;
 }) {
   return (
-    <HeroSwitch name={name} isSelected={checked} onChange={onCheckedChange} isDisabled={disabled} className={cn("ds-switch-row flex items-start gap-[var(--ds-space-base)]", className)}>
+    <HeroSwitch name={name} isSelected={checked} onChange={onCheckedChange} isDisabled={disabled} className={cn("ds-switch-row relative flex items-start gap-[var(--ds-space-base)] [&_span:has(>input)]:!absolute [&_span:has(>input)]:!z-10 [&_span:has(>input)]:!inset-0 [&_span:has(>input)]:!m-0 [&_span:has(>input)]:!h-full [&_span:has(>input)]:!w-full [&_span:has(>input)]:![clip:auto] [&_span:has(>input)]:![clip-path:none] [&_span:has(>input)]:!overflow-visible [&_input]:!absolute [&_input]:!inset-0 [&_input]:!m-0 [&_input]:!h-full [&_input]:!w-full [&_input]:!cursor-pointer [&_input]:!opacity-0", className)}>
       <HeroSwitch.Content className="ds-switch-content flex min-w-0 flex-1 flex-row-reverse items-center justify-between">
         <HeroSwitch.Control onClick={event => { event.preventDefault(); event.stopPropagation(); if (!disabled) onCheckedChange(!checked); }} className={cn(
         "ds-switch-control relative inline-flex shrink-0 cursor-pointer items-center rounded-full border",

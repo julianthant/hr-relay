@@ -6,7 +6,7 @@ import { MemberRunControls } from "./log-member-controls.js";
 import type { DelegatedRecordRef } from "../../../../models/workflow/delegated-record.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import type { WorkflowSource } from "../../../app/workflow-sources.js";
-import { Badge, Button, IconButton, Notice } from "../../../ds/ui.js";
+import { Badge, Banner, Button, FailureNotice, IconButton, Notice } from "../../../ds/ui.js";
 import type { DashboardActionHandler } from "../../shared/actions/actions.js";
 import { LogPanel } from "../log-panel.js";
 import { linkedRunEntries } from "../linked-runs-model.js";
@@ -22,14 +22,15 @@ import { continuedLookupTimeline } from "./log-selected-fixture.js";
 import { pauseTimeline, type LogTimelineStage } from "./log-timeline-model.js";
 import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
-import { LogSkeleton } from "../../shared/loading/loading.js";
-import { queueRowTitle } from "../../queue/queue-model.js";
+import { LogFeedPadding, LogSkeleton, LogTimelineSkeleton } from "../../shared/loading/loading.js";
+import { RunStateChips } from "../run-state-chips.js";
+import { isNeedsDuo, queueRowTitle } from "../../queue/queue-model.js";
 import { RunReview } from "../review/review.js";
 import { ReviewDialog } from "../review/review-dialog.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
 import { batchMemberRetryAction } from "../../../app/commands/command-dispatch.js";
 
-type ServedNavigation = Readonly<{ reviewOpen?: boolean; reviewFocus?: DelegatedRecordRef; onReview?: () => void; onLogs?: () => void; onAction?: DashboardActionHandler; onOpenLinked?: (target: LinkedRunWire) => void }>;
+type ServedNavigation = Readonly<{ reviewOpen?: boolean; reviewFocus?: DelegatedRecordRef; onReview?: () => void; onLogs?: () => void; onAction?: DashboardActionHandler; onOpenLinked?: (target: LinkedRunWire) => void; onRetryLogs?: () => void }>;
 
 /** Rerun sits in the Logs footer when the row serves a rerun action. */
 function withoutConfirm(action: ActionDescriptorWire): ActionDescriptorWire {
@@ -50,7 +51,7 @@ export function LogSample({ selection, source = "served", initialStepId, confirm
   return <PreviewLogSample selection={selection} onAction={navigation.onAction} />;
 }
 
-function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, reviewFocus, onReview, onLogs, onAction, onOpenLinked }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
+function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, reviewFocus, onReview, onLogs, onAction, onOpenLinked, onRetryLogs }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
   const client = useDashboardClient();
   const binding = useDashboardCommandBinding();
   const resource = useRunWiring(client, selection, binding, confirm);
@@ -80,8 +81,9 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     const action = selection.row.actions.find(candidate => candidate.key === key);
     if (action !== undefined) onAction?.(isCancelOption(option) ? withoutConfirm(action) : action, target);
   }, [resource, selection.row.actions, onAction, target]);
-  const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <Notice tone="danger" title={logsReadFailedTitle} description={resource.error} /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, logsReadFailedTitle]);
-  const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Notice tone="danger" title={logsUnavailableTitle} description={resource.error} /> : undefined : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, resource.error]);
+  const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <Notice tone="danger" title={logsReadFailedTitle} description="Relay could not refresh these logs." /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, logsReadFailedTitle]);
+  const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogFeedPadding><LogSkeleton /></LogFeedPadding> : resource.state === "failed" ? <div className="p-4"><FailureNotice sentence="Relay could not load this run's logs." stillWorks="The queue and the other runs still work."
+    action={onRetryLogs === undefined ? undefined : { label: "Retry", onClick: onRetryLogs }} /></div> : undefined : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, onRetryLogs]);
   const afterStep = useCallback((id: string) => {
     const findings = projection.ucpathFindings;
     const showFindings = findings?.stepId === id;
@@ -107,11 +109,13 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     if (!records && rerun === undefined && !members) return undefined;
     return <><MemberRunControls selection={selection} onAction={onAction} />{records && <LogFooterButton label={`Records ${recordCount}`} count={recordCount} pressed={Boolean(reviewOpen)} icon={<ListChecks aria-hidden className="size-4" />} onClick={onReview} />}{rerun}</>;
   }, [reviewAvailable, recordCount, onReview, reviewOpen, rerun, selection, onAction]);
+  const status = useMemo(() => <RunStateChips row={selection.row} />, [selection.row]);
   const toolbar = useMemo(() => <>{resource.snapshot?.detail.ocrReviewChanges !== undefined && <Notice sticky tone="warning" title="Earlier review changes no longer apply" description="Review the new values." />}{resource.snapshot?.detail.childRetry !== undefined && <IconButton size="md" label={resource.snapshot.detail.childRetry.label}
     icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}
       {batchRetry !== undefined && <IconButton size="md" label={batchRetry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onBatchMemberRetry === undefined} onClick={resource.onBatchMemberRetry} />}
       {retry !== undefined && onAction !== undefined && <IconButton size="md" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,retry,onAction,retryEnabled,retryRun,feedback]);
   return <><LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
+    status={status} navigation={resource.snapshot === undefined && resource.state === "loading" ? <LogTimelineSkeleton /> : isNeedsDuo(selection.row) ? <div className="px-3 py-2"><Banner tone="info" title="Approve the Duo sign-in"><span>Open Duo on your phone and approve the sign-in. The run continues once you do.</span></Banner></div> : undefined}
     onReview={reviewAvailable ? onReview : undefined}
     toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} footerActions={footerActions}
     content={content}
@@ -146,7 +150,7 @@ function PreviewLogSample({ selection, onAction }: { selection?: LogSelection; o
     });
   };
   const cancelPreview = (id: string) => setEdited(current => ({ basis, timeline: current?.basis === basis ? current.timeline : scenario.timeline, steps: answerSteps(current, id, "cancel-run", "Cancel run") }));
-  return <LogPanel key={basis} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : cancelPreview} footerActions={scenarioId === "preview" || scenarioId === "selected" ? <>{selection && <MemberRunControls selection={selection} onAction={onAction} preview />}{rerunFooterButton(selection, onAction)}</> : undefined} />;
+  return <LogPanel key={basis} status={selection === undefined ? undefined : <RunStateChips row={selection.row} />} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : cancelPreview} footerActions={scenarioId === "preview" || scenarioId === "selected" ? <>{selection && <MemberRunControls selection={selection} onAction={onAction} preview />}{rerunFooterButton(selection, onAction)}</> : undefined} />;
 }
 
 /** A fixture has no clock; the preview answer carries a fixed instant. */

@@ -55,7 +55,7 @@ async function mode(value: string) { const radio = document.querySelector<HTMLIn
 async function select(index: number) { const checkbox = checkboxRows()[index]; assert.ok(checkbox); await act(async () => checkbox.click()); }
 async function chooseCurrent() { await h.chooseReference('Roster', 'Reviewed', 'First'); }
 function proposal(request: StartPlanRequest, partial = false) {
-  return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), workflowId: descriptorId,
+  return StartPlanWireSchema.parse({ ...h.planResponse("5a000000-0000-4000-8000-000000000001"), workflowId: descriptorId, priority: request.priority,
     ...(request.rerunSource ? { rerun: { source: request.rerunSource, warnings: [], warningDigest: h.HASH, acknowledgment: request.warningAcknowledgment } } : {}),
     planned: request.submissions.flatMap((_, index) => partial && index === 1 ? [] : [{ logicalKey: `entry-${index}`, title: `Row ${index + 1}`, matchKey: `row-${index}`,
       workbookReferences: (request.workbookReferences ?? []).filter(reference => reference.entry === index + 1).map(reference => ({ libraryId: reference.libraryId, version: 1, versionId: reference.versionId, versionName: "Reviewed", worksheets: entry.worksheets.filter(sheet => sheet.id === reference.sheetId).map(sheet => ({ sheetId: sheet.id, name: sheet.name })), type: entry.type,
@@ -119,8 +119,8 @@ it("uses saved rows only, requires a common explicit mode and preserves duplicat
   assert.deepEqual(planned.workbookReferences?.map(reference => [reference.entry, reference.libraryId, reference.versionId, reference.selectedRow]), [
     [1, "roster", "version", { sheetId: "first", rowId: "same-row" }], [2, "roster", "version", { sheetId: "first", rowId: "next-row" }],
   ]);
-  assert.match(dialog.text(), /Entry 2/u);
-  assert.match(dialog.text(), /First · Row 3: duplicate@example.test/u); assert.match(dialog.text(), /Duplicate email refused/u);
+  assert.match(dialog.text(), /First · Row 3: duplicate@example\.test already has a run in progress\./u);
+  assert.doesNotMatch(dialog.text(), /Duplicate email refused/u, "the refusal notice is one plain sentence, never the server text");
 });
 
 it("retains the original issued envelope after an unknown result and later mode edits", async () => {

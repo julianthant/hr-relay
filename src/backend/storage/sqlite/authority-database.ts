@@ -14,7 +14,7 @@ import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
 import { existsSync,statSync } from "node:fs";
 import { basename,dirname,join } from "node:path";
-import { DatabaseSync,backup as sqliteBackup,type SQLInputValue } from "node:sqlite";
+import { DatabaseSync,backup as sqliteBackup,type SQLInputValue,type SQLTagStore } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ArtifactRefSchema,type ArtifactRef } from "../../../models/artifacts/artifacts.js";
@@ -29,7 +29,7 @@ import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { ConfigSnapshotRecordSchema,type ConfigSnapshotRecord,ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
 import { ConfirmationPublicationSchema,confirmationPublicationFromRow,confirmedOperationTimeline,reconstructConfirmedOperation,type ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
-import { TimelineEventRecordSchema,TimelinePageRequestSchema,timelineAppendContent,timelineCheckpointReference,type TimelineAppend,type TimelineRepository } from "../../../models/events/timeline.js";
+import { TimelineEventRecordSchema,TimelinePageRequestSchema,timelineAppendContent,timelineCheckpointReference,type TimelineAppend,type TimelineEventRecord,type TimelineRepository } from "../../../models/events/timeline.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
@@ -70,7 +70,6 @@ import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-roo
 import { inspectArtifactDeletionFile,pendingDiagnosticArtifacts,reclaimDiagnosticStages,removeArtifactDeletionFile } from "../artifacts/content-addressed-artifact-writer.js";
 import { fileIdentityObservation,sameDirectory,type DirectoryIdentity, clearOperationProofSlots,outermostOperationProof,readPrivateFile,revalidateOperationProof,withOperationProof } from "../configuration/credential-safe-file.js";
 import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
-import { readTimelineRecords } from "../events/timeline-reader.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { fixedLayoutOutputPaths,fixedLayoutSettingsUpdate,readFixedLayoutIntent,type FixedLayoutActivation } from "../maintenance/fixed-layout.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
@@ -106,7 +105,7 @@ import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } fro
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
-import { createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,validateWorkbookLibrary,WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION } from "./workbook-library-repository.js";
+import { createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,validateWorkbookLibrary,WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION,WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from "./workbook-library-repository.js";
 
 import { DryRunScenarioResultSchema,type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
@@ -665,6 +664,9 @@ export type AuthorityRepositories = Readonly<{
 }>;
 
 const JsonRowSchema = z.strictObject({ payload_json: z.string() });
+// Native diagnostics and notes are the timeline's high-volume streams; storage inspection never reads them.
+const INSPECTED_TIMELINE_KINDS = "kind NOT IN ('debug','note')";
+export type EarlierRunEvents = (runId: string, beforeCursor: number, each: (record: TimelineEventRecord) => void) => void;
 const RecordKeyRowSchema = z.strictObject({ id: z.string() });
 const ProtectedSettingsWriteIdLookupSchema = z.strictObject({
   writeId: z.uuid(),
@@ -1384,7 +1386,7 @@ function validateAuthorityFamilies(context: StoredRowContext, workbookPayloads =
   const { database, expectedSchemaVersion, convertPreferences } = context;
   let validated = 0;
   if (families.has("workbook") && workbookPayloads && expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13, expectedSchemaVersion >= 18,
-    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version);
+    expectedSchemaVersion >= WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION.version, expectedSchemaVersion >= WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.version);
   // Below schema 27 the stored effort is converted only by the upgrade; the upgraded copy is inspected again at the current version.
   if (families.has("assistant-preference") && expectedSchemaVersion >= ASSISTANT_EFFORT_SCALE_VERSION) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   if (families.has("settings")) try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
@@ -2377,12 +2379,16 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artif
       return Object.freeze([...references.values()].sort((a, b) => a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0).map(reference => Object.freeze(reference)));
 }
 
+/** The WAL file is cut back to this size whenever a checkpoint lets it restart: two automatic checkpoints' worth of 4 KiB pages. */
+export const AUTHORITY_WAL_SIZE_LIMIT_BYTES = 8 * 1024 * 1024;
+
 export function configureWritableConnection(database: DatabaseSync, busyTimeoutMs: number): void {
   database.exec("PRAGMA foreign_keys = ON");
   // Enable secure deletion so freed SQLite pages do not retain deleted run bytes.
   database.exec("PRAGMA secure_delete = ON");
   database.exec("PRAGMA journal_mode = WAL");
   database.exec("PRAGMA synchronous = FULL");
+  database.exec(`PRAGMA journal_size_limit = ${String(AUTHORITY_WAL_SIZE_LIMIT_BYTES)}`);
   database.exec(`PRAGMA busy_timeout = ${String(busyTimeoutMs)}`);
 }
 
@@ -2395,6 +2401,8 @@ export class AuthorityDatabase implements Disposable {
   #busyTimeoutMs: number;
   #credentialCommandIds: (commandId: string) => boolean;
   #closed = false;
+  /** Statements reused across reads: only the run lookup a queue read repeats per row, used with get(), never iterate(). */
+  #statements: SQLTagStore;
   #openedFileIdentity: DirectoryIdentity | undefined;
   #coldLogout: Readonly<{ machine: RuntimeAdmission; operationId: string; admission: RuntimeAdmission; restore: OfflineMaintenanceOperation;
     sourcePath: string; owner: RuntimeAdmission; inspection: ReturnType<RuntimeAdmission["capturePendingLogoutSnapshot"]> }> | undefined;
@@ -2501,6 +2509,7 @@ export class AuthorityDatabase implements Disposable {
       allowUnknownNamedParameters: false,
       defensive: true,
     });
+    this.#statements = this.#database.createTagStore(1);
 
     const admittedDataVersion = readIntPragma(this.#database, "data_version");
     try {
@@ -3255,29 +3264,62 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  /** Event evidence and its complete authority identity from one read-only snapshot. */
-  static inspectTimelineReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250, includeRecoveryEvidence = false) {
+  /**
+   * Visits, in cursor order, every timeline record except native diagnostics and notes, with the
+   * complete authority identity of the same read-only snapshot. Records are read a page at a time,
+   * so the inspection holds no more than one page however long ordinary retention lets the timeline grow.
+   * `earlier` re-reads, from the same snapshot, one run's run-scoped events before a cursor.
+   */
+  static inspectTimelineReadOnly(admission: RuntimeAdmission, path: string, visit: (record: TimelineEventRecord, earlier: EarlierRunEvents) => void,
+    busyTimeoutMs = 250, includeRecoveryEvidence = false) {
     requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-    let timeline: ReturnType<typeof readTimelineRecords> | undefined;
+    let visited = false;
     let recoveryEvidence: Readonly<{
       runs: readonly Readonly<{ runId: RunRecord["envelope"]["runId"]; workflow: string; traceId: string; version: number;
         possibleExternalWrite: boolean; attemptIds: readonly string[]; confirmations: readonly string[] }>[];
       deleted: readonly DeletedRunRecord[];
     }> | undefined;
     const identity = withDirectReaderAdmission(admission, () => inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs, (database) => {
-      const metrics = z.object({ records: z.number().int().nonnegative(), bytes: z.number().int().nonnegative(),
-        largest: z.number().int().nonnegative(), runs: z.number().int().nonnegative() }).parse(database.prepare(`
-        SELECT count(*) AS records, COALESCE(sum(length(CAST(payload_json AS BLOB))),0) AS bytes,
-          COALESCE(max(length(CAST(payload_json AS BLOB))),0) AS largest, count(DISTINCT run_id) AS runs
-        FROM timeline_events
+      const metrics = z.object({ largest: z.number().int().nonnegative(), runs: z.number().int().nonnegative() }).parse(database.prepare(`
+        SELECT COALESCE(max(length(CAST(payload_json AS BLOB))),0) AS largest, count(DISTINCT run_id) AS runs
+        FROM timeline_events WHERE ${INSPECTED_TIMELINE_KINDS}
       `).get());
-      if (metrics.records > 100_000) throw new TimelineRecordError("timeline-doctor-record-limit-exceeded: 100000 records");
-      if (metrics.bytes > 16 * 1024 * 1024) throw new TimelineRecordError("timeline-doctor-payload-limit-exceeded: 16777216 bytes");
       if (metrics.largest > 256 * 1024) throw new TimelineRecordError("timeline-doctor-event-limit-exceeded: 262144 bytes");
       if (metrics.runs > 10_000) throw new TimelineRecordError("timeline-doctor-run-limit-exceeded: 10000 run IDs");
-      const repository = createTimelineRepository({ database, read: (work) => work(),
-        mutate: () => { throw new Error("timeline-doctor-read-only"); }, assertOwner: () => {} });
-      timeline = readTimelineRecords(repository);
+      // Confirmations survive ordinary retention. Compare their immutable content,
+      // independently of mutable run versions and database-local delivery cursors.
+      const confirmationsByRun = new Map<string, string[]>();
+      const fenced = new Set<string>();
+      const page = database.prepare(`SELECT * FROM timeline_events WHERE cursor > ? AND ${INSPECTED_TIMELINE_KINDS} ORDER BY cursor LIMIT 500`);
+      const runPage = database.prepare(`SELECT * FROM timeline_events WHERE run_id = ? AND cursor > ? AND cursor < ?
+        AND kind <> 'run.queued' AND ${INSPECTED_TIMELINE_KINDS} ORDER BY cursor LIMIT 500`);
+      const earlier: EarlierRunEvents = (runId, before, each) => {
+        for (let after = 0; ;) {
+          const rows = runPage.all(runId, after, before);
+          for (const raw of rows) {
+            const record = timelineEventFromRow(raw);
+            after = record.cursor;
+            each(record);
+          }
+          if (rows.length < 500) return;
+        }
+      };
+      for (let after = 0; ;) {
+        const rows = page.all(after);
+        for (const raw of rows) {
+          const record = timelineEventFromRow(raw);
+          after = record.cursor;
+          if (record.payload.kind === "operation-confirmed" && record.scope.kind === "run") {
+            const digest = createHash("sha256").update(timelineAppendContent(record)).digest("hex");
+            const owned = confirmationsByRun.get(record.scope.runId);
+            if (owned === undefined) confirmationsByRun.set(record.scope.runId, [digest]);
+            else owned.push(digest);
+          } else if (record.payload.kind === "span" && record.payload.event.t === "transaction.fenced") fenced.add(record.payload.event.runId);
+          visit(record, earlier);
+        }
+        if (rows.length < 500) break;
+      }
+      visited = true;
       if (!includeRecoveryEvidence) return;
       const attempts = database.prepare("SELECT * FROM write_attempts").all().map((row) =>
         WriteAttemptRecordSchema.parse(nativeOrdinaryRecordFromRow("write_attempts", row)));
@@ -3287,18 +3329,6 @@ export class AuthorityDatabase implements Disposable {
         if (owned === undefined) attemptsByRun.set(attempt.runId, [attempt]);
         else owned.push(attempt);
       }
-      // Confirmations survive ordinary retention. Compare their immutable content,
-      // independently of mutable run versions and database-local delivery cursors.
-      const confirmationsByRun = new Map<string, string[]>();
-      for (const record of timeline.records) {
-        if (record.payload.kind !== "operation-confirmed" || record.scope.kind !== "run") continue;
-        const digest = createHash("sha256").update(timelineAppendContent(record)).digest("hex");
-        const owned = confirmationsByRun.get(record.scope.runId);
-        if (owned === undefined) confirmationsByRun.set(record.scope.runId, [digest]);
-        else owned.push(digest);
-      }
-      const fenced = new Set(timeline.records.flatMap((row) => row.payload.kind === "span"
-        && row.payload.event.t === "transaction.fenced" ? [row.payload.event.runId] : []));
       const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map((raw) => {
         const run = runRecordFromRow(raw);
         const owned = attemptsByRun.get(run.envelope.runId) ?? [];
@@ -3310,8 +3340,8 @@ export class AuthorityDatabase implements Disposable {
       const deleted = database.prepare("SELECT * FROM deleted_runs").all().map((row) => deletedRunFromRow(row).receipt);
       recoveryEvidence = { runs, deleted };
     }));
-    if (timeline === undefined || (includeRecoveryEvidence && recoveryEvidence === undefined)) throw new Error("timeline-read-snapshot-missing");
-    return { ...identity, ...timeline, recoveryEvidence };
+    if (!visited || (includeRecoveryEvidence && recoveryEvidence === undefined)) throw new Error("timeline-read-snapshot-missing");
+    return { ...identity, recoveryEvidence };
   }
 
   /** Recovery evidence of a preserved suspect at any openable schema, from columns every such schema has. */
@@ -3924,11 +3954,11 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  /** Systems whose live Duo ceremony lease this worker holds. */
-  heldDuoSystems(workerId: string): readonly string[] {
+  /** Live Duo ceremony leases this worker holds, with their original acquisition times. */
+  heldDuoLeases(workerId: string) {
     return this.withAuthorityReadSnapshot(() => this.#database.prepare("SELECT * FROM auth_leases WHERE holder_worker_id=? AND state='held'").all(workerId)
       .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema))
-      .filter(lease => isDuoCeremonyLeaseLive(lease, this.#clock.now().getTime())).map(lease => lease.holder.system));
+      .filter(lease => isDuoCeremonyLeaseLive(lease, this.#clock.now().getTime())).map(lease => ({ system: lease.holder.system, since: lease.acquiredAt })));
   }
 
   withAuthorityReadSnapshot<Result>(read: () => Result): Result {
@@ -5075,7 +5105,7 @@ export class AuthorityDatabase implements Disposable {
       return row === undefined ? undefined : schema.parse(commandFromRow(row));
     }
     if (table === "runs") {
-      const row = this.#database.prepare("SELECT * FROM runs WHERE id = ?").get(recordKey);
+      const row = this.#statements.get`SELECT * FROM runs WHERE id = ${recordKey}`;
       if (row === undefined) return undefined;
       const record = runRecordFromRow(row);
       return Object.is(schema, RunRecordSchema) ? structuredClone(record) as z.output<Schema> : schema.parse(record);

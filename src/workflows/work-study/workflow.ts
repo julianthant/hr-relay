@@ -13,7 +13,7 @@ export const workStudyWorkflow = defineWorkflow({
   requiredWorkbookFields: [], workbookCheck: REFERENCE_CHECK,
   input: WorkStudyInput, canonicalInput: WorkStudyCanonicalInput, inputSubject: "eid",
   surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
-  surfaces: { inputRun: { placeholder: "10000001, 10000002", parser: WORK_STUDY_INPUT_PARSER, typedInput: WORK_STUDY_TYPED_INPUT } },
+  surfaces: { inputRun: { placeholder: "10000001; 10000002", parser: WORK_STUDY_INPUT_PARSER, typedInput: WORK_STUDY_TYPED_INPUT } },
   role: defineWorkflowRole({ kind: "composition" }), scenarios: ["work-study/planned-transaction", "work-study/verified-save", "work-study/already-filed", "work-study/unknown", "work-study/reference-check"],
   identity: { matchKey: input => `${input.emplId}:${input.effectiveDate}` },
   presentation: { title: input => input.emplId, subtitle: () => "PayPath work-study transaction" },
@@ -22,6 +22,10 @@ export const workStudyWorkflow = defineWorkflow({
     { key: "effective-date", label: "Effective date", source: { kind: "result", fieldPath: "plan.effectiveDate" }, display: "text" },
   ],
   verdicts: [],
+  rows: [
+    { key: "ucpath-auth", label: "Sign in to UCPath", members: [{ step: "ucpath-auth" }, { step: "reference-check" }] },
+    { key: "transaction", label: "Submit work-study transaction", members: [{ step: "transaction" }] },
+  ],
   steps: author => {
     const read = workStudyUcpathAuthDefinition.build(author), reference = workStudyReferenceCheckDefinition.build(author, read);
     const transaction = workStudyTransactionDefinition.build(author, read, reference);

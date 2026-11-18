@@ -49,6 +49,7 @@ export function createDashboardModelFixtures() {
     startedAt: NOW,
     updatedAt: NOW,
     endedAt: { state: "absent", reason: "run is running" },
+    operatorWait: { state: "absent" },
     gateOpenedAt: { state: "absent", reason: "run is running and is not waiting on a gate" },
     displayName: { state: "absent", reason: "the operator has not renamed this run" },
     title: "Onboard employee",
@@ -66,7 +67,7 @@ export function createDashboardModelFixtures() {
         placement: ["footer", "menu"], kind: "command", command: "cancel", expectedVersion: 1,
         confirm: {
           title: "Cancel this run",
-          body: "This stops the run where it is and settles it cancelled.",
+          body: "Final: a cancelled run is never resumed.",
           confirmLabel: "Cancel the run",
           tone: "destructive",
         },

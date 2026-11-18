@@ -27,9 +27,23 @@ export const REFERENCE_CHECK_STEP = Object.freeze({
         { id: "check-person", kind: "check", text: "Confirm the reviewed Employee ID, and the name when the sheet has one, in each picked spreadsheet.", nodeIds: [REFERENCE_CHECK_NODE] },
         { id: "ask-before-saving", kind: "check", text: "In a live run, ask before the first save when a picked spreadsheet does not hold the person or names them differently.", nodeIds: [REFERENCE_STOP_NODE, REFERENCE_CHECK_REVIEW_GATE] },
       ],
-      fields: [],
+      fields: [{ id: "reference-line", label: "Reference spreadsheet", example: "Example eligibility · Awards: name differs in row 3",
+        taskFields: [{ nodeId: REFERENCE_CHECK_NODE, kind: "output", fieldPath: "checks.line" }],
+        source: { origin: "Picked reference spreadsheets", detail: "The reviewed Employee ID and name checked against the versions picked for this run.", chain: [] } }],
     }],
     branchLabels: [],
+    decisions: [
+      { id: "reference-result", label: "Reference check", reads: { nodeId: REFERENCE_CHECK_NODE, fieldPath: "result" },
+        nodeIds: [REFERENCE_CHECK_NODE, REFERENCE_STOP_NODE], initial: { by: "hire-approval", values: { "new-hire": "no-person" }, otherwise: "confirmed" }, outcomes: [
+          { value: "confirmed", label: "Person confirmed", then: "Continues to the approved hire plan." },
+          { value: "unconfirmed", label: "Person not confirmed", then: "In a live run, waits for your review in Logs before the first save; a dry run continues without asking." },
+          { value: "no-person", label: "No person to check", then: "A new hire has no Employee ID yet, so the run continues without a reference match." },
+        ] },
+      { id: "reference-check-review", label: "Review reference spreadsheets", reads: { nodeId: REFERENCE_CHECK_REVIEW_GATE, fieldPath: "decision" },
+        nodeIds: [REFERENCE_CHECK_REVIEW_GATE], initial: "continue", when: [{ "dry-run": ["false"], "reference-result": ["unconfirmed"] }],
+        outcomes: [{ value: "continue", label: "Continue anyway", then: "Continues to the approved hire plan after you approve in Logs." }],
+        cancellation: { label: "Cancel run", then: "Cancels the run before any I-9 or UCPath change is saved." } },
+    ],
   } as const,
 });
 
@@ -49,10 +63,14 @@ const reviewEntry = entries.operatorGate(REFERENCE_CHECK_REVIEW_GATE, {
 const ReferenceCheckStepResultSchema = z.strictObject({ check: VerifyWorkbookPerson.output.nullable() });
 
 /** Checks the Employee ID the hire review settled on; a new hire has none yet, so its check finds no person and never asks. */
-export function buildReferenceCheck(author: WorkflowAuthor<typeof OnboardingInput>, crm: ReturnType<typeof buildCrmData>, reviewed: ReturnType<typeof buildHireReview>) {
-  const check = author.task(checkEntry, [crm.plan, reviewed.approval], ({ outputs }) => {
-    const approval = outputs[ONBOARDING_WRITE_REVIEW_GATE], employee = outputs["hire-plan"].employee;
-    return { typeId: REFERENCE_CHECK.id, eid: approval.decision === "existing-person" ? approval.emplId : null, name: `${employee.firstName} ${employee.lastName}` };
+export function buildReferenceCheck(author: WorkflowAuthor<typeof OnboardingInput>, crm: ReturnType<typeof buildCrmData>,
+  ucpath: ReturnType<typeof buildUcpathSearch>, reviewed: ReturnType<typeof buildHireReview>) {
+  const check = author.task(checkEntry, [crm.plan, ucpath.subject, reviewed.approval], ({ outputs }) => {
+    const approval = outputs[ONBOARDING_WRITE_REVIEW_GATE], subject = outputs["hire-subject"], employee = outputs["hire-plan"].employee;
+    // With no review the hire-subject settled the person by name, DOB and SSN.
+    const eid = approval === undefined ? subject.state === "existing-person" ? subject.person.emplId : null
+      : approval.decision === "existing-person" ? approval.emplId : null;
+    return { typeId: REFERENCE_CHECK.id, eid, name: `${employee.firstName} ${employee.lastName}` };
   });
   const stop = author.task(stopEntry, [check], ({ outputs, dryRun }) => ({ check: outputs[REFERENCE_CHECK_NODE] ?? null, writes: dryRun === undefined }));
   const review = author.gate(reviewEntry, [stop]);
@@ -72,7 +90,7 @@ export const onboardingReferenceCheckDefinition = defineStep({
       label: REFERENCE_CHECK_STEP.label, summary: "Reviews one hire and checks the reviewed Employee ID against the picked reference spreadsheets.",
       steps: (author: WorkflowAuthor<typeof OnboardingInput>) => {
         const crm = buildCrmData(author), ucpath = buildUcpathSearch(author, crm), i9 = buildI9Search(author, crm, ucpath);
-        const reviewed = buildHireReview(author, crm, ucpath, i9), reference = buildReferenceCheck(author, crm, reviewed);
+        const reviewed = buildHireReview(author, crm, ucpath, i9), reference = buildReferenceCheck(author, crm, ucpath, reviewed);
         return { steps: [...crm.steps, ...ucpath.steps, ...i9.steps, ...reviewed.steps, ...reference.steps], result: reference.result };
       },
     }),

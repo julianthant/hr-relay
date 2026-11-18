@@ -306,13 +306,13 @@ describe("factory-authenticated terminal run results", () => {
 
   it("binds conditional not-run reasons to their exact authored cause", () => {
     assert.deepEqual(workflowTerminalResultExecution(personLookupDescriptor).dependencies, [
-      { nodeId: "search-identity" },
-      { nodeId: "crm-identity", notRunReason: "condition-false" },
-      { nodeId: "matching", notRunReason: "condition-false" },
+      { nodeId: "search-identity", assertable: true },
+      { nodeId: "crm-identity", notRunReason: "condition-false", assertable: true },
+      { nodeId: "matching", notRunReason: "condition-false", assertable: true },
       { nodeId: "crm-selected-record", notRunReason: "condition-false" },
       { nodeId: "crm-results", notRunReason: "condition-false" },
-      { nodeId: "active-status", notRunReason: "condition-false" },
-      { nodeId: "crm-dates", notRunReason: "condition-false" },
+      { nodeId: "active-status", notRunReason: "condition-false", assertable: true },
+      { nodeId: "crm-dates", notRunReason: "condition-false", assertable: true },
     ]);
     assert.deepEqual(workflowTerminalResultExecution(fixtureDescriptor).dependencies, [
       { nodeId: "submit", notRunReason: "branch-not-selected" },

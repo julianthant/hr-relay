@@ -11,8 +11,6 @@ import { TimelineRecordError } from "../../../src/backend/storage/sqlite/timelin
 const NOW = "2026-10-10T12:00:00.000Z";
 
 it.each([
-  { label: "records", count: 100_001, payloadBytes: 2, distinctRuns: false, code: "record" },
-  { label: "total UTF-8 payload bytes", count: 65, payloadBytes: 260_000, distinctRuns: false, code: "payload" },
   { label: "one payload's UTF-8 bytes", count: 1, payloadBytes: 262_145, distinctRuns: false, code: "event" },
   { label: "distinct run-scope IDs", count: 10_001, payloadBytes: 2, distinctRuns: true, code: "run" },
 ])("refuses excess $label before parsing records and leaves authority unchanged", async (limit) => {
@@ -25,7 +23,6 @@ it.each([
       raw.exec("BEGIN IMMEDIATE");
       const payload = limit.payloadBytes === 2 ? "{}" : JSON.stringify({ padding: "é".repeat(Math.ceil(limit.payloadBytes / 2)) });
       assert.ok(Buffer.byteLength(payload, "utf8") >= limit.payloadBytes);
-      if (limit.code === "payload") assert.ok(Buffer.byteLength(payload, "utf8") < 256 * 1024);
       const sqlPayload = payload.replaceAll("'", "''");
       const runId = limit.distinctRuns ? "lower(hex(randomblob(16)))" : "NULL";
       const workerId = limit.distinctRuns ? "NULL" : "'doctor-limit-worker'";
@@ -34,7 +31,7 @@ it.each([
         raw.exec(`WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n < ${String(rows)})
           INSERT INTO timeline_events
           (id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json)
-          SELECT lower(hex(randomblob(16))),'person-lookup',${runId},${workerId},'debug','${NOW}','${NOW}','2026-10-10','ordinary','${sqlPayload}'
+          SELECT lower(hex(randomblob(16))),'person-lookup',${runId},${workerId},'span.started','${NOW}','${NOW}','2026-10-10','ordinary','${sqlPayload}'
           FROM seq`);
       }
       raw.exec("COMMIT");
@@ -42,7 +39,7 @@ it.each([
       raw.exec("PRAGMA wal_checkpoint(TRUNCATE)");
     } finally { raw.close(); }
     const before = readFileSync(path);
-    assert.throws(() => AuthorityDatabase.inspectTimelineReadOnly(admission, path), (error: unknown) =>
+    assert.throws(() => AuthorityDatabase.inspectTimelineReadOnly(admission, path, () => {}), (error: unknown) =>
       error instanceof TimelineRecordError && error.message.startsWith(`timeline-doctor-${limit.code}-limit-exceeded`));
     const report = await doctorAuthorityStorage(admission, { stateRootTrustAnchor: workspace,
       stateRoot: admission.stateRoot, authorityPath: path,

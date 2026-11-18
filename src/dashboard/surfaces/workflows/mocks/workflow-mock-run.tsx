@@ -15,9 +15,11 @@ import { statusMockDefaultPicks, statusMockPicksBlocked, type StatusMockPicks } 
 import { statusMock } from "../../settings/status-mock/status-mock-model.js";
 import { WorkflowPdfInput } from "./workflow-pdf-input.js";
 
-export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmit, initialDraft, onDraftChange }: {
+export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmit, initialDraft, onDraftChange, startable = true }: {
   initialDraft?: MockDraft; onDraftChange?: (draft: MockDraft) => void;
   workflowId: MockWorkflowId; source?: MockRun; runs: readonly MockRun[]; onClose: () => void;
+  /** False on the served dashboard: the dialog opens for viewing and the final button stays off. */
+  startable?: boolean;
   onSubmit: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
 }) {
   const flow = mockWorkflow(workflowId);
@@ -48,7 +50,8 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   const people = pdf ? draft.files.length : typedEntries.length;
   const priority = priorityTouched ? draft.priority === "interactive" : people <= 1;
   const startDisabled = blocked || Boolean(error) || reading || (spreadsheetPicker && statusMockPicksBlocked(picks));
-  const advance = () => { if (startDisabled) return; if (last) onSubmit(workflowId, { ...draft, priority: priority ? "interactive" : "background" }, source?.id); else setStage(stages[index + 1]); };
+  const finalOff = last && !startable;
+  const advance = () => { if (startDisabled || finalOff) return; if (last) onSubmit(workflowId, { ...draft, priority: priority ? "interactive" : "background" }, source?.id); else setStage(stages[index + 1]); };
   // Enter continues (or starts on the last step); Shift+Enter keeps its newline in a textbox. Buttons, links and open pickers keep Enter for themselves.
   // Listens on the document so Enter still works when focus fell back to the dialog after a step change.
   const enterRef = useRef(advance);
@@ -152,9 +155,12 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
 
       </DialogBody></div>
     <DialogFooter meta={<MetaLine tone="faint" items={[flow.label, `${included} of ${planSteps.length} steps`, ...(pdf && !uploadOnly ? [`OCR ${draft.ocrMode === "manual" ? "off" : "on"}`] : []), ...(priority ? ["Priority"] : [])]} />}>
-      {!startDisabled && <span className="text-[12px] text-ui-muted">{last ? "Enter to start" : "Enter to continue"}</span>}
+      {!startDisabled && !finalOff && <span className="text-[12px] text-ui-muted">{last ? "Enter to start" : "Enter to continue"}</span>}
       {index > 0 && <Button variant="ghost" icon={<ArrowLeft className="size-3" aria-hidden />} onClick={() => setStage(stages[index - 1])}>Back</Button>}<Button variant="muted" onClick={onClose}>Cancel</Button>
-      {last ? <Button variant="primary" icon={<Play className="size-[14px]" aria-hidden />} disabled={startDisabled} onClick={advance}>{flow.dryRun ? draft.dryRun ? "Start dry run" : "Start live run" : "Start run"}</Button>
+      {last ? <span className="flex flex-col items-end gap-1">
+        <Button variant="primary" icon={<Play className="size-[14px]" aria-hidden />} disabled={startDisabled || finalOff} aria-describedby={finalOff ? "mock-workflow-unavailable" : undefined} onClick={advance}>{flow.dryRun ? draft.dryRun ? "Start dry run" : "Start live run" : "Start run"}</Button>
+        {finalOff && <span id="mock-workflow-unavailable" className="text-[12px] text-ui-muted">This workflow is not available yet.</span>}
+      </span>
         : <Button variant="primary" iconAfter={<ArrowRight className="size-[14px]" aria-hidden />} disabled={startDisabled} onClick={advance}>Continue</Button>}
     </DialogFooter>
   </>;

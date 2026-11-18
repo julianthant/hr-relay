@@ -205,8 +205,8 @@ export const AuthorityDatabase = new Proxy(RealAuthorityDatabase, {
     if (property === "inspectSpanRunAuthorityReadOnly") return (path: string,
       roots: Parameters<typeof RealAuthorityDatabase.inspectSpanRunAuthorityReadOnly>[2], timeout?: number) =>
       target.inspectSpanRunAuthorityReadOnly((findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path)), path, roots, timeout);
-    if (property === "inspectTimelineReadOnly") return (path: string, timeout?: number, recovery?: boolean) =>
-      target.inspectTimelineReadOnly((findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path)), path, timeout, recovery);
+    if (property === "inspectTimelineReadOnly") return (path: string, visit: Parameters<typeof RealAuthorityDatabase.inspectTimelineReadOnly>[2], timeout?: number, recovery?: boolean) =>
+      target.inspectTimelineReadOnly((findProfileFixtureAdmission(dirname(path)) ?? RuntimeAdmission.syntheticFixture(path)), path, visit, timeout, recovery);
     return Reflect.get(target, property, receiver) as unknown;
   },
 }) as unknown as SyntheticAuthorityStatic;

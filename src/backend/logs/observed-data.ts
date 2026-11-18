@@ -3,7 +3,7 @@ import type { TaskId } from "../../rules/identity/ids.js";
 import type { RecordedDataPoint } from "../../rules/workflow/task-provenance.js";
 import {
   evidenceLeaves,
-  redactEvidenceLeaf,
+  redactObservedEvidenceLeaf,
 } from "../../models/trust/evidence-classification.js";
 import { ObservedDataPointSchema } from "./span-emitter.js";
 import type { ObservedDataPoint } from "./span-emitter.js";
@@ -21,6 +21,6 @@ export function redactObservedDataPoints(
     direction: point.direction,
     field: point.field,
     ...(point.origins === undefined ? {} : { origins: point.origins }),
-    values: evidenceLeaves(point.value, point.field).map((leaf) => redactEvidenceLeaf(scope, leaf)),
+    values: evidenceLeaves(point.value, point.field).map((leaf) => redactObservedEvidenceLeaf(scope, leaf)),
   }))));
 }

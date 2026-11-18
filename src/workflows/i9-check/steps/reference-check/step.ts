@@ -19,11 +19,21 @@ export const REFERENCE_CHECK_STEP = Object.freeze({
     pages: [{
       id: "reference-spreadsheets", title: "Reference spreadsheets", mode: "Read only", nodeIds: [REFERENCE_CHECK_NODE],
       lines: [
+        { id: "read-reference", kind: "read", text: "Read the picked reference spreadsheets using the Employee ID found by the retention check.", nodeIds: [REFERENCE_CHECK_NODE] },
         { id: "check-person", kind: "check", text: "Confirm the Employee ID, and the name when the sheet has one, in each picked spreadsheet.", nodeIds: [REFERENCE_CHECK_NODE] },
       ],
-      fields: [],
+      fields: [{ id: "reference-result", label: "Reference result", taskFields: [{ nodeId: REFERENCE_CHECK_NODE, kind: "output", fieldPath: "result" }], example: "Confirmed",
+        display: { cases: [{ value: "confirmed", text: "Confirmed" }, { value: "unconfirmed", text: "Needs review" }, { value: "no-person", text: "No person found" }] },
+        source: { origin: "Picked reference spreadsheets", detail: "Reports whether the found Employee ID and name agree with the captured worksheets; the read-only check always continues.", chain: [] } }],
     }],
     branchLabels: [],
+    decisions: [{ id: "reference-result", label: "Reference check", reads: { nodeId: REFERENCE_CHECK_NODE, fieldPath: "result" }, nodeIds: [REFERENCE_CHECK_NODE],
+      initial: { by: "retention-identity", values: { "not-found": "no-person", ambiguous: "no-person" }, otherwise: "confirmed" }, outcomes: [
+      { value: "confirmed", label: "Person confirmed", then: "Finishes with the reference results; no HR record is changed.", when: [{ "retention-identity": ["found"] }] },
+      { value: "unconfirmed", label: "Reference needs review", then: "Shows the missing or differing reference result and finishes; this read-only workflow does not wait for approval.",
+        when: [{ "retention-identity": ["found"] }] },
+      { value: "no-person", label: "No person found", then: "Shows that UCPath supplied no Employee ID and finishes.", when: [{ "retention-identity": ["not-found", "ambiguous"] }] },
+    ] }],
   } as const,
 });
 
@@ -51,7 +61,7 @@ export const i9CheckReferenceCheckDefinition = defineStep({
       code: "icrc", label: REFERENCE_CHECK_STEP.label, summary: "Checks the person UCPath identified against the picked reference spreadsheets.",
       steps: (author: WorkflowAuthor<typeof I9CheckInput>) => {
         const matched = i9CheckPersonMatchDefinition.build(author), looked = i9CheckPersonLookupDefinition.build(author, matched);
-        const roster = i9CheckRosterMatchDefinition.build(author, matched, looked.search), reference = buildReferenceCheck(author, roster);
+        const roster = i9CheckRosterMatchDefinition.build(author, matched, looked), reference = buildReferenceCheck(author, roster);
         return { steps: [...matched.steps, ...looked.steps, ...roster.steps, ...reference.steps], result: reference.result };
       },
     }),

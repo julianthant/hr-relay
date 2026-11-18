@@ -75,7 +75,7 @@ function sampleAnalytics(rows: typeof records, range: ActivityDateRange, incompl
         return { date: day, done: dayRows.filter(row => row.status === "completed").length, failed: dayRows.filter(row => row.status === "failed").length, attention: dayRows.filter(row => row.status === "waiting").length, seconds: incomplete ? null : median(dayTimed) }; }) }];
   });
   return { running: rows.filter(row => row.status === "running").length, typicalSeconds: incomplete ? null : median(rows.filter(row => row.status === "completed" && row.duration !== null).map(row => row.duration ?? 0)), workflows,
-    reasons: workflows.flatMap(workflow => workflow.failed ? [{ label: "The document could not be read in time", workflow: workflow.label, runs: workflow.failed }] : []) };
+    assistant: { messages: days.map((date, index) => ({ date, count: rows.length === 0 ? 0 : (index * 3) % 7 })), actions: days.map((date, index) => ({ date, proposed: rows.length === 0 ? 0 : index % 3 })) } };
 }
 
 export function activitySample(range: ActivityDateRange, scenario: ActivitySampleState): ActivityViewState {

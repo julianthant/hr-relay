@@ -29,6 +29,8 @@ export {
 export { useDemoTheme, DEMO_THEME_ATTR, DEMO_THEME_LABEL } from "./theme/theme.js";
 export type { DemoTheme } from "./theme/theme.js";
 
+export { FailureNotice } from "./primitives/failure-notice.js";
+
 export {
   Button,
   BareButton,

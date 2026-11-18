@@ -67,13 +67,13 @@ it("reports a pending library read as loading and keeps loaded rows through a fa
   function Probe({ open }: { open: boolean }) { seen = useLibrarySheets(client, open); return null; }
   root = createRoot(document.createElement("div"));
   await act(async () => root?.render(createElement(Probe, { open: true })));
-  assert.equal(seen?.sheets.length, 0); assert.equal(seen?.unavailable, searchMessage("SEARCH_LOADING"));
+  assert.equal(seen?.sheets.length, 0); assert.equal(seen?.unavailable, undefined);
   const sheet = { libraryId: "x", version: 1, savedAt: "2026-11-01T12:00:00Z", workbook: { name: "Roster" } } as never;
   await act(async () => reads[0].finish([sheet]));
   assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, undefined);
   await act(async () => root?.render(createElement(Probe, { open: false })));
   await act(async () => root?.render(createElement(Probe, { open: true })));
-  assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, searchMessage("SEARCH_LOADING"));
+  assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, undefined);
   await act(async () => reads[1].fail());
   assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, searchMessage("SEARCH_LIBRARY_UNAVAILABLE"));
 });

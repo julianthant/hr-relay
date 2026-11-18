@@ -57,7 +57,7 @@ import type { BrowserSystemBinding, BrowserSystemBindings } from "./system-bindi
 import { attachBrowserDiagnostics } from "./browser-diagnostics.js";
 import type { DebugEvent } from "../../../models/events/timeline.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { captureFullPage, FullPageCaptureRefusedError, FullPageCaptureRestoreError } from "./full-page-capture.js";
+import { captureFullPage, FullPageCaptureFailedError, FullPageCaptureRefusedError, FullPageCaptureRestoreError } from "./full-page-capture.js";
 import { serializeErrorCauses } from "../../../models/failures/error-origins.js";
 
 export const BrowserProfileAdmissionSchema = z.strictObject({
@@ -144,6 +144,12 @@ const PLAYWRIGHT_OBJECTS = new Set(["page", "frame", "locator", "elementHandle",
 const PLAYWRIGHT_METHODS = new Set(["evaluate", "evaluateAll", "evaluateHandle", "screenshot", "setViewportSize", "waitForTimeout", "count",
   "cookies", "isVisible", "waitFor", "inputValue", "textContent", "frameElement", "goto"]);
 const PAGE_ERROR_CLASSES = new Set(["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "EvalError", "URIError", "AggregateError"]);
+/** The capture stage and failing call or error class, as a value-free kebab token for logs and failures. */
+function captureFailureDetail(stage: "sign-in-check" | "secret-check" | "page-capture" | "final-sign-in-check", error: unknown, errorName: string): string {
+  const failed = playwrightCall(error) ?? (errorName.replace(/([a-z0-9])([A-Z])/gu, "$1-$2").toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "") || "error");
+  return `${stage}-${failed}`.slice(0, 128).replace(/-$/u, "");
+}
+
 function playwrightCall(error: unknown): string | undefined {
   const match = error instanceof Error ? /^([A-Za-z]+)\.([A-Za-z]+): (?:([A-Za-z]+): )?/u.exec(error.message) : null;
   if (match === null) return undefined;
@@ -335,12 +341,15 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
           assertCurrent();
           const version = pageVersion;
           const identity = { pageVersion: version, sessionId, observedAt: this.#options.clock.now().toISOString() };
-          const unavailable = (reason: Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"]): BrowserScreenshotEvidence => Object.freeze({ ...identity, state: "unavailable", reason });
+          const unavailable = (reason: Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"], detail?: string): BrowserScreenshotEvidence =>
+            Object.freeze({ ...identity, state: "unavailable", reason, ...(detail === undefined ? {} : { detail }) });
           if (page.isClosed()) return unavailable("page-closed");
+          let stage: Parameters<typeof captureFailureDetail>[0] = "sign-in-check";
           try {
             const proof = await binding.verifyAuthenticated({ page, config, recordEvidence, assertCurrent });
             assertCurrent();
-            if (!proof.authenticated) return unavailable("authentication-unverified");
+            if (!proof.authenticated) return unavailable("authentication-unverified", `sign-in-check-${proof.check}`);
+            stage = "secret-check";
             const frames = page.frames();
             const secretControls = 'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"], input[autocomplete="new-password"]';
             // The capture observer watches only the light DOM, so an unpainted control is tolerated there alone.
@@ -359,11 +368,13 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
               if (await secretPresent(frame)) return unavailable("secret-controls-present");
             }
             if (pageVersion !== version) return unavailable("page-changed");
+            stage = "page-capture";
             const capture = await captureFullPage(page, {
               ...(sampleLabels === undefined ? {} : { sampleLabels }),
               assertCurrent,
               secretControls,
               afterCapture: async () => {
+                stage = "final-sign-in-check";
                 assertCurrent();
                 const after = await binding.verifyAuthenticated({ page, config, recordEvidence, assertCurrent });
                 assertCurrent();
@@ -380,6 +391,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
               },
             });
             assertCurrent();
+            stage = "secret-check";
             if (pageVersion !== version) return unavailable("page-changed");
             for (const frame of frames) {
               if (await secretPresent(frame)) return unavailable("secret-controls-present");
@@ -389,14 +401,16 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
           } catch (error) {
             if (error instanceof FullPageCaptureRestoreError) throw error;
             assertCurrent();
+            if (error instanceof FullPageCaptureFailedError) return unavailable(error.reason, error.detail);
             if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
             if (pageVersion !== version) return unavailable("page-changed");
-            const call = playwrightCall(error);
-            for (const [index, cause] of serializeErrorCauses(error).entries()) {
+            const causes = serializeErrorCauses(error);
+            const detail = captureFailureDetail(stage, error, causes[0]?.name ?? "error");
+            for (const [index, cause] of causes.entries()) {
               this.#options.onDebug?.(workerId, { phase: "failed", correlationId: sessionId,
-                reason: "capture-cause", code: cause.code, message: cause.name, stack: cause.stack, ...(index === 0 && call !== undefined ? { area: call } : {}) });
+                reason: "capture-cause", code: cause.code, message: cause.name, stack: cause.stack, ...(index === 0 ? { area: detail } : {}) });
             }
-            return unavailable("verification-failed");
+            return unavailable("verification-failed", detail);
           }
         },
         authentication: {
