@@ -1,8 +1,7 @@
 import { DelegatedRecordBindingSchema, type DelegatedRecordBinding } from "../../../models/workflow/delegated-record.js";
 import { delegationChildInputFingerprint } from "../../../models/workflow/delegation.js";
 import { valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
-import { bindOcrLookupOutcomes, ocrLookupRequests } from "../../../models/workflows/ocr/lookup.js";
-import { OcrApprovalReferenceSchema, OcrResultSchema, OcrWorkflowResultSchema } from "../../../models/workflows/ocr/result.js";
+import { OcrApprovalReferenceSchema, OcrResultSchema } from "../../../models/workflows/ocr/result.js";
 import { OcrCanonicalInputSchema } from "../../../models/workflows/ocr/input.js";
 import type { OcrReviewSeed } from "../../../models/workflows/ocr/review-seed.js";
 import { OcrPageWorkflowInputSchema } from "../../../models/workflows/ocr-page/input.js";
@@ -26,8 +25,6 @@ import { childTerminalSettlement, readDelegationScopeEvidence } from "../../stor
 import { authenticateOcrOperator, readOcrReviewAuthority, readOcrReviewCheckpointSeed, readOcrSnapshotsAuthority } from "../lifecycle/ocr-review-authority.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
-import { ReadApprovedOcrSnapshot } from "../../../models/processing/ocr/read-approved-snapshot.js";
-import { ApprovedOcrRecordInputSchema } from "../../../models/workflows/ocr/approved-record.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
@@ -35,6 +32,11 @@ import { checkpointLookupKey } from "../../../models/workflow/checkpoint.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 
 type AuthenticatedGroup = ReturnType<AuthorityRepositories["dependencies"]["authenticateGroup"]>;
+
+function retainedField(value: unknown, field: string): unknown {
+  if (value === null || typeof value !== "object" || !Object.hasOwn(value, field)) throw new OcrReviewRefusedError();
+  return Reflect.get(value, field);
+}
 
 function originalCheckpoint(repositories: AuthorityRepositories, group: AuthenticatedGroup, nodeId: string) {
   const scope = readDelegationScopeEvidence(repositories, group.parent, group.invocation.scopeEvidence);
@@ -90,13 +92,13 @@ function readOcrRecordSource(repositories: AuthorityRepositories, runId: string)
       || seed.sourceRunId !== undefined && seed.sourceRunId !== owner.envelope.runId) throw new OcrReviewRefusedError();
     const family = group.invocation.nodeId === "lookup-identities" ? "person-lookup" : "i9-lookup";
     if (group.invocation.target.workflowId !== family) throw new OcrReviewRefusedError();
-    const requests = bindOcrLookupOutcomes(seed,group.children.map(member => ({
-      itemId: member.child.envelope.itemId, runId: member.child.envelope.runId,
-    })),family).map((lookup,index) => {
-      const member = group.children[index];
-      if (member === undefined || delegationChildInputFingerprint(lookup.input) !== member.entry.canonicalInputFingerprint
-        || canonicalJsonStringify(lookup.recordIds.toSorted()) !== canonicalJsonStringify(group.invocation.children[index]?.sourceRecordIds)) throw new OcrReviewRefusedError();
-      return { lookup,member };
+    const recordIds = new Set(seed.records.map(record => record.recordId));
+    const requests = group.children.map((member, index) => {
+      const ids = group.invocation.children[index]?.sourceRecordIds;
+      const input = member.child.input.parsed.value;
+      if (ids === undefined || ids.length === 0 || !ids.every(id => recordIds.delete(id))
+        || delegationChildInputFingerprint(input) !== member.entry.canonicalInputFingerprint) throw new OcrReviewRefusedError();
+      return { member, lookup: { recordIds: ids, input, outcome: { itemId: member.child.envelope.itemId, runId: member.child.envelope.runId } } };
     });
     return { group,manifest,checkpoint,seed,requests };
   });
@@ -107,9 +109,12 @@ function readOcrRecordSource(repositories: AuthorityRepositories, runId: string)
   const seed = epoch.seed;
   if (current.some(entry => entry.checkpoint.claimGeneration === epoch.checkpoint.claimGeneration
     && canonicalJsonStringify(entry.seed) !== canonicalJsonStringify(seed))) throw new OcrReviewRefusedError();
-  const requested = new Map(ocrLookupRequests(seed).map(request => [delegationChildInputFingerprint(request.input),canonicalJsonStringify(request.recordIds.toSorted())]));
   const selected = current.flatMap(entry => entry.requests.filter(({ lookup }) =>
-    requested.get(delegationChildInputFingerprint(lookup.input)) === canonicalJsonStringify(lookup.recordIds.toSorted())));
+    entry.checkpoint.claimGeneration === epoch.checkpoint.claimGeneration || lookup.recordIds.every(id => {
+      const currentRecord = seed.records.find(record => record.recordId === id);
+      const source = entry.seed.records.find(record => record.recordId === id);
+      return currentRecord !== undefined && source !== undefined && canonicalJsonStringify(currentRecord) === canonicalJsonStringify(source);
+    })));
   const bindings = selected.flatMap(({ lookup,member }) => lookup.recordIds.map(recordId => ({
     record: { runId: owner.envelope.runId,recordId }, currentChildRunId: member.child.envelope.runId,
     childRunIds: [...new Set([...lookups.flatMap(entry => entry.requests.filter(previous => previous.lookup.recordIds.includes(recordId)
@@ -186,7 +191,7 @@ function readOcrRecordPresentation(repositories: AuthorityRepositories, reader: 
       outcome: { ...lookup.outcome,state: "done",output: terminal.result.result.value } })];
   }) : [];
   const initial = new Map(initialOcrReviewRecords({ review: source.seed, identities: completed }).map(record => [record.recordId, record]));
-  const requested = new Set(ocrLookupRequests(source.seed).flatMap(request => request.recordIds));
+  const requested = new Set(source.seed.records.filter(record => record.lookup.state === "required").map(record => record.recordId));
   const records = review === undefined ? source.seed.records : review.revision.records.map(record => ({ recordId: record.recordId,
     sourcePage: ocrRecordSourcePages(source.seed.records, record)[0], assertedEid: record.assertedEid }));
   const members = records.flatMap(record => {
@@ -272,15 +277,14 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
       || publication.payload.runId !== parent.envelope.runId || publication.payload.workflow !== checkpoint.workflowId
       || publication.payload.attempt !== checkpoint.attempt || publication.payload.claimGeneration !== checkpoint.claimGeneration
       || canonicalJsonStringify(publication.payload.checkpoint) !== canonicalJsonStringify(timelineCheckpointReference(checkpoint))
-      || canonicalJsonStringify(ReadApprovedOcrSnapshot.output.parse(checkpoint.output.value).snapshot) !== canonicalJsonStringify(snapshot)) throw new OcrReviewRefusedError();
+      || canonicalJsonStringify(retainedField(checkpoint.output.value, "snapshot")) !== canonicalJsonStringify(snapshot)) throw new OcrReviewRefusedError();
     for (const [index, member] of group.children.entries()) {
       const input = member.child.input.parsed.value;
-      if (typeof input !== "object" || input === null) throw new OcrReviewRefusedError();
-      const memberApproval: unknown = Reflect.get(input,"approval"), memberRecord: unknown = Reflect.get(input,"record");
-      const approved = ApprovedOcrRecordInputSchema.parse({ approval: memberApproval, record: memberRecord });
-      const record = snapshot.records.find(record => record.recordId === approved.record.recordId);
-      if (record === undefined || canonicalJsonStringify(approved.approval) !== canonicalJsonStringify(approval)
-        || canonicalJsonStringify(approved.record) !== canonicalJsonStringify(record)
+      const memberRecord = retainedField(input, "record");
+      const recordId = retainedField(memberRecord, "recordId");
+      const record = snapshot.records.find(record => record.recordId === recordId);
+      if (record === undefined || canonicalJsonStringify(retainedField(input, "approval")) !== canonicalJsonStringify(approval)
+        || canonicalJsonStringify(memberRecord) !== canonicalJsonStringify(record)
         || group.invocation.children[index]?.sourceRecordIds !== undefined
           && canonicalJsonStringify(group.invocation.children[index]?.sourceRecordIds) !== canonicalJsonStringify([record.recordId])
         || bound.has(record.recordId)) throw new OcrReviewRefusedError();
@@ -359,8 +363,9 @@ export function readQueueRecordMembers(repositories: AuthorityRepositories, read
     .flatMap(({ group }) => group.children.filter(member => member.child.envelope.workflow === "ocr")
       .flatMap(member => {
         const approval = member.terminal?.state === "satisfied" && member.terminal.kind === "ordinary"
-          ? OcrWorkflowResultSchema.parse(member.terminal.result.result.value).approvedSnapshot : null;
-        if (OcrCanonicalInputSchema.parse(member.child.input.parsed.value).approval === "release" && approval === null) {
+          ? OcrApprovalReferenceSchema.nullable().parse(retainedField(member.terminal.result.result.value, "approvedSnapshot")) : null;
+        if (approval !== null && approval.sourceRunId !== member.child.envelope.runId) throw new OcrReviewRefusedError();
+        if (OcrCanonicalInputSchema.shape.approval.parse(retainedField(member.child.input.parsed.value, "approval")) === "release" && approval === null) {
           authenticateOcrOperator(repositories,reader,member.child);
           const groups = repositories.dependencies.groups(member.child.envelope.runId);
           const pages = groups.filter(({ group }) => group.invocation.nodeId === "read-pages");

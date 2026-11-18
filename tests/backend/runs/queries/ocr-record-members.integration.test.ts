@@ -5,8 +5,9 @@ import { scaledMs } from "../../../support/time-scale.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { afterEach, it } from "vitest";
-import { ocrHostRun, readOcrRecordBindings, readOcrQueueMembers } from "../../../../src/backend/runs/queries/ocr-record-members.js";
+import * as lookupPlan from "../../../../src/models/workflows/ocr/lookup.js";
+import { afterEach, it, vi } from "vitest";
+import { ocrHostRun, readOcrRecordBindings, readOcrQueueMembers, readQueueRecordMembers } from "../../../../src/backend/runs/queries/ocr-record-members.js";
 import type { DelegatedRecordBinding } from "../../../../src/models/workflow/delegated-record.js";
 import { readDelegationScopeEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { OcrReviewCheckpointSchema } from "../../../../src/models/workflows/ocr/review-seed.js";
@@ -478,3 +479,40 @@ it("authenticates canonical shared lookup membership while preserving source pag
   assert.deepEqual(source.bindings.map(binding => binding.record.recordId),expected);
   assert.equal(source.bindings[0]?.currentChildRunId,source.bindings[1]?.currentChildRunId);
 },scaledMs(60_000));
+
+it("keeps the saved lookup links after the current planner stops requesting those records", async () => {
+  const f = await world.fixture({ record: true, release: true, lookupNames: ["Example, Avery"], pauseAtLookup: true });
+  const repositories = f.database.authority, runId = f.run.envelope.runId;
+  const group = repositories.dependencies.groups(runId).find(({ group }) => group.invocation.nodeId === "lookup-identities")?.group;
+  assert.ok(group);
+  const [child] = group.children, [plan] = group.invocation.children;
+  assert.ok(child && plan.sourceRecordIds?.length === 1);
+  const binds = vi.spyOn(lookupPlan, "bindOcrLookupOutcomes").mockReturnValue([]);
+  const requests = vi.spyOn(lookupPlan, "ocrLookupRequests").mockReturnValue([]);
+  try {
+    const source = readOcrRecordBindings(repositories, runId);
+    assert.deepEqual(source?.bindings, [{ record: { runId, recordId: plan.sourceRecordIds[0] },
+      currentChildRunId: child.child.envelope.runId, childRunIds: [child.child.envelope.runId] }]);
+  } finally { requests.mockRestore(); binds.mockRestore(); }
+});
+
+it("reads a completed host's member links from the retained approval field", async () => {
+  const f = await world.fixture({ record: true, parent });
+  const repositories = f.database.authority;
+  const host = repositories.runs.get(f.parentRun.envelope.runId); assert.ok(host);
+  const read = (value: { approvedSnapshot: null } | Record<string, never>) => readQueueRecordMembers({
+    ...repositories, dependencies: { ...repositories.dependencies, groups: (id, selection) => {
+      const groups = repositories.dependencies.groups(id, selection);
+      return id !== host.envelope.runId ? groups : groups.map(entry => ({ ...entry, group: { ...entry.group,
+        children: entry.group.children.map(member => {
+          const { terminal } = member;
+          assert.ok(terminal?.state === "satisfied" && terminal.kind === "ordinary");
+          return { ...member, terminal: { ...terminal, result: { ...terminal.result, result: { ...terminal.result.result, value } } } };
+        }) } }));
+    } },
+  }, f.canonical.lifecycle, host, [f.run], f.resolve);
+  const expected = readOcrQueueMembers(repositories, f.canonical.lifecycle, f.run.envelope.runId, id => f.resolve(id)?.label ?? id);
+  assert.ok(expected?.members.some(member => member.kind === "record"));
+  assert.deepEqual(read({ approvedSnapshot: null }), expected);
+  assert.throws(() => read({}));
+});

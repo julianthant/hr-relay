@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
-import { afterEach, it } from "vitest";
+import { EXECUTOR_EID, healthyCrmDriver, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
+import * as stack from "../../../../src/models/ocr/stack.js";
+import * as extraction from "../../../../src/models/ocr/extraction.js";
+import { afterEach, it, vi } from "vitest";
 import { publishOcrReview, readOcrReviewAuthority } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
 import { OcrReviewRefusedError } from "../../../../src/backend/processing/ocr/review-authority.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { initialOcrReviewRecords, OcrReviewRevisionSchema } from "../../../../src/models/ocr/review.js";
+import * as reviewRecords from "../../../../src/models/ocr/review.js";
 import { RunCheckpointRecordSchema, checkpointRecordKey, checkpointLookupKey, type RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
 import { timelineCheckpointReference, TimelineEventRecordSchema } from "../../../../src/models/events/timeline.js";
 import { observationLeafPaths } from "../../../../src/models/events/data-observation-origin.js";
@@ -56,8 +60,8 @@ it.each(["non-monotonic generation", "duplicate seed"] as const)("refuses a forg
     review: original.seed.review.sourceRunId === undefined ? { ...review, sourceRunId: f.run.envelope.runId } : review };
   const claimGeneration = checkpoint.claimGeneration + (fault === "duplicate seed" ? 1 : -1);
   const candidate = candidateCheckpoint(checkpoint, compactOcrResult(seed), claimGeneration, f.run.envelope.traceId);
-  const forged = OcrReviewRevisionSchema.parse({ ...original, id: `${f.run.envelope.runId}#2`, revision: 2,
-    seed, records: initialOcrReviewRecords(seed), origin: { kind: "checkpoint", key: checkpointRecordKey(candidate),
+  const forged = reviewRecords.OcrReviewRevisionSchema.parse({ ...original, id: `${f.run.envelope.runId}#2`, revision: 2,
+    seed, records: reviewRecords.initialOcrReviewRecords(seed), origin: { kind: "checkpoint", key: checkpointRecordKey(candidate),
       digest: sha256Hex(canonicalJsonStringify(candidate)), checkpoint: timelineCheckpointReference(candidate) } });
   const publicationId = deriveStableUuid("timeline-checkpoint-recorded", checkpointLookupKey(checkpoint.workflowId, checkpoint.itemId,
     checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration));
@@ -77,4 +81,85 @@ it.each(["non-monotonic generation", "duplicate seed"] as const)("refuses a forg
   };
   assert.throws(() => readOcrReviewAuthority(tampered, f.canonical.lifecycle, f.run.envelope.runId), OcrReviewRefusedError);
   assert.deepEqual(repositories.ocrReviews.latest(f.run.envelope.runId), original);
+});
+
+it("opens the exact-name revision of a form that now asserts under the subset rule", async () => {
+  const person = { emplId: EXECUTOR_EID, name: "Example, Avery", department: "Housing Dining Hospitality", jobTitle: "Fixture employee",
+    employeeStatus: "active" as const, hdh: true, hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" };
+  const sessions = sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver({ results: [person],
+    selection: { status: "resolved", selected: person, candidateEids: [EXECUTOR_EID] } }), crm: () => healthyCrmDriver() });
+  const rebuild = reviewRecords.rebuildOcrReviewRecords;
+  const oldPublisher = vi.spyOn(reviewRecords, "rebuildOcrReviewRecords").mockImplementation((seed, previous) => {
+    const result = rebuild(seed, previous);
+    return { ...result, records: result.records.map(record => ({ ...record, assertedEid: null })) };
+  });
+  let f: Awaited<ReturnType<typeof world.fixture>>;
+  try {
+    f = await world.fixture({ record: true, release: true, lookupNames: ["Avery Quinn Example"], employeeIds: [EXECUTOR_EID], sessions });
+  } finally { oldPublisher.mockRestore(); }
+  const repositories = f.database.authority;
+  const saved = repositories.ocrReviews.latest(f.run.envelope.runId); assert.ok(saved);
+  assert.equal(saved.records[0].assertedEid, null);
+  assert.equal(reviewRecords.initialOcrReviewRecords(saved.seed)[0].assertedEid, EXECUTOR_EID);
+  const review = readOcrReviewAuthority(repositories, f.canonical.lifecycle, f.run.envelope.runId);
+  assert.deepEqual(review?.revision, saved);
+  assert.deepEqual(review?.invalidatedCorrections, []);
+});
+
+it("opens a saved page reading after its blank contact address becomes mandatory", async () => {
+  const f = await world.fixture({ record: true, release: true });
+  const repositories = f.database.authority;
+  const original = repositories.ocrReviews.latest(f.run.envelope.runId); assert.ok(original);
+  const outcome = original.seed.review.accounting.outcomes[0]; assert.ok(outcome.state === "done");
+  const reading = repositories.ocrExtractions.get(outcome.output.extractionId); assert.ok(reading);
+  const admit = extraction.admitOcrExtraction;
+  const rule = vi.spyOn(extraction, "admitOcrExtraction").mockImplementation(input => {
+    const verdict = admit(input);
+    if (verdict.admitted && verdict.extraction.record !== null) return { ...verdict, extraction: { ...verdict.extraction, record: { ...verdict.extraction.record,
+      blockingPaths: [...verdict.extraction.record.blockingPaths, "contact.address1"] } } };
+    return verdict;
+  });
+  try {
+    assert.throws(() => repositories.ocrExtractions.insert(outcome.output), /canonical admitted/u);
+    assert.throws(() => repositories.ocrExtractions.insert({ ...outcome.output, binding: "source-bound" }));
+    assert.deepEqual(repositories.ocrExtractions.get(outcome.output.extractionId), reading);
+    assert.deepEqual(readOcrReviewAuthority(repositories, f.canonical.lifecycle, f.run.envelope.runId)?.revision, original);
+  } finally { rule.mockRestore(); }
+});
+
+it("hydrates the saved grouping after the duplicate classifier changes", async () => {
+  const f = await world.fixture({ record: true, release: true, lookupNames: ["Example, Avery"],
+    sessions: sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver({ results: [],
+      selection: { status: "not-found", selected: null, candidateEids: [], searchName: "Example, Avery" } }), crm: () => healthyCrmDriver() }) });
+  const repositories = f.database.authority, runId = f.run.envelope.runId;
+  const saved = repositories.ocrReviews.latest(runId); assert.ok(saved);
+  assert.equal(saved.seed.review.grouping.subjects[0].completeness, "complete");
+  const group = stack.groupStack;
+  const rule = vi.spyOn(stack, "groupStack").mockImplementation((pages, form) => {
+    const result = group(pages, form);
+    return { ...result, subjects: result.subjects.map(subject => ({ ...subject, completeness: "duplicate" })) };
+  });
+  try {
+    assert.deepEqual(readOcrReviewAuthority(repositories, f.canonical.lifecycle, runId)?.revision, saved);
+  } finally { rule.mockRestore(); }
+});
+
+it("replays the admitted correction without renormalizing it, and checks new corrections under the current rule", async () => {
+  const f = await world.fixture({ record: true, release: true });
+  assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
+  const repositories = f.database.authority, runId = f.run.envelope.runId;
+  const saved = repositories.ocrReviews.latest(runId); assert.ok(saved);
+  const corrected = saved.records[0].fields;
+  const admit = extraction.admitOcrExtraction;
+  const rule = vi.spyOn(extraction, "admitOcrExtraction").mockImplementation(input => {
+    const verdict = admit(input);
+    if (verdict.admitted && verdict.extraction.record?.answersFingerprint === corrected.answersFingerprint) {
+      return { admitted: false, problems: ["corrected value refused under the new rule"] };
+    }
+    return verdict;
+  });
+  try {
+    assert.deepEqual(readOcrReviewAuthority(repositories, f.canonical.lifecycle, runId)?.revision, saved);
+    assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 2)).state, "rejected");
+  } finally { rule.mockRestore(); }
 });
