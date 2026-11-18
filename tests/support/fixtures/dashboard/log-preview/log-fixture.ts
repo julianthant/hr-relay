@@ -1,7 +1,7 @@
-import { LOG_DECISION_STATUS } from "./log-decision-model.js";
+import { LOG_DECISION_STATUS } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
 import { logDecisionExamples } from "./log-decision-fixture.js";
-import type { LogEntry, LogField, LogScreenshot, LogStep } from "./log-feed-model.js";
-import type { LogTimelineStage } from "./log-timeline-model.js";
+import type { LogEntry, LogField, LogScreenshot, LogStep } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import type { LogTimelineStage } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
 
 type FieldInput = readonly [time: string, label: string, value: string, kind?: LogField["kind"]];
 const fields = (id: string, title: string | undefined, rows: readonly FieldInput[], result?: string, screenshot?: LogScreenshot): LogEntry => ({

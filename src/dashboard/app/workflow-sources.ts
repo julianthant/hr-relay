@@ -13,10 +13,10 @@ import type { PaletteSheet } from "../surfaces/shell/search/search-palette-model
 import type { CommandResultFeedEntry } from "../surfaces/shared/actions/actions-model.js";
 import configuredSources from "../../../config/dashboard-workflow-sources.json";
 import type { SessionsHarness } from "../surfaces/sessions/session-panel.js";
+import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
+import type { DashboardActionHandler } from "../surfaces/shared/actions/actions.js";
 import type { ActivityReportHook } from "../surfaces/activity/activity.js";
 
-/** Where a surface (Logs) reads from; the design-mock harness composes "mock" surfaces, the product only "served". */
-export type SurfaceSource = "mock" | "served";
 /** "hidden" workflows run and serve data for their host but have no catalog, queue or assistant entry. */
 export type WorkflowSource = "served" | "hidden";
 export type WorkflowSourcePolicy = Readonly<Record<string, WorkflowSource>>;
@@ -41,7 +41,8 @@ export interface SearchHarnessInput {
 /** Extra frames a design harness mounts beside the app and the first command feedback it seeds; the product leaves it unset. */
 export interface DashboardHarness {
   readonly Host?: ComponentType;
-  /** Child rows show the sample logs too, not only top-level rows. */
+  /** Sample logs in place of the served Logs panel, for top-level rows and, with `logsChildRows`, child rows. */
+  readonly LogPreview?: ComponentType<{ selection: LogSelection; onAction?: DashboardActionHandler }>;
   readonly logsChildRows?: true;
   readonly commandResults?: readonly CommandResultFeedEntry[];
   readonly bulkOutcome?: BulkBatchOutcome;
@@ -59,7 +60,6 @@ export interface DashboardHarness {
 export interface WorkflowComposition {
   readonly harness?: DashboardHarness;
   readonly sources: WorkflowSourcePolicy;
-  readonly logs?: SurfaceSource;
   readonly dataSources?: WorkflowSourcePolicy;
   readonly servedDay?: boolean;
   /** The design-mock harness supplies sample workers and a command port; the product leaves it unset and reads the served day. */

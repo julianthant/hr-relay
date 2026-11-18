@@ -1,10 +1,12 @@
-import type { LogDecision } from "./log-decision-model.js";
-import type { LogEntry, LogField, LogScreenshot, LogStep } from "./log-feed-model.js";
-import { queueRowTitle, type QueueSurfaceWire } from "../../queue/queue-model.js";
+import type { LogDecision } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
+import type { LogEntry, LogField, LogScreenshot, LogStep } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import { fmtActionClock, fmtElapsed } from "../../../../../src/dashboard/surfaces/shared/status/format.js";
+import { PROPOSED_STATUS, dsStatusOf } from "../../../../../src/dashboard/surfaces/shared/status/status-model.js";
+import { queueRowTitle, type QueueSurfaceWire } from "../../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { decisionScenarios, previewScenarios } from "./log-fixture.js";
-import type { LogSelection } from "./log-selection-model.js";
-import type { LogTimelineStage, LogTimelineState } from "./log-timeline-model.js";
-import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
+import type { LogSelection } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
+import type { LogTimelineStage, LogTimelineState } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
+import { directIdentifierDisplay } from "../../../../../src/rules/redaction/redaction.js";
 
 export type SelectedLogMock = Readonly<{
   id: string; label: string; subject: string; workflowLabel: string; status: string;
@@ -157,7 +159,7 @@ function separationMock({ row }: LogSelection): SelectedLogMock {
 }
 
 /** Queue status chooses a fictional history; it never projects or records browser execution. */
-export function selectedLogMock(selection: LogSelection): SelectedLogMock {
+export function selectedLogSample(selection: LogSelection): SelectedLogMock {
   const lookup = LOOKUP_STAGES.every(stage => selection.row.pipeline.some(node => node.id === stage.id));
   return lookup && selection.row.status !== "blocked" ? lookupMock(selection) : separationMock(selection);
 }
@@ -176,4 +178,27 @@ export function continuedLookupTimeline(timeline: readonly LogTimelineStage[], a
     const state: LogTimelineState = substeps.every(step => step.state === "completed") ? "completed" : substeps.some(step => step.state === "active") ? "active" : "pending";
     return { ...stage, state, substeps, stepId: state === "pending" ? undefined : state === "active" ? target : stage.stepId, durationLabel: state === "completed" ? `${substeps.reduce((total, step) => total + Number.parseInt(step.durationLabel ?? "0", 10), 0)}s` : undefined };
   });
+}
+
+const PIPELINE_STATE: Record<QueueSurfaceWire["pipeline"][number]["state"], LogTimelineState> = {
+  done: "completed", active: "active", blocked: "waiting", failed: "failed", pending: "pending", skipped: "skipped", cancelled: "cancelled",
+};
+
+/** Queue facts provide selection context, never invented browser action history. */
+export function selectedLogPresentation({ row }: LogSelection) {
+  const status = PROPOSED_STATUS[dsStatusOf(row.status)].label;
+  const time = fmtActionClock(row.updatedAt);
+  const current = row.pipeline.find(node => ["active", "blocked", "failed"].includes(node.state));
+  const steps: readonly LogStep[] = [{ id: "queue-state", time, title: "Run status", entries: [{ kind: "fields", id: "queue-fields", fields: [
+    { id: "subject", time, kind: "read", label: "Subject", value: queueRowTitle(row) },
+    { id: "state", time, kind: "read", label: "Status", value: status },
+    { id: "attempt", time, kind: "read", label: "Attempt", value: `#${row.attempt}` },
+  ] }] }, ...(row.liveMessage.state === "present" ? [{ id: current?.id ?? "current-message", time, title: current?.label ?? "Current action", entries: [{ kind: "note" as const, id: "current-message", time, message: row.liveMessage.value }] }] : [])];
+  const timeline: readonly LogTimelineStage[] = row.pipeline.map(node => ({
+    id: node.id, label: node.label, state: PIPELINE_STATE[node.state],
+    ...(row.liveMessage.state === "present" && node.id === current?.id ? { stepId: node.id } : {}),
+    ...(node.durationSec === undefined ? {} : { durationLabel: fmtElapsed(node.durationSec) }),
+    substeps: [],
+  }));
+  return { title: queueRowTitle(row), status, steps, timeline };
 }
