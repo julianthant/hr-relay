@@ -15,19 +15,19 @@ All source paths in this table are relative to `src/dashboard/`.
 | --- | --- | --- |
 | Startup | `app/dashboard-app.tsx` `BootGate` | `state/use-bootstrap.ts` |
 | Workspace and workflow rail | `surfaces/shell/workspace-rail.tsx`, `workflow-rail.tsx` | Shared workflow catalog and current run counts |
-| Search | `surfaces/shell/search/navbar-view.tsx` | Loaded current queue/mock records composed by the app |
+| Search | `surfaces/shell/search/navbar-view.tsx` | Served cross-date search; the harness may supply sample results |
 | Action panel and date | `surfaces/queue/queue-focus.tsx`, app composition | Selected workflow/day, filters, and shared served clock |
 | Queue | `surfaces/queue/queue.tsx` | Day/preview model |
 | Logs | `surfaces/run-detail/log-panel.tsx`, `logs/log-sample.tsx` | Local ordered log producers |
 | OCR Records | `surfaces/run-detail/review/review.tsx` | Authenticated review revisions, edit/gate authority and source-page manifest; explicit previews supply local records |
 | Run and Rerun | `surfaces/run-start/run-launch.tsx` | Catalog and planner/client for served launches |
 | Notifications | `surfaces/notifications/notifications-view.tsx`, workspace rail | App preview destinations with rail-local read state |
-| Sessions | `surfaces/sessions/session-panel.tsx`, `sessions-view.tsx` | `sessionsSample` and `createSessionPreviewPort` |
+| Sessions | `surfaces/sessions/session-panel.tsx`, `sessions-view.tsx` | The served day through `createSessionPreviewPort`; the harness supplies `sessionsSampleHarness` |
 | Settings | `surfaces/settings/settings.tsx` | Typed editor, protected authority, readiness, storage, and local preferences |
 | ChatGPT account | `surfaces/settings/general/chatgpt-account.tsx` | `ChatGptAccountContext` default memory preview port |
 | Spreadsheets | `surfaces/spreadsheets/spreadsheets.tsx` | Served library and versioned Save through `state/spreadsheet-wiring-adapter.ts`; explicit fixture composition retains the mock library |
 | Intake | `surfaces/intake/intake.tsx` | Typed intake session and command client |
-| Analytics | `surfaces/activity/activity.tsx`, `activity-view.tsx` | AP1 population and selected browse through `state/activity-wiring-adapter.ts`; explicit fixture composition uses `activitySample` |
+| Analytics | `surfaces/activity/activity.tsx`, `activity-view.tsx` | AP1 population and selected browse through `state/activity-wiring-adapter.ts`; the harness supplies `useActivitySampleReport` |
 | Explorer | `surfaces/explorer/explorer.tsx`, `explorer-flow.tsx` | Local workflow definitions, choices, and source models |
 | Design-system specimen | `kit/main.tsx`, `kit/kit-page.tsx` | Real `ds/` primitives, no service data |
 
@@ -382,8 +382,7 @@ individual read/unread controls, and exact destination actions. Rows show subjec
 workflow, and age. Empty inbox, no failures, nothing needing attention, and all caught up are
 separate filtered states.
 
-`notificationPreviewState` derives events from current queue/mock runs. Workspace rail read flags
-live in memory. Read is separate from urgency resolution. Opening a valid target marks read and
+The rail reads one `InboxWiring`; the harness supplies sample notifications derived from current queue rows by `useNotificationsSampleInbox`, with read flags in memory. Read is separate from urgency resolution. Opening a valid target marks read and
 closes the inbox; a missing target reports refusal without navigating to an approximate workflow.
 Escape returns focus to the bell unless an inner dialog/menu owns it. A removed read control
 restores focus to a reachable filter. A ping uses the shared toast; the bell opens the inbox.
@@ -394,7 +393,7 @@ not use them as its default producer.
 
 ## Sessions and workers
 
-`SessionPanel` mounts `SessionsView` with `sessionsSample` and a memory `createSessionPreviewPort`.
+`SessionPanel` mounts `SessionsView` with the served day and `createSessionPreviewPort`; a harness may replace both through `sessionsHarness`.
 Catalog IDs resolve worker labels. Unknown worker workflows throw. Loading, unavailable, ready
 with no workers, and ready workers are distinct states. The expandable strip contains horizontally
 scrolling worker cards and an Add workers dialog.
@@ -685,7 +684,7 @@ Successful enqueue closes the takeover to the dashboard; navigation alone is not
 
 The displayed label is Analytics; its source folder and route IDs remain `activity`.
 `ActivityReport` uses the served report-calendar date and feeds `ActivityView` from the complete
-AP1 population. Explicit fixture composition retains the sample date, values and local interactions.
+AP1 population. A harness may replace the report hook with `useActivityReport` to show sample values.
 Invalid ranges, loading, empty periods and read/refusal failures remain distinct.
 
 The page provides period/range selection, status/workflow filtering, outcome/duration/volume/transaction/
