@@ -780,9 +780,9 @@ export function RunStartDialog({
             )}
 
             {currentStage === "Steps" && <section className="flex flex-col gap-1">
-              <div className="flex items-baseline justify-between gap-3 pr-[calc(var(--ds-row-pad-x)+1px)]">
+              <div className="flex max-w-[var(--ds-w-body-content)] items-baseline justify-between gap-3 pr-[calc(var(--ds-row-pad-x)+1px)]">
               <h3 className="text-heading font-semibold">Steps</h3>
-              {workflow && <span className="text-caption text-ui-muted">{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span>}
+              {workflow && <span className="text-[13px] text-ui-secondary">{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span>}
               </div>
               <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : "Replace reading steps with manual values. Form actions stay included."}</p>
             </section>}
