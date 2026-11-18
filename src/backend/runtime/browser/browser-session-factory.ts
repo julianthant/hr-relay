@@ -237,7 +237,8 @@ const PLAYWRIGHT_OBJECTS = new Set(["page", "frame", "locator", "elementHandle",
 const PLAYWRIGHT_METHODS = new Set(["evaluate", "evaluateAll", "evaluateHandle", "screenshot", "setViewportSize", "waitForTimeout", "count",
   "cookies", "isVisible", "waitFor", "inputValue", "textContent", "frameElement", "goto"]);
 const PAGE_ERROR_CLASSES = new Set(["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "EvalError", "URIError", "AggregateError"]);
-const DETACHED_FRAME_FAILURE = /^(?:frame\.evaluate|locator\.count): (?:Frame was detached|Frame has been detached\.|Execution context was destroyed, most likely because of a navigation\.?)$/u;
+const DETACHED_FRAME_FAILURE = /^(?:frame\.evaluate|locator\.count): (?:Frame was detached|Frame has been detached\.)$/u;
+const DESTROYED_FRAME_CONTEXT = /^(?:frame\.evaluate|locator\.count): Execution context was destroyed, most likely because of a navigation\.?$/u;
 /** The capture stage and failing call or error class, as a value-free kebab token for logs and failures. */
 function captureFailureDetail(stage: "sign-in-check" | "secret-check" | "page-capture" | "final-sign-in-check", error: unknown, errorName: string): string {
   const failed = playwrightCall(error) ?? (errorName.replace(/([a-z0-9])([A-Z])/gu, "$1-$2").toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "") || "error");
@@ -388,6 +389,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       const recordEvidence = (evidence: AuthenticatedApplicationEvidence): void => { assertCurrent(); this.#options.onAuthenticationEvidence?.(evidence); };
       let pageVersion = 1;
       let mainPageVersion = pageVersion;
+      const childNavigations = new WeakMap<Frame, number>();
       const detach = (): void => {
         page.off("framenavigated", navigated);
         page.off("frameattached", frameChanged);
@@ -410,6 +412,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         if (frame === page.mainFrame()) {
           mainPageVersion = pageVersion;
           this.#options.onNavigation?.(frame.url());
+        } else {
+          childNavigations.set(frame, pageVersion);
         }
       };
       const frameChanged = (): void => { if (observeEvent().state === "current") pageVersion += 1; };
@@ -441,9 +445,12 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
           const mainVersion = mainPageVersion;
           let captureSettled = false;
           const pageChanged = (): boolean => captureSettled ? mainPageVersion !== mainVersion : pageVersion !== version;
-          const isLateChildDetach = (frame: Frame, error: unknown): boolean =>
-            captureSettled && !pageChanged() && !page.isClosed() && frame !== page.mainFrame() && frame.isDetached()
-            && error instanceof Error && DETACHED_FRAME_FAILURE.test(error.message);
+          const lostSettledChildContext = (frame: Frame, navigation: number | undefined, error: unknown): boolean => {
+            if (!captureSettled || pageChanged() || page.isClosed() || frame === page.mainFrame() || !(error instanceof Error)) return false;
+            const contextDestroyed = DESTROYED_FRAME_CONTEXT.test(error.message);
+            if (frame.isDetached()) return contextDestroyed || DETACHED_FRAME_FAILURE.test(error.message);
+            return contextDestroyed && childNavigations.get(frame) !== navigation;
+          };
           const identity = { pageVersion: version, sessionId, observedAt: this.#options.clock.now().toISOString() };
           const unavailable = (reason: Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"], detail?: string): BrowserScreenshotEvidence =>
             Object.freeze({ ...identity, state: "unavailable", reason, ...(detail === undefined ? {} : { detail }) });
@@ -478,8 +485,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
               const errors: unknown[] = [];
               for (const frame of ssnWatched) {
                 if (frame.isDetached()) continue;
+                const navigation = childNavigations.get(frame);
                 try { await frame.evaluate(() => { (window as SsnWatchWindow).__relaySsnWatch?.stop(); }); }
-                catch (error) { if (!isLateChildDetach(frame, error)) errors.push(error); }
+                catch (error) { if (!lostSettledChildContext(frame, navigation, error)) errors.push(error); }
               }
               return errors;
             };
@@ -532,10 +540,11 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             if (pageChanged()) return unavailable("page-changed");
             for (const frame of frames) {
               if (frame !== page.mainFrame() && frame.isDetached()) continue;
+              const navigation = childNavigations.get(frame);
               try { if (await secretPresent(frame)) return unavailable("secret-controls-present"); }
               catch (error) {
                 assertCurrent();
-                if (!isLateChildDetach(frame, error)) throw error;
+                if (!lostSettledChildContext(frame, navigation, error)) throw error;
               }
             }
             if (pageChanged()) return unavailable("page-changed");

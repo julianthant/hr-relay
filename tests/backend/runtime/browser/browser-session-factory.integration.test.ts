@@ -385,25 +385,35 @@ describe("worker browser session factory", () => {
     });
   });
 
+  const contextDestroyed = "Execution context was destroyed, most likely because of a navigation";
+  const unrelatedFailure = "Error: fixture operation failed";
+  const childInterruptions = [
+    { event: "framedetached", occurrence: "the child detaches", message: "Frame was detached", available: true },
+    { event: "framedetached", occurrence: "the child detaches with a genuine error", message: unrelatedFailure, available: false },
+    { event: "framenavigated", occurrence: "the attached child navigates", message: contextDestroyed, available: true },
+    { event: "framenavigated", occurrence: "the attached child navigates with a genuine error", message: unrelatedFailure, available: false },
+    { event: "framenavigated", occurrence: "a different child navigates", message: contextDestroyed, available: false, sibling: true },
+  ] as const;
   for (const phase of ["observer cleanup", "final secret probe"] as const) {
-    for (const failure of ["detachment", "unrelated error"] as const) {
-      const detachFailure = failure === "detachment";
-      const title = detachFailure ? `returns the verified image when a child frame detaches during ${phase}`
-        : `reports a genuine ${phase} error even when the child frame detaches`;
-      it(title, async () => {
+    for (const interruption of childInterruptions) {
+      const { event, occurrence, message, available } = interruption;
+      const result = available ? "returns the verified image" : "reports the operation error";
+      it(`${result} when ${occurrence} during ${phase}`, async () => {
         await withTempRuntime(async ({ config }) => {
           const launcher = fakeLauncher();
           const main = launcher.page.mainFrame();
           const childDocument = fakePage({ url: "https://example.test/embedded" }).mainFrame();
+          const sibling = "sibling" in interruption ? fakePage({ url: "https://example.test/sibling" }).mainFrame() : undefined;
           let childDetached = false;
           let observerStopped = false;
-          const message = detachFailure ? "Frame was detached" : "Error: fixture operation failed";
+          let emitted = false;
           const call = phase === "observer cleanup" ? "frame.evaluate" : "locator.count";
           const fault = new Error(`${call}: ${message}`);
-          const detachDuringCall = async (): Promise<never> => {
+          const interruptCall = async (): Promise<never> => {
             await Promise.resolve();
-            childDetached = true;
-            launcher.page.emitFrameEvent("framedetached", child);
+            childDetached = event === "framedetached";
+            launcher.page.emitFrameEvent(event, sibling ?? child);
+            emitted = true;
             throw fault;
           };
           const child: typeof main = {
@@ -411,7 +421,7 @@ describe("worker browser session factory", () => {
             isDetached: () => childDetached,
             evaluate: async (callback, arg) => {
               const stopsObserver = arg === undefined && callback.toString().includes("__relaySsnWatch?.stop()");
-              if (stopsObserver && phase === "observer cleanup") return detachDuringCall();
+              if (stopsObserver && phase === "observer cleanup") return interruptCall();
               const value = await childDocument.evaluate(callback, arg);
               if (stopsObserver) observerStopped = true;
               return value;
@@ -419,36 +429,75 @@ describe("worker browser session factory", () => {
             locator(selector) {
               const locator = childDocument.locator(selector);
               return { ...locator, count: async () => {
-                if (observerStopped && selector.includes('input[type="password"]')) return detachDuringCall();
+                if (observerStopped && selector.includes('input[type="password"]')) return interruptCall();
                 return locator.count();
               } };
             },
           };
-          launcher.page.frames = () => childDetached ? [main] : [main, child];
+          const attachedFrames = sibling === undefined ? [main, child] : [main, child, sibling];
+          launcher.page.frames = () => childDetached ? [main] : attachedFrames;
           const resource = await factoryFor(config, launcher, recordingBindings()).open(OPEN_INPUT);
           try {
             await resource.authentication.authenticate("ucpath", {});
             const pending = resource.screenshot?.();
             assert.ok(pending);
-            if (!detachFailure && phase === "observer cleanup") {
+            if (!available && phase === "observer cleanup") {
               await assert.rejects(pending, error => error instanceof FullPageCaptureRestoreError && error.errors.includes(fault));
             } else {
               const screenshot = await pending;
-              if (detachFailure) {
+              if (available) {
                 assert.ok(screenshot.state === "available", screenshot.state === "unavailable" ? screenshot.reason : undefined);
                 assert.equal(screenshot.pageVersion, 1);
                 assert.deepEqual(Buffer.from(screenshot.bytes), PNG.sync.write(new PNG({ width: config.display.screenWidth + 24, height: config.display.screenHeight })));
               } else {
-                assert.deepEqual(screenshot, { state: "unavailable", reason: "verification-failed", detail: "secret-check-locator-count-error",
+                const detail = message === unrelatedFailure ? "secret-check-locator-count-error" : "secret-check-locator-count";
+                assert.deepEqual(screenshot, { state: "unavailable", reason: "verification-failed", detail,
                   pageVersion: 1, sessionId: SESSION_ID, observedAt: CLOCK.now().toISOString() });
               }
             }
-            assert.equal(child.isDetached(), true);
+            assert.equal(emitted, true);
+            assert.equal(child.isDetached(), event === "framedetached");
           } finally { await resource.close({ reason: "worker-stop" }); }
         });
       });
     }
   }
+
+  it("refuses mismatched secret counts when a child navigation provides no context-loss error", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const launcher = fakeLauncher();
+      const main = launcher.page.mainFrame();
+      const childDocument = fakePage({ url: "https://example.test/embedded" }).mainFrame();
+      let observerStopped = false;
+      let navigated = false;
+      const child: typeof main = {
+        ...childDocument,
+        evaluate: async (callback, arg) => {
+          if (observerStopped && typeof arg === "string" && arg.includes('input[type="password"]')) {
+            launcher.page.emitFrameEvent("framenavigated", child);
+            navigated = true;
+          }
+          const result = await childDocument.evaluate(callback, arg);
+          if (arg === undefined && callback.toString().includes("__relaySsnWatch?.stop()")) observerStopped = true;
+          return result;
+        },
+        locator(selector) {
+          const locator = childDocument.locator(selector);
+          if (!observerStopped || !selector.includes('input[type="password"]')) return locator;
+          return { ...locator, count: async () => 1, filter: () => locator };
+        },
+      };
+      launcher.page.frames = () => [main, child];
+      const resource = await factoryFor(config, launcher, recordingBindings()).open(OPEN_INPUT);
+      try {
+        await resource.authentication.authenticate("ucpath", {});
+        const screenshot = await resource.screenshot?.();
+        assert.equal(navigated, true);
+        assert.deepEqual(screenshot, { state: "unavailable", reason: "secret-controls-present", pageVersion: 1,
+          sessionId: SESSION_ID, observedAt: CLOCK.now().toISOString() });
+      } finally { await resource.close({ reason: "worker-stop" }); }
+    });
+  });
 
   it("launches the run's headed presentation in its own profile partition", async () => {
     await withTempRuntime(async ({ config }) => {
