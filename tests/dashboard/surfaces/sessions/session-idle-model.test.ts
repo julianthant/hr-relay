@@ -1,4 +1,10 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
+const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
 import { act,createElement } from 'react';
@@ -6,7 +12,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach,it,vi } from 'vitest';
 import { IDLE_REFRESH_MS,IdleSessionSchedule,useIdleSessionRefresh } from '../../../../src/dashboard/surfaces/sessions/session-idle-model.js';
 import { type SessionPreviewRequest } from '../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js';
-import { sessionsSample } from '../../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
+import { sessionsSample } from '../../../support/fixtures/dashboard/sessions-sample.js';
 import type { SessionsViewState } from '../../../../src/dashboard/surfaces/sessions/sessions-view-model.js';
 import { manualClock } from '../../../../src/rules/time/clock.js';
 
@@ -72,12 +78,11 @@ it('retains the original held refresh across its own version move, cancels Remov
   const { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } = await import('../../../mocks/helpers/fixture-day.js');
   const { DashboardDayWireSchema } = await import('../../../../src/models/dashboard/projection.js');
   const { sessionsFromDay } = await import('../../../../src/dashboard/surfaces/sessions/sessions-view-model.js');
-  const { buildWorkflowCatalog } = await import('../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js');
   const base = FIXTURE_DAY_WIRE.workerCards[1];
   const basis = (lifetimeId: string, version: number) => ({ basis: { state: 'present' as const, value: { lifetimeId, version } } });
   const card = { ...base, controls: basis(uuidOf(970), 1),
     browsers: base.browsers.map(browser => ({ ...browser, observation: { state: 'present' as const, health: 'authenticated' as const, observedAt: FIXTURE_NOW, browserMode: 'headed' as const, configFingerprint: 'a'.repeat(64) } })) };
-  const view = (next = card) => sessionsFromDay(DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards: FIXTURE_DAY_WIRE.workerCards.map(old => old.workerId === card.workerId ? next : old) }), buildWorkflowCatalog([], true, previewFixtureSources([])), FIXTURE_NOW);
+  const view = (next = card) => sessionsFromDay(DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, workerCards: FIXTURE_DAY_WIRE.workerCards.map(old => old.workerId === card.workerId ? next : old) }), SERVED_CATALOG, FIXTURE_NOW);
   const schedule = new IdleSessionSchedule(); schedule.sync(view(), 0);
   const request = schedule.due(IDLE_REFRESH_MS, () => false)[0]; assert(request?.action === 'refresh');
   const operations = { [card.workerId]: { request, state: 'uncertain' as const, message: 'No response' } };

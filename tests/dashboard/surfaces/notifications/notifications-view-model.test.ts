@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import { notificationsSample } from "../../../../src/dashboard/surfaces/notifications/notifications-fixture.js";
+import { notificationsSample } from "../../../support/fixtures/dashboard/notifications-sample.js";
 import { itemPreview,itemSource,notificationView,updateNotification,withCommandNotices,type NotificationItem,type NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 
 function ready(state: NotificationsState) {

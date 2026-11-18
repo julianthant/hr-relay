@@ -296,7 +296,7 @@ export function createRunStartDialogHarness() {
     onApplied: (workflowId: string) => void = () => undefined,
   ): Promise<OpenDialog> {
     intakeHandoffs.length = 0; closed.length = 0;
-    const catalog = buildWorkflowCatalog(catalogue.workflows, false, servedFixtureSources(catalogue.workflows));
+    const catalog = buildWorkflowCatalog(catalogue.workflows, servedFixtureSources(catalogue.workflows));
     const dialogElement = (extra: Partial<ComponentProps<typeof RunStartDialog>>) => createElement(ToastProvider, { children: createElement(DashboardClientProvider, {
       client,
       children: createElement(FixtureCommandBinding, { actorId: ACTOR_ID, children: createElement(RunStartDialog, {
