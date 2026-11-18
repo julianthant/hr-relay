@@ -96,7 +96,6 @@ describe("dashboard memo prop stability", () => {
   it("the three memoized panels are handed no provably-fresh prop", () => {
     const files = callerFiles();
     expect(files.length).toBeGreaterThan(0);
-    expect(files).toContain("src/dashboard/surfaces/workflows/mocks/workflow-mock-queue.tsx");
     expect(files).toContain("src/dashboard/app/dashboard-app.tsx");
     const report = files.flatMap((file) =>
       memoPropStabilityViolations(file, readFileSync(join(REPO_ROOT, file), "utf8"))

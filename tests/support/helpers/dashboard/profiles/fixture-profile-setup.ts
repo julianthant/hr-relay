@@ -1,3 +1,4 @@
+import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import type { CommandResult } from "../../../../../src/rules/commands/commands.js";
 import type { FrontendBootstrapWire } from "../../../../../src/models/dashboard/bootstrap.js";
 import type { DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
@@ -6,6 +7,12 @@ import type * as FixtureBootstrapTypes from "../../../fixtures/dashboard/fixture
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
 import type * as FixtureQueueTypes from "../../../fixtures/dashboard/fixture-queue.js";
 
+
+/** The signed-in, Duo-ready session every fixture BFF serves at `/api/v1/profile/state`. */
+export const FIXTURE_ACTIVE_PROFILE_STATE = PublicProfileStateSchema.parse({
+  state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready",
+  account: { name: "Smoke Test", initials: "ST", timekeeper: "Smoke Test", timekeeperInitials: "ST", lastSignedInAt: "2026-11-10T08:30:00-08:00" },
+});
 
 export interface FixtureDashboardProfile {
   /** Every bootstrap fact the browser reads before it selects a route. */

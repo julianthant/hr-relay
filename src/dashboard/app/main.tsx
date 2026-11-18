@@ -61,7 +61,7 @@ hot?.dispose(() => { disposeErrorReports(); });
 createRoot(container).render(
   <StrictMode>
     <DashboardClientProvider client={client}>
-      <DashboardApp profileSource="served" />
+      <DashboardApp />
     </DashboardClientProvider>
   </StrictMode>,
 );

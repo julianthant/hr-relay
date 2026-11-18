@@ -31,7 +31,7 @@ describe("typed draft belongs to its workflow", () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     await act(async () => root?.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client: h.stubClient({}),
       children: createElement(ViewNavigationContext.Provider, { value: { view: { launchServed: "onboarding" }, start: true, setStart() {}, update() {} },
-        children: createElement(RunStartDialog, { open: true, onOpenChange() {}, catalog: buildWorkflowCatalog([personLookup, onboarding], false, servedFixtureSources([personLookup, onboarding])),
+        children: createElement(RunStartDialog, { open: true, onOpenChange() {}, catalog: buildWorkflowCatalog([personLookup, onboarding], servedFixtureSources([personLookup, onboarding])),
           panelWorkflowId: personLookup.workflowId, actorId: h.ACTOR_ID, onApplied() {}, onOpenIntake() {} }) }) }) })));
     const dialog = document.body.querySelector('[role="dialog"]'); assert.ok(dialog);
     assert.ok(dialog.textContent?.includes("Hire mode"));
