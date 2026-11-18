@@ -19,6 +19,8 @@ import { RerunPlanSchema, RepeatWarningSchema, repeatEvidenceDigest, type RerunP
 import type { PlannedRun } from "../../../models/run/start-plan.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../../rules/write-safety/write-safety.js";
+import { taskSpanPath } from "../../logs/span-emitter.js";
+import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { projectStartSteps } from "./step-selection.js";
 
@@ -67,12 +69,41 @@ function boundNaturalKey(node: Extract<RuntimeFlowNode, { kind: "transaction" }>
   return { system, key, digest: deriveIdempotencyKeyDigest(system, key) };
 }
 
+function recordedGateSkipLookup(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord) {
+  const { runId, traceId, workflow, descriptorVersion, contractFingerprint } = run.envelope;
+  let records: ReturnType<typeof readTimelineRecords>["records"] | undefined;
+  return (node: RuntimeFlowNode | undefined, checkpoint?: RunCheckpointRecord): boolean => {
+    if (node?.kind !== "gate" || node.resolvedBy !== "operator" || node.when === undefined
+      || descriptorVersion !== descriptor.version || contractFingerprint !== descriptor.contractFingerprint) return false;
+    records ??= readTimelineRecords(repositories.timelineEvents, 0, runId).records;
+    const attempt = checkpoint?.attempt ?? run.envelope.attempt;
+    const claimGeneration = checkpoint?.claimGeneration ?? run.claimGeneration;
+    let skipped = false;
+    for (const { payload } of records) {
+      if (payload.kind !== "span") continue;
+      const { event } = payload;
+      if (!("runId" in event) || event.runId !== runId || event.traceId !== traceId
+        || event.workflow !== workflow || event.attempt !== attempt) continue;
+      if (event.t === "gate.opened" && String(event.gate) === String(node.id)) return false;
+      if (event.t !== "span.ended" || event.kind !== "task" || event.outcome !== "skipped"
+        || event.notRunReason !== "condition-false" || event.parentSpanPath !== traceId) continue;
+      const generation = Number(event.spanPath.split("#").at(-1)?.split(".")[0]);
+      // Same-attempt resume can reuse a skip recorded by an earlier claim.
+      if (Number.isSafeInteger(generation) && generation > 0 && generation <= claimGeneration
+        && event.spanPath === taskSpanPath(traceId, node.id, 1, generation)) skipped = true;
+    }
+    return skipped;
+  };
+}
+
 export function validateRerunTransactionEvidence(input: Readonly<{
   repositories: AuthorityRepositories; descriptor: AnyWorkflowDescriptor; run: RunRecord;
   node: Extract<RuntimeFlowNode, { kind: "transaction" }>; checkpoint: RunCheckpointRecord;
   checkpoints: ReadonlyMap<string, RunCheckpointRecord>; gates: readonly GateResultRecord[]; schemaReader?: EvidenceSchemaReader;
+  gateWasSkipped?: ReturnType<typeof recordedGateSkipLookup>;
 }>) {
-  const { repositories, descriptor, run, node, checkpoint, checkpoints, gates, schemaReader } = input;
+  const { repositories, descriptor, run, node, checkpoint, checkpoints, gates, schemaReader,
+    gateWasSkipped = recordedGateSkipLookup(repositories, descriptor, run) } = input;
   const currentInputHash = deriveSchemaHash(descriptor.canonicalInput, "output");
   // A retired input stays history: it only names the natural key, and every accepted write must carry this checkpoint's exact proof.
   const retired = isRetiredRunInput(descriptor, run, schemaReader);
@@ -93,7 +124,10 @@ export function validateRerunTransactionEvidence(input: Readonly<{
         "Rerun transaction dependency", { checkpoint: stored, schemaReader })) : stored.output.value;
     } else {
       const gate = gates.find(gate => String(gate.gateId) === String(id));
-      if (gate === undefined) throw new RerunRefusedError("invalid-value", "Rerun transaction dependency is unavailable");
+      if (gate === undefined) {
+        if (gateWasSkipped(dependency, checkpoint)) continue;
+        throw new RerunRefusedError("invalid-value", "Rerun transaction dependency is unavailable");
+      }
       if (dependency?.kind !== "gate" || (schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate,
         gate.result.schemaHash, deriveSchemaHash(dependency.result, "output")) ?? gate.result.schemaHash) !== deriveSchemaHash(dependency.result, "output")
         || !dependency.result.safeParse(gate.result.value).success) throw new RerunRefusedError("schema-mismatch", "Rerun transaction gate is invalid");
@@ -226,9 +260,10 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
     if (!older && (node?.kind !== "gate" || (schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate, gate.result.schemaHash, deriveSchemaHash(node.result, "output")) ?? gate.result.schemaHash) !== deriveSchemaHash(node.result, "output")
       || !node.result.safeParse(gate.result.value).success)) throw new RerunRefusedError("schema-mismatch", "Rerun gate evidence is invalid");
   }
+  const gateWasSkipped = recordedGateSkipLookup(repositories, descriptor, run);
   for (const checkpoint of latest.values()) {
     const node = descriptorRuntimeNodes(descriptor).find(node => node.id === checkpoint.nodeId);
-    if (node?.kind === "transaction") validateRerunTransactionEvidence({ repositories, descriptor, run, node, checkpoint, checkpoints: latest, gates, schemaReader });
+    if (node?.kind === "transaction") validateRerunTransactionEvidence({ repositories, descriptor, run, node, checkpoint, checkpoints: latest, gates, schemaReader, gateWasSkipped });
   }
   for (const coordinate of source.copiedFrom ?? []) {
     const checkpoint = latest.get(coordinate.nodeId);
@@ -254,10 +289,12 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   for (const node of descriptorRuntimeNodes(descriptor)) {
     if (node.kind !== "transaction" || !nodes.has(String(node.id))) continue;
     const outputs: Record<string, JsonValue> = {};
+    const transactionCheckpoint = latest.get(node.id);
+    let missingDependency = false;
     for (const dependency of node.dependsOn) {
+      const dependencyNode = descriptorRuntimeNodes(descriptor).find(candidate => candidate.id === dependency);
       const checkpoint = latest.get(String(dependency));
       if (checkpoint !== undefined) {
-        const dependencyNode = descriptorRuntimeNodes(descriptor).find(candidate => candidate.id === dependency);
         const schema = dependencyNode?.kind === "task" ? dependencyNode.uses.output
           : dependencyNode?.kind === "transaction" ? TransactionOutcomeSchema : undefined;
         if (schema === undefined || (schemaReader?.({ kind: "task-output", id: checkpointRecordKey(checkpoint) }, checkpoint, checkpoint.output.schemaHash, deriveSchemaHash(schema, "output")) ?? checkpoint.output.schemaHash) !== deriveSchemaHash(schema, "output")
@@ -270,19 +307,18 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
       else {
         const gate = gates.find((candidate) => String(candidate.gateId) === String(dependency));
         if (gate !== undefined) {
-          const dependencyNode = descriptorRuntimeNodes(descriptor).find(candidate => String(candidate.id) === String(dependency));
           if (dependencyNode?.kind !== "gate" || (schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate, gate.result.schemaHash, deriveSchemaHash(dependencyNode.result, "output")) ?? gate.result.schemaHash) !== deriveSchemaHash(dependencyNode.result, "output")
             || !dependencyNode.result.safeParse(gate.result.value).success) {
             throw new RerunRefusedError("schema-mismatch", "Previous transaction warning evidence is incompatible");
           }
           outputs[String(dependency)] = gate.result.value;
-        }
+        } else if (!gateWasSkipped(dependencyNode, transactionCheckpoint)) missingDependency = true;
       }
     }
     // Missing fresh upstream facts cannot authorize a repeat. Execution must
     // obtain renewed consent if its eventual natural key is not in this set.
-    if (node.dependsOn.some((dependency) => !Object.hasOwn(outputs, String(dependency)))) {
-      if (latest.has(String(node.id)) || repositories.writeIntents.listByRun(source.runId)
+    if (missingDependency) {
+      if (transactionCheckpoint !== undefined || repositories.writeIntents.listByRun(source.runId)
         .some((intent) => intent.status === "committed" && intent.taskId === node.commit.uses.id)) {
         throw new RerunRefusedError("invalid-value", "Previous transaction warning evidence is unavailable");
       }
