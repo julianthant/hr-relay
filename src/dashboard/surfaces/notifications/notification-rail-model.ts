@@ -14,10 +14,10 @@ type NotificationRailInput = Readonly<{
   reads: NotificationReads;
   setReads: Dispatch<SetStateAction<NotificationReads>>;
   served?: InboxWiring;
-  /** Whether the list is open: items that arrive meanwhile are in front of the operator and raise no alert. */
+  /** Whether the list is open: publications that arrive meanwhile are in front of the operator and raise no alert. */
   open?: boolean;
   setOpen: (open: boolean) => void;
-  /** Delivers one gated alert for a newly arrived served item; `sound` is false when Notification sound is off. */
+  /** Delivers one gated alert per served publication; `sound` is false when Notification sound is off. */
   onAlert?: (item: NotificationItem, sound: boolean) => void;
   setNotice: (notice: string) => void;
   /** The item whose destination just opened. */
@@ -52,17 +52,13 @@ export function useNotificationRailModel({ notifications, reads, setReads, open 
   const [ping, setPing] = useState(() => mockParam("notificationsPreview") === "ping");
   const pingItem = state.state === "ready" ? state.items.find(item => item.destination.kind === "run" && item.title === "Run completed") : undefined;
   const { notifications: switches } = usePersonPreferences().value;
-  const seen = useRef<Set<string> | undefined>(undefined);
   const alert = useRef(onAlert); alert.current = onAlert;
-  const servedState = served?.state;
-  useEffect(() => {
-    if (servedState?.state !== "ready") return;
-    if (seen.current === undefined) { seen.current = new Set(servedState.items.map(item => item.id)); return; }
-    const arrived = servedState.items.filter(item => !seen.current?.has(item.id));
-    for (const item of arrived) seen.current.add(item.id);
-    if (open) return;
-    for (const item of arrived) if (alertSwitch(item, switches)) alert.current?.(item, switches.sound !== "none");
-  }, [servedState, open, switches]);
+  const live = useRef({ open, switches }); live.current = { open, switches };
+  const onPublication = served?.onPublication;
+  useEffect(() => onPublication?.(({ item }) => {
+    if (live.current.open || !alertSwitch(item, live.current.switches)) return;
+    alert.current?.(item, live.current.switches.sound !== "none");
+  }), [onPublication]);
   const changeOpen = (next: boolean) => { setOpen(next); if (next) setPing(false); };
   if (served !== undefined) return {
     state: served.state, unread: unreadCount(served.state),
