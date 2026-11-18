@@ -256,6 +256,9 @@ const previewResultSchemas = new Map<string, z.ZodType<RunPreviewResult>>([
   ["56c14ccc71d195b045352f4a0c198b9fa0b87245ff4e399ff6f9ad4fe1589a1c", RunDryRunPreviewResultSchema],
   ["06bdc474498e86c00a7982fce5a5b223704504ccd91f8c4ed2f9fb5384c6984f", RunDelegatedDryRunPreviewResultSchema],
   ["2dbf8b1c9d095bae59c16f3243dfb05a01cdfdd7b3de8aff42ee3f25742ec373", RunPublicationDryRunPreviewResultSchema],
+  [deriveSchemaHash(RunDryRunPreviewResultSchema, "output"), RunDryRunPreviewResultSchema],
+  [deriveSchemaHash(RunDelegatedDryRunPreviewResultSchema, "output"), RunDelegatedDryRunPreviewResultSchema],
+  [deriveSchemaHash(RunPublicationDryRunPreviewResultSchema, "output"), RunPublicationDryRunPreviewResultSchema],
 ]);
 
 export function isRunPreviewSchemaHash(schemaHash: string): boolean {
@@ -291,6 +294,7 @@ export type RunTerminalEvidenceResult = z.infer<typeof RunTerminalEvidenceResult
 const terminalEvidenceSchemaHashes: ReadonlySet<string> = new Set([
   "491980e23e4128e69e199f95f6a56ef735cc08e5419b2c5d587143e2621d18ec",
   "375dea61ba605dd18f3df49745fa9d8f03eef3328af8a8ca446c877b658b6f94",
+  RUN_TERMINAL_EVIDENCE_SCHEMA_HASH,
 ]);
 
 export function deriveTerminalFailureDigest(failure: FailureRecord): Fingerprint {

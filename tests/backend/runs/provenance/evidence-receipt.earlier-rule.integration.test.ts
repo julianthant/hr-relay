@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
+import { z } from "zod";
+import * as workflow from "../../../../src/workflow-kit/workflow.js";
 import { deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, TerminalDependencyEvidenceSchema, deriveRunResultDigest, deriveTerminalDependencyDigest, isRunPreviewSchemaHash, readRunPreviewResult, RunResultRecordSchema, terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import { DRY_RUN_I9_PROFILE_ID, DRY_RUN_TRANSACTION_NUMBER } from "../../../../src/models/workflow/dry-run.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
@@ -14,7 +16,7 @@ import { buildRunEvidenceReceipt, ensureRunEvidenceReceipt, type EvidenceReceipt
 import { RunEvidenceReceiptSchema } from "../../../../src/models/trust/evidence.js";
 import { kualiReceiptEvidence } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { finalizationPreviewDependencies } from "../../../support/helpers/kuali-finalization-fixtures.js";
-import { separationsKualiFinalizationDescriptor as finalization } from "../../../support/helpers/registered-workflows.js";
+import { personLookupDescriptor, separationsKualiFinalizationDescriptor as finalization } from "../../../support/helpers/registered-workflows.js";
 import { workflowPreviewDependencyIds } from "../../../../src/workflow-kit/workflow.js";
 
 const world = createOcrReviewWorld();
@@ -57,6 +59,17 @@ it("reads the settled receipt after its workflow removes a delegated node", asyn
   } });
   assert.throws(() => createReceiptService({ ...deps, database: tamperedCheckpoints, descriptors: [revised] }).ensure(runId),
     /receipt-checkpoint-citation-mismatch/);
+
+  const gate = stored.decisions.find(row => row.kind === "gate" && row.outcome === "approved");
+  assert.ok(gate);
+  const contradicted = RunEvidenceReceiptSchema.parse({ ...stored,
+    decisions: stored.decisions.map(row => row.id === gate.id ? { ...row, outcome: "rejected" } : row),
+  });
+  const forgedDecision = ocrProofReadDatabase(f.database, { ...repositories, evidenceReceipts: { ...repositories.evidenceReceipts,
+    findByRun: id => id === runId ? contradicted : repositories.evidenceReceipts.findByRun(id),
+  } });
+  assert.throws(() => createReceiptService({ ...deps, database: forgedDecision, descriptors: [revised] }).ensure(runId),
+    /receipt-gate-decision-conflict/);
 
   const reader = createReceiptService({ ...deps, descriptors: [revised] });
   assert.deepEqual(reader.ensure(runId), { state: "existing", receipt: stored });
@@ -106,6 +119,29 @@ it("recognizes terminal evidence under its issued hash and verifies its original
     const retained = RunResultRecordSchema.parse({ ...current, resultSchemaHash: hash, result: bound, resultDigest: deriveRunResultDigest(bound) });
     assert.deepEqual(terminalEvidenceResult(retained), current.result.value);
     assert.throws(() => RunResultRecordSchema.parse({ ...retained, attempt: retained.attempt + 1 }), /terminal failure evidence identity mismatch/);
+  } finally {
+    await f.dispose();
+  }
+});
+
+it("refuses a failure warning that contradicts native settlement", async () => {
+  const f = await trustWorld();
+  try {
+    const runId = f.fail(f.create(1), 2).envelope.runId;
+    const stored = f.receipts.ensureReceipt(runId);
+    assert.ok(stored.warnings.some(row => row.code === "INPUT_INVALID"));
+    const wiring = createCapabilityWiringTestWorld();
+    const revised = wiring.fixtureDescriptor(personLookupDescriptor.id, personLookupDescriptor.code, wiring.providersOnlyContract);
+    const repositories = f.database.authority;
+    const forged = RunEvidenceReceiptSchema.parse({ ...stored, warnings: stored.warnings.map(row =>
+      row.code === "INPUT_INVALID" ? { ...row, summary: "The write committed before validation failed." } : row) });
+    const database = ocrProofReadDatabase(f.database, { ...repositories, evidenceReceipts: { ...repositories.evidenceReceipts,
+      findByRun: () => forged,
+    } });
+    for (const descriptor of [personLookupDescriptor, revised]) {
+      const reader = createReceiptService({ database, runReader: f.reader, descriptors: [descriptor] });
+      assert.throws(() => reader.ensure(runId), /declared-evidence moved|receipt-warning-conflict/);
+    }
   } finally {
     await f.dispose();
   }
@@ -165,6 +201,16 @@ it("returns the issued first-transaction receipt wording and the producer's mand
 });
 
 it("reads a removed transaction against its native write proof and refuses an altered proof", () => {
+  const { store, runId, stored } = settledTransaction();
+  const wiring = createCapabilityWiringTestWorld();
+  const revised = wiring.fixtureDescriptor(finalization.id, finalization.code, wiring.providersOnlyContract);
+  assert.deepEqual(ensureRunEvidenceReceipt(store, revised, runId), { state: "existing", receipt: stored });
+  const altered = { ...stored, actions: stored.actions.map(action => action.proved === undefined ? action :
+    { ...action, proved: { ...action.proved, recordedAt: "2026-01-01T00:00:00.000Z" } }) };
+  assert.throws(() => ensureRunEvidenceReceipt({ ...store, findReceiptByRun: () => altered }, revised, runId), /receipt-write-proof-conflict/);
+});
+
+function settledTransaction() {
   const fixture = kualiReceiptEvidence();
   const run = RunRecordSchema.parse(fixture.run);
   const stored = buildRunEvidenceReceipt({ descriptor: finalization, ...fixture });
@@ -172,12 +218,42 @@ it("reads a removed transaction against its native write proof and refuses an al
     getRun: () => run, getResult: () => fixture.result, getFailure: () => undefined,
     listCheckpointsByRun: () => fixture.checkpoints, listWritesByRun: () => fixture.writes,
     listGateResultsByRun: () => [], findReceiptByRun: () => stored,
-    insertReceipt: candidate => { assert.deepEqual(candidate, stored); return { state: "existing", record: stored }; },
+    insertReceipt: candidate => ({ state: "existing", record: RunEvidenceReceiptSchema.parse(candidate) }),
   };
+  return { store, runId: run.envelope.runId, stored, fixture };
+}
+
+it("refuses a decision reason that contradicts the settled transaction", () => {
+  const { store, runId, stored } = settledTransaction();
+  const dedupe = stored.decisions.find(row => row.kind === "dedupe");
+  assert.ok(dedupe?.outcome === "taken");
+  const forged = { ...store, findReceiptByRun: () => ({ ...stored, decisions: stored.decisions.map(row => row.id === dedupe.id
+    ? { ...row, reason: "The permanent key was already satisfied and no write occurred." } : row) }) };
+  assert.throws(() => ensureRunEvidenceReceipt(forged, finalization, runId), /declared-evidence moved/);
   const wiring = createCapabilityWiringTestWorld();
   const revised = wiring.fixtureDescriptor(finalization.id, finalization.code, wiring.providersOnlyContract);
-  assert.deepEqual(ensureRunEvidenceReceipt(store, revised, run.envelope.runId), { state: "existing", receipt: stored });
-  const altered = { ...stored, actions: stored.actions.map(action => action.proved === undefined ? action :
-    { ...action, proved: { ...action.proved, recordedAt: "2026-01-01T00:00:00.000Z" } }) };
-  assert.throws(() => ensureRunEvidenceReceipt({ ...store, findReceiptByRun: () => altered }, revised, run.envelope.runId), /receipt-write-proof-conflict/);
+  assert.throws(() => ensureRunEvidenceReceipt(forged, revised, runId), /receipt-write-decision-conflict/);
+});
+
+it("reads a settled write after only its declared proof schema changes and rejects a conflicting intent proof", () => {
+  const { store, runId, stored, fixture } = settledTransaction();
+  const nodes = workflow.descriptorRuntimeNodes(finalization);
+  const revised = nodes.map(node => {
+    if (node.kind !== "transaction") return node;
+    const commit = node.commit.uses;
+    return { ...node, commit: { ...node.commit, uses: { ...commit, writeSafety: { ...commit.writeSafety,
+      completion: { ...commit.writeSafety.completion, proofSchema: z.strictObject({ revised: z.boolean() }) },
+    } } } };
+  });
+  const projection = vi.spyOn(workflow, "descriptorRuntimeNodes").mockReturnValue(revised);
+  try {
+    assert.deepEqual(ensureRunEvidenceReceipt(store, finalization, runId), { state: "existing", receipt: stored });
+    const writes = fixture.writes.map(row => row.intent.status !== "committed" ? row : { ...row, intent: {
+      ...row.intent, completionProof: { ...row.intent.completionProof, value: { changed: true } },
+    } });
+    assert.throws(() => ensureRunEvidenceReceipt({ ...store, listWritesByRun: () => writes }, finalization, runId),
+      /receipt-write-proof-conflict/);
+  } finally {
+    projection.mockRestore();
+  }
 });

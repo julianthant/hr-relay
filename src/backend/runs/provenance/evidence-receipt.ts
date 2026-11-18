@@ -248,6 +248,17 @@ export function buildRunEvidenceReceipt(
 }
 
 
+function recordedTransactionOutcome(record: RunCheckpointRecord): z.infer<typeof TransactionOutcomeSchema> {
+  const parsed = TransactionOutcomeSchema.safeParse(record.output.value);
+  if (!parsed.success) {
+    throw new Error(
+      `transaction checkpoint ${record.nodeId} does not store a recorded transaction outcome, so `
+      + "nothing durable proves this write: " + parsed.error.message,
+    );
+  }
+  return parsed.data;
+}
+
 export function deriveActionWriteProof(input: Readonly<{
   commitContract: AnyCommitTaskContract;
   /** The transaction node's checkpoint row (raw or parsed). */
@@ -259,14 +270,7 @@ export function deriveActionWriteProof(input: Readonly<{
   if(input.composition!==undefined)RunEvidenceReceiptSchema.shape.composition.parse(input.composition);
   const { commitContract, intent } = input;
   const record = RunCheckpointRecordSchema.parse(input.record);
-  const parsed = TransactionOutcomeSchema.safeParse(record.output.value);
-  if (!parsed.success) {
-    throw new Error(
-      `transaction checkpoint ${record.nodeId} does not store a recorded transaction outcome, so `
-      + "nothing durable proves this write: " + parsed.error.message,
-    );
-  }
-  const outcome = parsed.data;
+  const outcome = recordedTransactionOutcome(record);
   if (intent === undefined) {
     throw new Error(
       `transaction checkpoint ${record.nodeId} stores a settled "${outcome.disposition}" outcome for `
@@ -288,6 +292,34 @@ export function deriveActionWriteProof(input: Readonly<{
     );
   }
   return writeProofFromOutcome(commitContract.id, commitContract.writeSafety.completion.kind, outcome, intent);
+}
+
+function retainedWriteProof(intent: WriteIntentRecord, outcome: z.infer<typeof TransactionOutcomeSchema>,
+  completion: ActionWriteProof["completion"], envelope: RunRecord["envelope"]): ActionWriteProof {
+  if (intent.runId !== envelope.runId || intent.runAttempt !== envelope.attempt
+    || intent.workflowId !== envelope.workflow || intent.itemId !== envelope.itemId) throw new Error("receipt-write-owner-conflict");
+  const durable = intent.status === "committed" ? intent.completionProof : intent.status === "observed-present" ? intent.observedProof : undefined;
+  if (durable !== undefined && canonicalJsonStringify(durable) !== canonicalJsonStringify(outcome.proof)) {
+    throw new Error("receipt-write-proof-conflict");
+  }
+  return writeProofFromOutcome(intent.taskId, completion, outcome, intent);
+}
+
+function transactionDecisions(entryId: GateEvidenceInput["entryId"], nodeId: string, actionId: string,
+  outcome: TransactionOutcomeShape, intent?: WriteIntentRecord): Decision[] {
+  const evidence = [evidenceEntryRef(actionId)];
+  const decisions: Decision[] = [{
+    id: entryId("decision", `dedupe.${nodeId}`),
+    kind: "dedupe", outcome: outcome.disposition === "committed" ? "taken" : "not-taken",
+    reason: outcome.disposition === "committed"
+      ? `the permanent key was not already satisfied, so this run fenced and committed once (proof source: ${outcome.proofSource})`
+      : `the permanent key was ALREADY satisfied (proof source: ${outcome.proofSource}); this run performed no second write`,
+    evidence,
+  }];
+  if (intent !== undefined) decisions.push({
+    id: entryId("decision", `identity.${nodeId}`), kind: "identity", outcome: "approved", reason: subjectReason(intent), evidence,
+  });
+  return decisions;
 }
 
 function writeProofFromOutcome(taskId: WriteIntentRecord["taskId"], completion: ActionWriteProof["completion"],
@@ -483,10 +515,11 @@ function deriveReceipt(
     });
   }
 
+  const omittedSteps = [...new Set((envelope.stepOmissions ?? []).map((entry) => String(entry.step)))].sort();
   if (binding.state === "incompatible" && retained !== undefined) {
     assertRetainedReceiptDependencies(bindingInput, result);
     checkHistoricalReceipt({ receipt: retained, run, result, receiptId, inputFacts, checkpoints,
-      gates: admittedGateResults, writes, failure });
+      gates: admittedGateResults, writes, failure, omittedSteps });
     return { receipt: retained, checks: binding.checks };
   }
 
@@ -508,7 +541,6 @@ function deriveReceipt(
     }
     if (dependency.state === "resolved") resolvedByNode.add(String(dependency.nodeId));
   }
-  const omittedSteps = [...new Set((envelope.stepOmissions ?? []).map((entry) => String(entry.step)))].sort();
   for (const [nodeId, cited] of assertedByNode) {
     const stored = pickCheckpoint(checkpoints, nodeId, envelope.attempt);
     if (stored?.assertion === undefined) {
@@ -686,7 +718,6 @@ function deriveReceipt(
     const scope = scopeOf(node);
     const replayed = record.runId !== envelope.runId || record.attempt !== envelope.attempt
       || Number(record.claimGeneration) !== Number(run.claimGeneration);
-    const corrected = record.provenance.some((fact) => fact.correctedAt !== undefined);
     const checkpointFingerprint = deriveCheckpointOutputDigest(record.output);
     const nodeLeaves = evidenceLeaves(contractOutputOf(node, record));
 
@@ -722,7 +753,7 @@ function deriveReceipt(
     /* action */
     const occurredAt = record.writtenAt;
     if (node.kind === "transaction") {
-      const outcome = transactionOutcomeOf(record);
+      const outcome = recordedTransactionOutcome(record);
       // Checkpoint rows lack intent IDs; a duplicated task ID cannot safely join to a first matching intent.
       const matchingWrites = writes.filter((entry) => entry.intent.taskId === contract.id);
       if (matchingWrites.length > 1) {
@@ -747,36 +778,19 @@ function deriveReceipt(
         occurredAt,
         write,
       });
-      commitAction.proved = deriveActionWriteProof({
-        ...(input.schemaReader === undefined ? {} : { schemaReader: input.schemaReader }),
-        composition,
-        commitContract: node.commit.uses,
-        record,
-        intent: write?.intent,
-      });
-      actions.push(commitAction);
-      const dedupeId = entryId("decision", `dedupe.${id}`);
-      decisions.push({
-        id: dedupeId,
-        kind: "dedupe",
-        outcome: outcome.disposition === "committed" ? "taken" : "not-taken",
-        reason: outcome.disposition === "committed"
-          ? `the permanent key was not already satisfied, so this run fenced and committed once `
-            + `(proof source: ${outcome.proofSource})`
-          : `the permanent key was ALREADY satisfied (proof source: ${outcome.proofSource}); `
-            + "this run performed no second write",
-        evidence: [evidenceEntryRef(commitAction.id)],
-      });
-      if (write !== undefined) {
-        const identityId = entryId("decision", `identity.${id}`);
-        decisions.push({
-          id: identityId,
-          kind: "identity",
-          outcome: "approved",
-          reason: subjectReason(write.intent),
-          evidence: [evidenceEntryRef(commitAction.id)],
+      if (retained !== undefined && write !== undefined && (write.intent.status === "committed" || write.intent.status === "observed-present")) {
+        if (outcome.proof.schemaHash !== deriveSchemaHash(node.commit.uses.writeSafety.completion.proofSchema, "output")) {
+          assertRetainedReceiptDependencies(bindingInput, result);
+        }
+        commitAction.proved = retainedWriteProof(write.intent, outcome, node.commit.uses.writeSafety.completion.kind, envelope);
+      } else {
+        commitAction.proved = deriveActionWriteProof({
+          ...(input.schemaReader === undefined ? {} : { schemaReader: input.schemaReader }),
+          composition, commitContract: node.commit.uses, record, intent: write?.intent,
         });
       }
+      actions.push(commitAction);
+      decisions.push(...transactionDecisions(entryId, id, commitAction.id, outcome, write?.intent));
     } else {
       actions.push({
         id: entryId("action", `${id}.read`),
@@ -801,30 +815,10 @@ function deriveReceipt(
 
     /* reuse */
     const limit = finiteFreshnessLimit(contract);
-    const observedAtMs = record.provenance
-      .map((fact) => Date.parse(fact.originalObservedAt))
-      .filter((value) => Number.isFinite(value));
-    const oldest = observedAtMs.length === 0 ? Date.parse(record.writtenAt) : Math.min(...observedAtMs);
-    const ageMs = Math.max(0, Date.parse(generatedAt) - oldest);
     if (limit !== undefined) {
-      reuse.push({
-        id: entryId("reuse", id),
-        kind: corrected ? "corrected" : replayed ? "checkpoint" : "fresh-live",
-        source: evidenceEntryRef(evidence.verificationId),
-        ageMs,
-        freshnessLimitMs: limit,
-      });
-      if (replayed && ageMs > limit) {
-        warnings.push({
-          id: entryId("warning", `stale-replay.${id}`),
-          code: ErrorCodeSchema.parse("REPLAYED_FACT_OLDER_THAN_FRESHNESS_LIMIT"),
-          summary: `node "${id}" replayed a checkpoint observed ${String(ageMs)}ms ago against a `
-            + `${String(limit)}ms freshness limit; ref workflow-model §5.5's walk proved it feeds no commit `
-            + "scheduled in this run, so it is recorded and not load-bearing",
-          loadBearing: false,
-          evidence: [evidenceEntryRef(evidence.verificationId)],
-        });
-      }
+      const checked = checkpointReuse(entryId, id, record, generatedAt, replayed, limit);
+      reuse.push(checked.reuse);
+      if (checked.warning !== undefined) warnings.push(checked.warning);
     }
 
     verification.push({
@@ -886,21 +880,6 @@ function deriveReceipt(
         : "ambiguous",
       evidence: outputs.map(({ id }) => evidenceEntryRef(id)),
     });
-  } else if (failure !== undefined) {
-    verification.push({
-      id: terminalResultVerificationId,
-      obligation: "completion.terminal-result",
-      mandatory: true,
-      verdict: "absent",
-      evidence: [],
-    });
-    warnings.push({
-      id: entryId("warning", "failure"),
-      code: failure.code,
-      summary: `${failure.summary} — write state at failure: ${failure.writeState}`,
-      loadBearing: true,
-      evidence: [],
-    });
   } else {
     verification.push({
       id: terminalResultVerificationId,
@@ -923,37 +902,7 @@ function deriveReceipt(
     }));
   }
 
-
-
-  // Receipts name omitted step keys; operator-entered facts stay in run input.
-  if (omittedSteps.length > 0) {
-    warnings.push({
-      id: entryId("warning", "step-omitted"),
-      code: ErrorCodeSchema.parse("OPERATOR_OMITTED_STEP"),
-      summary: `the operator omitted ${omittedSteps.length === 1 ? "one step" : `${String(omittedSteps.length)} steps`} `
-        + `at start and typed the facts this run would have read there: ${omittedSteps.join(", ")}. `
-        + "Every node of those steps either carries an operator-asserted value or did not run at all; "
-        + "nothing under them was observed in a live system",
-      loadBearing: true,
-      evidence: [],
-    });
-  }
-
-  /* ── residual writes ───────────────────────────────────────────────────── */
-
-  for (const { intent } of writes) {
-    if (intent.status === "parked" || intent.status === "retryable") {
-      warnings.push({
-        id: entryId("warning", `residual-write.${intent.writeIntentId}`),
-        code: ErrorCodeSchema.parse("RESIDUAL_WRITE_INTENT"),
-        summary: `write intent ${intent.writeIntentId} for ${intent.system} `
-          + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, false)} is still ${intent.status}; this run left an unsettled `
-          + "external write behind and only ref write-safety's typed operator resolutions may release it",
-        loadBearing: true,
-        evidence: [],
-      });
-    }
-  }
+  warnings.push(...settlementWarnings(entryId, failure, omittedSteps, writes));
 
   /* ── verdict ───────────────────────────────────────────────────────────── */
 
@@ -963,16 +912,6 @@ function deriveReceipt(
     for (const row of observations) row.mandatory = prior.get(row.id) ?? row.mandatory;
     for (const row of verification) {
       if (row.obligation !== "completion.terminal-result") row.mandatory = prior.get(row.id) ?? row.mandatory;
-    }
-    const decisionsById = new Map(retained.decisions.map(row => [String(row.id), row]));
-    for (const row of decisions) {
-      const issued = decisionsById.get(row.id);
-      if (issued !== undefined) row.reason = issued.reason;
-    }
-    const warningsById = new Map(retained.warnings.map(row => [String(row.id), row]));
-    for (const row of warnings) {
-      const issued = warningsById.get(row.id);
-      if (issued !== undefined && row.code !== "DRY_RUN_PREVIEW" && row.id !== entryId("warning", "failure")) row.summary = issued.summary;
     }
   }
 
@@ -1119,12 +1058,86 @@ function receiptVerdict(outcome: string, { input, observations, output, verifica
   return { confidence, result: receiptResult };
 }
 
+function checkpointReuse(entryId: GateEvidenceInput["entryId"], id: string, record: RunCheckpointRecord,
+  generatedAt: string, replayed: boolean, limit: number): { reuse: Reuse; warning?: Warning } {
+  const verificationId = entryId("verification", `node.${id}`);
+  const corrected = record.provenance.some(fact => fact.correctedAt !== undefined);
+  const observedAtMs = record.provenance
+    .map((fact) => Date.parse(fact.originalObservedAt))
+    .filter((value) => Number.isFinite(value));
+  const oldest = observedAtMs.length === 0 ? Date.parse(record.writtenAt) : Math.min(...observedAtMs);
+  const ageMs = Math.max(0, Date.parse(generatedAt) - oldest);
+  const reuse: Reuse = {
+    id: entryId("reuse", id),
+    kind: corrected ? "corrected" : replayed ? "checkpoint" : "fresh-live",
+    source: evidenceEntryRef(verificationId),
+    ageMs,
+    freshnessLimitMs: limit,
+  };
+  if (!replayed || ageMs <= limit) return { reuse };
+  return { reuse, warning: {
+    id: entryId("warning", `stale-replay.${id}`),
+    code: ErrorCodeSchema.parse("REPLAYED_FACT_OLDER_THAN_FRESHNESS_LIMIT"),
+    summary: `node "${id}" replayed a checkpoint observed ${String(ageMs)}ms ago against a `
+      + `${String(limit)}ms freshness limit; ref workflow-model §5.5's walk proved it feeds no commit `
+      + "scheduled in this run, so it is recorded and not load-bearing",
+    loadBearing: false,
+    evidence: [evidenceEntryRef(verificationId)],
+  } };
+}
+
+function settlementWarnings(entryId: GateEvidenceInput["entryId"], failure: FailureRecord | undefined,
+  omittedSteps: readonly string[], writes: readonly ReceiptWriteEvidence[]): Warning[] {
+  const warnings: Warning[] = [];
+  if (failure !== undefined) {
+    warnings.push({
+      id: entryId("warning", "failure"),
+      code: failure.code,
+      summary: `${failure.summary} — write state at failure: ${failure.writeState}`,
+      loadBearing: true,
+      evidence: [],
+    });
+  }
+  // Receipts name omitted step keys; operator-entered facts stay in run input.
+  if (omittedSteps.length > 0) {
+    warnings.push({
+      id: entryId("warning", "step-omitted"),
+      code: ErrorCodeSchema.parse("OPERATOR_OMITTED_STEP"),
+      summary: `the operator omitted ${omittedSteps.length === 1 ? "one step" : `${String(omittedSteps.length)} steps`} `
+        + `at start and typed the facts this run would have read there: ${omittedSteps.join(", ")}. `
+        + "Every node of those steps either carries an operator-asserted value or did not run at all; "
+        + "nothing under them was observed in a live system",
+      loadBearing: true,
+      evidence: [],
+    });
+  }
+
+  /* ── residual writes ───────────────────────────────────────────────────── */
+
+  for (const { intent } of writes) {
+    if (intent.status === "parked" || intent.status === "retryable") {
+      warnings.push({
+        id: entryId("warning", `residual-write.${intent.writeIntentId}`),
+        code: ErrorCodeSchema.parse("RESIDUAL_WRITE_INTENT"),
+        summary: `write intent ${intent.writeIntentId} for ${intent.system} `
+          + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, false)} is still ${intent.status}; this run left an unsettled `
+          + "external write behind and only ref write-safety's typed operator resolutions may release it",
+        loadBearing: true,
+        evidence: [],
+      });
+    }
+  }
+
+  return warnings;
+}
+
 function checkHistoricalReceipt(input: {
   receipt: RunEvidenceReceipt;
   run: RunRecord;
   result: RunResultRecord;
   receiptId: RunEvidenceReceipt["receiptId"];
   inputFacts: Fact[];
+  omittedSteps: readonly string[];
   checkpoints: readonly RunCheckpointRecord[];
   gates: readonly GateResultRecord[];
   writes: readonly ReceiptWriteEvidence[];
@@ -1156,6 +1169,9 @@ function checkHistoricalReceipt(input: {
   const previewWarning = receipt.warnings.find(row => row.id === id("warning", "dry-run-preview"));
   if (preview !== undefined && (previewWarning?.code !== "DRY_RUN_PREVIEW" || !previewWarning.loadBearing
     || previewWarning.summary !== previewWarningSummary(preview, previewWarning.summary))) throw new Error("receipt-preview-conflict");
+  const expectedWarnings = settlementWarnings(id, input.failure, input.omittedSteps, writes);
+  if (previewWarning !== undefined) expectedWarnings.push({ ...previewWarning, evidence: [] });
+  const remainingReuse = new Map(receipt.reuse.map(row => [String(row.id), row]));
   const terminalVerdict = preview !== undefined ? "unknown" : lifecycle.outcome === "done" ? "verified" : "absent";
   if (terminalCheck?.obligation !== "completion.terminal-result" || !terminalCheck.mandatory
     || terminalCheck.verdict !== terminalVerdict || !same(terminalCheck.evidence, receipt.output.map(row => evidenceEntryRef(row.id)))
@@ -1171,7 +1187,7 @@ function checkHistoricalReceipt(input: {
     }
   }
 
-  const observations = new Map(receipt.observations.map(fact => [fact.id, fact]));
+  const observations = new Map(receipt.observations.map(fact => [String(fact.id), fact]));
   const actions = new Map(receipt.actions.map(action => [action.id, action]));
   const checkObservation = (nodeId: string, leaf: EvidenceLeaf, scope: EvidenceValueScope, source: Fact["source"]) => {
     const factId = id("observation", `${nodeId}.${leaf.path}`), fact = observations.get(factId);
@@ -1179,23 +1195,28 @@ function checkHistoricalReceipt(input: {
       || !same(fact.value, redactEvidenceLeaf(scope, leaf))) throw new Error(`receipt-observation-conflict: ${nodeId}`);
     observations.delete(factId);
   };
+  const gateDecisions = new Map(receipt.decisions.filter(row => row.kind === "gate").map(row => [String(row.id), row]));
+  const writeDecisions = new Map(receipt.decisions.filter(row => row.kind === "dedupe").map(row => [String(row.id), row]));
   for (const gate of gates) {
-    if ("source" in gate) {
-      const factId = id("observation", `${gate.nodeId}.sourceEvent`), fact = observations.get(factId);
-      if (fact?.state !== "unresolved" || !same(fact.source, { kind: "gate-source-event", gateId: gate.gateId,
-        sourceKind: gate.source.kind, sourceId: gate.source.sourceId, eventId: gate.source.eventId,
-        eventDigest: gate.source.eventDigest, correlationDigest: gate.source.correlationDigest,
-        attempt: gate.source.attempt, resolvedAt: gate.resolvedAt })) throw new Error("receipt-gate-event-conflict");
-      observations.delete(factId);
-      continue;
+    const verificationId = id("verification", `node.${gate.nodeId}`);
+    const issued = receipt.verification.find(row => row.id === verificationId);
+    const facts: Fact[] = [], decisions: Decision[] = [], verification: Verification[] = [];
+    emitGateEvidence({ stored: gate, nodeId: gate.nodeId, currentRunId: envelope.runId, workflowId: envelope.workflow,
+      verificationId, mandatory: issued?.mandatory ?? false, declaredDetails: new Set(), entryId: id,
+      evidence: { factIds: new Map(), values: new Map() }, observations: facts, decisions, verification, composition: receipt.composition });
+    if (issued === undefined || !same(verification[0], issued)) throw new Error("receipt-gate-verification-conflict");
+    for (const expected of decisions) {
+      const recorded = gateDecisions.get(expected.id);
+      if (recorded === undefined || !same(recorded, expected)) throw new Error("receipt-gate-decision-conflict");
+      gateDecisions.delete(expected.id);
     }
-    const owner = { gateId: gate.gateId, resolvedAt: gate.resolvedAt, resolvedBy: gate.resolvedBy };
-    const source: Fact["source"] = gate.runId === envelope.runId ? { kind: "gate-result", ...owner }
-      : { kind: "continued-gate-result", ...owner, sourceRunId: gate.runId, commandId: gate.commandId };
-    for (const leaf of evidenceLeaves(gate.result.value)) {
-      checkObservation(gate.nodeId, leaf, { kind: "gate-result", workflowId: envelope.workflow, gateId: gate.gateId }, source);
+    for (const expected of facts) {
+      const recorded = observations.get(expected.id);
+      if (recorded === undefined || !same(recorded, { ...expected, mandatory: recorded.mandatory })) throw new Error("receipt-gate-fact-conflict");
+      observations.delete(expected.id);
     }
   }
+  if (gateDecisions.size !== 0) throw new Error("receipt-gate-decision-conflict");
   for (const nodeId of new Set(checkpoints.map(row => row.nodeId))) {
     const record = pickCheckpoint(checkpoints, nodeId, envelope.attempt);
     if (record === undefined) continue;
@@ -1203,6 +1224,14 @@ function checkHistoricalReceipt(input: {
     const marker = receipt.verification.find(row => row.id === id("verification", `node.${nodeId}`));
     if (marker === undefined && read === undefined && commit === undefined && record.runId !== envelope.runId) continue;
     if (marker?.obligation !== `node.${nodeId}`) throw new Error("receipt-checkpoint-verification-missing");
+    const reuse = remainingReuse.get(id("reuse", nodeId));
+    const replayed = record.runId !== envelope.runId || record.attempt !== envelope.attempt || record.claimGeneration !== run.claimGeneration;
+    if (reuse !== undefined) {
+      const checked = checkpointReuse(id, nodeId, record, lifecycle.endedAt, replayed, reuse.freshnessLimitMs);
+      if (!same(checked.reuse, reuse) || record.assertion !== undefined) throw new Error("receipt-checkpoint-reuse-conflict");
+      if (checked.warning !== undefined) expectedWarnings.push(checked.warning);
+      remainingReuse.delete(reuse.id);
+    }
     const fields = evidenceLeaves(commit === undefined ? record.output.value : transactionOutcomeOf(record).output);
     const asserted = record.assertion;
     for (const leaf of fields) {
@@ -1218,7 +1247,7 @@ function checkHistoricalReceipt(input: {
       const superseded: Fact[] = [];
       const expected = observationFact({ composition: receipt.composition, factId, entryId: id, nodeId, taskId: action.taskId,
         leaf, scope: { kind: "task-output", taskId: action.taskId }, provenance: provenanceFor(record, commit === undefined ? leaf.path : `output.value.${leaf.path}`),
-        replayed: record.runId !== envelope.runId || record.attempt !== envelope.attempt || record.claimGeneration !== run.claimGeneration,
+        replayed,
         checkpointFingerprint: deriveCheckpointOutputDigest(record.output), writtenAt: record.writtenAt, upstream: [],
         mandatory: fact.mandatory, supersededFacts: superseded });
       if (expected.source.kind === "derived" && fact.source.kind === "derived") expected.source = fact.source;
@@ -1241,15 +1270,25 @@ function checkHistoricalReceipt(input: {
       if (matching.length !== 1 || write === undefined || prepare?.kind !== "prepare" || prepare.writeState !== "prepared"
         || prepare.occurredAt !== record.writtenAt || proof === undefined) throw new Error("receipt-write-owner-conflict");
       const { intent } = write;
-      const durable = intent.status === "committed" ? intent.completionProof : intent.status === "observed-present" ? intent.observedProof : undefined;
-      if (durable !== undefined && !same(durable, outcome.proof)) throw new Error("receipt-write-proof-conflict");
       const expected = commitActionOf({ id: commit.id, taskId: intent.taskId, occurredAt: record.writtenAt, write });
-      expected.proved = writeProofFromOutcome(intent.taskId, proof.completion, outcome, intent);
+      expected.proved = retainedWriteProof(intent, outcome, proof.completion, envelope);
       if (!same(commit, expected)) throw new Error("receipt-write-proof-conflict");
+      for (const decision of transactionDecisions(id, nodeId, commit.id, outcome, intent)) {
+        const recorded = receipt.decisions.find(row => row.id === decision.id);
+        if (recorded === undefined || !same(recorded, decision)) throw new Error("receipt-write-decision-conflict");
+        writeDecisions.delete(decision.id);
+      }
       actions.delete(prepare.id);
       actions.delete(commit.id);
     }
   }
+  if (remainingReuse.size !== 0) throw new Error("receipt-checkpoint-reuse-conflict");
+  const recordedWarnings = new Map(receipt.warnings.map(row => [String(row.id), row]));
+  if (expectedWarnings.length !== receipt.warnings.length || expectedWarnings.some(expected => {
+    const recorded = recordedWarnings.get(expected.id);
+    return recorded === undefined || !same(expected, recorded);
+  })) throw new Error("receipt-warning-conflict");
+  if (writeDecisions.size !== 0) throw new Error("receipt-write-decision-conflict");
   if (observations.size || actions.size) throw new Error("receipt-evidence-owner-missing");
 }
 
@@ -1328,7 +1367,7 @@ interface GateEvidenceInput {
   readonly mandatory: boolean;
   readonly declaredDetails: ReadonlySet<string>;
   readonly entryId: (kind: Parameters<typeof deriveEvidenceEntryId>[1], key: string) => EvidenceEntryId;
-  readonly evidence: NodeEvidence;
+  readonly evidence: Pick<NodeEvidence, "factIds" | "values">;
   readonly observations: Fact[];
   readonly decisions: Decision[];
   readonly verification: Verification[];
