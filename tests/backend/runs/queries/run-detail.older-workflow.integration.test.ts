@@ -1,18 +1,19 @@
 import { afterAll, afterEach, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { buildRunDetail, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
-import { LogIdentityRefusedError } from "../../../../src/backend/runs/commands/refusals.js";
+import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
+import { LogDisplayRefusedError, LogIdentityRefusedError } from "../../../../src/backend/runs/commands/refusals.js";
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
 import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { readRunLogs, projectRunLogs } from "../../../../src/dashboard/state/run-wiring-adapter.js";
 import { TimelineAppendSchema, TimelineEventRecordSchema } from "../../../../src/models/events/timeline.js";
 import { assertRunTimelineCompatible } from "../../../../src/backend/runs/queries/run-timeline-compatibility.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
+import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { HASH_B } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
-import { taskEventsOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { failureRecordOf, runEndedEventOf, taskEventsOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupModule } from "../../../support/helpers/registered-workflows.js";
 
 const profileFixtures = createProfileFixtureSet();
@@ -66,6 +67,58 @@ it.each([0, 1])("loads older run detail and Logs with current names after a fing
   assert.equal(projected.timeline[0].label, "Current person search");
   assert.equal(projected.steps[0].title, "Current person search");
   assert.match(JSON.stringify(projected.steps[0].entries), /Quillan, Petra A\./u);
+});
+
+it.each(["historical", "current"] as const)("checks unmapped observations when opening failed-run Logs (%s)", async definition => {
+  const w = await world();
+  const original = personLookupModule.descriptor;
+  const at = w.clock.now().toISOString();
+  const nodeId = "active-status";
+  const taskId = "workflow:person-lookup/read-active-status";
+  const failure = FailureRecordSchema.parse({ ...failureRecordOf({ seed: 82, code: "UNEXPECTED_PAGE_STATE" }),
+    nodeId, taskId, occurredAt: at });
+  queuedEventOf(w, { seed: 82, descriptor: original,
+    lifecycle: { state: "terminal", outcome: "failed", failureId: failure.failureId, endedAt: at } });
+  w.authority.failures.set(failure.failureId, failure);
+  const run = w.authority.getRun(failure.runId);
+  assert.ok(run);
+  taskEventsOf(w, 82, nodeId);
+  const identity = { ts: at, workflow: run.envelope.workflow, runId: run.envelope.runId, attempt: 1,
+    traceId: run.envelope.traceId, spanPath: `${run.envelope.traceId}/${nodeId}#1` };
+  w.writer.emit({ ...identity, t: "data.observed", observedAt: at, nodeId, taskId,
+    points: [{ direction: "read", field: "status", values: [{ key: "status", state: "allowed",
+      classification: "safe-diagnostic", transform: "allow", value: "retired-status" }] }] });
+  w.writer.emit({ ...identity, t: "span.ended", kind: "task", outcome: "failed", failureId: failure.failureId });
+  runEndedEventOf(w, 82, "failed", { failureId: failure.failureId });
+  w.projection.ingestFromTimeline();
+  const row = w.projection.buildDashboardDayWire(at.slice(0, 10)).queueSurfaces.find(row => row.runId === run.envelope.runId);
+  assert.ok(row);
+  const descriptor = { ...original, version: original.version + (definition === "historical" ? 1 : 0),
+    dataOrigins: dataOriginViewsOf(personLookupModule).map(origin => origin.taskId !== taskId ? origin : {
+      ...origin, operatorFields: [{ label: "Status", kind: "output" as const, fieldPath: "status",
+        display: { cases: [{ value: "active", text: "Active" }] } }],
+    }) };
+  const deps: RunDetailQueryDeps = { runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot,
+    projection: w.projection, authority: w.authority, descriptors: { resolve: () => descriptor },
+    trust: { getFailure: id => w.authority.getFailure(id), countFailuresByFingerprint: () => 1,
+      ensureReceipt: () => { throw new Error("opening Logs must not derive a receipt"); } } };
+  const sections: string[] = [];
+  const opening = readRunLogs({ runDetail: async id => buildRunDetail(deps, id),
+    runSection: async (id, name) => { sections.push(name); return buildRunSection(deps, id, name); } },
+    { row, workflowLabel: "Person lookup" }, new AbortController().signal);
+  if (definition === "current") {
+    await assert.rejects(opening, LogDisplayRefusedError);
+    assert.deepEqual(sections, ["logs"]);
+    assert.throws(() => buildRunSection(deps, run.envelope.runId, "failure"), LogDisplayRefusedError);
+    return;
+  }
+  const snapshot = await opening;
+  const failureSection = snapshot.sections.find(section => section.section === "failure");
+  assert.ok(failureSection?.payload.state === "available");
+  assert.equal(failureSection.payload.value.failureId, failure.failureId);
+  assert.equal(failureSection.payload.value.display?.field, undefined);
+  assert.match(JSON.stringify(snapshot.logs), /Unavailable for this historical run/u);
+  assert.doesNotMatch(JSON.stringify(snapshot), /retired-status/u);
 });
 
 it.each(["version", "fingerprint", "current"] as const)("reads removed task membership only for retained runs (%s)", async drift => {
