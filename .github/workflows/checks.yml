@@ -211,18 +211,7 @@ jobs:
         env:
           SUITE: ${{ matrix.suite }}
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: |
-          if [[ "$SUITE" == unit ]]; then
-            exec bash scripts/test/ci-unit-sampler.sh "$SLICE"
-          fi
-          scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=3
-      - uses: actions/upload-artifact@v7
-        if: ${{ always() && matrix.suite == 'unit' }}
-        with:
-          name: unit-resources-${{ matrix.shard }}
-          path: ${{ runner.temp }}/unit-resources/
-          if-no-files-found: warn
-          retention-days: 14
+        run: scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=3
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
