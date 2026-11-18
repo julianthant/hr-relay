@@ -19,7 +19,7 @@ function runIdentityError(context: string, code: string, requestedRunId: string)
 export interface DetailQueries {
   runDetail(runId: string, signal?: AbortSignal): Promise<RunDetailWire>;
 
-  runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal): Promise<RunDetailSectionResponse>;
+  runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal, hostedRunIds?: readonly string[]): Promise<RunDetailSectionResponse>;
 
   /** Bounded same-item attempt history, pinned to this exact selected run. */
   itemAttemptHistory(
@@ -56,7 +56,7 @@ export function createDetailQueries(transport: DashboardTransport): DetailQuerie
       return detail;
     },
 
-    async runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal): Promise<RunDetailSectionResponse> {
+    async runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal, hostedRunIds: readonly string[] = []): Promise<RunDetailSectionResponse> {
       const query = cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`;
       const context = `GET /api/v1/runs/${runId}/${section}`;
       const response = parseOrThrow(
@@ -69,9 +69,9 @@ export function createDetailQueries(transport: DashboardTransport): DetailQuerie
       );
       if (response.section !== section) throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
       const payload = response.payload;
-      const owner = section === "review" ? undefined : "runId" in payload ? payload.runId
+      const owner = "runId" in payload ? payload.runId
         : "state" in payload && payload.state === "available" && "runId" in payload.value ? payload.value.runId : undefined;
-      if (owner !== undefined && owner !== runId) throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
+      if (owner !== undefined && owner !== runId && !(section === "review" && hostedRunIds.includes(owner))) throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
       return response;
     },
 

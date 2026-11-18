@@ -16,7 +16,7 @@ import { checkedCommandResult } from "../client/commands/shared-commands.js";
 
 type ReviewState = Readonly<{ state: "loading" | "loaded" | "failed"; page?: ReviewPage; error?: string }>;
 
-export async function readRunReview(client: Pick<DashboardClient, "runDetail" | "runSection">, selection: LogSelection, signal: AbortSignal): Promise<ReviewPage> {
+export async function readRunReview(client: Pick<DashboardClient, "runDetail" | "runSection">, selection: LogSelection, signal: AbortSignal, hostedRunIds: readonly string[] = []): Promise<ReviewPage> {
   const { row } = selection;
   const detail = await client.runDetail(row.runId, signal);
   if (detail.runId !== row.runId || detail.header.workflowId !== row.workflowId || detail.header.traceId !== row.traceId
@@ -24,17 +24,20 @@ export async function readRunReview(client: Pick<DashboardClient, "runDetail" | 
     throw new Error("RUN_REVIEW_IDENTITY_MISMATCH");
   }
   signal.throwIfAborted();
-  const section = await client.runSection(row.runId, "review", undefined, signal);
-  if (section.section !== "review") throw new Error("RUN_REVIEW_IDENTITY_MISMATCH");
+  const section = await client.runSection(row.runId, "review", undefined, signal, hostedRunIds);
+  if (section.section !== "review" || section.payload.runId !== row.runId && !hostedRunIds.includes(section.payload.runId)) throw new Error("RUN_REVIEW_IDENTITY_MISMATCH");
   return section.payload;
 }
 
 export function useRunReview(client: DashboardClient, selection: LogSelection, binding: DashboardCommandBinding | undefined) {
   const { row } = selection;
-  const request = useMemo(() => ({ client, selection: { row, workflowLabel: selection.workflowLabel }, runId: row.runId, revision: row.rowRevision, epoch: binding?.authority.epoch,
+  const dayResource = binding?.authority.dayState.day;
+  const hostedKey = dayResource?.state === "loaded"
+    ? dayResource.value.queueSurfaces.filter(surface => surface.workflowId === "ocr" && surface.parent?.runId === row.runId).map(surface => surface.runId).join(",") : "";
+  const request = useMemo(() => ({ client, selection: { row, workflowLabel: selection.workflowLabel }, hostedRunIds: hostedKey === "" ? [] : hostedKey.split(","), runId: row.runId, revision: row.rowRevision, epoch: binding?.authority.epoch,
     actor: binding?.scope.actorId, day: binding?.authority.day, dayRequest: binding?.authority.dayState.request,
     dayState: binding?.authority.dayState.day.state }),
-  [client, row, selection.workflowLabel, binding?.authority.epoch, binding?.scope.actorId, binding?.authority.day,
+  [client, row, selection.workflowLabel, hostedKey, binding?.authority.epoch, binding?.scope.actorId, binding?.authority.day,
     binding?.authority.dayState.request, binding?.authority.dayState.day.state]);
   const current = useRef(request);
   current.current = request;
@@ -45,7 +48,7 @@ export function useRunReview(client: DashboardClient, selection: LogSelection, b
   useEffect(() => {
     if (request.dayState !== undefined && request.dayState !== "loaded") return;
     const controller = new AbortController();
-    void readRunReview(client, request.selection, controller.signal).then(page => {
+    void readRunReview(client, request.selection, controller.signal, request.hostedRunIds).then(page => {
       if (current.current === request && !controller.signal.aborted) setSettled({ request, value: { state: "loaded", page } });
     }, () => {
       if (current.current !== request || controller.signal.aborted) return;

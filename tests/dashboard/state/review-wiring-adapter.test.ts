@@ -100,12 +100,36 @@ it("focuses a newly selected run even when the same document record ID appears i
   await vi.waitFor(() => assert.ok(document.activeElement?.hasAttribute("data-ocr-review-heading")));
 });
 
+function parentRow() {
+  const base = selection();
+  return { ...base, row: QueueSurfaceWireSchema.parse({ ...base.row, runId: "00000000-0000-4000-8000-000000000996", workflowId: "oath-upload" }) };
+}
+const parentClient = (parent: ReturnType<typeof parentRow>) => createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async input => Response.json(
+  String(input).endsWith("/review") ? { section: "review", payload: ocrReviewPageFixture(SOURCE_RUN_ID) } : detail(parent)) });
+
 it("opens the hosted OCR review a parent run serves under the OCR run's own identity", async () => {
-  const parent = { ...selection(), row: QueueSurfaceWireSchema.parse({ ...selection().row, runId: "00000000-0000-4000-8000-000000000996", workflowId: "oath-upload" }) };
-  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async input => Response.json(
-    String(input).endsWith("/review") ? { section: "review", payload: ocrReviewPageFixture(SOURCE_RUN_ID) } : detail(parent)) });
+  const parent = parentRow();
+  const page = await readRunReview(parentClient(parent), parent, new AbortController().signal, [SOURCE_RUN_ID]);
+  assert.equal(page.runId, SOURCE_RUN_ID);
+});
+
+it("refuses a review payload for a run the row neither is nor hosts", async () => {
+  const parent = parentRow();
+  await assert.rejects(readRunReview(parentClient(parent), parent, new AbortController().signal, ["00000000-0000-4000-8000-000000000995"]), /IDENTITY_MISMATCH/u);
+  await assert.rejects(readRunReview(parentClient(parent), parent, new AbortController().signal), /IDENTITY_MISMATCH/u);
+});
+
+it("mounts the parent's Records view on the hosted OCR review named by the loaded day", async () => {
+  const parent = parentRow();
+  const base = selection();
+  const hosted = QueueSurfaceWireSchema.parse({ ...base.row, runId: SOURCE_RUN_ID, workflowId: "ocr",
+    parent: { runId: parent.row.runId, visibility: "hidden-unless-failed", partitionDay: "2026-11-18", workflowId: "oath-upload", label: "Oath upload", panelKind: "run", status: "running", title: "Oath upload" } });
+  const world = editorWorld();
+  const day = { ...FIXTURE_DAY_WIRE, queueSurfaces: [...FIXTURE_DAY_WIRE.queueSurfaces, hosted] };
+  const binding: DashboardCommandBinding = { ...world.binding, authority: { ...world.binding.authority, dayState: { ...world.binding.authority.dayState, day: { state: "loaded", value: day } } } };
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(RunReview, { selection: parent }) })));
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client: parentClient(parent), children: createElement(DashboardCommandBindingProvider, { binding,
+    children: createElement(RunReview, { selection: parent }) }) })));
   await vi.waitFor(() => assert.equal(host.querySelectorAll("[data-review-record-id]").length, 2));
 });
 
