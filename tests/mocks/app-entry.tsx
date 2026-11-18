@@ -26,7 +26,7 @@ const ControlPreview = previewLoader ? lazy(() => previewLoader().then(module =>
 const composition = fixture === "product-workflows" || Reflect.get(window, "relayMockProductWorkflows") === true
   ? productWorkflowComposition
   : fixture === "picked-a"
-  ? (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => ({ ...MOCK_WORKFLOW_COMPOSITION(workflows), logs: "served" as const })
+  ? (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => { const { LogPreview: _preview, ...harness } = MOCK_WORKFLOW_COMPOSITION(workflows).harness ?? {}; return { ...MOCK_WORKFLOW_COMPOSITION(workflows), harness }; }
   : MOCK_WORKFLOW_COMPOSITION;
 const restoredNotice = fixture === "restore-notice" ? { backupCapturedAt: "2026-11-05T08:42:00-08:00" } : undefined;
 const theme: unknown = Reflect.get(window, "relayMockTheme");
