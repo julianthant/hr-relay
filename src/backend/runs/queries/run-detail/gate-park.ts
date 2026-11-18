@@ -55,7 +55,7 @@ import { timelineCheckpointReference } from "../../../../models/events/timeline.
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
 import type { DecisionInputWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
 import { IDENTITY_REVIEW_TEXT, PARKED_WRITE_RECORDS, REFERENCE_CHECK_REVIEW_TEXT, parkedWriteRecordId, type ParkedWriteRecord } from "../../decisions/decision-catalog.js";
-import { projectDecision, rowActionOption } from "../../decisions/project-decision.js";
+import { projectDecision, rowActionOption, type ServedOption } from "../../decisions/project-decision.js";
 import { decisionAnswerer, type DecisionAnswerer } from "../../decisions/decision-answer.js";
 
 
@@ -216,7 +216,7 @@ export function hireReviewDecision(mode: "new-hire" | "rehire", match: z.infer<t
   const unconfirmed = match.hits.length > 0 && match.confirmed.length === 0, count = match.hits.length;
   const unpickable = unconfirmed ? match.dropped.filter(hit => !choices.existing.some(person => person.emplId === hit.emplId)) : [];
   const send = (arm: string) => ({ via: "gate-arm" as const, gateNodeId: gateId, expectedVersion, arm });
-  const served = arms.flatMap(arm => {
+  const served = arms.flatMap<ServedOption>(arm => {
     if (arm.value === "new-hire" && choices.newHire) return [unconfirmed
       ? { id: arm.value, label: "File as a new hire", send: send(arm.value),
         confirm: { title: "File as a new hire", body: `Rules out all ${String(count)} UCPath ${count === 1 ? "match" : "matches"}.`, confirmLabel: "File new hire", tone: "destructive" as const } }

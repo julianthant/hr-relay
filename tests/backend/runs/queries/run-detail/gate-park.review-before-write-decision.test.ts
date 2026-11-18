@@ -59,7 +59,9 @@ describe("hireReviewDecision", () => {
     const decision = hireReviewDecision("new-hire", allDropped, NAMES, ARMS, "hire-review", 7);
     assert.deepEqual(decision?.options.map(({ id }) => id), ["new-hire"]);
     assert.equal(JSON.stringify(decision?.options).includes("10000001"), false, "no option carries a different-name hit");
-    assert.ok(decision?.context?.includes("Other name: Other, Person (••••0001, Last name does not match) · Other name: Other, Person (••••0002, Last name does not match) · Other name: Other, Person (••••0003, Last name does not match) · If one is this person, cancel and file the rehire by hand in UCPath"), decision?.context);
+    const context = decision?.context;
+    assert.ok(context !== undefined, "expected hire-review context");
+    assert.ok(context.includes("Other name: Other, Person (••••0001, Last name does not match) · Other name: Other, Person (••••0002, Last name does not match) · Other name: Other, Person (••••0003, Last name does not match) · If one is this person, cancel and file the rehire by hand in UCPath"), context);
     assert.match(hireReviewDecision("new-hire", allDropped, { ...NAMES, ssn: null }, ARMS, "hire-review", 7)?.context ?? "", /Searched: name, DOB · Other name/u);
   });
 
