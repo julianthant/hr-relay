@@ -119,6 +119,7 @@ interface MemberRecord {
   exit: WorkerMemberView["exit"];
   settlementFailure: unknown;
   readonly pending: Map<string, PendingReply>;
+  requestSequence: number;
   timers: MonotonicDeadlineHandle[];
   stopping: Promise<void> | undefined;
   /** Resolves when the OS exit is observed or the bounded observation window closes. */
@@ -321,7 +322,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       const settled = new Promise<void>(resolve => { resolveSettled = resolve; });
       const record: MemberRecord = { member, lifetimeId: deps.ids.uuid(), port, startedAt: at(), version: 0, state: "starting", directive: "run", settling: false,
         activity: undefined, browsers: new Map(), browserSystems: undefined, stopReason: undefined, failureCode: undefined, held: undefined, exit: undefined, settlementFailure: undefined,
-        pending: new Map(), timers: [], stopping: undefined, exited, resolveExited, settled, resolveSettled, ready: undefined };
+        pending: new Map(), requestSequence: 0, timers: [], stopping: undefined, exited, resolveExited, settled, resolveSettled, ready: undefined };
       records.set(member.workerId, record);
       const readiness = new Promise<Error | undefined>(resolve => { record.ready = resolve; });
       if (port.pid === undefined) {
@@ -360,20 +361,20 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     async request(target: WorkerTarget, request: WorkerControlRequest, deadlineMs: number): Promise<JsonValue> {
       const record = current(target);
       if (record.state !== "running") throw new WorkerPoolError(record.state === "exited" ? "WORKER_EXITED" : "WORKER_BUSY");
-      return await awaitReply(record, { kind: "worker-request", requestId: deps.ids.uuid(), sentAt: at(), deadlineMs, request }, deadlineMs);
+      return await awaitReply(record, { kind: "worker-request", requestId: deps.ids.uuid(), sequence: ++record.requestSequence, sentAt: at(), deadlineMs, request }, deadlineMs);
     },
 
     async pause(target: WorkerTarget): Promise<WorkerMemberView> {
       const record = current(target);
       if (record.state !== "running") throw new WorkerPoolError(record.state === "exited" ? "WORKER_EXITED" : "WORKER_BUSY");
-      await awaitReply(record, { kind: "worker-pause", requestId: deps.ids.uuid() }, timeouts.readyMs);
+      await awaitReply(record, { kind: "worker-pause", requestId: deps.ids.uuid(), sequence: ++record.requestSequence }, timeouts.readyMs);
       return view(record);
     },
 
     async resume(target: WorkerTarget): Promise<WorkerMemberView> {
       const record = current(target);
       if (record.state !== "running") throw new WorkerPoolError(record.state === "exited" ? "WORKER_EXITED" : "WORKER_BUSY");
-      await awaitReply(record, { kind: "worker-resume", requestId: deps.ids.uuid() }, timeouts.readyMs);
+      await awaitReply(record, { kind: "worker-resume", requestId: deps.ids.uuid(), sequence: ++record.requestSequence }, timeouts.readyMs);
       return view(record);
     },
 
