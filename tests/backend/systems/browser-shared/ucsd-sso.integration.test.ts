@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { chromium, type Browser } from "playwright";
-import { afterAll, beforeAll, it } from "vitest";
+import { afterAll, beforeAll, it, vi } from "vitest";
 import { installNativeSsoGuard } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { probeSessionCookie } from "../../../../src/backend/systems/browser-shared/authenticated-application.js";
 import { submitPinnedUcsdSsoCredentials, verifyUcsdAuthenticatedApplication, waitForAuthenticatedLanding, waitForUcsdDuoSignIn } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
@@ -192,7 +192,7 @@ it.each(["prepare", "cancel click", "cancel submit"] as const)("honors the origi
   } finally { await context.close(); }
 });
 
-it("accepts the committed landing reached by redirect from the pinned POST", async () => {
+it.each(["GET", "POST"] as const)("verifies the committed redirect receipt after the pinned POST (%s)", async recordedMethod => {
   const context = await guardedContext();
   const server = createServer((request, response) => {
     if (request.url === "/sw.js") {
@@ -218,8 +218,25 @@ it("accepts the committed landing reached by redirect from the pinned POST", asy
     });
     const page = await context.newPage();
     await page.goto(SSO);
-    await submitPinnedUcsdSsoCredentials(page, async () => ({ userId: "fixture", password: "" }),
-      () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO");
+    if (recordedMethod === "POST") {
+      const waitForCommit = page.waitForNavigation.bind(page);
+      vi.spyOn(page, "waitForNavigation").mockImplementation(async options => {
+        const response = await waitForCommit(options);
+        assert.ok(response);
+        assert.ok(response.request().redirectedFrom());
+        vi.spyOn(response.request(), "method").mockReturnValue("POST");
+        return response;
+      });
+    }
+    const actions: string[] = [];
+    const signing = submitPinnedUcsdSsoCredentials(page, async () => ({ userId: "fixture", password: "" }),
+      () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO", kind => actions.push(kind));
+    if (recordedMethod === "POST") {
+      await assert.rejects(signing, /UCSD_SSO_SUBMIT_UNPROVED/);
+      assert.deepEqual(actions, ["typed", "typed"]);
+      return;
+    }
+    await signing;
     assert.equal(page.url(), landing);
     await page.evaluate(async () => {
       await navigator.serviceWorker.register("/sw.js");

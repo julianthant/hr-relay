@@ -257,7 +257,12 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
       const outcome = await navigation;
       if ("error" in outcome) throw outcome.error;
       let request = outcome.response?.request();
-      for (let prior = request?.redirectedFrom(); prior; prior = prior.redirectedFrom()) request = prior;
+      while (request) {
+        const prior = request.redirectedFrom();
+        if (!prior) break;
+        if (request.method() !== "GET") throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
+        request = prior;
+      }
       if (!request || request.method() !== "POST" || request.url() !== destination) throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
     } finally { stop.abort(); }
     assertCurrent();
