@@ -27,19 +27,22 @@ export class RunDeletionRefusedError extends Error {
   }
 }
 type FileEvidence = z.infer<typeof DeletionFileSchema>;
+const CheckpointReferenceContainerSchema = z.record(z.string(),z.unknown());
+
 export function deletionArtifactValues(database: DatabaseSync, table: string, row: Record<string, unknown>): readonly unknown[] {
   const snapshot = table === "diagnostic_snapshots" ? row : table === "diagnostic_files"
     ? database.prepare("SELECT * FROM diagnostic_snapshots WHERE id=?").get(z.string().parse(row.snapshot_id)) : undefined;
   if (snapshot !== undefined && DiagnosticBundleSchema.parse(nativeOrdinaryRecordFromRow("diagnostic_snapshots", snapshot)).availability?.state === "purged") return [];
   return Object.entries(row).flatMap(([column, value]) => column.endsWith("_json") && typeof value === "string" ? [JSON.parse(value) as unknown] : []);
 }
-function containsReference(value: unknown, checkpoint: z.infer<typeof RunCheckpointRecordSchema>, inheritedNodeId?: unknown): boolean {
+function containsReference(value: unknown, checkpoints: readonly z.infer<typeof RunCheckpointRecordSchema>[], runId: string, inheritedNodeId?: unknown): boolean {
   if (value === null || typeof value !== "object") return false;
-  if (Array.isArray(value)) return value.some(item => containsReference(item,checkpoint,inheritedNodeId));
-  const record = z.record(z.string(),z.unknown()).parse(value);
-  if (record.runId === checkpoint.runId && record.workflowId === checkpoint.workflowId && record.itemId === checkpoint.itemId
-    && (record.nodeId ?? inheritedNodeId) === checkpoint.nodeId && record.attempt === checkpoint.attempt && record.claimGeneration === checkpoint.claimGeneration) return true;
-  return Object.values(record).some(item => containsReference(item,checkpoint,record.nodeId ?? inheritedNodeId));
+  if (Array.isArray(value)) return value.some(item => containsReference(item,checkpoints,runId,inheritedNodeId));
+  const record = CheckpointReferenceContainerSchema.parse(value);
+  const nodeId = record.nodeId ?? inheritedNodeId;
+  if (record.runId === runId && checkpoints.some(checkpoint => record.workflowId === checkpoint.workflowId && record.itemId === checkpoint.itemId
+    && nodeId === checkpoint.nodeId && record.attempt === checkpoint.attempt && record.claimGeneration === checkpoint.claimGeneration)) return true;
+  return Object.values(record).some(item => containsReference(item,checkpoints,runId,nodeId));
 }
 
 function isSettledCascadeTerminalization(database:DatabaseSync,command:ReturnType<typeof commandFromRow>,commandRow:unknown,cascade:Set<string>):boolean {
@@ -108,8 +111,9 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
     .map(raw => RunCheckpointRecordSchema.parse(nativeOrdinaryRecordFromRow("run_checkpoints",raw)));
   let sharedCheckpoint = false;
   const checkRetained = (value: unknown): void => {
-    sharedCheckpoint ||= checkpoints.some(checkpoint => containsReference(value,checkpoint));
+    sharedCheckpoint ||= checkpoints.length !== 0 && containsReference(value,checkpoints,runId);
   };
+  // Other runs and commands can retain checkpoints owned by this run.
   if (!history) for (const raw of database.prepare("SELECT * FROM runs").iterate()) {
     if (!currentCascade.has(z.string().parse(raw.id))) checkRetained(readRun(raw));
   }
