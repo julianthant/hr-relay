@@ -25,11 +25,6 @@ import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page
 import { notificationTargetUnavailable } from "../../../src/dashboard/app/navigation/run-navigation.js";
 
 const requested = vi.hoisted(() => ({ target: undefined as NotificationDestination | undefined }));
-function mockProductSources(): WorkflowSourcePolicy {
-  const sources: Record<string, "mock"> = {};
-  for (const id of Object.keys(PRODUCT_WORKFLOW_COMPOSITION.sources)) sources[id] = "mock";
-  return Object.freeze(sources);
-}
 vi.mock("../../../src/dashboard/surfaces/notifications/notifications-preview-model.js", async importOriginal => ({
   ...await importOriginal<typeof import("../../../src/dashboard/surfaces/notifications/notifications-preview-model.js")>(),
   useWorkspaceNotifications: () => ({ state: "ready", pinned: [], items: [{ id: "canonical", title: "Run failed", subject: "Canonical history", workflow: "Person Lookup", detail: "Failure", tone: "danger", age: "", read: false, priority: false, action: "Open exact target", destination: requested.target }] }),
@@ -47,7 +42,7 @@ function rowAction(host: HTMLElement, title: string, label: string): HTMLButtonE
 }
 
 async function mount(missing = false, mixed = false, view?: Readonly<Record<string, string>>) {
-  const sources: WorkflowSourcePolicy = mixed ? { ...mockProductSources(), "person-lookup": "served" } : mockProductSources();
+  const sources: WorkflowSourcePolicy = PRODUCT_WORKFLOW_COMPOSITION.sources;
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
   const reads: string[] = [];
@@ -78,13 +73,13 @@ async function mount(missing = false, mixed = false, view?: Readonly<Record<stri
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
   return { host, reads, sources };
 }
-it("opens canonical historical run detail while ordinary workflow sources remain mock", async () => {
+it("opens canonical historical run detail while the run's workflow is served", async () => {
   const runId = RunIdSchema.parse(FIXTURE_IDS.failedRun);
   const row = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId === runId); assert(row);
   assert.equal(PRODUCT_WORKFLOW_COMPOSITION.sources[row.workflowId], "served");
   requested.target = { kind: "run", runId, day: FIXTURE_DAY_WIRE.day };
   const { host, reads, sources } = await mount();
-  assert.equal(sources[row.workflowId], "mock");
+  assert.equal(sources[row.workflowId], "served");
   assert.deepEqual(reads, [FIXTURE_DAY_WIRE.day]);
   const params = new URLSearchParams(location.search);
   assert.equal(params.get("run"), runId);
@@ -185,7 +180,7 @@ it("mounts served inbox controls and reports only the served search authority to
   };
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(mockProductSources()) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => PRODUCT_WORKFLOW_COMPOSITION }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
   await act(async () => bell.click());
   assert(host.textContent?.includes("Storage degraded")); assert.equal(host.textContent?.includes("Canonical history"), false);
@@ -207,12 +202,11 @@ it("mounts served inbox controls and reports only the served search authority to
   await vi.waitFor(() => assert(document.body.textContent?.includes("Exact served subject")));
 });
 
-it("admits a canonical Separations historical target while Person Lookup is served and Separations stays mock", async () => {
+it("admits a canonical Separations historical target while Person Lookup and Separations are both served", async () => {
   requested.target = { kind: "run", runId: RunIdSchema.parse(FIXTURE_IDS.failedRun), day: FIXTURE_DAY_WIRE.day };
   const { host, reads, sources } = await mount(false, true);
   assert.equal(sources["person-lookup"], "served");
-  assert.equal(sources.separations, "mock");
-  assert.equal(sources.ocr, "mock");
+  assert.equal(sources.separations, "served");
   assert.deepEqual(reads, [FIXTURE_DAY_WIRE.day]);
   assert.equal(new URLSearchParams(location.search).get("run"), FIXTURE_IDS.failedRun);
   assert.equal(parseRoute(location.search).view?.workflow, "separations");
@@ -249,7 +243,7 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   };
   window.history.replaceState(null, "", "/?day=2026-08-02");
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(mockProductSources()) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => PRODUCT_WORKFLOW_COMPOSITION }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
   await act(async () => bell.click());
   const open = host.querySelector<HTMLButtonElement>("button.notification-item"); assert(open);

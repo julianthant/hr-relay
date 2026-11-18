@@ -1,5 +1,11 @@
 import { ViewNavigationContext } from "../../../src/dashboard/app/navigation/view-route-model.js";
-import { servedFixtureSources as previewFixtureSources, buildPreviewCatalog } from "../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../mocks/helpers/fixture-start.js";
+import { launchWorkflows as launchServedWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows as parseServedWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog as buildServedCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
+const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -201,7 +207,7 @@ it("renders complete mock previews without requesting registered data", async ()
   const host = document.createElement("div"); const root = createRoot(host);
   const client = createDashboardClient({ baseUrl: "http://unused.test", fetchImpl: () => { throw new Error("unexpected mock request"); } });
   try {
-    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(WorkflowExplorer, { catalog: buildPreviewCatalog([], previewFixtureSources([])), client }) })));
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(WorkflowExplorer, { catalog: SERVED_CATALOG, client }) })));
     assert.ok(host.textContent?.includes("Separation filed and Kuali document verified"));
   } finally { await act(async () => root.unmount()); }
 });
@@ -210,7 +216,7 @@ it("resets hypothetical choices on injected-client replacement without dispatchi
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   const client = () => createDashboardClient({ baseUrl: "http://unused.test", fetchImpl: () => { throw new Error("local choices cannot query or dispatch"); } });
-  const catalog = buildPreviewCatalog([], previewFixtureSources([]));
+  const catalog = SERVED_CATALOG;
   const render = async (current: ReturnType<typeof client>) => { await act(async () => root.render(createElement(DashboardClientProvider, { client: current, children: createElement(WorkflowExplorer, { catalog, client: current }) }))); };
   try {
     await render(client());

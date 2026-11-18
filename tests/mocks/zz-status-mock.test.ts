@@ -269,7 +269,7 @@ test("customize steps every workflow", async ({ page }) => {
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
   const reached: string[] = [];
-  for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]) {
+  for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Emergency Contact", "Work-Study"]) {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
     await rail.getByRole("button", { name, exact: true }).last().click();
     await page.getByRole("button", { name: "Start run", exact: true }).click();
@@ -289,7 +289,7 @@ test("customize steps every workflow", async ({ page }) => {
     await expect(dialog.getByRole("button", { name: /^Start (dry|live) run$|^Start run$/ }), `${name}: start on Steps`).toBeVisible();
     reached.push(name);
   }
-  expect(reached).toEqual(["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]);
+  expect(reached).toEqual(["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Emergency Contact", "Work-Study"]);
   expect(errors).toEqual([]);
 });
 
@@ -301,7 +301,7 @@ for (const theme of THEMES) test(`run input every workflow @ ${theme} ${WIDTH}`,
   await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
-  for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]) {
+  for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Emergency Contact", "Work-Study"]) {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     await rail.getByRole("button", { name, exact: true }).last().click();

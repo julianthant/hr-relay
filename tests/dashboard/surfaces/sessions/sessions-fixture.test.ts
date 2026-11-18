@@ -1,17 +1,19 @@
-import { servedFixtureSources as previewFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
+const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,describe as describe_m1,expect as expect_m1,it as it_m0,it as it_m1 } from "vitest";
-import { launchWorkflows as launchWorkflows_m1 } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { previewSessionAdd as previewSessionAdd_m0,previewSessionAdd as previewSessionAdd_m1,previewSessionControl as previewSessionControl_m0,sessionsSample as sessionsSample_m0 } from "../../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
 import { sessionTallies as sessionTallies_m0 } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
-import { parseWorkflows as parseWorkflows_m1 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
-import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } from "../../../mocks/helpers/fixture-start.js";
-import { WORKFLOW_SOURCES } from "../../../../src/dashboard/app/workflow-sources.js";
 
 
 {
 
-const catalog = buildPreviewCatalog([], previewFixtureSources([]));
+const catalog = SERVED_CATALOG;
 
 describe_m0("frontend timeline and sessions", () => {
   it_m0("local worker controls preserve peers and input fixtures; invalid transitions fail loud", () => {
@@ -85,8 +87,7 @@ describe_m0("frontend timeline and sessions", () => {
 {
 
 
-const served = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows), FIXTURE_START_PICKER_BOOTSTRAP_m1.workbookCompatibility);
-const catalog = buildPreviewCatalog(served, WORKFLOW_SOURCES);
+const catalog = SERVED_CATALOG;
 
 describe_m1("frontend workflow catalog", () => {
   it_m1("adds local workers for every registration without inventing a UCPath browser or a claimed run", () => {
@@ -96,7 +97,7 @@ describe_m1("frontend workflow catalog", () => {
       expect_m1(result.workers.map(worker => worker.workflow)).toEqual([entry.label, entry.label]);
       expect_m1(result.workers.map(worker => worker.id)).toEqual(["sample-added-10", "sample-added-11"]);
       expect_m1(result.workers.every(worker => worker.timeline === undefined && worker.subject === undefined)).toBe(true);
-      expect_m1(result.workers[0].browsers.map(browser => browser.label)).toEqual([...new Set(entry.preview?.steps.flatMap(step => step.system ? [step.system] : []) ?? [])]);
+      expect_m1(result.workers[0].browsers.map(browser => browser.label)).toEqual([]);
     }
     expect_m1(() => previewSessionAdd_m1({ state: "ready", workers: [] }, catalog, "unregistered", 1, 10)).toThrow("sessions-preview-add-invalid");
   });

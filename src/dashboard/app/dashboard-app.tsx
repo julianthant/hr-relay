@@ -26,7 +26,6 @@ import type { RunWiringConfirm } from "../state/run-wiring-adapter.js";
 import { useWorkspaceSearchData } from "../surfaces/shell/search/search-wiring-model.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import { dsLayer } from "../ds/theme/tokens.js";
-import { prepareHubWorkflow } from "../surfaces/shell/hub-assistant-model.js";
 import type { AssistantPorts } from "../surfaces/shell/assistant-panel-model.js";
 import { productWorkflowComposition, workflowSource, type WorkflowComposition, type SurfaceSource } from "./workflow-sources.js";
 import type { NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
@@ -143,7 +142,6 @@ type AppRouteState
 
 const NO_LOG_TABS: readonly PanelTab[] = Object.freeze([]);
 const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
-const NO_PREVIEW_RUNS: readonly never[] = Object.freeze([]);
 
 
 
@@ -423,7 +421,6 @@ function LoadedApp({
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
   const workflowComposition = useMemo(() => composeWorkflows(launchWorkflows(workflows, boot.workbookCompatibility)), [composeWorkflows, workflows, boot.workbookCompatibility]);
   const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows, boot.workbookCompatibility), workflowComposition.sources, boot.featureAvailability), [workflows, workflowComposition, boot.featureAvailability, boot.workbookCompatibility]);
-  const explorerCatalog = useMemo(() => workflowComposition.explorerCatalog ? workflowComposition.explorerCatalog(launchWorkflows(workflows, boot.workbookCompatibility)) : workflowCatalog, [workflows, workflowComposition, workflowCatalog, boot.workbookCompatibility]);
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
   const dayState = useDashboardDay((hasServedWorkflows || workflowComposition.sessions !== "mock") && dateSelection.state === "valid" ? day : undefined, nowIso, authorityEpoch, boot.actor.id);
@@ -980,7 +977,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [dayWire, dataSources]);
   const setLaunchOpen = launch.setOpen;
   const runAssistantWorkflow = useCallback<NonNullable<AssistantPorts["onRunWorkflow"]>>(async request => {
-    try { return prepareHubWorkflow(request, workflowComposition, 0).result; }
+    try {
+      if (workflowComposition.runAssistantSample === undefined) throw new Error("This assistant supports sample dry runs only.");
+      return workflowComposition.runAssistantSample(request);
+    }
     catch (error) { return { state: "failed", message: error instanceof Error ? error.message : String(error) }; }
   }, [workflowComposition]);
   const onRailSelect = useCallback((id: string) => { selectWorkflow(id); }, [selectWorkflow]);
@@ -993,7 +993,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding });
   const [notificationReads, setNotificationReads] = useState<NotificationReads>({});
   const notifications = useWorkspaceNotifications(notificationScenario(), {
-    day, nowIso, anchorIso: boot.serverClock.now, rows: !hasServedWorkflows || dayWire ? queueRows : undefined, runs: NO_PREVIEW_RUNS,
+    day, nowIso, anchorIso: boot.serverClock.now, rows: !hasServedWorkflows || dayWire ? queueRows : undefined,
     workflowLabel: workflowLabelOf,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
   });
@@ -1021,8 +1021,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const servedNeedsYou = railInbox?.state.state === "ready" ? railInbox.state.items.filter(item => !item.read && item.priority === true).length : 0;
   useEffect(() => { assistantNeeds.report(servedNeedsYou); }, [servedNeedsYou]);
   const canOpenRegisteredWorkflow = useCallback((id: string) => workflows.some(flow => flow.id === id), [workflows]);
-  const notificationContext = useRef({ day, rows: queueRows, runs: NO_PREVIEW_RUNS, canOpenRegisteredWorkflow, canSelectWorkflowId });
-  notificationContext.current = { day, rows: queueRows, runs: NO_PREVIEW_RUNS, canOpenRegisteredWorkflow, canSelectWorkflowId };
+  const notificationContext = useRef({ day, rows: queueRows, canOpenRegisteredWorkflow, canSelectWorkflowId });
+  notificationContext.current = { day, rows: queueRows, canOpenRegisteredWorkflow, canSelectWorkflowId };
   const notificationNavigation = useRef(0);
   const openNotification = useCallback((requested: NotificationDestination, opened: () => void, refused: (message: string) => void, source: SurfaceSource) => {
     const request = ++notificationNavigation.current;
@@ -1082,39 +1082,37 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       });
       return;
     }
-    if (destination.kind !== "preview-run") {
-      const context = notificationContext.current;
-      const row = (destination.kind === "run" || destination.kind === "failure") && destination.day === context.day
-        ? context.rows.find(item => item.runId === destination.runId) : undefined;
-      if (row !== undefined && !context.canOpenRegisteredWorkflow(row.workflowId)) {
-        refused(formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text);
-        return;
-      }
-      const scope = commandScope;
-      const origin = routeRef.current;
-      const current = () => notificationNavigation.current === request && currentCommandScope.current === scope && routeRef.current === origin;
-      const open = (result: Awaited<ReturnType<typeof resolveRunNavigation>>) => {
-        if (!current()) return;
-        if (result.state === "refused") { refused(result.message); return; }
-        setLaunchOpen(false);
-        exitQueueSelection();
-        onFilter(["all"]);
-        setRoute({ ...result.route, view: { ...result.route.view, queueFilter: ["all"] } });
-        opened();
-        requestAnimationFrame(() => document.getElementById(DASHBOARD_MAIN_REGION_ID)?.focus({ preventScroll: true }));
-      };
-      const resolve = () => resolveRunNavigation(client, destination, origin, notificationContext.current.canOpenRegisteredWorkflow);
-      void resolve().then(result => {
-        if (!current()) return;
-        if (result.state === "refused") { refused(result.message); return; }
-        leaveSettings(() => {
-          if (origin.settings === undefined) open(result);
-          else void resolve().then(open);
-        });
-      });
+    if (destination.kind === "preview-run") { refused("This sample run is not available."); return; }
+    const context = notificationContext.current;
+    const row = (destination.kind === "run" || destination.kind === "failure") && destination.day === context.day
+      ? context.rows.find(item => item.runId === destination.runId) : undefined;
+    if (row !== undefined && !context.canOpenRegisteredWorkflow(row.workflowId)) {
+      refused(formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text);
       return;
     }
-    refused("This sample run is not available.");
+    const scope = commandScope;
+    const origin = routeRef.current;
+    const current = () => notificationNavigation.current === request && currentCommandScope.current === scope && routeRef.current === origin;
+    const open = (result: Awaited<ReturnType<typeof resolveRunNavigation>>) => {
+      if (!current()) return;
+      if (result.state === "refused") { refused(result.message); return; }
+      setLaunchOpen(false);
+      exitQueueSelection();
+      onFilter(["all"]);
+      setRoute({ ...result.route, view: { ...result.route.view, queueFilter: ["all"] } });
+      opened();
+      requestAnimationFrame(() => document.getElementById(DASHBOARD_MAIN_REGION_ID)?.focus({ preventScroll: true }));
+    };
+    const resolve = () => resolveRunNavigation(client, destination, origin, notificationContext.current.canOpenRegisteredWorkflow);
+    void resolve().then(result => {
+      if (!current()) return;
+      if (result.state === "refused") { refused(result.message); return; }
+      leaveSettings(() => {
+        if (origin.settings === undefined) open(result);
+        else void resolve().then(open);
+      });
+    });
+    return;
   }, [client, commandScope, leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId, commandResults, selectRun]);
 
   const onInboxNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
@@ -1189,7 +1187,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
           {/* Intake is a durable workspace; leaving it must not discard mapping progress. */}
           <DashboardTakeovers deleteAccount={deleteAccount} accountPage={accountPage} onOpenRun={selectRun} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
-            client={client} workflowCatalog={explorerCatalog} activeWorkflowId={activeWorkflowId}
+            client={client} workflowCatalog={workflowCatalog} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
             onSettingsExitGuardChange={onSettingsExitGuardChange} onSettingsSaved={notice => toast({ tone: "success", ...notice })} onSettingsSaveProblem={problem => toast(problem)} theme={theme} onToggleTheme={onToggleTheme}>

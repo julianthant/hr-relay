@@ -5,9 +5,15 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it, vi } from "vitest";
 import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
-import { servedFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
+const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 
-const catalog = buildPreviewCatalog([], servedFixtureSources([]));
+const catalog = SERVED_CATALOG;
 let root: Root | undefined;
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterEach(async () => {

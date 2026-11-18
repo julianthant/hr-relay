@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { FileText, Upload, X } from "lucide-react";
-import { Button, IconButton } from "../../../ds/ui.js";
-import { RunList, RunListRow } from "../../../ds/primitives/run-list.js";
+import { Button, IconButton } from "../../ds/ui.js";
+import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
 
 /** PDFs listed before "Show more", so a large pick keeps the dialog's other controls in view. */
 const PDFS_SHOWN = 5;

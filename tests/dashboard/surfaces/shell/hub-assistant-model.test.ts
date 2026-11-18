@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { prepareHubWorkflow } from '../../../../src/dashboard/surfaces/shell/hub-assistant-model.js';
+import { prepareHubWorkflow } from '../../../mocks/workflows/hub-assistant-run.js';
 import { assistantWorkflowRows, type AssistantFile, type AssistantWorkflowRequest } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
 import { workflowComposition } from '../../../../src/dashboard/app/workflow-sources.js';
 import { addSpreadsheetColumn } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';

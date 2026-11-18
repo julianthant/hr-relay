@@ -1,9 +1,9 @@
 /** The ONE affix that says "this entry is a step, not a workflow" (ref dashboard-surfaces
  * §Shell). */
 import { CornerDownRight } from "lucide-react";
-import { cn } from "../../../lib/utils.js";
-import { dsIcon } from "../../../ds/ui.js";
-import { workflowHarnessOfName, type WorkflowHarnessMarking } from "../workflow-category.js";
+import { cn } from "../../lib/utils.js";
+import { dsIcon } from "../../ds/ui.js";
+import { workflowHarnessOfName, type WorkflowHarnessMarking } from "../workflows/workflow-category.js";
 
 export function WorkflowHarnessTag({
   harness,

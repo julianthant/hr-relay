@@ -5,7 +5,6 @@ import type { DashboardClient } from '../../client/index.js';
 import type { ChatGptAccountView } from '../../../models/dashboard/chatgpt-account.js';
 import { importSpreadsheetInWorker } from '../spreadsheets/spreadsheet-import-client.js';
 import { cellText, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
-import { MOCK_WORKFLOWS } from '../workflows/mocks/workflow-mock-catalog.js';
 import type { ComposerValue } from './composer-model.js';
 import { ASSISTANT_ATTACHMENT_TYPES, ASSISTANT_ATTACHMENTS_PER_SEND, ASSISTANT_FAILURES, type AssistantAttachmentMediaType } from '../../../models/dashboard/assistant.js';
 
@@ -40,11 +39,7 @@ export interface AssistantPorts {
 const workflowOptions = [
   { name: 'Separations', label: 'Separations', command: /\brun\s+(?:the\s+)?separations\b/i, date: /last day|separation date|termination date/i, identifier: /^kuali\s*id$/iu, identifierLabel: 'Kuali ID' },
   { name: 'Onboarding', label: 'Onboardings', command: /\brun\s+(?:the\s+)?onboardings?\b/i, date: /start date|hire date/i, identifier: /^(?:work\s*)?email(?:\s*address)?$/iu, identifierLabel: 'email address' },
-].map(option => {
-  const workflow = MOCK_WORKFLOWS.find(workflow => workflow.label === option.name);
-  if (!workflow) throw new Error('Assistant sample workflow is unavailable.');
-  return { ...option, id: workflow.id };
-});
+].map(option => ({ ...option, id: option.name.toLowerCase() }));
 export function assistantWorkflowOption(id: string) { return workflowOptions.find(option => option.id === id); }
 export function assistantWorkflowRows(file: AssistantFile, workflowId: string): readonly AssistantRow[] {
   const option = workflowOptions.find(option => option.id === workflowId);

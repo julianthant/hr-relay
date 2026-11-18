@@ -1,5 +1,11 @@
 import { IdleSessionSchedule, IDLE_REFRESH_MS } from "../../../../src/dashboard/surfaces/sessions/session-idle-model.js";
-import { servedFixtureSources as previewFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
+const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/worker-stop-reason-label.js";
@@ -23,7 +29,7 @@ function SessionPanelWithToasts(props: ComponentProps<typeof SessionPanel>) {
   return createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, props)));
 }
 
-const catalog = buildPreviewCatalog([], previewFixtureSources([]));
+const catalog = SERVED_CATALOG;
 const now = FIXTURE_NOW;
 const LIFETIME = uuidOf(7001), NEXT_LIFETIME = uuidOf(7002);
 function basis(lifetimeId: string | null, version = 0) {

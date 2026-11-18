@@ -1,22 +1,15 @@
-import { servedFixtureSources as previewFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act, createElement, useState } from "react";
-import { afterEach, describe, it, onTestFinished, vi } from "vitest";
+import { act } from "react";
+import { afterEach, describe, it, onTestFinished } from "vitest";
 import { StartPlanRequestSchema as StartPlanSubmissionSchema, type StartPlanWire as StartPlanResponse, StartPlanWireSchema as StartPlanResponseSchema } from "../../../../src/models/dashboard/start-plan.js";
 import { type CommandResult } from "../../../../src/rules/commands/commands.js";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
-import { type DashboardClient, createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { type DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { START_DOOR_ABSENCE } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
-import { type RunStartWorkflow, RunStartSurfaces } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
+import { type RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-day.js";
-import { createRoot, type Root } from "react-dom/client";
-import { type AppRouteState } from "../../../../src/dashboard/app/navigation/url-state.js";
-import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation/view-navigation.js";
-import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
-import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
-import { seedMockRuns } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 
 {
 const { cleanup, openDialog, stubClient, WORKFLOW_ID, TYPED, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName } = createRunStartDialogHarness();
@@ -644,43 +637,6 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
     await dialog.press("Kronos timecard");
     assert.ok(dialog.text().includes("7 of 7 included"), "undoing the choice left the forced step out");
     assert.equal(dialog.disabled("UCPath transaction"), false);
-  });
-});
-}
-
-{
-Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
-let root: Root | undefined;
-
-async function mount(element: ReturnType<typeof createElement>) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); await act(async () => root?.render(element)); return host; }
-const button = (name: string) => { const found = [...document.querySelectorAll('button')].find(node => (node.getAttribute('aria-label') ?? node.textContent?.trim()) === name); assert(found, name); return found; };
-const press = async (name: string) => act(async () => button(name).click());
-describe('mounted frontend reliability contracts', () => {
-  afterEach(async () => { await act(async () => root?.unmount()); document.body.replaceChildren(); vi.useRealTimers(); vi.unstubAllGlobals(); });
-
-  it('keeps mock rerun stages under the mock form when its routed dialog mounts or restores', async () => {
-    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
-    const runs = seedMockRuns(), source = runs.find(run => run.workflowId === 'onboarding'); assert(source);
-    const previewLaunch = { workflowId: source.workflowId, source }, catalog = buildPreviewCatalog([], previewFixtureSources([]));
-    const requests: string[] = [];
-    const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: async url => { requests.push(String(url)); throw new Error('Unexpected backend request'); } });
-    let current: AppRouteState;
-    function Harness() {
-      const [route, setRoute] = useState<AppRouteState>({ start: true, view: { launchStage: 'Steps' } }); current = route;
-      return createElement(ViewNavigationProvider, { route, setRoute, children: createElement(DashboardClientProvider, { client, children: createElement(ToastProvider, { children: createElement(RunStartSurfaces, {
-        catalog, open: true, onOpenChange: () => {}, panelWorkflowId: previewLaunch.workflowId, actorId: 'local-operator', previewLaunch, previewRuns: runs,
-        onSubmitPreview: () => {}, onOpenIntake: () => { throw new Error('Unexpected intake'); },
-      }) }) }) });
-    }
-    await mount(createElement(Harness));
-    assert.match(document.body.textContent ?? '', /Select steps for the new run/u);
-    assert.equal(current!.view?.launchStage, 'Steps');
-    await press('Continue'); assert.match(document.body.textContent ?? '', /Reference spreadsheets/u);
-    assert.equal(current!.view?.launchStage, 'Values');
-    await press('Back'); assert.equal(current!.view?.launchStage, 'Steps');
-    await press('Continue'); await press('Continue');
-    assert.match(document.body.textContent ?? '', /Screenshots/u); assert.equal(current!.view?.launchStage, 'Options');
-    assert.deepEqual(requests, [], 'a local mock rerun must not ask a served planner to reconcile its stage');
   });
 });
 }

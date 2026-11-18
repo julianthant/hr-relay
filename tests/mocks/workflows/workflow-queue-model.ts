@@ -1,12 +1,12 @@
-import { QueueSurfaceWireSchema } from "../../../../models/dashboard/projection.js";
-import type { QueueBusinessOutcome } from "../../shared/status/status-model.js";
-import type { QueueSurfaceWire } from "../../queue/queue-model.js";
-import { sha256Hex } from "../../../../rules/validation/sha256.js";
+import { QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
+import type { QueueBusinessOutcome } from "../../../src/dashboard/surfaces/shared/status/status-model.js";
+import type { QueueSurfaceWire } from "../../../src/dashboard/surfaces/queue/queue-model.js";
+import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { mockNeedsReview, mockWaitsForOcr, mockQueueStatus, mockRunLog, type MockRun } from "./workflow-mock-model.js";
 import { reviewCanApprove, reviewRecords } from "./workflow-review-model.js";
-import { runDisplayId, workflowDisplayCode } from "../../shared/status/run-display-model.js";
+import { runDisplayId, workflowDisplayCode } from "../../../src/dashboard/surfaces/shared/status/run-display-model.js";
 import { mockWorkflow } from "./workflow-mock-catalog.js";
-import { localDatePart } from "../../../../rules/time/clock.js";
+import { localDatePart } from "../../../src/rules/time/clock.js";
 
 // Presentation identities are local only; no command descriptors target them.
 export function mockQueueId(id: string): string {

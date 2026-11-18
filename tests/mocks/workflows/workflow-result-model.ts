@@ -1,8 +1,8 @@
 import { manualFact, usesManualRead } from "./workflow-manual-model.js";
 import type { MockRun } from "./workflow-mock-model.js";
 import { mockWorkflow, type MockStep } from "./workflow-mock-catalog.js";
-import type { LogEntry } from "../../run-detail/logs/log-feed-model.js";
-import type { LogTimelineState } from "../../run-detail/logs/log-timeline-model.js";
+import type { LogEntry } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import type { LogTimelineState } from "../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
 import { workflowPreviewGraph, type PreviewNode } from "./workflow-preview-contracts.js";
 import { reviewName, mockInputRecord, reviewValue, reviewRecords, seedReviewRecords } from "./workflow-review-model.js";
 

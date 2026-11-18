@@ -1,4 +1,10 @@
-import { servedFixtureSources as previewFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
+const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 import { vi } from "vitest";
 // @vitest-environment jsdom
 import { default as assert_m0,default as assert_m1 } from 'node:assert/strict';
@@ -75,7 +81,7 @@ describe_m1("frontend presentation producers", () => {
     const activity = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(ActivityReport_m1, { source: "mock", range: "", onRange: noop })));
     assert_m1.match(activity, /Workflows/);
     assert_m1.doesNotMatch(activity, /Sample data/);
-    const explorer = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(WorkflowExplorer_m1, { catalog: buildPreviewCatalog([], previewFixtureSources([])) })));
+    const explorer = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(WorkflowExplorer_m1, { catalog: SERVED_CATALOG })));
     assert_m1.equal((explorer.match(/data-step-number=/g) ?? []).length, 22);
     assert_m1.doesNotMatch(explorer, /Registered definition|Back to dashboard/);
     const logs = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(LogSample_m1)));

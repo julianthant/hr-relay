@@ -9,7 +9,7 @@ import { createDashboardClient } from "../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../src/dashboard/state/client-context.js";
 import { DashboardApp } from "../../src/dashboard/app/dashboard-app.js";
 import { productWorkflowComposition } from "../../src/dashboard/app/workflow-sources.js";
-import { buildPreviewCatalog, servedFixtureSources, MOCK_WORKFLOW_COMPOSITION } from "./helpers/workflow-composition.js";
+import { MOCK_WORKFLOW_COMPOSITION } from "./helpers/workflow-composition.js";
 import { RestoreNoticeContext } from "../../src/dashboard/surfaces/settings/storage/storage-settings-model.js";
 import "../../src/dashboard/app/index.css";
 
@@ -31,8 +31,6 @@ const composition = fixture === "product-workflows" || Reflect.get(window, "rela
   ? (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => ({ ...MOCK_WORKFLOW_COMPOSITION(workflows), assistant: "served" as const })
   : fixture === "hub-integration"
   ? (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => ({ ...MOCK_WORKFLOW_COMPOSITION(workflows) })
-  : fixture === "workflow-catalog"
-  ? (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => ({ ...MOCK_WORKFLOW_COMPOSITION(workflows), explorerCatalog: (served: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => buildPreviewCatalog(served, servedFixtureSources(workflows)) })
   : MOCK_WORKFLOW_COMPOSITION;
 const restoredNotice = fixture === "restore-notice" ? { backupCapturedAt: "2026-11-05T08:42:00-08:00" } : undefined;
 const theme: unknown = Reflect.get(window, "relayMockTheme");

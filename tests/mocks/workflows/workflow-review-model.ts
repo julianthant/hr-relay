@@ -1,9 +1,9 @@
 import type { MockRun } from "./workflow-mock-model.js";
-import type { RecordReviewProps, ReviewSourcePage } from "../../run-detail/review/review-record-model.js";
+import type { RecordReviewProps, ReviewSourcePage } from "../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
 import { mockOnbaseDocumentType, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { mockDocumentFixture } from "./workflow-document-model.js";
 
-import type { ReviewField, ReviewRecordView } from "../../run-detail/review/review-record-model.js";
+import type { ReviewField, ReviewRecordView } from "../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
 export type ReviewRecord = ReviewRecordView & Readonly<{ targetWorkflowId?: MockWorkflowId; match: "matched" | "unresolved" | "manual" }>;
 const field = (key: string, label: string, value: string, kind?: ReviewField["kind"], section?: string): ReviewField => ({ key, label, value, ...(kind ? { kind } : {}), ...(section ? { section } : {}) });
 function extractedReviewRecords(run: Pick<MockRun, "workflowId" | "draft">, useFixture = true): readonly ReviewRecord[] {

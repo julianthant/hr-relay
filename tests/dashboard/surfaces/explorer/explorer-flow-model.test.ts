@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { type Root } from "react-dom/client";
 import { afterEach,describe,it,vi } from "vitest";
-import { buildExplorerPreview,previewFieldSource } from "../../../../src/dashboard/surfaces/explorer/explorer-fixture.js";
+import { buildExplorerPreview,previewFieldSource } from "../../../support/fixtures/dashboard/explorer-fixture.js";
 import { DEFAULT_SCENARIO,allFields,blockedAfter,commentTemplate } from "../../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
 
 describe("approved Explorer presentation", () => {
