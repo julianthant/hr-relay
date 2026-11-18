@@ -392,6 +392,7 @@ type RunCheckpointRepository = Readonly<{
     nodeId: string,
     attempt: number,
   ): readonly RunCheckpointRecord[];
+  listByRunAttempt(workflowId: string, itemId: string, runId: string, attempt: number): readonly RunCheckpointRecord[];
   /** Ref operator-trust §2.3: a receipt explains one logical item across every attempt. */
   listByItem(workflowId: string, itemId: string): readonly RunCheckpointRecord[];
 }>;
@@ -6208,6 +6209,14 @@ export class AuthorityDatabase implements Disposable {
             WHERE workflow = ? AND item_id = ? AND node_id = ? AND attempt = ?
             ORDER BY claim_generation
           `).all(WorkflowIdSchema.parse(workflowId), ItemIdSchema.parse(itemId), nodeId, attempt);
+          return Object.freeze(rows.map((row) => this.#parseNativeRow("run_checkpoints",row,RunCheckpointRecordSchema)));
+        },
+        listByRunAttempt: (workflowId: string, itemId: string, runId: string, attempt: number) => {
+          const rows = this.#database.prepare(`
+            SELECT * FROM run_checkpoints
+            WHERE workflow = ? AND item_id = ? AND run_id = ? AND attempt = ?
+            ORDER BY claim_generation, node_id
+          `).all(WorkflowIdSchema.parse(workflowId), ItemIdSchema.parse(itemId), RunIdSchema.parse(runId), PositiveIntSchema.parse(attempt));
           return Object.freeze(rows.map((row) => this.#parseNativeRow("run_checkpoints",row,RunCheckpointRecordSchema)));
         },
         listByItem: (workflowId: string, itemId: string) => {
