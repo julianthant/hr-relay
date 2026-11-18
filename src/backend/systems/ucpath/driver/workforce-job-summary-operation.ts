@@ -332,11 +332,16 @@ async function readText(assertCurrent: () => void, locator: Locator, label: stri
 }
 
 /** Waits for paired rows from the requested tab, including rows with a blank leading cell. */
-async function readFrozenGrid(assertCurrent: () => void, page: Page, tab: "work-location" | "job-information"): Promise<FrozenGrid> {
+async function readFrozenGrid(
+  assertCurrent: () => void,
+  page: Page,
+  tab: "work-location" | "job-information",
+  minBlankCells: number,
+): Promise<FrozenGrid> {
   const ids = { left: ui.frozenLeftTableId, right: ui.frozenRightTableId };
   const workLocation = tab === "work-location";
   assertCurrent();
-  await page.waitForFunction(({ left, right, anchor, workLocation, minCells, businessUnit, businessUnitColumn }) => {
+  await page.waitForFunction(({ left, right, anchor, workLocation, minBlankCells, businessUnit, businessUnitColumn }) => {
     const leftTable = document.getElementById(left) as HTMLTableElement | null;
     const rightTable = document.getElementById(right) as HTMLTableElement | null;
     if (leftTable === null || rightTable === null || rightTable.rows.length === 0) return false;
@@ -348,8 +353,7 @@ async function readFrozenGrid(assertCurrent: () => void, page: Page, tab: "work-
         if (firstCell === null) return false;
         const leading = (firstCell.textContent ?? "").trim();
         if (leading.length > 0) return pattern.test(leading);
-        if (row.cells.length < minCells) return false;
-        // With a blank anchor, the Business Unit distinguishes a Work Location row still on screen after the tab click.
+        if (row.cells.length < minBlankCells) return false;
         const hasBusinessUnit = unitPattern.test((row.cells.item(businessUnitColumn)?.textContent ?? "").trim());
         if (workLocation) return hasBusinessUnit;
         return !hasBusinessUnit && (row.textContent ?? "").trim().length > 0;
@@ -358,7 +362,7 @@ async function readFrozenGrid(assertCurrent: () => void, page: Page, tab: "work-
     ...ids,
     anchor: (workLocation ? POSITION_NUMBER : JOB_CODE).source,
     workLocation,
-    minCells: workLocation ? WORK_LOCATION.minCells : JOB_INFORMATION.minCells,
+    minBlankCells,
     businessUnit: BUSINESS_UNIT.source,
     businessUnitColumn: WORK_LOCATION.businessUnit,
   }, { timeout: GRID_RENDER_MS });
@@ -452,9 +456,11 @@ function createPlaywrightWorkforceJobSummaryPage(assertCurrent: () => void, page
       const displayedEid = await readText(assertCurrent, ui.displayedEmplId(page), "displayed Empl ID");
       const displayedName = await readText(assertCurrent, ui.personName(page), "displayed name");
       await openTab(ui.workLocationTab(page), "ucpath.workforce-job-summary.work-location-tab");
-      const workLocation = await readFrozenGrid(assertCurrent, page, "work-location");
+      const workLocation = await readFrozenGrid(assertCurrent, page, "work-location", WORK_LOCATION.minCells);
       await openTab(ui.jobInformationTab(page), "ucpath.workforce-job-summary.job-information-tab");
-      const jobInformation = await readFrozenGrid(assertCurrent, page, "job-information");
+      // Job Information has more columns than Work Location even when its code and end date are blank.
+      const minJobCells = Math.max(...workLocation.right.map((row) => row.length)) + 1;
+      const jobInformation = await readFrozenGrid(assertCurrent, page, "job-information", minJobCells);
       recordBrowserAction("read", "ucpath.workforce-job-summary.job-grid");
       return WorkforceJobSummaryDetailSchema.parse({ displayedEid, displayedName, workLocation, jobInformation });
     },
