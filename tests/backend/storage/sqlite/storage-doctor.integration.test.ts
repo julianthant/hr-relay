@@ -85,42 +85,60 @@ it("captures a stopped logout inspection snapshot above 512 MiB", async () => {
   } finally { session.close(); await f.close(); }
 });
 
-it("publishes profile selection and imports the retained evidence when the boot log is full", async () => {
+it("publishes profile selection across two full boot-log rotations and imports all retained evidence", async () => {
   const f = await diagnosticProfiles.create();
   try {
     const registry = createProfileRegistry(f.machine), root = f.machine.stateRoot;
     const before = registry.read();
     assert.ok(before.activeProfileId);
     const path = join(root, "logs", "boot.jsonl");
-    fs.unlinkSync(path);
+    const original = fs.readFileSync(path, "utf8");
     const padding = "m".repeat(60_000);
     appendLocalDebug({ stateRoot: root, build: "test", now: new Date(NOW),
       event: { category: "boot", phase: "failed", area: "boot-size-fixture", reason: "database-unavailable", message: padding } });
-    const template = fs.readFileSync(path, "utf8");
+    const template = fs.readFileSync(path, "utf8").slice(original.length);
     const initial = readLocalDebugLog(root);
     assert.strictEqual(initial.state, "present");
-    const eventId = initial.records[0]?.eventId;
+    const eventId = initial.records.at(-1)?.eventId;
     assert.ok(eventId);
-    const lines = [template];
+    const pinned = initial.records.find(record => record.payload.kind === "debug" && record.payload.event.pinned === true);
+    assert.ok(pinned);
     const target = 5 * 1024 * 1024 - 128;
-    while (lines.length * template.length + template.length <= target) lines.push(template.replaceAll(eventId, randomUUID()));
-    const tailPadding = target - lines.length * template.length - (template.length - padding.length);
-    assert.ok(tailPadding >= 0);
-    lines.push(template.replaceAll(eventId, randomUUID()).replace(padding, "m".repeat(tailPadding)));
-    fs.writeFileSync(path, lines.join(""));
-    assert.equal(fs.statSync(path).size, target);
+    const fill = () => {
+      let size = fs.statSync(path).size;
+      const lines: string[] = [];
+      while (size + template.length <= target) {
+        lines.push(template.replaceAll(eventId, randomUUID()));
+        size += template.length;
+      }
+      const tailPadding = target - size - (template.length - padding.length);
+      assert.ok(tailPadding >= 0);
+      lines.push(template.replaceAll(eventId, randomUUID()).replace(padding, "m".repeat(tailPadding)));
+      fs.appendFileSync(path, lines.join(""));
+      assert.equal(fs.statSync(path).size, target);
+      return lines.length;
+    };
 
+    const initialCount = initial.records.length + fill();
     assert.equal(registry.advanceSession(null), before.sessionGeneration + 1);
     assert.equal(registry.read().activeProfileId, null);
     const local = readLocalDebugLog(root);
     assert.strictEqual(local.state, "present");
-    assert.equal(local.records.length, lines.length + 2);
+    assert.equal(local.records.length, initialCount + 2);
     assert.deepEqual(local.records.slice(-2).map(record => record.payload.kind === "debug" && record.payload.event.phase), ["started", "settled"]);
     const { repository, records } = debugTimelineFixture();
     vi.spyOn(repository, "get").mockReturnValueOnce(undefined);
     assert.throws(() => importLocalDebugLog(root, repository), /boot-log-import-verification-failed/u);
-    assert.equal(importLocalDebugLog(root, repository), lines.length + 2);
-    assert.equal(records[0]?.eventId, eventId);
+    const total = local.records.length + fill() + 2;
+    assert.equal(registry.advanceSession(before.activeProfileId), before.sessionGeneration + 2);
+    assert.equal(registry.read().activeProfileId, before.activeProfileId);
+    const retained = readLocalDebugLog(root);
+    assert.strictEqual(retained.state, "present");
+    assert.equal(retained.records.length, total);
+    assert.deepEqual(retained.records.slice(0, local.records.length), local.records);
+    assert.equal(importLocalDebugLog(root, repository), total);
+    assert.deepEqual(records.map(record => record.eventId), retained.records.map(record => record.eventId));
+    assert.ok(records.some(record => record.eventId === pinned.eventId));
     assert.equal(readLocalDebugLog(root).state, "absent");
   } finally { await f.close(); }
 });
