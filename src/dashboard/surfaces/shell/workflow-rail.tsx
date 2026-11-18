@@ -3,10 +3,11 @@ import { statusCount, workflowStatusCounts, type WorkflowCountWire } from "./she
 import { workflowNavigationGroups } from "./workflow-rail-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { WorkflowNavigation } from "./workflow-navigation.js";
+import { Skeleton } from "../../ds/ui.js";
 
 /** Each workflow shows one number: its runs running now, as a pill at the row's far right (a corner badge on the minimized tile); nothing at 0. */
-export function WorkflowRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, collapsed }: {
-  collapsed?: boolean;
+export function WorkflowRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, collapsed, countsLoading = false }: {
+  collapsed?: boolean; countsLoading?: boolean;
   workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; previewCounts?: readonly WorkflowCountWire[]; active: string; preview: string | null;
   onSelect: (id: string) => void; onPreview: (id: string) => void;
 }) {
@@ -19,9 +20,10 @@ export function WorkflowRail({ workflows, counts, previewCounts, active, preview
   }, [entries, counts, previewCounts]);
   const metadata = useCallback((id: string) => {
     const count = running(id);
-    return <span className="workflow-rail-running">{count > 0 && <span title="Running now" className="inline-flex h-5 items-center gap-1 rounded-full bg-ui-positive/15 px-1.5 text-caption font-medium tabular-nums text-ui-positive">
+    const pending = countsLoading && counts === undefined && entries.find(flow => flow.id === id)?.source !== "preview";
+    return <span className="workflow-rail-running">{pending && <Skeleton className="h-5 w-8 rounded-full" />}{count > 0 && <span title="Running now" className="inline-flex h-5 items-center gap-1 rounded-full bg-ui-positive/15 px-1.5 text-caption font-medium tabular-nums text-ui-positive">
       <span aria-hidden className="size-1.5 rounded-full bg-current motion-safe:animate-pulse" />{count}</span>}</span>;
-  }, [running]);
+  }, [running, countsLoading, counts, entries]);
   const description = useCallback((id: string) => { const count = running(id); return count > 0 ? `${count} running` : undefined; }, [running]);
   return <WorkflowNavigation label="Workflows" groups={groups} active={preview ?? active} onSelect={choose} metadata={metadata} description={description} collapsed={collapsed} />;
 }

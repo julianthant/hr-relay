@@ -60,3 +60,6 @@ html[data-motion=off] .hub-assistant-menu[data-starting-style]{opacity:1!importa
 @media(prefers-reduced-motion:reduce){.hub-assistant-menu[data-starting-style]{opacity:1!important;transform:none!important}}
 #hub-panel-assistant .hub-composer .hub-attachment{margin:6px 8px 0;padding:1px 4px 1px 8px}
 #hub-panel-assistant .hub-toolbar .hub-input-button:disabled>span+svg{display:none}
+#hub-panel-assistant .hub-attachment small{flex-basis:100%;font-size:11px}
+#hub-panel-assistant .hub-attachment .hub-attachment-failure{color:var(--ui-danger)}
+#hub-panel-assistant .hub-attachment[data-stage=failed],#hub-panel-assistant .hub-attachment[data-stage=spreadsheet]{flex-wrap:wrap;border-radius:12px}

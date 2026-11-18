@@ -110,8 +110,9 @@ it("shows retained failed-run workflow and reason without unavailable text or an
 
   const unavailable = inboxProjection([retained, row("run-failed", { notificationId: failureId, summary, context: { state: "unavailable" } })], now);
   assert(unavailable.state.state === "ready");
-  assert.equal(unavailable.state.items[1].subject, "Notification context unavailable");
-  assert.match(unavailable.notice, /source evidence is unavailable/);
+  assert.equal(unavailable.state.items[1].subject, "");
+  assert.equal(unavailable.state.items[1].detail, summary);
+  assert.equal(unavailable.notice, "");
 });
 it("withholds raw subject-mismatch summaries when source evidence is unavailable", () => {
   const projected = projectNotificationTrigger({ kind: "subject-mismatch", runId, workflowId: "person-lookup", failureId, failureFingerprint: "f".repeat(64) });
@@ -152,6 +153,13 @@ it("refuses a stale target without marking it read", async () => {
   const item = h.value.state.state === "ready" ? h.value.state.items[0] : undefined; assert(item);
   await act(async () => { h.value.open(item, (target, _opened, reject) => { if (target.kind === "refused") reject("Exact refusal"); }, () => assert.fail("must not open"), message => { refused = message; }); await new Promise(resolve => setTimeout(resolve, 0)); });
   assert.equal(refused, "Exact refusal"); assert.equal(h.commands.length, 0);
+});
+it("checks the target of a published notice that has no source policy and says so when it is refused", async () => {
+  const h = await harness(); const bare = row("run-failed", { title: "Run failed", context: { state: "unavailable" }, sourceEvent: { state: "unavailable" } });
+  assert.equal(notificationPolicy(bare), undefined); h.setRows([bare]); h.refuseTarget();
+  await act(async () => { h.listeners[0](publication(bare)); await new Promise(resolve => setTimeout(resolve, 0)); });
+  assert(h.requests.some(path => path.endsWith("/target")));
+  assert.match(h.value.notice, /no longer available/);
 });
 it("refuses foreign actor and wrong revision in shared notification readback", async () => {
   const h = await harness();

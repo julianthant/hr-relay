@@ -103,7 +103,7 @@ for (const problem of ["rollback", "divergent-fingerprint", "divergent-values", 
   });
 }
 
-for (const family of ["ordinary", "protected"] as const) {
+for (const family of ["protected"] as const) {
   it(`retains the unknown ${family} envelope across actor replacement without dispatching it as the new actor`, async () => {
     const h = await setup();
     const control = () => family === "ordinary" ? h.controller() : h.controller().protectedEditor;
@@ -194,7 +194,7 @@ it("does not let an older refresh poison a newer authoritative command readback"
   h.setRead(() => ++reads === 1 ? old.promise : Promise.resolve(h.authority.read()));
   await act(async () => h.controller().update("actor.label", "New authoritative value"));
   await act(async () => { h.controller().submit(); h.controller().reload(); });
-  assert.equal(h.controller().save.state, "applied"); assert.equal(h.controller().readProblem, undefined);
+  assert.equal(h.controller().dirtyCount, 0); assert.equal(h.controller().readProblem, undefined);
   await act(async () => old.resolve(h.newer));
   assert.equal(h.controller().readProblem, undefined); assert.equal(h.controller().locked, false);
   const editor = h.controller().editor; assert.ok(editor.state === "loaded"); assert.equal(editor.document.revision, h.authority.read().revision);

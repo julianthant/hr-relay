@@ -21,3 +21,4 @@
 .search-palette-chips button:hover { background: color-mix(in srgb, var(--ds-fg) 6%, transparent); }
 .search-palette-chips button[aria-pressed="true"] { background: color-mix(in srgb, var(--ds-fg) 10%, transparent); color: var(--ui-primary); }
 .search-palette-notice { margin: 0; padding: 6px 16px; font-size: 12px; color: var(--ui-secondary); }
+.search-palette-skeleton-row { pointer-events: none; }

@@ -7,7 +7,7 @@ export interface WorkflowNavigationEntry {
   readonly id: string; readonly label: string; readonly categoryId: string; readonly role: WorkflowModuleRole;
 }
 
-const CATEGORY_ORDER = ["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"] as const;
+const CATEGORY_ORDER = ["Lookup", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"] as const;
 
 export function workflowRailCategory(id: string, categoryId: string): string {
   return MOCK_WORKFLOWS.find(flow => flow.id === id)?.category ?? workflowCategoryLabel(categoryId);

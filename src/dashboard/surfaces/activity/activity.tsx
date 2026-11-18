@@ -9,7 +9,12 @@ import { ActivityView } from "./activity-view.js";
 import { useViewNavigation, useViewState } from '../../app/navigation/view-route-model.js';
 import type { ActivitySelectionHandler } from './activity-drilldown-model.js';
 
-export function ActivityReport({ range, onRange, client, today: servedToday, source = "served", workflowSources = WORKFLOW_SOURCES }: { range: string; onRange: (range: string) => void; client?: ActivityClient; today?: string; source?: WorkflowSource; workflowSources?: WorkflowSourcePolicy }) {
+export function ActivityReport(props: Omit<Parameters<typeof ActivityReportBody>[0], "onRetry">) {
+  const [attempt, setAttempt] = useState(0);
+  return <ActivityReportBody key={attempt} {...props} onRetry={() => setAttempt(count => count + 1)} />;
+}
+
+function ActivityReportBody({ range, onRange, client, today: servedToday, source = "served", workflowSources = WORKFLOW_SOURCES, onRetry }: { onRetry: () => void; range: string; onRange: (range: string) => void; client?: ActivityClient; today?: string; source?: WorkflowSource; workflowSources?: WorkflowSourcePolicy }) {
   const [scenario] = useViewState('activityPreview', 'normal');
   const [notice, setNotice] = useState<{ scope: object; text: string }>();
   const [selection, setSelection] = useViewState('activityBrowse', null);
@@ -33,8 +38,9 @@ export function ActivityReport({ range, onRange, client, today: servedToday, sou
       link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     }, error => setNotice({ scope, text: activityFailureText(error) }));
   };
-  if (resolved.refusal) return <section aria-label="Analytics report" className="settings-reference-page settings-data-section"><PageHeading title="Analytics" description="Report unavailable" /><p role="alert" className="text-body text-ui-danger">{resolved.refusal} Requested: {range}</p></section>;
-  return <ActivityView data={data} range={resolved} today={today}
+  const badRange = { state: "unavailable" as const, reason: "That date range is not valid. Pick a period above." };
+  if (resolved.refusal && parseActivityRange("", today).refusal) return <section aria-label="Analytics report" className="settings-reference-page settings-data-section"><PageHeading title="Analytics" description="Report unavailable" /><p role="alert" className="text-body text-ui-danger">That date range is not valid.</p></section>;
+  return <ActivityView data={resolved.refusal ? badRange : data} onRetry={resolved.refusal ? undefined : onRetry} range={resolved} today={today}
     selection={selection} onSelection={onSelection} browse={source === "served" ? wire.browse : undefined} pending={source === "served" && wire.pending} blocked={source === "served" && !wire.exportReady}
     onRange={next => { setNotice(undefined); setSelection(null); onRange(activityRangeValue(next)); }}
     onExport={source === "served" && !wire.exportReady ? undefined : onExport}

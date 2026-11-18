@@ -11,6 +11,7 @@ import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapsh
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { preSendShortcutSettingsRow, restorePreSendShortcutSettingsRows } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
+import { removeSchema36WorkbookSyncStatus } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
@@ -53,14 +54,15 @@ async function schema34Store() {
   close(f.database);
   const raw = new DatabaseSync(f.path);
   raw.exec("PRAGMA foreign_keys=ON");
+  removeSchema36WorkbookSyncStatus(raw);
   restorePreSendShortcutSettingsRows(raw);
   raw.exec("UPDATE database_states SET schema_version=34; PRAGMA user_version=34");
   return { ...f, raw };
 }
 
-it("converts settings records in migration 35, the current schema", () => {
+it("converts settings records in migration 35, under the workbook sync status's current 36", () => {
   assert.equal(SETTINGS_RECORD_CONVERSION_VERSION, 35);
-  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 35);
+  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 36);
   assert.deepEqual(migrationTableNames(35), migrationTableNames(34));
 });
 

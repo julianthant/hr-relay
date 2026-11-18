@@ -143,7 +143,7 @@
 .launch-dialog .ds-choice-picker > button { @apply font-normal; }
 .launch-dialog .launch-options fieldset > div > label > span { @apply h-7; }
 .launch-dialog .launch-values-fields { @apply grid-cols-1; }
-.launch-dialog .launch-values-fields > div { @apply max-w-[280px]; }
+.launch-dialog .launch-values-fields > div { @apply max-w-[420px]; }
 .launch-dialog .launch-values-fields > div > div { @apply gap-[5px]; }
 .launch-dialog .launch-values-fields input { @apply h-[34px]; }
 .launch-dialog .launch-values-omission { @apply mt-[4px]; }

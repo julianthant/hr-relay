@@ -93,7 +93,6 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
     const viewport = scroller.current;
     if (!section || !viewport) throw new Error("log-initial-step-missing");
     const style = getComputedStyle(viewport);
-    if (end.current) end.current.style.height = `${Math.max(0, viewport.clientHeight - section.getBoundingClientRect().height - Number.parseFloat(style.paddingTop || "0") - Number.parseFloat(style.paddingBottom || "0"))}px`;
     viewport.scrollTop += section.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop || "0");
   }, [initialStepId]);
   useEffect(() => () => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); }, []);
@@ -114,8 +113,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
       const viewport = scroller.current;
       if (!viewport) throw new Error("log-timeline-viewport-missing");
       const style = getComputedStyle(viewport);
-      const scrollTarget = targetEntryId ? target : section;
-      if (end.current) end.current.style.height = `${Math.max(0, viewport.clientHeight - scrollTarget.getBoundingClientRect().height - Number.parseFloat(style.paddingTop || "0") - Number.parseFloat(style.paddingBottom || "0"))}px`;
+      const scrollTarget = targetEntryId && step.header === false ? target : section;
       viewport.scrollTop += scrollTarget.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop || "0");
       target.focus({ preventScroll: true });
       jumpFrame.current = undefined;
@@ -150,7 +148,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
             role={entry.kind === "decision" || (step.header === false && index === 0) ? "group" : undefined}
             aria-label={entry.kind === "decision" ? entry.decision.title : step.header === false && index === 0 ? step.title : undefined}
             tabIndex={(entry.kind === "decision" && !entry.decision.answered) || (step.header === false && index === 0) ? -1 : undefined}
-            className="rounded-lg focus:outline-2 focus:outline-offset-2 focus:outline-ui-info"><Entry entry={entry} onDecision={onDecision} onCancelRun={onCancelRun} timeInStep={step.header === false && index === 0} />{(entry.kind === "fields" || entry.kind === "click") && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} presentation={entry.screenshots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit") ? "submit" : undefined} />}</div>)}</div>
+            className="rounded-lg focus:outline-2 focus:outline-offset-2 focus:outline-ui-info"><Entry entry={entry} onDecision={onDecision} onCancelRun={onCancelRun} timeInStep={index === 0} />{(entry.kind === "fields" || entry.kind === "click") && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} presentation={entry.screenshots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit") ? "submit" : undefined} />}</div>)}</div>
         </div>
         {afterStep?.(step.id)}
       </section>)}
@@ -166,7 +164,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
         <span className="mr-2 text-caption text-ui-muted" role="status">{copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy unavailable" : ""}</span>
         {footerActions}
         <IconButton label="Copy logs" icon={copyState === "copied" ? <Check aria-hidden className="size-4" /> : <Copy aria-hidden className="size-4" />} onClick={() => void copy()} disabled={!count} />
-        <IconButton label="Go to latest action" icon={<ArrowDownToLine aria-hidden className="size-4" />} onClick={() => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); jumpFrame.current = undefined; if (end.current) end.current.style.height = "0px"; if (embedded) end.current?.scrollIntoView({ block: "end", behavior: "instant" }); else scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "instant" }); }} disabled={!count} />
+        <IconButton label="Go to latest action" icon={<ArrowDownToLine aria-hidden className="size-4" />} onClick={() => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); jumpFrame.current = undefined; if (embedded) end.current?.scrollIntoView({ block: "end", behavior: "instant" }); else scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "instant" }); }} disabled={!count} />
       </span>
     </footer>
   </div>;

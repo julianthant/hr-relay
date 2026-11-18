@@ -8,7 +8,7 @@ import { displayScalar } from "../queries/data.js";
 import type { WorkerMemberView } from "../../runtime/workers/worker-pool.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
-import { notificationDisplayContext } from "../queries/notification-display.js";
+import { notificationListProjection } from "./notification-list.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { assertRunTimelineCompatible, type RunTimelineEvidenceSource } from "../queries/run-timeline-compatibility.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
@@ -21,8 +21,6 @@ import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js
 import {
   DashboardDayWireSchema,
   WorkerCardUnavailableReasonSchema,
-  notificationWireOf,
-  notificationSourceEventOf,
   QUEUE_NOT_STARTING_NO_WORKER,
   QueueSurfaceWireSchema,
   TERMINAL_QUEUE_STATUSES,
@@ -48,6 +46,7 @@ import {
   LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
   type Fingerprint,
+  type BrowserSystemId,
 } from "../../../rules/identity/ids.js";
 import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
@@ -152,6 +151,7 @@ export interface RunQueueProjectionDeps {
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
     batchMemberRetryAvailable?(run: RunRecord): boolean;
+    aggregateMemberRetryAvailable?(run: RunRecord): boolean;
     queueParents(envelopes: readonly RunRecord["envelope"][]): ReadonlyMap<string, QueueParent | null>;
     delegationWait?(runId: string): DelegationWaitState | null;
     reviewAvailable?(runId: string): boolean;
@@ -170,7 +170,7 @@ export interface RunQueueProjectionDeps {
     workerMembers?(): readonly WorkerMemberView[];
     /** Whether a capacity step for the workflow is still starting its members. */
     workerStartupPending?(workflowId: string): boolean;
-    heldDuoSystems?(workerId: string): readonly string[];
+    heldDuoLeases?(workerId: string): readonly { system: BrowserSystemId; since: string }[];
     /** Whether the run holds an `attempting` (fenced, unsettled) write intent. */
     writeInFlight?(runId: string): boolean;
     /** Absent in fixtures that have no SQLite generation. Present, an unchanged key skips the live-run read. */
@@ -850,7 +850,8 @@ export class RunQueueProjection {
       built = { storeJson: JSON.stringify({ pools, batches, runs }), claimedIds: source.filter((run) => runClaim(run) !== undefined).map((run) => run.envelope.runId), batches };
       if (canonicalRuns === undefined && keyText !== undefined) this.#storedCanonical = { key: keyText, ...built };
     }
-    const workers = this.#deps.authority.workerMembers?.().map(view => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version }));
+    const workers = this.#deps.authority.workerMembers?.().map(view => ({ workerId: view.member.workerId, lifetimeId: view.lifetimeId, version: view.version,
+      duoLeases: this.#deps.authority.heldDuoLeases?.(view.member.workerId) }));
     const writeInFlight = built.claimedIds.map((id) => [id, this.#deps.authority.writeInFlight?.(id)]);
     const members = this.#deps.authority.listWorkerSlots?.();
     const startupPending = [...new Set(members?.map(member => member.workflow))].filter(workflowId => this.#deps.authority.workerStartupPending?.(workflowId) === true);
@@ -862,8 +863,18 @@ export class RunQueueProjection {
 
   /* ── the authority join ────────────────────────────────────────────────── */
 
-  #status(authority: RunRecord, delegationWait = this.#deps.authority.delegationWait?.(authority.envelope.runId)): z.infer<typeof QueueSurfaceWireSchema>["status"] {
-    return deriveRunStatus({ ...authority, delegationWait });
+  #operatorWait(authority: RunRecord): QueueSurfaceWire["operatorWait"] {
+    const claim = runClaim(authority);
+    if (claim === undefined) return { state: "absent" };
+    const worker = this.#deps.authority.workerMembers?.().find(view => view.member.workerId === claim.workerId);
+    if (worker?.state !== "running" || worker.activity?.runId !== authority.envelope.runId) return { state: "absent" };
+    const lease = this.#deps.authority.heldDuoLeases?.(claim.workerId)[0];
+    return lease === undefined ? { state: "absent" } : { state: "present", kind: "duo", ...lease };
+  }
+
+  #status(authority: RunRecord, delegationWait = this.#deps.authority.delegationWait?.(authority.envelope.runId), operatorWait = this.#operatorWait(authority)): QueueSurfaceWire["status"] {
+    const status = deriveRunStatus({ ...authority, delegationWait });
+    return status === "running" && operatorWait.state === "present" ? "awaiting-approval" : status;
   }
 
 
@@ -1263,7 +1274,8 @@ export class RunQueueProjection {
     for (const child of children) context.runs.set(child.envelope.runId, child);
     const shape = queued.shape;
     const delegationWait = this.#deps.authority.delegationWait?.(queued.runId);
-    const status = this.#status(authority, delegationWait);
+    const operatorWait = this.#operatorWait(authority);
+    const status = this.#status(authority, delegationWait, operatorWait);
     // Nonterminal rows read no receipt; terminal facts and warnings share one read.
     const receipt = this.#receipt(context, authority, status);
     const warningVerdict = this.#warningVerdict(status, receipt);
@@ -1330,6 +1342,7 @@ export class RunQueueProjection {
       outcome: this.#resultOutcome(authority, receipt, descriptor?.outcomeProjection),
       facts: this.#facts(authority, descriptor, status, receipt),
       status,
+      operatorWait,
       ...(notStarting === undefined ? {} : { notStarting }),
       ...(status === "cancelled" ? { cancelledBy: cancelledBy(authority) } : {}),
       liveMessage: interrupt?.step === "finish-write" ? { state: "present", value: "Finishing the save first" }
@@ -1364,6 +1377,7 @@ export class RunQueueProjection {
 
         hasReviewPanel: descriptor?.capabilities?.review ?? false,
         batchMemberRetryAvailable: this.#deps.authority.batchMemberRetryAvailable?.(authority) === true,
+        aggregateMemberRetryAvailable: this.#deps.authority.aggregateMemberRetryAvailable?.(authority) === true,
       }),
       rowRevision: authority.version,
     };
@@ -1529,7 +1543,7 @@ export class RunQueueProjection {
           const timelineRunId = runId ?? (lastRun?.state === "present" ? lastRun.runId : undefined);
           workerCards.push(workerCardOf({ slot: member, view, foldRevision: this.#workers.get(member.workerId)?.eventCount ?? 0,
             startupPending: this.#deps.authority.workerStartupPending?.(member.workflow) === true,
-            duoSystems: this.#deps.authority.heldDuoSystems?.(member.workerId),
+            duoSystems: this.#deps.authority.heldDuoLeases?.(member.workerId).map(lease => lease.system),
             writeInFlight: runId => this.#deps.authority.writeInFlight?.(runId) === true,
             ...(lastRun === undefined ? {} : { lastRun }),
             ...(timelineRunId !== undefined ? { timeline: this.#workerTimeline(timelineRunId, surfaces) }
@@ -1582,16 +1596,17 @@ export class RunQueueProjection {
         plannedBy: pool.plannedBy,
         plannedAt: pool.plannedAt,
       })),
-      notifications: this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID)
-        .map((record) => notificationWireOf(record, this.#deps.clock.nowMs(), notificationDisplayContext(record, {
+      notifications: notificationListProjection(this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID), this.#deps.clock.nowMs(), {
+        display: {
           read: id => this.#deps.reader.read(id),
           descriptor: id => this.#deps.descriptors.resolve(id),
           receipt: id => this.#deps.authority.getReceipt(id),
           presentation: this.#deps,
           checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
           command: id => this.#deps.authority.command?.(id),
-        }), notificationSourceEventOf(record, this.#deps.authority.latestNotificationSource?.(record.notificationId))))
-        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || String(a.notificationId).localeCompare(String(b.notificationId))),
+        },
+        source: id => this.#deps.authority.latestNotificationSource?.(id),
+      }),
     });
   }
 

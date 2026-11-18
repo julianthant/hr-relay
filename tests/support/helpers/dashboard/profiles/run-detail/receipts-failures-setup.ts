@@ -34,6 +34,8 @@ FIXTURE_DIAGNOSTIC_BUNDLE: typeof FixtureDiagnosticTypes.FIXTURE_DIAGNOSTIC_BUND
       taskId: "crm/read-onboarding-record",
       fingerprint: "e".repeat(64),
       code: "SUBJECT_MISMATCH",
+      display: { title: "Search CRM employee record", observation: "The CRM Search button could not be clicked.", attemptedAction: "Click Search after entering the employee ID", lastCompleted: "Employee ID entered in CRM", field: { label: "Employee ID", value: "DEMO-0004", outcome: "Entered" } },
+      retry: { key: "retry-failed-step", label: "Retry step", kind: "command", command: "retry", expectedVersion: 1, intent: "neutral", icon: "retry", placement: ["banner"] },
       summary,
       transient: false,
       writeState: "not-attempted",

@@ -53,7 +53,8 @@ describe("independent protected Settings surface", () => {
       assert.equal(input.value, expected);
       assert.equal(h.host.querySelector(`button[aria-label="Show ${name}"]`), null);
     }
-    assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]')[0]?.value, values.ucpathPassword);
+    assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]')[0]?.value, "");
+    assert.ok(h.host.querySelector('button[aria-label="Remove UCPath password"]'));
     assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]').length, 1);
     const after = h.authority.read(); assert.equal(after.revision, ordinary.revision); assert.deepEqual(after.sections, ordinary.sections);
     assert.match(JSON.stringify(after), /synthetic-password-sentinel/u);
@@ -195,4 +196,39 @@ it("retains applied feedback until the next draft changes its state", async () =
     host.remove();
     vi.useRealTimers();
   }
+});
+
+import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
+import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
+import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
+
+describe("closing Settings", () => {
+  it("closes on the X button and on Escape unless a dialog or list has the key", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const closed = vi.fn();
+    try {
+      await act(async () => root.render(createElement(DashboardClientProvider, {
+        client: {} as DashboardClient,
+        children: createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: closed, section: "budgets", actorId: "local-operator", descriptorFingerprint: "a".repeat(64), onSection: () => undefined }),
+      })));
+      const exit = host.querySelector<HTMLButtonElement>('button[aria-label="Back to dashboard"]');
+      assert.ok(exit);
+      assert.ok(exit.querySelector("svg.lucide-x"));
+      const dialog = document.body.appendChild(document.createElement("div"));
+      dialog.setAttribute("role", "dialog");
+      const inner = dialog.appendChild(document.createElement("button"));
+      await act(async () => { inner.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+      assert.equal(closed.mock.calls.length, 0);
+      dialog.remove();
+      await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+      assert.equal(closed.mock.calls.length, 1);
+      await act(async () => { exit.click(); });
+      assert.equal(closed.mock.calls.length, 2);
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
 });

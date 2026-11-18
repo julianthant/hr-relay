@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ERROR_CATALOG } from "../failures/error-catalog.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../failures/error-catalog.js";
 import { IsoInstantSchema, RunIdSchema, WorkflowIdSchema, DateOnlySchema, CommandIdSchema } from "../../rules/identity/ids.js";
 import { WorkbookIdSchema, WorkbookRevisionSchema, WorkbookMetadataSchema, WorkbookTypeSchema, EditableWorkbookWireSchema, WorkbookLinkSchema, WorkbookImportRequestSchema } from "./workbooks.js";
 import { SPREADSHEET_FIELDS } from "../fields/workbook-fields.js";
@@ -242,14 +242,26 @@ export const WorkbookLibraryStateSchema = z.strictObject({
     context.addIssue({ code: "custom", message: "library versions must have unique identities and retain the version in use" });
   }
 });
+/** The last finished SharePoint sync of one library entry, stored with the link it read. */
+export const WorkbookLibrarySyncRecordSchema = z.discriminatedUnion("result", [
+  z.strictObject({ url: WorkbookLinkSchema.shape.url, finishedAt: IsoInstantSchema, result: z.literal("ok") }),
+  z.strictObject({ url: WorkbookLinkSchema.shape.url, finishedAt: IsoInstantSchema, result: z.literal("failed"), code: ErrorCatalogCodeSchema }),
+]);
+/** Served on SharePoint-linked entries only; the last result is absent until a sync of the current link finishes. */
+export const WorkbookLibrarySyncStatusSchema = z.strictObject({
+  state: z.enum(["idle", "running"]),
+  lastFinishedAt: IsoInstantSchema.optional(), lastResult: z.enum(["ok", "failed"]).optional(), lastFailureCode: ErrorCatalogCodeSchema.optional(),
+}).refine(sync => (sync.lastFinishedAt === undefined) === (sync.lastResult === undefined)
+  && (sync.lastFailureCode !== undefined) === (sync.lastResult === "failed"), { message: "a finished sync carries its result, and only a failure carries a code" });
 export const WorkbookLibraryEntrySchema = z.strictObject({
   libraryId: WorkbookIdSchema, version: WorkbookRevisionSchema, name: NameSchema,
   /** Saved time of the selected content, unaffected by metadata or version-label changes. */
   updatedAt: IsoInstantSchema,
   worksheets: z.array(z.strictObject({ id: WorkbookIdSchema, name: z.string().min(1) })).min(1),
   rowCount: z.number().int().nonnegative(), metadata: WorkbookMetadataSchema, type: WorkbookTypeSchema,
-  state: WorkbookLibraryStateSchema,
+  state: WorkbookLibraryStateSchema, sync: WorkbookLibrarySyncStatusSchema.optional(),
 }).refine(entry => entry.libraryId === entry.state.libraryId && entry.metadata.typeId === entry.type.id
+  && (entry.sync === undefined || entry.metadata.sharePoint !== null)
   && entry.updatedAt === entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.savedAt);
 export const WorkbookLibraryCatalogSchema = z.array(WorkbookLibraryEntrySchema)
   .refine(entries => new Set(entries.map(entry => entry.libraryId)).size === entries.length);
@@ -304,6 +316,8 @@ export const WorkbookLibraryActionStatusSchema = z.discriminatedUnion("state", [
 
 export type WorkbookLibraryState = z.infer<typeof WorkbookLibraryStateSchema>;
 export type WorkbookLibraryEntry = z.infer<typeof WorkbookLibraryEntrySchema>;
+export type WorkbookLibrarySyncRecord = z.infer<typeof WorkbookLibrarySyncRecordSchema>;
+export type WorkbookLibrarySyncStatus = z.infer<typeof WorkbookLibrarySyncStatusSchema>;
 export type WorkbookLibraryVersion = z.infer<typeof WorkbookLibraryVersionSchema>;
 export type WorkbookLibraryAction = z.infer<typeof WorkbookLibraryActionSchema>;
 export type WorkbookLibraryActionResult = z.infer<typeof WorkbookLibraryActionResultSchema>;

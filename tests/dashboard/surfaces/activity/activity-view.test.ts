@@ -112,3 +112,28 @@ it('leaves the run sections as they were', async () => {
   assert(document.querySelector('figure[aria-label="Runs per day"]'));
   assert(document.querySelector('table[aria-label="Workflows"]'));
 });
+
+it('offers one Retry beneath a plain sentence when the report cannot be shown', async () => {
+  const onRetry = vi.fn();
+  await act(async () => { if (!root) { const host = document.createElement('div'); document.body.append(host); root = createRoot(host); } root.render(createElement(ActivityView, { data: { state: 'unavailable', reason: 'x' }, range: ACTIVITY_SAMPLE_RANGE, today: ACTIVITY_SAMPLE_TODAY, onRange() {}, onRetry })); });
+  const retries = [...document.querySelectorAll('button')].filter(item => item.textContent === 'Retry');
+  assert.equal(retries.length, 1);
+  assert.match(document.body.textContent, /Relay could not load Analytics\./);
+  assert.doesNotMatch(document.body.textContent, /Copy details/);
+  await act(async () => retries[0]?.click()); assert.equal(onRetry.mock.calls.length, 1);
+});
+
+it('says one plain sentence for an empty period and keeps the period control', async () => {
+  await render(activitySample(ACTIVITY_SAMPLE_RANGE, 'empty'));
+  assert.match(document.body.textContent, /No runs in this period/);
+  assert.doesNotMatch(document.body.textContent, /0 finished runs|Open a row to see what went wrong/);
+  assert(document.querySelector('[aria-label="Report period"], [role="radiogroup"]'));
+});
+
+it('a bad range keeps the period control and never echoes the raw value', async () => {
+  await render();
+  await act(async () => root?.render(createElement(ActivityReport, { source: 'mock', range: 'not-a-range', onRange() {} })));
+  assert.doesNotMatch(document.body.textContent, /not-a-range/);
+  assert.match(document.body.textContent, /That date range is not valid/);
+  assert(['7d', '30d', '90d'].every(label => [...document.querySelectorAll('button, [role="radio"]')].some(item => item.textContent === label)));
+});

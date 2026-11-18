@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { afterEach, expect, it } from "vitest";
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkflowWorkbookService } from "../../../src/backend/workbooks/workflow-workbook-service.js";
 import { WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-error.js";
 import { WorkflowWorkbookCommandSchema, type WorkflowWorkbookCommand } from "../../../src/models/processing/workbooks/read-result.js";
@@ -27,7 +27,7 @@ const table = i9CheckWorkbookTable([i9RetentionRow({ input: i9CheckInput, initia
 const command = (): WorkflowWorkbookCommand => WorkflowWorkbookCommandSchema.parse({ name: "I-9 results", table });
 function fixture() {
   const database = new DatabaseSync(":memory:"); databases.push(database);
-  for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(statement);
+  for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements]) database.exec(statement);
   const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => {
     database.exec("BEGIN");
     try { const result = work(); database.exec("COMMIT"); return result.result; }
