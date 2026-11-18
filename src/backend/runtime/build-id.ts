@@ -141,3 +141,7 @@ export function currentBuildId(): Fingerprint {
   captured ??= computeBuildId(REPO_ROOT);
   return captured;
 }
+
+export function runtimeBuildIsCurrent(): boolean {
+  return currentBuildId() === computeBuildId(REPO_ROOT);
+}
