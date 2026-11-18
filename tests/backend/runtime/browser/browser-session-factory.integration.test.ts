@@ -446,7 +446,7 @@ describe("worker browser session factory", () => {
             } else {
               const screenshot = await pending;
               if (available) {
-                assert.ok(screenshot.state === "available", screenshot.state === "unavailable" ? screenshot.reason : undefined);
+                assert.ok(screenshot.state === "available", screenshot.state === "unavailable" ? screenshot.reason : "expected an available screenshot");
                 assert.equal(screenshot.pageVersion, 1);
                 assert.deepEqual(Buffer.from(screenshot.bytes), PNG.sync.write(new PNG({ width: config.display.screenWidth + 24, height: config.display.screenHeight })));
               } else {
