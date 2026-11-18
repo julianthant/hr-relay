@@ -102,10 +102,12 @@ export async function clickWithMutationCapability(
       await control.dispose();
     }
   };
+  const operation = click();
   try {
-    await Promise.race([lifetime, click()]);
+    await Promise.race([lifetime, operation]);
   } finally {
-    // Cancel pending input at the cutoff even when cleanup awaits a navigating document.
     finished.abort();
+    // The first failure stays primary. Fenced custody ends only after the input and its handles have drained.
+    await Promise.allSettled([operation, lifetime]);
   }
 }

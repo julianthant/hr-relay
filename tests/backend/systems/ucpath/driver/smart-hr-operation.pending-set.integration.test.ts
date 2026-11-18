@@ -273,10 +273,23 @@ describe("browser dispatch of a fenced click", () => {
         link.textContent = "Save";
         setTimeout(() => document.body.append(link), 600);
       });
-      const action = clickWithMutationCapability(expiringCapability(5000), page.getByRole("link"), 1400);
+      const link = page.getByRole("link");
+      const acquire = link.elementHandle.bind(link);
+      let responseReleasedAtCancellation: boolean | undefined;
+      vi.spyOn(link, "elementHandle").mockImplementation(async options => {
+        const handle = await acquire(options);
+        const click = handle.click.bind(handle);
+        vi.spyOn(handle, "click").mockImplementation(input => {
+          assert.ok(input?.signal);
+          input.signal.addEventListener("abort", () => { responseReleasedAtCancellation = responseReleased; }, { once: true });
+          return click(input);
+        });
+        return handle;
+      });
+      const action = clickWithMutationCapability(expiringCapability(5000), link, 1400);
       await assert.rejects(action, /[Tt]imeout/u);
       assert.equal(requests, 1);
-      assert.equal(responseReleased, false);
+      assert.equal(responseReleasedAtCancellation, false);
       await page.waitForURL("https://fixture.invalid/receipt");
       assert.equal(await page.locator("output").textContent(), "saved");
     } finally { await browser.close(); }

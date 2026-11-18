@@ -1,6 +1,8 @@
 import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/write-sequencer-world.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { chromium } from "playwright";
+import { afterEach, describe, it, vi } from "vitest";
+import { clickWithMutationCapability } from "../../../../src/backend/systems/browser-shared/mutation-click.js";
 import { WriteParkedError } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { absentProbeEvidence, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureSaveDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
@@ -9,6 +11,70 @@ const {harness, claimRunning, contextFor, intentByKey, cleanup } = createWriteSe
 afterEach(cleanup);
 
 describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, never silent)", () => {
+
+  it("retains the fenced lease and defers post-submit capture until cancelled input and disposal settle", async () => {
+    const order: string[] = [];
+    const h = await harness({ onCapture: async boundary => {
+      if (boundary === "after-submit") order.push("after-submit");
+    } });
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent("<button>Save</button>");
+      const target = page.getByRole("button");
+      const handle = await target.elementHandle();
+      vi.spyOn(target, "elementHandle").mockResolvedValue(handle);
+      const cancelled = Promise.withResolvers<void>();
+      const finishInput = Promise.withResolvers<void>();
+      const disposing = Promise.withResolvers<void>();
+      const finishDisposal = Promise.withResolvers<void>();
+      vi.spyOn(handle, "click").mockImplementation(async options => {
+        assert.ok(options?.signal);
+        options.signal.addEventListener("abort", () => cancelled.resolve(), { once: true });
+        await finishInput.promise;
+        order.push("input settled");
+        throw new Error("late input failure");
+      });
+      const dispose = handle.dispose.bind(handle);
+      vi.spyOn(handle, "dispose").mockImplementation(async () => {
+        disposing.resolve();
+        await finishDisposal.promise;
+        await dispose();
+        order.push("handle disposed");
+      });
+      h.world.afterCommitClickBeforeTaskSettlement = async () => {
+        assert.ok(h.world.lastCapability);
+        await clickWithMutationCapability(h.world.lastCapability, target, 1000);
+      };
+      const execution = assert.rejects(h.execute(contextFor(run, claim)), error => {
+        assert.ok(error instanceof WriteParkedError && error.parkCode === "unknown");
+        assert.match(error.message, /Timeout 1000ms exceeded/u);
+        return true;
+      });
+      const assertRetained = () => {
+        assert.ok(!order.includes("after-submit"), "capture started before the browser operation drained");
+        assert.equal(intentByKey(h.database)?.status, "attempting");
+        assert.deepEqual(h.sessions.closeReasons(), []);
+      };
+      try {
+        await Promise.race([cancelled.promise, execution.then(() => { throw new Error("execution ended before input cancellation"); })]);
+        await new Promise(resolve => setImmediate(resolve));
+        assertRetained();
+        finishInput.resolve();
+        await disposing.promise;
+        assertRetained();
+      } finally {
+        finishInput.resolve();
+        finishDisposal.resolve();
+        await execution;
+      }
+      assert.deepEqual(order, ["input settled", "handle disposed", "after-submit"]);
+      assert.equal(intentByKey(h.database)?.status, "parked");
+      assert.deepEqual(h.sessions.closeReasons(), ["poisoned"]);
+    } finally { await browser.close(); }
+  });
 
   it("a parent abort after the fence never reaches the in-flight commit, which settles committed", async () => {
     const h = await harness();
