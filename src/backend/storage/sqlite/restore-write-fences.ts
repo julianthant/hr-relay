@@ -1,10 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { createPrivateDirectory } from "../private-path.js";
-import { retainAuthoritySourceClosure } from "../source-closure.js";
+import { createHash } from "node:crypto";
+import { createRestoreFenceIndex } from "./readonly-authority-snapshot.js";
 import { exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { z } from "zod";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
@@ -16,6 +11,14 @@ type FenceTable = typeof Tables[number] | "exclusive_session_leases";
 export type RestoreWriteFences = Readonly<{ unresolved: readonly string[]; tables: readonly Readonly<{ name: FenceTable; rows: readonly string[] }>[] }>;
 
 type FenceReader = Readonly<{ prepare(sql: string): Readonly<{ all(): readonly unknown[] }> }>;
+type FenceRow = Readonly<Record<string, unknown>>;
+type FenceStatement = Readonly<{
+  all(...values: (string | number)[]): readonly FenceRow[];
+  get(...values: (string | number)[]): FenceRow | undefined;
+  iterate(...values: (string | number)[]): Iterable<FenceRow>;
+  columns(): readonly Readonly<{ name: string }>[];
+}>;
+type FenceSource = Readonly<{ prepare(sql: string): FenceStatement }>;
 type ReadRows = (sql: string) => Iterable<unknown>;
 type FenceSummary = Readonly<{ unresolved: readonly string[]; tables: readonly FenceTable[] }>;
 
@@ -53,7 +56,7 @@ function readWriteState(rows: ReadRows) {
   return { unresolved: [...unresolved].sort(), hasWriteEvidence };
 }
 
-export function readUnresolvedRestoreWrites(database: DatabaseSync): readonly string[] {
+export function readUnresolvedRestoreWrites(database: FenceSource): readonly string[] {
   const { unresolved, tables } = readFenceSummary(sql => database.prepare(sql).iterate());
   validateReadableFenceRows(database, tables);
   return unresolved;
@@ -110,7 +113,6 @@ export function assertRestorePreservesWriteFences(source: RestoreWriteFences, re
 }
 
 const PrimaryKey = z.tuple([z.strictObject({ name: z.string() })]);
-const EvidenceRow = z.strictObject({ row_key: z.union([z.string(), z.number()]), canonical: z.instanceof(Uint8Array) });
 const RowKey = z.union([z.string(), z.number()]);
 const quoteColumn = (column: string) => `"${column.replaceAll('"', '""')}"`;
 
@@ -121,52 +123,16 @@ type WitnessTable = {
   readonly rowCount: number;
 };
 
-type ReadAuthority = <Result>(read: (database: DatabaseSync) => Result) => Result;
+type ReadAuthority = <Result>(read: (database: FenceSource) => Result) => Result;
 
 export type RestoreWriteFenceProof = Readonly<{
   digest: string;
-  assertPreservedBy(database: DatabaseSync): void;
-  assertCurrent(database: DatabaseSync): void;
+  assertPreservedBy(database: FenceSource): void;
+  assertCurrent(database: FenceSource): void;
   [Symbol.dispose](): void;
 }>;
 
-function openFenceIndex() {
-  const prefix = join(realpathSync(tmpdir()), `relay-readonly-authority-pid${process.pid}-fences-`);
-  const path = process.platform === "win32" ? `${prefix}${randomUUID()}` : mkdtempSync(prefix);
-  if (process.platform === "win32") createPrivateDirectory(path, { mode: 0o700 });
-  const directory = { path };
-  let database: DatabaseSync | undefined;
-  const dispose = () => {
-    if (database !== undefined) {
-      try { database.close(); }
-      catch (error) { throw retainAuthoritySourceClosure([error], { database, directory }); }
-    }
-    try { rmSync(path, { recursive: true }); }
-    catch (error) { throw retainAuthoritySourceClosure([error], { directory }); }
-  };
-  try {
-    database = new DatabaseSync(join(path, "fences.sqlite"));
-    database.exec(`
-      PRAGMA journal_mode=OFF;
-      PRAGMA cache_size=-2048;
-      PRAGMA cache_spill=ON;
-      PRAGMA temp_store=MEMORY;
-      CREATE TABLE evidence (
-        table_id INTEGER NOT NULL,
-        canonical BLOB NOT NULL,
-        row_key ANY NOT NULL,
-        PRIMARY KEY(table_id,canonical)
-      ) STRICT, WITHOUT ROWID;
-    `);
-    return { database, dispose };
-  } catch (error) {
-    try { dispose(); }
-    catch (cleanup) { throw new AggregateError([error, cleanup], "restore-fence-index-setup-failed"); }
-    throw error;
-  }
-}
-
-function validateReadableFenceRows(database: DatabaseSync, tables: readonly FenceTable[]): void {
+function validateReadableFenceRows(database: FenceSource, tables: readonly FenceTable[]): void {
   for (const table of tables) {
     for (const row of database.prepare(`SELECT * FROM ${table}${fenceTableSelection(table)}`).iterate()) {
       for (const field of Object.values(row)) {
@@ -178,37 +144,26 @@ function validateReadableFenceRows(database: DatabaseSync, tables: readonly Fenc
   }
 }
 
-function indexFenceRows(source: DatabaseSync, index: DatabaseSync, tables: readonly FenceTable[]): readonly WitnessTable[] {
+type FenceIndex = ReturnType<typeof createRestoreFenceIndex>;
+
+function indexFenceRows(source: FenceSource, index: FenceIndex, tables: readonly FenceTable[]): readonly WitnessTable[] {
   const keyOf = source.prepare("SELECT name FROM pragma_table_info(?) WHERE pk > 0");
-  const insert = index.prepare("INSERT INTO evidence (table_id,canonical,row_key) VALUES (?,?,?)");
-  index.exec("BEGIN");
   const indexed = tables.map((name, tableId) => {
     const key = PrimaryKey.parse(keyOf.all(name))[0].name;
     const rows = source.prepare(`SELECT * FROM ${name}${fenceTableSelection(name)}`);
     const columns = rows.columns().map(column => column.name);
     let rowCount = 0;
     for (const row of rows.iterate()) {
-      // Index UTF-16 code units in JavaScript sort order to preserve the restore journal digest.
-      insert.run(tableId, Buffer.from(canonicalJsonStringify(row), "utf16le").swap16(), RowKey.parse(row[key]));
+      index.append(tableId, RowKey.parse(row[key]), canonicalJsonStringify(row));
       rowCount++;
     }
     return { name, key, columns, rowCount };
   });
-  index.exec("COMMIT; PRAGMA query_only=ON");
+  index.seal();
   return indexed;
 }
 
-function readIndexedFenceRows(index: DatabaseSync) {
-  const rows = index.prepare("SELECT row_key, canonical FROM evidence WHERE table_id=? ORDER BY canonical");
-  return function* (tableId: number) {
-    for (const raw of rows.iterate(tableId)) {
-      const { row_key, canonical } = EvidenceRow.parse(raw);
-      yield { key: row_key, canonical: Buffer.from(canonical).swap16().toString("utf16le") };
-    }
-  };
-}
-
-function digestFenceProof(tables: readonly WitnessTable[], unresolved: readonly string[], rows: ReturnType<typeof readIndexedFenceRows>): string {
+function digestFenceProof(tables: readonly WitnessTable[], unresolved: readonly string[], rows: FenceIndex["orderedRows"]): string {
   const hash = createHash("sha256").update('{"tables":[');
   for (const [index, table] of tables.entries()) {
     if (index !== 0) hash.update(",");
@@ -225,8 +180,8 @@ function digestFenceProof(tables: readonly WitnessTable[], unresolved: readonly 
 }
 
 function compareFenceRows(
-  database: DatabaseSync, witnesses: readonly WitnessTable[], current: FenceSummary,
-  rows: ReturnType<typeof readIndexedFenceRows>, changed?: string,
+  database: FenceSource, witnesses: readonly WitnessTable[], current: FenceSummary,
+  rows: FenceIndex["orderedRows"], changed?: string,
 ): void {
   for (const [index, { name, key, columns, rowCount }] of witnesses.entries()) {
     const refusal = changed ?? `restore-would-weaken-write-evidence:${name}`;
@@ -249,25 +204,25 @@ function compareFenceRows(
 }
 
 export function captureRestoreWriteFenceProof(readAuthority: ReadAuthority): RestoreWriteFenceProof {
-  let owned: ReturnType<typeof openFenceIndex> | undefined;
+  let owned: FenceIndex | undefined;
   try {
     return readAuthority(source => {
       const summary = readFenceSummary(sql => source.prepare(sql).iterate());
-      const index = openFenceIndex();
+      const index = createRestoreFenceIndex();
       owned = index;
-      const witnesses = indexFenceRows(source, index.database, summary.tables);
-      const rows = readIndexedFenceRows(index.database);
+      const witnesses = indexFenceRows(source, index, summary.tables);
+      const rows = index.orderedRows;
       let digest: string | undefined;
       return Object.freeze({
         get digest() { return digest ??= digestFenceProof(witnesses, summary.unresolved, rows); },
-        assertPreservedBy(database: DatabaseSync) {
+        assertPreservedBy(database: FenceSource) {
           const restored = readFenceSummary(sql => database.prepare(sql).iterate());
           validateReadableFenceRows(database, restored.tables);
           const unresolved = new Set(restored.unresolved);
           if (summary.unresolved.some(id => !unresolved.has(id))) throw new Error("restore-would-lose-unresolved-write");
           compareFenceRows(database, witnesses, restored, rows);
         },
-        assertCurrent(database: DatabaseSync) {
+        assertCurrent(database: FenceSource) {
           const errorCode = "restore-write-fences-changed";
           const current = readFenceSummary(sql => database.prepare(sql).iterate());
           if (current.tables.length !== summary.tables.length || summary.tables.some((table, position) => current.tables[position] !== table)
