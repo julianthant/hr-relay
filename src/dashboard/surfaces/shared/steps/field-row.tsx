@@ -13,12 +13,12 @@ const COLUMNS_WITH_SOURCE = "grid-cols-[1rem_minmax(var(--spacing-log-label),.85
  * A fill row (typed value, blue) or a read row (what the page showed). `unread` marks a read that found nothing.
  * `onSource` adds the arrow that opens where the value comes from (Explorer).
  */
-export function FieldRow({ kind, label, value, unread = false, onSource }: { kind: FieldRowKind; label: string; value: string; unread?: boolean; onSource?: (trigger: HTMLButtonElement) => void }) {
+export function FieldRow({ kind, label, value, unread = false, mark, onSource }: { kind: FieldRowKind; label: string; value: string; unread?: boolean; mark?: string; onSource?: (trigger: HTMLButtonElement) => void }) {
   const Icon = kind === "fill" ? PencilLine : kind === "compute" ? Cpu : Eye;
   return <div data-log-field={kind} className={cn("grid min-w-0 items-baseline gap-x-3 border-b border-ui-stroke py-2.5 last:border-b-0", onSource ? COLUMNS_WITH_SOURCE : COLUMNS)}>
     <Icon aria-hidden className={cn("size-3.5 self-start translate-y-0.5", kind === "fill" ? "text-ui-info" : "text-ui-muted")} />
     <dt className="min-w-0 text-body font-medium">{label}</dt>
-    <FieldValueCell value={value} className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word] @max-[448px]:overflow-hidden @max-[448px]:text-ellipsis @max-[448px]:[overflow-wrap:normal] max-[1100px]:truncate", kind === "fill" ? "text-ui-info font-medium" : unread ? "text-ui-danger/75" : "text-ui-secondary")} />
+    <FieldValueCell value={value} mark={mark} className={cn("m-0 min-w-0 text-right text-body text-balance [overflow-wrap:break-word] @max-[448px]:overflow-hidden @max-[448px]:text-ellipsis @max-[448px]:[overflow-wrap:normal] max-[1100px]:truncate", kind === "fill" ? "text-ui-info font-medium" : unread ? "text-ui-danger/75" : "text-ui-secondary")} />
     {onSource && <button type="button" aria-label={`Show source for ${label}`} onClick={event => onSource(event.currentTarget)} className={cn("self-start translate-y-0.5 rounded-sm text-ui-info hover:text-ui-primary", dsFocus)}><ArrowUpRight aria-hidden className="size-3.5" /></button>}
   </div>;
 }
@@ -29,7 +29,7 @@ export function FieldRows({ padded, children }: { padded: boolean; children: Rea
 }
 
 /** At narrow widths the value truncates on one line; the shared tooltip then shows the whole value. */
-function FieldValueCell({ value, className }: { value: string; className: string }) {
+function FieldValueCell({ value, mark, className }: { value: string; mark?: string; className: string }) {
   const [cut, setCut] = useState(false);
   const cell = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -41,7 +41,7 @@ function FieldValueCell({ value, className }: { value: string; className: string
     observer.observe(node);
     return () => observer.disconnect();
   }, [value]);
-  return <Tooltip side="bottom" content={value} open={cut ? undefined : false}><dd ref={cell} className={className}><FieldValue value={value} /></dd></Tooltip>;
+  return <Tooltip side="bottom" content={value} open={cut ? undefined : false}><dd ref={cell} className={className}><FieldValue value={value} />{mark !== undefined && <span className="ml-2 whitespace-nowrap text-caption font-normal text-ui-muted">{mark}</span>}</dd></Tooltip>;
 }
 
 function FieldValue({ value }: { value: string }) {

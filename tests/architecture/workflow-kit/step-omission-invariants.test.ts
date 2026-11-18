@@ -13,7 +13,7 @@ import {
   stepOmissionPlaceholderFacts,
   StepOmissionFormSchema,
   type StepOmissionCascadeRow,
-  type StepOmissionDeclaration,
+  type StepManualDeclaration,
   type StepOmissionGraphView,
   type StepOmissionPlan,
 } from "../../../src/models/workflow/step-omission.js";
@@ -21,9 +21,11 @@ import { defineCanonicalInput } from "../../../src/models/workflow/canonical-inp
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
 import {
   KRONOS_TIMECARD_OMISSION,
-  KUALI_FINALIZATION_OMISSION,
-  UCPATH_TRANSACTION_OMISSION,
 } from "../../../src/workflows/separations/workflow.js";
+import { ACTIVE_STATUS_MANUAL } from "../../../src/workflows/person-lookup/steps/active-status/step.js";
+import { CRM_DATES_MANUAL } from "../../../src/workflows/person-lookup/steps/crm-dates/step.js";
+import { CROSS_VERIFY_MANUAL } from "../../../src/workflows/person-lookup/steps/cross-verify/step.js";
+import { SEARCHING_MANUAL } from "../../../src/workflows/person-lookup/steps/searching/step.js";
 import { FixtureCommit, FixtureStage } from "../../support/fixtures/descriptor-fixtures.js";
 
 const FixtureInput = z.strictObject({ eid: EidSchema });
@@ -66,8 +68,8 @@ function buildStepOmissionFixture(
   id: string,
   code: string,
   overrides: {
-    identityCheckOmission?: StepOmissionDeclaration;
-    writingOmission?: StepOmissionDeclaration;
+    identityCheckOmission?: StepManualDeclaration;
+    writingOmission?: StepManualDeclaration;
   } = {},
 ): AnyWorkflowDescriptor {
   const fixtureFlow = flow(FixtureInput)
@@ -122,26 +124,28 @@ function buildStepOmissionFixture(
         key: "identity-check",
         label: "Identity Check",
         nodes: ["identity-approval", "approve"],
-        ...(overrides.identityCheckOmission === undefined ? {} : { omission: overrides.identityCheckOmission }),
+        ...(overrides.identityCheckOmission === undefined ? {} : { manual: overrides.identityCheckOmission }),
       },
       {
         key: "writing",
         label: "Writing",
         nodes: ["submit"],
-        ...(overrides.writingOmission === undefined ? {} : { omission: overrides.writingOmission }),
+        ...(overrides.writingOmission === undefined ? {} : { manual: overrides.writingOmission }),
       },
     ],
     flow: fixtureFlow,
   });
 }
 
-const VALID_OMISSION: StepOmissionDeclaration = {
+const VALID_OMISSION: StepManualDeclaration = {
   form: { fields: [{ key: "approvedFlag", label: "Approved", kind: "boolean" }] },
   produces: { approve: ({ facts }) => ({ approved: facts.approvedFlag }) },
+  skips: [],
 };
 
-/** The two descriptor ids this guard names explicitly: the real registry's only omission author, and the fixture's. */
+/** The descriptor ids this guard names explicitly: the registry's manual-entry authors, and the fixture's. */
 const SEPARATIONS_ID = "separations";
+const PERSON_LOOKUP_ID = "person-lookup";
 const FIXTURE_ID = "step-omission-guard-valid";
 
 /** The one legitimate fixture descriptor every positive check runs against too. */
@@ -161,7 +165,7 @@ function graphViewOf(descriptor: AnyWorkflowDescriptor): StepOmissionGraphView {
 const PRODUCTION_DECLARATIONS: readonly Readonly<{
   descriptor: string;
   step: string;
-  declaration: StepOmissionDeclaration;
+  declaration: StepManualDeclaration;
   fieldKeys: readonly string[];
   produces: readonly string[];
 }>[] = [
@@ -170,16 +174,24 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
     fieldKeys: ["lastDayWorked", "separationDate"], produces: ["dates"],
   },
   {
-    descriptor: SEPARATIONS_ID, step: "ucpath-transaction", declaration: UCPATH_TRANSACTION_OMISSION,
-    fieldKeys: ["transactionNumber", "approvalStatus"], produces: ["receipt"],
+    descriptor: PERSON_LOOKUP_ID, step: "searching", declaration: SEARCHING_MANUAL,
+    fieldKeys: ["emplId", "name", "department", "jobTitle", "hrStatus", "employeeStatus", "hdh"], produces: ["searching", "matching", "search-identity"],
   },
   {
-    descriptor: SEPARATIONS_ID, step: "kuali-finalization", declaration: KUALI_FINALIZATION_OMISSION,
-    fieldKeys: [], produces: [],
+    descriptor: PERSON_LOOKUP_ID, step: "cross-verify", declaration: CROSS_VERIFY_MANUAL,
+    fieldKeys: ["name", "firstDayOfService"], produces: ["crm-identity"],
+  },
+  {
+    descriptor: PERSON_LOOKUP_ID, step: "active-status", declaration: ACTIVE_STATUS_MANUAL,
+    fieldKeys: ["state", "hrStatus", "startDate", "endDate", "terminationReason", "ucpath"], produces: ["active-status"],
+  },
+  {
+    descriptor: PERSON_LOOKUP_ID, step: "crm-dates", declaration: CRM_DATES_MANUAL,
+    fieldKeys: ["employmentDate", "oathDate"], produces: ["crm-dates"],
   },
 ];
 
-/** Every `<descriptor>::<step>` row a complete sweep MUST have visited — the three production declarations plus the fixture's one. */
+/** Every `<descriptor>::<step>` row a complete sweep MUST have visited — the production declarations plus the fixture's one. */
 const REQUIRED_SWEEP_ROWS: readonly string[] = [
   ...PRODUCTION_DECLARATIONS.map(({ descriptor, step }) => `${descriptor}::${step}`),
   `${FIXTURE_ID}::identity-check`,
@@ -188,33 +200,30 @@ const REQUIRED_SWEEP_ROWS: readonly string[] = [
 /** The exact cascade row each production step yields today (check b). */
 const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> = {
   "separations::kronos-timecard": { state: "omittable", forces: [] },
-  "separations::ucpath-transaction": { state: "omittable", forces: [] },
-  "separations::kuali-finalization": { state: "omittable", forces: [] },
+  "person-lookup::searching": { state: "omittable", forces: [] },
+  "person-lookup::cross-verify": { state: "omittable", forces: [] },
+  "person-lookup::active-status": { state: "omittable", forces: [] },
+  "person-lookup::crm-dates": { state: "omittable", forces: [] },
 };
 
 
 const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[] }>>> = {
   "separations::kronos-timecard": { asserted: ["dates"], omitted: ["timecard", "timecard-search"] },
-  "separations::ucpath-transaction": {
-    asserted: ["receipt"],
-    omitted: ["clear-pending", "file-termination", "pending-set"],
-  },
-  "separations::kuali-finalization": { asserted: [], omitted: ["filing-presence", "finalize-kuali"] },
+  "person-lookup::searching": { asserted: ["matching", "search-identity", "searching"], omitted: [] },
+  "person-lookup::cross-verify": { asserted: ["crm-identity"], omitted: ["cross-verify"] },
+  "person-lookup::active-status": { asserted: ["active-status"], omitted: ["crm-only-recovery"] },
+  "person-lookup::crm-dates": { asserted: ["crm-dates"], omitted: [] },
 };
 
 /** The same pinning for the whole-descriptor plan: every omittable step of a descriptor omitted at once. */
 const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[] }>>> = {
   [SEPARATIONS_ID]: {
-    asserted: ["dates", "receipt"],
-    omitted: [
-      "clear-pending",
-      "file-termination",
-      "filing-presence",
-      "finalize-kuali",
-      "pending-set",
-      "timecard",
-      "timecard-search",
-    ],
+    asserted: ["dates"],
+    omitted: ["timecard", "timecard-search"],
+  },
+  [PERSON_LOOKUP_ID]: {
+    asserted: ["active-status", "crm-dates", "crm-identity", "matching", "search-identity", "searching"],
+    omitted: ["crm-only-recovery", "cross-verify"],
   },
 };
 
@@ -252,9 +261,10 @@ function assertSweptEveryDeclaration(audited: readonly string[], sweep: string):
 
 describe("step-omission invariants", () => {
   it("throws at definition time when an omission produces the gate node of its own step", () => {
-    const gateOmission: StepOmissionDeclaration = {
+    const gateOmission: StepManualDeclaration = {
       form: { fields: [] },
       produces: { "identity-approval": () => ({ approved: true }) },
+      skips: ["approve"],
     };
     assert.throws(
       () => buildStepOmissionFixture("step-omission-guard-gate", "sog", { identityCheckOmission: gateOmission }),
@@ -263,9 +273,10 @@ describe("step-omission invariants", () => {
   });
 
   it("throws at definition time when an omission produces the transaction node of its own step", () => {
-    const transactionOmission: StepOmissionDeclaration = {
+    const transactionOmission: StepManualDeclaration = {
       form: { fields: [] },
       produces: { submit: () => ({ transactionId: "T1" }) },
+      skips: [],
     };
     assert.throws(
       () => buildStepOmissionFixture("step-omission-guard-txn", "sot", { writingOmission: transactionOmission }),
@@ -273,10 +284,24 @@ describe("step-omission invariants", () => {
     );
   });
 
+  it("throws at definition time when an omission skips a gate or a transaction node", () => {
+    const skipsGate: StepManualDeclaration = { form: { fields: [] }, produces: {}, skips: ["identity-approval"] };
+    assert.throws(
+      () => buildStepOmissionFixture("step-omission-guard-skip-gate", "ssg", { identityCheckOmission: skipsGate }),
+      /identity-check" omission skips gate node "identity-approval"; a gate or transaction always runs/u,
+    );
+    const skipsTransaction: StepManualDeclaration = { form: { fields: [] }, produces: {}, skips: ["submit"] };
+    assert.throws(
+      () => buildStepOmissionFixture("step-omission-guard-skip-txn", "sst", { writingOmission: skipsTransaction }),
+      /writing" omission skips transaction node "submit"; a gate or transaction always runs/u,
+    );
+  });
+
   it("refuses a descriptor whose omission form declares a duplicate field key (negative arm for check c)", () => {
-    const duplicateFieldOmission: StepOmissionDeclaration = {
+    const duplicateFieldOmission: StepManualDeclaration = {
       form: { fields: [{ key: "value", label: "V1", kind: "text" }, { key: "value", label: "V2", kind: "text" }] },
       produces: { approve: () => ({ approved: true }) },
+      skips: [],
     };
     assert.throws(
       () => buildStepOmissionFixture("step-omission-guard-dup", "sod", { identityCheckOmission: duplicateFieldOmission }),
@@ -315,7 +340,7 @@ describe("step-omission invariants", () => {
 
   it("parses every RAW step-folder declaration through StepOmissionFormSchema, with exactly the pinned keys and producers", () => {
     const audited: string[] = [];
-    const raw: readonly Readonly<{ key: string; declaration: StepOmissionDeclaration; fieldKeys: readonly string[]; produces: readonly string[] }>[] = [
+    const raw: readonly Readonly<{ key: string; declaration: StepManualDeclaration; fieldKeys: readonly string[]; produces: readonly string[] }>[] = [
       ...PRODUCTION_DECLARATIONS.map(({ descriptor, step, declaration, fieldKeys, produces }) => ({
         key: `${descriptor}::${step}`, declaration, fieldKeys, produces,
       })),
@@ -348,32 +373,25 @@ describe("step-omission invariants", () => {
     assertSweptEveryDeclaration(carried, "registry-carried declaration sweep");
   });
 
-  it("classifies a gate omitted exactly when its own step is omitted, never asserted — alone, with its cascade forces, or with every omittable step of its descriptor", () => {
+  it("never omits or asserts a gate — alone, with its cascade forces, or with every omittable step of its descriptor", () => {
     const audited: string[] = [];
     const wholeDescriptorsAudited: string[] = [];
+    const gatedDescriptors: string[] = [];
     for (const descriptor of SWEPT_DESCRIPTORS) {
       const view = graphViewOf(descriptor);
       if (view.stepOmissions.length === 0) continue;
       const id = String(descriptor.id);
       const gateIds = view.nodes.filter((node) => node.kind === "gate").map((node) => node.id);
-      assert.ok(gateIds.length > 0, `${id}: declares an omission but has no gate — the ALWAYS-GATE sweep would be vacuous here`);
+      if (gateIds.length > 0) gatedDescriptors.push(id);
       if (id === SEPARATIONS_ID) {
         assert.ok(gateIds.includes("identity-approval"), "separations must still carry the identity-approval gate");
       }
       const cascade = stepOmissionCascade(view);
 
-      const stepOfNode = new Map<string, string>();
-      for (const category of view.timeline) for (const { id: nodeId } of category.nodes) stepOfNode.set(nodeId, category.key);
-      const assertGatesExecute = (plan: StepOmissionPlan, shape: string, omittedSteps: readonly string[]): void => {
+      const assertGatesExecute = (plan: StepOmissionPlan, shape: string): void => {
         for (const gateId of gateIds) {
           assert.ok(!plan.asserted.has(gateId), `${id} (${shape}): asserts gate "${gateId}"`);
-          const ownStep = stepOfNode.get(gateId);
-          if (ownStep !== undefined && omittedSteps.includes(ownStep)) {
-
-            assert.equal(plan.omitted.get(gateId), ownStep, `${id} (${shape}): gate "${gateId}" must be omitted with its own step "${ownStep}"`);
-          } else {
-            assert.ok(!plan.omitted.has(gateId), `${id} (${shape}): omits gate "${gateId}" whose step "${String(ownStep)}" is not omitted`);
-          }
+          assert.ok(!plan.omitted.has(gateId), `${id} (${shape}): omits gate "${gateId}"`);
         }
       };
 
@@ -384,10 +402,10 @@ describe("step-omission invariants", () => {
         assert.ok(row !== undefined, `${key}: no cascade row`);
 
         const alone = planSteps(descriptor, [spec.step]);
-        assertGatesExecute(alone, `step "${spec.step}" alone`, [spec.step]);
+        assertGatesExecute(alone, `step "${spec.step}" alone`);
 
         const withForces = planSteps(descriptor, [spec.step, ...(row?.forces ?? [])]);
-        assertGatesExecute(withForces, `step "${spec.step}" + forces`, [spec.step, ...(row?.forces ?? [])]);
+        assertGatesExecute(withForces, `step "${spec.step}" + forces`);
         if (row?.state === "omittable") {
           assert.deepEqual(alone.refusals, [], `${key}: an omittable step refuses on its own`);
           assert.deepEqual(withForces.refusals, [], `${key}: an omittable step refuses with its own forced set`);
@@ -403,7 +421,7 @@ describe("step-omission invariants", () => {
       const everyStep = view.stepOmissions.map(({ step }) => step);
       const whole = planSteps(descriptor, everyStep);
       wholeDescriptorsAudited.push(id);
-      assertGatesExecute(whole, "every omittable step at once", everyStep);
+      assertGatesExecute(whole, "every omittable step at once");
       if (isFixture(descriptor)) continue;
       assert.deepEqual(whole.refusals, [], `${id}: omitting every omittable step at once refuses`);
       const expectedWhole = PRODUCTION_WHOLE_DESCRIPTOR_PLANS[id];
@@ -412,6 +430,8 @@ describe("step-omission invariants", () => {
       assert.deepEqual(sorted(whole.omitted.keys()), expectedWhole?.omitted, `${id}: whole-descriptor omitted nodes changed`);
     }
     assertSweptEveryDeclaration(audited, "planner sweep");
-    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, FIXTURE_ID]), "the whole-descriptor sweep visited the wrong descriptors");
+    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, FIXTURE_ID]), "the whole-descriptor sweep visited the wrong descriptors");
+    // Person Lookup has no gate; the ALWAYS-GATE sweep stays non-vacuous through these gated descriptors.
+    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, FIXTURE_ID]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
   });
 });

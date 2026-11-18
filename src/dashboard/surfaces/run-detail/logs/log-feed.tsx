@@ -19,7 +19,7 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
   if (entry.kind === "decision") return <div className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-3"><time className="pt-4 font-data text-caption tabular-nums text-ui-muted">{entry.time}</time>{block}</div>;
   if (entry.kind === "fields") return <PageCard title={entry.title} bare={entry.title === undefined && entry.result === undefined}>
     <FieldRows padded={entry.title !== undefined || entry.result !== undefined}>
-      {entry.fields.map(field => <FieldRow key={field.id} kind={field.kind} label={field.label} value={field.value} unread={field.unread} />)}
+      {entry.fields.map(field => <FieldRow key={field.id} kind={field.kind} label={field.label} value={field.value} unread={field.unread} mark={field.mark} />)}
     </FieldRows>
     {entry.result && <ResultLine value={entry.result} />}
   </PageCard>;

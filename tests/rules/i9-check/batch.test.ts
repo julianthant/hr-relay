@@ -6,7 +6,7 @@ import { WorkbookReferenceReadSchema } from "../../../src/models/processing/work
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { deriveItemId } from "../../../src/rules/identity/logical-item.js";
 import { i9CheckMatchKey } from "../../../src/models/workflows/i9-check/input.js";
-import { i9RetentionRow } from "../../../src/rules/i9-check/retention.js";
+import { i9EmploymentCandidates, i9RetentionRow } from "../../../src/rules/i9-check/retention.js";
 import { i9ApprovedSource } from "../../support/fixtures/i9-check-start.js";
 import { i9Search } from "../../support/fixtures/i9-check.js";
 import { operatorOcrFields, operatorOcrRecordId, OcrApprovedSnapshotSchema } from "../../../src/models/ocr/review.js";
@@ -133,7 +133,7 @@ it("accounts for every person child and refuses failed, foreign, reordered or mi
     { ...first, output: { ...first.output, row: { ...first.output.row, recordId: "foreign" } } },
     { ...first, output: { ...first.output, identity: { status: "found", eid: "10000002", name: "Foreign Person" } } },
   ]) expect(() => i9CheckBatchRows(ReadI9CheckRows.input.parse({ ...input, outcomes: [altered, input.outcomes[1]] }))).toThrow("i9-check-child-result-mismatch");
-  const absent = i9RetentionRow({ input: prepared.children[0], initial: { status: "not-found", candidateCount: 0 }, search: i9Search([]) });
+  const absent = i9RetentionRow({ input: prepared.children[0], initial: { status: "not-found", candidateCount: 0 }, candidates: i9EmploymentCandidates(i9Search([])).candidates });
   const notFound = i9CheckBatchRows(ReadI9CheckRows.input.parse({ ...input, outcomes: [{ ...first, output: absent }, input.outcomes[1]] }));
   expect(notFound.personCount).toBe(2);
   expect(notFound.tracker.rows[0]).toMatchObject({ foundInUcpath: "Not found in UCPath", action: "Shred" });

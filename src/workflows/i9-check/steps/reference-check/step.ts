@@ -61,7 +61,7 @@ export const i9CheckReferenceCheckDefinition = defineStep({
       code: "icrc", label: REFERENCE_CHECK_STEP.label, summary: "Checks the person UCPath identified against the picked reference spreadsheets.",
       steps: (author: WorkflowAuthor<typeof I9CheckInput>) => {
         const matched = i9CheckPersonMatchDefinition.build(author), looked = i9CheckPersonLookupDefinition.build(author, matched);
-        const roster = i9CheckRosterMatchDefinition.build(author, matched, looked.search), reference = buildReferenceCheck(author, roster);
+        const roster = i9CheckRosterMatchDefinition.build(author, matched, looked), reference = buildReferenceCheck(author, roster);
         return { steps: [...matched.steps, ...looked.steps, ...roster.steps, ...reference.steps], result: reference.result };
       },
     }),

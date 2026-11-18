@@ -153,7 +153,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           ...(source === undefined ? {} : { retainedInputs: [source.input] }),
           ...(source?.supersedeRunId === undefined ? {} : { supersedeRunId: source.supersedeRunId }),
           submissions: (source?.submissions ?? ingress.submissions).map((submission) =>
-            applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys)),
+            applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys, stepOmissions)),
           ...(ingress.requestedInstance === undefined ? {} : { requestedInstance: ingress.requestedInstance }),
           dryRun: ingress.dryRun,
           browserMode: ingress.browserMode,

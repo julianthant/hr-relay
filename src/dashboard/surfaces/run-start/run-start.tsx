@@ -22,7 +22,7 @@ import { readLaunchRecovery, readLaunchVerificationPlan, retainLaunchFinal, dism
 import { createRunLaunchService, type RerunLaunchSource } from "./run-launch-model.js";
 import * as launchDraft from "./run-launch-draft-model.js";
 import type { LaunchDraft } from "./run-launch-draft-model.js";
-import { runDialogControls, useRunDialogMachine, visibleRunDialog, type AuthorityCheck, type LaunchGates, type LaunchRecovery, type RunDialogEvent, type RunDialogPrimaryInput, type RunDialogStep } from "./run-dialog-model.js";
+import { runDialogControls, useRunDialogMachine, visibleRunDialog, type AuthorityCheck, type LaunchGates, type LaunchRecovery, type RunDialogEvent, type RunDialogPrimaryInput } from "./run-dialog-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Check, Keyboard, ListChecks, Play } from "lucide-react";
@@ -37,8 +37,10 @@ import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
 import { TypedInput, StepOmissionFactsForm, RunReferenceRows, RunCheckRows, RunCheckCard, type CheckSheet } from "./run-start-kit.js";
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
-import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-model.js";
-import { foldStepOmissionFacts, planRefusalNotice, forcedStepOmissions, initialStepOmissionDraft, omittedStepViews, startRequestFingerprint, previewRunInput, launchWorkbookReferences, MISSING_REFERENCE_REASON, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable, type RunInputPreview, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
+import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
+import { SYSTEM_NAME } from "../shared/status/system-chip-model.js";
+import { planRefusalNotice, forcedStepOmissions, initialStepOmissionDraft, startRequestFingerprint, previewRunInput, launchWorkbookReferences, MISSING_REFERENCE_REASON, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable, type RunInputPreview, type StepOmissionFactDraft } from "./run-start-model.js";
+import { firstStepsFailure, includedRowCount, lastIncludedSwitch, rowFieldsOpen, rowIncluded, rowOpenFold, sourceBadge, startRowsOf, stepEntries, type OpenStepRow, type StartStep, type StepRow } from "./run-steps-model.js";
 import { adjacentRunStartStage, reconcileRunStartStage, runStartStages, type RunStartStage } from "./run-start-timeline.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import { WorkflowPdfInput } from "../workflows/mocks/workflow-pdf-input.js";
@@ -73,17 +75,9 @@ export interface RunStartWorkflow {
   readonly enqueue: EnqueuePolicy;
   /** The served descriptor version, shown in Options and Confirm. */
   readonly version: number;
-  readonly steps: readonly Readonly<{
-    key: string;
-    label: string;
-    includedByDefault: boolean;
-    systems?: readonly BrowserSystemId[];
-    control:
-      | { state: "selectable"; inputField: string }
-      /** the step declares an omission the operator may take instead of running */
-      | { state: "omittable"; form: StepOmissionForm; forces: readonly string[] }
-      | { state: "required"; reason: string };
-  }>[];
+  readonly steps: readonly StartStep[];
+  /** The served rows of the Steps stage; a workflow that serves none shows one row per step. */
+  readonly rows?: NonNullable<WorkflowStartWire["rows"]>;
   /** the descriptor's declared typed-input surface */
   readonly inputRun:
     | { readonly state: "present"; readonly surface: InputRunSurface }
@@ -111,29 +105,6 @@ const NO_WORKFLOW_SELECTED = Object.freeze({
   state: "absent",
   reason: "no workflow is selected",
 } as const);
-
-/** One omitted step, with the facts form it asks for and what the operator has
- * typed into it so far . */
-interface StepOmissionRow {
-  readonly step: string;
-  readonly label: string;
-  readonly form: StepOmissionForm;
-  readonly draft: StepOmissionDraft;
-  readonly fold: StepOmissionFactsFold;
-}
-
-/** The `stepOmissions` this request would carry — or `null`, because one of its
- * forms does not parse yet. */
-function completeStepOmissions(
-  rows: readonly StepOmissionRow[],
-): readonly Readonly<{ step: string; facts: Readonly<Record<string, StepOmissionFactValue>> }>[] | null {
-  const entries: Readonly<{ step: string; facts: Readonly<Record<string, StepOmissionFactValue>> }>[] = [];
-  for (const row of rows) {
-    if (row.fold.state !== "facts") return null;
-    entries.push({ step: row.step, facts: row.fold.facts });
-  }
-  return Object.freeze(entries);
-}
 
 /** Compare omission sets, not order; added or missing keys describe a different run and must refuse. */
 function sameStepKeys(left: readonly string[], right: readonly string[]): boolean {
@@ -266,7 +237,7 @@ export function RunStartDialog({
     draftRef.current = next;
     setDraft(next);
   }, []);
-  const { text, sourceInputUnchanged, stepDrafts, touchedFacts, factsAttempted, priority: priorityChoice, dryRunRequested, browserMode,
+  const { text, sourceInputUnchanged, stepDrafts, manualRows, priority: priorityChoice, dryRunRequested, browserMode,
     referenceSelections, referenceDrafts, checkPicks, selectedWorkbookRows, valueDrafts, copiedOmissions } = draft;
   const typedDraft = launchDraft.typedDraftOf(draft, workflowId);
   const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && (workflow.workbookReference !== undefined || workflow.workbookCheck !== undefined)), null, true);
@@ -373,18 +344,19 @@ export function RunStartDialog({
   /** Lock forced omissions using the descriptor cascade; the planner owns the rule. */
   const steps = workflow?.steps ?? EMPTY_STEPS;
   const forcedByStep = useMemo(() => forcedStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
-  const omissionRows: readonly StepOmissionRow[] = useMemo(() => (customizeSteps ? omittedStepViews(steps, selectedStepKeys) : []).map(
-    (step): StepOmissionRow => {
-      if (step.control.state !== "omittable") {
-        throw new Error(`step "${step.key}" is omitted but declares no omission`);
-      }
-      const form = step.control.form;
-      const draft = stepDrafts[step.key] ?? initialStepOmissionDraft(form);
-      return { step: step.key, label: step.label, form, draft, fold: foldStepOmissionFacts(form, draft) };
-    },
-  ), [customizeSteps, steps, selectedStepKeys, stepDrafts]);
-  const stepOmissions = useMemo(() => completeStepOmissions(omissionRows), [omissionRows]);
-  const requestFingerprint = canonicalJsonStringify([rowIdentity, workbookRows.state, rowSelectionFresh, selectedWorkbookRows?.choices.map(({ sheetId, rowId }) => ({ sheetId, rowId })) ?? [], library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility ?? null, versionSources.state, versionSources.sources, selectedReferences, library.catalog.filter(entry => Object.values(selectedReferences).some(selection => selection.libraryId === entry.libraryId)).map(entry => [entry.libraryId, entry.state.revision]), rerunSource ?? null, valueDrafts, copiedOmissions, typedValues, sourceInputUnchanged, pdfInput.draft, pdfInput.picks, startRequestFingerprint({
+  const rows = useMemo(() => startRowsOf({ steps, rows: workflow?.rows }), [steps, workflow?.rows]);
+  /** A step the typed input decides (its control sits on the Input stage or is unavailable) is neither switched nor typed here. */
+  const inputDriven = useCallback((row: StepRow): boolean => {
+    const control = row.stepKey === undefined ? undefined : steps.find(step => step.key === row.stepKey)?.control;
+    return typedDeclaration !== undefined && control?.state === "selectable"
+      && (typedDeclaration.controls.some(field => field.field === control.inputField && field.placement === "input") || !typedControlAvailable(typedDeclaration, typedValues, control.inputField));
+  }, [steps, typedDeclaration, typedValues]);
+  const openRows: readonly OpenStepRow[] = useMemo(() => customizeSteps ? rows.flatMap(row => {
+    if (row.form === undefined || inputDriven(row) || !rowFieldsOpen(row, selectedStepKeys, manualRows)) return [];
+    return [rowOpenFold(row, row.form, stepDrafts[row.key] ?? initialStepOmissionDraft(row.form))];
+  }) : [], [customizeSteps, rows, selectedStepKeys, manualRows, stepDrafts, inputDriven]);
+  const stepOmissions = useMemo(() => stepEntries(openRows), [openRows]);
+  const requestFingerprint = canonicalJsonStringify([rowIdentity, workbookRows.state, rowSelectionFresh, selectedWorkbookRows?.choices.map(({ sheetId, rowId }) => ({ sheetId, rowId })) ?? [], library.catalogLoading, library.catalogRefreshing, library.catalogError, library.compatibility ?? null, versionSources.state, versionSources.sources, selectedReferences, library.catalog.filter(entry => Object.values(selectedReferences).some(selection => selection.libraryId === entry.libraryId)).map(entry => [entry.libraryId, entry.state.revision]), rerunSource ?? null, valueDrafts, copiedOmissions, manualRows, typedValues, sourceInputUnchanged, pdfInput.draft, pdfInput.picks, startRequestFingerprint({
     workflowId,
     text,
     dryRun,
@@ -392,7 +364,7 @@ export function RunStartDialog({
     captureBrowserScreenshots,
     priority: priorityChoice,
     selectedStepKeys,
-    stepOmissionDrafts: omissionRows.map(({ step, draft }) => ({ step, draft })),
+    stepOmissionDrafts: openRows.map(({ row, draft }) => ({ step: row.key, draft })),
   })]);
   const [requestProblem, setRequestProblem] = useState<string | null>(null);
   const suppressStage = useRef(false);
@@ -567,13 +539,14 @@ export function RunStartDialog({
   /** Priority starts off when more than one person is entered, until the operator picks it. */
   const priority = launchDraft.effectivePriority(priorityChoice, preview.entries.length);
   /** The plan request for the draft on screen; the gates keep it from being asked for a draft that cannot plan. */
+  const openStepKeys = new Set(openRows.flatMap(({ row }) => row.stepKey === undefined ? [] : [row.stepKey]));
   const buildPlanRequest = (): StartPlanRequest => {
     const values = snapshot === null ? null : pdfSurface === undefined ? rerunSubmission(snapshot, preview.submissions[0] ?? {}, valueDrafts)
       : { submission: preview.submissions[0], copiedFrom: [] };
     const copiedFrom = [...(values?.copiedFrom ?? []), ...Object.entries(copiedOmissions).flatMap(([index, copied]) => {
       const candidate = snapshot?.values[Number(index)];
       return copied && candidate?.state === "available" && candidate.targetStepKey !== undefined
-        && !selectedStepKeys.includes(candidate.targetStepKey)
+        && openStepKeys.has(candidate.targetStepKey)
         ? [{ nodeId: candidate.nodeId, fieldPath: candidate.fieldPath, targetFieldPath: candidate.targetFieldPath, targetStepKey: candidate.targetStepKey }] : [];
     })];
     return StartPlanRequestSchema.parse({
@@ -615,16 +588,11 @@ export function RunStartDialog({
   /** Omission facts describe one person; fan-out must not assert the same dates for multiple subjects. */
   const subjectCount = preview.entries.length;
   const multiSubject = subjectCount > 1;
-  const multiSubjectOmissionReason = `Omitting a step describes one subject; this run would create ${String(subjectCount)}.`;
-  const missingFactLabels = omissionRows.flatMap(row => {
-    const fold = row.fold;
-    return fold.state === "invalid" ? row.form.fields.filter(field => field.key in fold.errors).map(field => field.label) : [];
-  });
-  const stepsBlockedReason = customizeSteps && multiSubject && omissionRows.length > 0
-    ? `${multiSubjectOmissionReason} Include every step, or type one value.`
-    : customizeSteps && stepOmissions === null
-    ? `Fill in ${missingFactLabels.join(", ")}.`
-    : null;
+  const multiSubjectOmissionReason = `Typed values describe one person, and ${String(subjectCount)} people are entered. Enter one person, or turn every step back on.`;
+  /** The first thing wrong on the Steps stage: more than one person entered with typed values, else the first missing or invalid field. */
+  const stepsFailure = !customizeSteps ? null : multiSubject && openRows.length > 0
+    ? { text: multiSubjectOmissionReason, rowKey: "", fieldKey: "" } : firstStepsFailure(openRows);
+  const stepsBlockedReason = stepsFailure?.text ?? null;
   /** A plan retaining different omissions describes another run; refuse its token. */
   const sentOmittedSteps = customizeSteps && stepOmissions !== null ? stepOmissions.map(({ step }) => step) : [];
   const planOmittedSteps = plan?.omittedSteps ?? [];
@@ -635,14 +603,6 @@ export function RunStartDialog({
     return step.label;
   };
   const stepLabels = (keys: readonly string[]): string => keys.map(stepLabel).join(", ");
-  /** Untouched fields hide error decoration, never their actual validation refusal or blocked advance. */
-  const visibleFactErrors = (row: StepOmissionRow): Readonly<Record<string, string>> => {
-    if (row.fold.state !== "invalid") return {};
-    if (factsAttempted) return row.fold.errors;
-    return Object.fromEntries(
-      Object.entries(row.fold.errors).filter(([field]) => touchedFacts.has(`${row.step}:${field}`)),
-    );
-  };
   const nextStage = adjacentRunStartStage(launchStages, currentStage, "next");
   const onLastStage = nextStage === null && currentStage !== "Warning";
 
@@ -653,19 +613,18 @@ export function RunStartDialog({
   };
 
   /** Use the shared cascade; locked omissions cannot be changed by another checkbox path. */
-  const toggleStep = (key: string, next: boolean) => {
-    if (workflow !== undefined) update(current => launchDraft.toggleStep(current, workflow, key, next));
+  const toggleRow = (row: StepRow, next: boolean) => {
+    if (workflow !== undefined) update(current => launchDraft.toggleRow(current, workflow, snapshot, row, next));
   };
+  const toggleManual = (row: StepRow, next: boolean) => update(current => launchDraft.toggleManual(current, snapshot, row, next));
 
-  const changeFact = (step: string, form: StepOmissionForm, field: string, next: StepOmissionFactDraft) =>
-    update(current => launchDraft.changeFact(current, snapshot, step, form, field, next));
-  const touchFact = (step: string, field: string) => update(current => launchDraft.touchFact(current, step, field));
-
-  const copyOmittedValue = (step: string, index: number) => {
-    const row = omissionRows.find(entry => entry.step === step);
-    if (row === undefined) throw new Error("RERUN_OMISSION_FIELD_UNAVAILABLE");
-    update(current => launchDraft.copyOmittedValue(current, snapshot, index, step, row.form));
-  };
+  const changeFact = (row: StepRow, form: StepOmissionForm, field: string, next: StepOmissionFactDraft) =>
+    update(current => launchDraft.changeFact(current, snapshot, row, form, field, next));
+  /** The fields of a row still holding a value copied unedited from the earlier run. */
+  const copiedFields = (row: StepRow): ReadonlySet<string> => new Set(Object.keys(copiedOmissions).flatMap(index => {
+    const candidate = snapshot?.values[Number(index)];
+    return candidate?.targetStepKey !== undefined && candidate.targetStepKey === row.stepKey ? [candidate.targetFieldPath] : [];
+  }));
 
 
   const picker = <RunWorkflowPicker catalog={catalog} value={previewSelection?.workflowId ?? workflowId} onChange={pickWorkflow} query={pickerQuery} onQuery={setPickerQuery} />;
@@ -726,14 +685,12 @@ export function RunStartDialog({
     omissionMismatch, plannedCount: plan?.planned.length ?? 0, ...(supportsDryRun ? { dryRun } : {}),
   };
   // A blocked Start on Steps stays pressable: pressing it shows the facts still missing.
-  const controls = runDialogControls(view, currentStage === "Steps" ? { ...gates, stepsBlocked: false } : gates);
+  const controls = runDialogControls(view, gates);
   const primaryInput: RunDialogPrimaryInput = { gates, authority: authority(), planRequest: buildPlanRequest, prepare: target => launchService.prepareFinal(target) };
   const press = (event: ((input: RunDialogPrimaryInput) => RunDialogEvent) | null) => {
     if (event === null) return;
-    let step: RunDialogStep;
-    try { step = send(event(primaryInput)); }
+    try { send(event(primaryInput)); }
     catch (caught) { setRequestProblem(caught instanceof Error ? caught.message : String(caught)); return; }
-    if ("refused" in step && step.refused === "blocked" && currentStage === "Steps" && stepsBlockedReason !== null) update(launchDraft.attemptFacts);
   };
   startRef.current = () => { if (planRefusal === null) press(controls.primary.event); };
   /** What a workflow's last stage still shows before Start: its chosen references and typed dates. */
@@ -813,11 +770,11 @@ export function RunStartDialog({
             )}
 
             {currentStage === "Steps" && <section className="flex flex-col gap-1">
-              <div className="flex max-w-[var(--ds-w-body-content)] items-baseline justify-between gap-3 pr-[var(--ds-row-pad-x)]">
+              <div className="flex max-w-[var(--ds-w-body-content)] items-baseline justify-between gap-3 pr-[calc(var(--ds-row-pad-x)+1px)]">
               <h3 className="text-heading font-semibold">Steps</h3>
-              {workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} of {workflow.steps.length} included</span>}
+              {workflow && <span className="text-[13px] text-ui-secondary">{includedRowCount(rows, selectedStepKeys, manualRows)} of {rows.length} included</span>}
               </div>
-              <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Replace reading steps with manual values. Form actions stay included."}</p>
+              <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : "Replace reading steps with manual values. Form actions stay included."}</p>
             </section>}
 
             {currentStage === "Checks" && <RunChecksStage checks={checks.state} onFix={fixCheck} />}
@@ -884,16 +841,6 @@ export function RunStartDialog({
                         </div>;
                       })}
                       </div>
-                      {omissionRows.map(row => {
-                        const datesOnly = row.form.fields.length > 0 && row.form.fields.every(field => field.kind === "us-date");
-                        return <div key={row.step} className={cn("launch-values-omission border-t border-ui-stroke pt-4", datesOnly && "launch-values-dates")}>
-                        <div className="mb-4 flex items-start justify-between gap-3"><div><h4 className="mb-[3px] text-body font-semibold">{datesOnly ? "Timecard dates" : row.label}</h4><p className="text-caption text-ui-muted">{datesOnly ? "Timecard read is skipped. Supply both dates to continue." : "This step is skipped. Supply its values to continue."}</p></div>{snapshot.values.some(candidate => candidate.targetStepKey === row.step && candidate.state === "available") && <Button variant="secondary" size="sm" onClick={() => snapshot.values.forEach((candidate, index) => { if (candidate.targetStepKey === row.step && candidate.state === "available") copyOmittedValue(row.step, index); })}>{datesOnly && row.form.fields.length === 2 ? "Use both previous" : "Use all previous"}</Button>}</div>
-                        <StepOmissionFactsForm compact step={row.label} form={row.form} draft={row.draft} errors={visibleFactErrors(row)}
-                          onChange={(field, next) => changeFact(row.step, row.form, field, next)} onTouch={field => touchFact(row.step, field)}
-                          previous={Object.fromEntries(snapshot.values.flatMap((candidate, index) => candidate.targetStepKey === row.step && candidate.state === "available" ? [[candidate.targetFieldPath, { value: candidateText(candidate.value), onUse: () => copyOmittedValue(row.step, index)  }]] : []))} />
-                        {datesOnly && <p className="mt-4 text-caption text-ui-muted">From the source run. You can edit dates after copying them.</p>}
-                      </div>;
-                      })}
                     </section>
                   )}
                 </section>
@@ -928,27 +875,27 @@ export function RunStartDialog({
                 <section aria-labelledby="run-start-steps" className="flex flex-col gap-[var(--ds-space-cozy)]">
                   <h4 id="run-start-steps" className="sr-only">Steps</h4>
                   <RunList label="Steps">
-                    {workflow.steps.map((step) => {
-                      const selected = selectedStepKeys.includes(step.key);
-                      const control = step.control;
-                      const forcedBy = forcedByStep.get(step.key) ?? [];
-                      const row = omissionRows.find((candidate) => candidate.step === step.key);
-                      const sourceState = snapshot?.steps.find(entry => entry.key === step.key)?.state;
-                      const systems = step.systems?.map(system => SYSTEM_NAME[system]).join(" · ");
+                    {rows.map((row) => {
+                      const included = rowIncluded(row, selectedStepKeys, manualRows);
+                      const forcedBy = row.stepKey === undefined ? [] : forcedByStep.get(row.stepKey) ?? [];
+                      const open = openRows.find(candidate => candidate.row.key === row.key);
+                      const badge = isRerun && snapshot !== null ? sourceBadge(row, snapshot) : undefined;
+                      const oneSubjectOnly = multiSubject && row.form !== undefined && included;
+                      const disabled = forcedBy.length > 0 || inputDriven(row) || sending || lastIncludedSwitch(row, rows, selectedStepKeys, manualRows) || oneSubjectOnly;
                       const note = forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.`
-                        : control.state === "omittable" && !selected && !isRerun && !multiSubject ? "Use saved or entered values instead."
-                        : control.state === "omittable" && control.forces.length > 0 ? `Also omits: ${stepLabels(control.forces)}` : systems;
-                      const locked = control.state === "required";
-                      const disabled = locked || forcedBy.length > 0 || (typedDeclaration !== undefined && control.state === "selectable" && (typedDeclaration.controls.some(field => field.field === control.inputField && field.placement === "input") || !typedControlAvailable(typedDeclaration, typedValues, control.inputField))) || (control.state === "omittable" && multiSubject && selected);
-                      return <RunListRow key={step.key} title={step.label} description={note}
-                        {...(locked ? { locked: true } : { check: { checked: selected, disabled, onChange: next => toggleStep(step.key, next) } })}
-                        below={row !== undefined && !isRerun ? <StepOmissionFactsForm step={row.label} form={row.form} draft={row.draft} errors={visibleFactErrors(row)}
-                          onChange={(field, next) => changeFact(row.step, row.form, field, next)} onTouch={(field) => touchFact(row.step, field)} /> : undefined}>
-                        {isRerun && snapshot !== null && <Badge tone={sourceState === "completed" ? "success" : sourceState === "failed" ? "danger" : "neutral"} className="launch-step-status" data-status={sourceState}>{sourceState === "completed" ? "Completed" : sourceState === "failed" ? "Failed" : "Not started"}</Badge>}
-                        {locked && <span className="sr-only">{isRerun && sourceState === "completed" ? "Completed in the source; it runs again." : "Required step."}</span>}
+                        : oneSubjectOnly ? `Typed values describe one person; this run would create ${String(subjectCount)}.` : row.note;
+                      const failure = stepsFailure !== null && stepsFailure.rowKey === row.key ? { [stepsFailure.fieldKey]: stepsFailure.text } : {};
+                      return <RunListRow key={row.key} title={row.label} description={note}
+                        {...(row.kind === "switch" ? { check: { checked: included, disabled, onChange: next => toggleRow(row, next) } } : { locked: true })}
+                        below={open === undefined ? undefined : <StepOmissionFactsForm step={row.label} form={open.form} draft={open.draft} errors={failure}
+                          copied={copiedFields(row)} onChange={(field, next) => changeFact(row, open.form, field, next)} disabled={sending} />}>
+                        {badge !== undefined && <Badge tone={badge === "completed" ? "success" : badge === "failed" ? "danger" : "neutral"} className="launch-step-status" data-status={badge}>{badge === "completed" ? "Completed" : badge === "skipped" ? "Skipped" : badge === "failed" ? "Failed" : "Not started"}</Badge>}
+                        {row.kind === "locked-manual" && <><span aria-hidden className="cursor-pointer text-[12px] text-ui-secondary" onClick={() => { if (!sending) toggleManual(row, !manualRows.includes(row.key)); }}>Enter manually</span>
+                          <Switch hideLabel label={`Enter manually for ${row.label}`} checked={manualRows.includes(row.key)} disabled={sending || multiSubject && !manualRows.includes(row.key)} onCheckedChange={next => toggleManual(row, next)} className="!min-h-0 !w-auto !py-0" /></>}
                       </RunListRow>;
                     })}
                   </RunList>
+                  {stepsFailure !== null && stepsFailure.rowKey === "" && <p role="alert" className="text-caption text-ui-danger">{stepsFailure.text}</p>}
                 </section>
               )}
 
@@ -976,14 +923,14 @@ export function RunStartDialog({
               tone="faint"
               items={[
                 workflow?.label,
-                workflow === undefined ? undefined : `${selectedStepKeys.length} of ${workflow.steps.length} steps`,
+                workflow === undefined ? undefined : `${includedRowCount(rows, selectedStepKeys, manualRows)} of ${rows.length} steps`,
                 pdfSurface === undefined ? undefined : "OCR on",
                 priority === "interactive" ? "Priority" : undefined,
                 currentStage === "Input"
                   ? blockedReason ?? undefined
                   : currentStage === "Options"
                   ? optionsBlockedReason ?? undefined
-                  : currentStage === "Steps" && !isRerun
+                  : currentStage === "Steps"
                   ? stepsBlockedReason ?? undefined
                   : currentStage === "Checks" && gates.checksBlocked
                   ? checks.state.state === "ready" ? "Fix the failed checks first." : checks.state.state === "checking" ? "Checking…" : "Checks are unavailable."
