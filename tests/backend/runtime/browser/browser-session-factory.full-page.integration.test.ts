@@ -233,21 +233,54 @@ describe("whole-page factory screenshots", () => {
       assert.equal(bands, 2);
     });
   });
-  it("refuses a recipe-masked SSN control that loses its recipe match during a band", async () => {
-    await withPage(`<div id="ssn-form"><label for="lost-ssn">U.S. Social Security Number</label><input id="lost-ssn" value="fixture-value"></div>${content}`, async (page, resource) => {
+  it("masks a recipe SSN control in every band while an ARIA-hidden ancestor ends its recipe match", async () => {
+    await withPage(recipeFields("U.S. Social Security Number"), async (page, resource) => {
+      const screenshot = page.screenshot.bind(page);
+      const hide = (hidden: boolean) => page.evaluate(hidden => {
+        for (const field of document.querySelectorAll("body > div")) if (hidden) field.setAttribute("aria-hidden", "true"); else field.removeAttribute("aria-hidden");
+      }, hidden);
+      page.screenshot = async options => {
+        await hide(true);
+        try { return await screenshot(options); }
+        finally { await hide(false); }
+      };
+      const png = await image(resource);
+      for (const y of [240, 1240, 2240]) assert.deepEqual(pixel(png, 30, y), [255, 0, 255]);
+    });
+  });
+  it("masks a recipe SSN control in every band while a nested label change ends its recipe match", async () => {
+    const fields = [0, 1, 2].map(i => `<div style="height:1000px;padding-top:200px;background:white"><label for="ssn-${i}" style="display:block;height:20px"><span>U.S. Social Security Number</span></label><input id="ssn-${i}" style="width:200px;height:40px;background:red" value="fixture-${i}"></div>`).join("");
+    await withPage(fields, async (page, resource) => {
+      const screenshot = page.screenshot.bind(page);
+      const relabel = (text: string) => page.evaluate(text => { for (const span of document.querySelectorAll("label span")) span.textContent = text; }, text);
+      page.screenshot = async options => {
+        await relabel("Reference");
+        try { return await screenshot(options); }
+        finally { await relabel("U.S. Social Security Number"); }
+      };
+      const png = await image(resource);
+      for (const y of [240, 1240, 2240]) assert.deepEqual(pixel(png, 30, y), [255, 0, 255]);
+    });
+  });
+  it("captures a page whose non-sensitive label changes during a band", async () => {
+    await withPage(`<label for="name">Name</label><input id="name" value="fixture-value">${content}`, async (page, resource) => {
+      const screenshot = page.screenshot.bind(page);
+      page.screenshot = async options => {
+        await page.locator("label").evaluate(label => { label.textContent = "Full name"; label.title = "Full name"; });
+        return screenshot(options);
+      };
+      assert.ok((await image(resource)).height >= 3000);
+    });
+  });
+  it("captures a page that removes a control named through aria-labelledby during a band", async () => {
+    await withPage(`<span id="ref-label" style="position:absolute;top:0;left:300px">Reference</span><input id="ref" aria-labelledby="ref-label" value="fixture-value" style="position:absolute;top:0;left:400px">${content}`, async (page, resource) => {
       const screenshot = page.screenshot.bind(page);
       let bands = 0;
       page.screenshot = async options => {
-        if (++bands !== 2) return screenshot(options);
-        await page.locator("#ssn-form").evaluate(el => { el.setAttribute("aria-hidden", "true"); });
-        try { return await screenshot(options); }
-        finally { await page.locator("#ssn-form").evaluate(el => { el.removeAttribute("aria-hidden"); }); }
+        if (++bands === 2) await page.locator("#ref").evaluate(input => { input.remove(); });
+        return screenshot(options);
       };
-      const evidence = await resource.screenshot?.();
-      assert.ok(evidence?.state === "unavailable");
-      assert.equal(evidence.reason, "secret-controls-present");
-      assert.equal("bytes" in evidence, false);
-      assert.equal(bands, 2);
+      assert.ok((await image(resource)).height >= 3000);
     });
   });
   it("refuses an unmasked SSN control the wider capture viewport reveals without a DOM change", async () => {
