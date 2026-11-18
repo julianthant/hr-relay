@@ -9,5 +9,5 @@ export function StorageNotice({ storage }: {
   storage: StorageHealthSummary;
 }) {
   if (storage.authority === "healthy") return null;
-  return <div className="px-[var(--ds-space-base)] pt-[var(--ds-space-base)]"><FailureNotice sentence="Relay's storage is unavailable." stillWorks={`${AUTHORITY_HAZARD} Open Settings to check storage.`} /></div>;
+  return <div className="px-[var(--ds-space-base)] pt-[var(--ds-space-base)]"><FailureNotice sentence="Relay's storage is unavailable." stillWorks={`${AUTHORITY_HAZARD} See Notifications for what happened.`} /></div>;
 }
