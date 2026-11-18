@@ -1,7 +1,7 @@
 import { createBackupFixtures } from "../../../support/helpers/storage/backup-fixtures.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -11,6 +11,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { authoritySourceDatabaseIdentity } from "../../../../src/backend/storage/sqlite/database-identity.js";
 import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { upgradeProfileAtStartup, upgradeReadyProfileStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { hostFacts, readyBoundEight } from "../../../support/helpers/storage/ready-bound-upgrade.js";
@@ -35,10 +36,14 @@ describe("DB-only authority backups", () => {
       const unpublished = join(directory, `authority-g0-20260906200000000-${token}.sqlite`);
       const interruption = spawnSync(process.execPath, ["--input-type=module", "-e", `
         import { readFileSync, writeFileSync, renameSync } from "node:fs";
+        import { DatabaseSync } from "node:sqlite";
         const [source, stage, unpublishedStage, unpublished] = process.argv.slice(1);
         const bytes = readFileSync(source);
         writeFileSync(stage, bytes.subarray(0, 128), { mode: 0o600 });
         writeFileSync(unpublishedStage, bytes, { mode: 0o600 });
+        const untrusted = new DatabaseSync(unpublishedStage);
+        untrusted.exec("PRAGMA application_id=0");
+        untrusted.close();
         renameSync(unpublishedStage, unpublished);
         process.kill(process.pid, "SIGKILL");
       `, f.path, stage, unpublishedStage, unpublished], { encoding: "utf8" });
@@ -56,19 +61,27 @@ describe("DB-only authority backups", () => {
       assert.equal(retry.state, "upgraded");
       assert.equal(existsSync(stage), false);
       assert.equal(existsSync(unpublished), false);
-      const suspects = join(f.stateRoot, "backups", "suspects");
-      const preserved = readdirSync(suspects);
-      assert.equal(preserved.length, 1);
-      assert.deepEqual(readFileSync(join(suspects, preserved[0])), unpublishedBytes);
-
       const manifests = readdirSync(directory).filter(name => name.endsWith(".manifest.json"));
       assert.equal(manifests.length, 1);
+      const manifestPath = join(directory, manifests[0]);
       const admission = f.machine.admitProfile(f.claim);
+      let verified: Awaited<ReturnType<typeof verifyBackupManifestAtPath>>;
       try {
-        const verified = await verifyBackupManifestAtPath(admission, join(directory, manifests[0]));
+        verified = await verifyBackupManifestAtPath(admission, manifestPath);
         assert.equal(verified.manifest.schemaVersion, 8);
         assert.deepEqual(readdirSync(directory).sort(), [verified.manifest.backupFileName, manifests[0]].sort());
+        const report = await doctorAuthorityStorage(admission, {
+          authorityPath: f.path, stateRoot: f.stateRoot, stateRootTrustAnchor: f.workspace,
+          backupDirectory: directory, busyTimeoutMs: 250,
+        }, CLOCK);
+        assert.equal(report.spanAuthority.state, "reconciled", JSON.stringify(report.spanAuthority));
       } finally { admission.release(); }
+
+      const recordedBytes = readFileSync(verified.backupPath);
+      rmSync(manifestPath);
+      await assert.rejects(upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, CLOCK),
+        /profile-stopped-upgrade-backup-membership-unproved/u);
+      assert.deepEqual(readFileSync(verified.backupPath), recordedBytes);
     } finally { await f.close(); }
   });
 
