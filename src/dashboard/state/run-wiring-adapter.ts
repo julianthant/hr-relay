@@ -75,12 +75,15 @@ export interface RunLogSnapshot {
 
 export async function readRunLogs(client: RunReads, selection: LogSelection, signal: AbortSignal): Promise<RunLogSnapshot> {
   const { row } = selection;
+  // The first log page is requested with the detail; the detail's identity and capability checks still gate its use.
+  const firstPage = client.runSection(row.runId, "logs", undefined, signal);
+  firstPage.catch(() => undefined);
   const detail = await client.runDetail(row.runId, signal);
   if (detail.runId !== row.runId || detail.rowRevision < row.rowRevision || detail.header.traceId !== row.traceId
     || detail.header.attempt !== row.attempt || detail.header.workflowId !== row.workflowId) throw new RunLogIdentityError("RUN_DETAIL_IDENTITY_MISMATCH");
   signal.throwIfAborted();
   if (!detail.availableSections.includes("logs")) throw new RunLogIdentityError("RUN_LOGS_UNAVAILABLE");
-  const section = await client.runSection(row.runId, "logs", undefined, signal);
+  const section = await firstPage;
   if (section.section !== "logs" || section.payload.runId !== row.runId) throw new RunLogIdentityError("RUN_SECTION_IDENTITY_MISMATCH");
   let logs = section.payload;
   logRowsOf(logs, "initial");
