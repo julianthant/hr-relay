@@ -4,6 +4,7 @@ import { z } from "zod";
 import { EidSchema } from "../../../../rules/identity/ids.js";
 import { UsDateFactSchema, type StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { I9CheckInput } from "../../../../models/workflows/i9-check/input.js";
+import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
@@ -32,7 +33,22 @@ export const personLookup = Object.freeze({
   ...defineWorkflowStep({ key: "person-lookup", label: "Check hire date" }),
   manual: CANDIDATES_MANUAL,
   review: {
+    when: [{ "hire-date-needed": ["true"] }],
     pages: [
+      {
+        id: "person-org-search",
+        title: "Person Organizational Summary search",
+        mode: "Fill form",
+        nodeIds: ["name-search"],
+        lines: [
+          { id: "search-hire-date", kind: "action", text: "When the initial match needs a lookup, search the person by name in UCPath.", nodeIds: ["name-search"] },
+          { id: "search", kind: "click", target: "Search", nodeIds: ["name-search"] },
+        ],
+        fields: [
+          { id: "name", label: "Name", inputField: "person.name", example: "Morrow, Bea",
+            source: { origin: "Approved PDF record", detail: "The approved name used for the additional all-department search.", chain: [] } },
+        ]
+      },
       {
         id: "person-org-summary",
         title: "Person Organizational Summary detail",
@@ -40,9 +56,15 @@ export const personLookup = Object.freeze({
         nodeIds: ["name-search", "employment-candidates"],
         lines: [
           { id: "search-hire-date", kind: "action", text: "When the initial match needs a lookup, search the person by name in UCPath.", nodeIds: ["name-search"] },
-          { id: "read-candidates", kind: "read", text: "Read the candidate records and employment details used for the hire-date check.", nodeIds: ["name-search", "employment-candidates"] }
+          { id: "read-candidates", kind: "read", text: "Read the candidate records and employment details used for the hire-date check.", nodeIds: ["name-search", "employment-candidates"] },
+          { id: "all-departments", kind: "check", text: "Keep every department; compare candidate start or effective dates with the approved hire date within seven days.", nodeIds: ["name-search", "employment-candidates"] },
         ],
-        fields: []
+        fields: [
+          { id: "hire-date", label: "Hire date", taskFields: [{ nodeId: "name-search", kind: "output", fieldPath: "results.startDate" }], example: "2020-06-15",
+            source: { origin: "UCPath", detail: "Each candidate's start date, or effective date when start date is absent.", chain: [] } },
+          { id: "candidate-id", label: "Employee ID", taskFields: [{ nodeId: "name-search", kind: "output", fieldPath: "results.emplId" }], example: PERSON_LOOKUP_EXAMPLE_EID,
+            source: { origin: "UCPath", detail: "The Employee ID on a candidate's Person Organizational Summary record.", chain: [] } },
+        ]
       }
     ],
     branchLabels: []

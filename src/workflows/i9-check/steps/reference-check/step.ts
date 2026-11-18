@@ -19,11 +19,21 @@ export const REFERENCE_CHECK_STEP = Object.freeze({
     pages: [{
       id: "reference-spreadsheets", title: "Reference spreadsheets", mode: "Read only", nodeIds: [REFERENCE_CHECK_NODE],
       lines: [
+        { id: "read-reference", kind: "read", text: "Read the picked reference spreadsheets using the Employee ID found by the retention check.", nodeIds: [REFERENCE_CHECK_NODE] },
         { id: "check-person", kind: "check", text: "Confirm the Employee ID, and the name when the sheet has one, in each picked spreadsheet.", nodeIds: [REFERENCE_CHECK_NODE] },
       ],
-      fields: [],
+      fields: [{ id: "reference-result", label: "Reference result", taskFields: [{ nodeId: REFERENCE_CHECK_NODE, kind: "output", fieldPath: "result" }], example: "Confirmed",
+        display: { cases: [{ value: "confirmed", text: "Confirmed" }, { value: "unconfirmed", text: "Needs review" }, { value: "no-person", text: "No person found" }] },
+        source: { origin: "Picked reference spreadsheets", detail: "Reports whether the found Employee ID and name agree with the captured worksheets; the read-only check always continues.", chain: [] } }],
     }],
     branchLabels: [],
+    decisions: [{ id: "reference-result", label: "Reference check", reads: { nodeId: REFERENCE_CHECK_NODE, fieldPath: "result" }, nodeIds: [REFERENCE_CHECK_NODE],
+      initial: { by: "retention-identity", values: { "not-found": "no-person", ambiguous: "no-person" }, otherwise: "confirmed" }, outcomes: [
+      { value: "confirmed", label: "Person confirmed", then: "Finishes with the reference results; no HR record is changed.", when: [{ "retention-identity": ["found"] }] },
+      { value: "unconfirmed", label: "Reference needs review", then: "Shows the missing or differing reference result and finishes; this read-only workflow does not wait for approval.",
+        when: [{ "retention-identity": ["found"] }] },
+      { value: "no-person", label: "No person found", then: "Shows that UCPath supplied no Employee ID and finishes.", when: [{ "retention-identity": ["not-found", "ambiguous"] }] },
+    ] }],
   } as const,
 });
 

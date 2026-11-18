@@ -417,7 +417,7 @@ function onboardingPlanLeaves(scope: EvidenceValueScope, prefix = ""): unknown[]
 
 function onboardingSubjectLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
   return [
-    ...open(scope, `${prefix}state`),
+    ...open(scope, `${prefix}state`, `${prefix}matchedBy`),
     ...onboardingPrivateLeaves(scope, `${prefix}person.emplId`, `${prefix}person.name`),
     ...population(scope, `${prefix}candidateEids`, `${prefix}candidates`),
   ];

@@ -1,5 +1,5 @@
 import { WorkflowStepReviewSchema, type WorkflowStepReview } from "../models/workflow/review-spec.js";
-import { assertSchemaOffersCollectionPath } from "../models/validation/contract-boundary.js";
+import { assertSchemaOffersCollectionPath, contractCollectionFieldOptions } from "../models/validation/contract-boundary.js";
 import { deepFreeze } from "../rules/validation/immutability.js";
 import type { StableRecordId } from "../rules/identity/ids.js";
 import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
@@ -1246,6 +1246,16 @@ export function compileWorkflow<
           if (operatorField.sources.some(source => !page.nodeIds.some(nodeId => nodeId === source.nodeId))) {
             throw new Error(`workflow ${definition.id} review field ${field.id} reads outside page ${page.id}`);
           }
+        } else if ("inputField" in field) {
+          assertSchemaOffersCollectionPath(definition.input, field.inputField, `workflow ${definition.id} review input field ${field.id}`);
+        } else if ("taskFields" in field) {
+          for (const reference of field.taskFields) {
+            assertOwnNode(reference.nodeId);
+            if (!page.nodeIds.some(id => id === reference.nodeId)) throw new Error(`workflow ${definition.id} review field ${field.id} reads outside page ${page.id}`);
+            const node = ownNodes.find(candidate => candidate.id === reference.nodeId);
+            if (node?.kind !== "task") throw new Error(`workflow ${definition.id} review field ${field.id} requires a task source ${reference.nodeId}`);
+            assertSchemaOffersCollectionPath(node.uses[reference.kind], reference.fieldPath, `workflow ${definition.id} review task field ${field.id}`);
+          }
         } else {
           const transactionSource = (nodeId: string) => {
             assertOwnNode(nodeId);
@@ -1278,6 +1288,67 @@ export function compileWorkflow<
       for (const outcome of Object.keys(node.cases)) {
         if (!review.branchLabels.some(label => label.nodeId === node.id && label.outcome === outcome)) {
           throw new Error(`workflow ${definition.id} review omits branch outcome ${node.id}/${outcome}`);
+        }
+      }
+    }
+    assertUnique((review.branches ?? []).map(branch => branch.nodeId), "review branch");
+    for (const branch of review.branches ?? []) {
+      assertOwnNode(branch.nodeId);
+      const node = ownNodes.find(node => node.id === branch.nodeId);
+      if (node?.kind !== "branch") throw new Error(`workflow ${definition.id} review branch requires a branch source ${branch.nodeId}`);
+      const initials = typeof branch.initial === "string" ? [branch.initial] : [...Object.values(branch.initial.values), branch.initial.otherwise];
+      for (const initial of initials) if (!Object.hasOwn(node.cases, initial)) {
+        throw new Error(`workflow ${definition.id} review branch ${branch.nodeId} starts at unknown outcome ${initial}`);
+      }
+    }
+    assertUnique((review.outcomes ?? []).map(outcome => `${outcome.nodeId}/${outcome.value}`), "review outcome");
+    for (const outcome of review.outcomes ?? []) assertOwnNode(outcome.nodeId);
+    for (const source of review.optionsFrom ?? []) for (const field of source.fields) {
+      assertSchemaOffersCollectionPath(definition.input, field, `workflow ${definition.id} inherited review option`);
+    }
+    const decisions = review.decisions ?? [];
+    assertUnique((review.picks ?? []).map(pick => pick.nodeId), "review pick");
+    for (const pick of review.picks ?? []) {
+      assertOwnNode(pick.nodeId);
+      const node = ownNodes.find(node => node.id === pick.nodeId);
+      if (node?.kind !== "task" && !(node?.kind === "gate" && node.resolvedBy === "operator")) {
+        throw new Error(`workflow ${definition.id} review pick requires a task or operator gate source ${pick.nodeId}`);
+      }
+      if (pick.rows.some(row => row.cells.length !== pick.columns.length)) {
+        throw new Error(`workflow ${definition.id} review pick ${pick.nodeId} row width differs from its columns`);
+      }
+    }
+    assertUnique((review.starts ?? []).map(start => start.nodeId), "started workflow");
+    for (const start of review.starts ?? []) {
+      assertOwnNode(start.nodeId);
+      if (ownNodes.find(node => node.id === start.nodeId)?.kind !== "child-run") {
+        throw new Error(`workflow ${definition.id} review starts requires a child-run source ${start.nodeId}`);
+      }
+    }
+    assertUnique(decisions.map(decision => decision.id), "decision id");
+    for (const decision of decisions) {
+      const owner = `workflow ${definition.id} review decision ${decision.id}`;
+      [decision.reads.nodeId, ...decision.nodeIds].forEach(assertOwnNode);
+      const node = ownNodes.find(candidate => candidate.id === decision.reads.nodeId);
+      if (node?.kind !== "task" && !(node?.kind === "gate" && node.resolvedBy === "operator")) {
+        throw new Error(`${owner} requires a task or operator gate source ${decision.reads.nodeId}`);
+      }
+      if (decision.cancellation !== undefined && node.kind !== "gate") throw new Error(`${owner} cancellation requires an operator gate`);
+      const values = contractCollectionFieldOptions(node.kind === "task" ? node.uses.output : node.result, decision.reads.fieldPath, owner);
+      if (values === undefined) throw new Error(`${owner} reads ${decision.reads.fieldPath}, which holds no closed set of values`);
+      assertUnique(decision.outcomes.map(outcome => outcome.value), `decision ${decision.id} outcome`);
+      for (const outcome of decision.outcomes) {
+        if (!values.includes(outcome.value)) throw new Error(`${owner} names ${outcome.value}, which ${decision.reads.fieldPath} never holds`);
+        if (outcome.stops === true && outcome.then === undefined) throw new Error(`${owner} stops at ${outcome.value} without saying what the run does`);
+      }
+      const initials = typeof decision.initial === "string" ? [decision.initial] : [...Object.values(decision.initial.values), decision.initial.otherwise];
+      const defaultInitial = typeof decision.initial === "string" ? decision.initial : decision.initial.otherwise;
+      for (const initial of initials) {
+        // An earlier choice may force a declared task failure; the ordinary default must continue.
+        const forcedFailure = initial !== defaultInitial && ownNodes.some(candidate => decision.nodeIds.includes(candidate.id)
+          && candidate.kind === "task" && candidate.uses.errorCodes.some(code => code === initial));
+        if (!forcedFailure && !decision.outcomes.some(outcome => outcome.value === initial && outcome.stops !== true)) {
+          throw new Error(`${owner} starts at ${initial}, which is not one of its continuing outcomes`);
         }
       }
     }

@@ -9,7 +9,7 @@ export const I9_LOOKUP_STEP = Object.freeze({
   system: "i9",
   operatorFields: [
     {
-      label: "Authorized official signer", sources: [
+      label: "Authorized official signer", example: "Quillan, Petra", sources: [
         { nodeId: "lookup-source", kind: "output", fieldPath: "signerName" },
         { nodeId: "lookup", kind: "output", fieldPath: "signerName" },
       ]
@@ -33,7 +33,10 @@ export const I9_LOOKUP_STEP = Object.freeze({
         mode: "Fill form",
         nodeIds: ["lookup-source"],
         lines: [
-          { id: "search-by-name", kind: "action", text: "Search I-9 Complete using the supplied name and optional SSN.", nodeIds: ["lookup-source"] },
+          { id: "search-by-name", kind: "action", text: "Search I-9 Complete using the name and any additional identity details supplied by the parent workflow.", nodeIds: ["lookup-source"] },
+          { id: "options", kind: "click", target: "Search Options", nodeIds: ["lookup-source"] },
+          { id: "clear", kind: "click", target: "Clear Search Filters & Results", nodeIds: ["lookup-source"] },
+          { id: "search", kind: "click", target: "Search", nodeIds: ["lookup-source"] },
           {
             id: "check-search-results",
             kind: "check",
@@ -41,12 +44,18 @@ export const I9_LOOKUP_STEP = Object.freeze({
             nodeIds: ["lookup-source"]
           }
         ],
-        fields: []
+        fields: [
+          { id: "last-name", label: "Last name", inputField: "lastName", example: "Morrow",
+            source: { origin: "Parent workflow", detail: "The person's last name supplied by the workflow that requests this lookup.", chain: [] } },
+          { id: "first-name", label: "First name", inputField: "firstName", example: "Bea",
+            source: { origin: "Parent workflow", detail: "The person's first name supplied by the workflow that requests this lookup.", chain: [] } },
+        ]
       },
       {
         id: "i9-record-summary",
         title: "I-9 Record Summary Information",
         mode: "Read only",
+        when: [{ "signer-status": ["signed"] }],
         nodeIds: ["lookup-source", "lookup"],
         lines: [
           {
@@ -71,14 +80,20 @@ export const I9_LOOKUP_STEP = Object.freeze({
                 { label: "Lookup result", detail: "Carry the verified signer into the workflow result." }
               ]
             }
-          },
+          }
+        ]
+      },
+      {
+        id: "lookup-result", title: "I-9 lookup result", mode: "Read only", nodeIds: ["lookup-source", "lookup"],
+        lines: [],
+        fields: [
           {
             id: "i9-status",
             operatorField: "I-9 status",
             source: {
               origin: "I-9 Complete",
               detail: "The lookup classification: signed, unsigned, historical, not found or unable to access.",
-              read: { stepKey: "lookup", page: "I-9 Record Summary Information", field: "I-9 status" },
+              read: { stepKey: "lookup", page: "I-9 lookup result", field: "I-9 status" },
               chain: [
                 { label: "Employee search", detail: "Classify no results or restricted access from the employee search." },
                 { label: "Record summary", detail: "For a matching record, classify historical routing or the Section 2 audit event." },
@@ -89,7 +104,15 @@ export const I9_LOOKUP_STEP = Object.freeze({
         ]
       }
     ],
-    branchLabels: []
+    branchLabels: [],
+    decisions: [{ id: "signer-status", label: "Section 2 result", reads: { nodeId: "lookup", fieldPath: "i9Status" },
+      nodeIds: ["lookup-source", "lookup"], initial: "signed", outcomes: [
+        { value: "signed", then: "Returns the official named on the Signed Section 2 audit event and finishes." },
+        { value: "unsigned", then: "Returns Unsigned without a signer and finishes; no Section 2 signature was found." },
+        { value: "historical", then: "Returns Historical without a signer and finishes; the record uses the historical route." },
+        { value: "not-found", then: "Returns Not found without a signer and finishes; no matching employee record was found." },
+        { value: "unable-to-access", then: "Returns Unable to access without a signer and finishes; the search reports restricted access." },
+      ] }],
   } as const,
 } as const);
 const entries = defineStepEntries(I9_LOOKUP_STEP);

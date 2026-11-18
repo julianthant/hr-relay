@@ -7,11 +7,16 @@ import { I9ProfileTargetSchema } from "../../models/ui/i9-creation.js";
 import { ucpathHireVerdict } from "../ucpath/hire-verdict.js";
 
 export function readOnboardingWritePlan(raw: z.input<typeof OnboardingReadWritePlan.input>) {
-  const { mode, plan, subject, match, lookup, findings, approval } = OnboardingReadWritePlan.input.parse(raw);
+  const { mode, plan, subject, match, lookup, findings, approval: reviewed } = OnboardingReadWritePlan.input.parse(raw);
   const employee = plan.employee;
-  const classified = matchHireSubject({ mode, firstName: employee.firstName, lastName: employee.lastName, match });
+  const classified = matchHireSubject({ mode, firstName: employee.firstName, lastName: employee.lastName, ssnSearched: employee.ssn !== null, match });
   if (canonicalJsonStringify(classified) !== canonicalJsonStringify(subject)) throw new Error("hire-subject-source-disagrees");
   const choices = hireReviewChoices(mode, match, employee);
+  // A person a name, DOB and SSN search settled skips the hire review: that person is the answer.
+  const settled = subject.state === "existing-person" && subject.matchedBy === "name-dob-ssn" ? subject.person : undefined;
+  if (settled !== undefined && reviewed !== undefined) throw new Error("hire-review-answer-unexpected");
+  const approval = reviewed ?? (settled === undefined ? undefined : { decision: "existing-person" as const, emplId: settled.emplId, confirmedBy: "person-org" as const });
+  if (approval === undefined) throw new Error("hire-review-answer-missing");
   if (choices.newHire ? lookup.state !== "checked" : lookup.state !== "not-required" || lookup.subjectState !== subject.state) throw new Error("i9-skip-source-disagrees");
   const sorted = (eids: readonly string[]) => JSON.stringify([...eids].sort());
   if (approval.decision === "new-hire" && (!choices.newHire || sorted(approval.ruledOut) !== sorted(match.hits.map(hit => hit.emplId)))) {

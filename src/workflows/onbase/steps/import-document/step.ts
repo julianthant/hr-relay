@@ -16,37 +16,42 @@ export const ONBASE_IMPORT_STEP = Object.freeze({ ...defineWorkflowStep({ key: "
         mode: "Fill form",
         nodeIds: ["import-document"],
         lines: [
-          { id: "stage-selected-page", kind: "action", text: "Stage the selected PDF page and its Emergency Contact document type.", nodeIds: ["import-document"] },
+          { id: "stage-selected-page", kind: "action", text: "Stage the selected PDF page and its Emergency Contact document type.", when: [{ "import-document": ["saved", "unconfirmed", "ONBASE_IMPORT_UNPROVED", "dry-run"] }], nodeIds: ["import-document"] },
           {
             id: "check-keywords",
             kind: "check",
             text: "Confirm the selected employee and required document keywords before importing.",
+            when: [{ "import-document": ["saved", "unconfirmed", "ONBASE_IMPORT_UNPROVED", "dry-run"] }],
             nodeIds: ["import-document"]
           },
-          { id: "import-pdf", kind: "action", text: "In a live run, import the selected PDF once.", nodeIds: ["import-document"] }
+          { id: "import-pdf", kind: "click", target: "Import", when: [{ "dry-run": ["false"], "import-document": ["saved", "unconfirmed", "ONBASE_IMPORT_UNPROVED"] }], nodeIds: ["import-document"] }
         ],
         fields: [
           {
             id: "import-document-employee-id",
             label: "Employee ID",
+            example: "10000001",
             transactionFields: [{ nodeId: "import-document", kind: "input", fieldPath: "ucpathId" }],
             source: { origin: "Approved import request", detail: "Use the employee ID supplied to this per-person import.", chain: [] }
           },
           {
             id: "import-document-pdf-page",
             label: "PDF page",
+            example: "1",
             transactionFields: [{ nodeId: "import-document", kind: "input", fieldPath: "sourcePage" }],
             source: { origin: "Approved import request", detail: "Use exactly the original PDF page selected for this person.", chain: [] }
           },
           {
             id: "import-document-source-pdf",
             label: "Source PDF",
+            example: "Fictional emergency-contact.pdf",
             transactionFields: [{ nodeId: "import-document", kind: "input", fieldPath: "document.id" }],
             source: { origin: "Approved import request", detail: "Use the verified original PDF supplied to this import.", chain: [] }
           },
           {
             id: "import-document-document-type",
             label: "Document type",
+            example: "Emergency Contact",
             constant: { nodeIds: ["import-document"], value: ONBASE_DOCUMENT_TYPE },
             source: { origin: "Workflow rule", detail: "The import uses the registered Emergency Contact document type.", chain: [] }
           },
@@ -96,14 +101,21 @@ export const ONBASE_IMPORT_STEP = Object.freeze({ ...defineWorkflowStep({ key: "
       },
       {
         id: "document-retrieval",
+        when: [{ "dry-run": ["false"], "import-document": ["saved", "already-present"] }],
         title: "Document Retrieval",
         mode: "Read only",
         nodeIds: ["import-document"],
         lines: [{ id: "verify-saved-pdf", kind: "check", text: "When a saved document is available, retrieve and verify the exact PDF.", nodeIds: ["import-document"] }],
-        fields: []
+        fields: [{ id: "retrieved-employee", label: "Employee ID", example: "10000001",
+          transactionFields: [{ nodeId: "import-document", kind: "input", fieldPath: "ucpathId" }],
+          source: { origin: "Saved document retrieval", detail: "The retrieved document must belong to the selected employee and contain the exact original PDF page.", chain: [] } }]
       }
     ],
-    branchLabels: []
+    branchLabels: [],
+    outcomes: [
+      { nodeId: "import-document", value: "ONBASE_IMPORT_UNPROVED", then: "Stops the filing for review in Logs. An uncertain import is not retried; verify the saved evidence before taking further action." },
+      { nodeId: "import-document", value: "unconfirmed", then: "Holds the import for operator resolution in Logs and does not retry it.", stops: true },
+    ],
   } as const,
 });
 const entry = defineStepEntries(ONBASE_IMPORT_STEP).transaction("import-document", {

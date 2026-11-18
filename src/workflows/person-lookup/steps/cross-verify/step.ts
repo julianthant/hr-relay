@@ -64,27 +64,40 @@ export const CROSS_VERIFY_STEP = Object.freeze({
     { label: "How found", visibility: "logs", display: lookupMethodDisplay, sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "method" }] },
   ],
   review: {
+    // Match mode checks CRM only for the one person it confirmed (shouldCheckCrm in rules/matching/person-lookup.ts).
+    when: [{ mode: ["search"] }, { mode: ["match"], "search-result": ["resolved"] }],
     pages: [
       {
         id: "crm-search",
-        title: "CRM onboarding search results",
-        mode: "Read only",
+        title: "CRM onboarding search",
+        mode: "Fill form",
         nodeIds: ["cross-verify", "crm-identity"],
         lines: [
-          { id: "search-crm", kind: "action", text: "Search CRM for the person identified in UCPath.", nodeIds: ["cross-verify"] },
-          { id: "compare-records", kind: "check", text: "Compare CRM candidates with the searched identity.", nodeIds: ["crm-identity"] }
+          { id: "match-records", kind: "check", text: "Matches CRM records to UCPath by employee ID, else by start date", nodeIds: ["crm-identity"] },
+          { id: "search", kind: "click", target: "Search", nodeIds: ["cross-verify"] }
         ],
-        fields: []
+        fields: [
+          {
+            id: "search-name",
+            label: "Name",
+            example: "Quillan, Petra A.",
+            taskFields: [{ nodeId: "cross-verify", kind: "input", fieldPath: "name" }],
+            source: {
+              origin: "UCPath",
+              detail: "The name UCPath returned, or the name entered when the run starts.",
+              chain: [],
+              read: { stepKey: "searching", page: "Person Organizational Summary detail", field: "Name" }
+            }
+          }
+        ]
       },
       {
         id: "crm-record",
         title: "CRM onboarding record",
         mode: "Read only",
         nodeIds: ["cross-verify", "crm-identity", "crm-selected-record", "crm-results"],
-        lines: [
-          { id: "verify-record", kind: "check", text: "Verify the selected CRM record and read any remaining results.", nodeIds: ["crm-selected-record", "crm-results"] },
-          { id: "read-identity", kind: "read", text: "Read the name, department, employee ID and start date.", nodeIds: ["crm-selected-record", "crm-results"] }
-        ],
+        when: [{ "crm-result": ["Found"] }],
+        lines: [],
         fields: [
           {
             id: "name",
@@ -129,7 +142,21 @@ export const CROSS_VERIFY_STEP = Object.freeze({
         ]
       }
     ],
-    branchLabels: []
+    branchLabels: [],
+    decisions: [
+      {
+        id: "crm-result",
+        label: "CRM cross-check result",
+        reads: { nodeId: "crm-identity", fieldPath: "crmState" },
+        nodeIds: ["cross-verify", "crm-identity", "crm-selected-record", "crm-results"],
+        initial: "Found",
+        outcomes: [
+          { value: "Found", label: "Records agree" },
+          { value: "Not found", label: "No CRM record", then: "Continues without a CRM record." },
+          { value: "Check failed", label: "CRM check fails", then: "Continues; the result notes the failed CRM check." }
+        ]
+      }
+    ]
   } as const,
 } as const);
 
