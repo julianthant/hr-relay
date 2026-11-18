@@ -367,7 +367,7 @@
       "file": "tests/architecture/systems/semantic-ui-registry.test.ts",
       "status": "active",
       "owner": "docs/reference/operator-trust.md; docs/reference/guards-and-tests.md",
-      "invariant": "Every server-private semantic UI definition has a globally unique classified id, collision-free search intent, resolved same-system/same-screen acyclic dependencies, non-vacuous globally unique verification scenarios, exact dual sanitized evidence-to-screen/scenario/date/port-row bindings, and byte-fresh recipe-free generated catalogs. The guarded projection set is DERIVED, never enumerated: it equals the set of stores shipping a `driver/ui-registry.ts` in both directions (no unguarded publisher, no orphan UI-CATALOG.md). Every derived projection \u2014 the JSON and each per-system markdown \u2014 carries stale and missing negative controls through an injected reader.",
+      "invariant": "Audits the CRM, Kuali, New Kronos, and UCPath semantic UI registries for unique classified IDs, collision-free search terms, and unique verification scenarios referenced by the registry. Each audit rejects cross-system facts and requires an element's required states to resolve on the same screen. The UCPath audit also rejects unknown targets, self-references, and cycles in supersedes links. Published selectors require fixture and live read-only evidence bound to the exact screen, scenario, date, and selector port row. The guard checks that buildUiTaskLinks covers every published fact with its registry metadata and preserves task attribution for the UCPath submit control and Kuali action list.",
       "replacementRequired": true
     },
     {
@@ -658,7 +658,7 @@
       "file": "tests/architecture/storage/native-doctor-limits.test.ts",
       "status": "active",
       "owner": "docs/reference/stores.md",
-      "invariant": "Doctor refuses excess native event count, UTF-8 payload bytes and run identities before parsing, without changing authority bytes.",
+      "invariant": "Doctor refuses an oversized native event or excess run identities among the timeline rows it inspects, before parsing and without changing authority bytes. It skips debug and note rows and reads the rest one page at a time, re-reading a run's pre-root events from the same snapshot instead of buffering them, so timeline length set by ordinary retention never refuses inspection.",
       "replacementRequired": true
     },
     {

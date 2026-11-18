@@ -26,9 +26,8 @@ export type UcpathWorkStudyTransactionProof = z.infer<typeof UcpathWorkStudyTran
 export const UcpathWorkStudyVerdictSchema = probeVerdictSchema(UcpathWorkStudyTransactionProofSchema);
 export type UcpathWorkStudyVerdict = z.infer<typeof UcpathWorkStudyVerdictSchema>;
 
-/** The natural business key: the person and the effective date, and nothing else. */
 export function ucpathWorkStudyIdempotencyKey(input: z.output<typeof UcpathPayPathWorkStudyTargetSchema>): string {
-  return ["ucpath:paypath-work-study", input.emplId, input.effectiveDate].join("|");
+  return ["ucpath:paypath-work-study", input.emplId, input.effectiveDate, input.positionNumber].join("|");
 }
 
 export const workStudySubject = {

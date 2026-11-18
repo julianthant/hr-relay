@@ -9,7 +9,7 @@ import { failureCardFacts, type LogDecision } from "../../../../../src/dashboard
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 const retry = RunDecisionWireSchema.parse({ type: "failed-retryable", title: "A step failed", choiceLabel: "Next step",
-  options: [{ id: "retry", label: "Retry step", hint: "Nothing was written, so the step can run again.", send: { via: "action", actionKey: "retry-failed-step" } }] });
+  options: [{ id: "retry", label: "Retry step", hint: "Nothing was written.", send: { via: "action", actionKey: "retry-failed-step" } }] });
 const noRetry = RunDecisionWireSchema.parse({ type: "failed-retryable", title: "A step failed", options: [] });
 const base: LogDecision = { title: "Read timecard", state: "failed", message: "The page did not load.", footer: "No changes were made.",
   ...failureCardFacts({ title: "Read timecard", observation: "x", attemptedAction: "Read timecard", lastCompleted: "Read employee ID", field: { label: "Employee ID", value: "field-value-1", outcome: "Read" } }) };
