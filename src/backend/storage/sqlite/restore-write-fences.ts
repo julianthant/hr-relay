@@ -23,7 +23,8 @@ export function readRestoreWriteFences(database: FenceReader): RestoreWriteFence
     return attempt;
   });
   const unresolved = new Set(intents.filter(row => row.status !== "committed" && row.status !== "observed-present").map(row => String(row.writeIntentId)));
-  for (const attempt of attempts) if (!intents.some(intent => intent.writeIntentId === attempt.writeIntentId)) unresolved.add(attempt.writeIntentId);
+  const intentIds = new Set(intents.map(intent => intent.writeIntentId));
+  for (const attempt of attempts) if (!intentIds.has(attempt.writeIntentId)) unresolved.add(attempt.writeIntentId);
   const parked = database.prepare("SELECT state, lifecycle_json FROM runs ORDER BY id").all().flatMap(raw => {
     const row = z.strictObject({ state: z.string(), lifecycle_json: z.string() }).parse(raw);
     const { lifecycle } = z.object({ lifecycle: z.object({ state: z.string(), writeIntentId: z.uuid().optional() }) }).parse(JSON.parse(row.lifecycle_json));
