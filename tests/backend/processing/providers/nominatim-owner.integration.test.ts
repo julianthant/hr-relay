@@ -63,3 +63,46 @@ it("fails a child's in-flight request in the owner on a malformed Nominatim mess
   await new Promise<void>(done => setTimeout(done, 100));
   assert.deepEqual(sent, []);
 });
+
+it("reports a failed Nominatim reply send through the child process error event", async () => {
+  const outcome = {
+    response: { state: "unavailable" as const, reason: { code: "adapter-unavailable" as const, message: "synthetic" } },
+    evidence: { summary: "synthetic", capturedAt: IsoInstantSchema.parse(systemClock.now().toISOString()) },
+  };
+  const service = createNominatimService({
+    clock: systemClock,
+    adapter: () => ({ capability: "geocode.nominatim", invoke: async () => outcome }),
+  });
+  cleanups.push(() => service.stop());
+
+  const failure = Object.assign(new Error("synthetic broken pipe"), { code: "EPIPE" });
+  const errors: Error[] = [];
+  const sent: unknown[] = [];
+  const attempted = Promise.withResolvers<void>();
+  const requestId = randomUUID();
+  const child = Object.assign(new EventEmitter(), {
+    connected: true,
+    send(message: unknown, callback: (error: Error) => void) {
+      sent.push(message);
+      queueMicrotask(() => { callback(failure); attempted.resolve(); });
+      return false;
+    },
+    disconnect() {
+      this.connected = false;
+      this.emit("disconnect");
+    },
+  });
+  child.on("error", (error: Error) => { errors.push(error); });
+  const router = { register: (_family: string, handler: (message: Readonly<{ kind: string }>, handle: unknown) => void) => {
+    const message = { kind: "nominatim-request", requestId, deadlineMs: machineMonotonicMs() + 5_000, request };
+    queueMicrotask(() => handler(message, undefined));
+  } };
+  service.attach(child as unknown as ChildProcess, router);
+  await attempted.promise;
+
+  assert.deepEqual(sent, [{ kind: "nominatim-reply", requestId, outcome }]);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0]?.message, "nominatim-reply-send-failed");
+  assert.equal(errors[0]?.cause, failure);
+  assert.equal(child.connected, false);
+});

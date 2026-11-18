@@ -120,6 +120,10 @@ export function createNominatimService(input: Readonly<{
     const attached = transitionNominatimOwner(state.phase, { type: "attach" });
     if (!("state" in attached) || attached.state !== "running" || !child.connected) throw new Error("nominatim-parent-channel-unavailable");
     const requests = new Map<string, AbortController>();
+    const replyFailed = (cause: unknown): void => {
+      try { child.emit("error", new Error("nominatim-reply-send-failed", { cause })); }
+      finally { if (child.connected) child.disconnect(); }
+    };
     const receive = (value: unknown) => {
       const cancellation = CancelSchema.safeParse(value);
       if (cancellation.success) { requests.get(cancellation.data.requestId)?.abort(); return; }
@@ -130,7 +134,12 @@ export function createNominatimService(input: Readonly<{
       requests.set(message.requestId, controller);
       void invoke(message.request, { requestId: message.requestId, signal: controller.signal,
         deadlineMonotonicMs: clock.monotonicMs() + message.deadlineMs - machineMonotonicMs() }).then(outcome => {
-        if (child.connected && !controller.signal.aborted) child.send({ kind: "nominatim-reply", requestId: message.requestId, outcome }, () => {});
+        if (!child.connected || controller.signal.aborted) return;
+        try {
+          child.send({ kind: "nominatim-reply", requestId: message.requestId, outcome }, error => {
+            if (error) replyFailed(error);
+          });
+        } catch (error) { replyFailed(error); }
       }).finally(() => requests.delete(message.requestId));
     };
     const disconnect = () => {
