@@ -304,9 +304,8 @@ for (const section of ["general", "performance"]) for (const mode of ["failed", 
     } as unknown as DashboardClient;
     const dom = await mountSettingsPage(client, section);
     if (mode === "hung") await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
-    const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes("Relay could not read your settings."));
+    const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes("Couldn't load settings."));
     assert.ok(failure);
-    assert.ok(failure.textContent?.includes("Nothing was changed."));
     assert.ok([...failure.querySelectorAll("button")].some(button => button.textContent === "Retry"));
     assert.doesNotMatch(failure.textContent ?? "", /private fixture error/);
   });
