@@ -40,21 +40,29 @@ it("clears the idle countdown when the audit proves a refresh whose reply was lo
   } finally { await act(async () => root.unmount()); }
 });
 
-it("retains only the latest served day across refreshes", async () => {
-  const gc = (() => { setFlagsFromString("--expose-gc"); return runInNewContext("gc") as () => void; })();
+function servedWorld(count: number, gateReads = 0) {
   const base = FIXTURE_DAY_WIRE;
   assert(base.workerAuthority.state === "present");
+  // Commands on one workflow lock each other, so overlapping attempts need distinct workflows.
+  const workflows = ["person-lookup", "person-lookup-b"].slice(0, count);
+  const ids = workflows.map(workflow => `${workflow}-worker-1`);
   const basis = { basis: { state: "present", value: { lifetimeId: uuidOf(7001), version: 0 } } } as const;
-  let day: DashboardDayWire = DashboardDayWireSchema.parse({ ...base, workerPools: [{ workflowId: "person-lookup", desiredWorkers: 1, version: 1, plannedBy: "local-operator", plannedAt: FIXTURE_NOW }],
-    workerAuthority: { state: "present", members: base.workerAuthority.members.slice(0, 1).map(slot => ({ ...slot, paused: false })) },
-    workerCards: base.workerCards.slice(0, 1).map(card => ({ ...card, state: "idle", directive: "run", browsers: [], currentRun: { state: "absent", reason: "no current run" }, controls: basis })) });
+  let day: DashboardDayWire = DashboardDayWireSchema.parse({ ...base, workerPools: workflows.map(workflowId => ({ workflowId, desiredWorkers: 1, version: 1, plannedBy: "local-operator", plannedAt: FIXTURE_NOW })),
+    workerAuthority: { state: "present", members: base.workerAuthority.members.slice(0, count).map((slot, index) => ({ ...slot, workerId: ids[index], workflow: workflows[index], ordinal: 1, poolIndex: 1, paused: false })) },
+    workerCards: base.workerCards.slice(0, count).map((card, index) => ({ ...card, workerId: ids[index], workflowId: workflows[index], member: { workflowId: workflows[index], workerId: ids[index], ordinal: 1, poolIndex: 1 }, state: "idle", directive: "run", browsers: [], currentRun: { state: "absent", reason: "no current run" }, controls: basis })) });
   const served: WeakRef<DashboardDayWire>[] = [];
+  const held: (() => void)[] = [];
   const inner = createDashboardClient({ baseUrl: "http://sessions.test", fetchImpl: async (_url, init) => {
-    if (init?.method !== "POST") return Response.json(day);
+    if (init?.method !== "POST") {
+      const snapshot = day;
+      // Readbacks wait until `gateReads` of them are pending, then land together.
+      if (gateReads > 0) await new Promise<void>(release => { held.push(release); if (held.length === gateReads) for (const next of held.splice(0)) next(); });
+      return Response.json(snapshot);
+    }
     const command = CommandRequestSchema.parse(JSON.parse(String(init.body)));
     assert(command.family === "worker-browser" && command.type !== "plan-worker-count" && command.type !== "spawn-worker");
     const directive = command.type === "pause-worker" ? "pause" : "run";
-    day = DashboardDayWireSchema.parse({ ...day, workerCards: day.workerCards.map(card => ({ ...card, directive })) });
+    day = DashboardDayWireSchema.parse({ ...day, workerCards: day.workerCards.map(card => card.workerId === command.target.workerId ? { ...card, directive } : card) });
     return Response.json(CommandResultSchema.parse({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "worker-browser", workerId: command.target.workerId }] }));
   } });
   const client: DashboardClient = { ...inner, dashboardDay: async requested => { const read = await inner.dashboardDay(requested); served.push(new WeakRef(read)); return read; } };
@@ -63,9 +71,22 @@ it("retains only the latest served day across refreshes", async () => {
   const binding = (): SessionCommandBinding => ({ client, executor, scope, day: base.day, nowIso: FIXTURE_NOW,
     dayState: { subscribePublications: () => { throw new Error("not served"); }, request: scope.dayRequest, day: { state: "loaded", value: day }, connection: { state: "connecting" }, refresh() {} } });
   const port = createSessionPreviewPort(() => ({ binding: binding(), catalog: buildWorkflowCatalog([], true, servedFixtureSources([])) }));
-  const control = (action: "pause" | "resume") => port.send({ id: crypto.randomUUID(), target: day.workerCards[0].workerId, action, authorityKey: sessionWorkerAuthorityKey(day.workerCards[0]) });
-  for (const action of ["pause", "resume", "pause"] as const) assert.equal((await control(action)).state, "confirmed");
-  assert(served.length >= 3, "each refresh read a served day");
+  const control = (index: number, action: "pause" | "resume") => { const card = day.workerCards[index]; return port.send({ id: crypto.randomUUID(), target: card.workerId, action, authorityKey: sessionWorkerAuthorityKey(card) }); };
+  return { control, served };
+}
+
+it("confirms each of two overlapping attempts from its own served day", async () => {
+  const world = servedWorld(2, 2);
+  const results = await Promise.all([world.control(0, "pause"), world.control(1, "pause")]);
+  assert.deepEqual(results.map(result => result.state), ["confirmed", "confirmed"]);
+  for (const result of results) assert(result.state === "confirmed" && result.data !== undefined, "each confirmation carries its readback");
+});
+
+it("retains no served day once the attempts that read it have settled", async () => {
+  const gc = (() => { setFlagsFromString("--expose-gc"); return runInNewContext("gc") as () => void; })();
+  const world = servedWorld(1);
+  for (const action of ["pause", "resume", "pause"] as const) assert.equal((await world.control(0, action)).state, "confirmed");
+  assert(world.served.length >= 3, "each refresh read a served day");
   for (let pass = 0; pass < 5; pass++) { gc(); await new Promise(resolve => setTimeout(resolve, 0)); }
-  assert.equal(served.filter(read => read.deref() !== undefined).length, 1, "only the latest served day is retained");
+  assert.equal(world.served.filter(read => read.deref() !== undefined).length, 0);
 });
