@@ -17,7 +17,7 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); window.history.replaceState(null, "", "/"); });
 
-async function mount(deletion: () => Promise<Response>, profileSource: "served" | "mock" = "served") {
+async function mount(deletion: () => Promise<Response>) {
   const requests: { path: string; body: unknown }[] = [];
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
@@ -37,7 +37,7 @@ async function mount(deletion: () => Promise<Response>, profileSource: "served" 
   window.history.replaceState(null, "", "/?settings=account");
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, {
-    profileSource, workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: createPersonPreferences("preview"),
+    workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: createPersonPreferences("preview"),
   }) })));
   await vi.waitFor(() => assert.ok(document.querySelector('[aria-label="UCPath sign-in"]')));
   return { requests, host };
@@ -97,10 +97,4 @@ for (const outcome of ["refused", "error", "cancelling", "lost"] as const) it(`k
   assert.equal(button("Delete").disabled, true);
   assert.doesNotMatch(document.body.textContent ?? "", /private transport diagnostic|Create your profile/u);
   assert.equal(requests.length, 1);
-});
-
-it("does not invent deletion authority for the mock profile source", async () => {
-  const { requests } = await mount(async () => { throw new Error("mock deletion must never dispatch"); }, "mock");
-  assert.equal([...document.querySelectorAll("button")].some(candidate => candidate.textContent?.trim() === "Delete"), false);
-  assert.deepEqual(requests, []);
 });

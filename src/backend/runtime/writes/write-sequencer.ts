@@ -43,8 +43,7 @@ import {
 import type { ActorId, BrowserSystemId, Fingerprint, TaskId } from "../../../rules/identity/ids.js";
 import { runClaim, RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { RepeatOccurrenceSchema, repeatOccurrenceKey } from "../../../models/run/rerun.js";
-import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
+import { RepeatOccurrenceSchema, repeatOccurrenceKey, repeatEvidenceDigest, repeatProofDigest } from "../../../models/run/rerun.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { idempotencyKeyDigestReference } from "../../../rules/redaction/redaction.js";
 import {
@@ -1478,19 +1477,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       );
     }
 
-    if (completion.kind === "receipt") {
+    const callbackProof = (): JsonValue => {
       try {
-        const proofRaw: unknown = Reflect.apply(
-          completion.proofFromOutput,
-          undefined,
-          [commitContract.output.parse(outputValue)],
-        );
-        return {
-          proofValue: JsonValueSchema.parse(completion.proofSchema.parse(proofRaw)),
-          outputValue,
-        };
+        const raw: unknown = Reflect.apply(completion.proofFromOutput, undefined, [outputValue]);
+        return JsonValueSchema.parse(completion.proofSchema.parse(raw));
       } catch (error) {
-        if (error instanceof PostFenceWriteFailure) throw error;
         throw postFence(
           "unknown",
           `${commitContract.id} clicked, but its receipt fails the proof schema — refusing to report success`,
@@ -1500,7 +1491,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           error,
         );
       }
-    }
+    };
+    if (completion.kind === "receipt") return { proofValue: callbackProof(), outputValue };
 
     if (completion.kind === "upload-verify" && completion.unverifiableByPage !== undefined) {
       throw postFence(
@@ -1564,16 +1556,24 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         verdict,
       );
     }
+    const claimedProof = callbackProof();
     try {
       const proofRaw: unknown = Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]);
-      return {
-        proofValue: JsonValueSchema.parse(completion.proofSchema.parse(proofRaw)),
-        outputValue,
-      };
+      const proof = completion.proofSchema.parse(proofRaw);
+      const proofValue = JsonValueSchema.parse(proof);
+      const identity = (value: JsonValue): string => canonicalJsonStringify(completion.effectIdentity === undefined
+        ? value : Reflect.apply(completion.effectIdentity, undefined, [value]));
+      if (identity(claimedProof) !== identity(proofValue)) {
+        throw postFence("unknown", `${commitContract.id} callback and verifier receipts disagree`,
+          "post-click-verifier-unknown", "proof", { callback: claimedProof, verifier: proofValue });
+      }
+      const outputRaw: unknown = Reflect.apply(completion.outputFromProof, undefined, [proof]);
+      return { proofValue, outputValue: JsonValueSchema.parse(commitContract.output.parse(outputRaw)) };
     } catch (error) {
+      if (error instanceof PostFenceWriteFailure) throw error;
       throw postFence(
         "unknown",
-        `${commitContract.id} verify read returned present, but its proof fails the proof schema`,
+        `${commitContract.id} verify read returned present, but its proof or reconstructed output failed validation`,
         "post-click-present-proof-schema-failure",
         "exception",
         error,
@@ -1905,8 +1905,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       if (verdict.state === "present" && occurrence !== undefined) {
         const completion = commitContract.writeSafety.completion;
         const proof = completion.proofSchema.parse(Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]));
-        const evidenceDigest = repeatEvidenceDigest({ status: "committed", completionProof: { schemaHash: deriveSchemaHash(completion.proofSchema, "output"),
-          value: JsonValueSchema.parse(proof) } }, repeatBindings);
+        const evidenceDigest = repeatProofDigest({ schemaHash: deriveSchemaHash(completion.proofSchema, "output"),
+          value: JsonValueSchema.parse(proof) }, repeatBindings);
         if (!consent?.some((warning) => warning.evidenceDigest === evidenceDigest)) {
           throw new Error("confirmation-required: live completion evidence changed");
         }
@@ -1976,7 +1976,15 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         );
       }
     }
-    const probeCompletedMonotonicMs = deps.clock.monotonicMs();
+    const probeDeadline = deps.clock.monotonicMs() + node.probeToFenceMaxMs;
+    const assertProbeFresh = (): void => {
+      if (deps.clock.monotonicMs() >= probeDeadline) {
+        throw new StagedPageDiscardedError(
+          `transaction "${node.id}" exceeded its ${String(node.probeToFenceMaxMs)}ms probe-to-fence budget; `
+          + "the staged page is discarded and nothing was clicked",
+        );
+      }
+    };
 
     /* beats ② – ⑥ under ONE uninterrupted exclusive transaction lease */
     const commitTask = requireTask(commitContract.id, "commit");
@@ -2054,13 +2062,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         await captureScreenshot("before-submit");
 
         /* beat ④ — probe→fence budget, then the durable CAS before any click */
-        const elapsedMs = deps.clock.monotonicMs() - probeCompletedMonotonicMs;
-        if (elapsedMs > node.probeToFenceMaxMs) {
-          throw new StagedPageDiscardedError(
-            `transaction "${node.id}" probe aged ${String(elapsedMs)}ms, over its ${String(node.probeToFenceMaxMs)}ms `
-            + "probe-to-fence budget; the staged page is discarded and nothing was clicked",
-          );
-        }
+        assertProbeFresh();
         // Buffer fallible span and data sinks until the commit callback settles; none may interrupt fence-to-click.
         emitTaskSpan(context, "commit", "span.started");
         const fencedAt = instant();
@@ -2122,14 +2124,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         }
         refuseRequestedCancellation(context);
         try {
-          const resolution = refenceExpectedVersion === undefined
-            ? deps.authority.authority.writeIntents.fenceAttempt({ intent: intentRecord, attempt: attemptRecord, claim: context.claim })
-            : deps.authority.authority.writeIntents.refenceRetryable({
-              expectedVersion: refenceExpectedVersion,
-              claim: context.claim,
-              intent: intentRecord,
-              attempt: attemptRecord,
-            });
+          const resolution = deps.authority.withAuthorityTransaction(({ writeIntents }) => {
+            const fence = { intent: intentRecord, attempt: attemptRecord, claim: context.claim };
+            const result = refenceExpectedVersion === undefined
+              ? writeIntents.fenceAttempt(fence)
+              : writeIntents.refenceRetryable({ ...fence, expectedVersion: refenceExpectedVersion });
+            assertProbeFresh();
+            return result;
+          });
           if (resolution.state === "refused") throw new RunLifecycleRefusedError(resolution);
           if (resolution.state === "existing") throw new FenceLostRaceError(resolution.intent);
           if (resolution.state !== "fenced") {
@@ -2162,7 +2164,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         ownership.retainAfterFence();
 
         /* beat ⑤ — the external commit under the minted capability */
-        const capability = mintMutationCapability(fenced.generation, fenced.bindingProofDigest);
+        const capability = mintMutationCapability(fenced.generation, fenced.bindingProofDigest, () => probeDeadline - deps.clock.monotonicMs());
         const bufferedCommitObservations: BoundedTaskRecordBatch[] = [];
         const bufferedCommitLogs: BufferedCommitLog[] = [];
         let commitSettlement:
@@ -2174,6 +2176,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           ownership.signal,
           (innerSignal, recordData) => {
             const runImpl = RunnableTaskSchema.parse(commitTask.impl.run);
+            assertProbeFresh();
             return runImpl({
               input: commitInput,
               ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData, context, bufferedCommitLogs), driver, mutation: capability },
@@ -2541,7 +2544,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         const settled = presentFromProof(raw);
         const proof = { schemaHash: proofSchemaHash, value: settled.proof };
         if (source.acknowledgment !== source.warningDigest
-          || !consent?.some((warning) => warning.evidenceDigest === repeatEvidenceDigest({ status: "committed", completionProof: proof }, repeatBindings))) {
+          || !consent?.some((warning) => warning.evidenceDigest === repeatProofDigest(proof, repeatBindings))) {
           throw new Error("confirmation-required: preview found unacknowledged completion evidence");
         }
         probe = { state: "present", proof, output: { schemaHash: outputSchemaHash, value: settled.output } };

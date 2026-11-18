@@ -103,7 +103,7 @@ const STAGE = [
   "click:job-data-tab", "settle", ...filled("job-data-comments", COMMENTS),
   "click:additional-pay-tab", "settle", ...filled("initiator-comments", COMMENTS), ...READ_BACK,
 ];
-const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
 
 function world(options: Parameters<typeof fakeUcpathPayPathPage>[0] = {}) {
   const page = fakeUcpathPayPathPage(options);

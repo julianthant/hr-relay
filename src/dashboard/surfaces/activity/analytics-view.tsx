@@ -101,14 +101,10 @@ export function AnalyticsSections({ data, range, workflow, onRange, onOpenRuns }
       <LineChart label="Messages per day" days={days} series={[{ id: "messages", label: "Messages", color: "var(--chart-1)", values: messages }]} ticks={messageScale.ticks} top={messageScale.top} format={String}
         summary={index => noun(messages[index] ?? 0, "message", "messages")} header={<ChartHeading label="Messages" value={String(messageTotal)} />} />}
     </BodySection>
-    <BodySection title="Tools used" description="Tools the assistant called each day.">
-      <p className="m-0 text-body text-ui-secondary">Tool calls are not recorded yet.</p>
-    </BodySection>
     <BodySection title="Actions" description="Actions the assistant proposed each day.">
       {proposedTotal === 0 ? <p className="m-0 text-body text-ui-secondary">No actions proposed in this period</p> :
       <StackedBars label="Proposed actions per day" days={days} unit={["action", "actions"]} series={[{ id: "proposed", label: "Proposed", color: "var(--chart-1)", values: proposed }]}
         header={<ChartHeading label="Proposed actions" value={String(proposedTotal)} />} />}
-      <p className="m-0 mt-2 text-[12px] leading-4 text-ui-secondary">Approvals are not recorded yet.</p>
     </BodySection>
   </div>;
 }

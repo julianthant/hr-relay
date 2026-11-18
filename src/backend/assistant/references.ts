@@ -23,6 +23,7 @@ export function createAssistantReferenceTable(generation: number) {
   if (!Number.isSafeInteger(generation) || generation < 1) throw new Error("assistant-reference-generation-invalid");
   const entries = new Map<string, AssistantReferenceEntry>(), byTarget = new Map<string, string>();
   const counters = new Map<AssistantReferenceKind, number>();
+  let journal: { token: string; key: string }[] | undefined;
   function issue(kind: AssistantReferenceKind, target: string, display: string, expand: string = display, version?: number): string {
     const key = `${kind}:${target}:${String(version ?? "")}`, existing = byTarget.get(key);
     if (existing !== undefined) return existing;
@@ -32,7 +33,25 @@ export function createAssistantReferenceTable(generation: number) {
     const token = `[[${kind}${String(n)}.g${String(generation)}]]`;
     entries.set(token, Object.freeze({ kind, target, display, expand, ...(version === undefined ? {} : { version }) }));
     byTarget.set(key, token);
+    journal?.push({ token, key });
     return token;
+  }
+  /** Runs the synchronous `build`; when it throws or `keep` rejects its value, the references it issued are withdrawn, so a request that never left uses none of the table. */
+  function assemble<T>(build: () => T, keep: (value: T) => boolean = () => true): T {
+    if (journal !== undefined) return build();
+    const issued: { token: string; key: string }[] = [], before = new Map(counters);
+    const withdraw = () => {
+      for (const { token, key } of issued) { entries.delete(token); byTarget.delete(key); }
+      counters.clear();
+      for (const [kind, n] of before) counters.set(kind, n);
+    };
+    journal = issued;
+    try {
+      const value = build();
+      if (!keep(value)) withdraw();
+      return value;
+    } catch (error) { withdraw(); throw error; }
+    finally { journal = undefined; }
   }
   function resolve(token: string, kinds: readonly AssistantReferenceKind[]): AssistantReferenceEntry {
     const match = EXACT_TOKEN.exec(token.trim());
@@ -51,7 +70,7 @@ export function createAssistantReferenceTable(generation: number) {
     });
   }
   return Object.freeze({
-    generation, issue, resolve,
+    generation, issue, resolve, assemble,
     /** Strict segments for server reply construction; literal wording has no markup authority. */
     segments(text: string): ({ kind: "text"; text: string } | { kind: "reference"; token: string; entry: AssistantReferenceEntry })[] {
       const segments: ({ kind: "text"; text: string } | { kind: "reference"; token: string; entry: AssistantReferenceEntry })[] = [];
@@ -89,16 +108,19 @@ export function createAssistantReferences() {
   });
 }
 
+const UUID = /(?<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/u.source;
+// Every SSN form Relay's diagnostic `maskSsnText` masks: hyphens, spaces or none, in any mix.
+const SSN = /(?<ssn>(?<!\d)\d{3}[- ]?\d{2}[- ]?\d{4}(?!\d))/u.source;
 // Order matters: an earlier alternative wins at the same position, so UUIDs and emails are never split into digit runs.
 const MASK = new RegExp([
-  /(?<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/u.source,
+  UUID,
   /(?<email>[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)/u.source,
-  /(?<ssn>(?<!\d)\d{3}-\d{2}-\d{4}(?!\d))/u.source,
+  SSN,
   /(?<phone>(?<![\d+])(?:\+?1[ .-]?)?(?:\(\d{3}\) ?|\d{3}[ .-])\d{3}[ .-]\d{4}(?!\d))/u.source,
   /(?<digits>(?<!\d)\d+(?!\d))/u.source,
 ].join("|"), "giu");
 
-/** Model text for one operator message: typed token brackets neutralized, EIDs as `E` references, other identifiers as fixed markers. */
+/** Model text for operator-supplied text (a message or a decoded text attachment): typed token brackets neutralized, EIDs as `E` references, other identifiers as fixed markers. */
 export function maskOperatorText(text: string, table: AssistantReferenceTable): string {
   return text.replaceAll("[[", "[ [").replaceAll("]]", "] ]").replace(MASK, (whole, ...rest: unknown[]) => {
     const groups = rest.at(-1) as Record<string, string | undefined>;
@@ -111,4 +133,10 @@ export function maskOperatorText(text: string, table: AssistantReferenceTable): 
     if (whole.length >= 10) return "[redacted number]";
     return whole;
   });
+}
+
+const STORED_SSN = new RegExp([/(?<token>\[\[[PERNSATV][1-9][0-9]{0,3}\.g[1-9][0-9]{0,8}\]\])/u.source, UUID, SSN].join("|"), "giu");
+/** Stored operator model text as it replays: any SSN form an earlier mask let through is masked; issued tokens and UUIDs stay as stored. */
+export function maskStoredSsn(text: string): string {
+  return text.replace(STORED_SSN, (whole, ...rest: unknown[]) => (rest.at(-1) as Record<string, string | undefined>).ssn === undefined ? whole : "[redacted SSN]");
 }

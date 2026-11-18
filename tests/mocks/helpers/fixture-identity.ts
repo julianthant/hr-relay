@@ -1,4 +1,4 @@
-import { MOCK_WORKFLOW_CATALOG } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
+import { MOCK_WORKFLOW_CATALOG } from "../workflows/workflow-mock-catalog.js";
 import { createFixtureIdentitySetup } from "../../support/helpers/dashboard/profiles/fixture-identity-setup.js";
 
 export const {

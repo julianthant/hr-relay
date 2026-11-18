@@ -73,9 +73,9 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
       return wrongPerson ? { ...observed, displayedEid: "10000002" } : observed;
     } };
     ports.push(port);
-    const save = { async save() {
+    const save = { async save(capability: Parameters<typeof session.save.save>[0]) {
       if (options.failure === "save-before") throw new Error("fixture-save-failed");
-      await session.save.save();
+      await session.save.save(capability);
       if (options.interrupt === true) { entered(); await maySettle; }
       if (options.failure === "partial") {
         const saved = persistence.snapshot();
