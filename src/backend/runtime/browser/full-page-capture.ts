@@ -14,7 +14,7 @@ export class FullPageCaptureRefusedError extends Error {
 
 /** A capture the page's geometry or safety observer could not complete, named for the operator. */
 export class FullPageCaptureFailedError extends Error {
-  constructor(readonly reason: BrowserCaptureFailure) { super(reason); this.name = "FullPageCaptureFailedError"; }
+  constructor(readonly reason: BrowserCaptureFailure, readonly detail?: string) { super(reason); this.name = "FullPageCaptureFailedError"; }
 }
 
 interface CaptureBand { buffer: Buffer; offsetCss: number; offsetXCss: number; clipHeightCss: number }
@@ -184,10 +184,14 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
         if (mode === "element") target!.scrollTo({ left, top, behavior: "instant" });
         else targetWindow.scrollTo({ left, top, behavior: "instant" });
         const r = target?.getBoundingClientRect() ?? { left: 0, top: 0, width: vw, height: Math.min(vh, scrollHeight) };
-        const x = Math.max(0, r.left + (target?.clientLeft ?? 0));
-        const y = Math.max(0, r.top + (target?.clientTop ?? 0));
-        const width = Math.min(target?.clientWidth ?? r.width, vw - x);
-        const height = Math.min(clientHeight, vh - y);
+        // Chromium paints a box at its pixel-snapped edges, scrolled content with it; a sub-pixel clip loses a band row.
+        const dpr = window.devicePixelRatio;
+        const left0 = Math.max(0, r.left + (target?.clientLeft ?? 0));
+        const top0 = Math.max(0, r.top + (target?.clientTop ?? 0));
+        const x = Math.round(left0 * dpr) / dpr;
+        const y = Math.round(top0 * dpr) / dpr;
+        const width = Math.round(Math.min(left0 + (target?.clientWidth ?? r.width), vw) * dpr) / dpr - x;
+        const height = Math.round(Math.min(top0 + clientHeight, vh) * dpr) / dpr - y;
         const contentDocument = mode === "iframe" ? bestFrame!.contentDocument! : document;
         const contentWidth = mode === "element" ? target!.scrollWidth : Math.max(contentDocument.documentElement.scrollWidth, contentDocument.body?.scrollWidth ?? 0);
         return { x, y, width, height, contentWidth,
@@ -301,7 +305,9 @@ export async function captureFullPage(page: Page, options: Readonly<{
       if (coveredX < widest) throw new FullPageCaptureFailedError("horizontal-overflow");
       coveredTo = Math.max(coveredTo, (rowOffset ?? 0) + rowHeight);
     }
-    if (coveredTo < plan.scrollHeight) throw new FullPageCaptureFailedError("content-bottom-unreached");
+    if (coveredTo < plan.scrollHeight) {
+      throw new FullPageCaptureFailedError("content-bottom-unreached", `page-capture-covered-${String(Math.floor(coveredTo))}-of-${String(plan.scrollHeight)}px`);
+    }
     assertCurrent();
     const image = stitchCaptureBands(bands);
     if ((options.sampleLabels?.length ?? 0) === 0) return image;

@@ -401,7 +401,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
           } catch (error) {
             if (error instanceof FullPageCaptureRestoreError) throw error;
             assertCurrent();
-            if (error instanceof FullPageCaptureRefusedError || error instanceof FullPageCaptureFailedError) return unavailable(error.reason);
+            if (error instanceof FullPageCaptureFailedError) return unavailable(error.reason, error.detail);
+            if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
             if (pageVersion !== version) return unavailable("page-changed");
             const causes = serializeErrorCauses(error);
             const detail = captureFailureDetail(stage, error, causes[0]?.name ?? "error");
