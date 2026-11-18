@@ -237,6 +237,8 @@ const PLAYWRIGHT_OBJECTS = new Set(["page", "frame", "locator", "elementHandle",
 const PLAYWRIGHT_METHODS = new Set(["evaluate", "evaluateAll", "evaluateHandle", "screenshot", "setViewportSize", "waitForTimeout", "count",
   "cookies", "isVisible", "waitFor", "inputValue", "textContent", "frameElement", "goto"]);
 const PAGE_ERROR_CLASSES = new Set(["Error", "TypeError", "ReferenceError", "RangeError", "SyntaxError", "EvalError", "URIError", "AggregateError"]);
+const DETACHED_FRAME_FAILURE = /^(?:frame\.evaluate|locator\.count): (?:Frame was detached|Frame has been detached\.)$/u;
+const DESTROYED_FRAME_CONTEXT = /^(?:frame\.evaluate|locator\.count): Execution context was destroyed, most likely because of a navigation\.?$/u;
 /** The capture stage and failing call or error class, as a value-free kebab token for logs and failures. */
 function captureFailureDetail(stage: "sign-in-check" | "secret-check" | "page-capture" | "final-sign-in-check", error: unknown, errorName: string): string {
   const failed = playwrightCall(error) ?? (errorName.replace(/([a-z0-9])([A-Z])/gu, "$1-$2").toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "") || "error");
@@ -386,6 +388,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       assertCurrent();
       const recordEvidence = (evidence: AuthenticatedApplicationEvidence): void => { assertCurrent(); this.#options.onAuthenticationEvidence?.(evidence); };
       let pageVersion = 1;
+      let mainPageVersion = pageVersion;
+      const childNavigations = new WeakMap<Frame, number>();
       const detach = (): void => {
         page.off("framenavigated", navigated);
         page.off("frameattached", frameChanged);
@@ -405,7 +409,12 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       const navigated = (frame: Frame): void => {
         if (observeEvent().state === "revoked") return;
         pageVersion += 1;
-        if (frame === page.mainFrame()) this.#options.onNavigation?.(frame.url());
+        if (frame === page.mainFrame()) {
+          mainPageVersion = pageVersion;
+          this.#options.onNavigation?.(frame.url());
+        } else {
+          childNavigations.set(frame, pageVersion);
+        }
       };
       const frameChanged = (): void => { if (observeEvent().state === "current") pageVersion += 1; };
       const diagnostics = attachBrowserDiagnostics(page, this.#options.clock, observeEvent);
@@ -433,6 +442,15 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         screenshot: async (sampleLabels?: readonly string[]): Promise<BrowserScreenshotEvidence> => {
           assertCurrent();
           const version = pageVersion;
+          const mainVersion = mainPageVersion;
+          let captureSettled = false;
+          const pageChanged = (): boolean => captureSettled ? mainPageVersion !== mainVersion : pageVersion !== version;
+          const lostSettledChildContext = (frame: Frame, navigation: number | undefined, error: unknown): boolean => {
+            if (!captureSettled || pageChanged() || page.isClosed() || frame === page.mainFrame() || !(error instanceof Error)) return false;
+            const contextDestroyed = DESTROYED_FRAME_CONTEXT.test(error.message);
+            if (frame.isDetached()) return contextDestroyed || DETACHED_FRAME_FAILURE.test(error.message);
+            return contextDestroyed && childNavigations.get(frame) !== navigation;
+          };
           const identity = { pageVersion: version, sessionId, observedAt: this.#options.clock.now().toISOString() };
           const unavailable = (reason: Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"], detail?: string): BrowserScreenshotEvidence =>
             Object.freeze({ ...identity, state: "unavailable", reason, ...(detail === undefined ? {} : { detail }) });
@@ -463,12 +481,13 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             if (pageVersion !== version) return unavailable("page-changed");
             stage = "page-capture";
             const ssnWatched: Frame[] = [];
-            // Every watched frame is stopped, and every stop failure kept.
             const unwatch = async (): Promise<unknown[]> => {
               const errors: unknown[] = [];
               for (const frame of ssnWatched) {
                 if (frame.isDetached()) continue;
-                try { await frame.evaluate(() => { (window as SsnWatchWindow).__relaySsnWatch?.stop(); }); } catch (error) { errors.push(error); }
+                const navigation = childNavigations.get(frame);
+                try { await frame.evaluate(() => { (window as SsnWatchWindow).__relaySsnWatch?.stop(); }); }
+                catch (error) { if (!lostSettledChildContext(frame, navigation, error)) errors.push(error); }
               }
               return errors;
             };
@@ -509,6 +528,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
                   if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
                 },
               });
+              captureSettled = pageVersion === version;
             } catch (error) {
               const errors = await unwatch();
               throw errors.length === 0 ? error : new FullPageCaptureRestoreError([error, ...errors]);
@@ -517,18 +537,24 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             if (stopErrors.length > 0) throw new FullPageCaptureRestoreError(stopErrors);
             assertCurrent();
             stage = "secret-check";
-            if (pageVersion !== version) return unavailable("page-changed");
+            if (pageChanged()) return unavailable("page-changed");
             for (const frame of frames) {
-              if (await secretPresent(frame)) return unavailable("secret-controls-present");
+              if (frame !== page.mainFrame() && frame.isDetached()) continue;
+              const navigation = childNavigations.get(frame);
+              try { if (await secretPresent(frame)) return unavailable("secret-controls-present"); }
+              catch (error) {
+                assertCurrent();
+                if (!lostSettledChildContext(frame, navigation, error)) throw error;
+              }
             }
-            if (pageVersion !== version) return unavailable("page-changed");
+            if (pageChanged()) return unavailable("page-changed");
             return Object.freeze({ ...identity, state: "available", ...capture, diagnosticAttachments: diagnostics.snapshot() });
           } catch (error) {
             if (error instanceof FullPageCaptureRestoreError) throw error;
             assertCurrent();
             if (error instanceof FullPageCaptureFailedError) return unavailable(error.reason, error.detail);
             if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
-            if (pageVersion !== version) return unavailable("page-changed");
+            if (pageChanged()) return unavailable("page-changed");
             const causes = serializeErrorCauses(error);
             const detail = captureFailureDetail(stage, error, causes[0]?.name ?? "error");
             for (const [index, cause] of causes.entries()) {
