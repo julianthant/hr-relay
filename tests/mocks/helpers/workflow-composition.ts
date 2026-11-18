@@ -1,6 +1,8 @@
-import { WORKFLOW_SOURCES, type WorkflowComposition, type WorkflowSourcePolicy } from "../../../src/dashboard/app/workflow-sources.js";
+import { WORKFLOW_SOURCES, type DashboardHarness, type WorkflowComposition, type WorkflowSourcePolicy } from "../../../src/dashboard/app/workflow-sources.js";
 import { sessionsSampleHarness } from "../../support/fixtures/dashboard/sessions-sample.js";
 import { useActivitySampleReport } from "../../support/fixtures/dashboard/activity-sample.js";
+import { useNotificationsSampleInbox, resolveSampleRun } from "../../support/fixtures/dashboard/notifications-preview.js";
+import { useWorkspaceSearchData } from "../../support/fixtures/dashboard/search-sample.js";
 import { StatusMockHost } from "./status-mock/status-mock.js";
 import { statusMockHarness } from "./status-mock/status-mock-model.js";
 import { prepareHubWorkflow } from "../workflows/hub-assistant-run.js";
@@ -12,8 +14,12 @@ export function servedFixtureSources(workflows: readonly RunStartWorkflow[]): Wo
   return Object.freeze({ ...Object.fromEntries(Object.keys(WORKFLOW_SOURCES).map(id => [id, "hidden" as const])), ...Object.fromEntries(workflows.map(flow => [flow.workflowId, "served" as const])) });
 }
 
+function harnessFor(): DashboardHarness {
+  return { ...statusMockHarness(StatusMockHost), useInbox: useNotificationsSampleInbox, useSearch: useWorkspaceSearchData, resolveRun: resolveSampleRun };
+}
+
 export function MOCK_WORKFLOW_COMPOSITION(workflows: readonly RunStartWorkflow[]): WorkflowComposition {
   const sources = servedFixtureSources(workflows);
-  const composition: WorkflowComposition = Object.freeze({ sources, harness: statusMockHarness(StatusMockHost), assistant: "mock" as const, runAssistantSample: (request: AssistantWorkflowRequest) => prepareHubWorkflow(request, composition, 0).result, inbox: "mock" as const, search: "mock" as const, logs: "mock" as const, sessionsHarness: sessionsSampleHarness, useActivityReport: useActivitySampleReport, dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }) });
+  const composition: WorkflowComposition = Object.freeze({ sources, harness: harnessFor(), assistant: "mock" as const, runAssistantSample: (request: AssistantWorkflowRequest) => prepareHubWorkflow(request, composition, 0).result, logs: "mock" as const, sessionsHarness: sessionsSampleHarness, useActivityReport: useActivitySampleReport, dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }) });
   return composition;
 }

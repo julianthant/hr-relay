@@ -767,7 +767,7 @@ function servedSessionMocks(workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITI
   const composition = MOCK_WORKFLOW_COMPOSITION_m2(workflows);
   const registered = new Set(workflows.map(flow => flow.workflowId));
   for (const id of Object.keys(WORKFLOW_SOURCES)) assert_m2.equal(composition.sources[id], registered.has(id) ? "served" : "hidden", id);
-  return Object.freeze({ ...composition, sessions: "served" as const });
+  return Object.freeze({ ...composition, sessionsHarness: undefined });
 }
 async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof MOCK_WORKFLOW_COMPOSITION_m2 } = {}) {
   const { app } = createFixtureBff_m2();

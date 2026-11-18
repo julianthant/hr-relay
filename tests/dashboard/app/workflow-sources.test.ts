@@ -14,7 +14,7 @@ describe("the product workflow sources", () => {
   });
 
   it("serve every surface from the server", () => {
-    expect(PRODUCT_WORKFLOW_COMPOSITION).toMatchObject({ inbox: "served", search: "served" });
+    expect(PRODUCT_WORKFLOW_COMPOSITION.harness).toBeUndefined();
     expect(PRODUCT_WORKFLOW_COMPOSITION.sessionsHarness).toBeUndefined();
     expect(PRODUCT_WORKFLOW_COMPOSITION.useActivityReport).toBeUndefined();
   });

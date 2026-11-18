@@ -338,7 +338,7 @@ afterEach_m1(_afterEachFixture0);
       notificationTarget: async () => ({ kind: "run" as const, runId: row.runId, day: linkedDay.day }),
     }, "sidebar", workflows => {
       const composition = MOCK_WORKFLOW_COMPOSITION_m1(workflows);
-      return { ...composition, inbox: "served" as const, dataSources: { ...composition.dataSources, separations: "served" } };
+      return { ...composition, harness: { ...composition.harness, useInbox: undefined }, dataSources: { ...composition.dataSources, separations: "served" } };
     });
     await editHeadlessPreference();
     if (surface === "search") await click(button("Search"));

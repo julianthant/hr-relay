@@ -84,7 +84,7 @@ export const PALETTE_SPREADSHEETS: readonly PaletteSheet[] = [
 export function statusMockHarness(Host: DashboardHarness["Host"]): DashboardHarness | undefined {
   const mock = statusMock();
   if (mock === undefined) return undefined;
-  return { Host, paletteSheets: PALETTE_SPREADSHEETS,
+  return { Host, logsChildRows: true, paletteSheets: PALETTE_SPREADSHEETS,
     ...(mock === "command-results" ? { commandResults: STATUS_MOCK_COMMAND_RESULTS, bulkOutcome: STATUS_MOCK_BULK_OUTCOME } : {}),
     ...(mock === "command-unknown" ? { unknownCommand: STATUS_MOCK_UNKNOWN_COMMAND } : {}) };
 }

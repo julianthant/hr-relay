@@ -25,10 +25,6 @@ import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page
 import { notificationTargetUnavailable } from "../../../src/dashboard/app/navigation/run-navigation.js";
 
 const requested = vi.hoisted(() => ({ target: undefined as NotificationDestination | undefined }));
-vi.mock("../../../src/dashboard/surfaces/notifications/notifications-preview-model.js", async importOriginal => ({
-  ...await importOriginal<typeof import("../../../src/dashboard/surfaces/notifications/notifications-preview-model.js")>(),
-  useWorkspaceNotifications: () => ({ state: "ready", pinned: [], items: [{ id: "canonical", title: "Run failed", subject: "Canonical history", workflow: "Person Lookup", detail: "Failure", tone: "danger", age: "", read: false, priority: false, action: "Open exact target", destination: requested.target }] }),
-}));
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
 Reflect.set(globalThis, "requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0));

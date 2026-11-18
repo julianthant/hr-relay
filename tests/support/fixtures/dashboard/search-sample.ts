@@ -1,8 +1,8 @@
 import { useMemo } from "react";
-import { dsStatusOf, statusAccessibleName } from "../../shared/status/status-model.js";
-import { runDisplayId } from "../../shared/status/run-display-model.js";
-import type { QueueSurfaceWire } from "../../queue/queue-model.js";
-import type { NavbarData } from "./navbar-view-model.js";
+import { dsStatusOf, statusAccessibleName } from "../../../../src/dashboard/surfaces/shared/status/status-model.js";
+import { runDisplayId } from "../../../../src/dashboard/surfaces/shared/status/run-display-model.js";
+import type { QueueSurfaceWire } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import type { NavbarData } from "../../../../src/dashboard/surfaces/shell/search/navbar-view-model.js";
 
 export function buildWorkspaceSearchData(input: {
   readonly today: string;

@@ -16,7 +16,6 @@
     "src/dashboard/assets/ocr/documents.json",
     "src/dashboard/kit/kit-page.tsx",
     "src/dashboard/surfaces/assistant/assistant-mock-frames.ts",
-    "src/dashboard/surfaces/notifications/notifications-fixture.ts",
     "src/dashboard/surfaces/run-detail/logs/log-decision-fixture.ts",
     "src/dashboard/surfaces/spreadsheets/design/sheets-v2-model.ts",
     "src/models/fields/registry.ts",
