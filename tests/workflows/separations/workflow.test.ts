@@ -271,7 +271,7 @@ describe("workflow definition public equivalence characterization", () => {
         { id: "clear-pending", kind: "transaction", dependsOn: ["approval", "pending-set", "reference-check-review"], dryRun: "stop-after-prepare" },
         { id: "file-termination", kind: "transaction", dependsOn: ["approval", "termination-type", "employment", "dates", "clear-pending"], dryRun: "stop-after-prepare" },
         { id: "receipt", kind: "task", dependsOn: ["approval", "dates", "file-termination"] },
-        { id: "filing-presence", kind: "task", dependsOn: ["receipt"] },
+        { id: "filing-presence", kind: "task", dependsOn: ["receipt", "employment"] },
         { id: "finalize-kuali", kind: "transaction", dependsOn: ["approval", "resolve-action", "document", "plan", "employment", "department-option", "dates", "receipt", "filing-presence"], dryRun: "stop-after-prepare" },
       ],
       omissions: {

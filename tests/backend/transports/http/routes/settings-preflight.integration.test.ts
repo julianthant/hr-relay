@@ -179,6 +179,24 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(refused)).code, "PREFLIGHT_RATE_LIMITED");
   });
 
+  it("answers the 257th dashboard preflight rerun", async () => {
+    const h = await harness();
+    for (let attempt = 1; attempt <= 257; attempt += 1) {
+      const commandId = `00000000-0000-4000-8000-${String(attempt).padStart(12, "0")}`;
+      const response = await h.app.request("/api/v1/preflight/rerun", {
+        method: "POST",
+        headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+        body: JSON.stringify({
+          commandId, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+          source: "settings-surface", type: "rerun-preflight", target: { expectedConfigFingerprint: HASH_B },
+        }),
+      });
+      assert.equal(response.status, 200, `dashboard rerun ${String(attempt)}`);
+      assert.equal(PreflightRerunCommandResultSchema.parse(await response.json()).commandId, commandId);
+      h.clock.advanceMonotonic(60_000);
+    }
+  });
+
   it("admits only one preflight rerun while detector work is active", async () => {
     let release = (): void => undefined;
     let markStarted = (): void => undefined;
