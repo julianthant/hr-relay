@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it, vi } from "vitest";
+import { retainedOcrModule } from "../../../support/fixtures/ocr/retained-review-producer.js";
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { onbaseFilingFixture } from "../../../support/helpers/backend/onbase-filing-fixture.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
@@ -234,6 +236,17 @@ it("opens an operator addition and correction saved with the original emergency-
   const restore = CommandRequestSchema.parse({ ...add(f, 3), type: "restore-ocr-record", payload: { recordId: review.revision.records[0].recordId } });
   assert.equal(f.canonical.kernel.execute(restore).state, "rejected");
   assert.deepEqual(f.database.authority.ocrReviews.latest(f.run.envelope.runId), review.revision);
+});
+
+it("refuses fresh OCR edits when the registered workflow is missing or differs from the saved one", async () => {
+  const f = await world.fixture({ release: true, record: true });
+  const saved = f.database.authority.ocrReviews.latest(f.run.envelope.runId); assert.ok(saved);
+  assert.notEqual(retainedOcrModule.descriptor.contractFingerprint, f.run.envelope.contractFingerprint);
+  for (const replacement of [undefined, retainedOcrModule.descriptor]) {
+    const kernel = canonicalChildExecution(f.harness.deps, f.database, f.path, id => id === "ocr" ? replacement : f.resolve(id)).kernel;
+    assert.equal(kernel.execute(f.command("discard-ocr-record", 1)).state, "rejected");
+    assert.deepEqual(f.database.authority.ocrReviews.latest(f.run.envelope.runId), saved);
+  }
 });
 
 it("refuses removal of an operator-add blocker with the original command intact", async () => {
