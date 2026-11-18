@@ -18,14 +18,14 @@ All source paths in this table are relative to `src/dashboard/`.
 | Search | `surfaces/shell/search/navbar-view.tsx` | Served cross-date search; the harness may supply sample results |
 | Action panel and date | `surfaces/queue/queue-focus.tsx`, app composition | Selected workflow/day, filters, and shared served clock |
 | Queue | `surfaces/queue/queue.tsx` | Day/preview model |
-| Logs | `surfaces/run-detail/log-panel.tsx`, `logs/log-sample.tsx` | Local ordered log producers |
+| Logs | `surfaces/run-detail/log-panel.tsx`, `logs/log-sample.tsx` | Served ordered logs; the harness injects sample logs through `DashboardHarness.LogPreview` from `tests/support/fixtures/dashboard/log-preview/` |
 | OCR Records | `surfaces/run-detail/review/review.tsx` | Authenticated review revisions, edit/gate authority and source-page manifest; explicit previews supply local records |
 | Run and Rerun | `surfaces/run-start/run-launch.tsx` | Catalog and planner/client for served launches |
 | Notifications | `surfaces/notifications/notifications-view.tsx`, workspace rail | App preview destinations with rail-local read state |
 | Sessions | `surfaces/sessions/session-panel.tsx`, `sessions-view.tsx` | The served day through `createSessionPreviewPort`; the harness supplies `sessionsSampleHarness` |
 | Settings | `surfaces/settings/settings.tsx` | Typed editor, protected authority, readiness, storage, and local preferences |
 | ChatGPT account | `surfaces/settings/general/chatgpt-account.tsx` | `ChatGptAccountContext` default memory preview port |
-| Spreadsheets | `surfaces/spreadsheets/spreadsheets.tsx` | Served library and versioned Save through `state/spreadsheet-wiring-adapter.ts`; explicit fixture composition retains the mock library |
+| Spreadsheets | `surfaces/spreadsheets/spreadsheets.tsx` | Served library and versioned Save through `state/spreadsheet-wiring-adapter.ts`; the mock library lives in `tests/support/fixtures/dashboard/spreadsheet-mock-model.ts` |
 | Intake | `surfaces/intake/intake.tsx` | Typed intake session and command client |
 | Analytics | `surfaces/activity/activity.tsx`, `activity-view.tsx` | AP1 population and selected browse through `state/activity-wiring-adapter.ts`; the harness supplies `useActivitySampleReport` |
 | Explorer | `surfaces/explorer/explorer.tsx`, `explorer-flow.tsx` | Local workflow definitions, choices, and source models |

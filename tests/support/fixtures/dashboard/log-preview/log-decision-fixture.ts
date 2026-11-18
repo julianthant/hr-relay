@@ -1,4 +1,4 @@
-import type { LogEntry } from "./log-feed-model.js";
+import type { LogEntry } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 
 /** Approved fictional examples; no command or transport authority. */
 export const logDecisionExamples = [

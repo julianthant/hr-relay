@@ -1,18 +1,15 @@
-import { systemClock, type Clock } from "../../../rules/time/clock.js";
-import { cellText, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
+import { systemClock, type Clock } from "../../../../src/rules/time/clock.js";
+import { cellText, type EditableWorkbook } from '../../../../src/rules/spreadsheets/workbook-io.js';
 import { MOCK_ROSTER_ROWS, ROSTER_FIELDS, ROSTER_SHEETS } from "./spreadsheet-mock-data.js";
-import { fieldForSpreadsheetHeader, spreadsheetHeaderKey } from '../../../models/fields/workbook-fields.js';
-import { spreadsheetEditorField } from './spreadsheet-fields-model.js';
-import type { SpreadsheetColumnBinding } from './spreadsheet-fields-model.js';
-import { setSpreadsheetHeaderRow } from './spreadsheet-column-import-model.js';
-import { WorkbookTypeSchema, type WorkbookType } from '../../../models/dashboard/workbooks.js';
+import { fieldForSpreadsheetHeader, spreadsheetHeaderKey } from '../../../../src/models/fields/workbook-fields.js';
+import { spreadsheetEditorField } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js';
+import { NOT_MAPPED, type RegisteredSpreadsheet, type SpreadsheetSheet } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js';
+import { setSpreadsheetHeaderRow } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
+import { WorkbookTypeSchema, type WorkbookType } from '../../../../src/models/dashboard/workbooks.js';
 
 export interface SpreadsheetType { readonly id: string; readonly name: string; readonly fields: readonly string[]; readonly definition?: WorkbookType }
-export interface SpreadsheetSheet { readonly name: string; readonly headerRow: number; readonly columns: readonly string[]; readonly mapping: readonly string[]; readonly bindings?: readonly SpreadsheetColumnBinding[] }
-export interface RegisteredSpreadsheet { readonly id: string; readonly name: string; readonly typeId: string; readonly sheets: readonly SpreadsheetSheet[]; readonly addedAt?: string; readonly rowCount?: number; readonly version?: number; readonly status?: "Attached" | "Generated" | "Updated" }
 export interface SpreadsheetMockState { readonly types: readonly SpreadsheetType[]; readonly files: readonly RegisteredSpreadsheet[] }
 export const WORKBOOK_ONLY = "Keep in workbook only";
-export const NOT_MAPPED = "Not used";
 const normalize = spreadsheetHeaderKey;
 export function initialSpreadsheetSheets(type: SpreadsheetType): SpreadsheetSheet[] {
   return ROSTER_SHEETS.map(sheet => ({ ...sheet, mapping: sheet.columns.map(column => {

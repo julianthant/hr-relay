@@ -15,7 +15,6 @@
     "src/backend/assistant/plugins/workflows/facts.json",
     "src/dashboard/assets/ocr/documents.json",
     "src/dashboard/kit/kit-page.tsx",
-    "src/dashboard/surfaces/run-detail/logs/log-decision-fixture.ts",
     "src/dashboard/surfaces/spreadsheets/design/sheets-v2-model.ts",
     "src/models/fields/registry.ts",
     "src/models/ocr/form-registry.ts",

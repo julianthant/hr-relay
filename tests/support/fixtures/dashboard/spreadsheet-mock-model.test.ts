@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
 import { editSpreadsheetCell,newEditableWorkbook } from "../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js";
-import { ROSTER_FIELDS } from "../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-data.js";
-import { putMockSpreadsheetType,addMockSpreadsheetType,renameMockSpreadsheetType,initialSpreadsheetSheets,NOT_MAPPED,registeredSpreadsheetWorkbook,registerLocalSpreadsheet,registerMockSpreadsheet,resetSpreadsheetMocks,retainSpreadsheetCopy,searchMockSpreadsheet,spreadsheetMappingErrors,WORKBOOK_ONLY,type SpreadsheetType } from "../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js";
+import { ROSTER_FIELDS } from "./spreadsheet-mock-data.js";
+import { putMockSpreadsheetType,addMockSpreadsheetType,renameMockSpreadsheetType,initialSpreadsheetSheets,registeredSpreadsheetWorkbook,registerLocalSpreadsheet,registerMockSpreadsheet,resetSpreadsheetMocks,retainSpreadsheetCopy,searchMockSpreadsheet,spreadsheetMappingErrors,WORKBOOK_ONLY,type SpreadsheetType } from "./spreadsheet-mock-model.js";
+import { NOT_MAPPED } from "../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 const roster: SpreadsheetType = { id: "roster", name: "Roster", fields: ROSTER_FIELDS };
 const file = () => registerMockSpreadsheet({ name: "Fictional roster.xlsx", typeId: "roster", sheets: initialSpreadsheetSheets(roster) });

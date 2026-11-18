@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import { continuedLookupTimeline } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-selected-fixture.js";
-import { selectedLogPresentation,selectedLogSample } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
+import { continuedLookupTimeline,selectedLogPresentation,selectedLogSample } from "./log-selected-fixture.js";
 import { FIXTURE_DAY_WIRE,FIXTURE_IDS } from "../../../../mocks/helpers/fixture-queue.js";
 describe("frontend presentation producers", () => {
   it("updates selected-run context without inventing action history or unmeasured durations", () => {

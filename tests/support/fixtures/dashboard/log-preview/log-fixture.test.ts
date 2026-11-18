@@ -2,7 +2,7 @@ import { default as assert_m0,default as assert_m1 } from "node:assert/strict";
 import { readFileSync as readFileSync_m0 } from "node:fs";
 import { describe as describe_m0,describe as describe_m1,it as it_m0,it as it_m1 } from "vitest";
 import { visualLogSteps as visualLogSteps_m0,visualLogSteps as visualLogSteps_m1 } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
-import { decisionScenarios as decisionScenarios_m1,previewScenarios as previewScenarios_m1,separationLogs as separationLogs_m0,separationLogs as separationLogs_m1 } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-fixture.js";
+import { decisionScenarios as decisionScenarios_m1,previewScenarios as previewScenarios_m1,separationLogs as separationLogs_m0,separationLogs as separationLogs_m1 } from "./log-fixture.js";
 
 
 {

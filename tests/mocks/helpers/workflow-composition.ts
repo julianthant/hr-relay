@@ -3,6 +3,7 @@ import { sessionsSampleHarness } from "../../support/fixtures/dashboard/sessions
 import { useActivitySampleReport } from "../../support/fixtures/dashboard/activity-sample.js";
 import { useNotificationsSampleInbox, resolveSampleRun } from "../../support/fixtures/dashboard/notifications-preview.js";
 import { useWorkspaceSearchData } from "../../support/fixtures/dashboard/search-sample.js";
+import { LogPreview } from "../../support/fixtures/dashboard/log-preview/log-preview.js";
 import { StatusMockHost } from "./status-mock/status-mock.js";
 import { statusMockHarness } from "./status-mock/status-mock-model.js";
 import type { RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start/run-start.js";
@@ -13,10 +14,10 @@ export function servedFixtureSources(workflows: readonly RunStartWorkflow[]): Wo
 }
 
 function harnessFor(): DashboardHarness {
-  return { ...statusMockHarness(StatusMockHost), useInbox: useNotificationsSampleInbox, useSearch: useWorkspaceSearchData, resolveRun: resolveSampleRun };
+  return { ...statusMockHarness(StatusMockHost), LogPreview, useInbox: useNotificationsSampleInbox, useSearch: useWorkspaceSearchData, resolveRun: resolveSampleRun };
 }
 
 export function MOCK_WORKFLOW_COMPOSITION(workflows: readonly RunStartWorkflow[]): WorkflowComposition {
   const sources = servedFixtureSources(workflows);
-  return Object.freeze({ sources, harness: harnessFor(), logs: "mock" as const, sessionsHarness: sessionsSampleHarness, useActivityReport: useActivitySampleReport, dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }) });
+  return Object.freeze({ sources, harness: harnessFor(), sessionsHarness: sessionsSampleHarness, useActivityReport: useActivitySampleReport, dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }) });
 }

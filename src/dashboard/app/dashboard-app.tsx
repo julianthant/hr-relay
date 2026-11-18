@@ -961,6 +961,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const setLaunchOpen = launch.setOpen;
   const onRailSelect = useCallback((id: string) => { selectWorkflow(id); }, [selectWorkflow]);
   const harness = workflowComposition.harness;
+  const LogPreview = harness?.LogPreview;
   const harnessSearch = (harness?.useSearch ?? noHarnessSearch)({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf });
   const searchTitles = useMemo(() => new Map(queueRows.map(row => [String(row.runId), row.title])), [queueRows]);
   const servedSearchData = useSearchWiring({ client, enabled: harnessSearch === undefined && route.view?.search === true,
@@ -1214,10 +1215,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
             {route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
-              <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}:${logsAttempt}`} onRetryLogs={() => setLogsAttempt(attempt => attempt + 1)} confirm={confirmLogDecision} onAction={runLogAction}
+              LogPreview !== undefined && (logRow.parent === null || workflowComposition.harness?.logsChildRows === true)
+              ? <LogPreview selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} onAction={runLogAction} />
+              : <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}:${logsAttempt}`} onRetryLogs={() => setLogsAttempt(attempt => attempt + 1)} confirm={confirmLogDecision} onAction={runLogAction}
                 reviewOpen={route.section === "review"} reviewFocus={route.view?.queueMember?.kind === "record" ? route.view.queueMember.record : undefined}
                 onOpenLinked={openRelatedRun} onReview={() => setRoute(current => ({ ...current, section: "review" }))} onLogs={() => setRoute(current => ({ ...current, section: "logs" }))}
-                initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} source={workflowComposition.logs && (logRow.parent === null || workflowComposition.harness?.logsChildRows === true) ? workflowComposition.logs : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
+                initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
             ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}
