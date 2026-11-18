@@ -63,6 +63,7 @@ type EvidenceEntryId,
 } from "../../../rules/identity/ids.js";
 import {
 idempotencyKeyDigestReference,
+redactValue,
 } from "../../../rules/redaction/redaction.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -299,6 +300,14 @@ export function deriveActionWriteProof(input: Readonly<{
 export function deriveRunEvidenceReceipt(
   input: ReceiptBuildInput,
   composition: ReceiptComposition = LATEST_RECEIPT_COMPOSITION,
+): ReturnType<typeof deriveReceipt> {
+  return deriveReceipt(input, composition);
+}
+
+function deriveReceipt(
+  input: ReceiptBuildInput,
+  composition: ReceiptComposition,
+  retained?: RunEvidenceReceipt,
 ): Readonly<{
   receipt: RunEvidenceReceipt;
   checks: readonly ReceiptBindingCheckResult[];
@@ -429,15 +438,24 @@ export function deriveRunEvidenceReceipt(
   const inputScope: EvidenceValueScope = { kind: "workflow-input", workflowId: descriptor.id };
   const inputFingerprint = canonicalInputFingerprint(run);
   const inputValues = new Map<string, unknown>();
+  const retainedSsnDigestIds = new Set(retained?.input.flatMap(fact =>
+    fact.field === "ssn" && fact.state === "satisfied"
+      && fact.value.classification === "direct-identifier" && fact.value.transform === "digest"
+      ? [fact.id] : []));
   for (const leaf of evidenceLeaves(run.input.parsed.value)) {
     inputValues.set(leaf.path, leaf.value);
+    const id = entryId("input", leaf.path);
+    const value = redactEvidenceLeaf(inputScope, leaf);
+    // Retained digests select the original transform. The digest still comes from run authority.
+    const retainSsnDigest = leaf.field === "ssn" && value.classification === "direct-identifier"
+      && value.transform === "drop" && retainedSsnDigestIds.has(id);
     inputFacts.push({
-      id: entryId("input", leaf.path),
+      id,
       field: leaf.field,
       mandatory: true,
       source: { kind: "input", inputFingerprint },
       state: "satisfied",
-      value: redactEvidenceLeaf(inputScope, leaf),
+      value: retainSsnDigest ? { key: leaf.path, ...redactValue("direct-identifier", "digest", leaf.value) } : value,
     });
   }
 
@@ -1064,7 +1082,7 @@ export function ensureRunEvidenceReceipt(
     ? undefined
     : RunEvidenceReceiptSchema.parse(existingRaw);
   const composition = LATEST_RECEIPT_COMPOSITION;
-  const { receipt: derived, checks } = deriveRunEvidenceReceipt({
+  const { receipt: derived, checks } = deriveReceipt({
     ...(store.schemaReader === undefined ? {} : { schemaReader: store.schemaReader }),
     descriptor,
     run,
@@ -1077,7 +1095,7 @@ export function ensureRunEvidenceReceipt(
     continuedGateResults: store.listContinuedGateResultsByRun?.(runId),
     ...(store.listDelegationsByRun === undefined ? {} : { delegations: store.listDelegationsByRun(runId) }),
     ...(store.authenticateSnapshotApproval === undefined ? {} : { authenticateSnapshotApproval: store.authenticateSnapshotApproval }),
-  }, composition);
+  }, composition, existing);
   if (existing !== undefined) {
     const rederivation = evaluateReceiptRederivation({
       run,

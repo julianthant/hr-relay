@@ -100,8 +100,10 @@ function ReviewRecordCard({ runId, subject, record, name, original, pages, readO
         <CardBody className="space-y-2 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <Checkbox className="min-w-0 flex-1" label={<><span className="sr-only">Include </span><span data-ocr-review-heading role="heading" aria-level={3} tabIndex={-1} className={cn("inline-block min-w-0 break-words rounded-sm text-body font-medium", dsFocus)}>{name}</span></>} checked={record.selected} disabled={disabled || selectionDisabled || readOnly || record.unknown} onCheckedChange={selected => onChange?.({ ...record, selected: selected === true })} />
+            {record.unconfirmed !== undefined && <Badge tone="warning">Unconfirmed</Badge>}
             {disposition && <Badge tone={disposition.tone}>{disposition.label}</Badge>}
           </div>
+          {record.unconfirmed !== undefined && <p role="status" className="m-0 text-caption text-ui-warning">Identity not confirmed: {record.unconfirmed}</p>}
           {record.warnings.length > 0 && <div role="status">{record.warnings.map(warning => <p key={warning} className="m-0 text-caption text-ui-warning">{warning}</p>)}</div>}
           {!readOnly && record.selected && approvalError !== undefined && <p role="status" className="m-0 text-caption text-ui-warning">{approvalError}</p>}
         </CardBody>
@@ -114,6 +116,7 @@ function ReviewRecordCard({ runId, subject, record, name, original, pages, readO
 export function RecordReview({ runId, subject, cards, readOnly, discarded, selectedCount: count, disabled, actionsDisabled, focusId: requestedFocus,
   approvalError, onEditField, onCommit, onChange, onApprove, onDiscard, onRestore }: RecordReviewProps) {
   const records = cards.map(card => card.record);
+  const blocked = cards.filter(card => card.record.selected && (card.record.blockers?.length ?? 0) > 0);
   const body = useRef<HTMLDivElement>(null);
   const focusId = useRef(records[0]?.id);
   const focusRecord = (id: string | undefined, selector: string, preventScroll = false) => {
@@ -165,7 +168,7 @@ export function RecordReview({ runId, subject, cards, readOnly, discarded, selec
         onFocus={() => { focusId.current = card.record.id; }} onFullscreen={() => setFullscreenId(card.record.id)} onEditField={(key, value) => onEditField?.(card.record.id, key, value)} onChange={onChange} />)}
     </div>
     {(onApprove || onDiscard) && !discarded && !fullscreen && <footer className="flex shrink-0 flex-wrap items-center gap-3 border-t border-ui-stroke bg-ui-table px-3 py-3">
-      {onApprove && <div className="min-w-0 flex-1 text-caption"><span className="text-ui-muted">{count} selected for approval</span>{approvalError && <p role="status" className="m-0 mt-1 text-ui-warning">{approvalError}</p>}</div>}
+      {onApprove && <div className="min-w-0 flex-1 text-caption"><span className="text-ui-muted">{count} selected for approval</span>{approvalError && <p role="status" className="m-0 mt-1 text-ui-warning">{approvalError}</p>}{blocked.length > 0 && <ul aria-label="Blocking records" className="m-0 mt-1 list-none space-y-0.5 p-0 text-ui-warning">{blocked.map(({ record, name }) => <li key={record.id}>Page {record.page} · {name}: {record.blockers?.join("; ")}</li>)}</ul>}</div>}
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {onDiscard && !discarded && <Button disabled={disabled || actionsDisabled} onClick={() => {
           onDiscard(); requestAnimationFrame(() => focusRecord(focusId.current, "[data-ocr-review-heading]", true));

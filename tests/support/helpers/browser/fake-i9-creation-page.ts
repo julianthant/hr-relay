@@ -4,18 +4,15 @@ import { I9SearchRowSchema, type I9SearchRow } from "../../../../src/models/ui/i
 
 export function fakeI9CreationPage(options: Readonly<{
   saveOutcome?: "route" | "ok" | "duplicate" | "error" | "unknown";
-  remoteOutcome?: "success" | "error" | "both";
   redirectProfileId?: string;
   readOverrides?: Readonly<Record<string, string>>;
   worksiteLabel?: string;
   rows?: readonly I9SearchRow[];
   restricted?: boolean;
-  summaryProfileId?: string;
   disabled?: boolean;
 }> = {}) {
   let url = "https://wwwe.i9complete.com";
-  let profileSaved = false, remoteCreated = false, profileOk = false, duplicate = false, profileError = false;
-  let remoteSuccess = false, remoteError = false;
+  let profileSaved = false, profileOk = false, duplicate = false, profileError = false;
   const actions: string[] = [];
   const fields = new Map(Object.entries({ "First Name (Given Name)*": "Fixture", "Last Name (Family Name)*": "Hire", "Middle Name": "",
     "U.S. Social Security Number": "", "Date of Birth": "01/14/2000", "Employee's Email Address": "hire@example.test", "Start Date*": "" }));
@@ -24,8 +21,8 @@ export function fakeI9CreationPage(options: Readonly<{
   const worksite = options.worksiteLabel ?? "6-000412 Example Worksite";
   let selectedWorksite = worksite;
   function control(kind: string, name = "") {
-    const visible = () => kind === "ok" ? profileOk || remoteSuccess : kind === "duplicate" ? duplicate
-      : kind === "profile-error" ? profileError : kind === "remote-success" ? remoteSuccess : kind === "remote-error" ? remoteError : true;
+    const visible = () => kind === "ok" ? profileOk : kind === "duplicate" ? duplicate
+      : kind === "profile-error" ? profileError : true;
     return {
       count: async () => kind === "option" && !name ? 0 : 1,
       waitFor: async () => {
@@ -61,13 +58,8 @@ export function fakeI9CreationPage(options: Readonly<{
           if (outcome === "duplicate") duplicate = true;
           if (outcome === "error") profileError = true;
         }
-        if (kind === "create-remote") {
-          remoteCreated = true;
-          remoteSuccess = options.remoteOutcome !== "error";
-          remoteError = options.remoteOutcome === "error" || options.remoteOutcome === "both";
-        }
         if (kind === "ok") {
-          profileOk = false; remoteSuccess = false;
+          profileOk = false;
           url = "https://wwwe.i9complete.com/employee/profile/900001";
         }
       },
@@ -87,7 +79,6 @@ export function fakeI9CreationPage(options: Readonly<{
     waitForURL: async (predicate: (current: URL) => boolean) => wait(predicate(new URL(url))),
     locator: (selector: string) => {
       if (selector === "#ui-datepicker-div") return control("datepicker");
-      if (selector === ".ErrorMessage:visible") return control("remote-error");
       throw new Error(`unexpected creation selector ${selector}`);
     },
     getByRole: (role: string, input: { name: string | RegExp }) => {
@@ -104,20 +95,14 @@ export function fakeI9CreationPage(options: Readonly<{
       if (role === "radio" && name === "Remote - Section 1 Only") return control("radio");
       throw new Error(`unexpected creation role ${role}:${String(name)}`);
     },
-    getByText: (pattern: RegExp) => {
-      if (!pattern.test("Remote Access Form I-9 email(s) has been sent")) throw new Error("unexpected remote success recipe");
-      return control("remote-success");
-    },
   } as unknown as Page;
   const reads = {
     searchEmployees: async () => {
       actions.push("read:search");
-      const rows = options.rows ?? (profileSaved || remoteCreated ? [I9SearchRowSchema.parse({ firstName: "Fixture", lastName: "Hire", employer: "Example",
-        worksite, profileId: "900001", i9Id: remoteCreated ? "900002" : "", nextAction: "Complete Section 1", startDate: fields.get("Start Date*"), createdOn: "09/01/2026" })] : []);
+      const rows = options.rows ?? (profileSaved ? [I9SearchRowSchema.parse({ firstName: "Fixture", lastName: "Hire", employer: "Example",
+        worksite, profileId: "900001", i9Id: "", nextAction: "Complete Section 1", startDate: "", createdOn: "09/01/2026" })] : []);
       return { rows: [...rows], restricted: options.restricted ?? false };
     },
-    readRecordSummary: async () => ({ i9Status: "unsigned" as const, signerName: "" as const,
-      profileId: options.summaryProfileId ?? "900001", i9Id: "900002" }),
   };
   return { page, reads, actions, fields, setUrl: (value: string) => { url = value; } };
 }
