@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { isDeepStrictEqual } from "node:util";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, it } from "vitest";
 import { createKualiRrssDocumentDriver } from "../../../../../src/backend/systems/kuali/driver/interpreter.js";
@@ -25,12 +26,56 @@ const TARGET = KualiFinalizationTargetSchema.parse({
 });
 const DOCUMENT_URL = `${ACTION_LIST_URL}/${TARGET.actionId}`;
 const GRAPHQL_URL = "https://ucsd.kualibuild.com/app/api/v0/graphql";
-const SAVE_QUERY = `mutation submitDocumentV2(
-  $documentId: ID!, $actionId: ID!, $data: JSON!, $status: String!, $timeZone: String
-) {
-  submitDocumentV2(documentId: $documentId, actionId: $actionId, data: $data, status: $status, timeZone: $timeZone) {
+const SAVE_QUERY = `mutation submitDocumentV2($documentId: ID!, $data: JSON, $actionId: ID!, $status: String, $comment: String, $timeZone: String, $overriddenFields: [String!]) {
+  submitDocumentV2(
+    id: $documentId
+    data: $data
+    actionId: $actionId
+    status: $status
+    comment: $comment
+    timeZone: $timeZone
+    overriddenFields: $overriddenFields
+  ) {
+    id
     status
-    validations
+    label
+    documentSetId
+    validations {
+      formKeys
+      label
+      message
+      __typename
+    }
+    query {
+      viewer {
+        id
+        actionCount
+        __typename
+      }
+      myDrafts(args: {skip: 0, limit: 1}) {
+        totalCount
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+}`;
+const ACTION_LIST_QUERY = `query OldActions($args: ActionConnectionInput!) {
+  actions: actionsConnection(args: $args) {
+    totalCount
+    edges {
+      node {
+        id
+        type
+        createdAt
+        display
+        details
+        handlerUrl
+        __typename
+      }
+      __typename
+    }
     __typename
   }
 }`;
@@ -78,12 +123,20 @@ function documentForm(transactionNumber = "", payrollTitle = ""): string {
     </script>`;
 }
 
-function saveVariables(): { actionId: string; status: string; data: Record<string, unknown>; documentId: string; timeZone: string } {
+function saveVariables(): {
+  actionId: string;
+  status: string;
+  data: Record<string, unknown>;
+  documentId: string;
+  timeZone: string;
+  overriddenFields: string[];
+} {
   return {
     actionId: TARGET.actionId,
     documentId: "fixture-document-id",
     status: "saved",
     timeZone: "America/Los_Angeles",
+    overriddenFields: [],
     data: {
       JPYGckVxcf: { id: "dept", label: TARGET.variables.department },
       "2FlOeR5pd9": TARGET.variables.payrollTitleCode,
@@ -109,8 +162,12 @@ async function stageSave(variables: ReturnType<typeof saveVariables>, query = SA
     body: documentForm(),
   }));
   await context.route(GRAPHQL_URL, async route => {
-    forwarded.push(route.request().postDataJSON());
-    await route.fulfill({ json: { data: { submitDocumentV2: { status: "Ok", validations: null } } } });
+    const received: unknown = route.request().postDataJSON();
+    forwarded.push(received);
+    const observedEnvelope = isDeepStrictEqual(received, payload);
+    await route.fulfill({ json: observedEnvelope
+      ? { data: { submitDocumentV2: { status: "Ok", validations: null } } }
+      : { errors: [{ message: "fixture received a different Save envelope" }] } });
   });
   const driver = createKualiRrssDocumentDriver(() => undefined, page, systemClock);
   await driver.stageSeparationFinalization(TARGET);
@@ -130,21 +187,123 @@ async function stageSave(variables: ReturnType<typeof saveVariables>, query = SA
   return { driver, forwarded, payload, commit: () => driver.commit(KUALI_RRSS_SAVE_BUTTON, capability) };
 }
 
+function actionListEdge(number: string, id: string) {
+  return {
+    node: {
+      id,
+      type: "Task",
+      createdAt: "1784000000000",
+      handlerUrl: `/action/${id}`,
+      display: { id: "RRSS Separation Request Form", documentTitle: number, type: "Task Form" },
+      details: { serialNumber: number, documentId: "fixture-document-id", stepLabel: "Fixture" },
+    },
+  };
+}
+
+async function setupActionList(options: {
+  initial?: string;
+  links?: string;
+  rowsUnchanged?: boolean;
+  failure?: boolean;
+  edges?: ReturnType<typeof actionListEdge>[];
+} = {}) {
+  const initial = options.initial ?? "";
+  const received: unknown[] = [];
+  await context.route(ACTION_LIST_URL, route => route.fulfill({
+    contentType: "text/html",
+    body: `
+      <input aria-label="Search" value="${initial}">
+      <button>GO</button>
+      <div id="rows">${options.links ?? ""}</div>
+      <script>
+        let previous = ${JSON.stringify(initial)};
+        document.querySelector("button").onclick = async () => {
+          const query = document.querySelector("input").value;
+          if (query === previous) return;
+          previous = query;
+          const response = await fetch(${JSON.stringify(GRAPHQL_URL)}, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              operationName: "OldActions",
+              variables: { args: { skip: 0, limit: 25, sort: ["-createdAt"], query } },
+              query: ${JSON.stringify(ACTION_LIST_QUERY)},
+            }),
+          });
+          if (!response.ok) {
+            document.querySelector("#neighbor")?.remove();
+            return;
+          }
+          const { data } = await response.json();
+          if (${String(options.rowsUnchanged ?? false)}) return;
+          document.querySelector("#rows").replaceChildren(...data.actions.edges.map(({ node }) => {
+            const link = document.createElement("a");
+            link.textContent = node.details.serialNumber;
+            link.href = ${JSON.stringify(`${ACTION_LIST_URL}/`)} + node.id;
+            return link;
+          }));
+        };
+      </script>`,
+  }));
+  await context.route(GRAPHQL_URL, async route => {
+    received.push(route.request().postDataJSON());
+    const edges = options.edges ?? [actionListEdge(DOCUMENT_NUMBER, TARGET.actionId)];
+    await route.fulfill({
+      status: options.failure ? 500 : 200,
+      json: options.failure ? { errors: [{ message: "fixture lookup failed" }] }
+        : { data: { actions: { totalCount: edges.length, edges } } },
+    });
+  });
+  return { driver: createKualiRrssDocumentDriver(() => undefined, page, systemClock), received };
+}
+
 describe("Kuali finalization safety", () => {
   it("resolves a filtered result by its exact document number", async () => {
-    await context.route(ACTION_LIST_URL, route => route.fulfill({
-      contentType: "text/html",
-      body: `
-        <input aria-label="Search">
-        <button onclick="document.querySelector('#match').hidden = false; document.querySelector('#neighbor').remove()">GO</button>
-        <a id="neighbor" href="/neighbor">654321</a>
-        <a id="match" href="${DOCUMENT_URL}" hidden>${DOCUMENT_NUMBER}</a>`,
-    }));
-    const driver = createKualiRrssDocumentDriver(() => undefined, page, systemClock);
-
+    const { driver } = await setupActionList({
+      links: '<a href="/neighbor">654321</a>',
+      edges: [actionListEdge(DOCUMENT_NUMBER, TARGET.actionId), actionListEdge("9123456", "abcdef0123456789abcdef01")],
+    });
     const observation = await driver.readActionListForDocument({ documentNumber: DOCUMENT_NUMBER });
     assert.deepEqual(observation.matchedLinks, [{ name: DOCUMENT_NUMBER, href: DOCUMENT_URL }]);
   });
+
+  it("accepts the same rendered row when a fresh filter verifies its action ID", async () => {
+    const { driver } = await setupActionList({
+      links: `<a href="${DOCUMENT_URL}">${DOCUMENT_NUMBER}</a>`, rowsUnchanged: true,
+    });
+    const observation = await driver.readActionListForDocument({ documentNumber: DOCUMENT_NUMBER });
+    assert.deepEqual(observation.matchedLinks, [{ name: DOCUMENT_NUMBER, href: DOCUMENT_URL }]);
+  }, 25_000);
+
+  it("gets a fresh filter when Kuali would skip the already selected search term", async () => {
+    const { driver, received } = await setupActionList({
+      initial: DOCUMENT_NUMBER, links: `<a href="${DOCUMENT_URL}">${DOCUMENT_NUMBER}</a>`, rowsUnchanged: true,
+    });
+    const observation = await driver.readActionListForDocument({ documentNumber: DOCUMENT_NUMBER });
+    assert.deepEqual(observation.matchedLinks, [{ name: DOCUMENT_NUMBER, href: DOCUMENT_URL }]);
+    assert.deepEqual(received, [DOCUMENT_NUMBER.slice(0, -1), DOCUMENT_NUMBER].map(query => ({
+      operationName: "OldActions",
+      variables: { args: { skip: 0, limit: 25, sort: ["-createdAt"], query } },
+      query: ACTION_LIST_QUERY,
+    })));
+  }, 25_000);
+
+  it("rejects stale exact links when a failed filter coincides with unrelated list churn", async () => {
+    const { driver } = await setupActionList({
+      links: `<a id="neighbor" href="/neighbor">654321</a><a href="${DOCUMENT_URL}">${DOCUMENT_NUMBER}</a>`,
+      failure: true,
+    });
+    await assert.rejects(driver.readActionListForDocument({ documentNumber: DOCUMENT_NUMBER }), /outcome is unknown/u);
+  });
+
+  it("allows a confirmed empty filter result even while an old exact row is still visible", async () => {
+    const { driver } = await setupActionList({
+      links: `<a href="${DOCUMENT_URL}">${DOCUMENT_NUMBER}</a>`, rowsUnchanged: true, edges: [],
+    });
+    const observation = await driver.readActionListForDocument({ documentNumber: DOCUMENT_NUMBER });
+    assert.deepEqual(observation.matchedLinks, []);
+    assert.deepEqual(observation.listedDocumentNumbers, []);
+  }, 25_000);
 
   it("reports an unknown lookup when GO leaves a stale list without a proved match", async () => {
     await context.route(ACTION_LIST_URL, route => route.fulfill({
@@ -241,7 +400,7 @@ describe("Kuali finalization safety", () => {
   it.each([
     ["a missing executable document", ""],
     ["a mislabeled mutation", SAVE_QUERY.replace("  submitDocumentV2(", "  advanceDocument(")],
-    ["an additional root mutation", SAVE_QUERY.replace("    __typename\n  }", "    __typename\n  }\n  advanceDocument { status }")],
+    ["an additional root mutation", `${SAVE_QUERY.slice(0, -1)}  advanceDocument { status }\n}`],
     ["a substituted action argument", SAVE_QUERY.replace("actionId: $actionId", "actionId: $documentId")],
   ])("blocks %s before forwarding", async (_description, query) => {
     const fixture = await stageSave(saveVariables(), query);

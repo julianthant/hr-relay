@@ -14,6 +14,7 @@ import {
   KUALI_ACTION_LIST_SEARCH_GO_BUTTON,
   KUALI_ACTION_LIST_SEARCH_INPUT,
   KualiActionListObservationSchema,
+  parseKualiActionHref,
 } from "../../../../models/ui/kuali-action-list.js";
 import type { KualiActionListLink, KualiActionListObservation } from "../../../../models/ui/kuali-action-list.js";
 import type { MutationCapability, UiActionProof } from "../../../../models/ui/driver.js";
@@ -178,7 +179,7 @@ function actionListUrl(): string {
   return `https://${KUALI_HOST}/build/space/${KUALI_RRSS_SPACE_ID}/actions`;
 }
 
-function actionListNumberLinks(page: Page): Locator {
+function actionListDocumentLinks(page: Page, documentNumber: string): Locator {
   const recipe = elementLocator(KUALI_ACTION_LIST_DOCUMENT_LINK);
   if (recipe.kind !== "role-anchored-value-name") {
     throw new Error(
@@ -186,7 +187,7 @@ function actionListNumberLinks(page: Page): Locator {
     );
   }
 
-  return page.getByRole(recipe.role, { name: BARE_DOCUMENT_NUMBER_NAME });
+  return page.getByRole(recipe.role, { name: new RegExp(`^\\s*${documentNumber}\\s*$`, "u") });
 }
 
 // Kuali redirects document routes to view; stale action IDs silently return to the Action List.
@@ -205,9 +206,6 @@ function assertExactKualiDocumentUrl(rawUrl: string, actionId: string): void {
 const DOCUMENT_NUMBER_HEADING_NAME = /^\s*\d{3,8}\s*$/u;
 
 
-const BARE_DOCUMENT_NUMBER_NAME = /^\s*\d+\s*$/u;
-
-
 const ACTION_LIST_FILTER_TIMEOUT_MS = 15_000;
 const ACTION_LIST_FILTER_POLL_MS = 100;
 
@@ -216,10 +214,6 @@ async function readActionListLinks(links: Locator): Promise<KualiActionListLink[
     name: (element.textContent ?? "").trim(),
     href: element.getAttribute("href"),
   })));
-}
-
-function actionListLinkSignature(links: readonly KualiActionListLink[]): string {
-  return JSON.stringify(links.map(({ name, href }) => JSON.stringify([name, href])).sort());
 }
 
 type DocumentNumberProbe =
@@ -281,11 +275,118 @@ async function readDocumentNumberHeading(assertCurrent: () => void, page: Page, 
   return probe.documentNumber;
 }
 
+function graphqlDocumentSignature(query: string): string {
+  return query.trim().replace(/\s+/gu, " ");
+}
+
+// The executable documents observed on Kuali's Action List and RRSS Save.
+const ACTION_LIST_QUERY_SIGNATURE = graphqlDocumentSignature(`query OldActions($args: ActionConnectionInput!) {
+  actions: actionsConnection(args: $args) {
+    totalCount
+    edges {
+      node {
+        id
+        type
+        createdAt
+        display
+        details
+        handlerUrl
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+}`);
+
+const SAVE_DOCUMENT_SIGNATURE = graphqlDocumentSignature(`mutation submitDocumentV2($documentId: ID!, $data: JSON, $actionId: ID!, $status: String, $comment: String, $timeZone: String, $overriddenFields: [String!]) {
+  submitDocumentV2(
+    id: $documentId
+    data: $data
+    actionId: $actionId
+    status: $status
+    comment: $comment
+    timeZone: $timeZone
+    overriddenFields: $overriddenFields
+  ) {
+    id
+    status
+    label
+    documentSetId
+    validations {
+      formKeys
+      label
+      message
+      __typename
+    }
+    query {
+      viewer {
+        id
+        actionCount
+        __typename
+      }
+      myDrafts(args: {skip: 0, limit: 1}) {
+        totalCount
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+}`);
+
+const ActionListRequestSchema = z.strictObject({
+  operationName: z.literal("OldActions"),
+  query: z.string().refine(query => graphqlDocumentSignature(query) === ACTION_LIST_QUERY_SIGNATURE),
+  variables: z.strictObject({
+    args: z.strictObject({
+      skip: z.literal(0),
+      limit: z.literal(25),
+      sort: z.tuple([z.literal("-createdAt")]),
+      query: z.string(),
+    }),
+  }),
+});
+
+const ActionListResultSchema = z.strictObject({
+  data: z.strictObject({
+    actions: z.strictObject({
+      totalCount: z.number().int().nonnegative(),
+      edges: z.array(z.strictObject({
+        node: z.strictObject({
+          id: z.string(),
+          type: z.string(),
+          createdAt: z.string(),
+          display: z.record(z.string(), JsonValueSchema),
+          details: z.record(z.string(), JsonValueSchema),
+          handlerUrl: z.string(),
+          __typename: z.string().optional(),
+        }),
+        __typename: z.string().optional(),
+      })),
+      __typename: z.string().optional(),
+    }),
+  }),
+});
+
+function isRequestedActionListFilter(request: Request, searchText: string): boolean {
+  if (request.method() !== "POST" || !isKualiGraphqlUrl(new URL(request.url()))) return false;
+  let body: unknown;
+  try {
+    body = request.postDataJSON();
+  } catch {
+    return false;
+  }
+  const parsed = ActionListRequestSchema.safeParse(body);
+  return parsed.success && parsed.data.variables.args.query === searchText;
+}
+
 const SubmitVariablesSchema = z.strictObject({
   actionId: KualiActionIdSchema,
   documentId: z.string().min(1),
   status: z.string(),
-  timeZone: z.string().min(1),
+  timeZone: z.literal("America/Los_Angeles"),
+  overriddenFields: z.tuple([]),
   data: z.record(z.string(), JsonValueSchema),
 });
 const SubmitRequestSchema = z.strictObject({
@@ -293,38 +394,6 @@ const SubmitRequestSchema = z.strictObject({
   query: z.string().min(1),
   variables: SubmitVariablesSchema,
 });
-const SUBMIT_VARIABLES = Object.keys(SubmitVariablesSchema.shape).sort();
-
-// Admit one named mutation with one root, explicit variable bindings and unaliased result fields.
-function isSingleSaveOperation(query: string): boolean {
-  const shape = /^\s*mutation\s+submitDocumentV2\s*\((?<definitions>[^()]*)\)\s*\{\s*submitDocumentV2\s*\((?<arguments>[^()]*)\)\s*\{(?<selection>[_A-Za-z0-9{},\s]+)\}\s*\}\s*$/u;
-  const groups = shape.exec(query)?.groups;
-  if (groups?.definitions === undefined || groups.arguments === undefined || groups.selection === undefined) return false;
-
-  const definitions = /\$([_A-Za-z]\w*)\s*:\s*[_A-Za-z]\w*\s*!?/gu;
-  const bindings = /([_A-Za-z]\w*)\s*:\s*\$\1\b/gu;
-  const definitionNames = Array.from(groups.definitions.matchAll(definitions), match => match[1]).sort();
-  const bindingNames = Array.from(groups.arguments.matchAll(bindings), match => match[1]).sort();
-  if (!/^[\s,]*$/u.test(groups.definitions.replace(definitions, ""))
-    || !/^[\s,]*$/u.test(groups.arguments.replace(bindings, ""))
-    || JSON.stringify(definitionNames) !== JSON.stringify(SUBMIT_VARIABLES)
-    || JSON.stringify(bindingNames) !== JSON.stringify(SUBMIT_VARIABLES)) return false;
-
-  const resultFields = new Set<string>();
-  let depth = 0;
-  for (const token of groups.selection.match(/[_A-Za-z]\w*|[{}]/gu) ?? []) {
-    if (token === "{") {
-      depth += 1;
-    } else if (token === "}") {
-      if (depth === 0) return false;
-      depth -= 1;
-    } else if (depth === 0) {
-      resultFields.add(token);
-    }
-  }
-  return depth === 0 && resultFields.has("status") && resultFields.has("validations");
-}
-
 // A successful mutation body is not landing proof; name only fields that can show explicit refusal.
 const SubmitResponseSchema = z.object({
   errors: z.array(z.object({ message: z.string() }).loose()).optional(),
@@ -441,7 +510,7 @@ function validatedStagedSave(request: Request, expected: StagedExpectation): str
       `Kuali Save on document ${expected.documentNumber} issued a request outside the known save shape`,
     );
   }
-  if (!isSingleSaveOperation(submit.data.query)) {
+  if (graphqlDocumentSignature(submit.data.query) !== SAVE_DOCUMENT_SIGNATURE) {
     throw new Error(`Kuali Save on document ${expected.documentNumber} did not carry the single supported Save operation`);
   }
   const { actionId, data, status } = submit.data.variables;
@@ -603,6 +672,39 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
 
 
 
+  async function submitActionListFilter(search: Locator, go: Locator, searchText: string) {
+    assertCurrent();
+    await search.fill(searchText, { timeout: FIELD_TIMEOUT_MS });
+    assertCurrent();
+    recordBrowserAction("typed", KUALI_ACTION_LIST_SEARCH_INPUT, searchText);
+
+    let submitted: Request | undefined;
+    const observeRequest = (request: Request): void => {
+      if (submitted === undefined && isRequestedActionListFilter(request, searchText)) submitted = request;
+    };
+    page.on("request", observeRequest);
+    try {
+      const settled = page.waitForResponse(response => response.request() === submitted,
+        { timeout: ACTION_LIST_FILTER_TIMEOUT_MS });
+      void settled.catch(() => { /* Clicking can fail before the response is awaited. */ });
+      assertCurrent();
+      await go.click({ timeout: FIELD_TIMEOUT_MS });
+      assertCurrent();
+      recordBrowserAction("clicked", KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
+
+      const response = await settled;
+      assertCurrent();
+      if (!response.ok()) {
+        throw new Error(`OldActions returned HTTP ${String(response.status())}`);
+      }
+      const body: unknown = await response.json();
+      assertCurrent();
+      return ActionListResultSchema.parse(body).data.actions;
+    } finally {
+      page.off("request", observeRequest);
+    }
+  }
+
   async function readActionListForDocument(input: Readonly<{
     documentNumber: string;
   }>): Promise<KualiActionListObservation> {
@@ -623,51 +725,75 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
     const search = await exactlyOne(assertCurrent, page, KUALI_ACTION_LIST_SEARCH_INPUT);
     assertCurrent();
     const go = await exactlyOne(assertCurrent, page, KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
-    assertCurrent();
-    await search.fill(documentNumber, { timeout: FIELD_TIMEOUT_MS });
-    assertCurrent();
-    recordBrowserAction("typed", KUALI_ACTION_LIST_SEARCH_INPUT, documentNumber);
-    const links = actionListNumberLinks(page);
-    const before = actionListLinkSignature(await readActionListLinks(links));
-    assertCurrent();
-    await go.click({ timeout: FIELD_TIMEOUT_MS });
-    assertCurrent();
-    recordBrowserAction("clicked", KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
-
-    const deadline = clock.monotonicMs() + ACTION_LIST_FILTER_TIMEOUT_MS;
     try {
-      // The search is substring-based. A retained result set is not evidence that GO completed.
-      do {
-        assertCurrent();
-        const results = await readActionListLinks(links);
-        assertCurrent();
-        const matchedLinks = results.filter(({ name }) => name === documentNumber);
-        if (matchedLinks.length > 0 && results.every(({ name }) => name.includes(documentNumber))
-          && actionListLinkSignature(results) !== before) {
-          const observation = KualiActionListObservationSchema.parse({
-            pageStateId: KUALI_ACTION_LIST_READY,
-            space: KUALI_RRSS_SPACE_ID,
-            requestedDocumentNumber: documentNumber,
-            matchedLinks,
-            listedDocumentNumbers: results.map(({ name }) => name),
-            observedAt: now(),
-          });
-          matchedActionListNumber = documentNumber;
-          return observation;
+      assertCurrent();
+      const initialSearch = await search.inputValue({ timeout: FIELD_TIMEOUT_MS });
+      assertCurrent();
+      // Kuali sends no request if GO repeats the selected search. Change it with a read-only prefix query first.
+      if (initialSearch === documentNumber) {
+        await submitActionListFilter(search, go, documentNumber.slice(0, -1));
+      }
+
+      const deadline = clock.monotonicMs() + ACTION_LIST_FILTER_TIMEOUT_MS;
+      const result = await submitActionListFilter(search, go, documentNumber);
+      assertCurrent();
+      if (result.totalCount !== result.edges.length) {
+        throw new Error("OldActions did not return the complete filtered result set");
+      }
+      const listedDocumentNumbers: string[] = [];
+      const expectedActionIds = new Set<string>();
+      for (const { node } of result.edges) {
+        const serial = KualiDocumentNumberSchema.parse(node.details["serialNumber"]);
+        listedDocumentNumbers.push(serial);
+        if (serial !== documentNumber) continue;
+        const actionId = KualiActionIdSchema.parse(node.id);
+        if (node.handlerUrl !== `/action/${actionId}`) {
+          throw new Error("OldActions returned inconsistent action ID and handler URL");
         }
-        await delay(ACTION_LIST_FILTER_POLL_MS);
-      } while (clock.monotonicMs() < deadline);
+        expectedActionIds.add(actionId);
+      }
+
+      let matchedLinks: KualiActionListLink[] = [];
+      if (expectedActionIds.size > 0) {
+        const links = actionListDocumentLinks(page, documentNumber);
+        for (;;) {
+          assertCurrent();
+          const observed = await readActionListLinks(links);
+          assertCurrent();
+          const actionIds = new Set(observed.map(({ name, href }) => {
+            if (name !== documentNumber || href === null || !URL.canParse(href, actionListUrl())
+              || new URL(href, actionListUrl()).origin !== `https://${KUALI_HOST}`) return undefined;
+            return parseKualiActionHref(href, KUALI_RRSS_SPACE_ID);
+          }));
+          if (actionIds.size === expectedActionIds.size
+            && [...expectedActionIds].every(actionId => actionIds.has(actionId))) {
+            matchedLinks = observed;
+            break;
+          }
+          if (clock.monotonicMs() >= deadline) {
+            throw new Error("Rendered Action List links did not match the answered OldActions filter");
+          }
+          await delay(ACTION_LIST_FILTER_POLL_MS);
+        }
+      }
+      assertCurrent();
+      const observation = KualiActionListObservationSchema.parse({
+        pageStateId: KUALI_ACTION_LIST_READY,
+        space: KUALI_RRSS_SPACE_ID,
+        requestedDocumentNumber: documentNumber,
+        matchedLinks,
+        listedDocumentNumbers,
+        observedAt: now(),
+      });
+      if (matchedLinks.length > 0) matchedActionListNumber = documentNumber;
+      return observation;
     } catch (error) {
       assertCurrent();
       throw new Error(
-        `Kuali Action List lookup for document ${documentNumber} could not prove a filtered match; the outcome is unknown`,
+        `Kuali Action List lookup for document ${documentNumber} could not prove the filtered result; the outcome is unknown`,
         { cause: error },
       );
     }
-    assertCurrent();
-    throw new Error(
-      `Kuali Action List lookup for document ${documentNumber} did not render a fresh filtered match; the outcome is unknown`,
-    );
   }
 
   async function openDocument(input: Readonly<{
