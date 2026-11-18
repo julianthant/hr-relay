@@ -28,7 +28,7 @@ const defaultCount = (workflow: RunStartWorkflow) => workflow.steps.filter(step 
 async function open(panel: RunStartWorkflow, remembered?: RunStartWorkflow): Promise<void> {
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   const workflows = [personLookup, onboarding];
-  const dialog = createElement(RunStartDialog, { open: true, onOpenChange() {}, catalog: buildWorkflowCatalog(workflows, false, servedFixtureSources(workflows)),
+  const dialog = createElement(RunStartDialog, { open: true, onOpenChange() {}, catalog: buildWorkflowCatalog(workflows, servedFixtureSources(workflows)),
     panelWorkflowId: panel.workflowId, actorId: h.ACTOR_ID, onApplied() {}, onOpenIntake() {} });
   await act(async () => root?.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client: h.stubClient({}),
     children: remembered === undefined ? dialog : createElement(ViewNavigationContext.Provider, { value: { view: { launchServed: remembered.workflowId }, start: true, setStart() {}, update() {} }, children: dialog }) }) })));

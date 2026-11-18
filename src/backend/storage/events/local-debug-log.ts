@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, lstatSync, unlinkSync, openSync, closeSync, fstatSync, readSync, constants } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, openSync, closeSync, readSync, constants } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -9,15 +9,24 @@ import { PROFILE_SELECTION_CHANGE_CALLERS, ProfileSelectionChangeSchema, type Pr
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { developmentDebugMirrorEnabled } from "../../../models/config/secrets.js";
 import { diagnosticRequestRoute } from "../../../models/events/debug-report.js";
+import { descriptorStatus, fileChanged, fileModified, fileStatus, privateFileNumber } from "../file-identity.js";
+import { fsyncPath, privatePathRejects, replacePrivateFile } from "../private-path.js";
 
 const MAX_BYTES = 5 * 1024 * 1024;
-function faultPath(root: string): string {
-  const directory = join(root, "logs");
-  const path = join(directory, "boot.jsonl");
-  for (const target of [directory, path]) {
-    if (lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error("boot-log-path-unsafe");
+const BOOT_LOG = "boot.jsonl";
+function bootLogPaths(root: string) {
+  const directory = join(root, "logs"), current = join(directory, BOOT_LOG);
+  for (const target of [directory, current]) {
+    if (fileStatus(target, true)?.isSymbolicLink()) throw new Error("boot-log-path-unsafe");
   }
-  return path;
+  return { directory, current };
+}
+
+function bootLogSegments(directory: string): string[] {
+  if (fileStatus(directory, true) === undefined) return [];
+  return readdirSync(directory)
+    .filter(name => /^boot\.jsonl\.[1-9]\d*$/u.test(name))
+    .sort((left, right) => left.length - right.length || left.localeCompare(right));
 }
 
 export function mirrorDebugEvent(record: Pick<TimelineAppend, "recordedAt" | "scope" | "workflow"> & { event: DebugEvent },
@@ -33,7 +42,7 @@ export function mirrorDebugEvent(record: Pick<TimelineAppend, "recordedAt" | "sc
 }
 
 export function appendLocalDebug(input: { stateRoot: string; build: string; now: Date; event: Omit<DebugEvent, "build" | "pid" | "correlationId"> }) {
-  const path = faultPath(input.stateRoot);
+  const { directory, current: path } = bootLogPaths(input.stateRoot);
   const eventId = randomUUID();
   const event = DebugEventSchema.parse({ ...input.event, correlationId: eventId, build: input.build, pid: process.pid });
   const record = TimelineAppendSchema.parse({ schemaVersion: 1, eventId,
@@ -41,10 +50,25 @@ export function appendLocalDebug(input: { stateRoot: string; build: string; now:
     occurredAt: input.now.toISOString(), recordedAt: input.now.toISOString(), retentionDate: localDatePart(input.now),
     payload: { kind: "debug", event }, source: { kind: "native" } });
   const line = `${canonicalJsonStringify(record)}\n`;
-  const size = existsSync(path) ? lstatSync(path).size : 0;
-  if (size + Buffer.byteLength(line) > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
-  mkdirSync(join(input.stateRoot, "logs"), { recursive: true, mode: 0o700 });
+  const current = fileStatus(path, true), lineBytes = Buffer.byteLength(line);
+  if (lineBytes > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
+  const rotate = current !== undefined && privateFileNumber(current.size) + lineBytes > MAX_BYTES;
+  if (rotate) {
+    // Profile-local maintenance owns one spool path. Selection writes only to the machine spool.
+    if (event.category !== "session" || current.size > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
+    const logs = fileStatus(directory);
+    if (!logs.isDirectory() || privatePathRejects(directory, logs, "private")) throw new Error("boot-log-path-unsafe");
+    if (!current.isFile() || privateFileNumber(current.nlink) !== 1 || privatePathRejects(path, current, "private")) throw new Error("boot-log-path-unsafe");
+    const last = bootLogSegments(directory).at(-1);
+    const generation = BigInt(last?.slice(BOOT_LOG.length + 1) ?? "0") + 1n;
+    const archive = `${path}.${generation}`;
+    if (fileStatus(archive, true) !== undefined) throw new Error("boot-log-path-unsafe");
+    replacePrivateFile(path, archive);
+    fsyncPath(directory);
+  }
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
   appendFileSync(path, line, { mode: 0o600, flush: true });
+  if (rotate) fsyncPath(directory);
   mirrorDebugEvent({ ...record, event });
 }
 
@@ -83,47 +107,65 @@ function parseLocalDebugLog(content: string) {
   });
 }
 
-export function readLocalDebugLog(stateRoot: string) {
-  const path = faultPath(stateRoot);
-  if (!existsSync(path)) return { state: "absent" as const, reason: "boot-log-missing" as const };
-  const directory = lstatSync(join(stateRoot, "logs"));
-  if (!directory.isDirectory() || directory.uid !== process.getuid?.() || (directory.mode & 0o077) !== 0) throw new Error("boot-log-path-unsafe");
-  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  const identity = (stats: ReturnType<typeof fstatSync>) => [stats.dev, stats.ino, stats.size, stats.mtimeMs, stats.ctimeMs].join(":");
+const fileIdentity = (stats: ReturnType<typeof descriptorStatus>) => [stats.dev, stats.ino, stats.size, fileModified(stats), fileChanged(stats)].join(":");
+
+function readLocalDebugFile(path: string) {
+  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
-    const before = fstatSync(descriptor);
-    if (!before.isFile() || before.nlink !== 1 || before.uid !== process.getuid?.() || (before.mode & 0o077) !== 0) throw new Error("boot-log-path-unsafe");
+    const before = descriptorStatus(descriptor);
+    if (!before.isFile() || privateFileNumber(before.nlink) !== 1 || privatePathRejects(path, before, "private")) throw new Error("boot-log-path-unsafe");
     if (before.size > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
-    const bytes = Buffer.alloc(before.size + 1);
+    const size = privateFileNumber(before.size);
+    const bytes = Buffer.alloc(size + 1);
     let count = 0;
     while (count < bytes.length) {
       const read = readSync(descriptor, bytes, count, bytes.length - count, count);
       if (read === 0) break;
       count += read;
     }
-    if (count !== before.size) throw new Error("boot-log-concurrent-write");
+    if (count !== size) throw new Error("boot-log-concurrent-write");
     let content: string;
     try { content = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, count)); }
     catch { throw new Error("boot-log-invalid"); }
     const records = parseLocalDebugLog(content);
-    if (identity(before) !== identity(fstatSync(descriptor)) || identity(before) !== identity(lstatSync(path))
-      || identity(directory) !== identity(lstatSync(join(stateRoot, "logs")))) throw new Error("boot-log-concurrent-write");
-    return { state: "present" as const, records };
+    if (fileIdentity(before) !== fileIdentity(descriptorStatus(descriptor)) || fileIdentity(before) !== fileIdentity(fileStatus(path))) throw new Error("boot-log-concurrent-write");
+    return records;
   } finally { closeSync(descriptor); }
 }
 
+export function readLocalDebugLog(stateRoot: string) {
+  const { current, directory } = bootLogPaths(stateRoot);
+  const before = fileStatus(directory, true);
+  const files = bootLogSegments(directory).map(name => join(directory, name));
+  if (existsSync(current)) files.push(current);
+  if (files.length === 0) return { state: "absent" as const, reason: "boot-log-missing" as const };
+  if (before === undefined || !before.isDirectory() || privatePathRejects(directory, before, "private")) throw new Error("boot-log-path-unsafe");
+  const records = files.flatMap(readLocalDebugFile);
+  if (fileIdentity(before) !== fileIdentity(fileStatus(directory))) throw new Error("boot-log-concurrent-write");
+  return { state: "present" as const, records };
+}
+
 export function importLocalDebugLog(stateRoot: string, repository: TimelineRepository): number {
-  const path = faultPath(stateRoot);
-  if (!existsSync(path)) return 0;
-  if (lstatSync(path).size > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
-  const content = readFileSync(path, "utf8");
-  const records = parseLocalDebugLog(content);
+  const { current, directory } = bootLogPaths(stateRoot);
+  const paths = () => [...bootLogSegments(directory).map(name => join(directory, name)), current];
+  const read = (path: string) => {
+    const file = fileStatus(path, true);
+    if (file === undefined) return undefined;
+    if (!file.isFile() || (path !== current && (privateFileNumber(file.nlink) !== 1 || privatePathRejects(path, file, "private")))) throw new Error("boot-log-path-unsafe");
+    if (file.size > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
+    return readFileSync(path, "utf8");
+  };
+  const files = paths().map(path => ({ path, content: read(path) }));
+  const records = files.flatMap(file => file.content === undefined ? [] : parseLocalDebugLog(file.content));
   for (const record of records) {
     repository.append(record);
     const stored = repository.get(record.eventId);
     if (stored === undefined || timelineAppendContent(stored) !== canonicalJsonStringify(record)) throw new Error("boot-log-import-verification-failed");
   }
-  if (readFileSync(path, "utf8") !== content) throw new Error("boot-log-import-concurrent-write");
-  unlinkSync(path);
+  const remaining = paths();
+  if (remaining.length !== files.length || files.some((file, index) => remaining[index] !== file.path || read(file.path) !== file.content)) {
+    throw new Error("boot-log-import-concurrent-write");
+  }
+  for (const file of files) if (file.content !== undefined) unlinkSync(file.path);
   return records.length;
 }
