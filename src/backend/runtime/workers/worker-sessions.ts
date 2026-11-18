@@ -698,7 +698,7 @@ export class WorkerSessionManager {
           throw new TaskError(screenshotOwner.taskId, "BROWSER_SCREENSHOT_CAPTURE_FAILED", ERROR_CATALOG.BROWSER_SCREENSHOT_CAPTURE_FAILED.text, { cause: failure });
         }
       };
-      let operationCompleted = false;
+      let diagnosticsActive = false;
       const screenshotFailures: unknown[] = [];
       const poisonCloseFailures: unknown[] = [];
       try {
@@ -706,11 +706,12 @@ export class WorkerSessionManager {
         this.#apply(need.system, { type: "lease" });
         this.#observe(need.system, resource);
         resource.beginDiagnostics?.();
+        diagnosticsActive = true;
         let result: Result;
         try { result = await withBrowserActionSession(resource.sessionId, () => use(resource.driver, captureScreenshot)); }
         finally { leaseActive = false; }
         resource.endDiagnostics?.();
-        operationCompleted = true;
+        diagnosticsActive = false;
         if (screenshotOwner === undefined) await withBrowserActionSession(resource.sessionId, () => this.#captureLeaseScreenshot(resource, { kind: "lease-end", outcome: "succeeded" }, configFingerprint));
         await resource.reset({ signal });
         this.#observeAndApply(need.system, resource, { type: "reset" });
@@ -721,9 +722,9 @@ export class WorkerSessionManager {
         });
         return result;
       } catch (leaseError) {
-        resource.endDiagnostics?.();
         const failures: unknown[] = [leaseError];
-        if (!operationCompleted) {
+        if (diagnosticsActive) {
+          resource.endDiagnostics?.();
           try {
             await withBrowserActionSession(resource.sessionId, () => this.#captureLeaseScreenshot(resource, { kind: "lease-end", outcome: "failed" }, configFingerprint, undefined, screenshotOwner?.sampleLabels));
           } catch (captureError) {

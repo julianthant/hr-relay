@@ -110,6 +110,7 @@ describe("worker execution session identity", () => {
     let calls = 0;
     try {
       await manager.withDriver(need, "prod", signal, async () => undefined);
+      const priorScreenshots = harness.screenshots();
       const lease = manager.withDriver(need, "prod", cancel.signal, async () => { calls++; });
       if (closure === "proved") {
         await assert.rejects(lease, error => error === reason);
@@ -120,6 +121,7 @@ describe("worker execution session identity", () => {
         await assert.rejects(manager.withDriver(need, "prod", signal, async () => { calls++; }), /unresolved failed-close proof/);
       }
       assert.equal(calls, 0);
+      assert.equal(harness.screenshots(), priorScreenshots, "a cancelled lease must not capture the prior lease's diagnostics");
       assert.deepEqual(closeReasons, ["poisoned"]);
       assert.equal(harness.opens(), 1);
     } finally {
