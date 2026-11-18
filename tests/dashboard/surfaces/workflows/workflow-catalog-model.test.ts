@@ -51,6 +51,16 @@ describe("Explorer over the served catalog", () => {
   });
 });
 
+describe("Explorer and hidden workflows", () => {
+  it("offers no workflow the sources policy hides, CRM Document Download included", () => {
+    expect(WORKFLOW_SOURCES["crm-doc-download"]).toBe("hidden");
+    const hidden = { ...served[0], workflowId: "crm-doc-download", label: "CRM Document Download" };
+    const entries = buildWorkflowCatalog([hidden, ...served], { ...servedFixtureSources(served), "crm-doc-download": "hidden" });
+    expect(explorerWorkflowOptions(entries).some(option => option.id === "crm-doc-download")).toBe(false);
+    expect(explorerWorkflowOptions(entries).length).toBe(served.length);
+  });
+});
+
 describe("frontend workflow catalog", () => {
   it("offers a served saved-row Onboarding declaration unless an explicit restriction applies", () => {
     const onboarding = served.find(workflow => workflow.workflowId === "onboarding");
