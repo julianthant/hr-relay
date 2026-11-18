@@ -189,7 +189,12 @@ function producerOf(
   const nodeId = event.t === "data.observed" ? event.nodeId : event.node;
   const matches = (descriptor.dataOrigins ?? []).filter((origin) =>
     origin.nodeId === nodeId && origin.taskId === event.taskId);
-  if (matches.length === 0 && historical) return { nodeId, step: nodeId, taskId: event.taskId, presentationUnavailable: true };
+  if (matches.length === 0 && historical) {
+    if (!event.spanPath.startsWith(`${event.traceId}/`) || nodeIdOfTaskSpanPath(event.spanPath) !== nodeId) {
+      throw new LogIdentityRefusedError(`node ${nodeId} disagrees with the recorded span at ${line.file.path}:${String(line.lineNumber)}`);
+    }
+    return { nodeId, step: nodeId, taskId: event.taskId, presentationUnavailable: true };
+  }
   if (matches.length !== 1) {
     throw new Error(
       `spans line ${line.file.path}:${String(line.lineNumber)} cannot resolve one system for ${event.t} node ${nodeId} `

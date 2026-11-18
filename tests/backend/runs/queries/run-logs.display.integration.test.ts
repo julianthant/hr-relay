@@ -35,7 +35,7 @@ it("projects a declaration's typed scalar text without changing raw values, miss
   });
 });
 
-it.each(["display case", "producer"])("keeps Logs readable when a retained observation's %s was removed", async removed => {
+it.each(["display case", "producer", "producer with conflicting span"] as const)("reads retained observations only with their recorded identity (%s)", async removed => {
   const w = await world();
   const earlier = personLookupModule.descriptor;
   queuedEventOf(w, { seed: 87, descriptor: earlier });
@@ -43,15 +43,16 @@ it.each(["display case", "producer"])("keeps Logs readable when a retained obser
   assert.ok(run);
   const at = w.clock.now().toISOString();
   const taskId = "workflow:person-lookup/read-active-status";
+  const spanNode = removed === "producer with conflicting span" ? "searching" : "active-status";
   w.writer.emit({ t: "data.observed", ts: at, observedAt: at, workflow: run.envelope.workflow,
     runId: run.envelope.runId, attempt: 1, traceId: run.envelope.traceId,
-    spanPath: `${run.envelope.traceId}/active-status#1`, nodeId: "active-status", taskId,
+    spanPath: `${run.envelope.traceId}/${spanNode}#1`, nodeId: "active-status", taskId,
     points: [{ direction: "read", field: "status", values: [{ key: "status", state: "allowed",
       classification: "safe-diagnostic", transform: "allow", value: "retired-status" }] }] });
   w.projection.ingestFromTimeline();
   const dataOrigins = dataOriginViewsOf(personLookupModule).flatMap(origin => {
     if (origin.taskId !== taskId) return [origin];
-    if (removed === "producer") return [];
+    if (removed !== "display case") return [];
     return [{ ...origin, operatorFields: [{ label: "Status", kind: "output" as const, fieldPath: "status",
       display: { cases: [{ value: "active", text: "Active" }] } }] }];
   });
@@ -60,6 +61,12 @@ it.each(["display case", "producer"])("keeps Logs readable when a retained obser
       version: earlier.version + 1, contractFingerprint: earlier.contractFingerprint, dataOrigins,
     }) } };
 
+  if (removed === "producer with conflicting span") {
+    const reason = /node active-status disagrees with the recorded span/u;
+    assert.throws(() => buildRunLogsSection(deps, run.envelope.runId, undefined, run), reason);
+    assert.throws(() => runDataObservationsForRun(deps, run, run.envelope.runId), reason);
+    return;
+  }
   const section = buildRunLogsSection(deps, run.envelope.runId, undefined, run);
   assert.ok(section.section === "logs");
   const observation = section.payload.rows?.find(row => row.kind === "observed");
