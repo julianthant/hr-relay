@@ -73,19 +73,19 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
     const id = z.object({id:z.string()}).parse(child).id;
     if (phase === "execution" || !cascade.has(id)) throw new Error("run-deletion-children-remain");
   }
-  const retained: unknown[] = [];
   const currentCascade = new Map<string, PredecessorRunRecord>();
-  for (const raw of database.prepare("SELECT * FROM runs").all()) {
-    const peer = readRun(raw);
-    if (!cascade.has(peer.envelope.runId)) retained.push(peer);
-    else {
-      if (peer.lifecycle.state !== "terminal") throw new Error("run-deletion-cascade-nonterminal");
-      currentCascade.set(peer.envelope.runId,peer);
+  const cascadeRun = database.prepare("SELECT * FROM runs WHERE id=?");
+  const cascadeTombstone = database.prepare("SELECT * FROM deleted_runs WHERE run_id=?");
+  for (const id of cascade) {
+    const raw = cascadeRun.get(id);
+    if (raw === undefined) {
+      const tombstone = cascadeTombstone.get(id);
+      if (tombstone === undefined || deletedRunFromRow(tombstone).receipt.commandId !== request.commandId) throw new Error("run-deletion-cascade-member-missing");
+      continue;
     }
-  }
-  for (const id of cascade) if (!currentCascade.has(id)) {
-    const raw = database.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(id);
-    if (raw === undefined || deletedRunFromRow(raw).receipt.commandId !== request.commandId) throw new Error("run-deletion-cascade-member-missing");
+    const peer = readRun(raw);
+    if (peer.lifecycle.state !== "terminal") throw new Error("run-deletion-cascade-nonterminal");
+    currentCascade.set(id,peer);
   }
   const commandRaw = database.prepare("SELECT * FROM commands WHERE id=?").get(request.commandId);
   if (commandRaw === undefined) throw new Error("run-deletion-command-missing");
@@ -93,7 +93,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
   const history = "kind" in command && command.kind === "run-lifecycle" && command.operation === "clear-history";
   if (request.origin !== (history ? "storage" : "queue")) throw new Error("run-deletion-command-origin-mismatch");
   if (history) {
-    if (retained.length !== 0) throw new Error("run-history-cascade-incomplete");
+    if (database.prepare("SELECT 1 FROM runs LIMIT 1 OFFSET ?").get(currentCascade.size) !== undefined) throw new Error("run-history-cascade-incomplete");
   } else {
     const roots = [...currentCascade.values()].filter(member=>member.envelope.parent === undefined || !cascade.has(member.envelope.parent.runId));
     if (roots.length !== 1) throw new Error("run-deletion-cascade-disconnected");
@@ -104,46 +104,53 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
       && z.object({request:z.object({runId:z.string()})}).safeParse(command).data?.request.runId === root.envelope.runId;
     if (!publicDelete && !internalDelete) throw new Error("run-deletion-command-target-mismatch");
   }
-  for (const raw of database.prepare("SELECT * FROM timeline_events").all()) {
+  const checkpoints = database.prepare("SELECT * FROM run_checkpoints WHERE run_id=?").all(runId)
+    .map(raw => RunCheckpointRecordSchema.parse(nativeOrdinaryRecordFromRow("run_checkpoints",raw)));
+  let sharedCheckpoint = false;
+  const checkRetained = (value: unknown): void => {
+    sharedCheckpoint ||= checkpoints.some(checkpoint => containsReference(value,checkpoint));
+  };
+  if (!history) for (const raw of database.prepare("SELECT * FROM runs").iterate()) {
+    if (!currentCascade.has(z.string().parse(raw.id))) checkRetained(readRun(raw));
+  }
+  for (const raw of database.prepare("SELECT * FROM timeline_events").iterate()) {
     const event = timelineEventFromRow(raw);
-    if (event.scope.kind !== "run" || !cascade.has(event.scope.runId)) retained.push(event);
+    if (event.scope.kind !== "run" || !cascade.has(event.scope.runId)) checkRetained(event);
   }
   for (const table of ["run_results","run_receipts","run_checkpoints","diagnostic_snapshots","write_intents","write_attempts","commands","command_audits","artifacts"] as const) {
-    for (const raw of database.prepare(`SELECT * FROM ${table}`).all()) {
+    for (const raw of database.prepare(`SELECT * FROM ${table}`).iterate()) {
       if (table === "commands") {
-        if (isHistory(raw)) { assertPredecessorWorkerHistory(raw); retained.push(JSON.parse(z.object({request_json:z.string()}).parse(raw).request_json)); continue; }
+        if (isHistory(raw)) { assertPredecessorWorkerHistory(raw); checkRetained(JSON.parse(z.object({request_json:z.string()}).parse(raw).request_json)); continue; }
         const command=readCommand(raw);
-        if(!isSettledCascadeTerminalization(database,command,raw,cascade))retained.push(command);
+        if(!isSettledCascadeTerminalization(database,command,raw,cascade))checkRetained(command);
         continue;
       }
       if(table === "command_audits") {
         const {command_id}=z.object({command_id:z.string()}).parse(raw);
         const owner=database.prepare("SELECT * FROM commands WHERE id=?").get(command_id);
         if(owner===undefined)throw new Error("run-deletion-audit-command-missing");
-        if (isHistory(owner)) { assertPredecessorWorkerHistory(owner, raw); retained.push(JSON.parse(z.object({payload_json:z.string()}).parse(raw).payload_json)); continue; }
+        if (isHistory(owner)) { assertPredecessorWorkerHistory(owner, raw); checkRetained(JSON.parse(z.object({payload_json:z.string()}).parse(raw).payload_json)); continue; }
         const command=readCommand(owner);
         const audit=nativeOrdinaryRecordFromRow(table,raw,schemaVersion);
         if(canonicalJsonStringify(z.object({request:z.unknown()}).parse(audit).request)!==canonicalJsonStringify(command))throw new Error("run-deletion-audit-command-mismatch");
-        if(!isSettledCascadeTerminalization(database,command,owner,cascade))retained.push(audit);
+        if(!isSettledCascadeTerminalization(database,command,owner,cascade))checkRetained(audit);
         continue;
       }
       if (table === "artifacts") {
         const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
-        retained.push(kind === "imported" ? importedArtifactFromRow(raw) : kind === "generated" ? generatedArtifactFromRow(raw) : extractedArtifactFromRow(raw));
+        checkRetained(kind === "imported" ? importedArtifactFromRow(raw) : kind === "generated" ? generatedArtifactFromRow(raw) : extractedArtifactFromRow(raw));
         continue;
       }
       const record = nativeOrdinaryRecordFromRow(table,raw,schemaVersion);
       const identity = z.object({runId:z.string().optional()}).parse(record);
-      if (table === "write_intents" || table === "write_attempts" || identity.runId === undefined || !cascade.has(identity.runId)) retained.push(record);
+      if (table === "write_intents" || table === "write_attempts" || identity.runId === undefined || !cascade.has(identity.runId)) checkRetained(record);
       if (table === "write_intents" && identity.runId === runId) {
         const {status} = z.object({status:z.string()}).parse(record);
         if (status === "attempting" || status === "parked") throw new RunDeletionRefusedError("unresolved-write");
       }
     }
   }
-  const checkpoints = database.prepare("SELECT * FROM run_checkpoints WHERE run_id=?").all(runId)
-    .map(raw => RunCheckpointRecordSchema.parse(nativeOrdinaryRecordFromRow("run_checkpoints",raw)));
-  for (const checkpoint of checkpoints) if (retained.some(value => containsReference(value,checkpoint))) throw new RunDeletionRefusedError("shared-checkpoint");
+  if (sharedCheckpoint) throw new RunDeletionRefusedError("shared-checkpoint");
   const steps = [
     {table:"delegation_dependencies",key:"id",where:"delegation_id IN (SELECT id FROM run_delegations WHERE parent_run_id=?)"},
     {table:"run_delegations",key:"id",where:"parent_run_id=?"},
