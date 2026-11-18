@@ -188,7 +188,9 @@ export function createSpreadsheetProposals(deps: AssistantSpreadsheetProposalDep
       if (pinned.kind === "library-action") {
         // The action and its receipt commit together, before the separate sync status write.
         const record = deps.workbooks().libraryActionRecord(pinned.libraryId, pinned.action.operationId);
-        if (record !== undefined) return "applied";
+        if (record !== undefined) {
+          return canonicalJsonStringify(record.action) === canonicalJsonStringify(pinned.action) ? "applied" : "refused";
+        }
         return error instanceof WorkbookLibraryError ? "refused" : undefined;
       }
       if (error instanceof WorkbookLibraryError) return "refused";

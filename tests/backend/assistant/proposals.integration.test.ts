@@ -38,6 +38,7 @@ import { absentProbeEvidence } from "../../support/fixtures/write-sequencer-fixt
 import { WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { createWorkbookLibraryService, type WorkbookSyncDownload } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-error.js";
+import { WorkbookLibraryActionSchema } from "../../../src/models/dashboard/workbook-library.js";
 import { EditableWorkbookSchema } from "../../../src/models/dashboard/workbooks.js";
 import type { AssistantAttachmentRecord } from "../../../src/models/dashboard/assistant.js";
 import { createHash } from "node:crypto";
@@ -400,6 +401,22 @@ it("reads a lost library-action response back from its operation record and keep
   assert.deepEqual(await o.decide(card, "confirm"), { state: "unknown", actionId: card.actionId });
   assert.ok(o.captions().at(-1)?.includes("Check the Spreadsheets library for Lost."));
   await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u, "UNKNOWN is never retried");
+});
+
+it("refuses a confirmed action when its operation ID belongs to a different committed action", async () => {
+  const o = await owners(), seed = seedWorkbook(o);
+  o.context.operatorText = "Rename to Approved";
+  const card = await sheetCard(o, { action: "rename", sheet: seed.sheet, name: "Approved" });
+  const real = o.library;
+  o.workbookOwner.library = { ...real, async libraryAction(libraryId, value, signal, assertCurrent) {
+    const action = WorkbookLibraryActionSchema.parse(value);
+    await real.libraryAction(libraryId, { ...action, change: { kind: "rename", name: "Other" } }, signal);
+    return real.libraryAction(libraryId, action, signal, assertCurrent);
+  } };
+
+  assert.deepEqual(await o.decide(card, "confirm"), { state: "refused", code: "ASSISTANT_SPREADSHEET_REFUSED" });
+  assert.equal(seed.entry().name, "Other");
+  assert.equal(o.captions().at(-1), `Not done: Rename spreadsheet. ${ERROR_CATALOG.ASSISTANT_SPREADSHEET_REFUSED.text}`);
 });
 
 it.each(["applied", "unknown"] as const)("reports a committed SharePoint sync as %s when recording sync status fails", async expected => {
