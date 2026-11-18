@@ -93,12 +93,13 @@ export function createAssistantReferences() {
 const MASK = new RegExp([
   /(?<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/u.source,
   /(?<email>[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)/u.source,
-  /(?<ssn>(?<!\d)\d{3}-\d{2}-\d{4}(?!\d))/u.source,
+  // Every SSN form Relay's diagnostic `maskSsnText` masks: hyphens, spaces or none, in any mix.
+  /(?<ssn>(?<!\d)\d{3}[- ]?\d{2}[- ]?\d{4}(?!\d))/u.source,
   /(?<phone>(?<![\d+])(?:\+?1[ .-]?)?(?:\(\d{3}\) ?|\d{3}[ .-])\d{3}[ .-]\d{4}(?!\d))/u.source,
   /(?<digits>(?<!\d)\d+(?!\d))/u.source,
 ].join("|"), "giu");
 
-/** Model text for one operator message: typed token brackets neutralized, EIDs as `E` references, other identifiers as fixed markers. */
+/** Model text for operator-supplied text (a message or a decoded text attachment): typed token brackets neutralized, EIDs as `E` references, other identifiers as fixed markers. */
 export function maskOperatorText(text: string, table: AssistantReferenceTable): string {
   return text.replaceAll("[[", "[ [").replaceAll("]]", "] ]").replace(MASK, (whole, ...rest: unknown[]) => {
     const groups = rest.at(-1) as Record<string, string | undefined>;

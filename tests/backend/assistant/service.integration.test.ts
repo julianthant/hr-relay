@@ -526,6 +526,72 @@ it("refuses a whole send whose attachment text exceeds the context bound, withou
   } finally { await w.f.cleanup(); }
 });
 
+it("never replays a refused or delivery-unknown turn or its attachments, and keeps both in local history", async () => {
+  let slug = "gpt-unlisted";
+  const w = await world({ options: { selectedModel: () => ({ preference: { slug, effort: "medium" }, assertCurrent: () => {} }) } });
+  try {
+    const conversationId = randomUUID(); w.revision(conversationId);
+    const refusedIds = [await stagedId(w, conversationId, "scan.png", "image/png", PNG),
+      await stagedId(w, conversationId, "refused.txt", "text/plain", new TextEncoder().encode("REFUSED_ATTACHMENT_SENTINEL"))];
+    const refused = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "REFUSED_TURN_SENTINEL",
+      attachments: refusedIds }, new AbortController().signal);
+    assert.deepEqual(refused.kind === "result" && refused.result.state === "refused" && refused.result.code, "ASSISTANT_MODEL_UNAVAILABLE");
+    assert.equal(w.posts(), 0);
+
+    slug = "gpt-6.1-sol";
+    const unknownIds = [await stagedId(w, conversationId, "unknown.txt", "text/plain", new TextEncoder().encode("UNKNOWN_ATTACHMENT_SENTINEL"))];
+    w.script.push(assistantMessageStream("Half an answer").split("\n\n").slice(0, 3).join("\n\n") + "\n\n");
+    const unknown = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "UNKNOWN_TURN_SENTINEL",
+      attachments: unknownIds }, new AbortController().signal);
+    assert.equal(unknown.kind === "delivery" && unknown.receipt.delivery, "delivery-unknown");
+
+    w.script.push(assistantMessageStream("Plain answer."));
+    assert.deepEqual(await w.ask("Plain follow-up", undefined, conversationId), { state: "answered", text: "Plain answer." });
+    const follow = w.bodies.at(-1); assert.ok(follow);
+    const serialized = JSON.stringify(follow.input);
+    for (const sentinel of ["REFUSED_TURN_SENTINEL", "REFUSED_ATTACHMENT_SENTINEL", "UNKNOWN_TURN_SENTINEL", "UNKNOWN_ATTACHMENT_SENTINEL", Buffer.from(PNG).toString("base64").slice(0, 64)])
+      assert.equal(serialized.includes(sentinel), false, sentinel);
+    assert.deepEqual(userParts(follow), []);
+    assert.deepEqual(userTexts(follow), ["Plain follow-up"]);
+    assert.deepEqual(w.service.conversation(conversationId)?.messages.map(row => [row.kind, row.delivery, row.text, row.attachments.map(file => file.name)]), [
+      ["turn", "refused", "REFUSED_TURN_SENTINEL", ["scan.png", "refused.txt"]], ["turn", "delivery-unknown", "UNKNOWN_TURN_SENTINEL", ["unknown.txt"]],
+      ["turn", "answered", "Plain follow-up", []], ["answer", "settled", "Plain answer.", []]]);
+  } finally { await w.f.cleanup(); }
+});
+
+it("masks spaced, hyphenated, mixed and unseparated SSNs in the composer text and its replay while keeping EID references", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(), masked = /^SSN \[redacted SSN\], \[redacted SSN\], \[redacted SSN\], \[redacted SSN\] and \[redacted SSN\]; EID \[\[E1\.g\d+\]\]$/u;
+    w.script.push(assistantMessageStream("Noted."), assistantMessageStream("Again."));
+    assert.deepEqual(await w.ask("SSN 123 45 6789, 123-45-6789, 123-456789, 12345 6789 and 123456789; EID 10812345", undefined, conversationId), { state: "answered", text: "Noted." });
+    assert.deepEqual(await w.ask("Next", undefined, conversationId), { state: "answered", text: "Again." });
+    const [first, second] = w.bodies; assert.ok(first && second);
+    for (const body of [first, second]) assert.equal(JSON.stringify(body.input).includes("6789"), false);
+    assert.match(userTexts(first)[0] ?? "", masked);
+    assert.match(userTexts(second)[0] ?? "", masked);
+  } finally { await w.f.cleanup(); }
+});
+
+it("masks a text attachment's decoded content like the composer text, on first send and on replay", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(); w.revision(conversationId);
+    const ids = [await stagedId(w, conversationId, "notes.txt", "text/plain", new TextEncoder().encode("SSN 123-45-6789 / 123 45 6789\nEID 10812345 [[E9.g1]]"))];
+    w.script.push(assistantMessageStream("Read."), assistantMessageStream("Again."));
+    const first = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "Summarize", attachments: ids },
+      new AbortController().signal);
+    assert.deepEqual(first.kind === "result" && first.result, { state: "answered", text: "Read." });
+    assert.deepEqual(await w.ask("And now?", undefined, conversationId), { state: "answered", text: "Again." });
+    for (const body of w.bodies) {
+      assert.equal(JSON.stringify(body.input).includes("6789"), false);
+      assert.equal(JSON.stringify(body.input).includes("10812345"), false);
+      const [parts] = userParts(body); assert.ok(parts);
+      assert.match(JSON.stringify(parts.at(-1)), /^\{"type":"input_text","text":"SSN \[redacted SSN\] \/ \[redacted SSN\]\\nEID \[\[E1\.g\d+\]\] \[ \[E9\.g1\] \]"\}$/u);
+    }
+  } finally { await w.f.cleanup(); }
+});
+
 it("issues the selected run's useful first label with its pin and sends only its token to inference", async () => {
   const id = randomUUID(), version = 3, label = "Person Lookup · EID 10000001 · 2026-11-08T12:00:00Z · attempt 1";
   const selected: AssistantTool = { kind: "read", tier: "read", name: "selected_reference", description: "Return the selected reference without personal data.",

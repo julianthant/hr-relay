@@ -296,6 +296,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         if (current !== undefined && error instanceof ChatGptDeliveryUncertainError) return { uncertain: true };
         if (signal.aborted) return stop("ASSISTANT_CANCELLED");
         if (error instanceof AssistantHistoryRefusal || error instanceof AssistantToolRefusal) return stop(error.code);
+        if (error instanceof AssistantReferenceError) return stop(error.reason === "reference-limit" ? "ASSISTANT_LIMIT" : "ASSISTANT_READ_STALE");
         if (error instanceof AssistantModelChangedError) return stop("ASSISTANT_MODEL_CHANGED");
         if (error instanceof ChatGptAccountError) {
           if (error.code === "CHATGPT_USAGE_LIMIT") return stop("ASSISTANT_USAGE_LIMIT");
@@ -320,7 +321,7 @@ const stop = (code: AssistantFailureCode) => ({ result: refused(code) });
 /** Serialized size without attachment Base64, which has its own media bound. */
 const structureBytes = (input: readonly AssistantInputItem[]) => Buffer.byteLength(JSON.stringify(input)) - assistantInputMedia(input).base64Chars;
 const ATTACHMENT_LABEL = { image: "image", file: "PDF", text: "text file", none: "spreadsheet (inspect_attachment reads its structure; its values are never shown)" } as const;
-/** An operator turn with its accepted attachments: each gets an `A` reference and a label; original names stay local. */
+/** An operator turn with its accepted attachments: each gets an `A` reference and a label; original names stay local; decoded text is masked like the message. */
 function userTurn(text: string, files: readonly (AssistantAttachmentRecord & Readonly<{ bytes: Uint8Array }>)[], table: AssistantReferenceTable): AssistantInputItem {
   if (files.length === 0) return { role: "user", content: text };
   const content: AssistantUserContentPart[] = [{ type: "input_text", text }];
@@ -329,7 +330,7 @@ function userTurn(text: string, files: readonly (AssistantAttachmentRecord & Rea
     content.push({ type: "input_text", text: `Attachment ${table.issue("A", file.id, file.name)}: ${ATTACHMENT_LABEL[kind]}` });
     if (kind === "image") content.push({ type: "input_image", image_url: `data:${file.mediaType};base64,${base64}`, detail: "high" });
     else if (kind === "file") content.push({ type: "input_file", filename: `attachment-${String(file.ordinal)}.pdf`, file_data: `data:application/pdf;base64,${base64}` });
-    else if (kind === "text") content.push({ type: "input_text", text: ATTACHMENT_TEXT.decode(file.bytes) });
+    else if (kind === "text") content.push({ type: "input_text", text: maskOperatorText(ATTACHMENT_TEXT.decode(file.bytes), table) });
   }
   return { role: "user", content };
 }

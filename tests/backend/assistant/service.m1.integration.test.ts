@@ -395,3 +395,17 @@ it("after a restart over the same storage answers the still-open proposal at mos
     w.script.push(message("Nothing pending")); answered(await w.send(yesIn(w, chat))); assert.equal(w.typed().submitted.length, 0);
   } finally { await w.close(); }
 });
+it("replays no refused or delivery-unknown operator turn to the provider and keeps both locally", async () => {
+  const w = await world(); try {
+    const chat = w.create(), controller = new AbortController();
+    w.onPost(() => controller.abort()); w.script.push(partialTextStream("incomplete"));
+    assert.equal((await w.send(w.request(chat, "UNKNOWN_TURN_SENTINEL"), controller.signal)).kind, "delivery");
+    w.onPost(() => {}); w.refuseTool(); w.script.push(call(), message("No data"));
+    assert.equal(result(await w.send(w.request(chat, "REFUSED_TURN_SENTINEL"))).state, "no-reply");
+    w.script.push(message("Answer")); answered(await w.send(w.request(chat, "Plain follow-up")));
+    const serialized = JSON.stringify(w.bodies.at(-1)?.input);
+    for (const sentinel of ["UNKNOWN_TURN_SENTINEL", "REFUSED_TURN_SENTINEL"]) assert.equal(serialized.includes(sentinel), false, sentinel);
+    assert.ok(serialized.includes("Plain follow-up"));
+    assert.deepEqual(w.service().conversation(chat)?.messages.map(row => row.delivery), ["delivery-unknown", "refused", "answered", "settled"]);
+  } finally { await w.close(); }
+});
