@@ -725,8 +725,7 @@ export function registerExplorerCatalog(deps: ExplorerQueryInput): ExplorerQuery
   return Object.freeze({ clock: deps.clock, descriptorSetHash: deps.descriptorSetHash, listScenarioSources: deps.listScenarioSources, catalog });
 }
 
-export function buildWorkflowExplorer(input: ExplorerQueryDeps | ExplorerQueryInput): WorkflowExplorerWire {
-  const deps = "catalog" in input ? input : registerExplorerCatalog(input);
+export function buildWorkflowExplorer(deps: ExplorerQueryDeps): WorkflowExplorerWire {
   const scenarioSources = deps.listScenarioSources();
   return WorkflowExplorerWireSchema.parse({
     wireVersion: 1,

@@ -7,6 +7,7 @@ import type { Clock } from "../../../src/rules/time/clock.js";
 import type { Fingerprint } from "../../../src/rules/identity/ids.js";
 import {
   EXPLORER_SOURCE_ROOT,
+  buildWorkflowExplorer,
   registerExplorerCatalog,
   type ExplorerQueryInput,
 } from "../../../src/backend/runs/queries/explorer.js";
@@ -36,4 +37,8 @@ export function explorerQueryDeps(
 
 export function registeredExplorerQueryDeps(clock: Clock, descriptorSetHash: Fingerprint) {
   return registerExplorerCatalog(explorerQueryDeps(clock, descriptorSetHash));
+}
+
+export function readFixtureExplorer(input: ExplorerQueryInput) {
+  return buildWorkflowExplorer(registerExplorerCatalog(input));
 }
