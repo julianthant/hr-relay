@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
 import { createWriteResolutionExecutor } from "../../../src/backend/runtime/writes/write-recovery.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
@@ -26,10 +26,17 @@ import { unusedWorkerPool } from "../../support/helpers/backend/unused-worker-po
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
 import type { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 
+const build = vi.hoisted((): { id?: string } => ({}));
+vi.mock("../../../src/backend/runtime/build-id.js", async importOriginal => {
+  const original = await importOriginal<typeof import("../../../src/backend/runtime/build-id.js")>();
+  return { ...original, currentBuildId: () => build.id ?? original.currentBuildId() };
+});
+
 const world = createRunExecutorTestWorld();
 const referenceWorld = createReferenceCheckWriteWorld();
 afterEach(world.cleanup);
 afterEach(referenceWorld.cleanup);
+afterEach(() => { delete build.id; });
 const compiled = compileWorkflow(workStudyWorkflow);
 const INPUT = { emplId: "10000001", effectiveDate: "08/03/2026" };
 const COMMENTS = "Updated pool id to F per work study award 08/03/2026";
@@ -202,6 +209,53 @@ it.each(["answer-lost", "nothing-filed", "unrelated-change"] as const)("rechecks
   assert.ok(after?.status === "parked" && after.recheck === undefined);
   assert.equal(f.database.authority.runResults.get(f.runId), undefined);
   assert.deepEqual(f.history(f.runId), []);
+});
+
+it("rechecks a parked PayPath Save after a compatible build change without clicking again", async () => {
+  const paypath = deterministicPayPathOperations({ read, submit: "answer-lost" });
+  const sessions = sessionFactoryHarness({ ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(), ...paypath }) });
+  const f = await referenceWorld.fixture(compiled.descriptor, sessions);
+  const reference = f.spreadsheet("Fall roster", "Awards", ["eid"], [["10000009"]]);
+  const review = await f.execute(f.start(INPUT, [reference]));
+  assert.equal(review.lifecycle.state, "parked-gate");
+  assert.equal(f.continueAnyway(review).state, "applied");
+  const parked = await f.execute(review);
+  assert.ok(parked.lifecycle.state === "parked-write");
+  const intent = f.database.authority.writeIntents.get(parked.lifecycle.writeIntentId);
+  assert.ok(intent?.status === "parked");
+  const attempt = f.database.authority.writeAttempts.get(intent.currentAttemptId);
+  assert.ok(attempt);
+  assert.equal(paypath.events.filter(event => event.startsWith("commit:")).length, 1);
+
+  build.id = "b".repeat(64);
+  assert.notEqual(parked.envelope.buildId, build.id);
+  requestPayPathRecheck(f.database, f.clock, parked);
+  assert.equal(f.current(parked).envelope.buildId, parked.envelope.buildId);
+  const before = paypath.events.length;
+  const checked = await f.execute(parked);
+  assert.deepEqual(paypath.events.slice(before), ["read:transactions:10000001"],
+    JSON.stringify(f.database.authority.failures.listByRun(parked.envelope.runId)));
+  assert.ok(checked.lifecycle.state === "parked-write" && checked.lifecycle.writeIntentId === intent.writeIntentId);
+  assert.deepEqual(f.database.authority.writeAttempts.listByIntent(intent.writeIntentId), [attempt]);
+  const after = f.database.authority.writeIntents.get(intent.writeIntentId);
+  assert.ok(after?.status === "parked" && after.recheck === undefined);
+  assert.equal(f.database.authority.runResults.get(parked.envelope.runId), undefined);
+  assert.equal(f.database.authority.writeIntents.getPublication(intent.writeIntentId), undefined);
+});
+
+it("refuses a new PayPath Save approved under an earlier build", async () => {
+  const paypath = deterministicPayPathOperations({ read });
+  const sessions = sessionFactoryHarness({ ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(), ...paypath }) });
+  const f = await referenceWorld.fixture(compiled.descriptor, sessions);
+  const started = f.start(INPUT, []);
+  build.id = "b".repeat(64);
+  assert.notEqual(started.envelope.buildId, build.id);
+
+  const refused = await f.execute(started);
+  assert.ok(refused.lifecycle.state === "terminal" && refused.lifecycle.outcome === "failed");
+  assert.deepEqual(f.database.authority.failures.listByRun(started.envelope.runId).map(failure => failure.code), ["WRITE_BUILD_CHANGED"]);
+  assert.deepEqual(paypath.events, ["read:paypath:10000001"]);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(started.envelope.runId), []);
 });
 
 it("rechecks a parked PayPath Save after the run reused an earlier workbook reference check", async () => {

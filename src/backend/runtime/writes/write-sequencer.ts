@@ -1804,8 +1804,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const sourceBound = envelope.continuation !== undefined && storedCheckpoint !== undefined && storedCheckpoint.runId !== envelope.runId
       ? undefined : envelope.sourceBound;
     const replaysCommittedOutcome = storedCheckpoint !== undefined && (sourceBound === undefined || storedCheckpoint.runId === envelope.runId);
-    // A write approved under another build never derives its key, fences or clicks here; only its committed outcome replays.
-    if (!replaysCommittedOutcome && envelope.buildId !== currentBuildId()) {
+    const payPathRecheck = requestedPayPathRecheck(deps.authority.authority, run, node);
+    // An audited PayPath recheck can read across builds without admitting a new write.
+    if (payPathRecheck === undefined && !replaysCommittedOutcome && envelope.buildId !== currentBuildId()) {
       throw new TaskError(commitContract.id, "WRITE_BUILD_CHANGED",
         "Relay was updated after this run was approved. Retry the run to approve its write under this version.");
     }
@@ -1828,7 +1829,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const key = occurrence === undefined ? naturalKey
       : IdempotencyKeySchema.parse(repeatOccurrenceKey(businessKeyDigest, occurrence.confirmationCommandId, String(node.id)));
     const keyDigest = deriveIdempotencyKeyDigest(system, key);
-    const payPathRecheck = requestedPayPathRecheck(deps.authority.authority, run, node);
     if (payPathRecheck !== undefined) {
       return await recoverOwnIntent(context, commitContract, commitInput, payPathRecheck, keyDigest);
     }
