@@ -368,7 +368,7 @@ describe("onboarding roster names in a real run", () => {
     const gate = GateDecisionWireSchema.parse(buildRunGate(deps as unknown as RunDetailQueryDeps, root.envelope.runId, undefined, parked.run));
     assert.ok(gate.state === "open" && gate.decision !== undefined);
     assert.deepEqual(gate.decision.options.map(option => option.id), ["new-hire"]);
-    assert.equal(gate.decision.context, "Legal name: first Fixture, middle Marie, last Hire. Preferred name: first Fix, no middle name, last Hire.");
+    assert.equal(gate.decision.context, "Legal: last Hire, first Fixture, middle Marie · Preferred: last Hire, first Fix");
   });
 
   const allDroppedMatch = () => {
@@ -445,7 +445,7 @@ describe("onboarding roster names in a real run", () => {
     const gate = GateDecisionWireSchema.parse(buildRunGate(deps, root.envelope.runId, undefined, parked.run));
     assert.ok(gate.state === "open" && gate.decision !== undefined, "the dead end is explained instead of a bare Waiting");
     assert.deepEqual(gate.decision.options, []);
-    assert.match(gate.decision.context ?? "", /Under another name: Other, Person \(••••0001\): Last name does not match; HIRE,FIXTURE \(••••0002\): Last name does not match\..*file the rehire by hand in UCPath\./u);
+    assert.match(gate.decision.context ?? "", /Other name: Other, Person \(••••0001, Last name does not match\) · Other name: HIRE,FIXTURE \(••••0002, Last name does not match\) · .*file the rehire by hand in UCPath$/u);
     for (const payload of [{ arm: "new-hire" }, { arm: "existing-person", rowId: "10800002" }, { arm: "existing-person", rowId: "10800001" }]) {
       const resolution = resolveGateArmAnswer(deps, GateArmAnswerRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator",
         source: "run-detail", family: "gate", type: "answer-gate-arm", target: { runId: root.envelope.runId, gateId: "hire-review", expectedVersion: parked.run.version }, payload }), undefined);

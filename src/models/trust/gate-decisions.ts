@@ -24,9 +24,9 @@ export const GateDecisionArmSchema = z.strictObject({
   outcome: GateDecisionOutcomeSchema,
   /** The receipt sentence this arm leads with, in the operator's language. */
   summary: z.string().min(1),
-  /** The option the operator picks, and its one-line hint; served as the run decision's text. */
+  /** The option the operator picks, and a short hint only where the label is not enough; served as the run decision's text. */
   label: z.string().min(1),
-  hint: z.string().min(1),
+  hint: z.string().min(1).optional(),
   /** The fixed reason a rejection records, because the decision asks for no typed reason. */
   rejectReason: z.string().min(1).optional(),
 }).superRefine((arm, context) => {
@@ -69,22 +69,22 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     workflowId, gateId: "document-row-choice", decisionPath: "decision", boundEvidencePath: "referenceDigest",
     resolution: { source: "workbook-reference", boundNodeId: "document-rows", boundOutputPath: "referenceDigest" },
     arms: [{ value: "selected", outcome: "taken", summary: "an operator selected retained worksheet rows for the CRM document batch",
-      label: "Use the selected rows", hint: "Download documents for the rows picked for each person." }],
+      label: "Use the selected rows" }],
   })),
   ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-hire-writes", "onboarding-reference-check"].map(workflowId => ({
     workflowId, gateId: "roster-choice", decisionPath: "decision", boundEvidencePath: "row.binding.referenceDigest",
     resolution: { source: "workbook-reference", boundInputPath: "roster.binding.referenceDigest",
       inputCondition: { path: "roster.state", equals: "resolve-required" } },
     arms: [{ value: "selected", outcome: "taken", summary: "an operator selected this roster row for the hire review",
-      label: "Use this roster row", hint: "Continue the hire review with the picked roster row." }],
+      label: "Use this roster row" }],
   })),
   ...["onboarding", "onboarding-hire-writes", "onboarding-reference-check"].map(workflowId => ({
     workflowId, gateId: "hire-review", decisionPath: "decision", resolution: { source: "operator" },
     arms: [
       { value: "new-hire", outcome: "approved", summary: "an operator reviewed the complete transaction findings, ruled out every UCPath match and approved a new hire",
-        label: "Approve new hire", hint: "The findings show no existing record. Relay files a new hire." },
+        label: "Approve new hire" },
       { value: "existing-person", outcome: "approved", summary: "an operator selected an existing EID that Person Org confirmed or that the operator picked from unconfirmed matches",
-        label: "Use existing employee", hint: "Hire under the confirmed existing employee ID." },
+        label: "Use existing employee" },
     ],
   })),
     /* The name-resolved identity approval: a supplied EID creates no gate row, and when this gate does open, `rejected` terminalizes the run, so both arms are real outcomes. */
@@ -98,14 +98,13 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
         value: "approved",
         outcome: "approved",
         label: "Approve match",
-        hint: "The person found is the one the request means.",
         summary: "an operator approved this name-resolved identity",
       },
       {
         value: "rejected",
         outcome: "rejected",
         label: "Reject match",
-        hint: "This is not the right person. The run stops.",
+        hint: "Stops the run.",
         rejectReason: "Rejected in Logs",
         summary: "an operator REJECTED this name-resolved identity",
       },
@@ -123,14 +122,13 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
         value: "approved",
         outcome: "approved",
         label: "Approve match",
-        hint: "The person found is the one the request means.",
         summary: "an operator approved this identity before the UCPath termination was filed",
       },
       {
         value: "rejected",
         outcome: "rejected",
         label: "Reject match",
-        hint: "This is not the right person. The run stops.",
+        hint: "Stops the run.",
         rejectReason: "Rejected in Logs",
         summary: "an operator REJECTED this identity, so no UCPath termination was filed",
       },
@@ -148,14 +146,13 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
         value: "approved",
         outcome: "approved",
         label: "Approve match",
-        hint: "The person found is the one the request means.",
         summary: "an operator approved this identity before the Kuali document was finalized",
       },
       {
         value: "rejected",
         outcome: "rejected",
         label: "Reject match",
-        hint: "This is not the right person. The run stops.",
+        hint: "Stops the run.",
         rejectReason: "Rejected in Logs",
         summary: "an operator REJECTED this identity, so the Kuali document was not finalized",
       },
@@ -173,7 +170,6 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
         value: "approved",
         outcome: "approved",
         label: "Approve match",
-        hint: "The person found is the one the request means.",
         summary: "an operator approved this identity, and the write plan it consumes, before any "
           + "termination was filed",
       },
@@ -181,7 +177,7 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
         value: "rejected",
         outcome: "rejected",
         label: "Reject match",
-        hint: "This is not the right person. The run stops.",
+        hint: "Stops the run.",
         rejectReason: "Rejected in Logs",
         summary: "an operator REJECTED this identity, so no termination was filed and the Kuali "
           + "document was left untouched",
@@ -192,7 +188,7 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     /* A picked reference spreadsheet did not confirm the person; "Cancel run" is the run's own cancel, so continuing is the only stored answer. */
   ...["work-study", "work-study-reference-check", "separations", "separations-reference-check", "onboarding", "onboarding-reference-check", "emergency-contact-member", "emergency-contact-member-reference-check"].map(workflowId => ({
     workflowId, gateId: "reference-check-review", decisionPath: "decision", resolution: { source: "operator" },
-    arms: [{ value: "continue", outcome: "approved", label: "Continue anyway", hint: "Relay goes on with this person.",
+    arms: [{ value: "continue", outcome: "approved", label: "Continue anyway",
       summary: "an operator continued although a picked reference spreadsheet did not confirm this person" }],
   })),
 ].map((entry) => Object.freeze(GateDecisionDeclarationSchema.parse(entry))));

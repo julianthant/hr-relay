@@ -56,7 +56,7 @@ describe("Emergency Contact reference spreadsheet check", () => {
     const decision = f.card(blake);
     assert.equal(decision.type, "review-before-write");
     assert.deepEqual(decision.options.map(option => [option.id, option.label, option.send.via]), [["continue", "Continue anyway", "gate-arm"], ["cancel-run", "Cancel run", "row-action"]]);
-    assert.equal(decision.context, "Badge list · Issued: not found. Relay compared the Employee ID, and the name where the sheet has one.");
+    assert.equal(decision.context, "Badge list · Issued: not found · Compared: Employee ID, and name where the sheet has one.");
 
     assert.equal(f.continueAnyway(blake).state, "applied");
     const parent = await f.execute();
@@ -70,7 +70,7 @@ describe("Emergency Contact reference spreadsheet check", () => {
     await f.execute();
     const blake = f.member(BLAKE);
     assert.equal(blake.lifecycle.state, "parked-gate");
-    assert.equal(f.card(blake).context, "Fall roster · Hires: name differs in row 3. Relay compared the Employee ID, and the name where the sheet has one.");
+    assert.equal(f.card(blake).context, "Fall roster · Hires: name differs in row 3 · Compared: Employee ID, and name where the sheet has one.");
     assert.equal(JSON.stringify([f.events(blake), f.card(blake)]).includes(ROW_ONLY_NAME), false);
     assert.equal(f.saves(AVERY), 1);
 
