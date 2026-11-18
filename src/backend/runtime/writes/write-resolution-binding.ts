@@ -1,4 +1,8 @@
-import { readRunCheckpoint } from "../../storage/sqlite/run-continuation.js";
+import { originalCheckpoint, readContinuationGate, readRunCheckpoint } from "../../storage/sqlite/run-continuation.js";
+import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
+import { loadCheckpoint } from "../../../models/workflow/checkpoint.js";
+import { evaluateNodeCondition, nodeConditionDependency, type NodeCondition } from "../../../models/workflow/node-condition.js";
+import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 import { repeatOccurrenceKey } from "../../../models/run/rerun.js";
 // Resolve only the same workflow, node, schemas, permanent key and binding proof; whole-closure identity is sufficient, not necessary.
@@ -23,7 +27,7 @@ import { currentBuildId } from "../build-id.js";
 export type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transaction" }>;
 
 /** The durable-state readers a binding evaluation needs; nothing writes here. */
-export type WriteBindingRepositories = Pick<AuthorityRepositories, "runCheckpoints" | "gateResults">;
+export type WriteBindingRepositories = Pick<AuthorityRepositories, "runCheckpoints" | "gateResults" | "runs">;
 
 
 export const WriteResolutionArmSchema = z.enum([
@@ -61,6 +65,12 @@ export class WriteCommitInputRebuildError extends Error {
       cause === undefined ? undefined : { cause });
     this.name = "WriteCommitInputRebuildError";
     this.failure = WriteCommitInputRebuildFailureSchema.parse({ category, evidenceDigest });
+  }
+}
+
+class UnprovedRetiredTargetError extends WriteCommitInputRebuildError {
+  constructor() {
+    super("missing-evidence", "retired-key-without-full-target-proof");
   }
 }
 
@@ -112,25 +122,76 @@ export interface WriteResolutionBindingInput {
 
 function lookupTransactionNode(
   descriptor: AnyWorkflowDescriptor,
-  commitTaskId: string,
-  nodeId?: string,
+  intent: WriteIntentRecord,
+  run: RunRecord,
 ): TransactionRuntimeNode | undefined {
-  return descriptorRuntimeNodes(descriptor).find((candidate): candidate is TransactionRuntimeNode =>
-    candidate.kind === "transaction" && candidate.commit.uses.id === commitTaskId
-      && (nodeId === undefined || candidate.id === nodeId));
+  const nodeId = intent.status === "observed-present" ? undefined : intent.occurrence?.nodeId;
+  return descriptorRuntimeNodes(descriptor).find((candidate): candidate is TransactionRuntimeNode => {
+    if (candidate.kind !== "transaction" || candidate.commit.uses.id !== intent.taskId) return false;
+    if (nodeId !== undefined && nodeId !== candidate.id) return false;
+    return intent.status !== "parked" || !candidate.commit.uses.writeSafety.idempotency.retiredKeys?.length
+      || intent.bindingProof.afterPrepareSpanPath === `${run.envelope.traceId}/${candidate.id}/prepare`;
+  });
 }
 
-// Rebuild commit input from durable input and dependency outputs; its permanent key must match the fenced intent.
+function sameContractAndBuild(descriptor: AnyWorkflowDescriptor, run: RunRecord): boolean {
+  return descriptor.contractFingerprint === run.envelope.contractFingerprint && run.envelope.buildId === currentBuildId();
+}
+
+function matchesFencedKey(key: string, node: TransactionRuntimeNode, intent: WriteIntentRecord): boolean {
+  const digest = deriveIdempotencyKeyDigest(intent.system, key);
+  const occurrence = intent.status === "observed-present" ? undefined : intent.occurrence;
+  if (occurrence === undefined) return key === intent.idempotencyKey && digest === intent.idempotencyKeyDigest;
+  return digest === occurrence.businessKeyDigest && occurrence.nodeId === node.id
+    && occurrence.taskId === intent.taskId && occurrence.system === intent.system
+    && intent.idempotencyKey === repeatOccurrenceKey(digest, occurrence.confirmationCommandId, occurrence.nodeId)
+    && intent.idempotencyKeyDigest === deriveIdempotencyKeyDigest(intent.system, intent.idempotencyKey);
+}
+
+function matchesRunConfirmation(
+  run: RunRecord,
+  node: TransactionRuntimeNode,
+  intent: Extract<WriteIntentRecord, { status: "parked" }>,
+): boolean {
+  const { occurrence } = intent;
+  const source = run.envelope.sourceBound;
+  const businessKeyDigest = occurrence?.businessKeyDigest ?? intent.idempotencyKeyDigest;
+  const consent = source?.warnings.find(warning => warning.nodeId === node.id && warning.taskId === intent.taskId
+    && warning.system === intent.system && warning.businessKeyDigest === businessKeyDigest);
+  if (occurrence === undefined) return consent === undefined;
+  return source !== undefined && consent !== undefined && source.confirmationCommandId === occurrence.confirmationCommandId
+    && source.warningDigest === occurrence.warningDigest && source.acknowledgment === occurrence.warningDigest
+    && source.source.runId === occurrence.sourceRunId && source.source.expectedVersion === occurrence.sourceVersion
+    && consent.writeIntentId === occurrence.writeIntentId && consent.evidenceDigest === occurrence.evidenceDigest;
+}
+
+// A retired rule can identify the old fence without identifying all rows it targeted.
 export function rebuildCommitInput(
   repositories: WriteBindingRepositories,
   descriptor: AnyWorkflowDescriptor,
   node: TransactionRuntimeNode,
   run: RunRecord,
   intent: WriteIntentRecord,
+  arm: WriteResolutionArm = "recovery-probe",
 ): unknown {
-  let commitInput: unknown;
   try {
-    commitInput = rebuildCommitInputWithoutFence(repositories, descriptor, node, run);
+    const commitInput = rebuildCommitInputWithoutFence(repositories, descriptor, node, run);
+    const policy = node.commit.uses.writeSafety.idempotency;
+    const deriveKey = (rule: typeof policy.key) =>
+      IdempotencyKeySchema.parse(Reflect.apply(rule, undefined, [commitInput]));
+    const currentKey = deriveKey(policy.key);
+    if (intent.status === "parked" && arm !== "recheck" && policy.retiredKeys?.length) {
+      if (policy.retiredKeys.some(rule => matchesFencedKey(deriveKey(rule.key), node, intent))) {
+        throw new UnprovedRetiredTargetError();
+      }
+      if (run.lifecycle.state === "parked-write" && !matchesRunConfirmation(run, node, intent)) {
+        throw new WriteCommitInputRebuildError("key-drift", "parked-confirmation-binding-moved");
+      }
+    }
+    if (!matchesFencedKey(currentKey, node, intent)) {
+      throw new WriteCommitInputRebuildError("key-drift", "permanent-key-binding-moved");
+    }
+    return commitInput;
   } catch (error) {
     if (error instanceof WriteCommitInputRebuildError) throw error;
     throw new WriteCommitInputRebuildError(
@@ -139,31 +200,6 @@ export function rebuildCommitInput(
       error,
     );
   }
-  const commitContract = node.commit.uses;
-  let key: string;
-  try {
-    const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
-    key = IdempotencyKeySchema.parse(keyRaw);
-  } catch (error) {
-    throw new WriteCommitInputRebuildError(
-      "schema-failure",
-      "commit-input-rebuild-failed",
-      error,
-    );
-  }
-  const digest = deriveIdempotencyKeyDigest(intent.system, key);
-  const occurrence = intent.status === "observed-present" ? undefined : intent.occurrence;
-  if (occurrence === undefined ? key !== intent.idempotencyKey || digest !== intent.idempotencyKeyDigest
-    : digest !== occurrence.businessKeyDigest || occurrence.nodeId !== node.id
-      || occurrence.taskId !== intent.taskId || occurrence.system !== intent.system
-      || intent.idempotencyKey !== repeatOccurrenceKey(digest, occurrence.confirmationCommandId, occurrence.nodeId)
-      || intent.idempotencyKeyDigest !== deriveIdempotencyKeyDigest(intent.system, intent.idempotencyKey)) {
-    throw new WriteCommitInputRebuildError(
-      "key-drift",
-      "permanent-key-binding-moved",
-    );
-  }
-  return commitInput;
 }
 
 function rebuildCommitInputWithoutFence(
@@ -172,43 +208,61 @@ function rebuildCommitInputWithoutFence(
   node: TransactionRuntimeNode,
   run: RunRecord,
 ): unknown {
-  const canonicalInput = descriptor.canonicalInput.parse(run.input.parsed.value);
-  const outputs: Record<string, JsonValue> = {};
-  const nodesById = new Map(descriptorRuntimeNodes(descriptor).map((candidate) => [String(candidate.id), candidate]));
-  for (const dependency of node.dependsOn) {
-    const dependencyNode = nodesById.get(String(dependency));
-    if (dependencyNode === undefined) {
-      throw new Error(`transaction "${node.id}" depends on unknown node "${dependency}"`);
-    }
-    if (dependencyNode.kind === "task") {
-      const checkpoint = readRunCheckpoint(repositories, run.envelope, String(dependency), true);
-      if (checkpoint === undefined) {
-        throw new WriteCommitInputRebuildError(
-          "missing-evidence",
-          `task-checkpoint:${String(dependency)}`,
-        );
-      }
-      outputs[String(dependency)] = JsonValueSchema.parse(checkpoint.output.value);
-      continue;
-    }
-    if (dependencyNode.kind === "gate") {
-      const stored = repositories.gateResults.get(`${run.envelope.runId}:${String(dependency)}`);
-      if (stored === undefined) {
-        throw new WriteCommitInputRebuildError(
-          "missing-evidence",
-          `gate-result:${String(dependency)}`,
-        );
-      }
-      outputs[String(dependency)] = JsonValueSchema.parse(dependencyNode.result.parse(stored.result.value));
-      continue;
-    }
-    throw new WriteCommitInputRebuildError(
-      "missing-evidence",
-      `unsupported-dependency:${dependencyNode.kind}:${String(dependency)}`,
-    );
+  const input = JsonValueSchema.parse(descriptor.canonicalInput.parse(run.input.parsed.value));
+  const nodesById = new Map(descriptorRuntimeNodes(descriptor).map(candidate => [String(candidate.id), candidate]));
+
+  function conditionHolds(when: NodeCondition): boolean {
+    const source = nodeConditionDependency(when);
+    const value = source === undefined ? undefined : dependencyOutput(source, true);
+    return evaluateNodeCondition(when, {
+      input, outputs: source !== undefined && value !== undefined ? { [source]: value } : {},
+      references: runWorkbookReferenceTypeIds(run.input.workbookReferences),
+    });
   }
-  const scope: RuntimeScope = { input: JsonValueSchema.parse(canonicalInput), outputs: Object.freeze(outputs),
-    protectedInputBindings: retainedRunProtectedBindings(run) };
+
+  function dependencyOutput(id: string, conditionSource: boolean): JsonValue | undefined {
+    const dependency = nodesById.get(id);
+    if (dependency === undefined) throw new Error(`transaction "${node.id}" depends on unknown node "${id}"`);
+    if (dependency.kind === "task") {
+      const checkpoint = conditionSource ? originalCheckpoint(repositories, run, id, run.claimGeneration)
+        : readRunCheckpoint(repositories, run.envelope, id, true);
+      if (checkpoint === undefined) {
+        if (conditionSource && dependency.when !== undefined && !conditionHolds(dependency.when)) return undefined;
+        throw new WriteCommitInputRebuildError("missing-evidence", `task-checkpoint:${id}`);
+      }
+      if (!conditionSource) return JsonValueSchema.parse(checkpoint.output.value);
+      const loaded = loadCheckpoint(checkpoint, {
+        descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
+        implFingerprint: taskImplFingerprint(dependency.uses), outputSchemaHash: deriveSchemaHash(dependency.uses.output, "output"),
+      }, dependency.uses.output);
+      if (!loaded.found) throw new WriteCommitInputRebuildError("schema-failure", `condition-checkpoint:${id}:${loaded.reason}`);
+      return JsonValueSchema.parse(loaded.output);
+    }
+    if (dependency.kind === "gate") {
+      const originalGraph = sameContractAndBuild(descriptor, run);
+      const stored = originalGraph && run.envelope.continuation !== undefined
+        ? readContinuationGate(repositories, run.envelope, id)
+        : repositories.gateResults.get(`${run.envelope.runId}:${id}`);
+      if (stored !== undefined) {
+        if (conditionSource && (stored.nodeId !== dependency.id || stored.result.schemaHash !== deriveSchemaHash(dependency.result, "output"))) {
+          throw new WriteCommitInputRebuildError("schema-failure", `condition-gate:${id}`);
+        }
+        return JsonValueSchema.parse(dependency.result.parse(stored.result.value));
+      }
+      // Only the original declaration can prove that this run never owed a gate result.
+      if (dependency.resolvedBy === "operator" && dependency.when !== undefined && originalGraph
+        && !conditionHolds(dependency.when)) return undefined;
+      throw new WriteCommitInputRebuildError("missing-evidence", `gate-result:${id}`);
+    }
+    throw new WriteCommitInputRebuildError("missing-evidence", `unsupported-dependency:${dependency.kind}:${id}`);
+  }
+
+  const outputs: Record<string, JsonValue> = {};
+  for (const dependency of node.dependsOn) {
+    const value = dependencyOutput(String(dependency), false);
+    if (value !== undefined) outputs[String(dependency)] = value;
+  }
+  const scope: RuntimeScope = { input, outputs: Object.freeze(outputs), protectedInputBindings: retainedRunProtectedBindings(run) };
   const commitContract = node.commit.uses;
   return commitContract.input.parse(node.commit.bind(scope));
 }
@@ -257,7 +311,7 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   const stored = run.envelope.contractFingerprint;
   const current = descriptor.contractFingerprint;
   // Equal contracts prove equal code only under the same build; otherwise every identity check runs.
-  const sameBuild = stored === current && run.envelope.buildId === currentBuildId();
+  const sameBuild = sameContractAndBuild(descriptor, run);
   const checks: WriteBindingCheckResult[] = [];
 
   checks.push(descriptor.id === run.envelope.workflow
@@ -273,7 +327,7 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
     ));
 
   const identityHeld = checks.every((result) => result.state === "held");
-  const node = identityHeld ? lookupTransactionNode(descriptor, intent.taskId, intent.status === "observed-present" ? undefined : intent.occurrence?.nodeId) : undefined;
+  const node = identityHeld ? lookupTransactionNode(descriptor, intent, run) : undefined;
 
   if (!identityHeld) {
     for (const check of ["transaction-node", "canonical-input", "permanent-key-identity", "binding-proof-identity"] as const) {
@@ -284,7 +338,7 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   if (node === undefined) {
     checks.push(moved(
       "transaction-node",
-      `this build declares no transaction node whose commit is ${intent.taskId}; the intent's target left the graph`,
+      `no transaction node in this build matches the intent's retained target for ${intent.taskId}`,
     ));
     for (const check of ["canonical-input", "permanent-key-identity", "binding-proof-identity"] as const) {
       checks.push(skipped(check, "transaction-node"));
@@ -293,7 +347,8 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   }
   checks.push(held("transaction-node", `node "${node.id}" still commits ${intent.taskId}`));
 
-  if (sameBuild) {
+  const hasRetiredKeys = (node.commit.uses.writeSafety.idempotency.retiredKeys?.length ?? 0) > 0;
+  if (sameBuild && !(intent.status === "parked" && hasRetiredKeys)) {
     for (const check of ["canonical-input", "permanent-key-identity", "binding-proof-identity"] as const) {
       checks.push(held(check, `same contract and same build (${short(run.envelope.buildId)}); nothing could have moved`));
     }
@@ -314,23 +369,23 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   }
   checks.push(held("canonical-input", `both bind canonical schema ${short(currentInputHash)}`));
 
-  let keyFailure: WriteCommitInputRebuildFailure | undefined;
   try {
-    rebuildCommitInput(input.repositories, descriptor, node, run, intent);
+    rebuildCommitInput(input.repositories, descriptor, node, run, intent, arm);
   } catch (error) {
-    keyFailure = error instanceof WriteCommitInputRebuildError
+    const keyFailure = error instanceof WriteCommitInputRebuildError
       ? error.failure
       : WriteCommitInputRebuildFailureSchema.parse({
         category: "schema-failure",
         evidenceDigest: sha256Hex("commit-input-rebuild-failed"),
       });
-  }
-  if (keyFailure !== undefined) {
+    const keyReference = idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run));
     checks.push(moved(
       "permanent-key-identity",
-      `this build cannot re-derive intent ${intent.writeIntentId}'s fenced ${intent.system} `
-      + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))} from the exact durable input; `
-      + `${keyFailure.category} (evidence ${keyFailure.evidenceDigest.slice(0, 12)}…)`,
+      error instanceof UnprovedRetiredTargetError
+        ? `the fenced ${intent.system} ${keyReference} matches a retired rule. The retired key cannot prove the complete original target.`
+          + " The intent stays parked for review."
+        : `this build cannot re-derive intent ${intent.writeIntentId}'s fenced ${intent.system} ${keyReference} from the exact durable input; `
+          + `${keyFailure.category} (evidence ${keyFailure.evidenceDigest.slice(0, 12)}…)`,
       keyFailure,
     ));
     checks.push(skipped("binding-proof-identity", "permanent-key-identity"));
@@ -364,6 +419,9 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
     `the retained ${proof.kind} proof still parses and stays bound to ${intent.taskId} on run ${intent.runId}`,
   ));
 
+  if (sameBuild) {
+    return Object.freeze({ state: "identical", arm, contractFingerprint: current, checks: Object.freeze(checks), node });
+  }
   return Object.freeze({
     state: "compatible",
     arm,
