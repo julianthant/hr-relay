@@ -134,7 +134,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
       {
         key: "recheck-write",
         label: "Check again",
-        detail: "Read the target system again. A verified transaction continues the run; uncertainty keeps the write parked.",
+        detail: "Files nothing.",
         intent: "warning",
         icon: "resolve",
         placement: ["banner", "footer"],
@@ -143,7 +143,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
         expectedVersion: PARKED_WRITE_REVISION,
         confirm: {
           title: "Check the target system again",
-          body: "Relay reads ucpath again and submits nothing. If it finds this write, the run continues to its next step.",
+          body: "Reads ucpath; submits nothing.",
           confirmLabel: "Check again",
           tone: "neutral",
         },
@@ -152,7 +152,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
       {
         key: "resolve-write-absent",
         label: "I confirmed it is NOT there",
-        detail: "Release the fence so the run may attempt the write again under a new generation.",
+        detail: "Allows one more attempt.",
         intent: "primary",
         icon: "resolve",
         placement: ["banner", "footer"],
@@ -161,8 +161,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
         expectedVersion: PARKED_WRITE_REVISION,
         confirm: {
           title: "Confirm the transaction is absent",
-          body: `This authorizes a fresh attempt against ${PARKED_WRITE_SYSTEM}. If the transaction does exist, `
-            + "the retry submits it a SECOND time.",
+          body: `If it is in ${PARKED_WRITE_SYSTEM}, the retry submits it a second time.`,
           confirmLabel: "It is not there",
           tone: "destructive",
         },
