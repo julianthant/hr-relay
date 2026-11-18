@@ -55,6 +55,44 @@ it("parks the uncertain Save before a close warning reaches a throwing sink", as
   assert.equal(h.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "parked-write");
 });
 
+it("parks a proven Save with its settlement reason when poison-close also fails", async () => {
+  const settlementError = new Error("settlement transaction failed");
+  const closeError = new Error("poison-close failed");
+  const h = await harness({ hooks: { afterSequencedStep() { throw settlementError; } } });
+  const { run, claim } = claimRunning(h.database, h.clock);
+  h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+  h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
+  const open = h.sessions.factory.open.bind(h.sessions.factory);
+  vi.spyOn(h.sessions.factory, "open").mockImplementation(async input => {
+    const resource = await open(input);
+    return { ...resource, async close(options) {
+      if (options.reason === "poisoned") throw closeError;
+      return resource.close(options);
+    } };
+  });
+
+  await assert.rejects(h.execute(contextFor(run, claim, writeFixtureSaveDescriptor)), (error: unknown) => {
+    assert.ok(error instanceof WriteParkedError);
+    const intent = intentByKey(h.database);
+    assert.ok(intent?.status === "parked");
+    assert.equal(intent.authorityReason?.evidence.kind, "settlement");
+    assert.equal(intent.parkedCode, "unknown");
+    assert.equal(intent.message, "The save was proven but could not be recorded; check again to confirm it");
+    const lifecycle = h.database.authority.runs.get(run.envelope.runId)?.lifecycle;
+    assert.ok(lifecycle?.state === "parked-write");
+    assert.equal(lifecycle.writeIntentId, intent.writeIntentId);
+    assert.equal(lifecycle.intentGeneration, intent.generation);
+    assert.equal(lifecycle.message, intent.message);
+    assert.ok(error.cause instanceof AggregateError);
+    assert.ok(error.cause.cause instanceof Error);
+    assert.equal(error.cause.cause.cause, settlementError);
+    assert.ok(error.cause.errors.includes(closeError));
+    return true;
+  });
+  assert.equal(h.database.authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId).length, 0);
+  assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 1);
+});
+
 for (const resetFails of [false, true]) {
   it(`durably commits a verified Save before the browser reset ${resetFails ? "fails" : "succeeds"}`, async () => {
     const h = await harness();

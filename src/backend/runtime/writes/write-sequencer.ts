@@ -1457,6 +1457,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   async function parkAfterFence(
     context: WriteSequencerContext,
     failure: PostFenceWriteFailure,
+    cause: Error = failure,
   ): Promise<never> {
     let closeFailure: string | undefined;
     try {
@@ -1515,7 +1516,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       intentGeneration: failure.generation,
       parkCode: failure.parkCode,
       message: failure.message,
-      cause: failure,
+      cause,
     });
   }
 
@@ -2355,6 +2356,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     } catch (error) {
       if (error instanceof PostFenceWriteFailure) {
         return parkAfterFence(context, error);
+      }
+      if (error instanceof AggregateError && error.cause instanceof PostFenceWriteFailure
+        && error.cause.authorityReason.evidence.kind === "settlement") {
+        return parkAfterFence(context, error.cause, error);
       }
       if (retainedIntent !== undefined) {
         const failure = new PostFenceWriteFailure({
