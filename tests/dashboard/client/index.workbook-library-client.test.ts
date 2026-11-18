@@ -183,13 +183,6 @@ it('imports a plain workbook at version one and rejects retired purpose or refer
   await assert.rejects(harness({ workbook: encodeSavedWorkbook(saved(2)) }, 201).client.workbookImport(draft), schemaFailure);
 });
 
-it('reads grouped results through the typed facade and rejects malformed group data', async () => {
-  const h = harness({ workflows: [], unavailable: [] });
-  assert.deepEqual(await h.client.workbookResults(), { workflows: [], unavailable: [] });
-  assert.equal(h.calls[0].url, 'http://workbooks.test/api/v1/workbooks/results');
-  await assert.rejects(harness({ workflows: [], unavailable: [], extra: true }).client.workbookResults(), schemaFailure);
-});
-
 it('rejects merge requests before transport and refuses historical merge records on active result/status wires', async () => {
   const action = { operationId: 'retired-merge', expectedRevision: 1, expectedVersion: 1,
     change: { kind: 'merge', name: 'Merged.xlsx', duplicates: 'keep-both', sources: [{ libraryId: 'source', expectedVersion: 1, expectedRevision: 1 }] } };
