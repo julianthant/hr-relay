@@ -231,6 +231,9 @@ it("opens an operator addition and correction saved with the original emergency-
   assert.equal(review.revision.revision, 3);
   assert.ok(review.revision.records[0].fields.answers.some(answer => answer.path === "employee.pid"));
   assert.ok(review.revision.records[0].fields.answers.some(answer => answer.path === "employee.name" && answer.state === "read"));
+  const restore = CommandRequestSchema.parse({ ...add(f, 3), type: "restore-ocr-record", payload: { recordId: review.revision.records[0].recordId } });
+  assert.equal(f.canonical.kernel.execute(restore).state, "rejected");
+  assert.deepEqual(f.database.authority.ocrReviews.latest(f.run.envelope.runId), review.revision);
 });
 
 it("refuses removal of an operator-add blocker with the original command intact", async () => {

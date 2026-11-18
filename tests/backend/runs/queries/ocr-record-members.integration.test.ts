@@ -4,7 +4,11 @@ import { randomUUID } from "node:crypto";
 import { scaledMs } from "../../../support/time-scale.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
 import * as observedData from "../../../../src/backend/logs/observed-data.js";
-import { retainedOcrStore, redactRetainedOcrObservedDataPoints } from "../../../support/fixtures/ocr/retained-review-producer.js";
+import { retainedOcrWithAssociations, retainedOcrStore, redactRetainedOcrObservedDataPoints } from "../../../support/fixtures/ocr/retained-review-producer.js";
+import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
+import { checkpointRecordKey } from "../../../../src/models/workflow/checkpoint.js";
+import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
+import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import * as lookupPlan from "../../../../src/models/workflows/ocr/lookup.js";
@@ -524,7 +528,7 @@ it("opens a member from a full build-review checkpoint and its saved lookup asso
   const historical = vi.spyOn(observedData, "redactObservedDataPoints").mockImplementation((taskId, points) =>
     taskId === retainedOcrStore.tasks.readReviewSeed.contract.id ? redactRetainedOcrObservedDataPoints(taskId, points) : redact(taskId, points));
   try {
-    const f = await world.fixture({ record: true, release: true, lookupNames: ["Example, Avery"], pauseAtLookup: true, retainedProducer: true });
+    const f = await world.fixture({ record: true, release: true, lookupNames: ["Example, Avery"], pauseAtLookup: true, retainedProducer: true, ocr: retainedOcrWithAssociations });
     const repositories = f.database.authority, runId = f.run.envelope.runId;
     const group = repositories.dependencies.groups(runId).find(({ group }) => group.invocation.nodeId === "lookup-identities")?.group;
     assert.ok(group);
@@ -532,6 +536,40 @@ it("opens a member from a full build-review checkpoint and its saved lookup asso
     assert.equal(plan.sourceRecordIds?.length, 1);
     assert.deepEqual(readOcrRecordBindings(repositories, runId)?.bindings, [{ record: { runId, recordId: plan.sourceRecordIds?.[0] },
       currentChildRunId: child.child.envelope.runId, childRunIds: [child.child.envelope.runId] }]);
+  } finally { historical.mockRestore(); }
+});
+
+it("opens artifact-era members and refuses a missing or contradictory completed lookup association", async () => {
+  const redact = observedData.redactObservedDataPoints;
+  const historical = vi.spyOn(observedData, "redactObservedDataPoints").mockImplementation((taskId, points) =>
+    taskId === retainedOcrStore.tasks.readReviewSeed.contract.id || taskId === retainedOcrStore.tasks.readResult.contract.id
+      ? redactRetainedOcrObservedDataPoints(taskId, points) : redact(taskId, points));
+  try {
+    const sessions = sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver({ results: [],
+      selection: { status: "not-found", selected: null, candidateEids: [], searchName: "Example, Avery" } }), crm: healthyCrmDriver });
+    const f = await world.fixture({ record: true, release: true, lookupNames: ["Example, Avery"], retainedProducer: true, sessions });
+    const repositories = f.database.authority, runId = f.run.envelope.runId;
+    const group = repositories.dependencies.groups(runId).find(({ group }) => group.invocation.nodeId === "lookup-identities")?.group;
+    assert.ok(group);
+    assert.equal(group.invocation.children[0]?.sourceRecordIds, undefined);
+    const published = repositories.ocrReviews.latest(runId); assert.ok(published);
+    const [identity] = published.seed.identities;
+    assert.equal(identity.outcome.runId, group.children[0].child.envelope.runId);
+    assert.deepEqual(readOcrRecordBindings(repositories, runId)?.bindings, identity.recordIds.map(recordId => ({
+      record: { runId, recordId }, currentChildRunId: identity.outcome.runId, childRunIds: [identity.outcome.runId] })));
+    const checkpoints = repositories.runCheckpoints;
+    assert.throws(() => readOcrRecordBindings({ ...repositories, runCheckpoints: { ...checkpoints,
+      listByAttempt: (...args) => args[2] === "read-result" ? [] : checkpoints.listByAttempt(...args) } }, runId), /OCR_REVIEW_REFUSED/u);
+    const [result] = checkpoints.listByAttempt("ocr", f.run.envelope.itemId, "read-result", f.run.envelope.attempt);
+    const wrong = { ...result, output: { ...result.output, value: JsonValueSchema.parse({ ...published.seed,
+      identities: [{ ...identity, outcome: { ...identity.outcome, runId } }] }) } };
+    const eventId = deriveStableUuid("timeline-checkpoint-recorded", checkpointRecordKey(result));
+    const publication = repositories.timelineEvents.get(eventId); assert.ok(publication?.payload.kind === "checkpoint-recorded");
+    const wrongPublication = { ...publication, payload: { ...publication.payload, checkpoint: timelineCheckpointReference(wrong) } };
+    assert.throws(() => readOcrRecordBindings({ ...repositories, runCheckpoints: { ...checkpoints,
+      listByAttempt: (...args) => args[2] === "read-result" ? [wrong] : checkpoints.listByAttempt(...args) },
+      timelineEvents: { ...repositories.timelineEvents, get: id => id === eventId ? wrongPublication : repositories.timelineEvents.get(id) },
+    }, runId), /OCR_REVIEW_REFUSED/u);
   } finally { historical.mockRestore(); }
 });
 

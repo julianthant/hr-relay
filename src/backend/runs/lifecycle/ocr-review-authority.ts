@@ -182,7 +182,10 @@ function applyOcrReviewCommand(current: OcrReviewRevision, request: Extract<Comm
     } catch { throw new OcrReviewRefusedError(); }
   } else records = current.records.map(record => {
     if (record.recordId !== request.payload.recordId) return record;
-    if (request.type !== "correct-ocr-record") return { ...record, discarded: request.type === "discard-ocr-record" };
+    if (request.type !== "correct-ocr-record") {
+      if (retained === undefined && request.type === "restore-ocr-record") assertOcrSelectionCurrent(current.seed, [record]);
+      return { ...record, discarded: request.type === "discard-ocr-record" };
+    }
     const { pages, ...correction } = request.payload;
     if (pages !== undefined && record.provenance === undefined) throw new OcrReviewRefusedError();
     const corrected = { ...record, ...correction, ...(record.provenance === undefined ? {} : {
@@ -196,6 +199,17 @@ function applyOcrReviewCommand(current: OcrReviewRevision, request: Extract<Comm
     return OcrReviewRevisionSchema.parse({ ...current, id: `${current.sourceRunId}#${current.revision + 1}`,
       revision: current.revision + 1, origin: { kind: "command", commandId: request.commandId }, createdAt, records });
   } catch { throw new OcrReviewRefusedError(); }
+}
+
+// The compact digest binds the page run IDs of this revision, including the original attempt after a later retry.
+function retainedPageResultsMatch(repositories: AuthorityRepositories, runId: string, seed: OcrReviewSeed): boolean {
+  return seed.accounting.outcomes.every(outcome => {
+    if (outcome.state !== "done") return true;
+    const settled = repositories.runResults.getInitialSettlement(outcome.runId);
+    return settled !== undefined && settled.run.envelope.workflow === "ocr-page" && settled.run.envelope.parent?.runId === runId
+      && settled.run.envelope.parent.edgeId === "ocr-pages" && settled.run.envelope.itemId === outcome.itemId
+      && settled.result.runId === outcome.runId && same(settled.result.result.value, outcome.output);
+  });
 }
 
 export function readOcrReviewAuthority(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, runId: string) {
@@ -223,7 +237,8 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
         checkpointLookupKey(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration)));
       if (checkpoint === undefined || checkpoint.runId !== runId
         || !same(checkpoint.output.value, record.seed) && (!same(checkpoint.output.value, compactOcrResult(record.seed))
-          || !same(readOcrReviewCheckpointSeed(repositories, existence.run, compactOcrReviewSeed(record.seed.review)), record.seed.review))
+          || !same(readOcrReviewCheckpointSeed(repositories, existence.run, compactOcrReviewSeed(record.seed.review)), record.seed.review)
+          || !retainedPageResultsMatch(repositories, runId, record.seed.review))
         || checkpoint.contractFingerprint !== existence.run.envelope.contractFingerprint
         || checkpoint.descriptorVersion !== existence.run.envelope.descriptorVersion
         || publication?.payload.kind !== "checkpoint-recorded" || publication.workflow !== checkpoint.workflowId

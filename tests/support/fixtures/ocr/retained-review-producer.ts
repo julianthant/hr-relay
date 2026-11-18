@@ -96,7 +96,7 @@ export function redactRetainedOcrObservedDataPoints(taskId: TaskId, points: read
 }
 
 const policy = { onChildFailed: "allow-partial", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" } as const;
-const definition = defineWorkflow({
+const definition = (includeRecordIds: boolean) => defineWorkflow({
   id: "ocr", requiredWorkbookFields: [], version: 1, code: "oc", label: "OCR", icon: "FileScan", category: "documents",
   summary: "Reads every original page, groups records and retains identity lookup outcomes for review.",
   input: retainedInput, canonicalInput: defineCanonicalInput(retainedInput,
@@ -123,7 +123,7 @@ const definition = defineWorkflow({
       target: { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: PersonLookupResultSchema },
       edgeId: "ocr-identities", cardinality: "many", await: "terminal", join: "all-settled", policy }, [review], {
       bind: ({ outputs }) => ocrPersonLookupRequests(outputs["build-review"]).map(request => request.input),
-      sourceRecordIds: ({ outputs }) => ocrPersonLookupRequests(outputs["build-review"]).map(request => request.recordIds),
+      sourceRecordIds: includeRecordIds ? ({ outputs }) => ocrPersonLookupRequests(outputs["build-review"]).map(request => request.recordIds) : undefined,
       deriveChildItemId: (_input, context) => context.canonicalItemId,
     });
     const completed = task({ id: "read-result", contract: resultContract, replay: "checkpoint" }, [review, identities],
@@ -140,7 +140,8 @@ const definition = defineWorkflow({
       ({ outputs }) => ({ ...outputs["read-result"], approvedSnapshot: outputs["approve-records"] ?? null })) };
   },
 });
-export const retainedOcrModule = compileWorkflow(definition);
+export const retainedOcrModule = compileWorkflow(definition(false));
+export const retainedOcrWithAssociations = compileWorkflow(definition(true));
 
 export function retainedOcrCheckpointPublication(reader: Pick<RunRecordService, "read">, captured: RunRecord,
   resolve: Parameters<typeof createOcrCheckpointPublication>[2]) {

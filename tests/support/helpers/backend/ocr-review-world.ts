@@ -91,7 +91,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         ]);
         return rendered.value;
       } });
-      const ocrRoot = options.retainedProducer === true ? retainedOcrModule : options.ocr ?? ocrModule;
+      const ocrRoot = options.ocr ?? (options.retainedProducer === true ? retainedOcrModule : ocrModule);
       const coordinator = options.coordinator === true ? workflowModuleOf("emergency-contact") : undefined;
       const member = options.member ?? (options.coordinator === true ? childWorkflowModuleOf("emergency-contact", "emergency-contact-member") : undefined);
       const root = options.parent ?? coordinator ?? ocrRoot;
