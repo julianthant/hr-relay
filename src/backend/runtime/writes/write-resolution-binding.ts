@@ -112,25 +112,88 @@ export interface WriteResolutionBindingInput {
 
 function lookupTransactionNode(
   descriptor: AnyWorkflowDescriptor,
-  commitTaskId: string,
-  nodeId?: string,
+  intent: WriteIntentRecord,
+  run: RunRecord,
 ): TransactionRuntimeNode | undefined {
-  return descriptorRuntimeNodes(descriptor).find((candidate): candidate is TransactionRuntimeNode =>
-    candidate.kind === "transaction" && candidate.commit.uses.id === commitTaskId
-      && (nodeId === undefined || candidate.id === nodeId));
+  const nodeId = intent.status === "observed-present" ? undefined : intent.occurrence?.nodeId;
+  return descriptorRuntimeNodes(descriptor).find((candidate): candidate is TransactionRuntimeNode => {
+    if (candidate.kind !== "transaction" || candidate.commit.uses.id !== intent.taskId) return false;
+    if (nodeId !== undefined && nodeId !== candidate.id) return false;
+    return intent.status !== "parked" || !candidate.commit.uses.writeSafety.idempotency.retiredKeys?.length
+      || intent.bindingProof.afterPrepareSpanPath === `${run.envelope.traceId}/${candidate.id}/prepare`;
+  });
 }
 
-// Rebuild commit input from durable input and dependency outputs; its permanent key must match the fenced intent.
+function sameContractAndBuild(descriptor: AnyWorkflowDescriptor, run: RunRecord): boolean {
+  return descriptor.contractFingerprint === run.envelope.contractFingerprint && run.envelope.buildId === currentBuildId();
+}
+
+function matchesFencedKey(key: string, node: TransactionRuntimeNode, intent: WriteIntentRecord): boolean {
+  const digest = deriveIdempotencyKeyDigest(intent.system, key);
+  const occurrence = intent.status === "observed-present" ? undefined : intent.occurrence;
+  if (occurrence === undefined) return key === intent.idempotencyKey && digest === intent.idempotencyKeyDigest;
+  return digest === occurrence.businessKeyDigest && occurrence.nodeId === node.id
+    && occurrence.taskId === intent.taskId && occurrence.system === intent.system
+    && intent.idempotencyKey === repeatOccurrenceKey(digest, occurrence.confirmationCommandId, occurrence.nodeId)
+    && intent.idempotencyKeyDigest === deriveIdempotencyKeyDigest(intent.system, intent.idempotencyKey);
+}
+
+function matchesRunConfirmation(
+  run: RunRecord,
+  node: TransactionRuntimeNode,
+  intent: Extract<WriteIntentRecord, { status: "parked" }>,
+): boolean {
+  const { occurrence } = intent;
+  const source = run.envelope.sourceBound;
+  const businessKeyDigest = occurrence?.businessKeyDigest ?? intent.idempotencyKeyDigest;
+  const consent = source?.warnings.find(warning => warning.nodeId === node.id && warning.taskId === intent.taskId
+    && warning.system === intent.system && warning.businessKeyDigest === businessKeyDigest);
+  if (occurrence === undefined) return consent === undefined;
+  return source !== undefined && consent !== undefined && source.confirmationCommandId === occurrence.confirmationCommandId
+    && source.warningDigest === occurrence.warningDigest && source.acknowledgment === occurrence.warningDigest
+    && source.source.runId === occurrence.sourceRunId && source.source.expectedVersion === occurrence.sourceVersion
+    && consent.writeIntentId === occurrence.writeIntentId && consent.evidenceDigest === occurrence.evidenceDigest;
+}
+
+function isOriginalParkedTarget(run: RunRecord, node: TransactionRuntimeNode, intent: WriteIntentRecord): boolean {
+  const { lifecycle, envelope } = run;
+  return lifecycle.state === "parked-write" && intent.status === "parked"
+    && lifecycle.writeIntentId === intent.writeIntentId && lifecycle.intentGeneration === intent.generation
+    && intent.workflowId === envelope.workflow && intent.itemId === envelope.itemId
+    && intent.runId === envelope.runId && intent.runAttempt === envelope.attempt
+    && node.commit.uses.id === intent.taskId && intent.taskId.startsWith(`${intent.system}/`)
+    && intent.bindingProof.taskId === intent.taskId && intent.bindingProof.runId === intent.runId
+    && intent.bindingProof.attempt === intent.runAttempt
+    && intent.bindingProof.afterPrepareSpanPath === `${envelope.traceId}/${node.id}/prepare`
+    && matchesRunConfirmation(run, node, intent);
+}
+
+// Only the held read and confirmed absence may identify the original fence by a retired key.
 export function rebuildCommitInput(
   repositories: WriteBindingRepositories,
   descriptor: AnyWorkflowDescriptor,
   node: TransactionRuntimeNode,
   run: RunRecord,
   intent: WriteIntentRecord,
+  arm: WriteResolutionArm = "recovery-probe",
 ): unknown {
-  let commitInput: unknown;
   try {
-    commitInput = rebuildCommitInputWithoutFence(repositories, descriptor, node, run);
+    const commitInput = rebuildCommitInputWithoutFence(repositories, descriptor, node, run);
+    const policy = node.commit.uses.writeSafety.idempotency;
+    const deriveKey = (rule: typeof policy.key) =>
+      IdempotencyKeySchema.parse(Reflect.apply(rule, undefined, [commitInput]));
+    const keys = [deriveKey(policy.key)];
+    if (policy.retiredKeys && arm !== "recheck" && isOriginalParkedTarget(run, node, intent)
+      && !sameContractAndBuild(descriptor, run)) {
+      for (const rule of policy.retiredKeys) keys.push(deriveKey(rule.key));
+    }
+    if (new Set(keys).size !== keys.length) {
+      throw new WriteCommitInputRebuildError("key-drift", "ambiguous-permanent-key-rules");
+    }
+    if (!keys.some(key => matchesFencedKey(key, node, intent))) {
+      throw new WriteCommitInputRebuildError("key-drift", "permanent-key-binding-moved");
+    }
+    return commitInput;
   } catch (error) {
     if (error instanceof WriteCommitInputRebuildError) throw error;
     throw new WriteCommitInputRebuildError(
@@ -139,31 +202,6 @@ export function rebuildCommitInput(
       error,
     );
   }
-  const commitContract = node.commit.uses;
-  let key: string;
-  try {
-    const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
-    key = IdempotencyKeySchema.parse(keyRaw);
-  } catch (error) {
-    throw new WriteCommitInputRebuildError(
-      "schema-failure",
-      "commit-input-rebuild-failed",
-      error,
-    );
-  }
-  const digest = deriveIdempotencyKeyDigest(intent.system, key);
-  const occurrence = intent.status === "observed-present" ? undefined : intent.occurrence;
-  if (occurrence === undefined ? key !== intent.idempotencyKey || digest !== intent.idempotencyKeyDigest
-    : digest !== occurrence.businessKeyDigest || occurrence.nodeId !== node.id
-      || occurrence.taskId !== intent.taskId || occurrence.system !== intent.system
-      || intent.idempotencyKey !== repeatOccurrenceKey(digest, occurrence.confirmationCommandId, occurrence.nodeId)
-      || intent.idempotencyKeyDigest !== deriveIdempotencyKeyDigest(intent.system, intent.idempotencyKey)) {
-    throw new WriteCommitInputRebuildError(
-      "key-drift",
-      "permanent-key-binding-moved",
-    );
-  }
-  return commitInput;
 }
 
 function rebuildCommitInputWithoutFence(
@@ -257,7 +295,7 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   const stored = run.envelope.contractFingerprint;
   const current = descriptor.contractFingerprint;
   // Equal contracts prove equal code only under the same build; otherwise every identity check runs.
-  const sameBuild = stored === current && run.envelope.buildId === currentBuildId();
+  const sameBuild = sameContractAndBuild(descriptor, run);
   const checks: WriteBindingCheckResult[] = [];
 
   checks.push(descriptor.id === run.envelope.workflow
@@ -273,7 +311,7 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
     ));
 
   const identityHeld = checks.every((result) => result.state === "held");
-  const node = identityHeld ? lookupTransactionNode(descriptor, intent.taskId, intent.status === "observed-present" ? undefined : intent.occurrence?.nodeId) : undefined;
+  const node = identityHeld ? lookupTransactionNode(descriptor, intent, run) : undefined;
 
   if (!identityHeld) {
     for (const check of ["transaction-node", "canonical-input", "permanent-key-identity", "binding-proof-identity"] as const) {
@@ -284,7 +322,7 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   if (node === undefined) {
     checks.push(moved(
       "transaction-node",
-      `this build declares no transaction node whose commit is ${intent.taskId}; the intent's target left the graph`,
+      `no transaction node in this build matches the intent's retained target for ${intent.taskId}`,
     ));
     for (const check of ["canonical-input", "permanent-key-identity", "binding-proof-identity"] as const) {
       checks.push(skipped(check, "transaction-node"));
@@ -293,7 +331,8 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   }
   checks.push(held("transaction-node", `node "${node.id}" still commits ${intent.taskId}`));
 
-  if (sameBuild) {
+  const hasRetiredKeys = (node.commit.uses.writeSafety.idempotency.retiredKeys?.length ?? 0) > 0;
+  if (sameBuild && !(intent.status === "parked" && hasRetiredKeys)) {
     for (const check of ["canonical-input", "permanent-key-identity", "binding-proof-identity"] as const) {
       checks.push(held(check, `same contract and same build (${short(run.envelope.buildId)}); nothing could have moved`));
     }
@@ -316,7 +355,7 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
 
   let keyFailure: WriteCommitInputRebuildFailure | undefined;
   try {
-    rebuildCommitInput(input.repositories, descriptor, node, run, intent);
+    rebuildCommitInput(input.repositories, descriptor, node, run, intent, arm);
   } catch (error) {
     keyFailure = error instanceof WriteCommitInputRebuildError
       ? error.failure
@@ -364,6 +403,9 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
     `the retained ${proof.kind} proof still parses and stays bound to ${intent.taskId} on run ${intent.runId}`,
   ));
 
+  if (sameBuild) {
+    return Object.freeze({ state: "identical", arm, contractFingerprint: current, checks: Object.freeze(checks), node });
+  }
   return Object.freeze({
     state: "compatible",
     arm,

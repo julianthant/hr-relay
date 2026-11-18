@@ -1,6 +1,14 @@
 
 import assert from "node:assert/strict";
 import { afterAll, afterEach,describe,it } from "vitest";
+import { requireParkedWriteCheckTarget } from "../../../../src/backend/runtime/writes/write-recovery.js";
+import { defineTaskContract } from "../../../../src/models/task/task-contract.js";
+import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
+import { ParkedWriteCheckTargetSchema } from "../../../../src/rules/commands/commands.js";
+import { flow } from "../../../../src/workflow-kit/flow.js";
+import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
+import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import {
 evaluateWriteResolutionBinding,
 requireWriteResolutionBinding,
@@ -9,9 +17,11 @@ type WriteBindingRepositories,
 type WriteResolutionBinding,
 } from "../../../../src/backend/runtime/writes/write-resolution-binding.js";
 import { RunRecordSchema,type RunRecord } from "../../../../src/models/run/record.js";
+import { repeatOccurrenceKey } from "../../../../src/models/run/rerun.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import {
+deriveIdempotencyKeyDigest,
 deriveWriteAuthorityReason,
 deriveWriteBindingProofDigest,
 WriteIntentRecordSchema,
@@ -19,6 +29,8 @@ type WriteIntentRecord,
 } from "../../../../src/rules/write-safety/write-safety.js";
 import { UUID_5,UUID_6,UUID_7,UUID_8 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import {
+WriteFixtureCommit,
+WriteFixturePrepare,
 WRITE_FIXTURE_EID,
 WRITE_FIXTURE_ITEM_ID,
 WRITE_FIXTURE_KEY,
@@ -46,6 +58,33 @@ const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const COMMIT_TASK_ID = "ucpath/submit-write-fixture";
+
+function descriptorWithRetiredKey() {
+  const { __sealed: _sealed, ...original } = WriteFixtureCommit;
+  const policy = original.writeSafety.idempotency;
+  const commit = defineTaskContract({
+    ...original,
+    writeSafety: { ...original.writeSafety, idempotency: {
+      ...policy, key: input => `v2|${policy.key(input)}`,
+      retiredKeys: [{ key: policy.key, reason: "Earlier encoding of the same fixture transaction" }],
+    } },
+  });
+  const input = original.input;
+  return defineWorkflowDescriptor({
+    id: writeFixtureDescriptor.id, version: 1, contractFingerprint: WRITE_FIXTURE_MOVED_FINGERPRINT,
+    code: "wf", label: "Write Fixture", icon: "ShieldCheck", category: "operations",
+    canonicalInput: defineCanonicalInput(input, input, [{ eid: WRITE_FIXTURE_EID }]), inputSubject: "eid",
+    surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
+    surfaces: {}, details: [], identity: { matchKey: value => `eid:${value.eid}` },
+    presentation: { title: () => "Write fixture" }, scenarios: ["write-fixture/happy"],
+    flow: flow(input).transaction(WRITE_FIXTURE_NODE_ID, {
+      dependsOn: [], prepare: { uses: WriteFixturePrepare, bind: ({ input }) => input },
+      commit: { uses: commit, bind: ({ input }) => input }, dryRun: "stop-after-prepare",
+      probePolicy: "always", probeToFenceMaxMs: 30_000,
+    }).build({ schema: original.output, dependsOn: [WRITE_FIXTURE_NODE_ID],
+      derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }),
+  });
+}
 
 const disposers: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
@@ -138,7 +177,88 @@ function stateOf(binding: WriteResolutionBinding, check: WriteBindingCheck): str
   return result.state;
 }
 
+async function parkUnderOriginalKey() {
+  const descriptor = descriptorWithRetiredKey();
+  const world = createParkedWriteRoundTripTestWorld();
+  disposers.push(world.cleanup);
+  const h = await world.roundTrip(descriptor);
+  await h.park();
+  const authority = h.database.authority;
+  const intent = world.parkedIntent(h.database);
+  assert.ok(intent.status === "parked");
+  const run = authority.runs.get(intent.runId);
+  assert.ok(run?.lifecycle.state === "parked-write");
+  h.world.events.length = 0;
+  return { descriptor, world, h, authority, intent, run };
+}
+
 describe("write-resolution binding — what a parked write may survive", () => {
+  it("checks the original target after its permanent key encoding changes", async () => {
+    const { descriptor, h, authority, intent, run } = await parkUnderOriginalKey();
+    const target = ParkedWriteCheckTargetSchema.parse({
+      workerId: "write-fixture-worker-1", expectedVersion: 1, lifetimeId: UUID_5, installationId: UUID_6, profileId: UUID_7,
+      workflowId: intent.workflowId, itemId: intent.itemId, runId: intent.runId, runVersion: run.version,
+      runAttempt: intent.runAttempt, traceId: run.envelope.traceId, nodeId: WRITE_FIXTURE_NODE_ID,
+      writeIntentId: intent.writeIntentId, intentVersion: intent.version, intentGeneration: intent.generation,
+      writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest,
+      occurrenceKeyDigest: intent.idempotencyKeyDigest,
+    });
+    assert.deepEqual(requireParkedWriteCheckTarget(authority, target, descriptor).commitInput, { eid: WRITE_FIXTURE_EID });
+    assert.deepEqual(authority.writeIntents.get(intent.writeIntentId), intent);
+    assert.deepEqual(h.world.events, []);
+  });
+
+  it("settles confirmed absence against the earlier key and original attempt", async () => {
+    const { world, h, authority, intent, run } = await parkUnderOriginalKey();
+    const command = world.resolutionCommand("resolve-write-absent", {
+      runId: intent.runId, expectedVersion: run.version, writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
+    }, {});
+    assert.equal(h.kernel.execute(command).state, "applied");
+    const resolved = authority.writeIntents.get(intent.writeIntentId);
+    assert.ok(resolved?.status === "retryable");
+    assert.equal(resolved.settlement.state, "operator-confirmed-absent");
+    assert.equal(resolved.idempotencyKey, WRITE_FIXTURE_KEY);
+    assert.equal(resolved.resolution?.idempotencyKeyDigest, WRITE_FIXTURE_KEY_DIGEST);
+    assert.equal(resolved.resolution?.writeAttemptId, intent.currentAttemptId);
+    assert.equal(authority.writeAttempts.listByIntent(intent.writeIntentId).length, 1);
+    assert.deepEqual(h.world.events, []);
+  });
+
+  it("refuses another target's valid earlier key and digest, and keeps Saved recheck on the current rule", async () => {
+    const { descriptor, run, intent, authority } = await parkUnderOriginalKey();
+    const input = { descriptor, run, intent, repositories: authority };
+    const foreignKey = `${WRITE_FIXTURE_MOVED_EID}|fixture-termination`;
+    const tampered = WriteIntentRecordSchema.parse({ ...input.intent,
+      idempotencyKey: foreignKey, idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", foreignKey) });
+    for (const arm of ["recovery-probe", "operator-confirmed-absent"] as const) {
+      assert.throws(() => requireWriteResolutionBinding({ ...input, arm, intent: tampered }), /permanent-key-identity moved/);
+      const sameBuildRun = RunRecordSchema.parse({ ...run, envelope: { ...run.envelope, contractFingerprint: descriptor.contractFingerprint } });
+      assert.throws(() => requireWriteResolutionBinding({ ...input, arm, run: sameBuildRun }), /permanent-key-identity moved/);
+    }
+    assert.throws(() => requireWriteResolutionBinding({ ...input, arm: "recheck" }), /permanent-key-identity moved/);
+  });
+
+  it("binds a repeated earlier key to its original confirmation", async () => {
+    const { descriptor, run, intent, authority } = await parkUnderOriginalKey();
+    const warning = { nodeId: WRITE_FIXTURE_NODE_ID, taskId: intent.taskId, system: intent.system,
+      businessKeyDigest: intent.idempotencyKeyDigest, writeIntentId: UUID_8, evidenceDigest: "a".repeat(64) };
+    const source = { runId: UUID_6, expectedVersion: 2, intent: "rerun", selectedStepKeys: [WRITE_FIXTURE_NODE_ID], copiedFrom: [] };
+    const warningDigest = "b".repeat(64);
+    const repeatRun = RunRecordSchema.parse({ ...run, envelope: { ...run.envelope, sourceBound: {
+      source, warnings: [warning], confirmationCommandId: UUID_5, warningDigest, acknowledgment: warningDigest,
+    } } });
+    function repeatedIntent(confirmationCommandId: string) {
+      const occurrence = { ...warning, confirmationCommandId, sourceRunId: source.runId, sourceVersion: source.expectedVersion,
+        warningDigest, baselineEvidence: [{ writeIntentId: warning.writeIntentId, evidenceDigest: warning.evidenceDigest }] };
+      const key = repeatOccurrenceKey(warning.businessKeyDigest, confirmationCommandId, warning.nodeId);
+      return WriteIntentRecordSchema.parse({ ...intent, occurrence, idempotencyKey: key,
+        idempotencyKeyDigest: deriveIdempotencyKeyDigest(intent.system, key) });
+    }
+    const input = { arm: "operator-confirmed-absent" as const, descriptor, run: repeatRun, repositories: authority };
+    assert.equal(requireWriteResolutionBinding({ ...input, intent: repeatedIntent(UUID_5) }).binding.state, "compatible");
+    assert.throws(() => requireWriteResolutionBinding({ ...input, intent: repeatedIntent(UUID_7) }), /permanent-key-identity moved/);
+  });
+
   it("reports identical for the same contract under the same build", async () => {
     const binding = await evaluate(writeFixtureDescriptor);
     assert.equal(binding.state, "identical");
