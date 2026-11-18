@@ -157,6 +157,8 @@ export const RetainedOcrReviewSeedSchema = z.strictObject({ ...OcrReviewSeedSche
   }
 });
 
+export const RetainedOcrArtifactRosterSeedSchema = RetainedOcrReviewSeedSchema.safeExtend({ roster: OcrArtifactRosterEvidenceSchema.nullable() });
+
 export function buildOcrReviewSeed(candidate: OcrReviewSeedInput): OcrReviewSeed {
   const input = OcrReviewSeedInputSchema.parse(candidate);
   return deepFreeze(OcrReviewSeedSchema.parse({ ...input, formType: input.accounting.formType, ...deriveReview(input) }));

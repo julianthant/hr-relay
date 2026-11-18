@@ -123,6 +123,7 @@ const definition = defineWorkflow({
       target: { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: PersonLookupResultSchema },
       edgeId: "ocr-identities", cardinality: "many", await: "terminal", join: "all-settled", policy }, [review], {
       bind: ({ outputs }) => ocrPersonLookupRequests(outputs["build-review"]).map(request => request.input),
+      sourceRecordIds: ({ outputs }) => ocrPersonLookupRequests(outputs["build-review"]).map(request => request.recordIds),
       deriveChildItemId: (_input, context) => context.canonicalItemId,
     });
     const completed = task({ id: "read-result", contract: resultContract, replay: "checkpoint" }, [review, identities],

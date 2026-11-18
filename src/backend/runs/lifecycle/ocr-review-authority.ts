@@ -1,5 +1,5 @@
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
-import { OcrReviewRevisionSchema,rebuildOcrReviewRecords,ocrReviewDigest,ocrSnapshotDigest,operatorOcrRecordId,blankOperatorOcrFields,validateOcrCorrection,type OcrReviewRevision } from "../../../models/ocr/review.js";
+import { OcrReviewRevisionSchema,rebuildOcrReviewRecords,ocrReviewDigest,ocrSnapshotDigest,operatorOcrRecordId,blankOperatorOcrFields,retainedBlankOperatorFields,validateOcrCorrection,type OcrReviewRevision } from "../../../models/ocr/review.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import { delegationEvidenceOutput } from "../../../models/run/result.js";
 import { I9SignerOutputSchema } from "../../../models/systems/i9/read-section2-signer.js";
@@ -174,8 +174,10 @@ function applyOcrReviewCommand(current: OcrReviewRevision, request: Extract<Comm
   let records: OcrReviewRevision["records"];
   if (request.type === "add-ocr-record") {
     try {
+      const fields = retained === undefined ? blankOperatorOcrFields(current.seed, request.payload.pages, createdAt)
+        : retainedBlankOperatorFields(current.seed.review.formType, retained.records[current.records.length].fields);
       records = [...current.records, { recordId: operatorOcrRecordId(current.seed, request.commandId),
-        fields: retained === undefined ? blankOperatorOcrFields(current.seed, request.payload.pages, createdAt) : retained.records[current.records.length].fields, assertedEid: null, discarded: true,
+        fields, assertedEid: null, discarded: true,
         provenance: { kind: "operator-added", commandId: request.commandId, createdAt: IsoInstantSchema.parse(createdAt), pages: request.payload.pages } }];
     } catch { throw new OcrReviewRefusedError(); }
   } else records = current.records.map(record => {
@@ -313,13 +315,20 @@ function readApprovedOcrSnapshot(repositories: AuthorityRepositories, reader: Pi
   if (review === undefined || review.revision.revision !== reference.revision) throw new OcrReviewRefusedError();
   const snapshot = readOcrSnapshotsAuthority(repositories, review).find(snapshot => snapshot.snapshotId === reference.snapshotId);
   if (snapshot === undefined || snapshot.reviewDigest !== review.digest || ocrSnapshotDigest(snapshot) !== reference.digest) throw new OcrReviewRefusedError();
-  return { snapshot, run: review.run };
+  return { snapshot, run: review.run, seed: review.revision.seed };
+}
+
+export function assertOcrSelectionCurrent(seed: OcrReviewRevision["seed"], records: OcrReviewRevision["records"]): void {
+  try {
+    for (const record of records) validateOcrCorrection(seed, record);
+  } catch (cause) { throw new OcrReviewRefusedError({ cause }); }
 }
 
 export function requireCurrentOcrSnapshot(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, candidate: unknown,
   resolveDescriptor: (workflowId: string) => AnyWorkflowDescriptor | undefined) {
-  const { snapshot, run } = readApprovedOcrSnapshot(repositories, reader, candidate);
+  const { snapshot, run, seed } = readApprovedOcrSnapshot(repositories, reader, candidate);
   if (resolveDescriptor(run.envelope.workflow)?.contractFingerprint !== run.envelope.contractFingerprint) throw new OcrReviewRefusedError();
+  assertOcrSelectionCurrent(seed, snapshot.records);
   return snapshot;
 }
 

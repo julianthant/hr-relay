@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { scaledMs } from "../../../support/time-scale.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
+import * as observedData from "../../../../src/backend/logs/observed-data.js";
+import { retainedOcrStore, redactRetainedOcrObservedDataPoints } from "../../../support/fixtures/ocr/retained-review-producer.js";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import * as lookupPlan from "../../../../src/models/workflows/ocr/lookup.js";
@@ -515,4 +517,34 @@ it("reads a completed host's member links from the retained approval field", asy
   assert.ok(expected?.members.some(member => member.kind === "record"));
   assert.deepEqual(read({ approvedSnapshot: null }), expected);
   assert.throws(() => read({}));
+});
+
+it("opens a member from a full build-review checkpoint and its saved lookup association", async () => {
+  const redact = observedData.redactObservedDataPoints;
+  const historical = vi.spyOn(observedData, "redactObservedDataPoints").mockImplementation((taskId, points) =>
+    taskId === retainedOcrStore.tasks.readReviewSeed.contract.id ? redactRetainedOcrObservedDataPoints(taskId, points) : redact(taskId, points));
+  try {
+    const f = await world.fixture({ record: true, release: true, lookupNames: ["Example, Avery"], pauseAtLookup: true, retainedProducer: true });
+    const repositories = f.database.authority, runId = f.run.envelope.runId;
+    const group = repositories.dependencies.groups(runId).find(({ group }) => group.invocation.nodeId === "lookup-identities")?.group;
+    assert.ok(group);
+    const [child] = group.children, [plan] = group.invocation.children;
+    assert.equal(plan.sourceRecordIds?.length, 1);
+    assert.deepEqual(readOcrRecordBindings(repositories, runId)?.bindings, [{ record: { runId, recordId: plan.sourceRecordIds?.[0] },
+      currentChildRunId: child.child.envelope.runId, childRunIds: [child.child.envelope.runId] }]);
+  } finally { historical.mockRestore(); }
+});
+
+it("refuses a compact member seed whose hydrated raw text differs from its cited page result", async () => {
+  const f = await world.fixture({ record: true, release: true, lookupNames: ["Example, Avery"], pauseAtLookup: true });
+  const repositories = f.database.authority, runId = f.run.envelope.runId;
+  assert.equal(repositories.ocrReviews.latest(runId), undefined);
+  const get = repositories.ocrExtractions.get;
+  assert.throws(() => readOcrRecordBindings({ ...repositories, ocrExtractions: { ...repositories.ocrExtractions, get(id) {
+    const stored = get(id);
+    if (stored?.binding !== "source-bound" || !stored.extraction.record) return stored;
+    const record = stored.extraction.record;
+    return { ...stored, extraction: { ...stored.extraction, record: { ...record, answers: record.answers.map(answer =>
+      answer.state === "read" && answer.path === "employee.name" ? { ...answer, raw: "Different, Person" } : answer) } } };
+  } } }, runId), /OCR_REVIEW_REFUSED/u);
 });

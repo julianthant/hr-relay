@@ -106,6 +106,29 @@ export function blankOperatorOcrFields(seed: z.output<typeof OcrResultSchema>, p
   return operatorOcrFields(seed, pages, Object.fromEntries(ocrForm(seed.review.formType).fields.map(field => [field.path,
     field.localKind === "boolean" ? { state: "read", raw: "false", confidence: 1 } : { state: "absent", reason: "blank" }])), readAt);
 }
+// A pages-only add command produces one of these blank layouts. The emergency-contact layouts differ by one optional field.
+const operatorLayouts = {
+  "emergency-contact": {
+    optional: ["employee.employeeId", "employee.dateCompleted", "employee.address1", "employee.city", "employee.state", "employee.postalCode",
+      "employee.cellPhone", "employee.homePhone", "contact.cellPhone", "contact.homePhone", "contact.workPhone", "contact.address1",
+      "contact.city", "contact.state", "contact.postalCode"],
+    required: ["contact.name", "contact.relationship", "employee.name"], flags: [],
+  },
+  oath: { optional: ["employeeId", "signatureDate"], required: ["printedName"], flags: ["employeeSigned", "officerSigned"] },
+  i9: { optional: ["middleInitial", "dateOfBirth", "ssn", "hireDate"], required: ["firstName", "lastName"], flags: [] },
+} as const;
+
+export function retainedBlankOperatorFields(formType: OcrSeed["review"]["formType"], saved: AdmittedRecord): AdmittedRecord {
+  const { optional, required, flags } = operatorLayouts[formType];
+  const hasPid = saved.answers.some(answer => answer.path === "employee.pid");
+  const paths = [...optional, ...required].map(path => path === "employee.dateCompleted" && hasPid ? "employee.pid" : path);
+  const answers = [
+    ...paths.map(path => ({ state: "absent" as const, path, reason: "blank" as const })),
+    ...flags.map(path => ({ state: "read" as const, path, raw: "false", value: false, confidence: 1 })),
+  ].sort((left, right) => left.path.localeCompare(right.path));
+  return { answers, answersFingerprint: answersFingerprint(answers), blockingPaths: [...required] };
+}
+
 export const OcrReviewRevisionSchema = z.strictObject({
   id: z.string().min(1), sourceRunId: RunIdSchema, revision: PositiveIntSchema,
   seed: OcrResultSchema.extend({ review: RetainedOcrReviewSeedSchema }),
@@ -135,16 +158,12 @@ export const OcrReviewRevisionSchema = z.strictObject({
     if (entry.provenance !== undefined) {
       const { pages } = entry.provenance;
       const form = ocrForm(record.seed.review.formType);
-      const answers = new Map(entry.fields.answers.map(answer => [answer.path, answer]));
+      const blank = retainedBlankOperatorFields(form.formType, entry.fields);
       const creation = record.origin.kind === "command" && record.origin.commandId === entry.provenance.commandId;
       if (pages.length !== form.pageKinds.length || form.pageKinds.some((kind, index) => pages[index]?.pageKind !== kind)
         || pages.some(page => !record.seed.review.accounting.manifest.pages.some(source => source.sourcePage === page.sourcePage))
-        || form.fields.length !== answers.size || form.fields.some(field => !answers.has(field.path))
-        || creation && (entry.fields.blockingPaths.length === 0 || form.fields.some(field => {
-          const answer = answers.get(field.path);
-          return field.localKind === "boolean" ? answer?.state !== "read" || answer.raw !== "false" || answer.value !== false || answer.confidence !== 1
-            : answer?.state !== "absent" || answer.reason !== "blank";
-        }))) context.addIssue({ code: "custom", message: "Operator-added OCR records require their exact fields and original page bindings" });
+        || blank.answers.length !== entry.fields.answers.length || blank.answers.some((answer, index) => answer.path !== entry.fields.answers[index]?.path)
+        || creation && canonicalJsonStringify(entry.fields) !== canonicalJsonStringify(blank)) context.addIssue({ code: "custom", message: "Operator-added OCR records require their exact fields and original page bindings" });
     } else {
       const source = record.seed.review.records.find(seed => seed.recordId === entry.recordId);
       if (source === undefined || entry.fields.answers.length !== source.fields.answers.length
