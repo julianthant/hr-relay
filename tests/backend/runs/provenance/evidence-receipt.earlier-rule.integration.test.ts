@@ -5,6 +5,8 @@ import * as workflow from "../../../../src/workflow-kit/workflow.js";
 import { deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, TerminalDependencyEvidenceSchema, deriveRunResultDigest, deriveTerminalDependencyDigest, isRunPreviewSchemaHash, readRunPreviewResult, RunResultRecordSchema, terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import { DRY_RUN_I9_PROFILE_ID, DRY_RUN_TRANSACTION_NUMBER } from "../../../../src/models/workflow/dry-run.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { TransactionOutcomeSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
+import { transactionCheckpointProvenance } from "../../../../src/backend/runs/provenance/task-provenance.js";
 import { buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -382,6 +384,42 @@ function settledTransaction() {
   };
   return { store, runId: run.envelope.runId, stored, fixture, publication };
 }
+
+it("reads an observed-present proof with its issuing rule and distinguishes a missing historical method", () => {
+  const { fixture, publication, store, runId } = settledTransaction();
+  const { ledger, checkpoint } = publication;
+  const source = RunRecordSchema.parse(fixture.run);
+  const { completion, ...runFields } = source;
+  assert.ok(completion?.kind === "done");
+  const outcome = TransactionOutcomeSchema.parse({ disposition: "already-present", proofSource: "durable-intent",
+    proof: ledger.proof, output: TransactionOutcomeSchema.parse(checkpoint.output.value).output, observedAt: checkpoint.writtenAt });
+  const checkpoints = fixture.checkpoints.map(row => RunCheckpointRecordSchema.parse(row)).map(row =>
+    row.nodeId === checkpoint.nodeId ? RunCheckpointRecordSchema.parse({ ...row, output: { ...row.output, value: outcome },
+      provenance: transactionCheckpointProvenance(outcome, row.writtenAt) }) : row);
+  const { record: result } = buildRunResult(finalization, { ...runFields, version: completion.expectedVersion, lifecycle: {
+    state: "running", workerId: completion.claim.workerId, claimedAt: source.createdAt, heartbeatAt: checkpoint.writtenAt,
+  } }, checkpoints.map(row => ({ state: "resolved", nodeId: row.nodeId, checkpoint: row })), manualClock(new Date(checkpoint.writtenAt)));
+  const run = RunRecordSchema.parse({ ...source, completion: { ...completion, resultDigest: result.resultDigest } });
+  const intent = WriteIntentRecordSchema.parse({ status: "observed-present", writeIntentId: ledger.writeIntentId,
+    workflowId: ledger.workflowId, itemId: ledger.itemId, taskId: "kuali/save-separation-finalization", system: ledger.system,
+    idempotencyKey: ledger.idempotencyKey, idempotencyKeyDigest: ledger.idempotencyKeyDigest, generation: 1, version: 1,
+    observedProof: ledger.proof, observedAt: ledger.fencedAt, createdAt: ledger.fencedAt, updatedAt: ledger.fencedAt });
+  assert.ok(intent.status === "observed-present");
+  const writes = [{ intent, attempts: [] }];
+  const issued = buildRunEvidenceReceipt({ descriptor: finalization, run, result, checkpoints, writes });
+  const retained: EvidenceReceiptStore = { ...store, getRun: () => run, getResult: () => result, listCheckpointsByRun: () => checkpoints,
+    listWritesByRun: () => writes, findReceiptByRun: () => issued, readConfirmedWrite: () => assert.fail("no fenced confirmation for an observation") };
+  assert.deepEqual(ensureRunEvidenceReceipt(retained, finalization, runId), { state: "existing", receipt: issued });
+  const foreign = WriteIntentRecordSchema.parse({ ...intent, itemId: "ebea05e6-6be3-470a-a172-7ef56494a231" });
+  assert.throws(() => ensureRunEvidenceReceipt({ ...retained, listWritesByRun: () => [{ intent: foreign, attempts: [] }] }, finalization, runId),
+    /receipt-write-owner-conflict/);
+  const conflicting = { ...intent, observedProof: { ...intent.observedProof, value: { changed: true } } };
+  assert.throws(() => ensureRunEvidenceReceipt({ ...retained, listWritesByRun: () => [{ intent: conflicting, attempts: [] }] }, finalization, runId),
+    /receipt-write-proof-conflict/);
+  const wiring = createCapabilityWiringTestWorld();
+  const revised = wiring.fixtureDescriptor(finalization.id, finalization.code, wiring.providersOnlyContract);
+  assert.throws(() => ensureRunEvidenceReceipt(retained, revised, runId), /receipt-write-completion-authority-unavailable/);
+});
 
 it("refuses a decision reason that contradicts the settled transaction", () => {
   const { store, runId, stored } = settledTransaction();

@@ -298,6 +298,11 @@ export function deriveActionWriteProof(input: Readonly<{
   return writeProofFromOutcome(commitContract.id, commitContract.writeSafety.completion.kind, outcome, intent);
 }
 
+function matchesReceiptWriteOwner(intent: WriteIntentRecord, envelope: RunRecord["envelope"]): boolean {
+  return intent.workflowId === envelope.workflow && intent.itemId === envelope.itemId
+    && (intent.status === "observed-present" || (intent.runId === envelope.runId && intent.runAttempt === envelope.attempt));
+}
+
 function retainedWriteProof(input: {
   intent: WriteIntentRecord;
   outcome: z.infer<typeof TransactionOutcomeSchema>;
@@ -307,8 +312,8 @@ function retainedWriteProof(input: {
   declaredCompletion?: ActionWriteProof["completion"];
 }): ActionWriteProof {
   const { intent, outcome, record, envelope } = input;
-  if (intent.runId !== envelope.runId || intent.runAttempt !== envelope.attempt
-    || intent.workflowId !== envelope.workflow || intent.itemId !== envelope.itemId) throw new Error("receipt-write-owner-conflict");
+  if (!matchesReceiptWriteOwner(intent, envelope)) throw new Error("receipt-write-owner-conflict");
+  if (intent.status === "observed-present" && outcome.disposition !== "already-present") throw new Error("receipt-write-proof-conflict");
   const durable = intent.status === "committed" ? intent.completionProof : intent.status === "observed-present" ? intent.observedProof : undefined;
   if (durable !== undefined && canonicalJsonStringify(durable) !== canonicalJsonStringify(outcome.proof)) {
     throw new Error("receipt-write-proof-conflict");
@@ -1323,7 +1328,7 @@ function checkHistoricalReceipt(input: {
       actions.delete(read.id);
     }
     if (commit !== undefined) {
-      const matching = writes.filter(({ intent }) => intent.taskId === commit.taskId && intent.runId === envelope.runId);
+      const matching = writes.filter(({ intent }) => intent.taskId === commit.taskId && matchesReceiptWriteOwner(intent, envelope));
       const write = matching[0], outcome = TransactionOutcomeSchema.parse(record.output.value);
       const prepare = actions.get(id("action", `${nodeId}.prepare`)), proof = commit.proved;
       if (matching.length !== 1 || write === undefined || prepare?.kind !== "prepare" || prepare.writeState !== "prepared"
