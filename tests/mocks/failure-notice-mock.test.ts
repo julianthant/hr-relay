@@ -5,7 +5,7 @@ import { build, preview, type PreviewServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { test } from "./helpers/fixtures.js";
-import { NOTICE_COPY, NOTICE_SCENES, NOTICE_VARIANTS } from "./helpers/failure-notice-scenes.js";
+import { NOTICE_COPY, NOTICE_SCENES } from "./helpers/failure-notice-scenes.js";
 
 // Failure-notice scenes (the approved beneath notice) in the parity mock harness; frames are evidence, never test references.
 const repoRoot = resolve(import.meta.dirname, "../..");

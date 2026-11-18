@@ -154,7 +154,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         return;
       }
       const envelope = await client.assistantRespond({ conversationId, expectedRevision: history?.revision() ?? 1, messageId,
-        message: prompt, ...(binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }), ...(staged?.length ? { attachments: staged } : {}) }, request.abort.signal);
+        message: prompt, ...(binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }), ...(staged?.length ? { attachments: [...staged] } : {}) }, request.abort.signal);
       if (envelope.receipt !== undefined) history?.receipt(envelope.receipt);
       if (!current()) return;
       if (envelope.kind === 'delivery') {

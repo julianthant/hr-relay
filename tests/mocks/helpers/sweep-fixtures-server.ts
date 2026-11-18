@@ -15,6 +15,7 @@ import { register } from "tsx/esm/api";
 import { startFixtureServer, type FixtureDashboardProfile } from "../../support/helpers/dashboard/fixture-bff.js";
 import { MOCK_DIST_DIR } from "./bundle.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "./fixture-start.js";
+import { ActorIdSchema } from "../../../src/rules/identity/ids.js";
 
 /** Actual HTTP routes over synthetic authority; the shell serves only surrounding fixture data. */
 export async function startSweepOverlay(app: DashboardApp, profile?: FixtureDashboardProfile) {
@@ -62,7 +63,7 @@ export async function startOcrSweepServer(mode: "review" | "member-retry") {
     const runDetail = createOperatorRunDetail({ database, stateRoot, projection, runReader: reader,
       canonical: { database, reader, descriptors: { resolve: f.resolve } } });
     const app: DashboardApp = new Hono();
-    app.use("*", async (c, next) => { c.set("requestActorId", "local-operator"); await next(); });
+    app.use("*", async (c, next) => { c.set("requestActorId", ActorIdSchema.parse("local-operator")); await next(); });
     registerRunDetailRoutes(app, { runDetail });
     registerTrustRoutes(app, { runDetail });
     registerOcrRoutes(app, { ocr: f.sources });

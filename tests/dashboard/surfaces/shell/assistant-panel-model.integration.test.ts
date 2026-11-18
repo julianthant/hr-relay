@@ -109,7 +109,7 @@ describe('assistant attachments', () => {
     });
     return { client, staged, requests };
   }
-  const stagedResult = (name: string, byteLength: number, mediaType: AssistantStageResult extends infer R ? (R extends { state: 'staged' } ? R['attachment']['mediaType'] : never) : never = 'application/pdf'): AssistantStageResult =>
+  const stagedResult = (name: string, byteLength: number, mediaType: Extract<AssistantStageResult, { state: 'staged' }>['attachment']['mediaType'] = 'application/pdf'): AssistantStageResult =>
     ({ state: 'staged', attachment: { id: crypto.randomUUID(), mediaType, name, byteLength, expiresAt: '2099-01-01T00:00:00.000Z' } });
 
   it('stages a PDF before send and names its staged id in the request', async () => {
