@@ -13,7 +13,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { WorkbookLibraryError } from "./workbook-library-error.js";
 import { workbookKey, workbookMatches } from "./master-changes.js";
-import { projectWorkbookCompatibility, workbookFieldCoverage, WorkbookActiveSnapshotRequestSchema, WorkbookResultsSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema, type WorkflowWorkbookSelectionRecord, type WorkbookLibraryActionRecord, type WorkbookLibraryActionResult, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibrarySyncRecord, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema, type WorkflowWorkbookRequirementInput } from "../../models/dashboard/workbook-library.js";
+import { projectWorkbookCompatibility, workbookFieldCoverage, WorkbookActiveSnapshotRequestSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema, type WorkflowWorkbookSelectionRecord, type WorkbookLibraryActionRecord, type WorkbookLibraryActionResult, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibrarySyncRecord, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema, type WorkflowWorkbookRequirementInput } from "../../models/dashboard/workbook-library.js";
 import { MAX_SELECTED_WORKBOOK_SOURCES, MAX_WORKBOOK_GRID_CELLS, MAX_WORKBOOK_POPULATED_CELLS, populatedSpreadsheetValue } from "../../rules/spreadsheets/workbook-size.js";
 import type { EditableWorkbookWire } from "../../models/dashboard/workbooks.js";
 import { WorkbookCloneRequestSchema, WorkbookLocalImportRequestSchema, WorkbookSharePointImportRequestSchema } from "../../models/dashboard/workbook-library.js";
@@ -250,9 +250,7 @@ function receiptOutcome(receipt: WorkbookOperationReceipt): SyncOutcome {
   return { result: 'failed', code: receipt.reason === 'version-conflict' ? 'WORKBOOK_VERSION_CONFLICT'
     : receipt.reason === 'metadata-unsupported' ? 'WORKBOOK_METADATA_UNSUPPORTED' : 'WORKBOOK_SYNC_NOT_APPLIED' };
 }
-export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; sync: WorkbookSyncDownload;
-  resultRun?: (runId: string) => Readonly<{ workflowId: string; enqueuedAt: string }> | undefined;
-}>) {
+export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; sync: WorkbookSyncDownload }>) {
   const read = (libraryId: string): SavedWorkbook => {
     const record = deps.repository.read(input(WorkbookIdSchema, libraryId));
     if (record === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
@@ -315,9 +313,6 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
   return Object.freeze({
     compatibility(workflows: readonly WorkbookReferenceWorkflow[]) {
       return projectWorkbookCompatibilityFromRepository(deps.repository, workflows);
-    },
-    results() {
-      return projectWorkbookResults(deps.repository.catalog(), deps.resultRun);
     },
     importWorkbook(value: unknown) {
       const request = input(WorkbookLocalImportRequestSchema, value), workbook = decodeEditableWorkbook(request.workbook);
@@ -439,48 +434,4 @@ export function projectWorkbookCompatibilityFromRepository(repository: Pick<Work
     id, label, requiredWorkbookFields, ...(workbookReference === undefined ? {} : { workbookReference }),
   })), sources,
     workflows.flatMap(workflow => { const saved = repository.lastUsed(workflow.id); return saved === undefined ? [] : [saved]; }));
-}
-
-function projectWorkbookResults(entries: readonly WorkbookLibraryEntry[],
-  resultRun?: (runId: string) => Readonly<{ workflowId: string; enqueuedAt: string }> | undefined) {
-  const workflows: z.infer<typeof WorkbookResultsSchema>['workflows'] = [];
-  const unavailable: WorkbookLibraryEntry[] = [];
-  const identities = new Map<string, { workflowId: string; workflowLabel: string; partitionDay: string }>();
-  for (const entry of entries) {
-    const origin = entry.state.origin;
-    if (origin.kind === 'local') continue;
-    if (origin.kind === 'unavailable') { unavailable.push(entry); continue; }
-    const previous = identities.get(origin.runId);
-    if (previous !== undefined && (previous.workflowId !== origin.workflowId || previous.workflowLabel !== origin.workflowLabel || previous.partitionDay !== origin.partitionDay))
-      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-    identities.set(origin.runId, origin);
-    let workflow = workflows.find(workflow => workflow.workflowId === origin.workflowId);
-    if (workflow === undefined) {
-      workflow = { workflowId: origin.workflowId, workflowLabel: origin.workflowLabel, runs: [] };
-      workflows.push(workflow);
-    }
-    let run = workflow.runs.find(run => run.runId === origin.runId);
-    if (run === undefined) {
-      const authority = resultRun?.(origin.runId);
-      if (authority !== undefined && authority.workflowId !== origin.workflowId) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-      run = { runId: origin.runId, partitionDay: origin.partitionDay, enqueuedAt: authority === undefined ? null : IsoInstantSchema.parse(authority.enqueuedAt), entries: [] };
-      workflow.runs.push(run);
-    }
-    run.entries.push(entry);
-  }
-  const byId = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
-  const newestFirst = (a: string | null, b: string | null) => {
-    if (a === null) return b === null ? 0 : 1;
-    return b === null ? -1 : Date.parse(b) - Date.parse(a);
-  };
-  for (const workflow of workflows) {
-    workflow.runs.sort((a, b) => newestFirst(a.enqueuedAt, b.enqueuedAt) || byId(a.runId, b.runId));
-    for (const run of workflow.runs) run.entries.sort((a, b) => newestFirst(a.updatedAt, b.updatedAt) || byId(a.libraryId, b.libraryId));
-    const newestOrigin = workflow.runs[0].entries[0].state.origin;
-    if (newestOrigin.kind !== 'workflow') throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
-    workflow.workflowLabel = newestOrigin.workflowLabel;
-  }
-  workflows.sort((a, b) => newestFirst(a.runs[0].enqueuedAt, b.runs[0].enqueuedAt) || byId(a.workflowId, b.workflowId));
-  unavailable.sort((a, b) => byId(a.libraryId, b.libraryId));
-  return WorkbookResultsSchema.parse({ workflows, unavailable });
 }

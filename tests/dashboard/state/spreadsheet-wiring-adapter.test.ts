@@ -14,7 +14,6 @@ const book = () => ({ ...newEditableWorkbook(), libraryId: 'saved' });
 const saved = (version = 3, workbook = book()): SavedWorkbook => SavedWorkbookSchema.parse({ libraryId: workbook.libraryId, version, createdAt: '2026-10-01T00:00:00Z', savedAt: '2026-10-15T00:00:00Z', workbook });
 function setup() {
   const client = {
-    workbookResults: vi.fn<WorkbookLibraryQueries['workbookResults']>(async () => { throw new Error('Unexpected workbookResults call'); }),
     workbookImport: vi.fn<WorkbookLibraryQueries['workbookImport']>(async () => { throw new Error('Unexpected workbookImport call'); }),
     workbookClone: vi.fn<WorkbookLibraryQueries['workbookClone']>(async () => { throw new Error('Unexpected workbookClone call'); }),
     workbookImportSharePoint: vi.fn<WorkbookLibraryQueries['workbookImportSharePoint']>(async () => { throw new Error('Unexpected workbookImportSharePoint call'); }),
