@@ -150,7 +150,7 @@ export const ERROR_CATALOG = Object.freeze({
   STORAGE_PROFILE_UPGRADE_REFUSED: catalogEntry("Relay could not verify and upgrade this person's saved data. Their data is retained, and this person stays signed out.", EmptyParametersSchema),
   DRY_RUN_SAMPLE_UNDECLARED: catalogEntry("Dry-run sample values require declared preview provenance.", EmptyParametersSchema),
   DRY_RUN_SAMPLE_REFUSED: catalogEntry("Dry-run samples cannot authorize a real submission.", EmptyParametersSchema),
-  WRITE_COMMITTED_EFFECT_ABSENT: catalogEntry("The earlier Save is no longer present. Check the record in the target system, then start a new run.", EmptyParametersSchema),
+  WRITE_COMMITTED_EFFECT_ABSENT: catalogEntry("The earlier Save is no longer in UCPath. Check the contact, then start a new run.", EmptyParametersSchema),
   WRITE_BUILD_CHANGED: catalogEntry("Relay was updated after this run was approved. Retry the run to approve its write under this version.", EmptyParametersSchema),
   RUNTIME_LIFETIME_LOCK_RELEASED: catalogEntry("Relay runtime authority has closed. Restart Relay before continuing.", EmptyParametersSchema),
   RUNTIME_ALREADY_RUNNING: catalogEntry("Relay is already running. Close it before starting another runtime or storage command.", EmptyParametersSchema),

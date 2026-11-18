@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
+import { nodeIdOfTaskSpanPath } from "../../../../src/backend/runs/lifecycle/support.js";
 import { RunTerminalEvidenceResultSchema } from "../../../../src/models/run/result.js";
 import { operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../src/models/ui/ucpath-emergency-contact.js";
@@ -43,7 +44,7 @@ it.each([
     saves: f.persistence.submissions.length,
   }, { probed: true, outcome: "failed", failureCodes: ["WRITE_COMMITTED_EFFECT_ABSENT"], filingChildren: 0, imports: 0, saves: 1 });
   assert.equal(operatorFailureSentence("WRITE_COMMITTED_EFFECT_ABSENT"),
-    "The earlier Save is no longer present. Check the record in the target system, then start a new run.");
+    "The earlier Save is no longer in UCPath. Check the contact, then start a new run.");
   const evidence = f.database.authority.runResults.get(fresh.envelope.runId);
   assert.equal(RunTerminalEvidenceResultSchema.parse(evidence?.result.value).kind, "failed-evidence");
 });
@@ -60,4 +61,51 @@ it("reuses the committed proof after a fresh probe confirms the contact is still
   assert.equal(f.persistence.submissions.length, 1);
   assert.equal(f.filing.imports(), 1);
   assert.equal(probed, true);
+});
+
+it("probes again after losing the fence to a committed contact Save", async () => {
+  let publishWinner: (() => void) | undefined;
+  const f = await world.memberFixture({ sourcePage: null, sequencerAuthority: database => ({
+    authority: { ...database.authority, writeIntents: { ...database.authority.writeIntents,
+      findByPermanentKey: (system, key) => publishWinner === undefined
+        ? database.authority.writeIntents.findByPermanentKey(system, key) : undefined,
+    } },
+    withAuthorityTransaction: work => database.withAuthorityTransaction(repositories => work({
+      ...repositories, writeIntents: { ...repositories.writeIntents, fenceAttempt(input) {
+        const result = repositories.writeIntents.fenceAttempt(input);
+        if (publishWinner !== undefined) {
+          assert.equal(result.state, "existing");
+          publishWinner();
+          publishWinner = undefined;
+        }
+        return result;
+      } },
+    })),
+    commitWriteAttempt: database.commitWriteAttempt.bind(database),
+    commitRecheckedParkedWrite: database.commitRecheckedParkedWrite.bind(database),
+  }) });
+  const [winner] = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
+  assert.ok(winner?.status === "committed");
+
+  // The loser's first lookup and page read precede the winner. Its real fence sees the committed row.
+  const saved = f.persistence.snapshot();
+  f.persistence.replacePersisted(UcpathContactPageSnapshotSchema.parse(fixture.page));
+  publishWinner = () => f.persistence.replacePersisted(saved);
+  const loser = f.execution.start(contactSaveMember.descriptor, f.member(`${"b".repeat(64)}#emergency-contact#2`, null), { dryRun: false });
+  const result = await f.execution.execute(loser, world.SIGNAL);
+
+  assert.equal(publishWinner, undefined);
+  assert.deepEqual(f.database.authority.failures.listByRun(loser.envelope.runId).map(row => row.summary), []);
+  assert.ok(result.run?.lifecycle.state === "terminal" && result.run.lifecycle.outcome === "done");
+  const observations = f.database.authority.timelineEvents.page({ runId: loser.envelope.runId, limit: 1000 })
+    .flatMap(({ payload }) => payload.kind === "span" && payload.event.t === "data.observed"
+      && payload.event.taskId === "ucpath/match-emergency-contact-plan" ? [payload.event.spanPath] : []);
+  assert.equal(new Set(observations).size, 2);
+  assert.ok(observations.every(path => nodeIdOfTaskSpanPath(path) === "contact-preview"));
+  const checkpoint = f.database.authority.runCheckpoints.latest(loser.envelope.workflow, loser.envelope.itemId, "contact-preview");
+  const outcome = TransactionOutcomeSchema.parse(checkpoint?.output.value);
+  assert.equal(outcome.proofSource, "durable-intent");
+  assert.deepEqual(outcome.proof, winner.completionProof);
+  assert.equal(f.persistence.submissions.length, 1);
+  assert.equal(f.database.authority.writeIntents.countDryRunEvidenceByRun(loser.envelope.runId).writeAttempts, 0);
 });

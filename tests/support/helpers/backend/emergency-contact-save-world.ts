@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { readApprovedOcrRecordTask } from "../../../../src/backend/processing/ocr/tasks/read-approved-record.js";
-import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
+import { createWriteSequencer, type WriteSequencerAuthority } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { ucpathDriver } from "../../../../src/backend/systems/ucpath/driver-declaration.js";
 import { createDeterministicContactPersistence } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
@@ -41,7 +41,7 @@ const contact = approvedEmergencyContact(approved.record);
 const desired = contactEffect(contact);
 
 type FailurePoint = "pending" | "save-before" | "save-after" | "partial" | "primary-conflict" | "unreadable" | "mismatch" | "staged-readback" | "stale-readback" | "verifier" | "prepare" | "identity" | "drift" | "capture-before" | "capture-after" | "read" | "probe" | "capture-prepare" | "staged-page-drift" | "timeout" | "lost-page" | "unknown-response" | "foreign-eid" | "foreign-name" | "identity-before-click";
-async function memberFixture(world: ReturnType<typeof createRunExecutorTestWorld>, options: { rows?: UcpathContactPageSnapshot["rows"]; failure?: FailurePoint; priorWrite?: "attempting" | "parked"; interrupt?: boolean; dryRun?: boolean; sourcePage?: number | null; onbaseUnavailable?: true; onbaseFiling?: "file" | "skip" } = {}) {
+async function memberFixture(world: ReturnType<typeof createRunExecutorTestWorld>, options: { sequencerAuthority?: (database: WriteSequencerAuthority) => WriteSequencerAuthority; rows?: UcpathContactPageSnapshot["rows"]; failure?: FailurePoint; priorWrite?: "attempting" | "parked"; interrupt?: boolean; dryRun?: boolean; sourcePage?: number | null; onbaseUnavailable?: true; onbaseFiling?: "file" | "skip" } = {}) {
   const browser = defineBrowserStore("ucpath", ucpathDriver, ucpathSession, { readContacts: readEmergencyContactsTask,
     stageContact: stageEmergencyContactTask, probeContact: probeEmergencyContactTask, verifyContact: verifyEmergencyContactTask, saveContact: saveEmergencyContactTask });
   const service = defineServiceStore("ocr", { readRecord: readApprovedOcrRecordTask });
@@ -120,7 +120,7 @@ async function memberFixture(world: ReturnType<typeof createRunExecutorTestWorld
     if (options.failure === "capture-after" && context.trigger.kind === "task-point" && context.trigger.boundary === "after-submit") throw new Error("fixture-after-capture-failed");
   } } });
   const { database, clock, path } = h.authority;
-  const sequencer = createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: database,
+  const sequencer = createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: options.sequencerAuthority?.(database) ?? database,
     sessions: h.manager, emitter: h.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: h.scheduler, taskDeadlineMs: 60_000,
     operator: "local-operator", log: h.deps.log });
   const taskNotes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });

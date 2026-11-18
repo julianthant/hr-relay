@@ -841,7 +841,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     return task;
   }
 
-  type TransactionTaskRole = "probe" | "prepare" | "commit" | "verify";
+  type ProbeRole = "probe" | "reuse-probe";
+  type TransactionTaskRole = ProbeRole | "prepare" | "commit" | "verify";
   type BufferedCommitLog = Readonly<{ level: keyof TaskLogger; message: string; fields?: Readonly<Record<string, string | number | boolean>> }>;
 
   function reportDiagnosticFailure(context: WriteSequencerContext): void {
@@ -865,8 +866,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   }) });
 
   function transactionTaskSpanPath(context: WriteSequencerContext, role: TransactionTaskRole): string {
-    // The claim generation lets a resumed claim in the same process open its own span (as executor task spans do).
-    return `${TraceIdSchema.parse(context.run.envelope.traceId)}/${String(context.node.id)}/${role}#${String(context.claim.claimGeneration)}`;
+    const base = `${TraceIdSchema.parse(context.run.envelope.traceId)}/${String(context.node.id)}`;
+    const generation = context.claim.claimGeneration;
+    if (context.node.commit.uses.id === "ucpath/save-emergency-contact" && (role === "probe" || role === "reuse-probe")) {
+      // Reserve two probe spans per claim: the initial read and the read of the winning Save.
+      const ordinal = BigInt(generation) * 2n - (role === "probe" ? 1n : 0n);
+      return `${base}/probe#${String(ordinal)}`;
+    }
+    return `${base}/${role}#${String(generation)}`;
   }
 
   function emitObservedBatch(
@@ -1123,10 +1130,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
     commitInput: unknown,
+    role: ProbeRole = "probe",
     recheck?: Readonly<{ transactionId?: string }>,
   ): Promise<RuntimeProbeVerdict> {
     const instance = resolvedInstanceFor(context, systemOf(commitContract.id));
-    emitTaskSpan(context, "probe", "span.started");
+    emitTaskSpan(context, role, "span.started");
     try {
       const verdict = await executeIdempotencyProbe(deps, {
         commitContract,
@@ -1136,12 +1144,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         instance,
         signal: context.signal,
         screenshotOwner: { nodeId: String(context.node.id), attempt: context.run.envelope.attempt, log: context.captureLog ?? deps.log },
-        onRecord: (taskId, batch) => emitObservedBatch(context, "probe", taskId, batch),
+        onRecord: (taskId, batch) => emitObservedBatch(context, role, taskId, batch),
       });
-      emitTaskSpan(context, "probe", "span.ended", "done");
+      emitTaskSpan(context, role, "span.ended", "done");
       return verdict;
     } catch (error) {
-      throw preserveTaskFailure(context, "probe", error);
+      throw preserveTaskFailure(context, role, error);
     }
   }
 
@@ -1151,10 +1159,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     commitInput: unknown,
     keyDigest: string,
     businessKeyDigest: string,
+    role: ProbeRole = "probe",
   ) {
     let verdict: RuntimeProbeVerdict;
     try {
-      verdict = await runLiveProbe(context, commitContract, commitInput);
+      verdict = await runLiveProbe(context, commitContract, commitInput, role);
     } catch (error) {
       throw new WriteSafetyAuthorityError(
         `pre-write probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} failed; `
@@ -1188,18 +1197,19 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     return verdict;
   }
 
-  async function requireHistoricalSavePresent(
+  async function requireHistoricalContactPresent(
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
     commitInput: unknown,
     durable: WriteIntentRecord,
   ): Promise<void> {
-    if (durable.status !== "committed" || durable.runId === context.run.envelope.runId) return;
+    if (commitContract.id !== "ucpath/save-emergency-contact" || durable.status !== "committed"
+      || durable.runId === context.run.envelope.runId) return;
     if (context.previewBinding !== undefined && context.previewBinding.samples.length > 0) {
       throw new TaskError(commitContract.id, "DRY_RUN_SAMPLE_REFUSED", "Preview samples cannot confirm an earlier Save.");
     }
     const verdict = await readPrewriteProbe(context, commitContract, commitInput, durable.idempotencyKeyDigest,
-      durable.occurrence?.businessKeyDigest ?? durable.idempotencyKeyDigest);
+      durable.occurrence?.businessKeyDigest ?? durable.idempotencyKeyDigest, "reuse-probe");
     if (verdict.state === "absent") {
       throw new TaskError(commitContract.id, "WRITE_COMMITTED_EFFECT_ABSENT", ERROR_CATALOG.WRITE_COMMITTED_EFFECT_ABSENT.text);
     }
@@ -1307,7 +1317,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const proof = completion.proofSchema.parse(stored.value);
     const outputRaw: unknown = Reflect.apply(completion.outputFromProof, undefined, [proof]);
     const outputValue = JsonValueSchema.parse(commitContract.output.parse(outputRaw));
-    await requireHistoricalSavePresent(context, commitContract, commitInput, durable);
+    await requireHistoricalContactPresent(context, commitContract, commitInput, durable);
     return settleAlreadyPresent({
       context,
       commitContract,
@@ -1657,7 +1667,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     let verdict: RuntimeProbeVerdict;
     try {
       if (recheckKeyDigest !== undefined && recheckKeyDigest !== intent.idempotencyKeyDigest) throw new Error("paypath-recheck-target-drift");
-      verdict = await runLiveProbe(context, commitContract, commitInput, intent.status === "parked" ? intent.recheck : undefined);
+      verdict = await runLiveProbe(context, commitContract, commitInput, "probe", intent.status === "parked" ? intent.recheck : undefined);
     } catch (error) {
       const failure = new PostFenceWriteFailure({
         writeIntentId: intent.writeIntentId,
@@ -1915,7 +1925,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     if (replaysCommittedOutcome) {
       const intent = intentMatchingCheckpoint(context, commitContract, storedCheckpoint, system, key, keyDigest);
       if (storedCheckpoint.runId !== envelope.runId && envelope.continuation === undefined && envelope.retryOf === undefined) {
-        await requireHistoricalSavePresent(context, commitContract, commitInput, intent);
+        await requireHistoricalContactPresent(context, commitContract, commitInput, intent);
       }
       return replayCheckpoint(context, commitContract, storedCheckpoint);
     }
@@ -2523,7 +2533,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           );
         }
         const settled = presentFromProof(stored.value);
-        await requireHistoricalSavePresent(context, commitContract, commitInput, durable);
+        await requireHistoricalContactPresent(context, commitContract, commitInput, durable);
         return TransactionDryRunPreviewSchema.parse({
           kind: "transaction-dry-run-preview",
           nodeId: String(node.id),
