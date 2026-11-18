@@ -9,6 +9,7 @@ import { childPolicyModules, childSettledObservationModules } from "../../../sup
 import { plan1ControlledFailureStores, plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { createDelegationExecutionWorld } from "../../../support/helpers/backend/delegation-execution-world.js";
 import { mappedReadDescriptor } from "../../../support/fixtures/rerun-values-fixtures.js";
+import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -271,6 +272,47 @@ it("reuses validated projection records within one snapshot without sharing call
       assert.deepEqual(read(), expected);
       assert.equal(reads, firstReads, "one projection does not reread and decode the same records");
     });
+  } finally { spy.mockRestore(); }
+});
+
+it("shares complete authenticated parent facts only within one read snapshot", async () => {
+  const world = createDelegationExecutionWorld(childSettledObservationModules);
+  cleanups.push(world.cleanup);
+  const f = await world.fixture(plan1ControlledFailureStores(() => true), "fail");
+  await f.execution.execute(f.run, world.SIGNAL);
+  await f.execution.step(f.run, world.SIGNAL);
+  await f.execution.step(f.run, world.SIGNAL);
+  const children = f.database.authority.runs.listChildren(f.run.envelope.runId);
+  assert.equal(children.length, 2);
+  const child = children[0]; assert.ok(child);
+  const parent = child.envelope.parent; assert.ok(parent);
+  const envelopes = children.map(run => run.envelope);
+  const expected = f.database.authority.dependencies.parents(envelopes);
+  assert.equal(expected.size, 2);
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- forwards the native receiver.
+  const prepare = DatabaseSync.prototype.prepare;
+  let siblingReads = 0;
+  const spy = vi.spyOn(DatabaseSync.prototype, "prepare").mockImplementation(function(this: DatabaseSync, sql: string) {
+    if (/SELECT\s+\*\s+FROM\s+runs\s+WHERE\s+parent_id\s*=/u.test(sql)) siblingReads++;
+    return prepare.call(this, sql);
+  });
+  try {
+    f.database.withAuthorityReadSnapshot(() => {
+      const first = f.database.authority.dependencies.parents(envelopes);
+      assert.deepEqual(first, expected);
+      const reads = siblingReads; assert.ok(reads > 0);
+      const fact = first.get(child.envelope.runId); assert.ok(fact);
+      assert.equal(Reflect.set(fact, "visibility", "changed"), true);
+      assert.deepEqual(f.database.authority.dependencies.parents([child.envelope]), expected);
+      assert.equal(siblingReads, reads, "one physical sibling read serves every projected child");
+      assert.throws(() => f.database.authority.dependencies.parents([{ ...child.envelope,
+        parent: { ...parent, runId: RunIdSchema.parse(randomUUID()) } }]), /delegation-parent-unavailable/);
+      assert.throws(() => f.database.authority.dependencies.parents([{ ...child.envelope,
+        runId: RunIdSchema.parse(randomUUID()) }]), /queue-parent-source-unavailable/);
+    });
+    const reads = siblingReads;
+    assert.deepEqual(f.database.authority.dependencies.parents(envelopes), expected);
+    assert.ok(siblingReads > reads, "the next operation authenticates physical siblings again");
   } finally { spy.mockRestore(); }
 });
 
