@@ -77,7 +77,7 @@ export function loadAssistantWorkflowFacts(repoRoot: string, served: readonly An
 /** The first served workflow whose stored facts differ from its definition's; a row only the file has is never named, since its id is untrusted. */
 function staleWorkflow(stored: string, expected: readonly AssistantWorkflowFact[]): string | undefined {
   let parsed: unknown;
-  try { parsed = JSON.parse(stored); } catch { return undefined; }
+  try { parsed = JSON.parse(stored); } catch (error) { throw new AssistantWorkflowFactsError("ASSISTANT_WORKFLOW_FACTS_STALE", undefined, { cause: error }); }
   const file = z.object({ workflows: z.array(z.looseObject({ id: z.string() })) }).safeParse(parsed);
   if (!file.success) return undefined;
   const storedById = new Map(file.data.workflows.map(entry => [entry.id, canonicalJsonStringify(entry)]));
