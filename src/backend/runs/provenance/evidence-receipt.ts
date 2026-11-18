@@ -1,3 +1,4 @@
+import type { ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { ONBOARDING_ROSTER_GATE_ID,OnboardingRosterChoiceSchema } from "../../../models/workflows/onboarding/roster.js";
 import { publicTransactionKeyDigest,retainedRunProtectedBindings,valueFreeProtectedInput } from "../../../models/write-safety/protected-input.js";
@@ -96,7 +97,10 @@ export interface ReceiptWriteEvidence {
   readonly attempts: readonly WriteAttemptRecord[];
 }
 
+type ReadConfirmedWrite = (writeIntentId: string) => Pick<ConfirmationPublication, "checkpoint" | "ledger"> | undefined;
+
 export interface ReceiptBuildInput {
+  readonly readConfirmedWrite?: ReadConfirmedWrite;
   readonly schemaReader?: EvidenceSchemaReader;
   readonly settlementVersion?: number;
   readonly descriptor: AnyWorkflowDescriptor;
@@ -519,7 +523,7 @@ function deriveReceipt(
   if (binding.state === "incompatible" && retained !== undefined) {
     assertRetainedReceiptDependencies(bindingInput, result);
     checkHistoricalReceipt({ receipt: retained, run, result, receiptId, inputFacts, checkpoints,
-      gates: admittedGateResults, writes, failure, omittedSteps });
+      gates: admittedGateResults, writes, failure, omittedSteps, readConfirmedWrite: input.readConfirmedWrite });
     return { receipt: retained, checks: binding.checks };
   }
 
@@ -1132,6 +1136,7 @@ function settlementWarnings(entryId: GateEvidenceInput["entryId"], failure: Fail
 }
 
 function checkHistoricalReceipt(input: {
+  readConfirmedWrite: ReadConfirmedWrite | undefined;
   receipt: RunEvidenceReceipt;
   run: RunRecord;
   result: RunResultRecord;
@@ -1197,6 +1202,7 @@ function checkHistoricalReceipt(input: {
   };
   const gateDecisions = new Map(receipt.decisions.filter(row => row.kind === "gate").map(row => [String(row.id), row]));
   const writeDecisions = new Map(receipt.decisions.filter(row => row.kind === "dedupe").map(row => [String(row.id), row]));
+  const assertions = new Map(receipt.decisions.filter(row => row.kind === "assertion").map(row => [String(row.id), row]));
   for (const gate of gates) {
     const verificationId = id("verification", `node.${gate.nodeId}`);
     const issued = receipt.verification.find(row => row.id === verificationId);
@@ -1234,14 +1240,28 @@ function checkHistoricalReceipt(input: {
     }
     const fields = evidenceLeaves(commit === undefined ? record.output.value : transactionOutcomeOf(record).output);
     const asserted = record.assertion;
+    const citations = fields.map(leaf => evidenceEntryRef(id("observation", `${nodeId}.${leaf.path}`)));
+    if (marker.verdict !== (asserted === undefined ? "verified" : "present") || !same(marker.evidence, citations)) {
+      throw new Error("receipt-checkpoint-verification-conflict");
+    }
+    if (asserted !== undefined && (read !== undefined || commit !== undefined
+      || record.provenance.some(fact => fact.source !== "operator"))) throw new Error("receipt-assertion-conflict");
+    if (asserted !== undefined) {
+      const first = fields[0];
+      const source = first === undefined ? undefined : observations.get(id("observation", `${nodeId}.${first.path}`))?.source;
+      if (source?.kind !== "operator-assertion" || !input.omittedSteps.includes(asserted.step)) throw new Error("receipt-assertion-conflict");
+      const decision = assertionDecision(id, nodeId, source.taskId, asserted, citations);
+      const stored = assertions.get(decision.id);
+      if (stored === undefined || !same(decision, stored)) throw new Error("receipt-assertion-decision-conflict");
+      assertions.delete(decision.id);
+      for (const leaf of fields) {
+        checkObservation(nodeId, leaf, { kind: "task-output", taskId: source.taskId },
+          { kind: "operator-assertion", taskId: source.taskId, step: asserted.step, assertedAt: asserted.assertedAt });
+      }
+      continue;
+    }
     for (const leaf of fields) {
       const factId = id("observation", `${nodeId}.${leaf.path}`), fact = observations.get(factId);
-      if (asserted !== undefined) {
-        if (fact?.source.kind !== "operator-assertion" || fact.source.step !== asserted.step || fact.source.assertedAt !== asserted.assertedAt
-          || !envelope.stepOmissions?.some(entry => entry.step === asserted.step)) throw new Error("receipt-assertion-conflict");
-        checkObservation(nodeId, leaf, { kind: "task-output", taskId: fact.source.taskId }, fact.source);
-        continue;
-      }
       const action = commit ?? read;
       if (action === undefined || fact === undefined) throw new Error("receipt-checkpoint-action-missing");
       const superseded: Fact[] = [];
@@ -1271,7 +1291,15 @@ function checkHistoricalReceipt(input: {
         || prepare.occurredAt !== record.writtenAt || proof === undefined) throw new Error("receipt-write-owner-conflict");
       const { intent } = write;
       const expected = commitActionOf({ id: commit.id, taskId: intent.taskId, occurredAt: record.writtenAt, write });
-      expected.proved = retainedWriteProof(intent, outcome, proof.completion, envelope);
+      const publication = input.readConfirmedWrite?.(intent.writeIntentId);
+      if (publication === undefined) throw new Error("receipt-write-completion-authority-unavailable");
+      const { ledger } = publication;
+      if (intent.status !== "committed" || outcome.disposition !== "committed" || ledger.runId !== envelope.runId
+        || ledger.traceId !== envelope.traceId || ledger.writeIntentId !== intent.writeIntentId || ledger.intentGeneration !== intent.generation
+        || ledger.bindingProofDigest !== intent.bindingProofDigest || ledger.proofSource !== outcome.proofSource
+        || ledger.confirmedAt !== outcome.confirmedAt || !same(ledger.proof, outcome.proof)
+        || !same(publication.checkpoint, record)) throw new Error("receipt-write-publication-conflict");
+      expected.proved = retainedWriteProof(intent, outcome, ledger.completionKind, envelope);
       if (!same(commit, expected)) throw new Error("receipt-write-proof-conflict");
       for (const decision of transactionDecisions(id, nodeId, commit.id, outcome, intent)) {
         const recorded = receipt.decisions.find(row => row.id === decision.id);
@@ -1288,6 +1316,7 @@ function checkHistoricalReceipt(input: {
     const recorded = recordedWarnings.get(expected.id);
     return recorded === undefined || !same(expected, recorded);
   })) throw new Error("receipt-warning-conflict");
+  if (assertions.size !== 0) throw new Error("receipt-assertion-decision-conflict");
   if (writeDecisions.size !== 0) throw new Error("receipt-write-decision-conflict");
   if (observations.size || actions.size) throw new Error("receipt-evidence-owner-missing");
 }
@@ -1296,6 +1325,7 @@ function checkHistoricalReceipt(input: {
 
 /** What the ensure step needs from authority. Reads only, plus the one insert. */
 export interface EvidenceReceiptStore {
+  readonly readConfirmedWrite?: ReadConfirmedWrite;
   readonly schemaReader?: EvidenceSchemaReader;
   refreshedSettlementVersion?(runId: string): number | undefined;
   getRun(runId: string): unknown;
@@ -1336,6 +1366,7 @@ export function ensureRunEvidenceReceipt(
   const result = store.getResult(runId);
   const composition = existing?.composition ?? LATEST_RECEIPT_COMPOSITION;
   const { receipt: derived } = deriveReceipt({
+    ...(existing === undefined || store.readConfirmedWrite === undefined ? {} : { readConfirmedWrite: store.readConfirmedWrite }),
     ...(store.schemaReader === undefined ? {} : { schemaReader: store.schemaReader }),
     descriptor,
     run,
@@ -1541,6 +1572,21 @@ interface AssertedEvidenceInput {
   readonly verification: Verification[];
 }
 
+function assertionDecision(entryId: GateEvidenceInput["entryId"], nodeId: string, taskId: string,
+  assertion: NonNullable<RunCheckpointRecord["assertion"]>, factRefs: readonly string[]): Decision {
+  const decisionId = entryId("decision", `assertion.${nodeId}`);
+  return {
+    id: decisionId,
+    kind: "assertion",
+    outcome: "taken",
+    reason: `node "${nodeId}" did not run: the operator omitted step "${assertion.step}" at start, and `
+      + `${taskId}'s output was rebuilt at ${assertion.assertedAt} from the facts the operator typed for `
+      + "that step. Every field below it is operator-asserted; none of it was observed in a live "
+      + "system, and no write was made from this node",
+    evidence: [evidenceEntryRef(entryId("verification", `node.${nodeId}`)), ...factRefs],
+  };
+}
+
 // Operator assertions are present facts, never live-verified observations.
 function emitAssertedNodeEvidence(input: AssertedEvidenceInput): void {
   const { assertion, record, node, nodeId, taskId, entryId, evidence } = input;
@@ -1603,18 +1649,8 @@ function emitAssertedNodeEvidence(input: AssertedEvidenceInput): void {
     });
   }
 
-  const decisionId = entryId("decision", `assertion.${nodeId}`);
   const factRefs = [...evidence.factIds.values()].map(evidenceEntryRef);
-  input.decisions.push({
-    id: decisionId,
-    kind: "assertion",
-    outcome: "taken",
-    reason: `node "${nodeId}" did not run: the operator omitted step "${assertion.step}" at start, and `
-      + `${taskId}'s output was rebuilt at ${assertion.assertedAt} from the facts the operator typed for `
-      + "that step. Every field below it is operator-asserted; none of it was observed in a live "
-      + "system, and no write was made from this node",
-    evidence: [evidenceEntryRef(evidence.verificationId), ...factRefs],
-  });
+  input.decisions.push(assertionDecision(entryId, nodeId, taskId, assertion, factRefs));
 
   // Cite the facts, not the decision that cites this obligation; mutual citation would form a cycle.
   input.verification.push({
