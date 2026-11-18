@@ -3,7 +3,7 @@ import { z } from "zod";
 import { admitOcrExtraction, answersFingerprint, SubmittedAnswerSchema, type AdmittedRecord } from "./extraction.js";
 import { fieldOnPageKind, ocrForm } from "./form-registry.js";
 import { OcrResultSchema } from "../workflows/ocr/result.js";
-import { CommandIdSchema, EidSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, StableRecordIdSchema } from "../../rules/identity/ids.js";
+import { CommandIdSchema, EidSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, StableRecordIdSchema, type StableRecordId } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { TimelineCheckpointReferenceSchema } from "../events/timeline.js";
@@ -21,19 +21,51 @@ export function ocrRecordName(fields: AdmittedRecord): string | null {
   const first = fields.answers.find(answer => answer.path === "firstName"), last = fields.answers.find(answer => answer.path === "lastName");
   return first?.state === "read" && last?.state === "read" ? `${last.value}, ${first.value}` : null;
 }
-export function initialOcrReviewRecords(seed: z.output<typeof OcrResultSchema>): z.output<typeof OcrReviewRecordSchema>[] {
+export const OcrIdentityHoldReasonSchema = z.enum(["lookup-failed", "not-looked-up", "no-match", "multiple-matches", "name-differs", "eid-differs", "awaiting-assertion"]);
+export const OcrIdentityHoldSchema = z.strictObject({ recordId: StableRecordIdSchema, reason: OcrIdentityHoldReasonSchema });
+type OcrSeed = z.output<typeof OcrResultSchema>;
+type IdentityAssessment = { readonly eid: z.output<typeof EidSchema> } | { readonly hold: z.output<typeof OcrIdentityHoldReasonSchema> };
+
+/** An agreeing searched EID lets the form carry given or family names UCPath does not show; a name-only search needs the whole name. */
+function namesAgree(documentName: string | null, observedName: string | null, eidAgrees: boolean): boolean {
+  const document = documentName === null ? null : personMatchKey(documentName), observed = observedName === null ? null : personMatchKey(observedName);
+  if (document === null || observed === null) return false;
+  if (document === observed) return true;
+  if (!eidAgrees) return false;
+  const documentTokens = document.split(" "), observedTokens = observed.split(" ");
+  const [fewer, more] = documentTokens.length <= observedTokens.length ? [documentTokens, observedTokens] : [observedTokens, documentTokens];
+  return fewer.every(token => more.includes(token));
+}
+
+function assessOcrIdentity(seed: OcrSeed, recordId: StableRecordId, subjectName: string | null, fields: AdmittedRecord): IdentityAssessment {
+  const identities = seed.identities.filter(identity => identity.recordIds.includes(recordId));
+  const outcome = identities.length === 1 ? identities[0]?.outcome : undefined;
+  if (outcome === undefined) return { hold: "not-looked-up" };
+  if (outcome.state !== "done") return { hold: "lookup-failed" };
+  if (!("activeStatus" in outcome.output)) return { hold: "not-looked-up" };
+  const status = outcome.output.activeStatus;
+  if (status.ucpathSelection === "ambiguous") return { hold: "multiple-matches" };
+  if (status.ucpathSelection !== "resolved" || status.details.ucpath !== "Found" || status.details.foundInUcpath === false) return { hold: "no-match" };
+  const observed = EidSchema.parse(status.details.eid);
+  const fieldEid = fields.answers.find(answer => ["employee.employeeId", "employeeId"].includes(answer.path));
+  if (fieldEid?.state === "read" && fieldEid.value !== observed) return { hold: "eid-differs" };
+  return namesAgree(subjectName, status.details.name, fieldEid?.state === "read") ? { eid: observed } : { hold: "name-differs" };
+}
+
+export function initialOcrReviewRecords(seed: OcrSeed): z.output<typeof OcrReviewRecordSchema>[] {
   return seed.review.records.map(record => {
-    const identities = seed.identities.filter(identity => identity.recordIds.includes(record.recordId));
-    const outcome = identities.length === 1 ? identities[0]?.outcome : undefined;
-    const status = outcome?.state === "done" && "activeStatus" in outcome.output ? outcome.output.activeStatus : undefined;
-    const documentName = record.subjectName === null ? null : personMatchKey(record.subjectName);
-    const observedName = status?.details.name == null ? null : personMatchKey(status.details.name);
-    const observed = status?.ucpathSelection === "resolved" && status.details.ucpath === "Found"
-      && status.details.foundInUcpath !== false && documentName !== null && documentName === observedName
-      ? EidSchema.parse(status.details.eid) : null;
-    const fieldEid = record.fields.answers.find(answer => ["employee.employeeId", "employeeId"].includes(answer.path));
-    const conflicting = observed !== null && fieldEid?.state === "read" && fieldEid.value !== observed;
-    return { recordId: record.recordId, fields: record.fields, assertedEid: conflicting ? null : observed, discarded: false };
+    const assessment = assessOcrIdentity(seed, record.recordId, record.subjectName, record.fields);
+    return { recordId: record.recordId, fields: record.fields, assertedEid: "eid" in assessment ? assessment.eid : null, discarded: false };
+  });
+}
+
+/** Why each record of a revision has no asserted identity: its current fields read against the lookup its seed retains. */
+export function ocrIdentityHolds(revision: Pick<OcrReviewRevision, "seed" | "records">): z.output<typeof OcrIdentityHoldSchema>[] {
+  return revision.records.flatMap(record => {
+    if (record.assertedEid !== null) return [];
+    const assessment = record.provenance === undefined ? assessOcrIdentity(revision.seed, record.recordId, ocrRecordName(record.fields), record.fields)
+      : { hold: "not-looked-up" as const };
+    return [{ recordId: record.recordId, reason: "eid" in assessment ? "awaiting-assertion" as const : assessment.hold }];
   });
 }
 
