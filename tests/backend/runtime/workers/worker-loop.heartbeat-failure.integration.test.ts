@@ -15,7 +15,11 @@ import {
 const world = createWorkerDirectiveTestWorld();
 afterEach(world.cleanup);
 
-it.each(["proved", "unproved"])("unwinds the run when a heartbeat write throws (browser closure %s)", async (closure) => {
+it.each([
+  { closure: "proved", throwSpans: false },
+  { closure: "unproved", throwSpans: false },
+  { closure: "unproved", throwSpans: true },
+])("unwinds the run when a heartbeat write throws (browser closure $closure, throwing spans $throwSpans)", async ({ closure, throwSpans }) => {
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   const sessions = sessionFactoryHarness({
@@ -37,9 +41,20 @@ it.each(["proved", "unproved"])("unwinds the run when a heartbeat write throws (
   database.authority.runs.enqueue(personLookupQueuedRun());
   const failure = new Error("synthetic heartbeat write failure");
   const closeFailure = new Error("synthetic browser close failure");
+  const cancelledTaskSpanFailure = new Error("synthetic cancelled task span write failure");
+  const workerEndSpanFailure = new Error("synthetic worker end span write failure");
   let claims = 0;
   const settled = runWorkerLoop({
     ...h.deps,
+    emitter: {
+      emit(event) {
+        if (throwSpans && event.t === "span.ended") {
+          if (event.kind === "task" && event.outcome === "cancelled") throw cancelledTaskSpanFailure;
+          if (event.kind === "worker") throw workerEndSpanFailure;
+        }
+        h.deps.emitter.emit(event);
+      },
+    },
     sessionFactory: {
       ...sessions.factory,
       async open(input) {
@@ -81,15 +96,18 @@ it.each(["proved", "unproved"])("unwinds the run when a heartbeat write throws (
       assert.equal(result.error.cause, failure);
     } else {
       assert.ok(result.error instanceof WorkerSessionClosureUnprovedError);
-      const [heartbeatError, browserError]: unknown[] = result.error.errors;
+      const [heartbeatError, browserError, ...drainErrors]: unknown[] = result.error.errors;
       assert.ok(heartbeatError instanceof Error);
       assert.equal(heartbeatError.cause, failure);
       assert.ok(browserError instanceof WorkerSessionClosureUnprovedError);
       assert.ok(browserError.errors.includes(closeFailure));
+      assert.deepEqual(drainErrors, throwSpans ? [cancelledTaskSpanFailure, workerEndSpanFailure] : []);
     }
     assert.ok(sessions.closeReasons().includes("poisoned"));
-    assert.ok(h.emitter.events().some(event => event.t === "span.ended" && event.kind === "task" && event.outcome === "cancelled"));
-    assert.ok(h.emitter.events().some(event => event.t === "span.ended" && event.kind === "worker" && event.outcome === "failed"));
+    if (!throwSpans) {
+      assert.ok(h.emitter.events().some(event => event.t === "span.ended" && event.kind === "task" && event.outcome === "cancelled"));
+      assert.ok(h.emitter.events().some(event => event.t === "span.ended" && event.kind === "worker" && event.outcome === "failed"));
+    }
     assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "running");
     assert.equal(claims, 1);
     assert.equal(h.scheduler.pending().length, 0);

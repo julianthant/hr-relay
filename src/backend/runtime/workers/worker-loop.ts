@@ -296,8 +296,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     void operation.then(() => { callbacks.delete(operation); }, () => { callbacks.delete(operation); });
   };
   const outcomes: RunExecutionOutcome[] = [];
+  const drainFailures: unknown[] = [];
   let heartbeatFailure: Error | undefined;
-  let closureFailure: WorkerSessionClosureUnprovedError | undefined;
   let stopped: WorkerLoopReport["stopped"] = "stop-signal";
   let preflightRefusal: WorkerPreflightRefusal | undefined;
   try {
@@ -470,12 +470,17 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         if (idleDelayMs !== undefined) await boundedWait(deps.scheduler, clock, idleDelayMs, deps.stopSignal);
       }
     }
-  } finally {
+  } catch (error) {
+    drainFailures.push(error);
+  }
+
+  let closureFailure: WorkerSessionClosureUnprovedError | undefined;
+  try {
     closureFailure = await sessions.closeAll("worker-stop").then(() => undefined, (error: unknown) => {
       if (!(error instanceof WorkerSessionClosureUnprovedError)) throw error;
-      deps.onClosureUnproved?.(error);
       return error;
     });
+    if (closureFailure !== undefined) deps.onClosureUnproved?.(closureFailure);
     const errorSummary = closureFailure !== undefined ? `worker ${workerId} browser session closure is unproved`
       : heartbeatFailure?.message ?? (preflightRefusal === undefined ? undefined : ERROR_CATALOG[preflightRefusal.code].text);
     emit({ t: "span.ended", kind: "worker", workerId, spanPath: workerPath,
@@ -485,11 +490,20 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         errorSummary,
       }),
     });
+  } catch (error) {
+    drainFailures.push(error);
   }
   if (heartbeatFailure !== undefined) {
-    if (closureFailure !== undefined) throw new WorkerSessionClosureUnprovedError(workerId, [heartbeatFailure, closureFailure]);
+    const causes = closureFailure === undefined
+      ? [heartbeatFailure, ...drainFailures]
+      : [heartbeatFailure, closureFailure, ...drainFailures];
+    if (causes.some(cause => cause instanceof WorkerSessionClosureUnprovedError)) {
+      throw new WorkerSessionClosureUnprovedError(workerId, causes);
+    }
+    if (causes.length > 1) throw new AggregateError(causes, heartbeatFailure.message, { cause: heartbeatFailure.cause });
     throw heartbeatFailure;
   }
+  if (drainFailures.length > 0) throw drainFailures.at(-1);
   return WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes, stopped,
     closure: closureFailure === undefined ? "proved" : "unproved",
     ...(preflightRefusal === undefined ? {} : { preflightRefusal }) });
