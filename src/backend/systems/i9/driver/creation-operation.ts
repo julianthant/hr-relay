@@ -2,6 +2,7 @@ import { redactedEvidenceId } from "../../../../rules/redaction/redaction.js";
 import { AbsentEvidenceSchema } from "../../../../rules/write-safety/write-safety-primitives.js";
 import { IsoInstantSchema, FingerprintSchema, EvidenceRefSchema } from "../../../../rules/identity/ids.js";
 import type { Page } from "playwright";
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { I9_PROFILE_STAGED, I9_REMOTE_STAGED, I9_PROFILE_SUBJECT, I9_SEARCH_RESULTS, I9_SEARCH_READ, I9ProfileProofSchema, I9RemoteProofSchema,
   I9ProfileTargetSchema, I9RemoteTargetSchema, i9ProfileKey, i9RemoteKey,
@@ -123,7 +124,7 @@ export function createI9CreationOperations(assertCurrent: () => void, page: Page
       if (requireApp().pathname !== "/employee/profile") throw new Error("i9-new-profile-route-mismatch");
       stagedProfile = undefined;
       await requireIdentity(target);
-      await ui.saveProfile(page).click({ timeout: CONTROL_MS });
+      await clickWithMutationCapability(capability, ui.saveProfile(page), CONTROL_MS);
       recordBrowserAction("clicked", "i9.profile.save");
       const ok = ui.ok(page);
       const duplicate = ui.duplicate(page);
@@ -184,7 +185,7 @@ export function createI9CreationOperations(assertCurrent: () => void, page: Page
       stagedRemote = undefined;
       await requireIdentity(target);
       if (await ui.startDate(page).inputValue() !== target.startDate) throw new Error("i9-remote-start-date-changed");
-      await ui.createRemote(page).click({ timeout: CONTROL_MS });
+      await clickWithMutationCapability(capability, ui.createRemote(page), CONTROL_MS);
       recordBrowserAction("clicked", "i9.remote.create");
       const success = ui.remoteSuccess(page);
       const error = ui.remoteError(page);

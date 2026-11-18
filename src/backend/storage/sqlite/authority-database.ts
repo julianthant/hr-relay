@@ -70,7 +70,7 @@ import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-roo
 import { inspectArtifactDeletionFile,pendingDiagnosticArtifacts,reclaimDiagnosticStages,removeArtifactDeletionFile } from "../artifacts/content-addressed-artifact-writer.js";
 import { fileIdentityObservation,sameDirectory,type DirectoryIdentity, clearOperationProofSlots,outermostOperationProof,readPrivateFile,revalidateOperationProof,withOperationProof } from "../configuration/credential-safe-file.js";
 import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
-import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
+import { stoppedLogoutAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { fixedLayoutOutputPaths,fixedLayoutSettingsUpdate,readFixedLayoutIntent,type FixedLayoutActivation } from "../maintenance/fixed-layout.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { privatePathRejects } from "../private-path.js";
@@ -3540,13 +3540,13 @@ export class AuthorityDatabase implements Disposable {
         cold.inspection.snapshot.assertUnchanged(); cold.inspection.dispose();
         restore = cold.restore; admission = cold.admission;
       }
-      const afterClose = profileAuthorityFileWitnesses(admission.stateRoot);
+      const afterClose = stoppedLogoutAuthorityFileWitnesses(admission.stateRoot);
       const closedSource = fileStatus(path);
       if (!sameDirectory({ device: closedSource.dev, inode: closedSource.ino }, operation.source.database)) throw new Error("profile-logout-native-source-changed");
       const copied = withAuthorityDatabaseReadOnly(admission, path, native => inspectNativeAuthority(native, CURRENT_AUTHORITY_SCHEMA_VERSION));
       if (copied.installationId !== observed.installationId || copied.profileId !== observed.profileId || copied.schemaVersion !== observed.schemaVersion
         || copied.authorityGeneration !== observed.authorityGeneration || copied.authorityContentFingerprint !== observed.authorityContentFingerprint
-        || canonicalJsonStringify(profileAuthorityFileWitnesses(admission.stateRoot)) !== canonicalJsonStringify(afterClose)) throw new Error("profile-logout-native-source-changed");
+        || canonicalJsonStringify(stoppedLogoutAuthorityFileWitnesses(admission.stateRoot)) !== canonicalJsonStringify(afterClose)) throw new Error("profile-logout-native-source-changed");
       inspection = admission.capturePendingLogoutSnapshot(); snapshot = inspection.snapshot; copyAdmission = inspection.admission;
       database = new AuthorityDatabase(copyAdmission, { path: snapshot.path, busyTimeoutMs: 250, migrationOwner: "profile-logout-inspection", openMode: "storage-doctor-read-only-no-migrate" }, this.#clock,
         undefined, undefined, undefined, undefined, "stopped-logout-inspection");
@@ -3554,7 +3554,7 @@ export class AuthorityDatabase implements Disposable {
       await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
       admission.assertPendingLogoutSettlementDatabase(path);
       if (inspectNativeAuthority(database.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint !== copied.authorityContentFingerprint
-        || canonicalJsonStringify(profileAuthorityFileWitnesses(admission.stateRoot)) !== canonicalJsonStringify(afterClose)) throw new Error("profile-logout-native-source-changed");
+        || canonicalJsonStringify(stoppedLogoutAuthorityFileWitnesses(admission.stateRoot)) !== canonicalJsonStringify(afterClose)) throw new Error("profile-logout-native-source-changed");
       if (operation.settlement === undefined) {
         const facts = database.readProfileResourceCustody();
         const stoppedAt = this.#clock.now().toISOString();

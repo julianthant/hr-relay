@@ -1,3 +1,4 @@
+import { fakeCommitHandle, waitForFixturePageClose } from "./fake-commit-handle.js";
 import type { Page } from "playwright";
 import { I9SearchRowSchema, type I9SearchRow } from "../../../../src/models/ui/i9.js";
 
@@ -42,6 +43,8 @@ export function fakeI9CreationPage(options: Readonly<{
       fill: async (value: string) => { if (!fields.has(name)) throw new Error(`unexpected fixture fill ${name}`); fields.set(name, value); actions.push(`fill:${name}`); },
       check: async () => { if (kind !== "radio") throw new Error("unexpected fixture checkbox"); actions.push("remote:section1"); },
       evaluate: async (operation: (element: { style: { display: string } }) => unknown) => operation({ style: { display: "block" } }),
+      page: () => page,
+      async elementHandle() { return fakeCommitHandle(() => this.click()); },
       click: async () => {
         actions.push(`click:${kind}`);
         if (kind === "new-profile") {
@@ -71,6 +74,7 @@ export function fakeI9CreationPage(options: Readonly<{
     };
   }
   const page = {
+    waitForEvent: waitForFixturePageClose,
     url: () => url,
     goto: async (destination: string) => {
       url = destination;
