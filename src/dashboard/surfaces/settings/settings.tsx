@@ -177,8 +177,6 @@ export function SettingsPage({
   }, [activeId, searchTarget, searchVisit]);
   useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
   useEffect(() => { if (backToRun && requestedTarget === undefined) content.current?.focus(); }, [backToRun, requestedTarget]);
-  const settingsEntries = groups.filter(group => group.id === "personal" || group.id === "advanced").flatMap(group => group.entries);
-  const activeSettingsEditorSection = activeId !== undefined && (settingsEntries.some(entry => entry.id === activeId) || activeId === "performance");
   const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount;
   const hasDirtyDraft = totalDirty > 0;
 
