@@ -2422,7 +2422,8 @@ function dispatchActive(
       if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
       const current = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
       if (current === undefined) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
-      const descriptor = resolveDescriptorOrReject(dependencies, request, current.run.envelope.workflow);
+      const descriptors = dependencies.readableDescriptors ?? dependencies.descriptors;
+      const descriptor = resolveDescriptorOrReject({ ...dependencies, descriptors }, request, current.run.envelope.workflow);
       requireDescriptorMatchesEnvelope(request, descriptor, current.run);
       if (readOcrSnapshotsAuthority(repositories, current).length > 0) throw new OcrReviewRefusedError();
       if (current.revision.revision !== request.target.expectedRevision) conflict(request, current.revision.revision, ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
