@@ -78,10 +78,10 @@ const withAssistant = (messages: readonly number[], proposed: readonly number[])
 };
 const headings = () => [...document.querySelectorAll('h2, h3')].map(item => item.textContent);
 
-it('draws Messages, Tools used and Actions after Why runs failed, with the served counts', async () => {
+it('draws Messages and Actions after Why runs failed, with the served counts', async () => {
   await render(withAssistant([1, 2, 3, 0, 0, 4, 5], [0, 1, 0, 0, 2, 0, 0]));
   const order = headings().filter(text => ['Why runs failed', 'Messages', 'Tools used', 'Actions'].includes(text ?? ''));
-  assert.deepEqual(order, ['Why runs failed', 'Messages', 'Tools used', 'Actions']);
+  assert.deepEqual(order, ['Why runs failed', 'Messages', 'Actions']);
   assert.match(document.body.textContent, /Messages sent to the assistant each day\./);
   const messages = document.querySelector('figure[aria-label="Messages per day"]'); assert(messages);
   assert.match(messages.textContent ?? '', /Messages\s*15/);
@@ -91,19 +91,18 @@ it('draws Messages, Tools used and Actions after Why runs failed, with the serve
   assert.deepEqual([...actions.querySelectorAll('table tbody tr')].map(row => row.lastElementChild?.textContent), ['0', '1', '0', '0', '2', '0', '0']);
 });
 
-it('says tool calls and approvals are not recorded rather than drawing zeros', async () => {
+it('shows no tools section and no not-recorded line, since neither is recorded', async () => {
   await render(withAssistant([1], [1]));
-  const tools = [...document.querySelectorAll('section, div')].find(node => node.querySelector(':scope > h2, :scope > h3')?.textContent === 'Tools used');
-  assert(tools); assert.match(tools.textContent ?? '', /Tool calls are not recorded yet\./);
+  assert.equal(headings().includes('Tools used'), false);
   assert.equal(document.querySelector('figure[aria-label="Tool calls per day"]'), null);
-  assert.match(document.body.textContent, /Approvals are not recorded yet\./);
+  assert.doesNotMatch(document.body.textContent, /not recorded yet/);
 });
 
 it('shows each assistant section empty when the range has no assistant use', async () => {
   await render(withAssistant([], []));
   assert.match(document.body.textContent, /No messages in this period/);
   assert.match(document.body.textContent, /No actions proposed in this period/);
-  assert.match(document.body.textContent, /Tool calls are not recorded yet\./);
+  assert.doesNotMatch(document.body.textContent, /not recorded yet/);
   assert.equal(document.querySelector('figure[aria-label="Messages per day"]'), null);
   assert.equal(document.querySelector('figure[aria-label="Proposed actions per day"]'), null);
 });
