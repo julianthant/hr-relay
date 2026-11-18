@@ -36,32 +36,34 @@ export function assistantWorkflowRunMode(descriptor: AnyWorkflowDescriptor): "dr
   return "reason" in support && support.reason === "no-transaction-node" ? "live-read" : "unavailable";
 }
 
-function freshStart(descriptor: AnyWorkflowDescriptor, mode: ReturnType<typeof assistantWorkflowRunMode>): AssistantWorkflowFact["start"] {
+function freshStart(descriptor: AnyWorkflowDescriptor, mode: ReturnType<typeof assistantWorkflowRunMode>, needsDate: boolean): AssistantWorkflowFact["start"] {
   const { inputRun, uploadRun } = descriptor.surfaces;
   if (inputRun === undefined) return uploadRun === undefined ? "unavailable" : "dashboard-upload";
   if (mode === "unavailable") return mode;
-  const typed = inputRun.typedInput;
-  const needsDate = typed?.submitsMode === false && typed.controls.some(control => "kind" in control && control.kind === "date"
-    && control.required && control.requires.length === 0 && control.modes.includes(typed.modes[0].value)
-    && !inputRun.parser.rules.some(rule => rule.emit === control.field));
   return descriptor.workbookReference !== undefined || needsDate ? "dashboard-input" : mode;
 }
 
 function fact(descriptor: AnyWorkflowDescriptor): AssistantWorkflowFact {
   const inputRun = descriptor.surfaces.inputRun, mode = assistantWorkflowRunMode(descriptor);
-  const split = inputRun?.parser.split;
+  const split = inputRun?.parser.split, typed = inputRun?.typedInput;
+  const fields = [...new Set(inputRun?.parser.rules.map(rule => rule.emit))];
+  const requiredDates = typed?.submitsMode === false ? typed.controls.filter(control => "kind" in control && control.kind === "date"
+    && control.required && control.requires.length === 0 && control.modes.includes(typed.modes[0].value)) : [];
+  const needsDate = requiredDates.some(control => !fields.includes(control.field));
+  // Chat reruns send retained ISO dates, which the typed-date ingress cannot accept.
+  const rerunUnavailable = mode === "unavailable" || descriptor.workbookReference !== undefined || requiredDates.length > 0;
   return AssistantWorkflowFactSchema.parse({
     id: descriptor.id, label: descriptor.label, summary: descriptor.summary ?? null, category: descriptor.category,
     input: inputRun === undefined ? null : {
       placeholder: inputRun.placeholder,
       entries: split?.kind === "delimited" ? `One entry per item, separated by ${split.delimiters.map(value => JSON.stringify(value)).join(" or ")}` : "The whole text is one entry",
-      fields: [...new Set(inputRun.parser.rules.map(rule => rule.emit))],
+      fields,
       examples: (inputRun.examples ?? []).map(({ label, text, note }) => ({ label, text, note })),
     },
-    start: freshStart(descriptor, mode),
+    start: freshStart(descriptor, mode, needsDate),
     steps: descriptor.timeline.map(step => ({ label: step.label, description: step.description ?? null })),
     omittableSteps: descriptor.stepOmissions.map(omission => descriptor.timeline.find(step => step.key === omission.step)?.label ?? omission.step),
-    rerun: mode === "unavailable" || descriptor.workbookReference !== undefined ? "unavailable" : "check-run",
+    rerun: rerunUnavailable ? "unavailable" : "check-run",
   });
 }
 

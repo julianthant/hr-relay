@@ -23,7 +23,7 @@ it.each([
   ["i9-check-start", "dashboard-upload", "unavailable"],
   ["emergency-contact", "dashboard-upload", "unavailable"],
   ["onboarding", "dashboard-input", "unavailable"],
-  ["work-study", "dashboard-input", "check-run"],
+  ["work-study", "dashboard-input", "unavailable"],
   ["person-lookup", "live-read", "check-run"],
   ["separations", "dry-run", "check-run"],
 ])("describes %s fresh-start and rerun capability for chat", async (workflow, start, rerun) => {
