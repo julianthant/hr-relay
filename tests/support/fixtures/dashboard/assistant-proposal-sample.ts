@@ -1,4 +1,4 @@
-import type { AssistantMockProposal, AssistantState } from './assistant-model.js';
+import type { AssistantProposal, AssistantState } from '../../../../src/dashboard/surfaces/assistant/assistant-model.js';
 
 export const ASSISTANT_MOCK_PROMPT = 'Check Avery Sample and Morgan Example in Person Lookup. Read only; stop before any changes.';
 export const ASSISTANT_MOCK_REVISION = 'demo-context-7';
@@ -8,7 +8,7 @@ export const ASSISTANT_MOCK_SOURCE = {
   version: 'Synthetic public guide · demo-context-7',
 } as const;
 
-export function assistantMockProposal(prompt = ASSISTANT_MOCK_PROMPT, revision = ASSISTANT_MOCK_REVISION, id = 'demo-plan-1'): AssistantMockProposal {
+export function assistantMockProposal(prompt = ASSISTANT_MOCK_PROMPT, revision = ASSISTANT_MOCK_REVISION, id = 'demo-plan-1'): AssistantProposal {
   return {
     id, prompt, revision, workflow: { id: 'demo-person-check', label: 'Person Lookup', version: 'demo-v1' },
     values: [{ label: 'Systems', value: 'UCPath and CRM' }, { label: 'Match', value: 'Exact synthetic subject IDs' }],

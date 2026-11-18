@@ -1,28 +1,25 @@
 import type { InboxWiring } from "../../state/inbox-wiring-adapter.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { memo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { memo, useRef, useState } from "react";
 import { PanelLeft } from "lucide-react";
 import { IconButton, Tooltip } from "../../ds/ui.js";
 import type { NavbarData, NavbarSearchResult } from "./search/navbar-view-model.js";
 import type { PaletteAction } from "./search/search-palette-model.js";
 import { shortcutLabel, useShortcutPreferences } from "../settings/navigation/keyboard-preferences-model.js";
 import { RailSearch } from "./search/navbar-view.js";
-import { NotificationBell, NotificationPing, NotificationsPanel } from "../notifications/notifications-view.js";
-import { useNotificationAlert, useNotificationRailModel, type NotificationReads } from "../notifications/notification-rail-model.js";
-import type { NotificationDestination, NotificationsState } from "../notifications/notifications-view-model.js";
+import { NotificationBell, NotificationsPanel } from "../notifications/notifications-view.js";
+import { useNotificationAlert, useNotificationRailModel } from "../notifications/notification-rail-model.js";
+import type { NotificationDestination } from "../notifications/notifications-view-model.js";
 import type { WorkflowCountWire } from "./shell-model.js";
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { WorkflowRail } from "./workflow-rail.js";
 import { useRailCollapsed } from "./workflow-rail-model.js";
 
-export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, countsLoading, active, onSelect, settingsOpen, notifications, reads, setReads, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
+export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, countsLoading, active, onSelect, settingsOpen, inbox, onOpenNotification, searchData, onSearch, onSearchAction }: {
   workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; countsLoading?: boolean; active: string;
   onSelect: (id: string) => void;
   settingsOpen: boolean;
-  notifications: NotificationsState;
-  reads: NotificationReads;
-  setReads: Dispatch<SetStateAction<NotificationReads>>;
-  inbox?: InboxWiring;
+  inbox: InboxWiring;
   searchData: NavbarData;
   onSearchAction: (action: PaletteAction) => void;
   onSearch: (result: NavbarSearchResult, opened: () => void, refused: (message: string) => void) => void;
@@ -34,7 +31,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, co
   const [activeId, setActiveId] = useViewState("notificationActive", "", "replace");
   const [notice, setNotice] = useState("");
   const onAlert = useNotificationAlert();
-  const notificationRail = useNotificationRailModel({ notifications, reads, setReads, open, onAlert, setOpen, setNotice, onOpenNotification, onActive: setActiveId, served: inbox });
+  const notificationRail = useNotificationRailModel({ open, onAlert, setOpen, setNotice, onOpenNotification, onActive: setActiveId, served: inbox });
   const start = useShortcutPreferences().bindings.start[0];
   const bell = useRef<HTMLButtonElement>(null);
   const [stored, setCollapsed] = useRailCollapsed();
@@ -57,6 +54,5 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, co
       {open && !collapsed ? <NotificationsPanel activeId={activeId} showPriority={showPriority} onShowPriority={setShowPriority} dismissed={dismissed} onDismiss={id => setDismissed(current => [...current, id])} onControl={notificationRail.onControl} state={notificationRail.state} onReadAll={notificationRail.onReadAll} onOpen={notificationRail.onOpenItem} onBack={back} notice={notice || inbox?.notice || ""} />
         : <WorkflowRail workflows={workflows} counts={counts} countsLoading={countsLoading} active={active} onSelect={onSelect} collapsed={collapsed} />}
     </div>
-    {notificationRail.ping && notificationRail.pingItem && <NotificationPing item={notificationRail.pingItem} />}
   </aside>;
 });

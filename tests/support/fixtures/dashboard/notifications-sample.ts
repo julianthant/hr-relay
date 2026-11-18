@@ -1,5 +1,5 @@
-import { RunIdSchema } from "../../../rules/identity/ids.js";
-import type { NotificationItem, NotificationsState } from "./notifications-view-model.js";
+import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
+import type { NotificationItem, NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 
 const sample: Extract<NotificationsState, { state: "ready" }> = {
   state: "ready",

@@ -42,7 +42,7 @@ for (const state of ["pending", "uncertain", "confirmed", "refused", "conflict"]
       const root = createRoot(host);
       try {
         await act(async () => root.render(createElement(DashboardClientProvider, { client,
-          children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
+          children: createElement(DashboardApp, { profileSource: "mock", workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
         assert.equal(host.textContent?.includes("cancel: outcome unknown"), currentActor && (state === "pending" || state === "uncertain"));
         assert.equal(dispatch.mock.calls.length, 0, "showing recovery never dispatches a command");
       } finally {

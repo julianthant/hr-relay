@@ -26,7 +26,6 @@ export interface WorkflowIdSite {
 }
 
 const OCR_SERVICE = "OCR is the one workflow with its own record service; these files serve its records and queue.";
-const PREVIEW_MOCKS = "approved dashboard preview mocks name the workflows they depict; they are fixtures, not served behavior.";
 
 const DRY_RUN_TARGETS = "the one registration from a workflow id to its dry-run manifest and canonical-input resolver; ingress shapes differ per workflow.";
 
@@ -46,8 +45,6 @@ const ALLOWED_SITES: readonly WorkflowIdSite[] = [
   { path: "src/backend/runs/queries/ocr-record-members.ts", workflowIds: ["ocr", "person-lookup", "i9-lookup"],
     reason: `${OCR_SERVICE} Record members name the lookup child families OCR starts.` },
   { path: "src/dashboard/app/dashboard-app.tsx", workflowIds: ["ocr"], reason: "a manual OCR start opens its record review." },
-  { path: "src/dashboard/surfaces/shell/search/search-wiring-model.ts", workflowIds: ["ocr"], reason: "search opens an unapproved OCR run on its records." },
-  { path: "src/dashboard/surfaces/sessions/sessions-fixture.ts", workflowIds: ["person-lookup", "separations"], reason: PREVIEW_MOCKS },
 ];
 
 function inScope(path: string): boolean {

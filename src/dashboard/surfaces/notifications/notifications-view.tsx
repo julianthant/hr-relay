@@ -90,10 +90,3 @@ export const NotificationBell = forwardRef<HTMLButtonElement, { label: string; o
   return <Tooltip side="bottom" content="Notifications"><IconButton ref={ref} variant="ghost" size="sm" className="rail-notification-toggle" aria-pressed={open} label={label} title="" onClick={onToggle}
     icon={<><Bell aria-hidden className="size-4" />{unread && <span data-testid="notification-unread-dot" className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-ui-info" />}</>} /></Tooltip>;
 });
-
-export function NotificationPing({ item }: { item: NotificationItem }) {
-  const { toast } = useToasts();
-  const sent = useRef(false);
-  useEffect(() => { if (sent.current) return; sent.current = true; toast({ tone: "success", title: item.title, description: `${item.subject} · ${item.workflow}`}); }, [item, toast]);
-  return null;
-}

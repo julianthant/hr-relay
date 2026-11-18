@@ -1,5 +1,5 @@
 import { describe,expect,it } from "vitest";
-import { notificationDestinationRefusal,notificationPreviewState } from "../../../../src/dashboard/surfaces/notifications/notifications-preview-model.js";
+import { notificationDestinationRefusal,notificationPreviewState } from "./notifications-preview.js";
 import { applyNotificationReads,notificationView } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 import { QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { FIXTURE_DAY,FIXTURE_NOW } from "../../../mocks/helpers/fixture-identity.js";

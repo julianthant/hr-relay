@@ -1,6 +1,6 @@
 import { default as assert_m0,default as assert_m1,default as assert_m2 } from 'node:assert/strict';
 import { describe as describe_m0,describe as describe_m1,describe as describe_m2,it as it_m0,it as it_m1,it as it_m2 } from 'vitest';
-import { ACTIVITY_SAMPLE_RANGE as ACTIVITY_SAMPLE_RANGE_m0,ACTIVITY_SAMPLE_RANGE as ACTIVITY_SAMPLE_RANGE_m1,ACTIVITY_SAMPLE_RANGE as ACTIVITY_SAMPLE_RANGE_m2,activitySample as activitySample_m0,activitySample as activitySample_m1,activitySample as activitySample_m2 } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
+import { ACTIVITY_SAMPLE_RANGE as ACTIVITY_SAMPLE_RANGE_m0,ACTIVITY_SAMPLE_RANGE as ACTIVITY_SAMPLE_RANGE_m1,ACTIVITY_SAMPLE_RANGE as ACTIVITY_SAMPLE_RANGE_m2,activitySample as activitySample_m0,activitySample as activitySample_m1,activitySample as activitySample_m2 } from './activity-sample.js';
 import { activityDuration as activityDuration_m1,activityFailureRate as activityFailureRate_m1 } from "../../../../src/dashboard/surfaces/activity/activity-view-model.js";
 import { ActivityVolumeSchema as ActivityVolumeSchema_m1 } from "../../../../src/models/dashboard/activity-volume.js";
 

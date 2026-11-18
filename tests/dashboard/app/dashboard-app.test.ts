@@ -199,7 +199,7 @@ function appClient(): DashboardClient_m1 {
 
 async function mountDashboard(search: string): Promise<void> {
   window.history.replaceState(null, "", `/${search}`);
-  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { profileSource: "mock", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
   await act_m1(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -207,7 +207,7 @@ async function mountDashboard(search: string): Promise<void> {
 }
 
 async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
-  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { profileSource: "mock", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
   await act_m1(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -767,7 +767,7 @@ function servedSessionMocks(workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITI
   const composition = MOCK_WORKFLOW_COMPOSITION_m2(workflows);
   const registered = new Set(workflows.map(flow => flow.workflowId));
   for (const id of Object.keys(WORKFLOW_SOURCES)) assert_m2.equal(composition.sources[id], registered.has(id) ? "served" : "hidden", id);
-  return Object.freeze({ ...composition, sessions: "served" as const });
+  return Object.freeze({ ...composition, sessionsHarness: undefined });
 }
 async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof MOCK_WORKFLOW_COMPOSITION_m2 } = {}) {
   const { app } = createFixtureBff_m2();
@@ -808,7 +808,7 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
   const host = document.createElement('div'); document.body.append(host); root = createRoot_m2(host);
   const workflowComposition = options.workflowComposition ?? MOCK_WORKFLOW_COMPOSITION_m2;
-  await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { workflowComposition, previewPreferences: preview }) })));
+  await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { profileSource: "mock", workflowComposition, previewPreferences: preview }) })));
   await settle(); disposers.push(() => { open = false; });
   return { host, requests, streams,
     deliver: async (day: DashboardDayWire_m2, index = streams.length - 1) => { await act_m2(async () => snapshot(streams[index], day)); await settle(); },

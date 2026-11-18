@@ -26,7 +26,7 @@ async function mount(reply: (request: CommandRequest) => CommandResult) {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   await act(async () => root.render(createElement(DashboardClientProvider, { client,
-    children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
+    children: createElement(DashboardApp, { profileSource: "mock", workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
   return { host, sent, async close() { await act(async () => root.unmount()); host.remove(); localStorage.clear(); window.history.replaceState(null, "", "/"); } };
 }
 

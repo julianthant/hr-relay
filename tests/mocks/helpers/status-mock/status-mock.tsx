@@ -1,12 +1,12 @@
 import { Check, ChevronDown, LoaderCircle, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { RunList, RunListRow } from "../../../ds/primitives/run-list.js";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, Select, dsIcon, useToasts } from "../../../ds/ui.js";
-import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../../ds/primitives/dropdown-menu.js";
+import { RunList, RunListRow } from "../../../../src/dashboard/ds/primitives/run-list.js";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, Select, dsIcon, useToasts } from "../../../../src/dashboard/ds/ui.js";
+import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../../../src/dashboard/ds/primitives/dropdown-menu.js";
 import { DATASETS, missingRequired, samplesOf, withMapping, type Sheet, type Worksheet } from "./status-mock-sheets.js";
 import { sheetKey, ticked, type StatusMockPicks } from "./status-mock-picks.js";
-import { AppLockup } from "../../shell/app-lockup.js";
-import "../../shell/onboarding.css";
+import { AppLockup } from "../../../../src/dashboard/surfaces/shell/app-lockup.js";
+import "../../../../src/dashboard/surfaces/shell/onboarding.css";
 import { STATUS_MOCK_BLOCKERS, STATUS_MOCK_REQUIRED_FIELDS, STATUS_MOCK_FIRST_RUN, STATUS_MOCK_TOASTS, statusMock, type StatusMockId } from "./status-mock-model.js";
 
 

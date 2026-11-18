@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { it } from "vitest";
-import { useWorkspaceNotifications } from "../../../../src/dashboard/surfaces/notifications/notifications-preview-model.js";
+import { useWorkspaceNotifications } from "./notifications-preview.js";
 import type { NotificationsState } from "../../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
-import { FIXTURE_DAY_WIRE } from "../../../support/fixtures/dashboard/fixture-queue.js";
+import { FIXTURE_DAY_WIRE } from "./fixture-queue.js";
 import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../../src/models/dashboard/projection.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

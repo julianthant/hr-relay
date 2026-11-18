@@ -1,10 +1,13 @@
-import { successfulWorkflowTimings } from "./activity-timing-model.js";
-import { ActivityVolumeSchema, buildActivityVolumeBoundarySkeleton } from "../../../models/dashboard/activity-volume.js";
-import type { ActivityDateRange } from "./activity-model.js";
-import type { ActivityViewState } from "./activity-view-model.js";
-import { shiftDate, type AnalyticsData } from "./analytics-model.js";
-import type { ActivityRunRecord } from './activity-drilldown-model.js';
-import { runDisplayId, workflowDisplayCode } from '../shared/status/run-display-model.js';
+import { useCallback, useMemo } from "react";
+import { useViewState } from "../../../../src/dashboard/app/navigation/view-route-model.js";
+import type { ActivityReportHook } from "../../../../src/dashboard/surfaces/activity/activity.js";
+import { successfulWorkflowTimings } from "../../../../src/dashboard/surfaces/activity/activity-timing-model.js";
+import { ActivityVolumeSchema, buildActivityVolumeBoundarySkeleton } from "../../../../src/models/dashboard/activity-volume.js";
+import type { ActivityDateRange } from "../../../../src/dashboard/surfaces/activity/activity-model.js";
+import type { ActivityViewState } from "../../../../src/dashboard/surfaces/activity/activity-view-model.js";
+import { shiftDate, type AnalyticsData } from "../../../../src/dashboard/surfaces/activity/analytics-model.js";
+import type { ActivityRunRecord } from "../../../../src/dashboard/surfaces/activity/activity-drilldown-model.js";
+import { runDisplayId, workflowDisplayCode } from '../../../../src/dashboard/surfaces/shared/status/run-display-model.js';
 
 export const ACTIVITY_SAMPLE_TODAY = "2026-09-26";
 export const ACTIVITY_SAMPLE_RANGE: ActivityDateRange = { from: "2026-09-20", to: ACTIVITY_SAMPLE_TODAY };
@@ -122,3 +125,11 @@ export function activitySample(range: ActivityDateRange, scenario: ActivitySampl
     ], ...(scenario === "incomplete" ? {} : { volume }),
   } };
 }
+
+/** The mock harness's report hook: the sample report for the `activityPreview` scenario, with export refused like a preview. */
+export const useActivitySampleReport: ActivityReportHook = (_client, range) => {
+  const [scenario] = useViewState("activityPreview", "normal");
+  const data = useMemo(() => activitySample(range, scenario), [range, scenario]);
+  const exportCsv = useCallback(async () => { throw new Error("CSV export is unavailable in this preview."); }, []);
+  return useMemo(() => ({ data, pending: false, exportReady: true, notice: "", exportCsv }), [data, exportCsv]);
+};

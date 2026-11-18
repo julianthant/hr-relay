@@ -5,7 +5,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, it, vi } from 'vitest';
 import { ActivityReport } from '../../../../src/dashboard/surfaces/activity/activity.js';
 import { ActivityView } from '../../../../src/dashboard/surfaces/activity/activity-view.js';
-import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, activitySample } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
+import { activityRangeValue } from '../../../../src/dashboard/surfaces/activity/activity-model.js';
+import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
+import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, activitySample, useActivitySampleReport } from '../../../support/fixtures/dashboard/activity-sample.js';
 import type { ActivityViewState } from '../../../../src/dashboard/surfaces/activity/activity-view-model.js';
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 Reflect.set(globalThis, 'ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -39,9 +41,9 @@ it('supports the existing synchronous export callback', async () => {
 
 it('the mock report refuses export visibly without starting a download', async () => {
   await render();
-  await act(async () => root?.render(createElement(ActivityReport, { source: "mock", range: '', onRange() {} })));
+  await act(async () => root?.render(createElement(ActivityReport, { useReport: useActivitySampleReport, today: ACTIVITY_SAMPLE_TODAY, range: activityRangeValue(ACTIVITY_SAMPLE_RANGE), onRange() {} })));
   await act(async () => button().click());
-  assert.match(document.body.textContent, /CSV export is unavailable in this preview./);
+  assert.ok(document.body.textContent.includes(ERROR_CATALOG.DASHBOARD_READ_FAILED.text));
   assert.equal(document.querySelectorAll('a[download]').length, 0);
 });
 
@@ -132,7 +134,7 @@ it('says one plain sentence for an empty period and keeps the period control', a
 
 it('a bad range keeps the period control and never echoes the raw value', async () => {
   await render();
-  await act(async () => root?.render(createElement(ActivityReport, { source: 'mock', range: 'not-a-range', onRange() {} })));
+  await act(async () => root?.render(createElement(ActivityReport, { useReport: useActivitySampleReport, today: ACTIVITY_SAMPLE_TODAY, range: 'not-a-range', onRange() {} })));
   assert.doesNotMatch(document.body.textContent, /not-a-range/);
   assert.match(document.body.textContent, /That date range is not valid/);
   assert(['7d', '30d', '90d'].every(label => [...document.querySelectorAll('button, [role="radio"]')].some(item => item.textContent === label)));

@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
-import { FIXTURE_DAY_WIRE } from "../../../../support/fixtures/dashboard/fixture-day.js";
-import { buildWorkspaceSearchData, useWorkspaceSearchData } from "../../../../../src/dashboard/surfaces/shell/search/search-wiring-model.js";
-import { runDisplayId } from "../../../../../src/dashboard/surfaces/shared/status/run-display-model.js";
-import { dsStatusOf, statusAccessibleName } from "../../../../../src/dashboard/surfaces/shared/status/status-model.js";
-import type { NavbarData } from "../../../../../src/dashboard/surfaces/shell/search/navbar-view-model.js";
+import { FIXTURE_DAY_WIRE } from "./fixture-day.js";
+import { buildWorkspaceSearchData, useWorkspaceSearchData } from "./search-sample.js";
+import { runDisplayId } from "../../../../src/dashboard/surfaces/shared/status/run-display-model.js";
+import { dsStatusOf, statusAccessibleName } from "../../../../src/dashboard/surfaces/shared/status/status-model.js";
+import type { NavbarData } from "../../../../src/dashboard/surfaces/shell/search/navbar-view-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;
