@@ -77,7 +77,7 @@ export const ERROR_CATALOG = Object.freeze({
   TERMINATION_TYPE_OPTIONS_DRIFTED: catalogEntry("The available termination types changed during this run. Review the current options and choose again.", EmptyParametersSchema),
   TIMECARD_NAVIGATION_FAILED: catalogEntry("Kronos could not open the employee’s timecard. Review the search result.", EmptyParametersSchema),
   TIMECARD_RANGE_NOT_APPLIED: catalogEntry("Kronos did not apply the requested timecard date range. Check the displayed dates before continuing.", EmptyParametersSchema),
-  TIMECARD_UNREADABLE: catalogEntry("The employee’s timecard could not be read. Review the timecard and date range.", EmptyParametersSchema),
+  TIMECARD_UNREADABLE: catalogEntry("Kronos could not verify the timecard. Review it, then enter the confirmed separation dates manually.", EmptyParametersSchema),
   UCPATH_UNAVAILABLE: catalogEntry("UCPath could not be reached. Check the connection and review the run evidence.", EmptyParametersSchema),
   UNEXPECTED_PAGE_STATE: catalogEntry("The system did not show the expected page. Review the current page before continuing.", EmptyParametersSchema),
   UNKNOWN_TERMINATION_TYPE: catalogEntry("The termination type was not recognized. Review the separation document and available options.", EmptyParametersSchema),

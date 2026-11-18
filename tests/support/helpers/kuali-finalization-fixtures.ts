@@ -85,6 +85,7 @@ export const FINALIZATION_EID = EidSchema.parse("10800000");
 export const FINALIZATION_NAME = "Deterministic Person";
 export const FINALIZATION_OTHER_EID = "10800001";
 export const FINALIZATION_TRANSACTION_NUMBER = "T009000001";
+export const FINALIZATION_EMPL_RECORD = "0";
 export const FINALIZATION_WORKFLOW_ID = "separations-kuali-finalization";
 export const FINALIZATION_NODE = "finalize-kuali";
 export const FINALIZATION_DEPARTMENT_NODE = "department-option";
@@ -424,6 +425,7 @@ export async function finalizationHarness(
     emplId: FINALIZATION_EID,
     displayedName: FINALIZATION_NAME,
     nextTransactionId: FINALIZATION_TRANSACTION_NUMBER,
+    employmentRecords: [{ transactionId: FINALIZATION_TRANSACTION_NUMBER, emplRecord: FINALIZATION_EMPL_RECORD }],
     rows: [
       {
         transactionId: FINALIZATION_TRANSACTION_NUMBER,
