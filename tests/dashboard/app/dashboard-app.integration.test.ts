@@ -434,8 +434,10 @@ try {
   assert_m1.match(document.body.textContent ?? "", /Archive page removed/u);
   assert_m1.equal(document.querySelector('[aria-label="Archive"]'), null);
   assert_m1.equal(document.querySelector('a[href="?settings=archive"]'), null);
-  assert_m1.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 7);
-  assert_m1.ok(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]'));
+  // Subscription folded into General (1f9149b4fe); Archive is retired.
+  assert_m1.deepEqual([...document.querySelectorAll('nav[aria-label="Settings sections"] a')].map(link => link.getAttribute("href")),
+    ["general", "account", "spreadsheets", "explorer", "activity", "keyboard"].map(id => `?settings=${id}`));
+  assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]'), null);
   await click(button("Return to dashboard"));
   assert_m1.equal(parseRoute_m1(location.search).archive, undefined);
   assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
