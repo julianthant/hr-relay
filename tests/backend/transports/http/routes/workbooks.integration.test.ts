@@ -10,6 +10,9 @@ import type { DashboardApp } from '../../../../../src/backend/transports/http/ro
 import { registerWorkbookRoutes } from '../../../../../src/backend/transports/http/routes/workbooks.js';
 import { WorkbookLibraryError } from '../../../../../src/backend/workbooks/workbook-library-error.js';
 import { fixtureDescriptor } from '../../../../support/fixtures/descriptor-fixtures.js';
+import { createWorkbookLibraryQueries } from '../../../../../src/dashboard/client/queries/workbook-library-queries.js';
+import { createDashboardTransport } from '../../../../../src/dashboard/client/transport.js';
+import { DashboardClientError } from '../../../../../src/dashboard/client/errors.js';
 
 import assert from "node:assert/strict";
 import { afterEach, expect, it, vi } from "vitest";
@@ -19,6 +22,123 @@ import { assertHttpFaultOnly,faultAuthoritySnapshot,disposeHttpRouteHarness, for
 afterEach(disposeHttpRouteHarness);
 const headers = { host: "localhost", origin: "http://localhost", "content-type": "application/json" };
 const workbook = { name: "Dates.xlsx", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Dates", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: new Date("2026-01-01T00:00:00.000Z") }] }] }] };
+function workbookClient(app: DashboardApp) {
+  return createWorkbookLibraryQueries(createDashboardTransport({ baseUrl: 'http://localhost', fetchImpl: (url, init) => {
+    const request = new Request(url, init);
+    request.headers.set('host', new URL(url).host);
+    return app.request(request);
+  } }));
+}
+it('lists only workbook display summaries through the typed client, keeping full content on open', async () => {
+  const h = await harness();
+  const document = { name: 'Roster.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 'people', name: 'People', width: 2, hidden: [], headerRow: 2, sourceHeaderRow: 7,
+    columnBindings: [{ id: 'name', sourceColumn: 0, sourceHeader: 'Name', fieldId: 'roster.name', basis: 'manual' }, { id: 'notes', sourceColumn: 1, sourceHeader: 'Notes', fieldId: null, basis: 'unmapped' }],
+    rows: [{ id: 'preamble', cells: [{ value: 'Roster' }, { value: null }] }, { id: 'header', cells: [{ value: 'Name' }, { value: 'Notes' }] },
+      { id: 'person', cells: [{ value: 'Synthetic person' }, { value: 'Body content stays on the per-id route' }] }] }] };
+  const response = await h.app.request('http://localhost/api/v1/workbooks', { method: 'POST', headers, body: JSON.stringify({ workbook: document }) });
+  assert.equal(response.status, 201);
+  const saved = decodeSavedWorkbook(await response.json());
+  const client = workbookClient(h.app);
+  const expected = [{ libraryId: saved.libraryId, name: 'Roster.xlsx', typeId: 'general', version: 1, createdAt: saved.createdAt, savedAt: saved.savedAt, rowCount: 1,
+    sheets: [{ name: 'People', headerRow: 7, columns: ['Name', 'Notes'], columnBindings: document.sheets[0].columnBindings }] }];
+  const list = await h.app.request('http://localhost/api/v1/workbooks/list');
+  assert.equal(list.status, 200);
+  assert.deepEqual(await list.json(), expected);
+  assert.deepEqual(await client.workbookList(), expected);
+  assert.deepEqual(await client.workbookOpen(saved.libraryId), saved);
+});
+it('refreshes summaries after content and type changes and omits a removed workbook', async () => {
+  const h = await harness();
+  const client = workbookClient(h.app);
+  const first = await client.workbookCreate(workbook);
+  const initial = { libraryId: first.libraryId, name: 'Dates.xlsx', typeId: 'general', version: 1,
+    createdAt: first.createdAt, savedAt: first.savedAt, rowCount: 0, sheets: [{ name: 'Dates', headerRow: 1, columns: ['2026-01-01'] }] };
+  assert.deepEqual(await client.workbookList(), [initial]);
+  const type = await client.workbookPutType({ id: 'reference', name: 'Reference', keyFieldId: null, fields: ['roster.date'], defaultWorkbookId: null });
+  const entry = (await client.workbookCatalog())[0];
+  await client.workbookLibraryAction(first.libraryId, { operationId: 'change-type', expectedRevision: entry.state.revision, expectedVersion: 1,
+    change: { kind: 'metadata', metadata: { typeId: type.id, sharePoint: null } } });
+  assert.deepEqual(await client.workbookList(), [{ ...initial, typeId: 'reference', version: 2 }]);
+  const replacement = await client.workbookSave(first.libraryId, 2, { ...first.workbook, name: 'Replacement.xlsx',
+    sheets: [{ id: 'numbers', name: 'Numbers', width: 1, hidden: [], rows: [{ id: 'header', cells: [{ value: 'Number' }] },
+      { id: 'one', cells: [{ value: 42 }] }, { id: 'two', cells: [{ value: false }] }] }] });
+  assert.deepEqual(await client.workbookList(), [{ ...initial, name: 'Replacement.xlsx', typeId: 'reference', version: 3, savedAt: replacement.savedAt,
+    rowCount: 2, sheets: [{ name: 'Numbers', headerRow: 1, columns: ['Number'] }] }]);
+  assert.deepEqual(await client.workbookOpen(first.libraryId), replacement);
+  const current = (await client.workbookCatalog())[0];
+  await client.workbookLibraryAction(first.libraryId, { operationId: 'remove', expectedRevision: current.state.revision, expectedVersion: 3, change: { kind: 'remove' } });
+  assert.deepEqual(await client.workbookList(), []);
+});
+it('lists the workbook revision and type from the same authority snapshot', async () => {
+  const database = new DatabaseSync(':memory:');
+  try {
+    for (const migration of [WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION]) {
+      for (const statement of migration.statements) database.exec(statement);
+    }
+    function transaction<Result>(work: () => Result): Result {
+      database.exec('BEGIN');
+      try {
+        const result = work();
+        database.exec('COMMIT');
+        return result;
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+    }
+    let settleAfterRead: (() => void) | undefined;
+    const repository = createWorkbookLibraryRepository({ database, mutate: work => transaction(() => work().result), read: work => {
+      const result = transaction(work);
+      const settle = settleAfterRead;
+      settleAfterRead = undefined;
+      settle?.();
+      return result;
+    } });
+    const library = createWorkbookLibraryService({ repository, clock: manualClock(new Date('2026-11-02T00:00:00.000Z')), sync: unexpectedWorkbookSync });
+    const app: DashboardApp = new Hono();
+    registerWorkbookRoutes(app, { workbooks: { library, intake: async () => { throw new Error('unexpected intake'); }, workflows: [] } });
+    const client = workbookClient(app);
+    const first = library.create(workbook);
+    library.putType({ id: 'reference', name: 'Reference', keyFieldId: null, fields: ['roster.date'], defaultWorkbookId: null });
+    settleAfterRead = () => {
+      const receipt = library.operatorOperation(first.libraryId, 'settle-between-reads', { kind: 'metadata', expectedVersion: 1,
+        metadata: { typeId: 'reference', sharePoint: null } });
+      assert.equal(receipt.state, 'applied');
+    };
+
+    assert.deepEqual((await client.workbookList()).map(({ libraryId, version, typeId }) => ({ libraryId, version, typeId })),
+      [{ libraryId: first.libraryId, version: 1, typeId: 'general' }]);
+    assert.deepEqual((await client.workbookList()).map(({ libraryId, version, typeId }) => ({ libraryId, version, typeId })),
+      [{ libraryId: first.libraryId, version: 2, typeId: 'reference' }]);
+  } finally { database.close(); }
+});
+it('rejects duplicate identities and malformed summary fields through the typed transport', async () => {
+  const h = await harness();
+  const client = workbookClient(h.app);
+  await client.workbookCreate(workbook);
+  const summary = (await client.workbookList())[0];
+  assert.ok(Object.isFrozen(summary));
+  assert.ok(Object.isFrozen(summary.sheets[0].columns));
+  const sheet = summary.sheets[0];
+  const binding = { id: 'column', sourceColumn: 0, sourceHeader: 'Date', fieldId: 'roster.date', basis: 'manual' };
+  for (const body of [[summary, summary], [{ ...summary, workbook: {} }], [{ ...summary, savedAt: 'invalid' }],
+    [{ ...summary, savedAt: '2000-01-01T00:00:00.000Z' }], [{ ...summary, rowCount: -1 }], [{ ...summary, sheets: [{ ...sheet, rows: [] }] }],
+    [{ ...summary, sheets: [{ ...sheet, headerRow: 0 }] }], [{ ...summary, sheets: [sheet, { ...sheet, name: sheet.name.toUpperCase() }] }],
+    [{ ...summary, sheets: [{ ...sheet, columnBindings: [] }] }],
+    [{ ...summary, sheets: [{ ...sheet, columns: ['One', 'Two'], columnBindings: [binding, binding] }] }],
+    [{ ...summary, sheets: [{ ...sheet, columns: ['One', 'Two'], columnBindings: [binding, { ...binding, id: 'second' }] }] }]]) {
+    const invalid = createWorkbookLibraryQueries(createDashboardTransport({ baseUrl: 'http://localhost', fetchImpl: async (url, init) => {
+      const response = await h.app.request(url, init);
+      assert.equal(response.status, 200);
+      return new Response(JSON.stringify(body), { status: response.status, headers: response.headers });
+    } }));
+    await assert.rejects(invalid.workbookList(), (error: unknown) => {
+      assert.ok(error instanceof DashboardClientError);
+      assert.equal(error.kind, 'schema');
+      return true;
+    });
+  }
+});
 it('serves current workbook compatibility from server workflow declarations before the dynamic library route', async () => {
   const h = await harness();
   const response = await h.app.request('http://localhost/api/v1/workbooks/compatibility');

@@ -228,6 +228,14 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     if (state.libraryId !== id) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
     return state;
   });
+  const listCurrent = () => {
+    const cached = readCache();
+    if (cached?.list !== undefined) return cached.list;
+    const records = database.prepare('SELECT * FROM workbook_library ORDER BY saved_at DESC,id').all().map(cachedFromRow).filter(record => !libraryState(record.libraryId).removed);
+    if (cached === undefined) return records;
+    cached.list = Object.freeze(records);
+    return cached.list;
+  };
   const lastSync = (id: string): WorkbookLibrarySyncRecord | undefined => stored(() => {
     const row = z.strictObject({ sync_json: z.string().nullable() }).parse(database.prepare('SELECT sync_json FROM workbook_library_state WHERE id=?').get(id));
     return row.sync_json === null ? undefined : WorkbookLibrarySyncRecordSchema.parse(JSON.parse(row.sync_json));
@@ -641,14 +649,9 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       const row = database.prepare('SELECT payload_json FROM workbook_creations WHERE id=?').get(id);
       return row === undefined ? undefined : stored(() => decodeSavedWorkbook(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json)));
     })),
-    list: () => storage(() => deps.read(() => {
-      const cached = readCache();
-      if (cached?.list !== undefined) return cached.list;
-      const records = database.prepare('SELECT * FROM workbook_library ORDER BY saved_at DESC,id').all().map(cachedFromRow).filter(record => !libraryState(record.libraryId).removed);
-      if (cached === undefined) return records;
-      cached.list = Object.freeze(records);
-      return cached.list;
-    })),
+    list: () => storage(() => deps.read(listCurrent)),
+    listWithType: () => storage(() => deps.read(() =>
+      listCurrent().map(record => ({ record, typeId: metadata(record.libraryId).typeId })))),
     save: (record, expectedVersion) => {
       const result = operation(record.libraryId, { operationId: randomUUID(), source: { kind: 'operator' }, at: record.savedAt,
         change: { kind: 'save', expectedVersion, workbook: encodeSavedWorkbook(record).workbook } });
