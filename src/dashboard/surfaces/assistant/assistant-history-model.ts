@@ -12,10 +12,10 @@ import type { AssistantMessage, AssistantState } from './assistant-model.js';
 
 /** The stored caption of a live card; restored history shows that the card is gone instead. */
 export const ASSISTANT_PROPOSAL_CAPTION = 'Review this proposal. No action has been applied.';
-const RESTORED_PROPOSAL = 'This proposal is no longer available. Ask again to review a new one.';
+const RESTORED_PROPOSAL = 'This earlier request is no longer available. Ask again.';
 export const ASSISTANT_UNSAVED_REPLY = 'The reply was not saved. Do not resend it; ask again as a new message.';
 const PENDING_REPLY = 'This request is still waiting for its reply.';
-const IMPORT_NOTICES = { 'unknown': "The previous request's outcome is unknown. Do not retry it.", 'proposal-expired': 'The previous proposal expired. Ask again to review a new one.' } as const;
+const IMPORT_NOTICES = { 'unknown': "The previous request's outcome is unknown. Do not retry it.", 'proposal-expired': 'The previous request expired. Ask again.' } as const;
 const IMPORT_NAMESPACE = 'relay-assistant-history-import';
 const OLD_KEY = 'relay-assistant-history:';
 

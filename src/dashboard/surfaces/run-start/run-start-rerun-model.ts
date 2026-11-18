@@ -6,24 +6,11 @@ import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values
 import type { RunStartWorkflow } from "./run-start.js";
 import type { RerunSource } from "../../../models/run/rerun.js";
 
+/** Every step starts included on Rerun; the operator switches off what the run should not repeat. */
 export function defaultRerunSteps(snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow): string[] {
   if (snapshot.source.workflow !== workflow.workflowId) throw new Error(formatErrorCatalogFailure(
     createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" })).text);
-  if (snapshot.source.descriptorVersion !== workflow.version
-    || snapshot.steps.length !== workflow.steps.length || workflow.steps.some((step) => !snapshot.steps.some((source) => source.key === step.key))) {
-    return workflow.steps.map(step => step.key);
-  }
-  const selected = new Set(workflow.steps.filter((step) => snapshot.source.outcome === "done" || step.control.state === "required"
-    || snapshot.steps.find((source) => source.key === step.key)?.state !== "completed").map((step) => step.key));
-  // Retain completed prerequisites when omitting them would force unfinished
-  // selected work out. The ordinary toggle still permits that explicit cascade.
-  for (;;) {
-    const before = selected.size;
-    for (const step of workflow.steps) if (step.control.state === "omittable"
-      && step.control.forces.some((key) => selected.has(key))) selected.add(step.key);
-    if (selected.size === before) break;
-  }
-  return workflow.steps.filter((step) => selected.has(step.key)).map((step) => step.key);
+  return workflow.steps.map(step => step.key);
 }
 
 export function partialRerunTypedInput(surface: TypedInputSurface, input: Extract<RerunValuesSnapshot["sourceInput"], { state: "partial" }>) {

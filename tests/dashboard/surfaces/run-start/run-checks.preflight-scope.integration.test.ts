@@ -12,6 +12,7 @@ import type { DashboardApp } from "../../../../src/backend/transports/http/route
 import { registerSettingsPreflightRoutes } from "../../../../src/backend/transports/http/routes/settings-preflight.js";
 import { createDashboardClient, type DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { SETTINGS_READ_DEADLINE_MS } from "../../../../src/dashboard/client/read-deadline.js";
+import { FailureNotice } from "../../../../src/dashboard/ds/primitives/failure-notice.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { runChecksBlocked, useRunChecks } from "../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import { RunChecksStage } from "../../../../src/dashboard/surfaces/run-start/run-checks.js";
@@ -77,10 +78,15 @@ function checksHarness(workflowId: string, failConfig = true, beforeRerun?: () =
   return { client, observations, requests, scope };
 }
 
+/** The unavailable-checks notice with its Check again action is on screen. */
+const checksUnavailable = () => [...document.querySelectorAll("button")].some(button => button.textContent === "Check again");
+
 function Checks({ client, workflowId }: { client: DashboardClient; workflowId: string }) {
   const checks = useRunChecks(client, workflowId, true);
   return createElement("div", null,
-    createElement(RunChecksStage, { checks: checks.state, onRecheck: checks.recheck, onFix: () => undefined }),
+    checks.state.state === "unavailable" && createElement(FailureNotice, { sentence: checks.state.message, stillWorks: "Your choices are kept.",
+      action: { label: "Check again", onClick: checks.recheck } }),
+    createElement(RunChecksStage, { checks: checks.state, onFix: () => undefined }),
     createElement("button", { disabled: runChecksBlocked(checks.state), "data-checks-start": true }, "Start dry run"));
 }
 
@@ -99,7 +105,7 @@ async function settle() {
   for (let turn = 0; turn < 40; turn += 1) await act(async () => { await Promise.resolve(); });
 }
 
-it("produces Emergency Contact's exact-scope report and shows its real failed check with a fix", async () => {
+it("produces Emergency Contact's exact-scope report and shows its real failed check with the restart hint", async () => {
   const h = checksHarness("emergency-contact");
   const selection = PreflightSelectionSchema.parse({ workflowId: "emergency-contact" });
   const missing = await h.client.readPreflight(selection);
@@ -108,7 +114,8 @@ it("produces Emergency Contact's exact-scope report and shows its real failed ch
   assert.match(missing.reason, /Preflight evidence is unavailable for this exact scope/u);
   await mount(h.client, "emergency-contact");
   assert.ok(document.body.textContent?.includes("The runtime configuration is invalid."), document.body.textContent ?? "");
-  assert.ok(document.querySelector('[data-run-check-fix="config.valid"]'));
+  assert.ok(document.body.textContent?.includes("Cannot be fixed in Settings. Restart Relay, then check again."), document.body.textContent ?? "");
+  assert.equal(document.querySelector('[data-run-check-fix="config.valid"]'), null, "Settings cannot fix an invalid runtime configuration");
   const report = PreflightReadinessWireSchema.parse(await h.client.readPreflight(selection));
   assert.equal(report.state, "present");
   if (report.state !== "present") throw new Error("completed exact-scope report required");
@@ -161,7 +168,7 @@ it("Check again executes new exact-scope detectors even when a report became ava
   assert.equal(h.requests.filter(request => request === "POST /api/v1/preflight/rerun").length, 2);
   const checks = requiredPreflightChecks(h.scope.requestedCapabilities);
   assert.deepEqual(h.observations, [...checks, ...checks]);
-  assert.equal(document.body.textContent?.includes("Checks unavailable"), false);
+  assert.equal(checksUnavailable(), false);
   assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, false);
 });
 
@@ -191,12 +198,12 @@ it("bounds a stalled rerun response, ignores its late completion and permits an 
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     const recheck = [...document.querySelectorAll("button")].find(button => button.textContent === "Check again");
     assert.ok(recheck, document.body.textContent ?? "");
-    assert.ok(document.body.textContent?.includes("Checks unavailable"));
+    assert.ok(checksUnavailable());
     assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, true);
     const reads = h.requests.filter(request => request === "GET /api/v1/preflight").length;
     await act(async () => { response.resolve(); });
     await settle();
-    assert.ok(document.body.textContent?.includes("Checks unavailable"));
+    assert.ok(checksUnavailable());
     assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, true);
     assert.equal(h.requests.filter(request => request === "GET /api/v1/preflight").length, reads);
     await act(async () => { recheck.click(); });

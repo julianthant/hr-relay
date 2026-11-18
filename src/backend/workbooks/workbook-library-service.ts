@@ -264,7 +264,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     const link = deps.repository.metadata(libraryId).sharePoint;
     if (link === null) return work();
     const finish = (result: SyncOutcome) =>
-      deps.repository.recordSync(libraryId, { url: link.url, finishedAt: deps.clock.now().toISOString(), ...result });
+      deps.repository.recordSync(libraryId, { url: link.url, finishedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()), ...result });
     running.set(libraryId, (running.get(libraryId) ?? 0) + 1);
     try {
       let value: T;
@@ -336,7 +336,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
           deps.clock.now().toISOString(), encodeEditableWorkbook({ ...workbook, name: request.name, libraryId }));
         apply({ kind: 'link', url: request.url });
         apply({ kind: 'sync' });
-        deps.repository.recordSync(libraryId, { url: request.url, finishedAt: deps.clock.now().toISOString(), result: 'ok' });
+        deps.repository.recordSync(libraryId, { url: request.url, finishedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()), result: 'ok' });
         return WorkbookImportResultSchema.parse({ workbook: encodeSavedWorkbook(read(libraryId)) });
       });
     },

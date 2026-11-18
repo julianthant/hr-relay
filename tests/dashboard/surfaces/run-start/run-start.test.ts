@@ -523,12 +523,12 @@ describe("Start is not sent while an omitted step's form does not parse", () => 
     await dialog.press("Kronos timecard");
     await dialog.fill("Last day worked", "6/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
-    await dialog.press("Continue");
 
+    assert.equal(dialog.disabled("Continue"), true, "Continue stayed on with an unparsable fact");
     assert.equal(dialog.stage(), "Steps", "an unparsable fact reached the server");
     assert.equal(asked, 0, "the dialog asked the server for a plan it knew would be refused");
-    assert.ok(dialog.text().includes("a date fact must be MM/DD/YYYY"), "the declared refusal was not drawn");
-    assert.ok(dialog.text().includes("Fill in Last day worked"), "the footer never named the value Next is waiting for");
+    assert.equal(document.body.querySelectorAll('[role="alert"]').length, 1, "the refusal was not drawn as one alert");
+    assert.ok(dialog.text().includes("Last day worked must be a valid date in MM/DD/YYYY format."), "the first failure was not drawn");
 
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.press("Start live run");

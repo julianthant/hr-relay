@@ -47,6 +47,7 @@ import {
   ProjectionCursorSchema,
   type Fingerprint,
   type BrowserSystemId,
+  type IsoInstant,
 } from "../../../rules/identity/ids.js";
 import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
@@ -170,7 +171,7 @@ export interface RunQueueProjectionDeps {
     workerMembers?(): readonly WorkerMemberView[];
     /** Whether a capacity step for the workflow is still starting its members. */
     workerStartupPending?(workflowId: string): boolean;
-    heldDuoLeases?(workerId: string): readonly { system: BrowserSystemId; since: string }[];
+    heldDuoLeases?(workerId: string): readonly { system: BrowserSystemId; since: IsoInstant }[];
     /** Whether the run holds an `attempting` (fenced, unsettled) write intent. */
     writeInFlight?(runId: string): boolean;
     /** Absent in fixtures that have no SQLite generation. Present, an unchanged key skips the live-run read. */

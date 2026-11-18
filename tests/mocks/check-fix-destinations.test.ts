@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { Hono } from "hono";
+import type { DashboardApp } from "../../src/backend/transports/http/routes/api-types.js";
 import { mkdir } from "node:fs/promises";
 import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../src/models/dashboard/bootstrap.js";
@@ -41,7 +42,7 @@ async function openChecks(page: Page, baseUrl: string) {
 }
 
 for (const width of [1280, 1024]) test(`every Fix lands on its focused row, and Escape returns to the dialog at ${width}`, async ({ page }) => {
-  const app = new Hono();
+  const app: DashboardApp = new Hono();
   app.get("/api/v1/preflight", c => c.json(PreflightReadinessWireSchema.parse({ state: "present", report: report(PreflightSelectionSchema.parse(JSON.parse(c.req.query("selection") ?? "{}")).workflowId) })));
   const server = await startSweepOverlay(app, { bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, descriptorHash: day.descriptorHash, day });
   try {
