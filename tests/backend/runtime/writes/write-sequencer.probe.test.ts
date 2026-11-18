@@ -13,12 +13,13 @@ const target = UcpathTerminationTargetSchema.parse({ emplId: "10800000", expecte
 const now = "2026-10-27T18:00:00.000Z";
 const row = { transactionId: "T002209631", emplId: target.emplId, action: "TER", approvalStatus: "Pending",
   startDate: target.effectiveDate, displayedName: target.expectedName };
+const employmentRecords = [{ transactionId: row.transactionId, emplRecord: target.emplRecord }];
 
 async function read(transactionId: string, patch: Record<string, unknown> = {}, ignoreTarget = false, captureFailure?: Error, owned = true) {
   let captures = 0;
   const clock = manualClock(new Date(now));
   const driver = createDeterministicUcpathSmartHrDriver({ scan: UcpathTransactionScanSchema.parse({ state: "read", emplId: target.emplId,
-    rows: [{ ...row, ...patch }, { ...row, transactionId: "T002209632" }], scannedRowCount: 2, observedAt: now }) });
+    rows: [{ ...row, ...patch }, { ...row, transactionId: "T002209632" }], employmentRecords, scannedRowCount: 2, observedAt: now }) });
   const verdict = await executeIdempotencyProbe({ stores: taskStoreRegistry, clock, scheduler: new ManualScheduler(clock), taskDeadlineMs: 10_000,
     log: recordingLogger().log, sessions: { withDriver: async (need, _instance, _signal, operation, owner) => {
       assert.equal(need.access, "read");
@@ -28,7 +29,7 @@ async function read(transactionId: string, patch: Record<string, unknown> = {}, 
         assert.equal(owner.attempt, 3);
       } else assert.equal(owner, undefined);
       return operation(ignoreTarget ? { ...driver, scanTerminationTransactions: async () => UcpathTransactionScanSchema.parse({
-        state: "read", emplId: target.emplId, rows: [{ ...row, ...patch }], scannedRowCount: 1, observedAt: now }) } : driver, async () => { captures += 1; if (captureFailure !== undefined) throw captureFailure; });
+        state: "read", emplId: target.emplId, rows: [{ ...row, ...patch }], employmentRecords, scannedRowCount: 1, observedAt: now }) } : driver, async () => { captures += 1; if (captureFailure !== undefined) throw captureFailure; });
     } } }, { commitContract: UcpathCreateTermination, commitInput: target, transactionId, instance: "test", signal: new AbortController().signal,
       ...(owned ? { screenshotOwner: { nodeId: "termination", attempt: 3, log: recordingLogger().log } } : {}) });
   assert.equal(captures, owned ? 1 : 0);

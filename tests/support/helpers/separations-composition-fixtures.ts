@@ -34,7 +34,7 @@ import {
   type KualiFinalizationVariables,
   type KualiObservedFinalizationFields,
 } from "../../../src/models/ui/kuali-separation-finalization.js";
-import type { UcpathTransactionRow } from "../../../src/models/ui/ucpath-smart-hr-termination.js";
+import type { UcpathTerminationEmploymentRecordObservation, UcpathTransactionRow } from "../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { isUcpathTerminationInProgress } from "../../../src/models/ui/ucpath-smart-hr-termination.js";
 import type { RuntimeFlowNode } from "../../../src/models/workflow/graph.js";
 import { AuthorityDatabase } from "./synthetic-storage-admission.js";
@@ -331,6 +331,7 @@ export interface CompositionHarness {
 export async function compositionHarness(options: Readonly<{
   /** UCPath transaction rows the probe will scan. */
   rows?: readonly UcpathTransactionRow[];
+  employmentRecords?: readonly UcpathTerminationEmploymentRecordObservation[];
   /** Who UCPath Page B shows AFTER staging — the beat-③ mismatch arm. */
   ucpathNameAfterStage?: string;
   /** Who the Kuali document shows AFTER staging — the same arm, one system over. */
@@ -348,6 +349,7 @@ export async function compositionHarness(options: Readonly<{
     emplId: COMPOSITION_EID,
     displayedName: COMPOSITION_UCPATH_NAME,
     ...(options.rows === undefined ? {} : { rows: options.rows }),
+    ...(options.employmentRecords === undefined ? {} : { employmentRecords: options.employmentRecords }),
     nextTransactionId: COMPOSITION_RECEIPT,
   });
   if (options.ucpathNameAfterStage !== undefined) {

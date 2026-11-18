@@ -86,7 +86,7 @@ Natural keys remain private authority data. Public projections use digest refere
 | --- | --- | --- | --- | --- |
 | `ucpath/create-hire` | `ucpath:hire\|<email>\|<effectiveDate>\|<positionNumber>` | `ucpath/match-hire` | `ucpath/verify-hire` | `operator-only` |
 | `ucpath/create-termination` | `ucpath:termination\|<emplId>\|<effectiveDate>` | `ucpath/match-existing-termination` | `ucpath/verify-termination` | `operator-only` |
-| `ucpath/submit-paypath-work-study` | `ucpath:paypath-work-study\|<emplId>\|<effectiveDate>` | `ucpath/match-paypath-work-study` | `ucpath/verify-paypath-work-study` | `operator-only` |
+| `ucpath/submit-paypath-work-study` | `ucpath:paypath-work-study\|<emplId>\|<effectiveDate>\|<positionNumber>` | `ucpath/match-paypath-work-study` | `ucpath/verify-paypath-work-study` | `operator-only` |
 | `ucpath/delete-pending-terminations` | `ucpath:pending-terminations-clear:v2\|<emplId>\|<set-digest>` | `ucpath/match-pending-terminations` | `ucpath/verify-pending-terminations-cleared` | `operator-only` |
 | `kuali/save-separation-finalization` | `kuali:<documentNumber>\|finalization\|<transactionNumber>` | `kuali/match-separation-finalization` | `kuali/verify-separation-finalization` | `stabilized`: 30,000 ms after fence, two reads at least 5,000 ms apart, same source state |
 | `ucpath/save-emergency-contact` | `ucpath:emergency-contact\|<employee-and-effect-sha256>` | `ucpath/match-emergency-contact-plan` | `ucpath/verify-emergency-contact-plan` | `operator-only` |
@@ -101,11 +101,14 @@ kind shows the effective date; any row on that date is unknown and the run refus
 existing row is never taken as this person's filing. After Save and Submit the commit read-back and the verifier
 take as proof the one filed work-study row now on that date and nothing else; two such rows are ambiguous, and any
 other row on the date, a Denied, Error or Pushed Back row, or a capped or unreadable search is unknown and parks.
-Because the "Saved" answer to a parked write rechecks through the probe, a landed Save cannot settle that way until
-a row can be tied to reason JRL or pool F. Four facts behind both folds are unproven live: that PayPath transactions
-are listed in the SS Smart HR search, the Action label a work-study row shows, that its start date is the PayPath
-effective date, and that the PayPath header name matches the SS Smart HR detail name. Every Save-path PayPath
-anchor is unproven too.
+The driver checks the reviewed position number when it opens the record to stage and immediately before clicking
+Save and Submit, after the final tab transition. An existing employee-and-date-only intent blocks a new Save for
+that employee and date. An audited "Saved" recheck reconstructs the fenced target from retained checkpoint
+records, including exact workbook replays, and invokes the saved-effect verifier. SS Smart HR findings do not
+identify the reviewed position and fenced attempt, so even a matching row leaves the write parked for review.
+Four facts behind both folds still need live proof. PayPath transactions must appear in the SS Smart HR
+search with the expected Action label and start date, and the detail name must match the PayPath header name.
+The PayPath Save-path anchors also need live proof.
 
 Emergency Contact declares the full ordered demotion/addition plan under the OCR release. Its
 probe checks the complete persisted protected set, and its key validates the raw desired contact
@@ -287,7 +290,7 @@ The check retains its actual registered task callback across task deadlines and 
 
 `createWriteResolutionExecutor` provides two arms:
 
-- `recheck-write` records an audited request on the parked intent and queues the same run at its transaction node. The lifecycle continuation requires that exact command and node. The worker runs the read-only probe before prepare, staging, fencing, or clicking. Valid present proof settles the intent with `proofSource: "recovery-probe"`, writes the checkpoint and confirmation history atomically, and continues the run. Absent, ambiguous, unknown, throwing, or invalid proof clears the request and returns the run to `parked-write` with a renewed code, message, and time. This path never authorizes retry, including contracts with stabilized negative recovery.
+- `recheck-write` records an audited request on the parked intent and queues the same run at its transaction node. The lifecycle continuation requires that exact command and node. The worker performs a read-only check before prepare, staging, fencing, or clicking. It uses the idempotency probe by default and the saved-effect verifier for PayPath or an exact termination transaction. Valid present proof settles the intent with `proofSource: "recovery-probe"`, writes the checkpoint and confirmation history atomically, and continues the run. Absent, ambiguous, unknown, throwing, or invalid proof clears the request and returns the run to `parked-write` with a renewed code, message, and time. This path never authorizes retry, including contracts with stabilized negative recovery.
 - `resolve-write-absent` records the operator and confirmation instant and marks the intent `retryable`. It does not click. The next attempt must prepare, observe, and fence again.
 
 A recheck optionally accepts `transactionId` only when the completion verifier is `ucpath/verify-termination`. That verifier searches the exact employee and reads only the requested transaction detail. Proof must match the requested transaction ID and the permanent key's subject and effective date. A missing or mismatched record stays parked.

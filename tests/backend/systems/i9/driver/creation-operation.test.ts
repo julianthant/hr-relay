@@ -8,7 +8,7 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { DRY_RUN_I9_PROFILE_ID } from "../../../../../src/models/workflow/dry-run.js";
 import { fakeI9CreationPage } from "../../../../support/helpers/browser/fake-i9-creation-page.js";
 
-const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
 function fixture(options: Parameters<typeof fakeI9CreationPage>[0] = {}) {
   const world = fakeI9CreationPage(options);
   const driver = createI9CreationOperations(() => undefined, world.page, manualClock(new Date("2026-09-01T18:00:00.000Z")), world.reads);

@@ -10,7 +10,7 @@ import { FingerprintSchema, PositiveIntSchema } from "../../../../../src/rules/i
 
 const bytes = Buffer.from("one selected scanned page"), target = OnbaseTargetSchema.parse({ ...ONBASE_EXAMPLE_TARGET, pageSha256: createHash("sha256").update(bytes).digest("hex") });
 const clock = manualClock(new Date("2026-11-02T12:00:00Z"));
-const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
 const world = (options: Parameters<typeof fakeOnbasePage>[0] = {}) => {
   const fixture = fakeOnbasePage(options), driver = createOnbaseDriver(() => undefined, fixture.page, clock);
   driver.bindSourcePage(target, bytes); return { ...fixture, driver };

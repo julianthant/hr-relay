@@ -29,7 +29,7 @@ describe("required transaction captures", () => {
     const h = await harness({ captureFailure: "verify" });
     const claimed = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T222222" } });
+    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
     await assert.rejects(h.execute(contextFor(claimed.run, claimed.claim, writeFixtureSaveDescriptor)), WriteParkedError);
     assert.equal(intentByKey(h.database)?.status, "parked");
     assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
@@ -52,7 +52,7 @@ describe("required transaction captures", () => {
     const h = await harness({ captureFailure: "after-submit" });
     const claimed = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T222222" } });
+    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
     await assert.rejects(h.execute(contextFor(claimed.run, claimed.claim, writeFixtureSaveDescriptor)), WriteParkedError);
     assert.equal(intentByKey(h.database)?.status, "parked");
     assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
@@ -67,7 +67,7 @@ describe("required transaction captures", () => {
     const h = await harness({ captureFailure: "after-submit" });
     const claimed = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T222222" } });
+    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
     let reported = 0;
     await assert.rejects(h.execute({ ...contextFor(claimed.run, claimed.claim, writeFixtureSaveDescriptor),
       captureLog: { warn: () => { throw new z.ZodError([]); } },

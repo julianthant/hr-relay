@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { failedSourceReadDescriptor, sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
-import { originalCheckpoint, readRunCheckpoint, captureRunContinuation, validateRunContinuation, RunContinuationRefusedError } from "../../../../src/backend/storage/sqlite/run-continuation.js";
+import { originalCheckpoint, readRunCheckpoint, captureRunContinuation, continuationEvidenceDigest, validateRunContinuation, RunContinuationRefusedError } from "../../../../src/backend/storage/sqlite/run-continuation.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -11,9 +12,37 @@ import { mappedReadDescriptor } from "../../../support/fixtures/rerun-values-fix
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
+import { bindRunWorkbookReference } from "../../../../src/models/dashboard/workbooks.js";
+import { VerifyWorkbookPerson } from "../../../../src/models/processing/workbooks/verify-person.js";
+import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
+import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); });
+
+it("offers the dry run's reference checkpoint only for the same captured workbook version", async () => {
+  const f = await settingsFixture();
+  cleanups.push(f.close);
+  const typeId = "reference-check";
+  const start = (version: number, dryRun: boolean) => {
+    const reference = bindRunWorkbookReference({ libraryId: "roster", typeId, keys: [], fields: ["eid"] }, {
+      libraryId: "roster", version, worksheets: [{ sheetId: "sheet", name: "People" }], rows: [],
+      type: { id: typeId, name: "Roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null },
+    });
+    return f.create({ dryRun, input: { ...f.request().input, workbookReferences: [reference] } });
+  };
+  const dry = start(1, true);
+  const { runId, workflow, itemId, attempt, descriptorVersion, contractFingerprint } = dry.envelope;
+  const row = RunCheckpointRecordSchema.parse({ runId, workflowId: workflow, itemId, attempt, descriptorVersion, contractFingerprint,
+    nodeId: "reference-check", claimGeneration: 1, implFingerprint: taskImplFingerprint(VerifyWorkbookPerson),
+    output: { schemaHash: deriveSchemaHash(VerifyWorkbookPerson.output, "output"), value: VerifyWorkbookPerson.example },
+    provenance: [], writtenAt: dry.createdAt });
+  const authority = f.database.authority;
+  authority.runCheckpoints.insert(row);
+  assert.deepEqual(authority.runCheckpoints.latest(workflow, itemId, "reference-check"), row);
+  assert.deepEqual(readRunCheckpoint(authority, start(1, false).envelope, "reference-check", true, typeId), row);
+  assert.equal(readRunCheckpoint(authority, start(2, false).envelope, "reference-check", true, typeId), undefined);
+});
 
 function recover(h: Awaited<ReturnType<typeof sourceBoundHarness>>, source: ReturnType<typeof h.fresh>) {
   const result = h.kernel.execute({ commandId: h.ids.uuid(), family: "run", type: "recover-run", source: "dashboard",
@@ -130,6 +159,39 @@ it("binds original checkpoints to the consumer claim and leaves a fresh run with
   authority.runCheckpoints.insert(second);
   assert.deepEqual(originalCheckpoint(authority, failed, "read", first.claimGeneration), first);
   assert.deepEqual(originalCheckpoint(authority, failed, "read", second.claimGeneration), second);
+});
+
+it("captures the latest claim for each node of the source attempt without reading another attempt's checkpoint", async () => {
+  const h = await sourceBoundHarness(failedSourceReadDescriptor, world => sourceBoundReadStores(world, 2)); cleanups.push(h.dispose);
+  const source = h.start(h.proposal());
+  assert.equal((await h.execute(source)).state, "failed");
+  const failed = h.fresh(source), authority = h.database.authority;
+  const first = readRunCheckpoint(authority, failed.envelope, "read", true); assert.ok(first);
+  const recovered = recover(h, failed);
+  const latest = RunCheckpointRecordSchema.parse({ ...first, claimGeneration: first.claimGeneration + 1 });
+  const earlierNode = RunCheckpointRecordSchema.parse({ ...first, nodeId: "earlier" });
+  authority.runCheckpoints.insert(latest);
+  authority.runCheckpoints.insert(earlierNode);
+  authority.runCheckpoints.insert(RunCheckpointRecordSchema.parse({ ...first, runId: recovered.envelope.runId,
+    attempt: recovered.envelope.attempt, nodeId: "foreign" }));
+
+  using raw = new DatabaseSync(h.authorityPath);
+  const trigger = raw.prepare("SELECT sql FROM sqlite_schema WHERE name='run_checkpoints_immutable'").get()?.sql;
+  assert.ok(typeof trigger === "string");
+  const damageCheckpoint = (runId: string, nodeId: string) => {
+    raw.exec("DROP TRIGGER run_checkpoints_immutable");
+    try {
+      const update = raw.prepare("UPDATE run_checkpoints SET output_digest=? WHERE run_id=? AND node_id=?")
+        .run("b".repeat(64), runId, nodeId);
+      assert.equal(update.changes, 1);
+    } finally { raw.exec(trigger); }
+  };
+  damageCheckpoint(recovered.envelope.runId, "foreign");
+  const captured = captureRunContinuation(authority, failed);
+  assert.deepEqual(captured.checkpoints, [earlierNode, latest].map(row => ({ nodeId: row.nodeId, runId: failed.envelope.runId,
+    attempt: failed.envelope.attempt, claimGeneration: row.claimGeneration, digest: continuationEvidenceDigest(row) })));
+  damageCheckpoint(failed.envelope.runId, "earlier");
+  assert.throws(() => captureRunContinuation(authority, failed), /run_checkpoints-row-output_digest-mismatch/u);
 });
 
 it("binds an inherited original to creation issuance after Resume replaced its reference and authenticates its digest", async () => {

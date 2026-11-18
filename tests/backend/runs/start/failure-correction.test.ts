@@ -76,7 +76,7 @@ it("serves only the declared durable failure and carries its provenance through 
   // In-memory read ports exercise the actual planner and projection without native admission.
   const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
-    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+    runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
   const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
     withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
   const served = failureRecovery(deps, run, failure);
@@ -107,7 +107,7 @@ it("replans a missing Kuali document as the corrected item, preserving lineage a
     rerunSource: { ...priorRequest.rerunSource, failureCorrection: { failureId: failure.failureId, inputField: "documentNumber" } } });
   const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run, listByItem: () => [] },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
-    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+    runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
   const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
     withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
   const wire = FailureDetailWireSchema.parse({ ...failure, ...failureRecovery(deps, run, failure), sameFingerprintSeen: 1,
@@ -166,7 +166,7 @@ it.each(["subject-not-resolvable", "subject-ambiguous"] as const)("serves %s as 
     causeChain: [{ ...employeeAbsent.causeChain[0], code: failureCodeFromTaskCode(code) }] });
   const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
-    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+    runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
   const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
     withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
   const wire = FailureDetailWireSchema.parse({ ...failure, ...failureRecovery(deps, run, failure), sameFingerprintSeen: 1,
@@ -186,7 +186,7 @@ it("prefills an entered Employee ID UCPath does not know, and serves it nowhere 
   const run = RunRecordSchema.parse({ ...source, input: { ...source.input, parsed: { ...source.input.parsed, value: { ...original, operatorEmployeeId: typed } } } });
   const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
-    runCheckpoints: { listByItem: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
+    runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
   const deps = { canonical: { descriptors: { resolve: () => separationsDescriptor }, database: { authority: repositories,
     withAuthorityReadSnapshot: <T>(read: () => T): T => read() } } } as unknown as RunDetailQueryDeps;
   const wire = FailureDetailWireSchema.parse({ ...failure, ...failureRecovery(deps, run, failure), sameFingerprintSeen: 1,

@@ -5,6 +5,7 @@ import { UcpathHireIdentitySchema, UcpathHireTargetSchema, UcpathHireFindingSche
   UcpathHireStagingSchema, UCPATH_HIRE_STAGED,
   ucpathHireSearchDigest, type UcpathHireTarget, type UcpathHireDriver, type UcpathHireScan } from "../../../../models/ui/ucpath-hire.js";
 import { containsDryRunSample } from "../../../../models/workflow/dry-run.js";
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { textOf } from "./transaction-findings-operation.js";
@@ -194,7 +195,7 @@ export function createUcpathHireOperations(assertCurrent: () => void, page: Page
       if (await visible(ui.transactionId(page)) !== "NEW" || await ui.comments(page).inputValue() !== target.comments
         || await ui.initiatorComments(page).inputValue() !== target.comments || !await ui.save(page).isEnabled()) throw new Error("ucpath-hire-staged-form-changed");
       staged = undefined;
-      await ui.save(page).click({ timeout: BOUND_MS }); recordBrowserAction("clicked", "ucpath.hire.save-and-submit");
+      await clickWithMutationCapability(capability, ui.save(page), BOUND_MS); recordBrowserAction("clicked", "ucpath.hire.save-and-submit");
       const confirmation = ui.confirmExistingPerson(page), error = ui.submitError(page);
       const personMatch = ui.personMatch(page), selectAction = ui.selectAction(page);
       const outcome = await Promise.race([
@@ -207,7 +208,7 @@ export function createUcpathHireOperations(assertCurrent: () => void, page: Page
       if (await error.isVisible() || await personMatch.isVisible() || await selectAction.isVisible()) throw new Error("ucpath-hire-submit-requires-review");
       if (outcome === "confirmation") {
         if (await confirmation.count() !== 1) throw new Error("ucpath-hire-confirmation-ambiguous");
-        await confirmation.click({ timeout: BOUND_MS });
+        await clickWithMutationCapability(capability, confirmation, BOUND_MS);
         const scan = await operations.scanHireTransactions(target), verdict = ucpathHireVerdict(target, scan);
         if (verdict.state !== "present") throw new Error("ucpath-hire-submit-unverified");
         return verdict.proof;

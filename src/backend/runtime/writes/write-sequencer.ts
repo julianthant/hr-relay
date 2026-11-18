@@ -43,8 +43,7 @@ import {
 import type { ActorId, BrowserSystemId, Fingerprint, TaskId } from "../../../rules/identity/ids.js";
 import { runClaim, RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { RepeatOccurrenceSchema, repeatOccurrenceKey } from "../../../models/run/rerun.js";
-import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
+import { RepeatOccurrenceSchema, repeatOccurrenceKey, repeatEvidenceDigest, repeatProofDigest } from "../../../models/run/rerun.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { idempotencyKeyDigestReference } from "../../../rules/redaction/redaction.js";
 import {
@@ -95,7 +94,7 @@ import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-schedule
 import type { SpanEmitter } from "../../logs/span-emitter.js";
 import { ExecutorSpanEventSchema } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
-import { WriteParkedError } from "../execution/run-executor.js";
+import { requestedPayPathRecheck, WriteParkedError } from "../execution/run-executor.js";
 import type { WriteSequencer, WriteSequencerContext } from "../execution/run-executor.js";
 
 /* ── the mutation capability — this module is the SOLE minting point ──────── */
@@ -512,6 +511,7 @@ export async function executeIdempotencyProbe(
     commitContract: AnyCommitTaskContract;
     commitInput: unknown;
     transactionId?: string;
+    parkedRecheck?: boolean;
     instance: string;
     signal: AbortSignal;
     screenshotOwner?: Readonly<{ nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>;
@@ -524,8 +524,10 @@ export async function executeIdempotencyProbe(
   if (input.transactionId !== undefined && !acceptsRecheckTransactionId(completion)) {
     throw new Error("write-recheck-transaction-id-unsupported");
   }
-  const probeRef = input.transactionId === undefined || completion.kind === "receipt"
-    ? commitContract.writeSafety.idempotency.probe : completion.verify;
+  const payPathRecheck = input.parkedRecheck === true && completion.kind !== "receipt"
+    && completion.verify.taskId === "ucpath/verify-paypath-work-study";
+  const useVerifier = completion.kind !== "receipt" && (input.transactionId !== undefined || payPathRecheck);
+  const probeRef = useVerifier ? completion.verify : commitContract.writeSafety.idempotency.probe;
   const probeTask = taskIndexOf(deps.stores).get(probeRef.taskId);
   if (probeTask === undefined) throw new Error(`no store implements idempotency probe ${probeRef.taskId}`);
   if (probeTask.contract.effect !== "read") {
@@ -563,6 +565,11 @@ export async function executeIdempotencyProbe(
   }, input.screenshotOwner === undefined ? undefined : { ...input.screenshotOwner, taskId: probeRef.taskId });
   try {
     const verdict = probeVerdictSchema(proofSchema).parse(probeTask.contract.output.parse(raw));
+    if (payPathRecheck && verdict.state === "present") {
+      // shortcut: SS Smart HR lacks position and attempt identity, upgrade when UCPath exposes both.
+      return { state: "unknown", reason: "SS Smart HR does not identify the reviewed position and fenced PayPath Save",
+        observedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()) };
+    }
     if (input.transactionId !== undefined && verdict.state === "present") {
       const target = UcpathTerminationTargetSchema.parse(input.commitInput);
       const observed = z.object({ emplId: z.string(), effectiveDate: z.string(), transactionId: z.string() }).parse(verdict.proof);
@@ -1115,7 +1122,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
     commitInput: unknown,
-    transactionId?: string,
+    recheck?: Readonly<{ transactionId?: string }>,
   ): Promise<RuntimeProbeVerdict> {
     const instance = resolvedInstanceFor(context, systemOf(commitContract.id));
     emitTaskSpan(context, "probe", "span.started");
@@ -1123,7 +1130,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       const verdict = await executeIdempotencyProbe(deps, {
         commitContract,
         commitInput,
-        ...(transactionId === undefined ? {} : { transactionId }),
+        parkedRecheck: recheck !== undefined,
+        ...(recheck?.transactionId === undefined ? {} : { transactionId: recheck.transactionId }),
         instance,
         signal: context.signal,
         screenshotOwner: { nodeId: String(context.node.id), attempt: context.run.envelope.attempt, log: context.captureLog ?? deps.log },
@@ -1469,19 +1477,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       );
     }
 
-    if (completion.kind === "receipt") {
+    const callbackProof = (): JsonValue => {
       try {
-        const proofRaw: unknown = Reflect.apply(
-          completion.proofFromOutput,
-          undefined,
-          [commitContract.output.parse(outputValue)],
-        );
-        return {
-          proofValue: JsonValueSchema.parse(completion.proofSchema.parse(proofRaw)),
-          outputValue,
-        };
+        const raw: unknown = Reflect.apply(completion.proofFromOutput, undefined, [outputValue]);
+        return JsonValueSchema.parse(completion.proofSchema.parse(raw));
       } catch (error) {
-        if (error instanceof PostFenceWriteFailure) throw error;
         throw postFence(
           "unknown",
           `${commitContract.id} clicked, but its receipt fails the proof schema — refusing to report success`,
@@ -1491,7 +1491,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           error,
         );
       }
-    }
+    };
+    if (completion.kind === "receipt") return { proofValue: callbackProof(), outputValue };
 
     if (completion.kind === "upload-verify" && completion.unverifiableByPage !== undefined) {
       throw postFence(
@@ -1555,16 +1556,24 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         verdict,
       );
     }
+    const claimedProof = callbackProof();
     try {
       const proofRaw: unknown = Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]);
-      return {
-        proofValue: JsonValueSchema.parse(completion.proofSchema.parse(proofRaw)),
-        outputValue,
-      };
+      const proof = completion.proofSchema.parse(proofRaw);
+      const proofValue = JsonValueSchema.parse(proof);
+      const identity = (value: JsonValue): string => canonicalJsonStringify(completion.effectIdentity === undefined
+        ? value : Reflect.apply(completion.effectIdentity, undefined, [value]));
+      if (identity(claimedProof) !== identity(proofValue)) {
+        throw postFence("unknown", `${commitContract.id} callback and verifier receipts disagree`,
+          "post-click-verifier-unknown", "proof", { callback: claimedProof, verifier: proofValue });
+      }
+      const outputRaw: unknown = Reflect.apply(completion.outputFromProof, undefined, [proof]);
+      return { proofValue, outputValue: JsonValueSchema.parse(commitContract.output.parse(outputRaw)) };
     } catch (error) {
+      if (error instanceof PostFenceWriteFailure) throw error;
       throw postFence(
         "unknown",
-        `${commitContract.id} verify read returned present, but its proof fails the proof schema`,
+        `${commitContract.id} verify read returned present, but its proof or reconstructed output failed validation`,
         "post-click-present-proof-schema-failure",
         "exception",
         error,
@@ -1579,10 +1588,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     commitContract: AnyCommitTaskContract,
     commitInput: unknown,
     intent: Extract<WriteIntentRecord, { status: "attempting" | "parked" }>,
+    recheckKeyDigest?: string,
   ): Promise<unknown> {
     let verdict: RuntimeProbeVerdict;
     try {
-      verdict = await runLiveProbe(context, commitContract, commitInput, intent.status === "parked" ? intent.recheck?.transactionId : undefined);
+      if (recheckKeyDigest !== undefined && recheckKeyDigest !== intent.idempotencyKeyDigest) throw new Error("paypath-recheck-target-drift");
+      verdict = await runLiveProbe(context, commitContract, commitInput, intent.status === "parked" ? intent.recheck : undefined);
     } catch (error) {
       const failure = new PostFenceWriteFailure({
         writeIntentId: intent.writeIntentId,
@@ -1793,8 +1804,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const sourceBound = envelope.continuation !== undefined && storedCheckpoint !== undefined && storedCheckpoint.runId !== envelope.runId
       ? undefined : envelope.sourceBound;
     const replaysCommittedOutcome = storedCheckpoint !== undefined && (sourceBound === undefined || storedCheckpoint.runId === envelope.runId);
-    // A write approved under another build never derives its key, fences or clicks here; only its committed outcome replays.
-    if (!replaysCommittedOutcome && envelope.buildId !== currentBuildId()) {
+    const payPathRecheck = requestedPayPathRecheck(deps.authority.authority, run, node);
+    // An audited PayPath recheck can read across builds without admitting a new write.
+    if (payPathRecheck === undefined && !replaysCommittedOutcome && envelope.buildId !== currentBuildId()) {
       throw new TaskError(commitContract.id, "WRITE_BUILD_CHANGED",
         "Relay was updated after this run was approved. Retry the run to approve its write under this version.");
     }
@@ -1817,6 +1829,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const key = occurrence === undefined ? naturalKey
       : IdempotencyKeySchema.parse(repeatOccurrenceKey(businessKeyDigest, occurrence.confirmationCommandId, String(node.id)));
     const keyDigest = deriveIdempotencyKeyDigest(system, key);
+    if (payPathRecheck !== undefined) {
+      return await recoverOwnIntent(context, commitContract, commitInput, payPathRecheck, keyDigest);
+    }
     const siblings = deps.authority.authority.writeIntents.listByBusinessKey(system, businessKeyDigest);
     if (siblings.some((intent) => intent.idempotencyKey !== key && (intent.status !== "committed" && intent.status !== "observed-present"))) {
       throw new Error("business key has an unresolved write occurrence");
@@ -1890,8 +1905,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       if (verdict.state === "present" && occurrence !== undefined) {
         const completion = commitContract.writeSafety.completion;
         const proof = completion.proofSchema.parse(Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]));
-        const evidenceDigest = repeatEvidenceDigest({ status: "committed", completionProof: { schemaHash: deriveSchemaHash(completion.proofSchema, "output"),
-          value: JsonValueSchema.parse(proof) } }, repeatBindings);
+        const evidenceDigest = repeatProofDigest({ schemaHash: deriveSchemaHash(completion.proofSchema, "output"),
+          value: JsonValueSchema.parse(proof) }, repeatBindings);
         if (!consent?.some((warning) => warning.evidenceDigest === evidenceDigest)) {
           throw new Error("confirmation-required: live completion evidence changed");
         }
@@ -1961,7 +1976,15 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         );
       }
     }
-    const probeCompletedMonotonicMs = deps.clock.monotonicMs();
+    const probeDeadline = deps.clock.monotonicMs() + node.probeToFenceMaxMs;
+    const assertProbeFresh = (): void => {
+      if (deps.clock.monotonicMs() >= probeDeadline) {
+        throw new StagedPageDiscardedError(
+          `transaction "${node.id}" exceeded its ${String(node.probeToFenceMaxMs)}ms probe-to-fence budget; `
+          + "the staged page is discarded and nothing was clicked",
+        );
+      }
+    };
 
     /* beats ② – ⑥ under ONE uninterrupted exclusive transaction lease */
     const commitTask = requireTask(commitContract.id, "commit");
@@ -2039,13 +2062,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         await captureScreenshot("before-submit");
 
         /* beat ④ — probe→fence budget, then the durable CAS before any click */
-        const elapsedMs = deps.clock.monotonicMs() - probeCompletedMonotonicMs;
-        if (elapsedMs > node.probeToFenceMaxMs) {
-          throw new StagedPageDiscardedError(
-            `transaction "${node.id}" probe aged ${String(elapsedMs)}ms, over its ${String(node.probeToFenceMaxMs)}ms `
-            + "probe-to-fence budget; the staged page is discarded and nothing was clicked",
-          );
-        }
+        assertProbeFresh();
         // Buffer fallible span and data sinks until the commit callback settles; none may interrupt fence-to-click.
         emitTaskSpan(context, "commit", "span.started");
         const fencedAt = instant();
@@ -2107,14 +2124,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         }
         refuseRequestedCancellation(context);
         try {
-          const resolution = refenceExpectedVersion === undefined
-            ? deps.authority.authority.writeIntents.fenceAttempt({ intent: intentRecord, attempt: attemptRecord, claim: context.claim })
-            : deps.authority.authority.writeIntents.refenceRetryable({
-              expectedVersion: refenceExpectedVersion,
-              claim: context.claim,
-              intent: intentRecord,
-              attempt: attemptRecord,
-            });
+          const resolution = deps.authority.withAuthorityTransaction(({ writeIntents }) => {
+            const fence = { intent: intentRecord, attempt: attemptRecord, claim: context.claim };
+            const result = refenceExpectedVersion === undefined
+              ? writeIntents.fenceAttempt(fence)
+              : writeIntents.refenceRetryable({ ...fence, expectedVersion: refenceExpectedVersion });
+            assertProbeFresh();
+            return result;
+          });
           if (resolution.state === "refused") throw new RunLifecycleRefusedError(resolution);
           if (resolution.state === "existing") throw new FenceLostRaceError(resolution.intent);
           if (resolution.state !== "fenced") {
@@ -2147,7 +2164,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         ownership.retainAfterFence();
 
         /* beat ⑤ — the external commit under the minted capability */
-        const capability = mintMutationCapability(fenced.generation, fenced.bindingProofDigest);
+        const capability = mintMutationCapability(fenced.generation, fenced.bindingProofDigest, () => probeDeadline - deps.clock.monotonicMs());
         const bufferedCommitObservations: BoundedTaskRecordBatch[] = [];
         const bufferedCommitLogs: BufferedCommitLog[] = [];
         let commitSettlement:
@@ -2159,6 +2176,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           ownership.signal,
           (innerSignal, recordData) => {
             const runImpl = RunnableTaskSchema.parse(commitTask.impl.run);
+            assertProbeFresh();
             return runImpl({
               input: commitInput,
               ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData, context, bufferedCommitLogs), driver, mutation: capability },
@@ -2526,7 +2544,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         const settled = presentFromProof(raw);
         const proof = { schemaHash: proofSchemaHash, value: settled.proof };
         if (source.acknowledgment !== source.warningDigest
-          || !consent?.some((warning) => warning.evidenceDigest === repeatEvidenceDigest({ status: "committed", completionProof: proof }, repeatBindings))) {
+          || !consent?.some((warning) => warning.evidenceDigest === repeatProofDigest(proof, repeatBindings))) {
           throw new Error("confirmation-required: preview found unacknowledged completion evidence");
         }
         probe = { state: "present", proof, output: { schemaHash: outputSchemaHash, value: settled.output } };
