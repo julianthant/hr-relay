@@ -14,9 +14,7 @@ import { defineWorkflowRole } from "../../src/workflow-kit/validation/module-rol
 import { Plan1Input, Plan1CanonicalInput, plan1Contract } from "../support/fixtures/plan1-operation-workflows.js";
 
 const { __sealed: _sealed, ...contract } = plan1Contract;
-/** The read's output is any schema under test, an optional candidate array included, so it is held as JSON here; the contract still parses `example`. */
-function fixture(schema: z.ZodType, example: unknown, manual: StepManualDeclaration) {
-  const output = schema as z.ZodType<JsonValue>;
+function fixture(output: z.ZodType<JsonValue>, example: unknown, manual: StepManualDeclaration) {
   const read = defineTaskContract({ ...contract, output, example });
   return compileWorkflow(defineWorkflow({
     id: "manual-path-fixture", version: 1, code: "mpf", label: "Manual paths", icon: "Search", category: "operations",
