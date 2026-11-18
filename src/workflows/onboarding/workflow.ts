@@ -50,7 +50,7 @@ export const onboardingWorkflow = defineWorkflow({
     const crm = onboardingCrmDataDefinition.build(author);
     const ucpath = onboardingUcpathSearchDefinition.build(author, crm);
     const i9 = onboardingI9SearchDefinition.build(author, crm, ucpath);
-    const reviewed = buildHireReview(author, crm, ucpath, i9), reference = onboardingReferenceCheckDefinition.build(author, crm, reviewed);
+    const reviewed = buildHireReview(author, crm, ucpath, i9), reference = onboardingReferenceCheckDefinition.build(author, crm, ucpath, reviewed);
     const writes = onboardingHireWritesDefinition.build(author, crm, ucpath, i9, reviewed, reference);
     return { steps: [...crm.steps, ...ucpath.steps, ...i9.steps, ...reviewed.steps, ...reference.steps, ...writes.steps], result: writes.result };
   },

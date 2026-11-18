@@ -13,6 +13,8 @@ const group = Object.freeze({
     { label: "Hire match", visibility: "logs", sources: [{ nodeId: "hire-subject", kind: "output", fieldPath: "state" }],
       display: { cases: [{ value: "new-hire", text: "New hire" }, { value: "existing-person", text: "Existing person" }, { value: "review-required", text: "Review required" }] } },
     { label: "Employee ID", visibility: "logs", sources: [{ nodeId: "hire-subject", kind: "output", fieldPath: "person.emplId" }] },
+    { label: "Matched by", visibility: "logs", sources: [{ nodeId: "hire-subject", kind: "output", fieldPath: "matchedBy" }],
+      display: { cases: [{ value: "name-dob-ssn", text: "Name, date of birth and SSN; no review needed" }] } },
   ] as const,
   review: {
     pages: [
@@ -41,7 +43,7 @@ export function buildUcpathSearch(author: WorkflowAuthor<typeof OnboardingInput>
   const matches = author.task(call.identity, [crm.plan], ({ outputs }) => call.bind({ input: outputs["hire-plan"].employee }));
   const subject = author.task(entries.task("hire-subject", OnboardingMatchHireSubject, { replay: "always-rerun" }), [crm.plan, matches], ({ input, outputs }) => ({
     mode: input.mode, firstName: outputs["hire-plan"].employee.firstName, lastName: outputs["hire-plan"].employee.lastName,
-    match: outputs["ucpath-source"],
+    ssnSearched: outputs["hire-plan"].employee.ssn !== null, match: outputs["ucpath-source"],
   }));
   return { matches, subject, steps: [[group, [matches, subject]]] as const,
     result: author.result(OnboardingMatchHireSubject.output, [subject], ({ outputs }) => OnboardingMatchHireSubject.output.parse(outputs["hire-subject"])) };
