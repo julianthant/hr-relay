@@ -81,6 +81,53 @@ describe("worker execution session identity", () => {
     }
   });
 
+  it.each(["proved", "unproved"] as const)("poison-closes on abort during idle revalidation (closure %s)", async closure => {
+    const world = createWorkerSessionManagerTestWorld();
+    const harness = world.sessionFactory();
+    const cancel = new AbortController();
+    const reason = new Error("cancelled during idle reset");
+    const closeFailure = new Error("injected poison-close failure");
+    const closeReasons: string[] = [];
+    const manager = await world.manager({ ...harness, factory: {
+      ...harness.factory,
+      async open(input) {
+        const resource = await harness.factory.open(input);
+        return {
+          ...resource,
+          async reset(options) {
+            if (options.signal === cancel.signal) cancel.abort(reason);
+            await resource.reset(options);
+          },
+          async close(options) {
+            closeReasons.push(options.reason);
+            if (closure === "unproved" && options.reason === "poisoned") throw closeFailure;
+            return resource.close(options);
+          },
+        };
+      },
+    } });
+    const signal = new AbortController().signal;
+    let calls = 0;
+    try {
+      await manager.withDriver(need, "prod", signal, async () => undefined);
+      const lease = manager.withDriver(need, "prod", cancel.signal, async () => { calls++; });
+      if (closure === "proved") {
+        await assert.rejects(lease, error => error === reason);
+        assert.deepEqual(manager.activeSystems(), []);
+      } else {
+        await assert.rejects(lease, (error: unknown) => error instanceof AggregateError && error.cause === reason
+          && error.errors.includes(reason) && error.errors.includes(closeFailure));
+        await assert.rejects(manager.withDriver(need, "prod", signal, async () => { calls++; }), /unresolved failed-close proof/);
+      }
+      assert.equal(calls, 0);
+      assert.deepEqual(closeReasons, ["poisoned"]);
+      assert.equal(harness.opens(), 1);
+    } finally {
+      manager.releaseRunConfigFingerprint();
+      await manager.closeAll("worker-stop");
+    }
+  });
+
   it("refuses handoff when the idle browser fails its check and cannot prove closure", async () => {
     const world = createWorkerSessionManagerTestWorld();
     const harness = world.sessionFactory({ resetFailureAt: 2, closeFailureAt: 1 });

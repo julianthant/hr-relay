@@ -675,7 +675,6 @@ export class WorkerSessionManager {
           return acquire();
         }
       });
-      signal.throwIfAborted();
       let leaseActive = true;
       const captureScreenshot = async (boundary: "step" | "before-submit" | "after-submit" = "step"): Promise<void> => {
         if (screenshotOwner === undefined) throw new Error("task screenshot capability is outside its owned lease");
@@ -703,6 +702,7 @@ export class WorkerSessionManager {
       const screenshotFailures: unknown[] = [];
       const poisonCloseFailures: unknown[] = [];
       try {
+        signal.throwIfAborted();
         this.#apply(need.system, { type: "lease" });
         this.#observe(need.system, resource);
         resource.beginDiagnostics?.();
