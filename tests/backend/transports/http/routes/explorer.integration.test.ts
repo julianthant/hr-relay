@@ -4,7 +4,16 @@ import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness } from "../../.
 import { WorkflowExplorerWireSchema, type ExplorerWorkflowWire } from "../../../../../src/models/dashboard/explorer.js";
 import type { ExplorerReviewSpec, ExplorerSpecGate, ExplorerSpecValue } from "../../../../../src/models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../../src/models/failures/error-catalog.js";
-import { READABLE_WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { DASHBOARD_CATALOG_MODULES, READABLE_WORKFLOW_MODULES, descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { buildBootstrap } from "../../../../../src/backend/runs/queries/bootstrap.js";
+import { projectWorkbookCompatibilityFromRepository } from "../../../../../src/backend/workbooks/workbook-library-service.js";
+import { explorerPickerEntries } from "../../../../../src/dashboard/surfaces/explorer/explorer-picker-model.js";
+import { launchWorkflows } from "../../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows } from "../../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog } from "../../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { healthyDashboardPreflightReport } from "../../../../support/fixtures/preflight-seams.js";
+import { AT, makeWorld } from "../../../../support/helpers/backend/dashboard-harness.js";
 
 afterEach(disposeHttpRouteHarness);
 
@@ -192,6 +201,37 @@ it("serves a valid review spec for every readable workflow", async () => {
     assert.deepEqual(workflow.reviewSpec.steps.map(entry => entry.id), workflow.timeline.map(group => group.key));
     assert.deepEqual(workflow.reviewSpec.steps.map(entry => entry.title), workflow.timeline.map(group => group.label));
     assert.ok(walk(workflow.reviewSpec).steps.length > 0, workflow.id);
+  }
+});
+
+it("serves the picker tree: startable workflows as roots, each delegated child under its parent, every title once", async () => {
+  const workflows = await served();
+  const pairs = workflows.flatMap(workflow => workflow.reviewSpec.steps.flatMap(entry => entry.blocks.flatMap(block =>
+    block.kind === "starts" ? [`${workflow.id} > ${block.workflowId}`] : [])));
+  assert.deepEqual([...new Set(pairs)].sort(), [
+    "emergency-contact > emergency-contact-member", "emergency-contact > ocr", "emergency-contact-member > onbase",
+    "i9-check-start > i9-check", "i9-check-start > ocr", "ocr > i9-lookup", "ocr > ocr-page", "ocr > person-lookup", "onboarding > i9-lookup",
+  ]);
+  const titles = workflows.map(workflow => workflow.label);
+  assert.deepEqual(titles.filter((title, index) => titles.indexOf(title) !== index), []);
+
+  const world = await makeWorld();
+  try {
+    const boot = buildBootstrap({ appVersion: "0.1.0", clock: manualClock(AT), modules: DASHBOARD_CATALOG_MODULES,
+      descriptorSetHash: descriptorSetHash(DASHBOARD_CATALOG_MODULES.map(({ descriptor }) => descriptor.contractFingerprint)),
+      settingsSchemaHash: descriptorSetHash(["settings-schema"]), projection: world.projection, actorLabel: () => "Fixture Operator",
+      authorityMeta: () => world.database.getMeta(), preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
+      workbookCompatibility: modules => projectWorkbookCompatibilityFromRepository(world.database.authority.workbooks, modules) });
+    const catalog = buildWorkflowCatalog(launchWorkflows(parseWorkflows(boot.workflows), boot.workbookCompatibility), false);
+    const picker = explorerPickerEntries(catalog, workflows);
+    assert.deepEqual(picker.filter(entry => entry.depth === 0).map(entry => entry.id).sort(),
+      ["emergency-contact", "i9-check-start", "onboarding", "person-lookup", "separations", "work-study"]);
+    assert.deepEqual(picker.map(entry => `${"  ".repeat(entry.depth)}${entry.title}`), [
+      "Person Lookup", "Separations", "I-9 Check", "  OCR", "    OCR Page", "    I-9 Lookup", "  I-9 Check person", "Onboarding",
+      "Emergency Contact", "  Emergency Contact member", "    OnBase Emergency Contact", "Work-Study",
+    ]);
+  } finally {
+    await world.dispose();
   }
 });
 
