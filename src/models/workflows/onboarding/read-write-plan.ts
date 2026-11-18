@@ -22,7 +22,7 @@ export const OnboardingWritePlanSchema = z.strictObject({
 export const OnboardingReadWritePlan = defineTaskContract({
   id: taskId("workflow:onboarding/read-write-plan"), title: "Verify the reviewed hire path", effect: "read",
   input: z.strictObject({ mode: z.enum(["new-hire", "rehire"]), plan: HirePlanSchema, subject: HireSubjectSchema, match: SearchPersonMatchOutputSchema,
-    lookup: OnboardingI9LookupSchema, findings: UcpathHireScanSchema, approval: OnboardingWriteApprovalSchema }), output: OnboardingWritePlanSchema,
+    lookup: OnboardingI9LookupSchema, findings: UcpathHireScanSchema, approval: OnboardingWriteApprovalSchema.optional() }), output: OnboardingWritePlanSchema,
   errorCodes: ["ONBOARDING_WRITE_REVIEW_REFUSED"], subject: { kind: "none", reason: "Validates an operator's run-bound choice against independent UCPath Match and complete transaction findings" },
   freshness: { defaultMaxAgeMs: 0, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: ["onboarding/write-transactions"],
   example: { roster: OnboardingReadHirePlan.example.roster, hire: { mode: "new-hire", employee: OnboardingReadHirePlan.example.employee, expectedName: "Fixture Hire", emplId: null },

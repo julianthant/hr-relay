@@ -205,7 +205,7 @@ describe('confirmed Settings feedback through the current editor', () => {
       reads += 1;
       const document = authority.read();
       return { ...document, sections: document.sections.map(section => ({ ...section,
-        leaves: section.leaves.map(leaf => leaf.path === 'actor.label' ? { ...leaf, settingsValue: 'Other operator', effectiveValue: 'Other operator' } : leaf) })) };
+        leaves: section.leaves.map(leaf => leaf.path === 'actor.label' ? { ...leaf, settingsValue: 'Other operator', effectiveValue: 'Other operator', activeValue: 'Other operator' } : leaf) })) };
     };
     await act(async () => controller().update('actor.label', 'Intended operator'));
     await act(async () => vi.advanceTimersByTimeAsync(701));

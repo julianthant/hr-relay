@@ -1,219 +1,201 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { it } from "vitest";
+import ts from "typescript";
 import { buildWorkflowExplorer } from "../../../../src/backend/runs/queries/explorer.js";
-import { buildExplorerReviewSpec } from "../../../../src/backend/runs/queries/explorer-review-spec.js";
 import { READABLE_WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
-import { ExplorerWorkflowWireSchema, type ExplorerNodeWire } from "../../../../src/models/dashboard/explorer.js";
+import { ExplorerWorkflowWireSchema, type ExplorerWorkflowWire } from "../../../../src/models/dashboard/explorer.js";
+import { ExplorerReviewSpecSchema, type ExplorerReviewSpec } from "../../../../src/models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
-import type { WorkflowStepReview } from "../../../../src/models/workflow/review-spec.js";
+import { isUnlistedStorageFailure, operatorFailureLabel } from "../../../../src/models/failures/failure-labels.js";
+import { contractSchemaLeaves } from "../../../../src/models/validation/contract-boundary.js";
+import { WorkflowStepReviewSchema } from "../../../../src/models/workflow/review-spec.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { compileWorkflow, composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { personLookupWorkflow } from "../../../../src/workflows/person-lookup/workflow.js";
-import { separationsWorkflow } from "../../../../src/workflows/separations/workflow.js";
-import { KRONOS_TIMECARD_OMISSION } from "../../../../src/workflows/separations/steps/kronos-timecard/step.js";
+import { onboardingWorkflow } from "../../../../src/workflows/onboarding/workflow.js";
 import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
 
 const clock = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 const hash = FingerprintSchema.parse("c".repeat(64));
 function workflows() { return buildWorkflowExplorer(explorerQueryDeps(clock, hash)).workflows; }
+function workflow(id: string): ExplorerWorkflowWire { const found = workflows().find(entry => entry.id === id); assert.ok(found, id); return found; }
+const decisions = (spec: ExplorerReviewSpec) => spec.steps.flatMap(step => step.blocks.flatMap(block => block.kind === "decision" ? [block] : []));
+type Decision = ReturnType<typeof decisions>[number];
+const decision = (spec: ExplorerReviewSpec, id: string): Decision => { const found = decisions(spec).find(block => block.id === id); assert.ok(found, id); return found; };
 
-it("preserves structured Kuali sources without offering their descendant states as field options", () => {
-  const separation = workflows().find(workflow => workflow.id === "separations"); assert.ok(separation);
-  const step = separation.reviewSpec.steps.find(step => step.id === "kuali-extraction"); assert.ok(step?.pages.state === "authored");
-  const page = step.pages.items.find(page => page.id === "separation-document"); assert.ok(page);
-  for (const [label, fieldPath] of [["Employee", "employee.name"], ["Employee ID", "employee.eid"]]) {
-    const field: (typeof page.fields)[number] | undefined = page.fields.find(field => field.label === label); assert.ok(field, label);
-    assert.deepEqual(field.sources, [{ nodeId: "document", kind: "output", fieldPath }]);
-    assert.equal(field.options, undefined);
-  }
-});
-
-it("preserves composite transaction fields and leaves their vocabulary open", () => {
-  const deps = explorerQueryDeps(clock, hash);
-  const original = deps.modules.find(module => module.descriptor.id === "separations"); assert.ok(original);
-  const field = { id: "finalization-values", label: "Finalization values",
-    transactionFields: [{ nodeId: "finalize-kuali", kind: "input", fieldPath: "variables" }],
-    source: { origin: "Reviewed finalization", detail: "The complete reviewed form values.", chain: [] } } satisfies WorkflowStepReview["pages"][number]["fields"][number];
-  const definition = { ...separationsWorkflow, steps: separationsWorkflow.steps.map(([group, entries]) =>
-    [group.key !== "kuali-finalization" || group.review === undefined ? group : { ...group, review: { ...group.review,
-      pages: group.review.pages.map(page => page.id === "kuali-document" ? { ...page, fields: [...page.fields, field] } : page) } }, entries] as const) };
-  const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
-  const workflow = buildWorkflowExplorer({ ...deps, modules: [module] }).workflows[0]; assert.ok(workflow);
-  const step = workflow.reviewSpec.steps.find(step => step.id === "kuali-finalization"); assert.ok(step?.pages.state === "authored");
-  const served = step.pages.items.flatMap(page => page.fields).find(field => field.id === "finalization-values"); assert.ok(served);
-  assert.deepEqual(served.sources, [{ nodeId: "finalize-kuali", arm: "prepare", taskId: "kuali/stage-separation-finalization", kind: "input", fieldPath: "variables" }]);
-  assert.equal(served.options, undefined);
-});
-
-it("keeps combined operator sources open when only one source has a finite vocabulary", () => {
-  const deps = explorerQueryDeps(clock, hash);
-  const original = deps.modules.find(module => module.descriptor.id === "separations"); assert.ok(original);
-  const definition = { ...separationsWorkflow, steps: separationsWorkflow.steps.map(([group, entries]) => {
-    if (group.key !== "kuali-extraction" || group.review === undefined) return [group, entries] as const;
-    return [{ ...group, operatorFields: [...group.operatorFields ?? [], { label: "Combined identity", sources: [
-      { nodeId: "document", kind: "output" as const, fieldPath: "employee.name" },
-      { nodeId: "document", kind: "output" as const, fieldPath: "employee.name.state" },
-    ] }], review: { ...group.review, pages: group.review.pages.map(page => page.id !== "separation-document" ? page : { ...page,
-      fields: [...page.fields, { id: "combined-identity", operatorField: "Combined identity",
-        source: { origin: "Kuali", detail: "The structured identity and its read state.", chain: [] } }] }) } }, entries] as const;
-  }) };
-  const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
-  const workflow = buildWorkflowExplorer({ ...deps, modules: [module] }).workflows[0]; assert.ok(workflow);
-  const step = workflow.reviewSpec.steps.find(step => step.id === "kuali-extraction"); assert.ok(step?.pages.state === "authored");
-  const field = step.pages.items.flatMap(page => page.fields).find(field => field.label === "Combined identity"); assert.ok(field);
-  assert.equal(field.sources.length, 2);
-  assert.equal(field.options, undefined);
-});
-
-it("serves every readable definition with exact ordered steps and declared failure outcomes", () => {
+it("serves every readable definition with its ordered steps and every declared task failure as a stopping outcome", () => {
   const entries = workflows();
-  assert.equal(entries.length, 13);
   assert.deepEqual(entries.map(entry => entry.id), READABLE_WORKFLOW_MODULES.map(module => module.descriptor.id));
   for (const entry of entries) {
     const review = entry.reviewSpec;
-    assert.equal(review.unlistedFailure, "Anything not listed stops the run with a failure card");
-    assert.deepEqual(review.steps.map(step => step.id), entry.timeline.map(group => group.key));
-    for (const node of entry.nodes) for (const task of node.tasks) for (const code of task.errorCodes) {
-      const decisions = review.steps.flatMap(step => step.decisions).filter(decision => decision.kind === "failure"
-        && decision.nodeId === node.id && decision.taskId === task.taskId && decision.outcome === code);
-      assert.equal(decisions.length, 1, `${entry.id}/${node.id}/${task.taskId}/${code}`);
-      assert.equal(decisions[0]?.action, "stop");
-      assert.equal(decisions[0]?.failureCode, failureCodeFromTaskCode(code));
-      assert.deepEqual(decisions[0]?.label, { state: "authored", text: operatorFailureSentence(failureCodeFromTaskCode(code)) });
+    assert.equal(review.unlistedFailure, "Anything not listed stops the run with a failure card.");
+    assert.deepEqual(review.steps.map(step => [step.id, step.title]), entry.timeline.map(group => [group.key, group.label]));
+    for (const [index, group] of entry.timeline.entries()) for (const node of entry.nodes.filter(candidate => group.nodes.includes(candidate.id))) {
+      const declaration = READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === entry.id)?.definition.steps.find(([step]) => step.key === group.key)?.[0];
+      for (const task of node.tasks) for (const code of task.errorCodes) {
+        if (isUnlistedStorageFailure(failureCodeFromTaskCode(code))) continue;
+        const outcomes = review.steps[index]?.blocks.flatMap(block => block.kind === "decision" ? block.outcomes : []).filter(outcome => outcome.value === code) ?? [];
+        assert.ok(outcomes.length > 0, `${entry.id}/${node.id}/${code}`);
+        for (const outcome of outcomes) assert.deepEqual([outcome.label, outcome.then, outcome.stops],
+          [operatorFailureLabel(failureCodeFromTaskCode(code)), `${operatorFailureSentence(failureCodeFromTaskCode(code))} ${declaration?.review?.outcomes?.find(outcome => outcome.value === code)?.then ?? "The run stops with a failure card."}`, true], `${entry.id}/${node.id}/${code}`);
+      }
     }
+    assert.ok(decisions(review).every(block => block.outcomes.every(outcome => outcome.label !== "Anything else")), entry.id);
   }
 });
 
-it("reviews Work Study's effective date as a date control of an input that carries no mode", () => {
-  const workStudy = workflows().find(entry => entry.id === "work-study"); assert.ok(workStudy);
-  assert.deepEqual(workStudy.reviewSpec.runOptions.controls, [{ field: "effectiveDate", label: "Effective date", placement: "input",
-    modes: ["employee-ids"], requires: [], kind: "string" }]);
+it("derives run options from Start run declarations only", () => {
+  assert.deepEqual(workflow("onboarding").reviewSpec.options.map(option => [option.id, option.label, option.initial]),
+    [["mode", "Hire mode", "new-hire"], ["dry-run", "Dry run", "false"]]);
+  assert.deepEqual(workflow("work-study").reviewSpec.options.map(option => option.id), ["dry-run"]);
+  assert.deepEqual(workflow("ocr-page").reviewSpec.options, []);
+  const separations = workflow("separations").reviewSpec;
+  assert.deepEqual(separations.options.filter(option => option.id.startsWith("skip-")).map(option => [option.id, option.label, option.initial]),
+    [["skip-kronos-timecard", "Kronos timecard", "run"]]);
+  assert.deepEqual(separations.steps.find(step => step.id === "kronos-timecard")?.when, [{ "skip-kronos-timecard": ["run"] }]);
+  assert.deepEqual(separations.sessions.find(session => session.system === "new-kronos")?.when, [{ "skip-kronos-timecard": ["run"] }]);
+  const lookup = workflow("person-lookup").reviewSpec;
+  assert.equal(lookup.options.some(option => option.id === "keepNonHdh"), false);
 });
 
-it("derives visible controls, mode defaults, upload facts and omission forms", () => {
-  const entries = workflows();
-  const lookup = entries.find(entry => entry.id === "person-lookup"); assert.ok(lookup);
-  assert.deepEqual(lookup.reviewSpec.runOptions.controls.map(control => control.field), ["crmCheck", "includeCrmDates"]);
-  assert.deepEqual(lookup.reviewSpec.runOptions.mode?.options.map(mode => mode.value), ["search", "match"]);
-  assert.equal(lookup.reviewSpec.runOptions.mode?.options.some(mode => mode.defaults.some(field => field.field === "keepNonHdh")), false);
-  const onboarding = entries.find(entry => entry.id === "onboarding"); assert.ok(onboarding);
-  assert.equal(onboarding.reviewSpec.runOptions.mode?.initial, null);
-  assert.deepEqual(onboarding.reviewSpec.runOptions.controls, []);
-  const separations = entries.find(entry => entry.id === "separations"); assert.ok(separations);
-  assert.deepEqual(separations.reviewSpec.runOptions.omittableSteps.map(step => step.stepKey), ["kronos-timecard"]);
-  const forms = separations.reviewSpec.runOptions.omittableSteps.map(step => step.form);
-  assert.deepEqual(forms, [KRONOS_TIMECARD_OMISSION.form]);
-  assert.deepEqual(forms.map(form => form.fields.map(field => [field.key, field.kind])), [
-    [["lastDayWorked", "us-date"], ["separationDate", "us-date"]],
-  ]);
-  const pdfs = entries.find(entry => entry.id === "i9-check-start"); assert.ok(pdfs);
-  assert.ok(pdfs.reviewSpec.runOptions.upload?.accepts.some(accept => accept.mediaType === "application/pdf"));
-  const page = entries.find(entry => entry.id === "ocr-page"); assert.ok(page);
-  assert.deepEqual(page.reviewSpec.runOptions.start, { input: false, upload: false, emptyOpensUpload: false });
-  assert.deepEqual(page.reviewSpec.runOptions.controls, []);
-  assert.equal(page.reviewSpec.runOptions.mode, undefined);
-});
-
-it("describes CRM dates as a complete boolean control in Search mode", () => {
-  const lookup = workflows().find(workflow => workflow.id === "person-lookup"); assert.ok(lookup);
-  const options = lookup.reviewSpec.runOptions;
-  const dates = options.controls.find(control => control.field === "includeCrmDates"); assert.ok(dates);
-  assert.equal(dates.label, "Read CRM dates");
-  assert.deepEqual(dates.modes, ["search"]);
-  assert.equal(dates.kind, "boolean");
-  assert.equal(dates.options, undefined);
-  assert.deepEqual(dates.requires, ["crmCheck"]);
-  assert.deepEqual(options.mode?.options.find(mode => mode.value === "search")?.defaults.find(field => field.field === "includeCrmDates"),
-    { field: "includeCrmDates", value: { kind: "boolean", value: false } });
-  const crm = options.controls.find(control => control.field === "crmCheck"); assert.ok(crm);
-  assert.deepEqual(crm.modes, ["search", "match"]);
-  assert.equal(crm.kind, "boolean");
-  assert.equal(crm.options, undefined);
-});
-
-it("reports declared session scope and preparation without claiming observed sessions or locks", () => {
-  const entries = workflows();
-  const lookup = entries.find(entry => entry.id === "person-lookup"); assert.ok(lookup);
-  const direct = lookup.reviewSpec.sessionStep.requirements;
-  assert.ok(direct.some(requirement => requirement.need.system === "ucpath"));
-  assert.ok(direct.every(requirement => requirement.scope === "direct" && requirement.delegationPath.length === 0
-    && requirement.preparation === "before-owning-workflow-claim" && requirement.useTiming === "when-step-runs"));
-  const ocr = entries.find(entry => entry.id === "ocr"); assert.ok(ocr);
-  const delegated = ocr.reviewSpec.sessionStep.requirements;
-  assert.ok(delegated.some(requirement => requirement.workflowId === "person-lookup"));
-  assert.ok(delegated.every(requirement => requirement.scope === "delegated" && requirement.delegationPath.length > 0
-    && requirement.useTiming === "when-delegated-step-runs"));
-  const onbase = entries.find(entry => entry.id === "onbase"); assert.ok(onbase);
-  assert.ok(onbase.reviewSpec.sessionStep.requirements.length > 0);
-  assert.ok(onbase.reviewSpec.sessionStep.requirements.every(requirement => requirement.need.exclusive === true && requirement.lock === "exclusive-required"));
-  const page = entries.find(entry => entry.id === "ocr-page"); assert.ok(page);
-  assert.deepEqual(page.reviewSpec.sessionStep.requirements, []);
-  assert.ok(entries.every(entry => entry.reviewSpec.sessionStep.unavailableDelegations.length === 0));
-  for (const requirement of [...direct, ...delegated]) {
-    assert.equal("sessionId" in requirement, false);
-    assert.equal("health" in requirement, false);
-    assert.equal("acquired" in requirement, false);
-  }
+it("serves session chips for delegated runs from the delegating step", () => {
+  assert.deepEqual(workflow("ocr").reviewSpec.sessions.map(session => session.system), ["ucpath", "crm", "i9"]);
+  assert.deepEqual(workflow("ocr-page").reviewSpec.sessions, []);
+  assert.deepEqual(workflow("onbase").reviewSpec.sessions, [{ system: "onbase" }]);
   const deps = explorerQueryDeps(clock, hash);
-  const isolated = buildWorkflowExplorer({ ...deps, modules: deps.modules.filter(module => module.descriptor.id === "ocr") });
-  assert.deepEqual(isolated.workflows[0]?.reviewSpec.sessionStep.unavailableDelegations.map(child => child.workflowId), ["ocr-page", "person-lookup", "i9-lookup"]);
+  assert.throws(() => buildWorkflowExplorer({ ...deps, modules: deps.modules.filter(module => module.descriptor.id === "ocr") }), /absent from the catalog/u);
 });
 
-it("preserves transaction, delegated failure and conditional review policies", () => {
-  const entries = workflows();
-  const ocr = entries.find(entry => entry.id === "ocr"); assert.ok(ocr);
-  const approval = ocr.reviewSpec.steps.flatMap(step => step.decisions).filter(decision => decision.nodeId === "approve-records");
-  assert.deepEqual(approval.map(decision => [decision.outcome, decision.action]), [["waiting", "ask"], ["resolved", "continue"], ["skipped", "continue"]]);
-  const module = READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === "ocr"); assert.ok(module);
-  const automatic = buildExplorerReviewSpec(module, READABLE_WORKFLOW_MODULES, ocr.nodes.map((node): ExplorerNodeWire => node.id === "approve-records"
-    ? { ...node, shape: { kind: "gate", resolvedBy: "children-terminal" } } : node));
-  assert.equal(automatic.steps.flatMap(step => step.decisions).find(decision => decision.nodeId === "approve-records" && decision.outcome === "waiting")?.action, "continue");
-  const emergency = entries.find(entry => entry.id === "emergency-contact"); assert.ok(emergency);
-  const decisions = emergency.reviewSpec.steps.flatMap(step => step.decisions);
-  assert.equal(decisions.find(decision => decision.nodeId === "read-document" && decision.outcome === "child-failed")?.action, "stop");
-  assert.equal(decisions.find(decision => decision.nodeId === "members" && decision.outcome === "child-failed")?.action, "continue");
-  assert.equal(decisions.find(decision => decision.nodeId === "members" && decision.outcome === "child-retried")?.action, "ask");
-  const onbase = entries.find(entry => entry.id === "onbase"); assert.ok(onbase);
-  assert.deepEqual(onbase.reviewSpec.steps.flatMap(step => step.decisions).filter(decision => decision.nodeId === "import-document" && decision.kind === "transaction")
-    .map(decision => [decision.outcome, decision.action]), [["committed", "continue"], ["already-present", "continue"], ["unknown", "ask"], ["dry-run", "continue"]]);
+it("lists only outcomes that change the flow, ask the operator or stop the run", () => {
+  const ocr = workflow("ocr").reviewSpec;
+  assert.deepEqual(decision(ocr, "approve-records").outcomes.map(outcome => [outcome.value, outcome.stops]), [["waits", false], ["cancelled", true]]);
+  const emergency = workflow("emergency-contact").reviewSpec;
+  assert.deepEqual(decision(emergency, "read-document").outcomes.map(outcome => [outcome.value, outcome.stops]), [["succeeded", false], ["child-failed", true]]);
+  assert.deepEqual(decision(emergency, "members").outcomes.map(outcome => [outcome.value, outcome.stops]), [["succeeded", false], ["child-failed", false]]);
+  const onbase = workflow("onbase").reviewSpec;
+  const save = decision(onbase, "import-document");
+  assert.deepEqual(save.initial, { by: "dry-run", values: { true: "dry-run" }, otherwise: "saved" });
+  assert.deepEqual(save.outcomes.slice(0, 4).map(outcome => [outcome.value, outcome.stops, outcome.when]),
+    [["saved", false, [{ "dry-run": ["false"] }]], ["already-present", false, undefined],
+      ["unconfirmed", true, [{ "dry-run": ["false"] }]], ["dry-run", false, [{ "dry-run": ["true"] }]]]);
+  const onboarding = workflow("onboarding").reviewSpec;
+  assert.deepEqual(decision(onboarding, "i9-route").outcomes.map(outcome => outcome.value), ["create", "existing"]);
 });
 
-it("projects ordered source drawers and field vocabularies from compiled declarations", () => {
-  const review = { pages: [{ id: "search", title: "Employee search", mode: "Read only", nodeIds: ["searching", "matching", "search-identity"],
-    lines: [{ id: "read", kind: "read", text: "Read the selected employee ID.", nodeIds: ["search-identity"] }],
-    fields: [{ id: "employee-id", operatorField: "Employee ID", source: { origin: "UCPath", detail: "Read the returned ID.",
-      read: { stepKey: "searching", page: "Employee search", field: "Employee ID" },
-      chain: [{ label: "Requested person", detail: "The operator supplies the search input." }] } }],
-  }], branchLabels: [] } satisfies WorkflowStepReview;
-  const definition = { ...personLookupWorkflow, steps: personLookupWorkflow.steps.map(([group, entries], index) =>
-    [index === 0 ? { ...group, review } : group.key === "active-status" ? { ...group, review: { pages: [{
-      id: "status", title: "Computed status", mode: "Read only" as const, nodeIds: ["active-status"], lines: [],
-      fields: [{ id: "employment", operatorField: "Employment status", source: { origin: "Person Lookup", detail: "Derived from the verified reads.", chain: [] } }],
-    }], branchLabels: [] } } : group, entries] as const) };
+it("derives sample values from contract examples and follows a decision's outcome where a row reads the same output", () => {
+  const lookup = workflow("person-lookup").reviewSpec;
+  const rows = lookup.steps.flatMap(step => step.blocks.flatMap(block => block.kind === "card" ? block.rows : []));
+  assert.ok(rows.every(row => row.value !== undefined));
+  const status = rows.find(row => row.label === "Employment status"); assert.ok(status);
+  assert.deepEqual(status.value, { by: "employment-status", otherwise: "Active", values: { active: "Active", inactive: "Inactive", "crm-only": "CRM only",
+    "multiple-matches": "Multiple matches", "not-found": "Not found", undetermined: "Undetermined" } });
+});
+
+it("rejects forged gates, values, initial outcomes and missing failures without throwing", () => {
+  const entry = workflow("person-lookup");
+  const spec = entry.reviewSpec;
+  const [first, ...rest] = spec.steps; assert.ok(first);
+  const withFirst = (step: typeof first) => ({ ...spec, steps: [step, ...rest] });
+  assert.equal(ExplorerReviewSpecSchema.safeParse(spec).success, true);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: [{ unknown: ["x"] }] })).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: [{ mode: ["sideways"] }] })).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: [{ "search-result": ["resolved"] }] })).success, false);
+  const withBlocks = (blocks: typeof first.blocks) => withFirst({ ...first, blocks });
+  // A step's cards may follow its own decision; a decision may not follow itself.
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "card" ? { ...block, when: [{ "search-result": ["not-found"] }] } : block))).success, true);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, when: [{ "search-result": ["not-found"] }] } : block))).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, initial: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" } : block))).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block,
+    initial: { by: "mode", values: { match: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" }, otherwise: "resolved" } } : block))).success, true);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block,
+    initial: { by: "mode", values: { match: "FORGED_FAILURE" }, otherwise: "resolved" } } : block))).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block,
+    initial: { by: "mode", values: { match: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" }, otherwise: "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" } } : block))).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse(withBlocks(first.blocks.map(block => block.kind === "card" ? { ...block, rows: block.rows.map(row => ({ ...row, source: "missing" })) } : block))).success, false);
+  assert.equal(ExplorerReviewSpecSchema.safeParse({ ...spec, sessions: [{ system: "ucpath", acquired: true }] }).success, false);
+  const dropped = withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, outcomes: block.outcomes.filter(outcome => outcome.value !== "PERSON_LOOKUP_UCPATH_SEARCH_FAILED") } : block));
+  assert.equal(ExplorerReviewSpecSchema.safeParse(dropped).success, true);
+  assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...entry, reviewSpec: dropped }).success, false);
+  assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...entry, reviewSpec: { ...spec, steps: rest } }).success, false);
+});
+
+it("refuses a Search by option whose choice no review row reads", () => {
+  const definition = { ...personLookupWorkflow, steps: personLookupWorkflow.steps.map(([group, entries]) => [group.review === undefined ? group : { ...group, review: { ...group.review,
+    pages: group.review.pages.map(page => ({ ...page, fields: page.fields.filter(field => !("inputField" in field) || field.inputField !== "emplId") })) } }, entries] as const) };
   const deps = explorerQueryDeps(clock, hash);
   const original = deps.modules.find(module => module.descriptor.id === "person-lookup"); assert.ok(original);
   const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
-  const wire = buildWorkflowExplorer({ ...deps, modules: [module] }).workflows[0]; assert.ok(wire);
-  const pages = wire.reviewSpec.steps[0]?.pages; assert.ok(pages?.state === "authored");
-  assert.deepEqual(pages.items.map(page => page.title), ["Employee search"]);
-  assert.deepEqual(pages.items[0]?.lines, review.pages[0].lines);
-  assert.deepEqual(pages.items[0]?.fields[0]?.source, review.pages[0].fields[0].source);
-  assert.deepEqual(pages.items[0]?.fields[0]?.sources, definition.steps[0]?.[0].operatorFields?.find(field => field.label === "Employee ID")?.sources);
-  const status = wire.reviewSpec.steps.find(step => step.id === "active-status")?.pages; assert.ok(status?.state === "authored");
-  assert.deepEqual(status.items[0]?.fields[0]?.options, ["Active", "Inactive", "CRM only", "Multiple matches", "Not found", "Undetermined", "Found", "Not found in UCPath"]);
-  const unavailable = buildWorkflowExplorer({ ...deps, modules: [{ ...original, definition: undefined }] }).workflows[0]; assert.ok(unavailable);
-  assert.ok(unavailable.reviewSpec.steps.every(step => step.pages.state === "unavailable"));
+  assert.throws(() => buildWorkflowExplorer({ ...deps, modules: [module] }), /option search-by has no review row that reads input field emplId/u);
 });
 
-it("rejects missing or forged declared outcomes and unknown nested wire fields without throwing", () => {
-  const entry = workflows().find(workflow => workflow.id === "person-lookup"); assert.ok(entry);
-  const [step, ...rest] = entry.reviewSpec.steps; assert.ok(step);
-  const failure = step.decisions.find(decision => decision.kind === "failure"); assert.ok(failure);
-  const candidate = (decisions: typeof step.decisions) => ({ ...entry, reviewSpec: { ...entry.reviewSpec, steps: [{ ...step, decisions }, ...rest] } });
-  assert.equal(ExplorerWorkflowWireSchema.safeParse(candidate(step.decisions.filter(decision => decision.id !== failure.id))).success, false);
-  assert.equal(ExplorerWorkflowWireSchema.safeParse(candidate(step.decisions.map(decision => decision.id === failure.id ? { ...decision, action: "continue" } : decision))).success, false);
-  assert.equal(ExplorerWorkflowWireSchema.safeParse(candidate(step.decisions.map(decision => decision.id === failure.id ? { ...decision, outcome: "invalid failure !" } : decision))).success, false);
-  assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...entry, reviewSpec: { ...entry.reviewSpec, sessionStep: { ...entry.reviewSpec.sessionStep, acquired: true } } }).success, false);
-  assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...entry, reviewSpec: { ...entry.reviewSpec, steps: rest } }).success, false);
+it("refuses a Read row with no example value", () => {
+  const definition = { ...personLookupWorkflow, steps: personLookupWorkflow.steps.map(([group, entries]) => [group.review === undefined ? group : { ...group, review: { ...group.review,
+    pages: group.review.pages.map(page => ({ ...page, mode: "Read only" as const, fields: page.fields.map(field => "inputField" in field && field.id === "search-name" ? { ...field, example: undefined } : field) })) } }, entries] as const) };
+  const deps = explorerQueryDeps(clock, hash);
+  const original = deps.modules.find(module => module.descriptor.id === "person-lookup"); assert.ok(original);
+  const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
+  assert.throws(() => buildWorkflowExplorer({ ...deps, modules: [module] }), /review field search-name on read page \S+ has no example value/u);
+});
+
+it("applies a task's outcome explanation to every decision that owns it", () => {
+  const then = "Stops before using unverified hire findings.";
+  const definition = { ...onboardingWorkflow, steps: onboardingWorkflow.steps.map(([group, entries]) =>
+    [group.key !== "i9-creation" || group.review === undefined ? group : { ...group, review: { ...group.review,
+      outcomes: [{ nodeId: "write-plan", value: "ONBOARDING_WRITE_REVIEW_REFUSED", then }],
+    } }, entries] as const) };
+  const deps = explorerQueryDeps(clock, hash);
+  const original = deps.modules.find(module => module.descriptor.id === "onboarding"); assert.ok(original);
+  const module = composeWorkflowModule(compileWorkflow(definition), original.stores);
+  const entry = buildWorkflowExplorer({ ...deps, modules: deps.modules.map(candidate => candidate === original ? module : candidate) })
+    .workflows.find(workflow => workflow.id === "onboarding"); assert.ok(entry);
+  for (const id of ["write-path", "existing-write-path"]) {
+    const outcome: Decision["outcomes"][number] | undefined = decision(entry.reviewSpec, id).outcomes.find(item => item.value === "ONBOARDING_WRITE_REVIEW_REFUSED");
+    assert.ok(outcome);
+    assert.deepEqual([outcome.then, outcome.stops], [`${operatorFailureSentence("ONBOARDING_WRITE_REVIEW_REFUSED")} ${then}`, true]);
+  }
+});
+
+const GENERATOR = "src/backend/runs/queries/explorer-review-spec.ts";
+
+/** Every string the generator spells, template literal text included. */
+function generatorStrings(): readonly string[] {
+  const source = ts.createSourceFile(GENERATOR, readFileSync(GENERATOR, "utf8"), ts.ScriptTarget.Latest, true);
+  const strings: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) strings.push(node.text);
+    if (ts.isTemplateExpression(node)) strings.push(node.head.text, ...node.templateSpans.map(span => span.literal.text));
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return strings.filter(text => text.trim().length > 0);
+}
+
+/** The names workflows declare: ids, step keys, node ids, input fields, operator fields and review decisions. */
+function declaredNames(): ReadonlyMap<string, string> {
+  const names = new Map<string, string>();
+  for (const { definition, descriptor } of READABLE_WORKFLOW_MODULES) {
+    const add = (name: string, what: string) => { if (!names.has(name)) names.set(name, `${descriptor.id} ${what}`); };
+    add(descriptor.id, "workflow id");
+    for (const group of descriptor.timeline) {
+      add(group.key, "step key");
+      for (const field of group.operatorFields ?? []) add(field.label, "operator field");
+    }
+    for (const node of descriptorRuntimeNodes(descriptor)) add(node.id, "node id");
+    for (const leaf of contractSchemaLeaves(descriptor.input)) add(leaf.path, "input field");
+    for (const [group] of definition.steps) {
+      if (group.review === undefined) continue;
+      const review = WorkflowStepReviewSchema.parse(group.review);
+      for (const decision of review.decisions ?? []) add(decision.id, "review decision");
+    }
+  }
+  return names;
+}
+
+it("keeps the Explorer generator free of any workflow id, step key, node id or field name", () => {
+  const names = declaredNames();
+  const named = generatorStrings().flatMap(text => names.has(text) ? [`"${text}" (${names.get(text) ?? ""})`] : []);
+  assert.deepEqual(named, []);
 });

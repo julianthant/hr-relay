@@ -14,10 +14,4 @@ export const SCENES: readonly ReferenceScene[] = [
     id: "catalog-search",
     route: { day: FIXTURE_DAY, settings: "ui-catalog", catalog: FIXTURE_CATALOG_QUERY },
   }];
-export const ANCHORS: SceneAnchors = {
-  "explorer-transaction": async (page) => {
-    await page.getByRole("button", { name: "Inspect Finalize Kuali Document" }).click();
-    await page.getByRole("button", { name: "Full contract" }).click();
-    await page.getByRole("dialog", { name: "Finalize Kuali Document contract" }).getByText("Write safety").waitFor();
-  },
-};
+export const ANCHORS: SceneAnchors = {};

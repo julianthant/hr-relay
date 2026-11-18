@@ -7,7 +7,14 @@ import { TaskError } from "../../../../workflow-kit/errors.js";
 import { defineStep,inheritStepProof,type WorkflowAuthor,type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { buildEmergencyContactRecords } from "../read-document/step.js";
 export const MEMBERS_STEP = Object.freeze({ key: "members", label: "Preview approved Emergency Contacts", system: "ucpath" as const,
-  review: { pages: [], branchLabels: [] } as const,
+  review: { pages: [{ id: "approved-people", title: "Approved people", mode: "Read only", nodeIds: ["members", "read-result"],
+    lines: [
+      { id: "start-members", kind: "action", text: "Start a separate contact run for each approved person with an Employee ID.", nodeIds: ["members"] },
+      { id: "account-for-members", kind: "check", text: "Retain each person's result, including failed contacts, without saving a completed contact again.", nodeIds: ["read-result"] },
+    ], fields: [],
+  }], branchLabels: [], starts: [{ nodeId: "members", each: "Each approved person" }],
+    outcomes: [{ nodeId: "members", value: "child-failed", then: "Retains each failed person's result for review in Logs alongside completed contacts. Retry only the failed person when retry is allowed; completed contacts are not saved again." }],
+  } as const,
 });
 export function buildEmergencyContactMembers(author: WorkflowAuthor<typeof EmergencyContactInputSchema>, upstream: ReturnType<typeof buildEmergencyContactRecords>) {
     const settled = author.task({ id: "read-result", label: "Account for approved members", contract: ReadEmergencyContactResult, replay: "always-rerun" }, [upstream.ocr, upstream.members], ({ outputs }) => {
