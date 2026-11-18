@@ -62,7 +62,7 @@ it("serves the PDF parent's current Start run options, sessions and starts for e
   const starts = spec.steps.flatMap(step => step.blocks).filter(block => block.kind === "starts");
   assert.deepEqual(starts, [
     { kind: "starts", workflowId: "ocr", title: "OCR", each: "Each attached PDF" },
-    { kind: "starts", workflowId: "i9-check", title: "I-9 Check", each: "Each approved person" },
+    { kind: "starts", workflowId: "i9-check", title: "I-9 Check person", each: "Each approved person" },
   ]);
 });
 

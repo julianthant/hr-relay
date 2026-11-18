@@ -4,7 +4,7 @@ import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness } from "../../.
 import { WorkflowExplorerWireSchema, type ExplorerWorkflowWire } from "../../../../../src/models/dashboard/explorer.js";
 import type { ExplorerReviewSpec, ExplorerSpecGate, ExplorerSpecValue } from "../../../../../src/models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../../src/models/failures/error-catalog.js";
-import { READABLE_WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { READABLE_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
 
 afterEach(disposeHttpRouteHarness);
 
@@ -193,6 +193,21 @@ it("serves a valid review spec for every readable workflow", async () => {
     assert.deepEqual(workflow.reviewSpec.steps.map(entry => entry.title), workflow.timeline.map(group => group.label));
     assert.ok(walk(workflow.reviewSpec).steps.length > 0, workflow.id);
   }
+});
+
+it("serves the picker tree: startable workflows as roots, each delegated child under its parent, every title once", async () => {
+  const workflows = await served();
+  const roots = WORKFLOW_MODULES.map(module => String(module.descriptor.id));
+  for (const root of roots) assert.ok(workflows.some(workflow => workflow.id === root), root);
+  assert.deepEqual([...roots].sort(), ["crm-doc-download", "emergency-contact", "i9-check-start", "onboarding", "person-lookup", "separations", "work-study"]);
+  const pairs = workflows.flatMap(workflow => workflow.reviewSpec.steps.flatMap(entry => entry.blocks.flatMap(block =>
+    block.kind === "starts" ? [`${workflow.id} > ${block.workflowId}`] : [])));
+  assert.deepEqual([...new Set(pairs)].sort(), [
+    "emergency-contact > emergency-contact-member", "emergency-contact > ocr", "emergency-contact-member > onbase",
+    "i9-check-start > i9-check", "i9-check-start > ocr", "ocr > i9-lookup", "ocr > ocr-page", "ocr > person-lookup", "onboarding > i9-lookup",
+  ]);
+  const titles = workflows.map(workflow => workflow.label);
+  assert.deepEqual(titles.filter((title, index) => titles.indexOf(title) !== index), []);
 });
 
 it("serves a value for every Read row of every readable workflow", async () => {
