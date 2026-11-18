@@ -1,7 +1,10 @@
-import type { CommandResultFeedEntry } from "../../shared/actions/actions-model.js";
-import type { BulkBatchOutcome } from "../../../app/commands/bulk-dispatch.js";
-import { BulkRunCommandResponseSchema } from "../../../../rules/commands/commands.js";
-import { MOCK_SURFACES_FLAG } from "../../../app/mock-surfaces.js";
+import type { PaletteSheet } from "../../../../src/dashboard/surfaces/shell/search/search-palette-model.js";
+import type { DashboardHarness } from "../../../../src/dashboard/app/workflow-sources.js";
+import type { CommandRecoveryEntry } from "../../../../src/dashboard/surfaces/shared/actions/command-recovery-model.js";
+import type { CommandResultFeedEntry } from "../../../../src/dashboard/surfaces/shared/actions/actions-model.js";
+import type { BulkBatchOutcome } from "../../../../src/dashboard/app/commands/bulk-dispatch.js";
+import { BulkRunCommandResponseSchema } from "../../../../src/rules/commands/commands.js";
+import { MOCK_SURFACES_FLAG } from "../../../../src/dashboard/app/mock-surfaces.js";
 /** Design mock for the status pages that leave Settings; read only from the URL (`statusMock=<id>`). */
 export const STATUS_MOCK_IDS = ["run-before", "run-ready", "run-a", "run-b", "run-rerun", "run-rerun-options", "run-options", "run-options-many", "run-person-lookup", "run-person-lookup-many", "run-steps", "run-rerun-steps", "queue-toolbar", "rail", "rail-min", "rail-min-tooltip", "rail-min-bell", "command-unknown", "command-results", "search-keyboard", "toasts", "toasts-open", "toasts-live", "toasts-storage", "toasts-restored", "general-a", "general-a-browser", "general-a-date", "run-sheets", "run-sheets-open", "run-sheets-add", "run-sheets-search", "run-sheets-nopins", "run-sheets-fix", "signup-a", "signup-b"] as const;
 export type StatusMockId = (typeof STATUS_MOCK_IDS)[number];
@@ -67,3 +70,21 @@ export const STATUS_MOCK_FIRST_RUN = [
   { id: "duo", label: "Duo sign-in", state: "ok" },
   { id: "folders", label: "Downloads folder", state: "running" },
 ] as const;
+
+/** Synthetic library list until the Spreadsheets library feeds the palette. */
+export const PALETTE_SPREADSHEETS: readonly PaletteSheet[] = [
+  { id: "roster", name: "Contact roster", detail: "v6 · Updated Nov 8" },
+  { id: "i9", name: "I-9 tracker", detail: "v3 · Updated Nov 7" },
+  { id: "hires", name: "Onboarding hires", detail: "v4 · Updated Nov 6" },
+  { id: "parking", name: "Parking permits", detail: "v2 · Updated Oct 22" },
+];
+
+
+/** The design harness's frames (none outside the mock bundle) and first command feedback, chosen by the `statusMock` URL switch. */
+export function statusMockHarness(Host: DashboardHarness["Host"]): DashboardHarness | undefined {
+  const mock = statusMock();
+  if (mock === undefined) return undefined;
+  return { Host, paletteSheets: PALETTE_SPREADSHEETS,
+    ...(mock === "command-results" ? { commandResults: STATUS_MOCK_COMMAND_RESULTS, bulkOutcome: STATUS_MOCK_BULK_OUTCOME } : {}),
+    ...(mock === "command-unknown" ? { unknownCommand: STATUS_MOCK_UNKNOWN_COMMAND } : {}) };
+}

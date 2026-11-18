@@ -47,8 +47,6 @@ import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
-import { StatusMockHost } from "../surfaces/settings/status-mock/status-mock.js";
-import { STATUS_MOCK_BULK_OUTCOME, STATUS_MOCK_COMMAND_RESULTS, STATUS_MOCK_UNKNOWN_COMMAND, statusMock } from "../surfaces/settings/status-mock/status-mock-model.js";
 import { Button,FailureNotice,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
@@ -283,7 +281,6 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           startupPreflight={profileSource === "served"}
         /></DashboardPageBoundary></ViewNavigationProvider>
       )}
-      <StatusMockHost />
     </ToastProvider>
     </TooltipProvider>
     </PreflightOcrContext.Provider>
@@ -434,7 +431,7 @@ function LoadedApp({
   }, [dayResource]);
 
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
-  const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>(() => statusMock() === "command-results" ? STATUS_MOCK_COMMAND_RESULTS : []);
+  const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>(() => workflowComposition.harness?.commandResults ?? []);
 
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: requestActiveWorkflowId, canSelectWorkflowId } = useSelectedWorkflow(workflows.some(flow => workflowSource(flow.id, workflowComposition.sources) === "served")
     ? workflows.filter(flow => workflowSource(flow.id, workflowComposition.sources) === "served") : workflowCatalog);
@@ -468,7 +465,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const [bulkReview, setBulkReview] = useState(false);
   const [openedBulk, setOpenedBulk] = useState<BulkBatchOutcome | null>(null);
   const [noticeRead, setNoticeRead] = useState<ReadonlySet<string>>(() => new Set());
-  const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(() => statusMock() === "command-results" ? STATUS_MOCK_BULK_OUTCOME : null);
+  const [bulkOutcome, setBulkOutcome] = useState<BulkBatchOutcome | null>(() => workflowComposition.harness?.bulkOutcome ?? null);
   const [, refreshCommandRecovery] = useState(0);
   const [pendingRecovery, setPendingRecovery] = useState<string | null>(null);
   const commandLabels = useRef(new Map<string, string>());
@@ -989,7 +986,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const servedSearchData = useSearchWiring({ client, enabled: workflowComposition.search === "served" && route.view?.search === true,
     query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows, titles: searchTitles });
   const librarySheets = useLibrarySheets(client, workflowComposition.search === "served" && route.view?.search === true);
-  const searchData = useMemo(() => workflowComposition.search === "mock" ? previewSearchData : { ...servedSearchData, sheets: librarySheets.sheets, sheetsUnavailable: librarySheets.unavailable }, [workflowComposition.search, previewSearchData, servedSearchData, librarySheets]);
+  const searchData = useMemo(() => workflowComposition.search === "mock" ? { ...previewSearchData, sheets: workflowComposition.harness?.paletteSheets } : { ...servedSearchData, sheets: librarySheets.sheets, sheetsUnavailable: librarySheets.unavailable }, [workflowComposition.search, previewSearchData, servedSearchData, librarySheets]);
   const inbox = useInboxWiring({ client, enabled: workflowComposition.inbox === "served", binding: commandBinding });
   const [notificationReads, setNotificationReads] = useState<NotificationReads>({});
   const notifications = useWorkspaceNotifications(notificationScenario(), {
@@ -997,7 +994,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     workflowLabel: workflowLabelOf,
     unavailable: dateError ?? (dayResource.state === "failed" ? dayFailureText : undefined),
   });
-  const shownRecovery: readonly CommandRecoveryEntry[] = statusMock() === "command-unknown" ? [...recoveryEntries, STATUS_MOCK_UNKNOWN_COMMAND] : recoveryEntries;
+  const shownRecovery: readonly CommandRecoveryEntry[] = workflowComposition.harness?.unknownCommand ? [...recoveryEntries, workflowComposition.harness.unknownCommand] : recoveryEntries;
   const commandNotices: readonly NotificationItem[] = [
     ...shownRecovery.map((entry): NotificationItem => ({ id: `command:${entry.inFlightKey}`, kind: "command", priority: true, title: recoveryTitle(entry), subject: "", workflow: "",
       detail: `${recoveryDetail(entry)}. Review the original request to recover its result.`, tone: "warning", age: "Just now", read: false, action: "Review", destination: { kind: "local-recovery", key: entry.inFlightKey } })),
@@ -1267,7 +1264,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}:${logsAttempt}`} onRetryLogs={() => setLogsAttempt(attempt => attempt + 1)} confirm={confirmLogDecision} onAction={runLogAction}
                 reviewOpen={route.section === "review"} reviewFocus={route.view?.queueMember?.kind === "record" ? route.view.queueMember.record : undefined}
                 onOpenLinked={openRelatedRun} onReview={() => setRoute(current => ({ ...current, section: "review" }))} onLogs={() => setRoute(current => ({ ...current, section: "logs" }))}
-                initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} source={workflowComposition.logs && (logRow.parent === null || statusMock() !== undefined) ? workflowComposition.logs : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
+                initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} source={workflowComposition.logs && (logRow.parent === null || workflowComposition.harness !== undefined) ? workflowComposition.logs : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
             ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}
@@ -1303,6 +1300,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           account={{ onSettings: () => openSettings(), onLogout: () => setLogoutOpen(true) }}
         />
       )}
+      {workflowComposition.harness?.Host && <workflowComposition.harness.Host />}
 
       <RunLaunchHost
         controller={launch}

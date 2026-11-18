@@ -99,7 +99,6 @@
   "src/dashboard/surfaces/settings/settings-data.css",
   "src/dashboard/surfaces/settings/settings-loading.tsx",
   "src/dashboard/surfaces/settings/settings.tsx",
-  "src/dashboard/surfaces/settings/status-mock/status-mock.tsx",
   "src/dashboard/surfaces/settings/storage/storage-settings.tsx",
   "src/dashboard/surfaces/shared/actions/actions.tsx",
   "src/dashboard/surfaces/shared/actions/command-recovery.tsx",

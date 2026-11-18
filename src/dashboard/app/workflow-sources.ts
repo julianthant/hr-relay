@@ -1,4 +1,9 @@
+import type { ComponentType } from "react";
 import { z } from "zod";
+import type { BulkBatchOutcome } from "./commands/bulk-dispatch.js";
+import type { CommandRecoveryEntry } from "../surfaces/shared/actions/command-recovery-model.js";
+import type { PaletteSheet } from "../surfaces/shell/search/search-palette-model.js";
+import type { CommandResultFeedEntry } from "../surfaces/shared/actions/actions-model.js";
 import configuredSources from "../../../config/dashboard-workflow-sources.json";
 import type { SessionsHarness } from "../surfaces/sessions/session-panel.js";
 import type { ActivityReportHook } from "../surfaces/activity/activity.js";
@@ -18,7 +23,18 @@ export function workflowSource(id: string, policy: WorkflowSourcePolicy = WORKFL
   return source;
 }
 
+/** Extra frames a design harness mounts beside the app and the first command feedback it seeds; the product leaves it unset. */
+export interface DashboardHarness {
+  readonly Host?: ComponentType;
+  readonly commandResults?: readonly CommandResultFeedEntry[];
+  readonly bulkOutcome?: BulkBatchOutcome;
+  readonly unknownCommand?: CommandRecoveryEntry;
+  /** Spreadsheets the search palette lists when the served read gives none. */
+  readonly paletteSheets?: readonly PaletteSheet[];
+}
+
 export interface WorkflowComposition {
+  readonly harness?: DashboardHarness;
   readonly sources: WorkflowSourcePolicy;
   readonly logs?: SurfaceSource;
   readonly dataSources?: WorkflowSourcePolicy;
