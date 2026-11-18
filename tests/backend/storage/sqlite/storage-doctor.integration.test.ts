@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import fs,{ mkdirSync,mkdtempSync,realpathSync,rmSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname,join } from "node:path";
+import { basename,dirname,join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import { afterAll,afterEach,describe,it,vi } from "vitest";
@@ -73,6 +73,22 @@ it("captures a stopped logout inspection snapshot above 512 MiB", async () => {
       try {
         const stopped = f.machine.forStoppedLogoutSettlement(owner, operation, restore);
         try {
+          const open = fs.openSync;
+          let linkedDuringOpen = false;
+          const openWithLink = vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+            if (typeof path === "string" && basename(path) === "authority.sqlite"
+              && basename(dirname(path)).startsWith(`relay-readonly-authority-pid${process.pid}-`)) {
+              fs.linkSync(path, `${path}.second-link`);
+              linkedDuringOpen = true;
+            }
+            return open(path, flags, mode);
+          });
+          syncBuiltinESMExports();
+          try {
+            assert.throws(() => stopped.capturePendingLogoutSnapshot().dispose(), /inspected copy changed during open/u);
+            assert.ok(linkedDuringOpen);
+          } finally { openWithLink.mockRestore(); syncBuiltinESMExports(); }
+
           const { admission, snapshot, dispose } = stopped.capturePendingLogoutSnapshot();
           try {
             const row = withAuthorityDatabaseReadOnly(admission, snapshot.path,

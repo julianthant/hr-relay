@@ -1541,10 +1541,14 @@ export class RuntimeAdmission {
       if (info.isSymbolicLink()) throw new Error("runtime-admission: inspected copy contains symlink");
     }
     let digest = expectedSha256;
+    const unsafeShape = (status: Stats | BigIntStats) => !status.isFile() || status.isSymbolicLink()
+      || (status.nlink !== 1 && status.nlink !== 1n) || privatePathRejects(canonical, status, "group-write");
+    const sameMetadata = (a: Stats | BigIntStats, b: Stats | BigIntStats) => a.dev === b.dev && a.ino === b.ino && a.size === b.size
+      && a.mode === b.mode && a.uid === b.uid && a.nlink === b.nlink;
     const verifyBytes = () => {
       this.assertReadable(); snapshot?.assertUnchanged();
       const file = fileStatus(canonical);
-      if (!file.isFile() || file.isSymbolicLink() || (file.nlink !== 1 && file.nlink !== 1n) || privatePathRejects(canonical, file, "group-write")) {
+      if (unsafeShape(file)) {
         throw new Error("runtime-admission: inspected copy has unsafe shape");
       }
       const descriptor = openSync(canonical, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -1552,7 +1556,7 @@ export class RuntimeAdmission {
       let descriptorIdentity = file;
       try {
         const opened = descriptorStatus(descriptor); descriptorIdentity = opened;
-        if (opened.dev !== file.dev || opened.ino !== file.ino || opened.size !== file.size) {
+        if (!sameMetadata(opened, file) || unsafeShape(opened)) {
           throw new Error("runtime-admission: inspected copy changed during open");
         }
         const hash = createHash("sha256");
@@ -1563,8 +1567,7 @@ export class RuntimeAdmission {
           bytes += read;
         }
         const final = descriptorStatus(descriptor), live = fileStatus(canonical), observed = hash.digest("hex");
-        if (final.dev !== opened.dev || final.ino !== opened.ino || final.size !== opened.size
-          || live.dev !== opened.dev || live.ino !== opened.ino || live.size !== opened.size
+        if (!sameMetadata(final, opened) || !sameMetadata(live, opened) || unsafeShape(live)
           || fileModified(final) !== fileModified(opened) || fileChanged(final) !== fileChanged(opened)
           || fileModified(live) !== fileModified(final) || fileChanged(live) !== fileChanged(final)
           || BigInt(bytes) !== BigInt(opened.size) || digest !== undefined && observed !== digest) {
