@@ -10,6 +10,7 @@ import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
+import { authenticateParkedWriteRecheck } from "../../../rules/write-safety/parked-resolution.js";
 import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
 import { shouldRetryTaskFailure } from "../policies/task-retry.js";
 
@@ -84,6 +85,20 @@ type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transaction" }>;
 type ChildRunRuntimeNode = Extract<RuntimeFlowNode, { kind: "child-run" }>;
 type TaskRuntimeNode = Extract<RuntimeFlowNode, { kind: "task" }>;
 
+export function requestedPayPathRecheck(
+  repositories: Pick<AuthorityRepositories, "writeIntents" | "writeAttempts" | "commands" | "commandAudits">,
+  run: RunRecord,
+  node: TransactionRuntimeNode,
+) {
+  if (run.envelope.dryRun || run.envelope.startAt !== node.id || node.commit.uses.id !== "ucpath/submit-paypath-work-study") return undefined;
+  const matches = repositories.writeIntents.listByRun(run.envelope.runId).filter(intent => intent.status === "parked"
+    && intent.taskId === node.commit.uses.id && intent.runAttempt === run.envelope.attempt && intent.recheck?.nodeId === node.id);
+  if (matches.length > 1) throw new RunContinuationRefusedError("paypath-recheck-intent-ambiguous");
+  const [intent] = matches;
+  if (intent?.status !== "parked" || intent.recheck === undefined) return undefined;
+  return authenticateParkedWriteRecheck(intent, repositories.writeAttempts.get(intent.currentAttemptId),
+    repositories.commands.get(intent.recheck.commandId), repositories.commandAudits.get(intent.recheck.auditId)).intent;
+}
 
 export interface WriteSequencerContext {
   readonly descriptor: AnyWorkflowDescriptor;
@@ -753,6 +768,19 @@ export async function executeClaimedRun(
     }
 
     const startNode = startIndex === undefined ? undefined : nodes[startIndex];
+    const startsAtPayPath = startNode?.kind === "transaction" && startNode.commit.uses.id === "ucpath/submit-paypath-work-study";
+    // A Saved recheck needs the original fenced target. Fresh reads could bind it to another position.
+    const payPathRecheckInputs = !startsAtPayPath ? undefined : deps.authority.withAuthorityTransaction?.(repositories => {
+      const intent = requestedPayPathRecheck(repositories, initial, startNode);
+      if (intent === undefined) return undefined;
+      const checkpoints = new Map<string, RunCheckpointRecord>();
+      for (const node of nodes.slice(0, startIndex)) {
+        if (node.kind !== "task") continue;
+        const record = originalCheckpoint(repositories, initial, node.id, claim.claimGeneration - 1);
+        if (record !== undefined && Date.parse(record.writtenAt) <= Date.parse(intent.fencedAt)) checkpoints.set(node.id, record);
+      }
+      return checkpoints;
+    });
     const previousNode = startIndex === undefined ? undefined : nodes[startIndex - 1];
     const resolvedResumeGate = envelope.continuation === undefined
       ? (startNode?.kind === "gate" ? readContinuationGate(deps.authority.authority, envelope, String(startNode.id)) : undefined)
@@ -782,7 +810,8 @@ export async function executeClaimedRun(
     });
 
     const retainedTransaction = (node: RuntimeFlowNode) => node.kind === "transaction"
-      && envelope.continuation?.checkpoints.some(row => row.nodeId === node.id) === true;
+      && (payPathRecheckInputs !== undefined && node === startNode
+        || envelope.continuation?.checkpoints.some(row => row.nodeId === node.id) === true);
     const pendingCommits = nodes.filter(node => node.kind === "transaction" && !retainedTransaction(node)
       && !omissionPlan.omitted.has(String(node.id)) && !omissionPlan.asserted.has(String(node.id))).map(node => node.id);
     // An explicit start node requires every ancestor to resolve without executing it.
@@ -837,8 +866,9 @@ export async function executeClaimedRun(
         plan.set(String(node.id), { mode: "execute" });
         continue;
       }
+      const recheckAncestor = payPathRecheckInputs !== undefined && index < (startIndex ?? 0);
       if (node.kind === "task") {
-        if (node.replay === "always-rerun" && (envelope.continuation === undefined || retainedAccounting || memberRetry !== undefined)) {
+        if (!recheckAncestor && node.replay === "always-rerun" && (envelope.continuation === undefined || retainedAccounting || memberRetry !== undefined)) {
           // NEVER consult loadCheckpoint for an always-rerun node (§5.3).
           plan.set(String(node.id), { mode: "execute" });
           continue;
@@ -846,6 +876,7 @@ export async function executeClaimedRun(
         let conditionKnown = true;
         for (const dependency of node.dependsOn) {
           const dependencyEntry = plan.get(String(dependency));
+          if (recheckAncestor && dependencyEntry?.mode === "skipped-condition") continue;
           if (dependencyEntry === undefined || dependencyEntry.mode === "execute"
             || dependencyEntry.mode === "asserted" && dependencyEntry.replay === undefined
             || !Object.hasOwn(outputs, String(dependency))) {
@@ -860,7 +891,7 @@ export async function executeClaimedRun(
             continue;
           }
         }
-        const stored = retainedAccounting
+        const stored = recheckAncestor ? payPathRecheckInputs.get(node.id) : retainedAccounting
           ? deps.authority.authority.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, node.id, envelope.attempt)
             .filter(record => record.runId === runId).at(-1)
           : readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
@@ -904,7 +935,7 @@ export async function executeClaimedRun(
           // A stale always-rerun fact is read again, and so is a stale ancestor of a plain Start;
           // only an explicit start node or a continuation refuses a stale checkpoint.
           const implicitAncestor = !explicit && envelope.continuation === undefined && !retainedAccounting;
-          if ((node.replay === "always-rerun" || implicitAncestor) && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
+          if (!recheckAncestor && (node.replay === "always-rerun" || implicitAncestor) && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
             replayed: [{ nodeId: node.id, taskId: node.uses.id, freshness: node.uses.freshness, provenance: record.provenance }],
             scheduled: pendingCommits, now: clock.now(), attempt: envelope.attempt,
             ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) }).length > 0) {
@@ -912,7 +943,8 @@ export async function executeClaimedRun(
             plan.set(String(node.id), { mode: "execute" });
             continue;
           }
-          const deferred = node.dependsOn.some(dependency => !Object.hasOwn(outputs, String(dependency)));
+          const deferred = node.dependsOn.some(dependency => !Object.hasOwn(outputs, String(dependency))
+            && !(recheckAncestor && plan.get(String(dependency))?.mode === "skipped-condition"));
           if (!deferred && envelope.continuation !== undefined) {
             const original = node.uses.input.parse(node.bind(sourceScopeFor(record.runId, node.dependsOn, boundAt(record))));
             const continued = node.uses.input.parse(node.bind(scopeFor(node.dependsOn)));
@@ -959,7 +991,7 @@ export async function executeClaimedRun(
           });
           continue;
         }
-        if (explicit || envelope.continuation?.checkpoints.some(row => row.nodeId === node.id)) {
+        if (explicit || recheckAncestor || envelope.continuation?.checkpoints.some(row => row.nodeId === node.id)) {
           problems.push(
             `missing context "${node.id}" (${labelOf(node)} → ${node.uses.id}) — ${load.reason}: ${load.detail}; `
             + `replay policy is "checkpoint".`,
@@ -972,7 +1004,8 @@ export async function executeClaimedRun(
       }
       if (node.kind === "gate") {
         if (node.resolvedBy === "operator" && node.when !== undefined
-          && node.dependsOn.every((dependency) => outputs[String(dependency)] !== undefined)
+          && node.dependsOn.every((dependency) => outputs[String(dependency)] !== undefined
+            || (recheckAncestor && plan.get(String(dependency))?.mode === "skipped-condition"))
           && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
           if (readContinuationGate(deps.authority.authority, envelope, String(node.id)) !== undefined) {
             problems.push(`inapplicable gate "${node.id}" carries a stored operator result; evidence changed`);
