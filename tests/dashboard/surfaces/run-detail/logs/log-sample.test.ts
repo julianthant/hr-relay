@@ -218,4 +218,15 @@ describe('compact run headers', () => {
       assert.ok(markup.indexOf(previewState === 'available' ? 'aria-label="Full dry-run preview"' : 'Dry-run preview unavailable') > tail);
     }
   });
+
+  it('shows the full dry-run preview for a finished dry run whose logs hold no steps', () => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    const dryRunPreview = DryRunPreviewWireSchema.parse({ state: 'available', coverage: 'full', stages: [{ id: 'submit', label: 'Submit', state: 'exercised', detail: 'Submit was not clicked.', submitNotClicked: true }] });
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Retained run' }, availableSections: ['logs'] }, logs: { dryRunPreview }, unavailableEvidence: [] } });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    const container = document.createElement('div');
+    container.innerHTML = renderToStaticMarkup(sample({ selection: { row, workflowLabel: 'Person lookup' } }));
+    assert.equal(container.querySelectorAll('[aria-label="Full dry-run preview"]').length, 1);
+  });
 });
