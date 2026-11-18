@@ -21,18 +21,16 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
     if (deps.workbooks === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_FAILED");
     return deps.workbooks;
   };
-  app.get("/api/v1/workbooks/list", c => {
-    const library = service().library;
-    return c.json(library.list().map(record => WorkbookSummarySchema.parse({
-      libraryId: record.libraryId, name: record.workbook.name, typeId: library.metadata(record.libraryId).typeId,
+  app.get("/api/v1/workbooks/list", c =>
+    c.json(service().library.listWithType().map(({ record, typeId }) => WorkbookSummarySchema.parse({
+      libraryId: record.libraryId, name: record.workbook.name, typeId,
       version: record.version, createdAt: record.createdAt, savedAt: record.savedAt,
       rowCount: record.workbook.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0),
       sheets: record.workbook.sheets.map(sheet => ({ name: sheet.name, headerRow: sheet.sourceHeaderRow ?? sheet.headerRow ?? 1,
         columns: sheet.rows[(sheet.headerRow ?? 1) - 1].cells.map(cellText),
         ...(sheet.columnBindings === undefined ? {} : { columnBindings: sheet.columnBindings }),
       })),
-    })));
-  });
+    }))));
   app.get("/api/v1/workbooks/catalog", c => c.json(service().library.catalog()));
   app.get("/api/v1/workbooks/compatibility", c => c.json(service().library.compatibility(service().workflows)));
   app.get("/api/v1/workbooks/results", c => c.json(service().library.results()));

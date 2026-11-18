@@ -69,6 +69,49 @@ it('refreshes summaries after content and type changes and omits a removed workb
   await client.workbookLibraryAction(first.libraryId, { operationId: 'remove', expectedRevision: current.state.revision, expectedVersion: 3, change: { kind: 'remove' } });
   assert.deepEqual(await client.workbookList(), []);
 });
+it('lists the workbook revision and type from the same authority snapshot', async () => {
+  const database = new DatabaseSync(':memory:');
+  try {
+    for (const migration of [WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION]) {
+      for (const statement of migration.statements) database.exec(statement);
+    }
+    function transaction<Result>(work: () => Result): Result {
+      database.exec('BEGIN');
+      try {
+        const result = work();
+        database.exec('COMMIT');
+        return result;
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+    }
+    let settleAfterRead: (() => void) | undefined;
+    const repository = createWorkbookLibraryRepository({ database, mutate: work => transaction(() => work().result), read: work => {
+      const result = transaction(work);
+      const settle = settleAfterRead;
+      settleAfterRead = undefined;
+      settle?.();
+      return result;
+    } });
+    const library = createWorkbookLibraryService({ repository, clock: manualClock(new Date('2026-11-02T00:00:00.000Z')), sync: unexpectedWorkbookSync });
+    const app: DashboardApp = new Hono();
+    registerWorkbookRoutes(app, { workbooks: { library, intake: async () => { throw new Error('unexpected intake'); }, workflows: [] } });
+    const client = workbookClient(app);
+    const first = library.create(workbook);
+    library.putType({ id: 'reference', name: 'Reference', keyFieldId: null, fields: ['roster.date'], defaultWorkbookId: null });
+    settleAfterRead = () => {
+      const receipt = library.operatorOperation(first.libraryId, 'settle-between-reads', { kind: 'metadata', expectedVersion: 1,
+        metadata: { typeId: 'reference', sharePoint: null } });
+      assert.equal(receipt.state, 'applied');
+    };
+
+    assert.deepEqual((await client.workbookList()).map(({ libraryId, version, typeId }) => ({ libraryId, version, typeId })),
+      [{ libraryId: first.libraryId, version: 1, typeId: 'general' }]);
+    assert.deepEqual((await client.workbookList()).map(({ libraryId, version, typeId }) => ({ libraryId, version, typeId })),
+      [{ libraryId: first.libraryId, version: 2, typeId: 'reference' }]);
+  } finally { database.close(); }
+});
 it('rejects duplicate identities and malformed summary fields through the typed transport', async () => {
   const h = await harness();
   const client = workbookClient(h.app);
