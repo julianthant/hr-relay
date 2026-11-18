@@ -12,6 +12,8 @@ import { createCredentialDoctorFixtures } from "../../../support/helpers/credent
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
+import { reconcileStoppedLogout } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
 
@@ -83,6 +85,40 @@ it("captures a stopped logout inspection snapshot above 512 MiB", async () => {
       } finally { restore.release(); }
     } finally { owner.release(); }
   } finally { session.close(); await f.close(); }
+});
+
+it("settles logout and signs out with a 513 MiB database", async () => {
+  const f = await createBoundProfileFixture();
+  const profileId = f.admission.profileBinding.profileId;
+  let source: AuthorityDatabase | undefined;
+  let completed: { profileId: string; epoch: number } | undefined;
+  const session = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine,
+    activity: { hasUnquiescedWork: () => false },
+    prepareLogout(_profileId, owner) {
+      source = AuthorityDatabase.open(owner, { path: f.path, busyTimeoutMs: 250, migrationOwner: "logout-size-completion-fixture" });
+      return { source: source.capturePendingLogoutSource(), intentFailed(error): never { throw error; } };
+    },
+    prepareLogoutContinuation(operation) { assert.equal(operation.profileId, profileId); },
+    completedLogout: () => completed });
+  try {
+    growAuthority(f.path, 513);
+    const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-21T12:00:00.000Z" });
+    assert.equal(active.state, "active");
+    const result = session.logOut(active.token, { at: "2026-10-21T12:01:00.000Z" });
+    assert.ok(result.state === "cancelling" && result.operationId !== undefined);
+    const path = join(f.machine.stateRoot, "machine", "operations", `${result.operationId}.json`);
+    const readOperation = () => LogoutOperationSchema.parse(JSON.parse(fs.readFileSync(path, "utf8")));
+    const operation = readOperation();
+    assert.ok(source);
+    const stopped = await source.settlePendingLogout(f.machine, operation, { browserClosure: profileBrowserClosure, recover: reconcileStoppedLogout });
+    try {
+      assert.equal(readOperation().settlement?.phase, "done");
+      await stopped.complete();
+    } finally { stopped.dispose(); }
+    completed = { profileId: active.profileId, epoch: operation.sessionGeneration + 1 };
+    assert.equal(fs.existsSync(path), false);
+    assert.deepEqual(session.resumeLogout(operation.operationId), { state: "signed-out" });
+  } finally { source?.close(); session.close(); await f.close(); }
 });
 
 it("publishes profile selection across two full boot-log rotations and imports all retained evidence", async () => {
