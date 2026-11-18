@@ -142,7 +142,7 @@ describe("SQLite settings authority", () => {
     assert.throws(() => f.execute(request, failAudit(f.database)), /credential-audit-uncertain/u);
     assert.equal(f.store.read().revision, revision + 1);
     assert.equal(f.database.authority.commands.get(request.commandId), undefined);
-    const divergent = structuredClone(request); divergent.payload.entries.ucpathPassword.set = "different-private-value";
+    const divergent = structuredClone(request); divergent.payload.entries.sharepointOnboardingRosterUrl.set = "https://roster.example.test/different-private-value";
     assert.equal(f.execute(divergent).state, "rejected");
     assert.equal(f.execute(request).state, "applied");
     assert.equal(f.execute(request).state, "already-applied");
