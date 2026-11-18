@@ -36,18 +36,22 @@ export function createAssistantReferenceTable(generation: number) {
     journal?.push({ token, key });
     return token;
   }
-  /** Runs `build`; when it throws, the references it issued are withdrawn, so a request that never left uses none of the table. */
-  function assemble<T>(build: () => T): T {
+  /** Runs the synchronous `build`; when it throws or `keep` rejects its value, the references it issued are withdrawn, so a request that never left uses none of the table. */
+  function assemble<T>(build: () => T, keep: (value: T) => boolean = () => true): T {
     if (journal !== undefined) return build();
     const issued: { token: string; key: string }[] = [], before = new Map(counters);
-    journal = issued;
-    try { return build(); }
-    catch (error) {
+    const withdraw = () => {
       for (const { token, key } of issued) { entries.delete(token); byTarget.delete(key); }
       counters.clear();
       for (const [kind, n] of before) counters.set(kind, n);
-      throw error;
-    } finally { journal = undefined; }
+    };
+    journal = issued;
+    try {
+      const value = build();
+      if (!keep(value)) withdraw();
+      return value;
+    } catch (error) { withdraw(); throw error; }
+    finally { journal = undefined; }
   }
   function resolve(token: string, kinds: readonly AssistantReferenceKind[]): AssistantReferenceEntry {
     const match = EXACT_TOKEN.exec(token.trim());

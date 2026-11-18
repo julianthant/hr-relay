@@ -223,15 +223,15 @@ export function createAssistantService(options: AssistantServiceOptions) {
           return rows;
         };
         const selectedRun = request.subjectRef === undefined ? undefined : selectedRunReference(request.subjectRef);
-        const input = table.assemble<AssistantInputItem[]>(() => [
+        const assembled = table.assemble(() => admitted([
           { role: "developer", content: developerPrompt(facts, selectedRun === undefined ? undefined
             : table.issue("R", selectedRun.runId, options.runReferenceLabel(selectedRun.runId, selectedRun.revision), selectedRun.runId, selectedRun.revision), options.clock.now().toISOString().slice(0, 10)) },
           ...history.replay(request.conversationId, current.ordinal).map(row => row.messageId === undefined ? replayed(row)
             : userTurn(maskStoredSsn(row.modelText), files(history.turnAttachments(row.messageId)), table)),
           userTurn(masked, files(history.turnAttachments(request.messageId)), table),
-        ]);
-        if (assistantInputMedia(input).bytes > ASSISTANT_CONTEXT_MEDIA_MAX_BYTES || textBytes > ASSISTANT_CONTEXT_TEXT_MAX_BYTES) return { result: refused("ASSISTANT_ATTACHMENT_TOO_LARGE") };
-        if (structureBytes(input) > MAX_HISTORY_BYTES) return { result: refused("ASSISTANT_CHAT_FULL") };
+        ], textBytes), value => "input" in value);
+        if ("code" in assembled) return { result: refused(assembled.code) };
+        const { input } = assembled;
         const unrecovered = new Map<string, AssistantFailureCode>(), outcomes = new Map<string, Readonly<{ output: string; code?: AssistantFailureCode }>>(), callIds = new Set<string>();
         const assertRetainedCurrent = () => {
           options.assertComposition?.();
@@ -320,6 +320,12 @@ export function createAssistantService(options: AssistantServiceOptions) {
 const stop = (code: AssistantFailureCode) => ({ result: refused(code) });
 /** Serialized size without attachment Base64, which has its own media bound. */
 const structureBytes = (input: readonly AssistantInputItem[]) => Buffer.byteLength(JSON.stringify(input)) - assistantInputMedia(input).base64Chars;
+/** The assembled request, or the size refusal it meets before any provider call. */
+function admitted(input: AssistantInputItem[], textBytes: number): Readonly<{ input: AssistantInputItem[] }> | Readonly<{ code: "ASSISTANT_ATTACHMENT_TOO_LARGE" | "ASSISTANT_CHAT_FULL" }> {
+  if (assistantInputMedia(input).bytes > ASSISTANT_CONTEXT_MEDIA_MAX_BYTES || textBytes > ASSISTANT_CONTEXT_TEXT_MAX_BYTES) return { code: "ASSISTANT_ATTACHMENT_TOO_LARGE" };
+  if (structureBytes(input) > MAX_HISTORY_BYTES) return { code: "ASSISTANT_CHAT_FULL" };
+  return { input };
+}
 const ATTACHMENT_LABEL = { image: "image", file: "PDF", text: "text file", none: "spreadsheet (inspect_attachment reads its structure; its values are never shown)" } as const;
 /** An operator turn with its accepted attachments: each gets an `A` reference and a label; original names stay local; decoded text is masked like the message. */
 function userTurn(text: string, files: readonly (AssistantAttachmentRecord & Readonly<{ bytes: Uint8Array }>)[], table: AssistantReferenceTable): AssistantInputItem {
@@ -335,10 +341,11 @@ function userTurn(text: string, files: readonly (AssistantAttachmentRecord & Rea
   return { role: "user", content };
 }
 const ATTACHMENT_TEXT = new TextDecoder("utf-8", { fatal: true });
-/** Replay text as plain messages; tool items and reasoning are never replayed. */
+/** Replay text as plain messages with any stored SSN form masked; tool items and reasoning are never replayed. */
 function replayed(row: Readonly<{ role: "operator" | "assistant"; modelText: string }>): AssistantInputItem {
-  if (row.role === "operator") return { role: "user", content: maskStoredSsn(row.modelText) };
-  const parts = row.modelText.match(/[\s\S]{1,8000}/gu) ?? [];
+  const text = maskStoredSsn(row.modelText);
+  if (row.role === "operator") return { role: "user", content: text };
+  const parts = text.match(/[\s\S]{1,8000}/gu) ?? [];
   return { type: "message", role: "assistant", status: "completed", content: parts.map(text => ({ type: "output_text", text })) };
 }
 /** Every result arm settles to exactly one stored outcome; proposal and unknown rows carry only the fixed-verb label. */
@@ -561,14 +568,14 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
             return rows;
           };
           const selectedRun = request.subjectRef === undefined ? undefined : selectedRunReference(request.subjectRef);
-          const input = table.assemble<AssistantInputItem[]>(() => [
+          const assembled = table.assemble(() => admitted([
             { role: "developer", content: developerPrompt(facts, selectedRun === undefined ? undefined : table.issue("R", selectedRun.runId,
               options.runReferenceLabel(selectedRun.runId, selectedRun.revision), selectedRun.runId, selectedRun.revision), now().slice(0, 10)) },
             ...history.replay(conversationId, acceptance.ordinal, now()).map(row => row.messageId === undefined ? replayed(row) : userTurn(maskStoredSsn(row.modelText), files(row.messageId), table)),
             userTurn(masked, files(messageId), table),
-          ]);
-          if (assistantInputMedia(input).bytes > ASSISTANT_CONTEXT_MEDIA_MAX_BYTES || textBytes > ASSISTANT_CONTEXT_TEXT_MAX_BYTES) return { reason: "ASSISTANT_ATTACHMENT_TOO_LARGE" };
-          if (structureBytes(input) > MAX_HISTORY_BYTES) return { reason: "ASSISTANT_CHAT_FULL" };
+          ], textBytes), value => "input" in value);
+          if ("code" in assembled) return { reason: assembled.code };
+          const { input } = assembled;
           const outcomes = new Map<string, Readonly<{ output: string; code?: AssistantFailureCode }>>(), callIds = new Set<string>(), unrecovered = new Map<string, AssistantFailureCode>();
           const sessionRuns: RunRecord[] = [];
           const startSession = async (tool: AssistantSessionTool, parameters: JsonValue) => {

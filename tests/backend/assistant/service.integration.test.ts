@@ -526,6 +526,24 @@ it("refuses a whole send whose attachment text exceeds the context bound, withou
   } finally { await w.f.cleanup(); }
 });
 
+it("keeps no references from a send refused for its size after assembly, so a later send in the chat gets fresh ones", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(); w.revision(conversationId);
+    // 2 attachment references and 498 distinct EID-shaped values fill the 500-entry table exactly; together the files exceed the 48 KiB text bound.
+    const half = (from: number) => new TextEncoder().encode(Array.from({ length: 249 }, (_, index) => String(20_000_000 + from + index)).join("\n").padEnd(26 * 1024, "A"));
+    const ids = [await stagedId(w, conversationId, "a.txt", "text/plain", half(0)), await stagedId(w, conversationId, "b.txt", "text/plain", half(249))];
+    const refused = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "Summarize", attachments: ids },
+      new AbortController().signal);
+    assert.deepEqual(refused.kind === "result" && refused.result.state === "refused" && refused.result.code, "ASSISTANT_ATTACHMENT_TOO_LARGE");
+    assert.equal(w.posts(), 0);
+    w.script.push(assistantMessageStream("Found."));
+    assert.deepEqual(await w.ask("Look up 30000000", undefined, conversationId), { state: "answered", text: "Found." });
+    const [body] = w.bodies; assert.ok(body);
+    assert.match(userTexts(body).at(-1) ?? "", /^Look up \[\[E1\.g\d+\]\]$/u);
+  } finally { await w.f.cleanup(); }
+});
+
 it("never replays a refused or delivery-unknown turn or its attachments, and keeps both in local history", async () => {
   let slug = "gpt-unlisted";
   const w = await world({ options: { selectedModel: () => ({ preference: { slug, effort: "medium" }, assertCurrent: () => {} }) } });
@@ -573,19 +591,22 @@ it("masks spaced, hyphenated, mixed and unseparated SSNs in the composer text an
   } finally { await w.f.cleanup(); }
 });
 
-it("masks an SSN a stored answered turn still holds when replaying it, keeping its stored references and local text", async () => {
+it("masks an SSN a stored answered turn or its stored reply still holds when replaying them, keeping stored references, model text and local text", async () => {
   const w = await world();
   try {
     const conversationId = randomUUID(), messageId = randomUUID(), history = w.db.database.authority.assistantHistory, now = w.f.clock.now().toISOString();
     const stored = "SSN 123 45 6789 for [[E1.g1]]";
     assert.equal(history.accept({ conversationId, expectedRevision: w.revision(conversationId), messageId, text: stored, modelText: stored, subjectRef: null, attachments: [], now }).state, "accepted");
-    assert.equal(typeof history.settle(conversationId, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: "Noted.", modelText: "Noted." } }, now), "number");
+    const echoed = "Noted 123-45-6789 and 123456789 for [[E1.g1]].";
+    assert.equal(typeof history.settle(conversationId, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: "Noted.", modelText: echoed } }, now), "number");
     w.script.push(assistantMessageStream("Again."));
     assert.deepEqual(await w.ask("Next", undefined, conversationId), { state: "answered", text: "Again." });
     const [body] = w.bodies; assert.ok(body);
-    assert.equal(JSON.stringify(body.input).includes("6789"), false);
+    for (const digits of ["6789", "123456789"]) assert.equal(JSON.stringify(body.input).includes(digits), false, digits);
     assert.deepEqual(userTexts(body), ["SSN [redacted SSN] for [[E1.g1]]", "Next"]);
-    assert.equal(w.service.conversation(conversationId)?.messages[0]?.text, stored);
+    assert.deepEqual(assistantTexts(body), ["Noted [redacted SSN] and [redacted SSN] for [[E1.g1]]."]);
+    assert.deepEqual(w.service.conversation(conversationId)?.messages.map(row => row.text), [stored, "Noted.", "Next", "Again."]);
+    assert.deepEqual(history.replay(conversationId, 3).map(row => row.modelText), [stored, echoed]);
   } finally { await w.f.cleanup(); }
 });
 
