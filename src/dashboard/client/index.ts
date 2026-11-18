@@ -39,6 +39,7 @@ export type {
 } from "../../models/dashboard/search.js";
 
 export interface DashboardClient extends DashboardQueries, DashboardCommands {
+  fetchAuthenticatedResource(url: string, signal: AbortSignal): Promise<Readonly<{ url: string; release(): void }>>;
   uploadOcrSource(request: Readonly<{ fileName: string; bytes: Uint8Array }>, signal?: AbortSignal): Promise<ReturnType<typeof OcrSourceUploadSchema.parse>>;
   ocrSourcePageUrl(runId: string, revision: number, sourcePage: number): string;
   ocrCommandResult(runId: string, commandId: string, signal?: AbortSignal): Promise<ReturnType<typeof OcrCommandResultWireSchema.parse>>;
@@ -84,6 +85,24 @@ export function createDashboardClient(input: Readonly<{
   runId?: () => DashboardErrorReport["runId"];
 }>): DashboardClient {
   const surface = input.surface;
+  const origin = new URL(input.baseUrl).origin;
+  const browser = typeof window !== "undefined" && window.location?.origin === origin ? window : undefined;
+  const resumeKey = "relay.profile.resume", draftKey = "relay.profile.draft";
+  const endingKey = "relay.profile.ending";
+  let session = browser?.sessionStorage.getItem(endingKey) ?? null;
+  let memoryProof: string | null = null, memoryDraft: string | null = null;
+  const resumeProof = () => browser === undefined ? memoryProof : browser.localStorage.getItem(resumeKey);
+  const draft = () => browser === undefined ? memoryDraft : browser.sessionStorage.getItem(draftKey);
+  const saveDraft = (value: string | null) => {
+    memoryDraft = value;
+    if (value === null) browser?.sessionStorage.removeItem(draftKey);
+    else browser?.sessionStorage.setItem(draftKey, value);
+  };
+  const saveProof = (value: string | null) => {
+    memoryProof = value;
+    if (value === null) browser?.localStorage.removeItem(resumeKey);
+    else browser?.localStorage.setItem(resumeKey, value);
+  };
   const clientId = crypto.randomUUID();
   const profileSessionListeners = new Set<Readonly<{ listener: () => void }>>();
   let profileAuthority: Readonly<Pick<Extract<PublicProfileState, { state: "active" }>, "profileId" | "epoch">> | undefined;
@@ -95,7 +114,15 @@ export function createDashboardClient(input: Readonly<{
       message: DASHBOARD_REQUEST_REPORT_MESSAGE })
       .catch(() => { window.reportError(new DashboardReportDeliveryError()); });
   };
-  const transport = createDashboardTransport({ ...input, captureProfileSessionStale: () => {
+  const transport = createDashboardTransport({ ...input, profileHeaders(path) {
+    const state = path === "/api/v1/profile/state";
+    const credential = path.startsWith("/api/v1/profile/onboarding/") ? draft() : session ?? (state ? draft() : null);
+    const proof = state || path === "/api/v1/profile/resume" ? resumeProof() : null;
+    const headers: Record<string, string> = {};
+    if (credential !== null) headers["x-relay-session"] = credential;
+    if (proof !== null) headers["x-relay-resume"] = proof;
+    return headers;
+  }, captureProfileSessionStale: () => {
     const dispatchedAuthority = profileAuthority, recipients = [...profileSessionListeners];
     return () => {
       if (dispatchedAuthority !== profileAuthority) return;
@@ -104,13 +131,50 @@ export function createDashboardClient(input: Readonly<{
     };
   },
     ...(surface === undefined ? {} : { onFailure: reportFailure }) });
+  const withProofLock = async <T>(run: () => T | Promise<T>): Promise<T> =>
+    browser === undefined ? run() : await browser.navigator.locks.request(resumeKey, run);
   const activateProfile = async (path: string, init: RequestInit): Promise<PublicProfileState> => {
+    const rotating = path === "/api/v1/profile/resume";
     const request = { pending: true }; activation = request;
-    try {
-      const state = parseProfileState((await transport.requestJsonResponse(path, init)).body);
-      if (activation === request) profileAuthority = state.state === "active" ? { profileId: state.profileId, epoch: state.epoch } : undefined;
-      return state;
-    } finally { request.pending = false; }
+    const dispatch = async (): Promise<PublicProfileState> => {
+      if (activation !== request) return { state: "refused", code: "PROFILE_SESSION_STALE" };
+      const predecessor = resumeProof();
+      const response = await transport.requestJsonResponse(path, init);
+      const state = parseProfileState(response.body);
+      const settle = (): PublicProfileState => {
+        const currentProof = resumeProof();
+        const joined = state.state === "active" && currentProof !== null && currentProof === response.headers.get("x-relay-resume");
+        if (activation !== request || predecessor !== currentProof && !joined) return { state: "refused", code: "PROFILE_SESSION_STALE" };
+        if (state.state === "active") {
+          const next = response.headers.get("x-relay-session"), proof = response.headers.get("x-relay-resume");
+          if (next === null || proof === null) throw schemaError(path, "missing profile credential");
+          saveProof(proof);
+          session = next;
+          browser?.sessionStorage.removeItem(endingKey);
+          profileAuthority = { profileId: state.profileId, epoch: state.epoch };
+        } else if (state.state === "onboarding") {
+          const next = response.headers.get("x-relay-session");
+          if (next === null) throw schemaError(path, "missing onboarding credential");
+          saveDraft(next);
+        } else if (state.state === "signed-out") {
+          session = null;
+          browser?.sessionStorage.removeItem(endingKey);
+          saveDraft(null);
+          saveProof(null);
+          profileAuthority = undefined;
+        }
+        return state;
+      };
+      return rotating ? settle() : withProofLock(settle);
+    };
+    // Other tabs may discover or resume only after the successor proof is visible in origin storage.
+    try { return await (rotating ? withProofLock(dispatch) : dispatch()); }
+    finally { request.pending = false; }
+  };
+  const endProfile = (path: string, body: unknown) => {
+    if (session !== null) browser?.sessionStorage.setItem(endingKey, session);
+    profileAuthority = undefined;
+    return activateProfile(path, { method: "POST", body: JSON.stringify(body) });
   };
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
@@ -128,6 +192,18 @@ export function createDashboardClient(input: Readonly<{
     return state;
   };
   const client: DashboardClient = {
+    async fetchAuthenticatedResource(url, signal) {
+      const target = new URL(url, origin);
+      if (target.origin !== origin || target.username || target.password || !/^\/(?:api\/v1|artifacts)\//u.test(target.pathname)) throw schemaError("GET resource", "invalid dashboard resource");
+      const owner = profileAuthority, proof = resumeProof(), dispatched = activation;
+      const { bytes, headers } = await transport.requestBinary(target.pathname + target.search, { signal, headers: { accept: "*/*" } });
+      signal.throwIfAborted();
+      if (owner !== profileAuthority || dispatched !== activation || proof !== resumeProof()) throw schemaError("GET resource", "resource session changed");
+      const mediaType = headers.get("content-type")?.split(";", 1)[0]?.toLowerCase();
+      const type = mediaType !== undefined && /^image\/(?:png|jpeg|gif|webp)$/u.test(mediaType) ? mediaType : "application/octet-stream";
+      const objectUrl = URL.createObjectURL(new Blob([bytes], { type }));
+      return { url: objectUrl, release: () => URL.revokeObjectURL(objectUrl) };
+    },
     subscribeProfileSessionStale(listener) {
       const recipient = { listener };
       profileSessionListeners.add(recipient);
@@ -160,7 +236,8 @@ export function createDashboardClient(input: Readonly<{
     },
     async readProfileSession() {
       const dispatchedAuthority = profileAuthority, requestedActivation = activation;
-      const state = parseProfileState((await transport.requestJsonResponse("/api/v1/profile/state")).body);
+      const response = await withProofLock(() => transport.requestJsonResponse("/api/v1/profile/state"));
+      const state = parseProfileState(response.body);
       if (dispatchedAuthority === profileAuthority && requestedActivation === activation && !activation.pending) {
         if (state.state !== "active") profileAuthority = undefined;
         else if (state.profileId !== profileAuthority?.profileId || state.epoch !== profileAuthority.epoch) profileAuthority = { profileId: state.profileId, epoch: state.epoch };
@@ -181,14 +258,10 @@ export function createDashboardClient(input: Readonly<{
       });
     },
     async deleteProfileAccount(request) {
-      profileAuthority = undefined;
-      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/delete-account", {
-        method: "POST", body: JSON.stringify(DeleteProfileAccountRequestSchema.parse(request)),
-      })).body);
+      return endProfile("/api/v1/profile/delete-account", DeleteProfileAccountRequestSchema.parse(request));
     },
     async logOutProfile() {
-      profileAuthority = undefined;
-      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/logout", { method: "POST", body: "{}" })).body);
+      return endProfile("/api/v1/profile/logout", {});
     },
     async changeProfilePassword(request) {
       return parseLoginChange((await transport.requestJsonResponse("/api/v1/profile/account/password", {
@@ -216,9 +289,9 @@ export function createDashboardClient(input: Readonly<{
       })).body);
     },
     async cancelProfileOnboarding(request) {
-      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/cancel", {
+      return activateProfile("/api/v1/profile/onboarding/cancel", {
         method: "POST", body: JSON.stringify(CancelProfileOnboardingRequestSchema.parse(request)),
-      })).body);
+      });
     },
     async showProfileOnboardingBrowser(request) {
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/browser", {

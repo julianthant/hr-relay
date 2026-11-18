@@ -435,14 +435,30 @@ retains stopped exclusive custody through source inspection, verified backup, mi
 readback. A failed upgrade prevents the public shell from starting and reports
 `STORAGE_PROFILE_UPGRADE_REFUSED`; uncertain native closure retains its actual resource owners.
 
-Sign-in authenticates a current profile through the ordinary endpoint and session cookie. It does
-not dispatch storage maintenance or restart the app. Pending onboarding and logout continue through
-their existing recovery boundaries.
+Successful password sign-in or authenticated onboarding completion returns two headers. The dashboard sends
+`x-relay-session` on protected requests to its exact origin. It stores `x-relay-resume` in that
+origin's local storage and presents it to the profile state and resume endpoints. The proof is
+bound to the installation, profile, session generation and origin, including the port.
+
+An enrolled tab reads `/api/v1/profile/state` and posts to `/api/v1/profile/resume` when the
+response reports `resumable`. During a cold mount, tabs with a valid proof for the preceding
+generation can join that mount and receive credentials for the new generation. The browser holds
+an origin-wide lock through resume and storage of the successor proof. A tab starting during that
+exchange waits for the proof before reading state or posting its own resume. A browser without
+a valid proof signs in with the existing password form. Signing in to the mounted profile retains
+its generation, and a failed sign-in leaves the selection intact.
+
+When logout or account deletion starts, the initiating tab saves its session credential in session
+storage. After a reload in the same runtime, submitting the login form with the original profile's
+password continues its pending ordinary logout. The server checks the tab credential, password
+lockout, profile, generation and original logout operation or completion receipt. The form returns
+to signed-out after closure. Account deletion requires its explicit confirmation, profile and epoch.
+Successful sign-out clears the tab's continuation credential and the origin's resume proof.
 
 The Relay login is the work email and password saved as the profile's UCPath sign-in.
 `POST /api/v1/profile/account/password` `{currentPassword, newPassword}` and
 `POST /api/v1/profile/account/username` `{currentPassword, newUsername}` change it for the current
-session cookie only. They return `{state: "changed"}`, `{state: "unknown", code}` or
+session authenticated by `x-relay-session`. They return `{state: "changed"}`, `{state: "unknown", code}` or
 `{state: "refused", code}`. A wrong current password counts toward the sign-in lockout. A new
 username must be a plain `@ucsd.edu` address the sign-in form accepts, must change the verifier key
 and must not be taken; a new username or password longer than the form's 160 characters, or a
@@ -483,7 +499,8 @@ timekeeper name and initials it captured.
 
 ### Profile onboarding boundary
 
-Details returns canonical `onboarding` state and a limited HttpOnly cookie scoped to profile routes.
+Details returns canonical `onboarding` state and a draft credential in `x-relay-session`. The
+dashboard keeps it in the tab's session storage for draft state reads and onboarding requests.
 `readProfileSession` carries current server method states. The onboarding Duo start, confirm and
 exact-attempt cancel routes operate only on the issued operation and attempt; closing a setup popup
 preserves the draft. Whole-draft cancellation returns signed-out only after canonical custody and
@@ -491,9 +508,9 @@ erasure proof. Neither Details, Duo completion nor entering Ready publishes a sa
 
 The Ready Finish callback invokes `completeProfileOnboarding({operationId})`. Backend receipts for
 both software FastDuo and native Mac Touch ID, proved provider closure and explicit Finish precede
-registry/verifier/active-session publication. Only the ordinary returned session cookie mounts
-bootstrap, Queue, Run and HR data authority. Failed or unknown publication remains a defined HOLD;
-public error codes never expose private causes or credential values.
+registry/verifier/active-session publication. The active `x-relay-session` credential returned by
+Finish authorizes bootstrap, Queue, Run and HR data requests. Failed or unknown publication remains
+a defined HOLD; public error codes never expose private causes or credential values.
 
 Sign-up creates a fresh private profile; there is no existing-data claim route or form state.
 Before composing profile runtime, dashboard startup migrates a pre-profile flat store into an empty
@@ -507,7 +524,7 @@ A stale or signed-out public session returns to login and does not reopen a reta
 
 The typed profile client parses defined wire errors into public refusal codes. Login and sign-up
 render the refusal's catalog sentence; network reachability failures use the connection-failed catalog sentence. Other client exceptions retain the authority-unavailable sentence.
-Show setup browser may refresh unavailable public authority with the current cookie, then shows only
+Show setup browser may refresh unavailable public authority with the current draft credential, then shows only
 that same operation and profile. Unknown method outcomes stay unknown while that draft is active.
 Show focuses the owned extension tab or recreates that tab once in the same live context. A closed
 window is replaced only after the exact context close event, all tracked pages, the observed process,

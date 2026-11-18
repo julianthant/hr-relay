@@ -3,6 +3,7 @@ import { it } from "vitest";
 import { createDashboardClient, DashboardClientError, type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { createDashboardTransport } from "../../../src/dashboard/client/transport.js";
 
+const activationHeaders = { "x-relay-session": "fixture-session", "x-relay-resume": "fixture-proof" };
 const refusal = { state: "refused", code: "PROFILE_SESSION_STALE" };
 
 it("delivers stale-session observations only to the owning client's live subscribers", async () => {
@@ -50,7 +51,7 @@ for (const mode of ["json", "binary", "stream"] as const) for (const recovery of
     const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => {
       const path = new URL(url).pathname;
       if (path.endsWith("/state")) return Response.json(active(1));
-      if (path.endsWith("/sign-in") || path.endsWith("/resume")) return Response.json(active(2));
+      if (path.endsWith("/sign-in") || path.endsWith("/resume")) return Response.json(active(2), { headers: activationHeaders });
       if (++requests === 1) { dispatched.resolve(); return old.promise; }
       return Response.json(refusal, { status: 401 });
     } });
@@ -102,7 +103,7 @@ for (const epoch of [1, 2]) it(`binds a public active-state observation to its a
 it("does not let a delayed old public-state read replace successful resume authority", async () => {
   const publicRead = Promise.withResolvers<Response>(), protectedRead = Promise.withResolvers<Response>();
   let reads = 0, observations = 0;
-  const active = (epoch: number) => Response.json({ state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch, duoState: "ready" });
+  const active = (epoch: number) => Response.json({ state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch, duoState: "ready" }, { headers: epoch === 2 ? activationHeaders : {} });
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => {
     const path = new URL(url).pathname;
     if (path.endsWith("/state")) return ++reads === 1 ? active(1) : publicRead.promise;
