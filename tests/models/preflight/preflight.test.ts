@@ -342,7 +342,8 @@ describe("preflight selection and reports", () => {
     assert.equal(executions, 2);
   });
 
-  it("bounds retained command identities without evicting an earlier replay", async () => {
+  it("releases only the oldest settled replay to admit another rerun", async () => {
+    let executions = 0;
     const authority = createPreflightAuthority({
       configFingerprint: CONFIG_FINGERPRINT,
       requestedCapabilities: ["provider.census"],
@@ -350,6 +351,7 @@ describe("preflight selection and reports", () => {
         check: PreflightCheckIdSchema.parse("provider.census"),
         kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.census")?.runner ?? "pure",
         async run() {
+          executions += 1;
           return { check: "provider.census" as const, state: "healthy" as const, summary: "provider healthy" };
         },
       }],
@@ -370,11 +372,17 @@ describe("preflight selection and reports", () => {
       if (index === 1000) first = result;
     }
 
-    await assert.rejects(
-      authority.execute(command(1256), new AbortController().signal),
-      /retained command identity capacity 256 is exhausted/,
-    );
     assert.deepEqual(await authority.execute(command(1000), new AbortController().signal), first);
+    assert.equal(executions, 256);
+
+    const next = await authority.execute(command(1256), new AbortController().signal);
+    assert.equal(next.commandId, command(1256).commandId);
+    assert.deepEqual(await authority.execute(command(1256), new AbortController().signal), next);
+    await authority.execute(command(1001), new AbortController().signal);
+    assert.equal(executions, 257);
+
+    await authority.execute(command(1000), new AbortController().signal);
+    assert.equal(executions, 258);
   });
 
   it("retains admission until every independently timed-out selected runner actually settles", async () => {
