@@ -7,15 +7,13 @@ import { DashboardClientProvider } from '../../../../src/dashboard/state/client-
 import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
 import { createSpreadsheetWiringAdapter } from '../../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
 import { createHubAssistantSession, useHubAssistant } from '../../../../src/dashboard/surfaces/shell/hub-assistant-model.js';
-import { prepareHubWorkflow } from '../../../mocks/workflows/hub-assistant-run.js';
-import { assistantWorkflowRows, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
+import { type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
 import { useComposer } from '../../../../src/dashboard/surfaces/shell/composer-model.js';
-import { workflowComposition } from '../../../../src/dashboard/app/workflow-sources.js';
 import { disposeHttpRouteHarness, harness } from '../../../support/helpers/backend/http-route-harness.js';
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); document.body.replaceChildren(); await disposeHttpRouteHarness(); });
-it('registers attached, updated and generated files through HTTP/SQLite, reopens exact versions and isolates chats', async () => {
+it('registers an attached file once through HTTP/SQLite, reopens its exact version and isolates chats', async () => {
   const h = await harness(), writes: string[] = [];
   const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: async (url, init) => {
     if (init?.method === 'POST') writes.push(new URL(String(url)).pathname);
@@ -26,15 +24,10 @@ it('registers attached, updated and generated files through HTTP/SQLite, reopens
     { id: 'head', cells: ['Name', 'Separation date', 'Kuali ID'].map(value => ({ value })) }, { id: 'person', cells: ['Alex Rivera', '2026-10-19', '2230001'].map(value => ({ value })) },
   ] }] } };
   await session.register(file); await session.register(file);
-  const request = { workflowId: 'separations', source: 'mock', dryRun: true, conversationId: 'chat', file, rows: assistantWorkflowRows(file, 'separations') } as const;
-  const { result } = prepareHubWorkflow(request, { ...workflowComposition({}), assistant: 'mock' as const }, 0);
-  if (result.state !== 'complete') throw Error('missing result');
-  session.linkOutputs(request, result);
-  for (const output of result.files) { await session.register(output); await session.register(output); }
   const library = (await client.workbookList()).map(record => [record.workbook.name, record.version]).sort();
-  assert.deepEqual(library, [['People.csv', 2], ['Results.csv', 1]]);
-  assert.equal(createHubAssistantSession('other', adapter).producer.initial().messages.length, 0);
-  assert.equal(writes.length, 3); assert.ok(writes.every(path => /^\/api\/v1\/workbooks(?:\/[^/]+\/save)?$/u.test(path)));
+  assert.deepEqual(library, [['People.csv', 1]]);
+  assert.equal(createHubAssistantSession('other', adapter).conversationPort.initial().files.length, 0);
+  assert.equal(writes.length, 1); assert.ok(writes.every(path => /^\/api\/v1\/workbooks(?:\/[^/]+\/save)?$/u.test(path)));
 });
 
 it('keeps drafts on refused or failed sends, clears successful sends and forgets deleted sessions', async () => {
@@ -42,7 +35,7 @@ it('keeps drafts on refused or failed sends, clears successful sends and forgets
   let model!: ReturnType<typeof useHubAssistant>, composer!: ReturnType<typeof useComposer>;
   let outcome: 'refused' | 'failed' | 'sent' = 'refused';
   function Harness() {
-    model = useHubAssistant(async () => ({ state: 'failed', message: 'Unused' }), () => {});
+    model = useHubAssistant(() => {});
     composer = useComposer({ draft: model.session('chat').draft, async onSend() { if (outcome === 'failed') throw Error('Fixture send failed'); return outcome === 'sent'; } });
     return null;
   }
@@ -67,23 +60,22 @@ it('keeps drafts on refused or failed sends, clears successful sends and forgets
   assert.deepEqual(model.session('other').draft.read(), { text: '', files: [] });
 });
 
-it('synchronizes explicit renames and rejects stale retained titles after a send settles', async () => {
+it('synchronizes explicit renames and rejects stale retained titles', () => {
   const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: () => { throw Error('Unused'); } });
   const titles: string[] = [], session = createHubAssistantSession('chat', createSpreadsheetWiringAdapter(client), title => titles.push(title));
   const seeded = createHubAssistantSession('seeded', createSpreadsheetWiringAdapter(client), undefined, 'Existing chat title');
-  assert.equal(seeded.producer.initial().title, 'Existing chat title');
-  const beforeRename = session.producer.initial();
+  assert.equal(seeded.conversationPort.initial().title, 'Existing chat title');
+  const beforeRename = session.conversationPort.initial();
   session.rename('  Operator title  ');
-  assert.equal(session.producer.initial().title, 'Operator title');
-  const next = await session.producer.send(beforeRename, { text: 'First message', files: [], model: 'Default', effort: 'Medium', approval: 'Ask before every action' });
-  assert.equal(next.title, 'Operator title');
+  assert.equal(session.conversationPort.initial().title, 'Operator title');
+  const next = { ...beforeRename };
   session.rename('Newer operator title');
   session.autoTitle('Late automatic title');
-  session.producer.retain(next);
-  assert.equal(session.producer.initial().title, 'Newer operator title');
+  session.conversationPort.retain(next);
+  assert.equal(session.conversationPort.initial().title, 'Newer operator title');
   assert.equal(titles.length, 0);
   const fresh = createHubAssistantSession('fresh', createSpreadsheetWiringAdapter(client), title => titles.push(title));
-  const old = fresh.producer.initial();
-  fresh.autoTitle('First request'); fresh.producer.retain(old); fresh.autoTitle('Later request');
-  assert.equal(fresh.producer.initial().title, 'First request'); assert.deepEqual(titles, ['First request']);
+  const old = fresh.conversationPort.initial();
+  fresh.autoTitle('First request'); fresh.conversationPort.retain(old); fresh.autoTitle('Later request');
+  assert.equal(fresh.conversationPort.initial().title, 'First request'); assert.deepEqual(titles, ['First request']);
 });

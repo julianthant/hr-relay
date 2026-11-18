@@ -9,7 +9,7 @@ import type { AssistantQueries } from '../../client/index.js';
 import type { AssistantReceipt, AssistantResult, AssistantStageResult } from '../../../models/dashboard/assistant.js';
 import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel, type AssistantModelPreference } from "../../../models/config/assistant-model-preference.js";
 import { ASSISTANT_FAILURES, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelCatalog, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
-import { ASSISTANT_UNKNOWN_NOTICE, assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
+import { ASSISTANT_UNKNOWN_NOTICE, assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantProposal, type AssistantState } from './assistant-model.js';
 import { ASSISTANT_UNSAVED_REPLY, type AssistantHistory } from './assistant-history-model.js';
 import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
 import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
@@ -28,11 +28,11 @@ export async function assistantProposalDigest(proposal: AssistantActionProposal)
 const ACCOUNT_NOT_CONNECTED = 'Connect ChatGPT to use the assistant.';
 const ACCOUNT_READ_FAILED = 'Relay could not check your ChatGPT account.';
 /** A run start or run action whose answer was lost is unknown, shown as one line and never retried. */
-const lostDecision = (proposal: AssistantMockProposal): AssistantAction =>
+const lostDecision = (proposal: AssistantProposal): AssistantAction =>
   ({ type: 'action-state', id: proposal.id, disposition: 'unknown', message: { id: `action-${proposal.id}`, role: 'assistant', text: ASSISTANT_UNKNOWN_NOTICE } });
 const emptyState = (): AssistantState => ({ draft: '', messages: [], sequence: 0, turn: { state: 'idle' } });
 
-export function presentResult(result: AssistantResult, requestId: number, prompt: string): { message: AssistantMessage; proposal?: AssistantMockProposal; disposition?: "unknown" } {
+export function presentResult(result: AssistantResult, requestId: number, prompt: string): { message: AssistantMessage; proposal?: AssistantProposal; disposition?: "unknown" } {
   const id = `assistant-${requestId}`;
   switch (result.state) {
     case 'answered': return { message: { id, role: 'assistant', text: result.text } };

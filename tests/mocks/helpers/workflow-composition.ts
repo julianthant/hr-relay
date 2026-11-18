@@ -5,8 +5,6 @@ import { useNotificationsSampleInbox, resolveSampleRun } from "../../support/fix
 import { useWorkspaceSearchData } from "../../support/fixtures/dashboard/search-sample.js";
 import { StatusMockHost } from "./status-mock/status-mock.js";
 import { statusMockHarness } from "./status-mock/status-mock-model.js";
-import { prepareHubWorkflow } from "../workflows/hub-assistant-run.js";
-import type { AssistantWorkflowRequest } from "../../../src/dashboard/surfaces/shell/assistant-panel-model.js";
 import type { RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start/run-start.js";
 
 /** The given workflows are served; every other declared workflow is hidden, so the catalog lists only them. */
@@ -20,6 +18,5 @@ function harnessFor(): DashboardHarness {
 
 export function MOCK_WORKFLOW_COMPOSITION(workflows: readonly RunStartWorkflow[]): WorkflowComposition {
   const sources = servedFixtureSources(workflows);
-  const composition: WorkflowComposition = Object.freeze({ sources, harness: harnessFor(), assistant: "mock" as const, runAssistantSample: (request: AssistantWorkflowRequest) => prepareHubWorkflow(request, composition, 0).result, logs: "mock" as const, sessionsHarness: sessionsSampleHarness, useActivityReport: useActivitySampleReport, dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }) });
-  return composition;
+  return Object.freeze({ sources, harness: harnessFor(), logs: "mock" as const, sessionsHarness: sessionsSampleHarness, useActivityReport: useActivitySampleReport, dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }) });
 }

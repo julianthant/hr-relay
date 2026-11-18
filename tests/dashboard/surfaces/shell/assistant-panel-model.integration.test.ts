@@ -1,14 +1,11 @@
 // @vitest-environment jsdom
-import { chatGptStatusFixture } from "../../../support/helpers/chatgpt-status-fixture.js";
 import { useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { ASSISTANT_FAILURES, ASSISTANT_MODEL_COMMAND, type AssistantRequest, type AssistantResult, type AssistantStageResult } from '../../../../src/models/dashboard/assistant.js';
 
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAssistantMockProducer, useAssistantPanel, type AssistantPorts, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
-import { ChatGptAccountViewSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
-import type { DashboardClient } from '../../../../src/dashboard/client/index.js';
+import { useAssistantPanel, type AssistantPorts, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
 import { resultClient } from '../../../support/helpers/dashboard/assistant-served-client.js';
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root | undefined;
@@ -18,63 +15,15 @@ const file: AssistantFile = { id: 'people', name: 'People.csv', status: 'Attache
   { id: 'header', cells: [{ value: 'Name' }, { value: 'Hire date' }] },
   { id: 'one', cells: [{ value: 'Morgan Vega' }, { value: '2026-10-19' }] },
 ] }] } };
-const accountClient: Pick<DashboardClient, 'chatGptAccount'> = { async chatGptAccount() { return chatGptStatusFixture(ChatGptAccountViewSchema.parse({ state: 'connected', name: 'Fixture', email: 'fixture@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' })); } };
-async function mount(ports: AssistantPorts, client = accountClient) {
-  const producer = createAssistantMockProducer();
-  function Harness() { model = useAssistantPanel({ producer, accountClient: client, ports }); return null; }
-  host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => { root!.render(createElement(Harness)); });
-}
+const conversationPort = { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) };
 afterEach(async () => { await act(async () => { root?.unmount(); }); host?.remove(); root = undefined; });
-async function review() { await act(async () => { await model.send({ text: 'run onboardings', files: [file], model: 'Default', effort: 'Medium', approval: 'Ask before every action' }); }); }
-describe('assistant port settlements', () => {
-  it('uses the existing account read and does not turn its failure into connected mock state', async () => {
-    await mount({}, { async chatGptAccount() { throw Error('fixture unavailable'); } });
-    expect(model.account).toBeNull(); expect(model.error).toContain('Could not load ChatGPT account');
-    await act(async () => { model.newChat(); });
-    expect(model.account).toBeNull(); expect(model.error).toContain('Could not load ChatGPT account');
-  });
-  it('preserves unknown run outcomes and refuses a second start', async () => {
-    let starts = 0;
-    await mount({ async onRunWorkflow(request) { starts++; expect(request.dryRun).toBe(true); expect(request.workflowId).toBe('onboarding'); expect(request.rows[0].person).toBe('Morgan Vega'); throw Error('transport ended'); } });
-    await review(); await act(async () => { await model.runWorkflow(); });
-    expect(model.conversation.workflow?.state).toBe('uncertain');
-    await act(async () => { await model.runWorkflow(); }); expect(starts).toBe(1);
-    await review(); expect(model.conversation.workflow?.state).toBe('uncertain');
-    expect(model.error).toContain('previous run outcome is unknown');
-    await act(async () => { await model.runWorkflow(); }); expect(starts).toBe(1);
-  });
-  it('keeps returned files and terminal completion when library registration fails', async () => {
-    let registrations = 0;
-    await mount({ async onRunWorkflow() { return { state: 'complete', source: 'mock', files: [{ ...file, id: 'updated', status: 'Updated' }] }; }, async onRegisterSpreadsheet() { if (++registrations > 1) throw Error('Library registration failed'); } });
-    await review(); await act(async () => { await model.runWorkflow(); });
-    expect(model.conversation.workflow?.state).toBe('complete');
-    expect(model.conversation.files.map(file => file.status)).toEqual(['Attached', 'Updated']);
-    expect(model.error).toBe('Library registration failed');
-  });
-  it('binds a file to this send\'s operator message even when a reply follows', async () => {
-    await mount({});
-    await act(async () => { await model.send({ text: 'Review this file', files: [file], model: 'Default', effort: 'Medium', approval: 'Ask before every action' }); });
-    const sent = model.conversation.messages.find(message => message.text === 'Review this file');
-    expect(sent?.attachments).toEqual([{ id: 'people', name: 'People.csv' }]);
-    expect(model.conversation.messages.filter(message => message.attachments !== undefined)).toHaveLength(1);
-  });
-  it('commits nothing when registration fails, so the composer keeps its draft', async () => {
-    await mount({ async onRegisterSpreadsheet() { throw Error('library unavailable'); } });
-    let sent = true;
-    await act(async () => { sent = await model.send({ text: 'Review this file', files: [file], model: 'Default', effort: 'Medium', approval: 'Ask before every action' }); });
-    expect(sent).toBe(false); expect(model.error).toContain('library unavailable');
-    expect(model.conversation.messages.some(message => message.attachments !== undefined)).toBe(false);
-  });
-});
 
 it('blocks every setup attachment before panel registration and both local file ports', async () => {
   let controller!: ReturnType<typeof useAssistantController>, registrations = 0, attachments = 0, requests = 0;
   const ports: AssistantPorts = { async onRegisterSpreadsheet() { registrations++; },
     async onAttachFile() { attachments++; return file; } };
   const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected' }; } });
-  const producer = createAssistantMockProducer();
-  function Harness() { controller = useAssistantController(client, 'profile', undefined, false); model = useAssistantPanel({ producer, accountClient, ports, served: controller }); return null; }
+  function Harness() { controller = useAssistantController(client, 'profile', undefined, false); model = useAssistantPanel({ conversationPort, ports, served: controller }); return null; }
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(Harness)));
   for (const text of [ASSISTANT_MODEL_COMMAND]) {
@@ -96,7 +45,7 @@ describe('assistant attachments', () => {
   const upload = (name: string, bytes = 'fixture', size = bytes.length) => ({ name, size, async arrayBuffer() { return new TextEncoder().encode(bytes).buffer as ArrayBuffer; } }) as unknown as File;
   async function mountServed(client: ReturnType<typeof resultClient>, ports: AssistantPorts = { async onAttachFile(picked) { return { id: crypto.randomUUID(), name: picked!.name, status: 'Attached' }; } }) {
     let controller!: ReturnType<typeof useAssistantController>;
-    function Harness() { controller = useAssistantController(client, 'profile', undefined, false); model = useAssistantPanel({ producer: createAssistantMockProducer(), accountClient, ports, served: controller }); return null; }
+    function Harness() { controller = useAssistantController(client, 'profile', undefined, false); model = useAssistantPanel({ conversationPort, ports, served: controller }); return null; }
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
     await act(async () => root?.render(createElement(Harness)));
     return () => controller;

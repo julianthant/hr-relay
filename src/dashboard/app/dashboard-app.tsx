@@ -24,7 +24,6 @@ import { useApplicationLifecycle } from "../state/application-lifecycle-model.js
 import type { RunWiringConfirm } from "../state/run-wiring-adapter.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from "../../models/failures/error-catalog.js";
 import { dsLayer } from "../ds/theme/tokens.js";
-import type { AssistantPorts } from "../surfaces/shell/assistant-panel-model.js";
 import { productWorkflowComposition, workflowSource, type WorkflowComposition } from "./workflow-sources.js";
 import type { NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
 import { ViewNavigationProvider } from "./navigation/view-navigation.js";
@@ -967,13 +966,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     return dayWire?.workflowCounts.filter(count => childWorkflows.has(count.workflowId) || workflowSource(count.workflowId, dataSources) === "served");
   }, [dayWire, dataSources]);
   const setLaunchOpen = launch.setOpen;
-  const runAssistantWorkflow = useCallback<NonNullable<AssistantPorts["onRunWorkflow"]>>(async request => {
-    try {
-      if (workflowComposition.runAssistantSample === undefined) throw new Error("This assistant supports sample dry runs only.");
-      return workflowComposition.runAssistantSample(request);
-    }
-    catch (error) { return { state: "failed", message: error instanceof Error ? error.message : String(error) }; }
-  }, [workflowComposition]);
   const onRailSelect = useCallback((id: string) => { selectWorkflow(id); }, [selectWorkflow]);
   const harness = workflowComposition.harness;
   const harnessSearch = (harness?.useSearch ?? noHarnessSearch)({ today, day, unavailable: dateError, rows: queueRows, workflowLabel: workflowLabelOf });
@@ -1253,7 +1245,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       </main>
       </div>
 
-      <HubShell subjectRef={selectedRow === undefined || selectedRow.parent === null && workflowSource(selectedRow.workflowId, workflowComposition.sources) !== "served" ? undefined : `run_${selectedRow.runId}_${selectedRow.rowRevision}`} commands={commandBinding} source={workflowComposition.assistant ?? "served"} authority={authorityEpoch} onOpenSettings={openSettings} onRunWorkflow={runAssistantWorkflow} settingsOpen={settingsOpen} logoutOpen={logoutOpen} onLogoutOpenChange={setLogoutOpen} onLogout={() => leaveSettings(() => {
+      <HubShell subjectRef={selectedRow === undefined || selectedRow.parent === null && workflowSource(selectedRow.workflowId, workflowComposition.sources) !== "served" ? undefined : `run_${selectedRow.runId}_${selectedRow.rowRevision}`} commands={commandBinding} authority={authorityEpoch} onOpenSettings={openSettings} settingsOpen={settingsOpen} logoutOpen={logoutOpen} onLogoutOpenChange={setLogoutOpen} onLogout={() => leaveSettings(() => {
         if (onProfileLogout === undefined) setRoute({ start: false, onboarding: "login" });
         else void onProfileLogout();
       })} />

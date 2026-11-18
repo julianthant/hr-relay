@@ -14,9 +14,8 @@ import type { CommandResultFeedEntry } from "../surfaces/shared/actions/actions-
 import configuredSources from "../../../config/dashboard-workflow-sources.json";
 import type { SessionsHarness } from "../surfaces/sessions/session-panel.js";
 import type { ActivityReportHook } from "../surfaces/activity/activity.js";
-import type { AssistantWorkflowRequest, AssistantWorkflowResult } from "../surfaces/shell/assistant-panel-model.js";
 
-/** Where a surface (sessions, activity, inbox, search, assistant) reads from; the design-mock harness composes "mock" surfaces, the product only "served". */
+/** Where a surface (Logs) reads from; the design-mock harness composes "mock" surfaces, the product only "served". */
 export type SurfaceSource = "mock" | "served";
 /** "hidden" workflows run and serve data for their host but have no catalog, queue or assistant entry. */
 export type WorkflowSource = "served" | "hidden";
@@ -67,9 +66,6 @@ export interface WorkflowComposition {
   readonly sessionsHarness?: SessionsHarness;
   /** The design-mock harness supplies its own report hook; the product leaves it unset and reads the served population. */
   readonly useActivityReport?: ActivityReportHook;
-  readonly assistant?: SurfaceSource;
-  /** The design-mock harness runs the assistant's sample workflows; the product has none. */
-  readonly runAssistantSample?: (request: AssistantWorkflowRequest) => AssistantWorkflowResult;
 }
 
 export function workflowComposition(sources: WorkflowSourcePolicy): WorkflowComposition {

@@ -27,10 +27,6 @@ const composition = fixture === "product-workflows" || Reflect.get(window, "rela
   ? productWorkflowComposition
   : fixture === "picked-a"
   ? (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => ({ ...MOCK_WORKFLOW_COMPOSITION(workflows), logs: "served" as const })
-  : fixture === "hub-served"
-  ? (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => ({ ...MOCK_WORKFLOW_COMPOSITION(workflows), assistant: "served" as const })
-  : fixture === "hub-integration"
-  ? (workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION>[0]) => ({ ...MOCK_WORKFLOW_COMPOSITION(workflows) })
   : MOCK_WORKFLOW_COMPOSITION;
 const restoredNotice = fixture === "restore-notice" ? { backupCapturedAt: "2026-11-05T08:42:00-08:00" } : undefined;
 const theme: unknown = Reflect.get(window, "relayMockTheme");
