@@ -51,7 +51,7 @@ export function scoreNameMatch(a: string, b: string): NameMatchResult {
 /** Max per-token Levenshtein distance still counted as a spelling variant. */
 const TOKEN_VARIANT_MAX = 2;
 
-/** Three-way name comparison aligned token-by-token, so name-order differences never masquerade as a mismatch. */
+/** Three-way name comparison with one-to-one token matches, independent of name order. */
 export const NameSimilarityTierSchema = z.enum(["same", "similar", "different"]);
 export type NameSimilarityTier = z.infer<typeof NameSimilarityTierSchema>;
 
@@ -60,18 +60,29 @@ export function classifyNameSimilarity(a: string, b: string): NameSimilarityTier
   const bt = tokenizeName(b);
   if (at.length === 0 || bt.length === 0) return "different";
 
-  if ([...at].sort().join(" ") === [...bt].sort().join(" ")) return "same";
-
   const [small, large] = at.length <= bt.length ? [at, bt] : [bt, at];
-  let anyVariant = false;
-  for (const token of small) {
-    let best = Number.POSITIVE_INFINITY;
-    for (const other of large) {
-      best = Math.min(best, levenshteinDistance(token, other));
-      if (best === 0) break;
+  const exactTokens = [...large];
+  const allExact = small.every(token => {
+    const index = exactTokens.indexOf(token);
+    if (index === -1) return false;
+    exactTokens.splice(index, 1);
+    return true;
+  });
+  if (allExact) return "same";
+
+  const matchedTokens = new Map<number, string>();
+  function matchToken(token: string, visited: Set<number>): boolean {
+    for (const [index, candidate] of large.entries()) {
+      if (visited.has(index) || levenshteinDistance(token, candidate) > TOKEN_VARIANT_MAX) continue;
+      visited.add(index);
+      // Move the previous match if it can use another occurrence.
+      const previous = matchedTokens.get(index);
+      if (previous !== undefined && !matchToken(previous, visited)) continue;
+      matchedTokens.set(index, token);
+      return true;
     }
-    if (best > TOKEN_VARIANT_MAX) return "different";
-    if (best > 0) anyVariant = true;
+    return false;
   }
-  return anyVariant ? "similar" : "same";
+
+  return small.every(token => matchToken(token, new Set())) ? "similar" : "different";
 }
