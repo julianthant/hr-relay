@@ -298,14 +298,34 @@ export function deriveActionWriteProof(input: Readonly<{
   return writeProofFromOutcome(commitContract.id, commitContract.writeSafety.completion.kind, outcome, intent);
 }
 
-function retainedWriteProof(intent: WriteIntentRecord, outcome: z.infer<typeof TransactionOutcomeSchema>,
-  completion: ActionWriteProof["completion"], envelope: RunRecord["envelope"]): ActionWriteProof {
+function retainedWriteProof(input: {
+  intent: WriteIntentRecord;
+  outcome: z.infer<typeof TransactionOutcomeSchema>;
+  record: RunCheckpointRecord;
+  envelope: RunRecord["envelope"];
+  readConfirmedWrite: ReadConfirmedWrite | undefined;
+  declaredCompletion?: ActionWriteProof["completion"];
+}): ActionWriteProof {
+  const { intent, outcome, record, envelope } = input;
   if (intent.runId !== envelope.runId || intent.runAttempt !== envelope.attempt
     || intent.workflowId !== envelope.workflow || intent.itemId !== envelope.itemId) throw new Error("receipt-write-owner-conflict");
   const durable = intent.status === "committed" ? intent.completionProof : intent.status === "observed-present" ? intent.observedProof : undefined;
   if (durable !== undefined && canonicalJsonStringify(durable) !== canonicalJsonStringify(outcome.proof)) {
     throw new Error("receipt-write-proof-conflict");
   }
+  let completion = input.declaredCompletion;
+  if (outcome.disposition === "committed") {
+    const publication = input.readConfirmedWrite?.(intent.writeIntentId);
+    if (publication === undefined) throw new Error("receipt-write-completion-authority-unavailable");
+    const { ledger } = publication;
+    if (intent.status !== "committed" || ledger.runId !== envelope.runId || ledger.traceId !== envelope.traceId
+      || ledger.writeIntentId !== intent.writeIntentId || ledger.intentGeneration !== intent.generation
+      || ledger.bindingProofDigest !== intent.bindingProofDigest || ledger.proofSource !== outcome.proofSource
+      || ledger.confirmedAt !== outcome.confirmedAt || canonicalJsonStringify(ledger.proof) !== canonicalJsonStringify(outcome.proof)
+      || canonicalJsonStringify(publication.checkpoint) !== canonicalJsonStringify(record)) throw new Error("receipt-write-publication-conflict");
+    completion = ledger.completionKind;
+  }
+  if (completion === undefined) throw new Error("receipt-write-completion-authority-unavailable");
   return writeProofFromOutcome(intent.taskId, completion, outcome, intent);
 }
 
@@ -786,7 +806,8 @@ function deriveReceipt(
         if (outcome.proof.schemaHash !== deriveSchemaHash(node.commit.uses.writeSafety.completion.proofSchema, "output")) {
           assertRetainedReceiptDependencies(bindingInput, result);
         }
-        commitAction.proved = retainedWriteProof(write.intent, outcome, node.commit.uses.writeSafety.completion.kind, envelope);
+        commitAction.proved = retainedWriteProof({ intent: write.intent, outcome, record, envelope,
+          readConfirmedWrite: input.readConfirmedWrite, declaredCompletion: node.commit.uses.writeSafety.completion.kind });
       } else {
         commitAction.proved = deriveActionWriteProof({
           ...(input.schemaReader === undefined ? {} : { schemaReader: input.schemaReader }),
@@ -1223,6 +1244,9 @@ function checkHistoricalReceipt(input: {
     }
   }
   if (gateDecisions.size !== 0) throw new Error("receipt-gate-decision-conflict");
+  const nodeOrder = new Map(receipt.verification.flatMap((row, index) =>
+    row.obligation.startsWith("node.") && row.id === id("verification", row.obligation)
+      ? [[evidenceEntryRef(row.id), { id: row.id, index }] as const] : []));
   for (const nodeId of new Set(checkpoints.map(row => row.nodeId))) {
     const record = pickCheckpoint(checkpoints, nodeId, envelope.attempt);
     if (record === undefined) continue;
@@ -1260,17 +1284,32 @@ function checkHistoricalReceipt(input: {
       }
       continue;
     }
+    let declaredUpstream: readonly EvidenceEntryId[] | undefined;
     for (const leaf of fields) {
       const factId = id("observation", `${nodeId}.${leaf.path}`), fact = observations.get(factId);
       const action = commit ?? read;
       if (action === undefined || fact === undefined) throw new Error("receipt-checkpoint-action-missing");
       const superseded: Fact[] = [];
+      const provenance = provenanceFor(record, commit === undefined ? leaf.path : `output.value.${leaf.path}`);
+      if (provenance?.source === "derived" && provenance.correctedAt === undefined) {
+        if (fact.source.kind !== "derived") throw new Error("receipt-checkpoint-source-conflict");
+        const refs = fact.source.evidence;
+        // The producer used one dependency list for every derived leaf, or cited the leaf itself at a root.
+        const upstream = refs.length === 1 && refs[0] === evidenceEntryRef(factId) ? [] : refs.map(ref => {
+          const source = nodeOrder.get(ref), target = nodeOrder.get(evidenceEntryRef(marker.id));
+          if (source === undefined || target === undefined || source.index >= target.index) throw new Error("receipt-checkpoint-source-conflict");
+          return source.id;
+        });
+        if (new Set(upstream).size !== upstream.length || (declaredUpstream !== undefined && !same(declaredUpstream, upstream))) {
+          throw new Error("receipt-checkpoint-source-conflict");
+        }
+        declaredUpstream = upstream;
+      }
       const expected = observationFact({ composition: receipt.composition, factId, entryId: id, nodeId, taskId: action.taskId,
-        leaf, scope: { kind: "task-output", taskId: action.taskId }, provenance: provenanceFor(record, commit === undefined ? leaf.path : `output.value.${leaf.path}`),
+        leaf, scope: { kind: "task-output", taskId: action.taskId }, provenance,
         replayed,
-        checkpointFingerprint: deriveCheckpointOutputDigest(record.output), writtenAt: record.writtenAt, upstream: [],
+        checkpointFingerprint: deriveCheckpointOutputDigest(record.output), writtenAt: record.writtenAt, upstream: declaredUpstream ?? [],
         mandatory: fact.mandatory, supersededFacts: superseded });
-      if (expected.source.kind === "derived" && fact.source.kind === "derived") expected.source = fact.source;
       if (!same(fact, expected)) throw new Error(`receipt-checkpoint-fact-conflict: ${nodeId}`);
       observations.delete(factId);
       for (const old of superseded) {
@@ -1291,15 +1330,7 @@ function checkHistoricalReceipt(input: {
         || prepare.occurredAt !== record.writtenAt || proof === undefined) throw new Error("receipt-write-owner-conflict");
       const { intent } = write;
       const expected = commitActionOf({ id: commit.id, taskId: intent.taskId, occurredAt: record.writtenAt, write });
-      const publication = input.readConfirmedWrite?.(intent.writeIntentId);
-      if (publication === undefined) throw new Error("receipt-write-completion-authority-unavailable");
-      const { ledger } = publication;
-      if (intent.status !== "committed" || outcome.disposition !== "committed" || ledger.runId !== envelope.runId
-        || ledger.traceId !== envelope.traceId || ledger.writeIntentId !== intent.writeIntentId || ledger.intentGeneration !== intent.generation
-        || ledger.bindingProofDigest !== intent.bindingProofDigest || ledger.proofSource !== outcome.proofSource
-        || ledger.confirmedAt !== outcome.confirmedAt || !same(ledger.proof, outcome.proof)
-        || !same(publication.checkpoint, record)) throw new Error("receipt-write-publication-conflict");
-      expected.proved = retainedWriteProof(intent, outcome, ledger.completionKind, envelope);
+      expected.proved = retainedWriteProof({ intent, outcome, record, envelope, readConfirmedWrite: input.readConfirmedWrite });
       if (!same(commit, expected)) throw new Error("receipt-write-proof-conflict");
       for (const decision of transactionDecisions(id, nodeId, commit.id, outcome, intent)) {
         const recorded = receipt.decisions.find(row => row.id === decision.id);

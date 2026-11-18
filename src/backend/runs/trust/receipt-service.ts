@@ -145,6 +145,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
       assertTrustEvidenceIdentity(run, failure, "failure");
     }
     const outcome = ensureRunEvidenceReceipt({ ...store,
+      readConfirmedWrite: intentId => repositories.writeIntents.getPublication(intentId),
       listGateResultsByRun: id => {
         if (id !== runId) throw new Error("TRUST_RECEIPT_GATE_OWNER_MISMATCH");
         return repositories.gateResults.listByRun(id);

@@ -5,8 +5,16 @@ import * as workflow from "../../../../src/workflow-kit/workflow.js";
 import { deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, TerminalDependencyEvidenceSchema, deriveRunResultDigest, deriveTerminalDependencyDigest, isRunPreviewSchemaHash, readRunPreviewResult, RunResultRecordSchema, terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import { DRY_RUN_I9_PROFILE_ID, DRY_RUN_TRANSACTION_NUMBER } from "../../../../src/models/workflow/dry-run.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { trustWorld } from "../../../support/helpers/backend/trust-authority-fixture.js";
 import { ocrProofReadDatabase } from "../../../support/helpers/backend/ocr-proof-reads.js";
+import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { createCapabilityWiringTestWorld } from "../../../support/helpers/backend/capability-wiring-world.js";
 import { createStepOmissionTestWorld } from "../../../support/helpers/backend/step-omission-world.js";
@@ -230,6 +238,22 @@ it("checks the issued checkpoint verdict and its exact output citations after th
   }
 });
 
+it("refuses a derived field that cites an action instead of upstream node evidence", () => {
+  const { store, runId, stored } = settledTransaction();
+  const derived = stored.observations.find(fact => fact.source.kind === "derived");
+  const dedupe = stored.decisions.find(decision => decision.kind === "dedupe");
+  assert.ok(derived && dedupe);
+  const conflicting = RunEvidenceReceiptSchema.parse({ ...stored,
+    observations: stored.observations.map(fact => fact !== derived ? fact : {
+      ...fact, source: { kind: "derived", evidence: dedupe.evidence },
+    }),
+  });
+  const wiring = createCapabilityWiringTestWorld();
+  const revised = wiring.fixtureDescriptor(finalization.id, finalization.code, wiring.providersOnlyContract);
+  assert.throws(() => ensureRunEvidenceReceipt({ ...store, findReceiptByRun: () => conflicting }, revised, runId),
+    /receipt-checkpoint-source-conflict/);
+});
+
 it("keeps operator-asserted checkpoints present and rejects invented verification or decisions", async () => {
   const omissions = createStepOmissionTestWorld();
   try {
@@ -264,6 +288,8 @@ it("refuses a different completion method after its transaction node is removed"
   const revised = wiring.fixtureDescriptor(finalization.id, finalization.code, wiring.providersOnlyContract);
   assert.throws(() => ensureRunEvidenceReceipt({ ...store, readConfirmedWrite: () => undefined }, revised, runId),
     /receipt-write-completion-authority-unavailable/);
+  assert.throws(() => ensureRunEvidenceReceipt({ ...store, readConfirmedWrite: () => undefined }, finalization, runId),
+    /receipt-write-completion-authority-unavailable/);
   const foreign = { ...publication, ledger: LedgerEntryPayloadSchema.parse({ ...publication.ledger, intentGeneration: publication.ledger.intentGeneration + 1 }) };
   assert.throws(() => ensureRunEvidenceReceipt({ ...store, readConfirmedWrite: () => foreign }, revised, runId),
     /receipt-write-publication-conflict/);
@@ -273,6 +299,61 @@ it("refuses a different completion method after its transaction node is removed"
     ? action : { ...action, proved: { ...commit.proved, completion: "receipt" } }) });
   assert.throws(() => ensureRunEvidenceReceipt({ ...store, findReceiptByRun: () => altered }, revised, runId),
     /receipt-write-proof-conflict/);
+});
+
+it("reads a removed transaction through the receipt service using its SQLite confirmation", async () => {
+  const { fixture, publication, runId } = settledTransaction();
+  const { ledger, checkpoint } = publication;
+  const clock = manualClock(new Date(ledger.confirmedAt));
+  const profile = await createBoundProfileFixture();
+  const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "retained-receipt-test" }, clock);
+  try {
+    const { authority } = database;
+    testWorkerPorts(database, clock, { path: profile.path, descriptor: finalization, poolIndex: 1 });
+    const active = authority.runtimeConfig.get();
+    assert.ok(active);
+    const run = RunRecordSchema.parse(fixture.run);
+    authority.runs.enqueue({ envelope: { ...run.envelope, configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId },
+      input: run.input, lifecycle: { state: "queued" }, version: 1, claimGeneration: 0, createdAt: run.createdAt, updatedAt: run.createdAt });
+    const write = fixture.writes[0];
+    assert.ok(write?.intent.status === "committed");
+    const { completionProof, confirmedAt, ...identity } = write.intent;
+    fenceWriteFixture(database, {
+      intent: { ...identity, status: "attempting", version: 1, updatedAt: ledger.fencedAt },
+      attempt: { ...write.attempts[0], outcome: { state: "attempting" }, recordedAt: ledger.fencedAt },
+    });
+    const checkpoints = fixture.checkpoints.map(row => RunCheckpointRecordSchema.parse(row));
+    for (const row of checkpoints) {
+      if (row.nodeId !== checkpoint.nodeId) authority.runCheckpoints.insert(row);
+    }
+    const { writeIntentId, intentGeneration, traceId, workflowId, itemId, attempt, system, idempotencyKey, idempotencyKeyDigest, bindingProofDigest } = ledger;
+    const outcome = checkpoint.output.value;
+    database.commitWriteAttempt({ writeIntentId, generation: intentGeneration, completionProof, confirmedAt, outcome,
+      transaction: { ...ledger, configFingerprint: active.configFingerprint },
+      committedSpan: { kind: "write-committed-span", writeIntentId, intentGeneration, runId, traceId, workflowId, itemId,
+        attempt, system, idempotencyKey, idempotencyKeyDigest, bindingProofDigest, occurredAt: confirmedAt, outcome },
+    }, checkpoint);
+    const running = authority.runs.get(runId);
+    assert.ok(running?.lifecycle.state === "running");
+    const built = buildRunResult(finalization, running, checkpoints.map(row => ({ state: "resolved", nodeId: row.nodeId, checkpoint: row })), clock);
+    database.terminalizeSuccess({ result: built.record, authorization: {
+      kind: "done", runId, workflowId, attempt, descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint, expectedVersion: running.version, authorizedAt: confirmedAt,
+      claim: { workerId: running.lifecycle.workerId, claimGeneration: running.claimGeneration }, resultDigest: built.record.resultDigest,
+    } }, built.authorization);
+    const runReader = createTrustRunReader(database, clock);
+    const service = (descriptor: workflow.AnyWorkflowDescriptor) =>
+      createReceiptService({ database, runReader, descriptors: [descriptor] });
+    const stored = service(finalization).ensure(runId);
+    assert.equal(stored.state, "derived");
+    const wiring = createCapabilityWiringTestWorld();
+    const revised = wiring.fixtureDescriptor(finalization.id, finalization.code, wiring.providersOnlyContract);
+    assert.deepEqual(service(revised).ensure(runId), { state: "existing", receipt: stored.receipt });
+  } finally {
+    releaseSeededWriteOwners(database, ledger.confirmedAt);
+    database.close();
+    await profile.close();
+  }
 });
 
 function settledTransaction() {
@@ -314,14 +395,14 @@ it("refuses a decision reason that contradicts the settled transaction", () => {
   assert.throws(() => ensureRunEvidenceReceipt(forged, revised, runId), /receipt-write-decision-conflict/);
 });
 
-it("reads a settled write after only its declared proof schema changes and rejects a conflicting intent proof", () => {
+it.each(["proof schema", "proof schema and method"])("reads a settled write after its %s changes and rejects a conflicting intent proof", change => {
   const { store, runId, stored, fixture } = settledTransaction();
   const nodes = workflow.descriptorRuntimeNodes(finalization);
   const revised = nodes.map(node => {
     if (node.kind !== "transaction") return node;
     const commit = node.commit.uses;
     return { ...node, commit: { ...node.commit, uses: { ...commit, writeSafety: { ...commit.writeSafety,
-      completion: { ...commit.writeSafety.completion, proofSchema: z.strictObject({ revised: z.boolean() }) },
+      completion: { ...commit.writeSafety.completion, ...(change === "proof schema" ? {} : { kind: "receipt" as const }), proofSchema: z.strictObject({ revised: z.boolean() }) },
     } } } };
   });
   const projection = vi.spyOn(workflow, "descriptorRuntimeNodes").mockReturnValue(revised);
