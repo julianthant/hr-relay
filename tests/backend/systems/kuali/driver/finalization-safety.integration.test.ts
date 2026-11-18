@@ -189,7 +189,7 @@ async function stageSave(variables: ReturnType<typeof saveVariables>, query = SA
     };
     document.querySelector("button")?.addEventListener("click", () => { void submit(); });
   }, { graphqlUrl: GRAPHQL_URL, payload });
-  const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+  const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
   return { driver, forwarded, lookups, payload, commit: () => driver.commit(KUALI_RRSS_SAVE_BUTTON, capability) };
 }
 

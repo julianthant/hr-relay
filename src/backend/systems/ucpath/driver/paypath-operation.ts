@@ -5,6 +5,7 @@ import {
   UCPATH_PAYPATH_POSITION_READY, UCPATH_PAYPATH_WORK_STUDY_STAGED, UcpathPayPathReadSchema, UcpathPayPathRefusedError, UcpathPayPathStagedSchema,
   UcpathPayPathStagedValuesSchema, UcpathPayPathSubmitRefusedError, type UcpathPayPathDriver, type UcpathPayPathRefusalCode, type UcpathPayPathStagedValues, type UcpathPayPathWorkStudyTarget,
 } from "../../../../models/ui/ucpath-paypath.js";
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { UCPATH_PAYPATH_UI as ui } from "./paypath-ui-registry.js";
@@ -246,8 +247,11 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
       if (!header.success || header.data !== input.emplId) throw new UcpathPayPathRefusedError("subject-mismatch");
       if (!keepsTarget(await readStagedValues(frame, input.positionNumber), input)) throw new UcpathPayPathRefusedError("staged-value-mismatch");
       const save = await saveControl(frame);
+      await shown(save);
       await reached("paypath-position-mismatch", () => assertPosition(frame, input.positionNumber));
-      await click(save, "ucpath.paypath.save-and-submit");
+      await clickWithMutationCapability(capability, save, BOUND_MS);
+      assertCurrent();
+      recordBrowserAction("clicked", "ucpath.paypath.save-and-submit");
       // PeopleSoft answers with an alert or replaces the staged page; seeing neither leaves the outcome unknown, and the caller parks.
       const outcome = await Promise.any([
         ui.alertOk(page).waitFor({ state: "visible", timeout: BOUND_MS }).then(() => "alert" as const),

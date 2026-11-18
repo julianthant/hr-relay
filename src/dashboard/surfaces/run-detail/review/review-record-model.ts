@@ -5,6 +5,10 @@ export type ReviewRecordView = Readonly<{
   id: string; page: number; kind: OcrFormType | "contact" | "verify" | "separation";
   fields: readonly ReviewField[]; selected: boolean; unknown?: boolean;
   warnings: readonly string[];
+  /** Why the record's identity is not confirmed; absent when it is. */
+  unconfirmed?: string;
+  /** What keeps this record from approval, one short line each. */
+  blockers?: readonly string[];
   i9Section?: 1 | 2; manualEntry?: boolean; sourcePageCount?: number;
 }>;
 export const REVIEW_RELATIONSHIPS = ["Parent", "Sibling", "Spouse", "Domestic Partner Adult", "Domestic Partner Child", "Child", "Grandchild", "Grand Parent", "Other Relative", "Friend", "Neighbor", "Roommate", "Ward", "Medical Provider", "Emerg/Detention/Arrest Contact", "Contact if Detained/Arrested", "Other"];

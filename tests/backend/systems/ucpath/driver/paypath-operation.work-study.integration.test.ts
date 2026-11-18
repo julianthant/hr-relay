@@ -75,7 +75,7 @@ it.each(["on open", "before Save", "after the final tab postback"])("refuses a d
           }, { once: true });
         });
       }
-      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
       await assert.rejects(driver.submitPayPathWorkStudy(target, capability), { message: "paypath-position-mismatch" });
       assert.equal(await UCPATH_PAYPATH_UI.saveAndSubmit(frame).isVisible(), true);
     }
