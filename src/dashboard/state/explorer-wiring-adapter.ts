@@ -24,14 +24,16 @@ export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplore
   const held = result.value?.workflows.find(candidate => candidate.id === workflowId);
   // The one wire serves every workflow; it is read again only when none is held or the held version is not the catalog's.
   const stale = result.value === undefined || (held !== undefined && version !== undefined && held.version !== version);
-  useEffect(() => { if (workflowId !== undefined && stale) retry(); }, [retry, stale, workflowId, version]);
+  const selected = workflowId !== undefined;
+  useEffect(() => { if (selected) retry(); }, [retry, selected]);
+  useEffect(() => { if (selected && stale) retry(); }, [retry, selected, stale]);
   const projected = useMemo((): ExplorerWiringState => {
     const workflow = result.value?.workflows.find(candidate => candidate.id === workflowId);
     if (result.value === undefined) return { state: "loading" };
     if (!workflow) return { state: "unavailable", reason: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text };
-    if (version !== undefined && workflow.version !== version) return { state: "refused", failure: createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" }), evidence: "explorer-catalog-version-mismatch" };
+    if (version !== undefined && workflow.version !== version) return result.state === "loading" ? { state: "loading" } : { state: "refused", failure: createErrorCatalogFailure("BOUNDARY_VALIDATION_FAILED", { source: "http-response" }), evidence: "explorer-catalog-version-mismatch" };
     return { state: "ready", spec: workflow.reviewSpec };
-  }, [result.value, workflowId, version]);
+  }, [result.value, result.state, workflowId, version]);
   const state = ((): ExplorerWiringState => {
     if (workflowId === undefined) return { state: "idle" };
     if (client === undefined) return { state: "unavailable", reason: "Registered workflow data is unavailable because the dashboard client is not connected." };
