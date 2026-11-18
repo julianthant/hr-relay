@@ -355,6 +355,7 @@ type SpanAuthorityCorpus = Readonly<
 
 function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: string, busyTimeoutMs: number, includeRecoveryEvidence = false): SpanAuthorityCorpus & Readonly<{
   authorityGeneration: number; authorityContentFingerprint: string;
+  databaseBytes: number;
   recoveryEvidence: ReturnType<typeof AuthorityDatabase.inspectTimelineReadOnly>["recoveryEvidence"];
 }> {
   const file = fileStatus(authorityPath);
@@ -415,7 +416,7 @@ function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: str
   // The canonical reconciliation reports that missing root without inventing it.
   return { state: "present", roots: roots.map(immutableSpanRoot),
     authorityGeneration: snapshot.authorityGeneration, authorityContentFingerprint: snapshot.authorityContentFingerprint,
-    recoveryEvidence: snapshot.recoveryEvidence };
+    databaseBytes: privateFileNumber(file.size), recoveryEvidence: snapshot.recoveryEvidence };
 }
 
 /** Quarantined SQLite is diagnostic recovery evidence only; it never feeds a current view. */
@@ -428,6 +429,8 @@ function displacedAuthorityProblems(admission: RuntimeAdmission, current: Return
     if (databases.length > 128) throw new SafeSpanCorpusError("preserved authority database count exceeds the inspection limit");
     const accepted = new Set(databases.flatMap((name) => [name, `${name}-wal`, `${name}-shm`]));
     if (names.some((name) => !accepted.has(name))) throw new SafeSpanCorpusError("preserved authority directory contains an unexpected entry");
+    // Allow three current-size images with room for their SQLite companions.
+    const maxBytes = Math.max(256 * 1024 * 1024, 4 * current.databaseBytes);
     let bytes = 0;
     const observed = new Map<string, Stats | BigIntStats>();
     for (const name of names) {
@@ -436,7 +439,7 @@ function displacedAuthorityProblems(admission: RuntimeAdmission, current: Return
         throw new SafeSpanCorpusError("preserved authority is not a direct regular file");
       }
       bytes += privateFileNumber(file.size);
-      if (bytes > 256 * 1024 * 1024) throw new SafeSpanCorpusError("preserved authority bytes exceed the inspection limit");
+      if (bytes > maxBytes) throw new SafeSpanCorpusError("preserved authority bytes exceed the inspection limit");
       observed.set(name, file);
     }
     const currentEvidence = current.recoveryEvidence;

@@ -1480,10 +1480,8 @@ export class RuntimeAdmission {
     let snapshot: ReturnType<typeof createReadonlyAuthoritySnapshot> | undefined, admission: RuntimeAdmission | undefined;
     try {
       snapshot = createReadonlyAuthoritySnapshot(path);
-      const file = readPrivateFile(snapshot.path, { label: "authority database", maxBytes: 512 * 1024 * 1024 });
-      if (file === undefined) throw new Error("profile-logout-inspection-copy-missing");
-      checkSource(); snapshot.assertUnchanged();
-      admission = this.#verifiedReadOnlyCopy(snapshot.path, createHash("sha256").update(file.bytes).digest("hex"), snapshot);
+      checkSource();
+      admission = this.#verifiedReadOnlyCopy(snapshot.path, undefined, snapshot);
       const ownedSnapshot = snapshot, copy = admission;
       let disposalFailure: { error: unknown } | undefined;
       return Object.freeze({ snapshot: ownedSnapshot, admission: copy, dispose: () => {
@@ -1510,7 +1508,7 @@ export class RuntimeAdmission {
     if (this.#pendingLogout !== undefined) throw new Error("profile-pending-logout-copy-delegation-refused");
     return this.#verifiedReadOnlyCopy(path, expectedSha256);
   }
-  #verifiedReadOnlyCopy(path: string, expectedSha256: string, snapshot?: ReturnType<typeof createReadonlyAuthoritySnapshot>): RuntimeAdmission {
+  #verifiedReadOnlyCopy(path: string, expectedSha256: string | undefined, snapshot?: ReturnType<typeof createReadonlyAuthoritySnapshot>): RuntimeAdmission {
     this.assertReadable();
     if (snapshot !== undefined) {
       this.assertPendingLogoutSettlementDatabase(join(this.#stateRoot, "state.db"));
@@ -1523,7 +1521,9 @@ export class RuntimeAdmission {
       || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown|\.session)?\.sqlite)$/u.test(resolve(path).slice(dirname(resolve(path)).length + 1)))) throw new Error("profile-stopped-upgrade-copy-refused");
     if (this.#pendingLogout?.copyPath !== undefined) throw new Error("profile-pending-logout-copy-delegation-refused");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot delegate copy authority");
-    if (!/^[0-9a-f]{64}$/u.test(expectedSha256)) throw new Error("runtime-admission: invalid copy digest");
+    if (expectedSha256 === undefined ? snapshot === undefined : !/^[0-9a-f]{64}$/u.test(expectedSha256)) {
+      throw new Error("runtime-admission: invalid copy digest");
+    }
     const checked = resolve(path);
     if (this.#scope === "stopped-control-inventory" && !within(this.#stateRoot, checked) && !this.#stoppedControlBackupPath(checked)) throw new Error("profile-control-upgrade-copy-path-refused");
     if (snapshot === undefined && !within(this.#stateRoot, checked) && !this.#stoppedControlBackupPath(checked)) this.assertExclusive();
@@ -1540,13 +1540,14 @@ export class RuntimeAdmission {
       const info = fileStatus(component);
       if (info.isSymbolicLink()) throw new Error("runtime-admission: inspected copy contains symlink");
     }
+    let digest = expectedSha256;
     const verifyBytes = () => {
       this.assertReadable(); snapshot?.assertUnchanged();
       const file = fileStatus(canonical);
       if (!file.isFile() || file.isSymbolicLink() || (file.nlink !== 1 && file.nlink !== 1n) || privatePathRejects(canonical, file, "group-write")) {
         throw new Error("runtime-admission: inspected copy has unsafe shape");
       }
-      const descriptor = openSync(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);
+      const descriptor = openSync(canonical, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
       let primary: { error: unknown } | undefined;
       let descriptorIdentity = file;
       try {
@@ -1556,13 +1557,20 @@ export class RuntimeAdmission {
         }
         const hash = createHash("sha256");
         const buffer = Buffer.allocUnsafe(64 * 1024);
-        let read = 0;
-        while ((read = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, read));
-        const final = descriptorStatus(descriptor);
+        let read: number, bytes = 0;
+        while ((read = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) {
+          hash.update(buffer.subarray(0, read));
+          bytes += read;
+        }
+        const final = descriptorStatus(descriptor), live = fileStatus(canonical), observed = hash.digest("hex");
         if (final.dev !== opened.dev || final.ino !== opened.ino || final.size !== opened.size
-          || fileModified(final) !== fileModified(opened) || hash.digest("hex") !== expectedSha256) {
+          || live.dev !== opened.dev || live.ino !== opened.ino || live.size !== opened.size
+          || fileModified(final) !== fileModified(opened) || fileChanged(final) !== fileChanged(opened)
+          || fileModified(live) !== fileModified(final) || fileChanged(live) !== fileChanged(final)
+          || BigInt(bytes) !== BigInt(opened.size) || digest !== undefined && observed !== digest) {
           throw new Error("runtime-admission: inspected copy digest changed");
         }
+        digest ??= observed;
       } catch (error) { primary = { error }; }
       try { closeSync(descriptor); }
       catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
