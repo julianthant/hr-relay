@@ -100,6 +100,7 @@ describe("Person Lookup task implementations", () => {
         "workflow:i9-check-start/read-publication",
         "workflow:i9-check-start/read-requests",
         "workflow:i9-check-start/read-rows",
+        "workflow:i9-check/read-employment-candidates",
         "workflow:i9-check/read-match-outcome",
         "workflow:i9-check/read-retention-row",
         "workflow:i9-lookup/read-result",

@@ -156,7 +156,7 @@ export function createOnboardingRunWorld() {
 
   async function executionFixture(corruptAssertedSubject = false, options: {
     match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; legalName?: string; livedName?: string; crmReadFails?: boolean;
-    personMatch?: z.output<typeof SearchPersonMatchOutputSchema>;
+    personMatch?: z.output<typeof SearchPersonMatchOutputSchema>; ssn?: string;
     hire?: Omit<Parameters<typeof deterministicHireOperations>[0], "now">;
     i9?: Partial<Omit<Parameters<typeof createDeterministicI9Driver>[0], "now">>;
   } = {}) {
@@ -168,7 +168,8 @@ export function createOnboardingRunWorld() {
       crm: () => ({ ...healthyCrmDriver(), readHireData: async (input: { email: string }) => {
         calls.push({ system: "crm", input });
         if (options.crmReadFails === true) throw new Error("synthetic CRM read failure");
-        return CrmReadHireData.example;
+        return options.ssn === undefined ? CrmReadHireData.example
+          : { ...CrmReadHireData.example, fields: { ...CrmReadHireData.example.fields, ssn: options.ssn } };
       } }),
       ucpath: () => {
         const base = healthyUcpathDriver();

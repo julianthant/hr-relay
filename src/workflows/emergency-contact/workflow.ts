@@ -30,6 +30,18 @@ export const emergencyContactWorkflow = defineWorkflow({
     { nodeId: "read-result", purpose: "Retain the exact released reference and settled member outcomes in a schema-owned result." },
     { nodeId: "members", purpose: "Delegate the exact approved record order to Emergency Contact members." },
   ],
+  rows: [
+    { key: "read-emergency-contact", label: "Read emergency contact", members: [{ step: "read-document", nodes: ["read-document"] },
+      { workflow: "ocr", step: "source-pages" }, { workflow: "ocr", step: "page-readings" }] },
+    { key: "match-extracted-people", label: "Match extracted people", members: [{ step: "read-document", nodes: ["approved-records"] },
+      { workflow: "ocr", step: "review-records" }, { workflow: "ocr", step: "identity-lookups" }, { workflow: "ocr", step: "signer-lookups" }] },
+    { key: "review-extracted-records", label: "Review extracted records", members: [{ workflow: "ocr", step: "approval" }] },
+    { key: "read-existing-contacts", label: "Read existing contacts", members: [{ workflow: "emergency-contact-member", step: "contact-plan" },
+      { workflow: "emergency-contact-member", step: "reference-check" }] },
+    { key: "fill-emergency-contact", label: "Fill emergency contact", members: [{ workflow: "emergency-contact-member", step: "contact-preview", phase: "prepare" }] },
+    { key: "save-emergency-contact", label: "Save emergency contact", members: [{ workflow: "emergency-contact-member", step: "contact-preview", phase: "commit" },
+      { workflow: "emergency-contact-member", step: "onbase-filing" }, { step: "members" }] },
+  ],
   steps: author => {
     const records = emergencyContactReadDocumentDefinition.build(author), members = emergencyContactMembersDefinition.build(author, records);
     return { steps: [...records.steps, ...members.steps], result: members.result };

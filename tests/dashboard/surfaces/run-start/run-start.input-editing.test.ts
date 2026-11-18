@@ -37,7 +37,7 @@ it("normalizes Search people, removes a duplicate identity from the textbox and 
   await dialog.press("Continue");
   await dialog.press("Start run");
   const submissions = StartPlanRequestSchema.parse(request).submissions;
-  const search = { mode: "search", crmCheck: true, keepNonHdh: false, includeCrmDates: false };
+  const search = { mode: "search", crmCheck: true, keepNonHdh: false, includeCrmDates: true };
   assert.deepEqual(submissions, [{ ...search, emplId: "10000001" }, { ...search, emplId: "10000002" }, { ...search, name: "Other, Person" }]);
   for (const submission of submissions) assert.deepEqual(PersonLookupInput.parse(submission), submission);
 });

@@ -11,6 +11,7 @@ import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import { ChildTerminalDependencySchema, RunResultRecordSchema, readRunPreviewResult, terminalEvidenceResult, DelegationTerminalDependencySchema, DelegationTerminalEvidenceSchema, delegationDependencyRecord } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { delegationChildInputFingerprint, delegationPlanFingerprint } from "../../../models/workflow/delegation.js";
+import { delegatedStepOmissions } from "../../../models/workflow/step-omission.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { canonicalJsonStringify, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -160,6 +161,7 @@ function authenticateOriginalGroup(repositories: AuthorityRepositories, manifest
       "configSnapshotId", "configFingerprint", "requestedInstance", "resolvedInstance", "shape", "dryRun", "browserMode",
       "captureBrowserScreenshots", "recovery", "stepOmissions", "sourceBound", "parent", "retryOf"] as const;
     if (creationFields.some(field => canonicalJsonStringify(requested[field] ?? null) !== canonicalJsonStringify(child.envelope[field] ?? null))
+      || canonicalJsonStringify(child.envelope.stepOmissions ?? null) !== canonicalJsonStringify(delegatedStepOmissions(parent.envelope.stepOmissions, invocation.target.workflowId) ?? null)
       || requested.appVersion !== child.appVersion || requested.sessionId !== child.sessionId) throw new Error("delegation-child-options-authority-mismatch");
     if (canonicalJsonStringify(valueFreeProtectedData(child.input, retainedRunProtectedBindings(child))) !== canonicalJsonStringify(requested.input)
       || canonicalJsonStringify(child.envelope.resolvedInstance) !== canonicalJsonStringify(requested.resolvedInstance)
@@ -628,7 +630,7 @@ export function delegationAccountingExecution(repositories: AuthorityRepositorie
   const groups = retainedGroups.filter(({ group }) => group.invocation.nodeId === plan.joinNodeId);
   if (!groups.some(({ group }) => group.children.some(member => member.attempt === "retry"))) return;
   if (groups.length !== 1 || parent.envelope.startAt !== undefined || parent.envelope.injected !== undefined
-    || (parent.envelope.stepOmissions?.length ?? 0) > 0) throw new RunContinuationRefusedError("delegation-accounting-scope-unavailable");
+    || ((parent.envelope.stepOmissions?.length ?? 0) > 0 && groups.some(({ group }) => group.children.length > 1))) throw new RunContinuationRefusedError("delegation-accounting-scope-unavailable");
   const retainedScope = groups.flatMap(({ group }) => readDelegationScopeEvidence(repositories, parent, group.invocation.scopeEvidence));
   const snapshot = () => {
     const current = repositories.runs.get(parent.envelope.runId);

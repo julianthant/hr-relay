@@ -66,6 +66,7 @@ export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[]
     return { workflowId: String(entry.id), label: entry.label, categoryId: entry.categoryId,
     role: entry.role, code: entry.code, ...(entry.start.summary === undefined ? {} : { summary: entry.start.summary }),
     enqueue: entry.start.enqueue, version: entry.start.version, steps: entry.start.steps,
+    ...(entry.start.rows === undefined ? {} : { rows: entry.start.rows }),
     spreadsheetIntake: entry.start.spreadsheetIntake,
     ...(entry.start.uploadRun === undefined ? {} : { uploadRun: entry.start.uploadRun }),
     requiredWorkbookFields: entry.start.requiredWorkbookFields,

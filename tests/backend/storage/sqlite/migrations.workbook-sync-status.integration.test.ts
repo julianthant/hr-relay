@@ -44,7 +44,7 @@ it('upgrades every library state to no recorded sync, keeping its state and serv
   expect(validateWorkbookLibrary(database)).toBeGreaterThan(0);
   const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => work().result });
   expect(repository.catalog()[0].sync).toEqual({ state: 'idle' });
-  repository.recordSync('roster', { url, finishedAt: '2026-11-18T00:01:00.000Z', result: 'failed', code: 'SHAREPOINT_DOWNLOAD_FAILED' });
+  repository.recordSync('roster', { url, finishedAt: IsoInstantSchema.parse('2026-11-18T00:01:00.000Z'), result: 'failed', code: 'SHAREPOINT_DOWNLOAD_FAILED' });
   expect(repository.catalog()[0].sync).toEqual({ state: 'idle', lastFinishedAt: '2026-11-18T00:01:00.000Z', lastResult: 'failed', lastFailureCode: 'SHAREPOINT_DOWNLOAD_FAILED' });
   expect(validateWorkbookLibrary(database)).toBeGreaterThan(0);
 });

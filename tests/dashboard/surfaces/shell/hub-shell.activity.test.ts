@@ -85,12 +85,18 @@ it("shows No activity today for an empty day", async () => {
   } finally { await view.cleanup(); }
 });
 
-it("shows a short toast and the empty state when the read fails, never a panel", async () => {
+it("shows one plain notice with Retry when the read fails, never an empty day", async () => {
   const view = await mount(async () => { throw new Error("down"); });
   try {
     await view.openActivity();
-    assert.ok(view.text().includes("No activity today"));
-    assert.ok(view.text().includes("Activity unavailable"), "toast title");
-    assert.equal(document.querySelector('[role="alert"]'), null);
+    assert.ok(view.text().includes("Activity did not load."));
+    assert.ok(view.text().includes("Your chats are not affected."));
+    assert.equal(view.text().includes("No activity today"), false);
+    assert.equal(view.text().includes("down"), false);
+    const reads = view.assistantActivity.mock.calls.length;
+    const retry = [...document.querySelectorAll("button")].find(item => item.textContent?.trim() === "Retry");
+    assert.ok(retry, "the notice offers Retry");
+    await act(async () => retry.click());
+    assert.ok(view.assistantActivity.mock.calls.length > reads, "Retry reads again");
   } finally { await view.cleanup(); }
 });

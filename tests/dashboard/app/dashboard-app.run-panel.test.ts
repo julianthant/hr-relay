@@ -8,7 +8,6 @@ import { createDashboardClient, DashboardClientError, type DashboardClient } fro
 import { IdentityGateDetailWireSchema, RunDetailSectionResponseSchema } from '../../../src/models/dashboard/run-detail.js';
 import { FIXTURE_IDENTITY_GATE } from '../../support/fixtures/dashboard/run-detail/gates-park.js';
 import { DashboardClientProvider } from '../../../src/dashboard/state/client-context.js';
-import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from '../../../src/models/failures/error-catalog.js';
 import { RowRevisionSchema } from '../../../src/models/dashboard/primitives.js';
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from '../../mocks/helpers/fixture-queue.js';
 import { DashboardCommandRequestSchema, type DashboardCommandRequest } from '../../../src/rules/commands/commands.js';
@@ -24,8 +23,6 @@ it('shows the day-loading failure for a selected run instead of calling the run 
   const run = FIXTURE_DAY_WIRE.queueSurfaces[0];
   assert(run);
   const error = new DashboardClientError({ kind: 'http', status: 503, code: 'DASHBOARD_READ_FAILED', message: 'day read failed' });
-  const resolution = resolveErrorCatalogFailure(error, 'subscription');
-  const expected = resolution.state === 'resolved' ? resolution.text : resolution.catalogFault.text;
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: 'http://fixture.test', fetchImpl: async (url, init) => app.request(url, init) });
   const client = { ...transport, subscribeDay: (input: Parameters<typeof transport.subscribeDay>[0]) => {
@@ -39,8 +36,10 @@ it('shows the day-loading failure for a selected run instead of calling the run 
   const panel = host.querySelector('.dashboard-log-column');
   assert(panel);
   const text = panel.textContent ?? '';
-  assert.ok(text.includes('Run unavailable'), text);
-  assert.ok(text.includes(expected), text);
+  assert.ok(text.includes('No run open'), text);
+  assert.ok(text.includes('Select a run once the queue loads.'), text);
+  assert.equal(text.includes('Run unavailable'), false);
+  assert.ok((host.textContent ?? '').includes('Relay could not load the queue.'), 'the queue column says the day failed');
   assert.equal(text.includes('is not in the loaded queue'), false);
 });
 
@@ -149,9 +148,9 @@ for (const catchesUp of [false, true]) it(`retains stale Logs during a day refre
     await new Promise(resolve => setTimeout(resolve, 20));
   });
   const text = host.querySelector('.dashboard-log-column')?.textContent ?? '';
-  const refusal = formatErrorCatalogFailure(createErrorCatalogFailure('LOGS_IDENTITY_REFUSED', {})).text;
+  const refusal = 'Relay could not refresh these logs.';
   assert.equal(subscriptions.length, 2, 'a persistent lag must not start another refresh');
-  assert.equal((host.textContent ?? '').includes(refusal), !catchesUp, text); // the refusal is a toast, outside the log column
+  assert.equal((host.textContent ?? '').includes(refusal), !catchesUp, text); // the plain refresh refusal is a toast, outside the log column
   assert.equal(approve.disabled, !catchesUp);
   assert.equal(sent.length, 0);
 });

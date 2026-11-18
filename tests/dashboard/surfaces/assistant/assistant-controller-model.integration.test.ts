@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import { ASSISTANT_UNKNOWN_NOTICE } from '../../../../src/dashboard/surfaces/assistant/assistant-model.js';
 import { chatGptStatusFixture } from "../../../support/helpers/chatgpt-status-fixture.js";
 import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
 import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
@@ -341,8 +340,12 @@ it('shows a refused reply as one failure notice whose Retry sends the kept promp
   assert.equal(current.state.turn.state, 'idle');
   assert.match(document.body.textContent ?? '', /The assistant could not reply\. Send your message again\./u);
   assert.equal(document.body.textContent?.includes('raw server text'), false);
+  assert.equal(document.querySelectorAll('.hub-assistant-line').length, 0);
   await act(async () => { [...document.querySelectorAll('button')].find(button => button.textContent === 'Retry')?.click(); });
   assert.equal(calls, 2);
+  assert.equal(document.querySelectorAll('.hub-assistant-line').length, 0);
+  assert.equal((document.body.textContent?.match(/The assistant could not reply\. Send your message again\./gu) ?? []).length, 1);
+  assert.equal(document.body.textContent?.includes('Restored chat'), false);
   assert.equal(current.state.messages.filter(message => message.role === 'operator' && message.text === 'start selected workflow').length, 2);
 });
 
@@ -372,7 +375,7 @@ it('disables Cancel and Confirm once a refused decision leaves the issued card s
 it.each([
   { name: 'a saved answer whose response is lost', reply: 'answer', lost: true, shown: 'Stored answer.' },
   { name: 'an answered delivery receipt', reply: 'answer', lost: false, shown: 'Stored answer.' },
-  { name: 'a saved proposal whose response is lost', reply: 'proposal', lost: true, shown: 'This proposal is no longer available. Ask again to review a new one.' },
+  { name: 'a saved proposal whose response is lost', reply: 'proposal', lost: true, shown: 'This earlier request is no longer available. Ask again.' },
 ] as const)('presents the stored outcome of $name with one send and no restored Confirm', async ({ reply, lost, shown }) => {
   const server = assistantHistoryServer();
   const history = await createAssistantHistory(server.client, { getItem: () => null, removeItem() {} }, server.profileId, new AbortController().signal);

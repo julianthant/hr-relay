@@ -16,6 +16,16 @@ const normalizedName = (name: string): string => name.toLowerCase().replace(/[^\
 export async function searchPersonMatchWithPort(assertCurrent: () => void, port: PersonMatchPort, input: MatchInput) {
   assertCurrent();
   const hits = (await port.search(input)).map((hit) => UcpathMatchHitSchema.parse(hit));
+  const [only] = hits;
+  // A search by name, DOB and SSN that returns one hit under the input's exact name is that person; Person Org's display name may add given names.
+  if (input.ssn !== undefined && input.dob !== undefined && hits.length === 1 && only !== undefined
+    && normalizedName(only.name) === normalizedName(`${input.lastName}, ${input.firstName}`)) {
+    const output = SearchPersonMatchOutputSchema.parse({ hits, confirmed: [only], dropped: [] });
+    assertCurrent();
+    recordBrowserAction("read", "ucpath.match.result", JSON.stringify(output));
+    assertCurrent();
+    return output;
+  }
   const dropped: z.output<typeof SearchPersonMatchOutputSchema>["dropped"] = [];
   const confirmed = new Map<string, MatchHit>();
   const sameSurname = hits.filter((hit) => {

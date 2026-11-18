@@ -685,11 +685,14 @@ export async function executeClaimedRun(
         throw new Error(`run ${runId} has no validated canonical input; entry validation must have refused`);
       }
       const picked: Record<string, JsonValue> = {};
+      const asserted: string[] = [];
       for (const dependency of dependsOn) {
         const value = outputs[String(dependency)];
         if (value !== undefined) picked[String(dependency)] = value;
+        if (value !== undefined && omissionPlan.asserted.has(String(dependency))) asserted.push(String(dependency));
       }
       return { input: canonicalInput, outputs: Object.freeze(picked), references: runWorkbookReferenceTypeIds(getRun().input.workbookReferences),
+        ...(asserted.length === 0 ? {} : { asserted }),
         ...(envelope.dryRun ? { dryRun: { transactions: [...dryRunSteps.values()].filter(step => step.state === "transaction-preview") } } : {}),
         protectedInputBindings: retainedRunProtectedBindings(getRun()) };
     };
@@ -706,6 +709,7 @@ export async function executeClaimedRun(
       const source = sourceRunId === runId ? getRun() : continuationSources.find(row => row.envelope.runId === sourceRunId);
       if (source === undefined) throw new RunContinuationRefusedError("run-continuation-input-source-unavailable");
       const values: Record<string, JsonValue> = {};
+      const asserted: string[] = [];
       for (const dependency of dependsOn) {
         const dependencyNode = nodes.find(node => node.id === dependency);
         if (conditions && (dependencyNode?.kind === "task" || dependencyNode?.kind === "gate" && dependencyNode.resolvedBy === "operator") && dependencyNode.when !== undefined
@@ -713,6 +717,7 @@ export async function executeClaimedRun(
         const checkpoint = pick(source, dependency);
         const gate = readContinuationGate(deps.authority.authority, source.envelope, String(dependency));
         if (checkpoint !== undefined) {
+          if (checkpoint.assertion !== undefined) asserted.push(String(dependency));
           values[String(dependency)] = dependencyNode?.kind === "transaction"
             ? JsonValueSchema.parse(projectTransactionOutcome(dependencyNode.commit.uses, checkpoint.output.value, "Continuation source scope", { checkpoint, schemaReader: deps.authority.evidenceSchemaHash?.bind(deps.authority) })) : checkpoint.output.value;
         }
@@ -727,6 +732,7 @@ export async function executeClaimedRun(
         }
       }
       return { input: source.input.parsed.value, outputs: values, references: runWorkbookReferenceTypeIds(source.input.workbookReferences),
+        ...(asserted.length === 0 ? {} : { asserted }),
         protectedInputBindings: retainedRunProtectedBindings(source) };
     };
     // Mirrors sourceScopeFor's walk: a child reached directly or through a conditional dependency is authenticated only there.
@@ -792,6 +798,11 @@ export async function executeClaimedRun(
         continue;
       }
       if (omissionPlan.asserted.has(String(node.id))) {
+        // A typed value stands for a reading that would have run: a node this input never runs stays skipped.
+        if (node.kind === "task" && node.when?.of.from === "input" && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
+          plan.set(String(node.id), { mode: "skipped-condition" });
+          continue;
+        }
         const own = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
         const ownRecord = own === undefined ? undefined : RunCheckpointRecordSchema.parse(own);
         const replay = ownRecord !== undefined
@@ -890,11 +901,14 @@ export async function executeClaimedRun(
         }
         if (load.found) {
           const record = requireStoredCheckpoint(stored, String(node.id));
-          // A stale always-rerun fact is read again; only checkpoint tasks refuse.
-          if (node.replay === "always-rerun" && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
+          // A stale always-rerun fact is read again, and so is a stale ancestor of a plain Start;
+          // only an explicit start node or a continuation refuses a stale checkpoint.
+          const implicitAncestor = !explicit && envelope.continuation === undefined && !retainedAccounting;
+          if ((node.replay === "always-rerun" || implicitAncestor) && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
             replayed: [{ nodeId: node.id, taskId: node.uses.id, freshness: node.uses.freshness, provenance: record.provenance }],
             scheduled: pendingCommits, now: clock.now(), attempt: envelope.attempt,
             ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) }).length > 0) {
+            if (node.replay !== "always-rerun") ancestorRegionOpen = false;
             plan.set(String(node.id), { mode: "execute" });
             continue;
           }
@@ -1039,6 +1053,13 @@ export async function executeClaimedRun(
 
     for (const refusal of omissionPlan.refusals) {
       problems.push(`step omission refused [${refusal.code}]: ${refusal.message}`);
+    }
+    const typedSteps = new Set([...omissionPlan.asserted.values()].map(({ step }) => step));
+    for (const step of typedSteps) {
+      const produced = [...omissionPlan.asserted].filter(([, assertion]) => assertion.step === step).map(([nodeId]) => nodeId);
+      if (produced.every((nodeId) => plan.get(nodeId)?.mode === "skipped-condition")) {
+        problems.push(`step "${step}" carries typed values, but this input runs none of the nodes they stand for (${produced.join(", ")})`);
+      }
     }
     if (problems.length > 0) {
       const failure = buildEntryValidationFailureRecord({

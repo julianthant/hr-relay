@@ -3,10 +3,12 @@ import { WorkbookActiveSelectionSchema } from "../../../models/dashboard/workboo
 import type { WorkbookLibraryEntry } from "../../../models/dashboard/workbook-library.js";
 import {
   stepOmissionFactsSchema,
+  IsoDateFactSchema,
   type StepOmissionField,
   type StepOmissionForm,
 } from "../../../models/workflow/step-omission.js";
 import { z } from "zod";
+import type { StartPlanWire } from "../../../models/dashboard/start-plan.js";
 import { inputRunValueNoun, parseInputRunText, splitEntries, toRawSubmission, type InputParserSpec, type InputRunSurface, parseTypedDate, type TypedDateControl, type TypedInputSurface, type TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { CANONICAL_FIELDS } from "../../../models/fields/registry.js";
@@ -356,11 +358,11 @@ export type StepOmissionFieldRead =
   | Readonly<{ state: "unreadable"; message: string }>;
 
 /** Narrow draft facts to declared form shapes before the shared JSON submission boundary. */
-export type StepOmissionFactValue = string | number | boolean | readonly string[];
+export type StepOmissionFactValue = string | number | boolean | null | readonly string[];
 
 /** the parsed value of one declared field, or a loud refusal — never a widened `unknown` */
 function asFactValue(field: string, value: unknown): StepOmissionFactValue {
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
   if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) return Object.freeze([...value]);
   throw new Error(`omission field "${field}" parsed to a value no declared kind produces`);
 }
@@ -377,7 +379,13 @@ export function readStepOmissionField(
     return { state: "value", value: draft };
   }
   if (typeof draft !== "string") return { state: "unreadable", message: "This field is typed, not a yes/no answer." };
+  if (field.optional === true && draft.trim() === "") return { state: "value", value: null };
   switch (field.kind) {
+    case "iso-date": {
+      const typed = /^(\d{2})\/(\d{2})\/(\d{4})$/u.exec(draft.trim());
+      const iso = typed === null ? "" : `${typed[3]}-${typed[1]}-${typed[2]}`;
+      return IsoDateFactSchema.safeParse(iso).success ? { state: "value", value: iso } : { state: "unreadable", message: "Type a date as MM/DD/YYYY." };
+    }
     case "integer": {
       const typed = draft.trim();
       if (typed.length === 0) return { state: "unreadable", message: "Type a whole number." };
@@ -517,7 +525,8 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
   });
   return Array.from({ length: submissionCount }, (_, index) => [...requiredTypes.map(typeId => {
     const selection = selections[typeId];
-    const entry = catalog.find(entry => entry.libraryId === selection?.libraryId);
+    if (selection === undefined) throw new Error(ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text);
+    const entry = catalog.find(entry => entry.libraryId === selection.libraryId);
     if (!entry || entry.state.removed || entry.state.origin.kind !== 'local'
       || !entry.state.versions.some(version => version.id === selection.versionId)
       || writable && entry.state.selectedVersionId !== selection.versionId
@@ -527,4 +536,20 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
       sheetId: selection.sheetId, expectedVersion: entry.version,
       ...(selectedRows?.typeId === typeId ? { selectedRow: { sheetId: selectedRows.rows[index].sheetId, rowId: selectedRows.rows[index].rowId } } : {}) });
   }), ...checkEntries(index)]).flat();
+}
+
+/** The one plain sentence for the first refused entry of a plan, shown in the dialog's notice slot; no code, trace id or server text. */
+export function planRefusalNotice(refused: StartPlanWire["refused"], sources?: RunInputPreview["entries"]): { sentence: string; goesToQueue: boolean } | null {
+  const entry = refused[0];
+  if (entry === undefined) return null;
+  const source = sources?.find(candidate => candidate.index + 1 === entry.entry)?.sourceText;
+  const name = source ?? (refused.length > 1 || entry.entry > 1 ? `Entry ${String(entry.entry)}` : "This item");
+  if (entry.code === "active-run-exists") {
+    if (entry.message.includes("already in this plan")) return { sentence: `${name} is listed twice. Remove the repeat.`, goesToQueue: false };
+    return { sentence: `${name} already has a run in progress. Find it in the queue or wait for it to finish.`, goesToQueue: true };
+  }
+  if (entry.code === "input-invalid") return { sentence: `Relay could not use ${name}. Fix it, then try again.`, goesToQueue: false };
+  if (entry.code === "dry-run-unsupported") return { sentence: "This workflow cannot do a dry run. Turn Dry run off to start it.", goesToQueue: false };
+  if (entry.code === "preflight-failed") return { sentence: "A check failed for this run. Go back to Checks to fix it.", goesToQueue: false };
+  return { sentence: "Relay cannot run this right now. Try again later.", goesToQueue: false };
 }

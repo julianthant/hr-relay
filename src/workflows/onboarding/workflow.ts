@@ -46,11 +46,20 @@ export const onboardingWorkflow = defineWorkflow({
   ], verdicts: [],
   nodePurposes: [...onboardingCrmDataDefinition.nodePurposes, ...onboardingUcpathSearchDefinition.nodePurposes,
     ...onboardingI9SearchDefinition.nodePurposes, ...onboardingHireWritesDefinition.nodePurposes, ...onboardingReferenceCheckDefinition.nodePurposes],
+  rows: [
+    { key: "crm-data", label: "Read entry sheet", members: [{ step: "crm-data" }] },
+    { key: "ucpath-search", label: "Match existing person", members: [{ step: "ucpath-search" }, { step: "reference-check" }] },
+    { key: "i9-search", label: "Search I-9 profiles", members: [{ step: "i9-search" }] },
+    { key: "hire-review", label: "Review hire findings", members: [{ step: "hire-review" }] },
+    { key: "i9-creation", label: "Create I-9 profile", members: [{ step: "i9-creation" }] },
+    { key: "ucpath-hire", label: "Submit hire", members: [{ step: "ucpath-hire" }] },
+    { key: "master-results", label: "Fill master results", members: [{ step: "master-results" }] },
+  ],
   steps: author => {
     const crm = onboardingCrmDataDefinition.build(author);
     const ucpath = onboardingUcpathSearchDefinition.build(author, crm);
     const i9 = onboardingI9SearchDefinition.build(author, crm, ucpath);
-    const reviewed = buildHireReview(author, crm, ucpath, i9), reference = onboardingReferenceCheckDefinition.build(author, crm, reviewed);
+    const reviewed = buildHireReview(author, crm, ucpath, i9), reference = onboardingReferenceCheckDefinition.build(author, crm, ucpath, reviewed);
     const writes = onboardingHireWritesDefinition.build(author, crm, ucpath, i9, reviewed, reference);
     return { steps: [...crm.steps, ...ucpath.steps, ...i9.steps, ...reviewed.steps, ...reference.steps, ...writes.steps], result: writes.result };
   },

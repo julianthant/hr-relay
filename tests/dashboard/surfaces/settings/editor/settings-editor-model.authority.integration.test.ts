@@ -106,11 +106,8 @@ for (const problem of ["rollback", "divergent-fingerprint", "divergent-values", 
 for (const family of ["protected"] as const) {
   it(`retains the unknown ${family} envelope across actor replacement without dispatching it as the new actor`, async () => {
     const h = await setup();
-    const control = () => family === "ordinary" ? h.controller() : h.controller().protectedEditor;
-    await act(async () => {
-      if (family === "ordinary") h.controller().update("actor.label", "Retained draft");
-      else if (family === "protected") h.controller().protectedEditor.update("ucpathUserId", "Retained draft");
-    });
+    const control = () => h.controller().protectedEditor;
+    await act(async () => control().update("ucpathUserId", "Retained draft"));
     await act(async () => control().submit());
     assert.equal(control().save.state, "unconfirmed"); const original = structuredClone(h.writes[0]);
     const draft = structuredClone(control().draft);
