@@ -106,8 +106,9 @@ it("bounds account snapshots and retains the exact verified account on refresh f
   try {
     await f.port.refresh();
     const first = f.port.refresh(), second = f.port.refresh(); assert.equal(first, second);
+    await vi.advanceTimersByTimeAsync(29_999);
     assert.deepEqual(f.port.getSnapshot(), account);
-    await vi.advanceTimersByTimeAsync(10_000); await first;
+    await vi.advanceTimersByTimeAsync(1); await first;
     const resource = f.port.getResource(); assert.equal(resource.state, "failed");
     assert.ok("account" in resource); assert.deepEqual(resource.account, account); assert.equal(reads, 2);
   } finally { f.port.dispose(); vi.useRealTimers(); }

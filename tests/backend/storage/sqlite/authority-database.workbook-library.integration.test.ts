@@ -1,7 +1,9 @@
 import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
+import { execFileSync } from "node:child_process";
 import { afterEach, it } from "vitest";
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase, inspectAuthorityBackupReadOnly } from "../../../support/helpers/synthetic-storage-admission.js";
 import { WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-error.js";
@@ -9,7 +11,8 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { bindOcrRoster } from "../../../../src/models/workflows/ocr/roster.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { RunWorkbookAllRowsReferenceSchema } from "../../../../src/models/dashboard/workbooks.js";
+import { encodeSavedWorkbook, RunWorkbookAllRowsReferenceSchema } from "../../../../src/models/dashboard/workbooks.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 
 const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const clock = manualClock(new Date("2026-10-15T12:00:00.000Z"));
@@ -130,4 +133,137 @@ it('accounts for workflow selections once, rolls them back atomically and valida
   const raw = new DatabaseSync(f.path);
   try { raw.exec('UPDATE workflow_workbook_selections SET revision=revision+1'); } finally { raw.close(); }
   assert.throws(f.open, /workflow_workbook_selections/u);
+});
+
+it('reuses frozen workbook reads and selected snapshots until authority changes', async () => {
+  const f = await fixture(), database = f.open();
+  try {
+    const repository = database.authority.workbooks;
+    const service = createWorkbookLibraryService({ repository, sync: unexpectedWorkbookSync, clock });
+    const created = service.create({ ...workbook, sheets: [{ id: 'sheet', name: 'People', width: 2, hidden: [],
+      rows: [{ id: 'row', cells: [{ value: 'Synthetic value' }, { value: new Date('2026-01-01T00:00:00.000Z') }] }] }] });
+    const first = service.read(created.libraryId);
+    assert.strictEqual(service.read(created.libraryId), first);
+    assert.strictEqual(repository.list()[0], first);
+    assert.strictEqual(repository.catalog(), repository.catalog());
+    assert.equal(Reflect.set(repository.catalog()[0], 'name', 'Changed'), false);
+    assert.strictEqual(repository.libraryVersion(created.libraryId).workbook,
+      repository.libraryVersion(created.libraryId).workbook);
+    assert.equal(Object.isFrozen(first), true);
+    assert.equal(Object.isFrozen(first.workbook.sheets[0].rows[0].cells[0]), true);
+    assert.equal(Reflect.set(first.workbook.sheets[0].rows[0].cells[0], 'value', 'Changed'), false);
+    assert.equal(service.read(created.libraryId).workbook.sheets[0].rows[0].cells[0].value, 'Synthetic value');
+    const date = first.workbook.sheets[0].rows[0].cells[1].value;
+    assert(date instanceof Date);
+    date.setUTCFullYear(2040);
+    assert.deepEqual(service.read(created.libraryId).workbook.sheets[0].rows[0].cells[1].value,
+      new Date('2026-01-01T00:00:00.000Z'));
+    const selected = repository.libraryVersion(created.libraryId).workbook;
+    assert.equal(Reflect.set(selected.sheets[0].rows[0].cells[0], 'value', 'Changed'), false);
+    assert.equal(repository.libraryVersion(created.libraryId).workbook.sheets[0].rows[0].cells[0].value, 'Synthetic value');
+  } finally { database.close(); }
+});
+
+it('refreshes cached workbooks after own and cross-process commits and discards rolled-back reads', async () => {
+  const f = await fixture(), database = f.open();
+  try {
+    const repository = database.authority.workbooks;
+    const service = createWorkbookLibraryService({ repository, sync: unexpectedWorkbookSync, clock });
+    const first = service.create(workbook);
+    const before = repository.catalog();
+    const second = service.save(first.libraryId, 1, { ...first.workbook, name: 'Updated.xlsx' });
+    assert.deepEqual(service.read(first.libraryId), second);
+    assert.equal(repository.list()[0].workbook.name, 'Updated.xlsx');
+    assert.equal(repository.catalog()[0].name, 'Updated.xlsx');
+    assert.notStrictEqual(repository.catalog(), before);
+    const savedWire = service.listWire()[0];
+    assert.equal(savedWire.workbook.name, 'Updated.xlsx');
+    assert.throws(() => database.withAuthorityTransaction(() => {
+      service.save(first.libraryId, 2, { ...second.workbook, name: 'Rolled back.xlsx' });
+      assert.equal(service.read(first.libraryId).workbook.name, 'Rolled back.xlsx');
+      assert.equal(repository.list()[0].workbook.name, 'Rolled back.xlsx');
+      assert.equal(repository.catalog()[0].name, 'Rolled back.xlsx');
+      assert.equal(service.listWire()[0].workbook.name, 'Rolled back.xlsx');
+      throw new Error('rollback-cached-workbook');
+    }), /rollback-cached-workbook/u);
+    assert.deepEqual(service.read(first.libraryId), second);
+    assert.equal(repository.list()[0].workbook.name, 'Updated.xlsx');
+    assert.equal(repository.catalog()[0].name, 'Updated.xlsx');
+    assert.strictEqual(service.listWire()[0], savedWire);
+    const key = database.changeKey();
+    const operation = { operationId: 'external-workbook-save', source: { kind: 'operator' }, at: clock.now().toISOString(),
+      change: { kind: 'save', expectedVersion: 2, workbook: { ...encodeSavedWorkbook(second).workbook, name: 'External.xlsx' } } };
+    const result = execFileSync(process.execPath, ['--import', testProcessImport(), '--input-type=module', '--eval', `
+      import { DatabaseSync } from 'node:sqlite';
+      import { configureWritableConnection } from ${JSON.stringify(new URL('../../../../src/backend/storage/sqlite/authority-database.js', import.meta.url).href)};
+      import { createWorkbookLibraryRepository } from ${JSON.stringify(new URL('../../../../src/backend/storage/sqlite/workbook-library-repository.js', import.meta.url).href)};
+      const [path, id, operation] = process.argv.slice(1);
+      const database = new DatabaseSync(path);
+      configureWritableConnection(database, 5000);
+      const transaction = work => {
+        database.exec('BEGIN IMMEDIATE');
+        try { const result = work(); database.exec('COMMIT'); return result; }
+        catch (error) { database.exec('ROLLBACK'); throw error; }
+      };
+      try {
+        const repository = createWorkbookLibraryRepository({ database, read: transaction, mutate: work => transaction(() => work().result) });
+        process.stdout.write(repository.operation(id, JSON.parse(operation)).state);
+      } finally { database.close(); }
+    `, f.path, first.libraryId, JSON.stringify(operation)], { encoding: 'utf8' });
+    assert.equal(result, 'applied');
+    assert.notEqual(database.changeKey().dataVersion, key.dataVersion);
+    assert.equal(database.changeKey().authorityGeneration, key.authorityGeneration);
+    assert.equal(service.read(first.libraryId).workbook.name, 'External.xlsx');
+    assert.equal(repository.list()[0].version, 3);
+    assert.equal(repository.catalog()[0].name, 'External.xlsx');
+    assert.equal(service.listWire()[0].workbook.name, 'External.xlsx');
+    assert.equal(service.listWire()[0].version, 3);
+    assert.strictEqual(service.read(first.libraryId), repository.list()[0]);
+  } finally { database.close(); }
+});
+
+it('rechecks collections after diagnostic writes while reusing unchanged decoded rows', async () => {
+  const f = await fixture(), database = f.open();
+  try {
+    const repository = database.authority.workbooks;
+    const service = createWorkbookLibraryService({ repository, sync: unexpectedWorkbookSync, clock });
+    const created = service.create(workbook);
+    const first = service.read(created.libraryId), list = repository.list(), catalog = repository.catalog();
+    const selected = repository.libraryVersion(created.libraryId).workbook;
+    const key = database.changeKey();
+    createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: 'test' }).emit({
+      category: 'http', phase: 'settled', area: 'storage', reason: 'slow-operation', code: 'read-snapshot',
+      durationMs: 123, correlationId: 'synthetic-slow-read',
+    });
+    assert.notDeepEqual(database.changeKey(), key);
+    assert.strictEqual(service.read(created.libraryId), first);
+    assert.notStrictEqual(repository.list(), list);
+    assert.strictEqual(repository.list()[0], first);
+    assert.notStrictEqual(repository.catalog(), catalog);
+    assert.strictEqual(repository.libraryVersion(created.libraryId).workbook, selected);
+  } finally { database.close(); }
+});
+
+it('reuses frozen wire records across diagnostic writes and refreshes edited workbooks', async () => {
+  const f = await fixture(), database = f.open();
+  try {
+    const service = createWorkbookLibraryService({ repository: database.authority.workbooks, sync: unexpectedWorkbookSync, clock });
+    const created = service.create(workbook);
+    const first = service.listWire()[0];
+    assert.deepEqual(first, encodeSavedWorkbook(created));
+    assert.strictEqual(service.listWire()[0], first);
+    assert.equal(Reflect.set(first.workbook.sheets[0].rows[0].cells[0], 'value', 'Changed'), false);
+    createDebugEventWriter({ repository: database.authority.timelineEvents, clock, build: 'test' }).emit({
+      category: 'http', phase: 'settled', area: 'storage', reason: 'slow-operation', code: 'read-snapshot',
+      durationMs: 123, correlationId: 'synthetic-wire-read',
+    });
+    assert.strictEqual(service.listWire()[0], first);
+    service.save(created.libraryId, 1, { ...created.workbook, name: 'Edited.xlsx' });
+    const edited = service.listWire()[0];
+    assert.notStrictEqual(edited, first);
+    assert.equal(edited.version, 2);
+    assert.equal(edited.workbook.name, 'Edited.xlsx');
+    assert.equal(first.workbook.name, 'Dates.xlsx');
+    assert.deepEqual(edited, encodeSavedWorkbook(service.read(created.libraryId)));
+  } finally { database.close(); }
 });
