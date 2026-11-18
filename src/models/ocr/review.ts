@@ -3,7 +3,7 @@ import { z } from "zod";
 import { admitOcrExtraction, answersFingerprint, SubmittedAnswerSchema, type AdmittedRecord } from "./extraction.js";
 import { fieldOnPageKind, ocrForm } from "./form-registry.js";
 import { OcrResultSchema } from "../workflows/ocr/result.js";
-import { CommandIdSchema, EidSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, StableRecordIdSchema } from "../../rules/identity/ids.js";
+import { CommandIdSchema, EidSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, StableRecordIdSchema, type StableRecordId } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { TimelineCheckpointReferenceSchema } from "../events/timeline.js";
@@ -37,7 +37,7 @@ function namesAgree(documentName: string | null, observedName: string | null, ei
   return fewer.every(token => more.includes(token));
 }
 
-function assessOcrIdentity(seed: OcrSeed, recordId: string, subjectName: string | null, fields: AdmittedRecord): IdentityAssessment {
+function assessOcrIdentity(seed: OcrSeed, recordId: StableRecordId, subjectName: string | null, fields: AdmittedRecord): IdentityAssessment {
   const identities = seed.identities.filter(identity => identity.recordIds.includes(recordId));
   const outcome = identities.length === 1 ? identities[0]?.outcome : undefined;
   if (outcome === undefined) return { hold: "not-looked-up" };
