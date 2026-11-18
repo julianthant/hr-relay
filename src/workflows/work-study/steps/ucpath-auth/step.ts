@@ -6,7 +6,7 @@ import { PAYPATH_POSITION_NODE, readPayPathPositionCall } from "../../tasks/read
 
 const PAGE = "PayPath Actions";
 export const UCPATH_AUTH_STEP = Object.freeze({
-  ...defineWorkflowStep({ key: "ucpath-auth", label: "Sign in to UCPath" }), system: "ucpath" as const,
+  ...defineWorkflowStep({ key: "ucpath-auth", label: "Sign in to UCPath" }), system: "ucpath" as const, locked: "guard-read" as const,
   description: "Open UCPath PayPath Actions for the employee and read who they are and their current position data.",
   operatorFields: [
     { label: "Employee", sources: [{ nodeId: PAYPATH_POSITION_NODE, kind: "output", fieldPath: "displayedName" }], example: "Lee, Jordan" },

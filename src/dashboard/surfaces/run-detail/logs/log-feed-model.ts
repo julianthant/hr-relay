@@ -6,6 +6,8 @@ export type LogField = Readonly<{
   kind: "read" | "fill" | "compute";
   label: string;
   value: string;
+  /** Where a typed value came from, written beside it. */
+  mark?: string;
   /** The read failed before a value was observed. */
   unread?: true;
 }>;
@@ -73,7 +75,7 @@ export function visualLogSteps(steps: readonly LogStep[]): readonly LogStep[] {
 
 export function logEntryText(entry: LogEntry): string {
   switch (entry.kind) {
-    case "fields": return [entry.title, ...entry.fields.map(field => `${field.time} ${field.label} ${field.value}`), entry.result].filter(Boolean).join(" ");
+    case "fields": return [entry.title, ...entry.fields.map(field => `${field.time} ${field.label} ${field.value}${field.mark === undefined ? "" : ` ${field.mark}`}`), entry.result].filter(Boolean).join(" ");
     case "click": return `${entry.time} ${entry.label}`;
     case "note": return `${entry.time} ${entry.message}`;
     case "decision": return [entry.time, entry.decision.title, entry.decision.message, entry.decision.attemptedAction, entry.decision.lastCompleted, entry.decision.field?.label, entry.decision.field?.value, entry.decision.caution, entry.decision.unavailableCapture, entry.decision.footer, ...(entry.decision.comparison ?? []).map(row => `${row.label} ${row.expected} ${row.observed}`)].filter(Boolean).join(" ");
@@ -97,6 +99,6 @@ export function logRowCount(steps: readonly LogStep[]): number {
 export function logPlainText(steps: readonly LogStep[]): string {
   return steps.map(step => `${step.time} ${step.title}${step.system ? ` · ${step.system}` : ""}\n${step.entries.map(entry => {
     if (entry.kind !== "fields") return logEntryText(entry);
-    return [entry.title, ...entry.fields.map(field => `${field.time} ${field.label}: ${field.value}`), entry.result ? `Result: ${entry.result}` : undefined].filter(Boolean).join("\n");
+    return [entry.title, ...entry.fields.map(field => `${field.time} ${field.label}: ${field.value}${field.mark === undefined ? "" : ` · ${field.mark}`}`), entry.result ? `Result: ${entry.result}` : undefined].filter(Boolean).join("\n");
   }).join("\n")}`).join("\n\n");
 }

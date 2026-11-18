@@ -73,7 +73,12 @@ describe("workflow definition public equivalence characterization", () => {
           label: group.label,
           nodes: group.nodes.map((node) => ({ id: String(node.id), label: node.label })),
         })),
-        stepOmissions: personLookupDescriptor.stepOmissions,
+        stepOmissions: personLookupDescriptor.stepOmissions.map(({ step, form, produces, skips }) => ({
+          step,
+          form,
+          produces: Object.keys(produces),
+          ...(skips === undefined ? {} : { skips }),
+        })),
       },
       module: {
         role: personLookupModule.role,
@@ -153,7 +158,7 @@ describe("workflow definition public equivalence characterization", () => {
     modeField: "mode", modeLabel: "Lookup mode", initialMode: "search", description: "Each entry starts one run.",
     modes: [
       { value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or Shift+Enter.", placeholder: "10000001; Lee, Jordan",
-        defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+        defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: true } }],
         parser: { kind: "entries", spec: { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }] } },
         display: { kind: "first-present", fields: ["emplId", "name"] }, identityFields: ["emplId", "name"],
       },
@@ -219,7 +224,7 @@ describe("workflow definition public equivalence characterization", () => {
               "field": "includeCrmDates",
               "value": {
                 "kind": "boolean",
-                "value": false
+                "value": true
               }
             }
           ]
@@ -332,7 +337,227 @@ describe("workflow definition public equivalence characterization", () => {
         ]
       }
     ],
-    "stepOmissions": []
+    "stepOmissions": [
+      {
+        "step": "searching",
+        "form": {
+          "fields": [
+            {
+              "key": "emplId",
+              "label": "Employee ID",
+              "replaces": {
+                "nodeId": "search-identity",
+                "path": "selected.emplId"
+              },
+              "kind": "eid"
+            },
+            {
+              "key": "name",
+              "label": "Name",
+              "replaces": {
+                "nodeId": "search-identity",
+                "path": "selected.name"
+              },
+              "kind": "text"
+            },
+            {
+              "key": "department",
+              "label": "Department",
+              "replaces": {
+                "nodeId": "search-identity",
+                "path": "selected.department"
+              },
+              "kind": "text"
+            },
+            {
+              "key": "jobTitle",
+              "label": "Job title",
+              "replaces": {
+                "nodeId": "search-identity",
+                "path": "selected.jobTitle"
+              },
+              "kind": "text"
+            },
+            {
+              "key": "hrStatus",
+              "label": "HR status",
+              "replaces": {
+                "nodeId": "search-identity",
+                "path": "selected.hrStatus"
+              },
+              "kind": "text"
+            },
+            {
+              "key": "employeeStatus",
+              "label": "Employee status",
+              "replaces": {
+                "nodeId": "search-identity",
+                "path": "selected.employeeStatus"
+              },
+              "kind": "enum",
+              "values": [
+                "active",
+                "inactive",
+                "terminated",
+                "unknown"
+              ]
+            },
+            {
+              "key": "hdh",
+              "label": "HDH employee",
+              "replaces": {
+                "nodeId": "search-identity",
+                "path": "selected.hdh"
+              },
+              "kind": "boolean"
+            }
+          ]
+        },
+        "produces": [
+          "searching",
+          "matching",
+          "search-identity"
+        ]
+      },
+      {
+        "step": "cross-verify",
+        "form": {
+          "fields": [
+            {
+              "key": "name",
+              "label": "CRM name",
+              "replaces": {
+                "nodeId": "crm-identity",
+                "path": "crmIdentity.name"
+              },
+              "kind": "text"
+            },
+            {
+              "key": "firstDayOfService",
+              "label": "Start date",
+              "replaces": {
+                "nodeId": "crm-identity",
+                "path": "crmIdentity.firstDayOfService"
+              },
+              "kind": "us-date"
+            }
+          ]
+        },
+        "produces": [
+          "crm-identity"
+        ],
+        "skips": [
+          "cross-verify"
+        ]
+      },
+      {
+        "step": "active-status",
+        "form": {
+          "fields": [
+            {
+              "key": "state",
+              "label": "Status",
+              "replaces": {
+                "nodeId": "active-status",
+                "path": "state"
+              },
+              "kind": "enum",
+              "values": [
+                "active",
+                "inactive"
+              ]
+            },
+            {
+              "key": "hrStatus",
+              "label": "HR status",
+              "optional": true,
+              "replaces": {
+                "nodeId": "active-status",
+                "path": "details.hrStatus"
+              },
+              "kind": "text"
+            },
+            {
+              "key": "startDate",
+              "label": "Start date",
+              "optional": true,
+              "replaces": {
+                "nodeId": "active-status",
+                "path": "details.startDate"
+              },
+              "kind": "us-date"
+            },
+            {
+              "key": "endDate",
+              "label": "End date",
+              "optional": true,
+              "replaces": {
+                "nodeId": "active-status",
+                "path": "details.endDate"
+              },
+              "kind": "us-date"
+            },
+            {
+              "key": "terminationReason",
+              "label": "Termination reason",
+              "optional": true,
+              "replaces": {
+                "nodeId": "active-status",
+                "path": "details.terminationReason"
+              },
+              "kind": "text"
+            },
+            {
+              "key": "ucpath",
+              "label": "Found in UCPath",
+              "replaces": {
+                "nodeId": "active-status",
+                "path": "details.ucpath"
+              },
+              "kind": "enum",
+              "values": [
+                "Found",
+                "Not found"
+              ]
+            }
+          ]
+        },
+        "produces": [
+          "active-status"
+        ],
+        "skips": [
+          "crm-only-recovery"
+        ]
+      },
+      {
+        "step": "crm-dates",
+        "form": {
+          "fields": [
+            {
+              "key": "employmentDate",
+              "label": "Employment date",
+              "replaces": {
+                "nodeId": "crm-dates",
+                "path": "employmentDate"
+              },
+              "kind": "iso-date"
+            },
+            {
+              "key": "oathDate",
+              "label": "Oath date",
+              "replaces": {
+                "nodeId": "crm-dates",
+                "path": "oathDate"
+              },
+              "kind": "iso-date"
+            }
+          ]
+        },
+        "produces": [
+          "crm-dates"
+        ]
+      }
+    ]
   },
   "module": {
     "role": {
@@ -503,7 +728,6 @@ describe("workflow definition public equivalence characterization", () => {
       "kind": "task",
       "dependsOn": [
         "search-identity",
-        "cross-verify",
         "crm-identity",
         "searching",
         "matching"

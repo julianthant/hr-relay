@@ -9,7 +9,13 @@ import { buildContactPlan } from "../contact-plan/step.js";
 import { buildContactPreview } from "../contact-preview/step.js";
 
 export const ONBASE_FILING_STEP = Object.freeze({ ...defineWorkflowStep({ key: "onbase-filing", label: "Import to OnBase" }), system: "onbase" as const,
-  review: { pages: [], branchLabels: [] } as const,
+  review: { when: [{ onbaseFiling: ["file"] }], pages: [{ id: "person-page", title: "This person's PDF page", mode: "Read only", nodeIds: ["onbase-filing"],
+    lines: [{ id: "file-person-page", kind: "action", text: "After the contact Save settles, file this person's first source page unless an earlier record already filed it. A dry run previews the import.", nodeIds: ["onbase-filing"] }], fields: [],
+  }], branchLabels: [],
+    optionsFrom: [{ workflowId: "emergency-contact", fields: ["onbaseFiling"] }],
+    starts: [{ nodeId: "onbase-filing", each: "This person's first source page, unless already filed" }],
+    outcomes: [{ nodeId: "onbase-filing", value: "child-failed", then: "Holds this person's run for review in Logs. Retry replaces the filing alone and finishes without another Save; an uncertain import is not retried.", stops: true }],
+  } as const,
 });
 // Runs only when the run's pick is "file": a "skip" member binds no child and finishes on its Save.
 // Declared after the Save and independent of it: the Save's failure or park stops the run first, and a dry run still previews the filing.

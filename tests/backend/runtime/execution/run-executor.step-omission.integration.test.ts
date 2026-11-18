@@ -16,7 +16,7 @@ import { defineTaskContract } from "../../../../src/models/task/task-contract.js
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
-import type { StepOmissionDeclaration } from "../../../../src/models/workflow/step-omission.js";
+import type { StepManualDeclaration } from "../../../../src/models/workflow/step-omission.js";
 import { NodeIdSchema,ScenarioIdSchema,taskId,TraceIdSchema } from "../../../../src/rules/identity/ids.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineServiceStore,defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
@@ -66,6 +66,7 @@ const fixtureContract = defineTaskContract({
 });
 
 const invocations: string[] = [];
+const foldScopesAsserted: (readonly string[] | undefined)[] = [];
 const fixtureTask = defineTask(fixtureContract, {
   sessions: [],
   async run({ input, ctx }) {
@@ -82,7 +83,7 @@ const fixtureTask = defineTask(fixtureContract, {
 function fixtureDescriptor(
   id: string,
   code: string,
-  omission: StepOmissionDeclaration,
+  manual: StepManualDeclaration,
   artifactProjections?: readonly Readonly<{
     id: string;
     source: Readonly<{ nodeId: "read" | "fold"; fieldPath: string }>;
@@ -96,7 +97,7 @@ function fixtureDescriptor(
     .step("fold", fixtureContract, {
       dependsOn: ["read"],
       replay: "checkpoint",
-      bind: ({ outputs }) => ({ disposition: outputs.read.providerState }),
+      bind: ({ outputs, asserted }) => { foldScopesAsserted.push(asserted); return { disposition: outputs.read.providerState }; },
     })
     .build({
       schema: z.strictObject({ folded: z.string().min(1) }),
@@ -122,7 +123,7 @@ function fixtureDescriptor(
     presentation: { title: (input: z.output<typeof FixtureInput>) => input.name },
     scenarios: [`${id}/happy`],
     timeline: [
-      { key: "reading", label: "Reading", nodes: ["read"], omission },
+      { key: "reading", label: "Reading", nodes: ["read"], manual },
       { key: "folding", label: "Folding", nodes: ["fold"] },
     ],
     flow: fixtureFlow,
@@ -134,17 +135,19 @@ const FORM = { fields: [{ key: "value", label: "Value", kind: "text" as const }]
 const honestDescriptor = fixtureDescriptor("omission-honest", "oh", {
   form: FORM,
   produces: { read: ({ facts }) => ({ disposition: facts.value, providerState: facts.value }) },
+  skips: [],
 });
 const lyingDescriptor = fixtureDescriptor("omission-lying", "ol", {
   form: FORM,
   produces: { read: () => ({ wrong: "shape" }) },
+  skips: [],
 });
-const bareDescriptor = fixtureDescriptor("omission-bare", "ob", { form: FORM, produces: {} });
+const bareDescriptor = fixtureDescriptor("omission-bare", "ob", { form: FORM, produces: {}, skips: ["read"] });
 /** Bullet 5 — the asserted node ("read") also declares an artifact projection; an assertion projects nothing. */
 const projectingDescriptor = fixtureDescriptor(
   "omission-projecting",
   "op",
-  { form: FORM, produces: { read: ({ facts }) => ({ disposition: facts.value, providerState: facts.value }) } },
+  { form: FORM, produces: { read: ({ facts }) => ({ disposition: facts.value, providerState: facts.value }) }, skips: [] },
   [{
     id: "retention-row",
     source: { nodeId: "read", fieldPath: "disposition" },
@@ -153,6 +156,38 @@ const projectingDescriptor = fixtureDescriptor(
     blocking: true,
   }],
 );
+
+/** A typed step whose two readings each run for one input only, as Person Lookup's Search and Match nodes do. */
+function inputConditionedDescriptor(id: string, code: string, manual: StepManualDeclaration) {
+  const conditionedFlow = flow(FixtureInput)
+    .step("read", fixtureContract, { dependsOn: [], replay: "checkpoint", when: { kind: "equals", of: { from: "input", path: "name" }, value: "Battistessa, Johnnie" }, bind: () => ({ disposition: "observed" }) })
+    .step("other", fixtureContract, { dependsOn: [], replay: "checkpoint", when: { kind: "equals", of: { from: "input", path: "name" }, value: "Someone, Else" }, bind: () => ({ disposition: "other" }) })
+    .step("fold", fixtureContract, { dependsOn: ["read"], replay: "checkpoint", bind: ({ outputs }) => {
+      if (outputs.read === undefined) throw new Error("fold reads read, which did not run");
+      return { disposition: outputs.read.providerState };
+    } })
+    .build({ schema: z.strictObject({ folded: z.string().min(1) }), dependsOn: ["read", "other", "fold"], derive: ({ outputs }) => ({ folded: outputs.fold.providerState }) });
+  return defineWorkflowDescriptor({
+    id, version: 1, contractFingerprint: HASH_A, code, label: "Input-conditioned omission fixture", icon: "Search", category: "operations",
+    canonicalInput: FixtureCanonicalInput, inputSubject: "name", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
+    surfaces: {}, details: [], identity: { matchKey: (input: z.output<typeof FixtureInput>) => `name:${input.name}` },
+    presentation: { title: (input: z.output<typeof FixtureInput>) => input.name }, scenarios: [`${id}/happy`],
+    timeline: [{ key: "reading", label: "Reading", nodes: ["read", "other"], manual }, { key: "folding", label: "Folding", nodes: ["fold"] }],
+    flow: conditionedFlow,
+  });
+}
+const produced: string[] = [];
+const bothProducedDescriptor = inputConditionedDescriptor("omission-conditioned", "oc", {
+  form: FORM,
+  produces: {
+    read: ({ facts }) => { produced.push("read"); return { disposition: facts.value, providerState: facts.value }; },
+    other: ({ facts }) => { produced.push("other"); return { disposition: facts.value, providerState: facts.value }; },
+  },
+});
+const otherOnlyDescriptor = inputConditionedDescriptor("omission-conditioned-other", "oo", {
+  form: FORM,
+  produces: { other: ({ facts }) => { produced.push("other"); return { disposition: facts.value, providerState: facts.value }; } },
+});
 
 
 const ApprovalSchema = z.strictObject({ approved: z.boolean() });
@@ -193,7 +228,7 @@ const gateOmissionDescriptor = defineWorkflowDescriptor({
       key: "reading",
       label: "Reading",
       nodes: ["read"],
-      omission: { form: FORM, produces: { read: ({ facts }) => ({ disposition: facts.value, providerState: facts.value }) } },
+      manual: { form: FORM, produces: { read: ({ facts }) => ({ disposition: facts.value, providerState: facts.value }) }, skips: [] },
     },
     { key: "approving", label: "Approving", nodes: ["approval"] },
     { key: "folding", label: "Folding", nodes: ["fold"] },
@@ -406,6 +441,19 @@ describe("executor step omission", () => {
     assert.deepEqual(result?.dependencies.map((dependency) => dependency.state), ["resolved", "resolved"]);
   });
 
+  it("names a typed dependency in the scope a node binds from, and none when nothing is typed", async () => {
+    for (const [stepOmissions, expected] of [[[{ step: "reading", facts: { value: "typed" } }], ["read"]], [undefined, undefined]] as const) {
+      foldScopesAsserted.length = 0;
+      const harness = await harnessFor(honestDescriptor);
+      const { database } = harness.authority;
+      database.authority.runs.enqueue(queuedRunFor(honestDescriptor, stepOmissions));
+      const outcome = await executeClaimedRun(harness.deps, { ...claim(database, honestDescriptor), signal: SIGNAL });
+      assert.deepEqual(outcome, { state: "done", runId: RUN_ID });
+      assert.ok(foldScopesAsserted.length > 0);
+      for (const seen of foldScopesAsserted) assert.deepEqual(seen, expected);
+    }
+  });
+
   it("fails the asserted node by name when its producer returns a value the output schema refuses", async () => {
     const harness = await harnessFor(lyingDescriptor);
     const { database } = harness.authority;
@@ -587,5 +635,37 @@ describe("executor step omission", () => {
     const run = database.authority.runs.get(RUN_ID);
     assert.ok(run !== undefined && run.lifecycle.state !== "terminal");
     assert.equal(database.authority.runResults.get(RUN_ID), undefined);
+  });
+});
+
+describe("executor step omission under an input condition", () => {
+  it("leaves a produced node this input never runs skipped by its condition, without calling its producer", async () => {
+    produced.length = 0;
+    invocations.length = 0;
+    const harness = await harnessFor(bothProducedDescriptor);
+    const { database } = harness.authority;
+    database.authority.runs.enqueue(queuedRunFor(bothProducedDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
+    const outcome = await executeClaimedRun(harness.deps, { ...claim(database, bothProducedDescriptor), signal: SIGNAL });
+    assert.deepEqual(outcome, { state: "done", runId: RUN_ID });
+    assert.deepEqual([produced, invocations], [["read"], ["typed"]]);
+    const result = database.authority.runResults.get(RUN_ID);
+    assert.deepEqual(result?.dependencies.map((dependency) => [dependency.nodeId, dependency.state, dependency.state === "not-run" ? dependency.reason : undefined]),
+      [["read", "asserted", undefined], ["other", "not-run", "condition-false"], ["fold", "resolved", undefined]]);
+    assert.equal(database.authority.runCheckpoints.latest(bothProducedDescriptor.id, QUEUED_RUN.envelope.itemId, "other"), undefined);
+  });
+
+  it("refuses typed values when this input runs none of the nodes they stand for", async () => {
+    produced.length = 0;
+    invocations.length = 0;
+    const harness = await harnessFor(otherOnlyDescriptor);
+    const { database } = harness.authority;
+    database.authority.runs.enqueue(queuedRunFor(otherOnlyDescriptor, [{ step: "reading", facts: { value: "typed" } }]));
+    const outcome = await executeClaimedRun(harness.deps, { ...claim(database, otherOnlyDescriptor), signal: SIGNAL });
+    assert.equal(outcome.state, "failed");
+    assert.deepEqual([produced, invocations], [[], []]);
+    const run = database.authority.runs.get(RUN_ID);
+    const failureId = run?.lifecycle.state === "terminal" ? run.lifecycle.failureId : undefined;
+    assert.ok(failureId !== undefined);
+    assert.match(database.authority.failures.get(failureId)?.summary ?? "", /step "reading" carries typed values, but this input runs none of the nodes they stand for \(other\)/u);
   });
 });

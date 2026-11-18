@@ -5,7 +5,7 @@ import { z } from "zod";
 import { DESCRIPTORS, descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectWorkbookCompatibilityFromRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { buildBootstrap,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
-import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
+import { projectStartRows, projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { FrontendBootstrapWireSchema,WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
@@ -141,6 +141,14 @@ describe("bootstrap start-surface block", () => {
               : step.control.state === "omittable"
                 ? { state: "omittable", form: step.control.form, forces: step.control.forces }
                 : { state: "required", reason: step.control.reason },
+          })),
+          rows: projectStartRows(descriptor).map((row) => ({
+            key: row.key, label: row.label, includedByDefault: row.includedByDefault, kind: row.kind,
+            ...(row.lockReason === undefined ? {} : { lockReason: row.lockReason }),
+            members: row.members.map((member) => ({ ...member })),
+            ...(row.target === undefined ? {} : { target: { ...row.target } }),
+            ...(row.manual === undefined ? {} : { manual: { form: row.manual.form, forces: [...row.manual.forces] } }),
+            ...(row.selection === undefined ? {} : { selection: { inputField: row.selection.inputField } }),
           })),
           ...(descriptor.surfaces.inputRun === undefined
             ? {}
