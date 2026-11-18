@@ -58,9 +58,6 @@ hdh: false,
       {
         key: "resolve-gate-approved",
         label: packet.approvableEids.length === 1 ? "Approve this person" : "Approve the chosen person",
-        detail: packet.approvableEids.length > 1
-          ? "Choose which candidate the separation document means."
-          : "Confirm the one candidate the separation document means.",
         intent: "primary",
         icon: "resolve",
         placement: ["banner", "footer"],
@@ -79,7 +76,7 @@ hdh: false,
       {
         key: "resolve-gate-rejected",
         label: "Reject match",
-        detail: "This is not the right person. The run stops.",
+        detail: "Stops the run.",
         intent: "destructive",
         icon: "cancel",
         placement: ["footer"],
