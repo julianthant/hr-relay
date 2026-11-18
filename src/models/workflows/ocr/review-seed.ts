@@ -7,7 +7,7 @@ import { EidSchema, FingerprintSchema, IsoInstantSchema, RunIdSchema, StableReco
 import { matchRosterSubjects, RosterRowFactsSchema, RosterSubjectMatchSchema } from "../../../rules/matching/roster-match.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { OcrPageAccountingSchema, OcrPageOutcomeSchema, type OcrPageReading } from "./page-accounting.js";
+import { RetainedOcrPageAccountingSchema, OcrPageAccountingSchema, OcrPageOutcomeSchema, type OcrPageReading } from "./page-accounting.js";
 import { OcrWorkbookRosterEvidenceSchema } from "./roster.js";
 
 const OcrArtifactRosterEvidenceSchema = z.strictObject({
@@ -61,14 +61,17 @@ function subjectName(record: AdmittedRecord, formType: OcrFormType): string | nu
   return last === null || first === null ? null : `${last}, ${first}`;
 }
 
-function deriveReview(input: OcrReviewSeedInput) {
-  const { accounting, roster } = input;
-  const { formType } = accounting;
-  const pages = accounting.outcomes.map((outcome, index) => OcrPageDispositionSchema.parse({
+function pageDispositions(accounting: OcrReviewSeedInput["accounting"]) {
+  return accounting.outcomes.map((outcome, index) => OcrPageDispositionSchema.parse({
     sourcePage: index + 1,
     disposition: outcome.state !== "done" ? outcome.state : outcome.output.extraction.record !== null ? "record"
       : ["blank", "boilerplate", "unrelated"].includes(outcome.output.extraction.pageKind) ? outcome.output.extraction.pageKind : "wrong-form",
   }));
+}
+
+function deriveReview({ accounting, roster }: OcrReviewSeedInput) {
+  const { formType } = accounting;
+  const pages = pageDispositions(accounting);
   const classified = accounting.outcomes.flatMap((outcome, index) => outcome.state !== "done" ? [] : [{
     sourcePage: index + 1, pageKind: outcome.output.extraction.pageKind,
     subjectName: outcome.output.extraction.record === null ? null : subjectName(outcome.output.extraction.record, formType),
@@ -118,6 +121,44 @@ export const OcrReviewSeedSchema = OcrReviewSeedInputSchema.extend({
 });
 export type OcrReviewSeed = z.infer<typeof OcrReviewSeedSchema>;
 
+// The checkpoint owns the grouping and roster decisions. Bind them to their original pages and roster.
+export const RetainedOcrReviewSeedSchema = z.strictObject({ ...OcrReviewSeedSchema.shape,
+  accounting: RetainedOcrPageAccountingSchema,
+}).superRefine((seed, context) => {
+  const { accounting, formType, grouping, roster } = seed;
+  const pages = pageDispositions(accounting);
+  const dataPages = pages.filter(page => page.disposition === "record");
+  const groups = [...grouping.subjects.flatMap(subject => subject.pages), ...grouping.otherForms, ...grouping.dataless];
+  const groupedPages = [...groups.map(page => page.sourcePage), ...grouping.unidentified].sort((a, b) => a - b);
+  if (formType !== accounting.formType || formType !== grouping.formType
+    || canonicalJsonStringify(pages) !== canonicalJsonStringify(seed.pages)
+    || canonicalJsonStringify(groupedPages) !== canonicalJsonStringify(accounting.outcomes.flatMap((outcome, index) => outcome.state === "done" ? [index + 1] : []))
+    || groups.some(page => {
+      const outcome = accounting.outcomes[page.sourcePage - 1];
+      return outcome?.state !== "done" || outcome.output.extraction.pageKind !== page.pageKind;
+    }) || dataPages.length !== seed.records.length) {
+    context.addIssue({ code: "custom", message: "OCR review does not match its retained page membership" });
+  }
+  const rosterEids = new Set(roster?.rows.map(row => row.eid));
+  for (const [index, record] of seed.records.entries()) {
+    const outcome = accounting.outcomes[record.sourcePage - 1];
+    if (outcome?.state !== "done" || record.sourcePage !== dataPages[index]?.sourcePage
+      || record.recordId !== `${accounting.manifest.document.sha256}#${formType}#${record.sourcePage}`
+      || record.extractionId !== outcome.output.extractionId
+      || record.identitySource !== (outcome.output.extraction.source.kind === "operator" ? "operator" : "document")
+      || canonicalJsonStringify(record.fields) !== canonicalJsonStringify(outcome.output.extraction.record)
+      || record.subjectName !== subjectName(record.fields, formType)
+      || record.assertedEid !== (formType === "i9" ? null : fieldText(record.fields, formType === "oath" ? "employeeId" : "employee.employeeId"))
+      || (record.rosterMatch === null) !== (roster === null)
+      || record.rosterMatch !== null && (record.rosterMatch.subjectId !== record.recordId
+        || record.rosterMatch.matchedEid !== null && !rosterEids.has(record.rosterMatch.matchedEid))) {
+      context.addIssue({ code: "custom", message: "OCR review record does not match its retained page or roster" });
+    }
+  }
+});
+
+export const RetainedOcrArtifactRosterSeedSchema = RetainedOcrReviewSeedSchema.safeExtend({ roster: OcrArtifactRosterEvidenceSchema.nullable() });
+
 export function buildOcrReviewSeed(candidate: OcrReviewSeedInput): OcrReviewSeed {
   const input = OcrReviewSeedInputSchema.parse(candidate);
   return deepFreeze(OcrReviewSeedSchema.parse({ ...input, formType: input.accounting.formType, ...deriveReview(input) }));
@@ -145,15 +186,20 @@ export function compactOcrReviewSeed({ roster, accounting, records, ...seed }: O
 }
 
 export function hydrateOcrReviewSeed(checkpoint: OcrReviewCheckpoint, reading: (extractionId: string) => OcrPageReading | undefined,
-  roster: OcrReviewSeed["roster"]): OcrReviewSeed {
+  roster: OcrReviewSeed["roster"], mode: "current" | "retained" = "current"): OcrReviewSeed {
   const { sourceRunId, accounting } = checkpoint;
-  const seed = buildOcrReviewSeed({ ...(sourceRunId === undefined ? {} : { sourceRunId }), roster, accounting: { ...accounting,
-    outcomes: accounting.outcomes.map(outcome => {
-      if (outcome.state !== "done") return outcome;
-      const output = reading(outcome.extractionId);
-      if (output === undefined) throw new Error("OCR review checkpoint names a page reading that is not retained.");
-      return { state: outcome.state, runId: outcome.runId, itemId: outcome.itemId, output };
-    }) } });
+  const outcomes = accounting.outcomes.map(outcome => {
+    if (outcome.state !== "done") return outcome;
+    const output = reading(outcome.extractionId);
+    if (output === undefined) throw new Error("OCR review checkpoint names a page reading that is not retained.");
+    return { state: outcome.state, runId: outcome.runId, itemId: outcome.itemId, output };
+  });
+  const input = { ...(sourceRunId === undefined ? {} : { sourceRunId }), roster, accounting: { ...accounting, outcomes } };
+  const seed = mode === "current" ? buildOcrReviewSeed(input) : RetainedOcrReviewSeedSchema.parse({ ...checkpoint, ...input,
+    records: checkpoint.records.map(record => {
+      const outcome = outcomes[record.sourcePage - 1];
+      return { ...record, fields: outcome?.state === "done" ? outcome.output.extraction.record : undefined };
+    }) });
   if (canonicalJsonStringify(compactOcrReviewSeed(seed)) !== canonicalJsonStringify(checkpoint)) {
     throw new Error("OCR review checkpoint does not match its retained page readings and roster.");
   }

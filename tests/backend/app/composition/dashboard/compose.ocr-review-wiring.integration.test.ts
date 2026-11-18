@@ -26,7 +26,7 @@ vi.mock("../../../../../src/backend/runs/commands/command-kernel.js", async impo
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
 
-it("composes served OCR with readable gate authority while public starts remain refused", async () => {
+it("allows current OCR edits and approval through the dashboard while refusing public OCR starts", async () => {
   const profile = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(profile.workspace, name));
   const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null } });
@@ -47,7 +47,6 @@ it("composes served OCR with readable gate authority while public starts remain 
     assert.equal(readable.resolve("unknown-review-workflow"), undefined);
 
     const f = await world.fixture({ record: true, release: true });
-    assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
     const unused = (): never => { throw new Error("unrequested native fixture effect"); };
     const kernel = createCommandKernel({ authority: f.database, lifecycle: f.canonical.lifecycle, clock: f.clock,
       ids: { uuid: randomUUID }, appVersion: "0.1.0", descriptors: production.descriptors, readableDescriptors: readable,
@@ -56,6 +55,7 @@ it("composes served OCR with readable gate authority while public starts remain 
     const originalStart = authenticateRootRun(f.database.authority, f.run).command;
     const refused = kernel.execute({ ...originalStart, commandId: randomUUID() });
     assert.ok(refused.state === "rejected" && refused.code === "target-not-found");
+    assert.equal(kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
     const consent = f.approval();
     assert.equal(kernel.execute(consent).state, "applied");
     const approved = requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, consent.payload.result.value, f.resolve);

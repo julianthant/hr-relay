@@ -229,7 +229,7 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
       '!same(record.origin.checkpoint,timelineCheckpointReference(checkpoint))', '!same(record.records,rebuilt.records)',
       'previous===undefined', 'request?.family!=="ocr-review"', 'request.commandId!==record.origin.commandId', 'request.requestedBy!=="local-operator"', 'request.source!=="dashboard"',
       'audit?.result.state!=="applied"', 'audit.result.commandId!==request.commandId', '!same(audit.request,request)',
-      '!same(reviseOcrReview(previous,request,record.createdAt),record)',
+      '!same(applyOcrReviewCommand(previous,request,record.createdAt,record),record)',
       'command===undefined', 'command.kind!=="run-lifecycle"', 'command.operation!=="transition"',
       'settled===undefined', '!same(settled.request,command)', 'settled.result.runId!==runId',
       'change===undefined', 'change.after!==Number(change.before)+1', 'change.after!==settled.result.appliedVersion',
@@ -237,7 +237,8 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
       'mutation.sourceCommandId!==request.commandId', 'mutation.runId!==runId', 'mutation.ocrReviewRevision!==revision',
       'Number(mutation.expectedVersion)!==Number(change.before)',
     ], calls: ['authenticateOcrOperator(repositories,reader,existence.run)', 'CanonicalTransitionRequestSchema.parse(command.request)'],
-      bindings: { rebuilt: 'rebuildOcrReviewRecords(record.seed,previous)' } },
+      bindings: { subset: 'rebuildOcrReviewRecords(record.seed,previous,"subset",baseline)',
+        rebuilt: 'same(record.records,subset.records)?subset:rebuildOcrReviewRecords(record.seed,previous,"exact",baseline)' } },
     { owner: "readOcrSnapshotsAuthority", id: "snapshot.snapshotId", guards: [
       'snapshot.sourceRunId!==review.run.envelope.runId', 'revision===undefined', 'snapshot.reviewDigest!==ocrReviewDigest(revision)',
       '!snapshot.selectedRecordIds.every(id=>revision.records.some(record=>record.recordId===id))',
