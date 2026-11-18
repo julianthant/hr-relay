@@ -4,7 +4,7 @@ import type { ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 import { PublicProfileStateSchema } from "../../models/profiles/public-profile.js";
 import { debugFailureOutcome, debugFailureOutcomes, diagnosticRequestRoute } from "../../models/events/debug-report.js";
 import { DashboardClientError, httpError,networkError,markDashboardErrorReported } from "./errors.js";
-import { CHATGPT_COMPLETION_READ_DEADLINE_MS,SETTINGS_READ_DEADLINE_MS,STORAGE_DOCTOR_DEADLINE_MS,readWithDeadline } from "./read-deadline.js";
+import { CHATGPT_ACCOUNT_READ_DEADLINE_MS, CHATGPT_COMPLETION_READ_DEADLINE_MS, SETTINGS_READ_DEADLINE_MS, readWithDeadline } from "./read-deadline.js";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -109,16 +109,17 @@ export function createDashboardTransport(input: Readonly<{
   const sendWithDeadline = (path: string, init?: RequestInit): Promise<JsonResponse> => {
     const method = init?.method?.toUpperCase() ?? "GET";
     const route = path.split("?")[0];
+    const accountStatus = route === "/api/v1/settings/chatgpt-account";
     const accountCompletion = method === "GET" && /^\/api\/v1\/settings\/chatgpt-account\/sign-in\/[^/]+$/u.test(route ?? "");
     const code: ErrorCatalogCode | undefined = method !== "GET" ? undefined
-      : route === "/api/v1/storage/doctor" || route === "/api/v1/storage/doctor/latest" ? "STORAGE_DOCTOR_FAILED"
-      : route === "/api/v1/settings/chatgpt-account" || accountCompletion ? "CHATGPT_AUTH_UNAVAILABLE"
+      : accountStatus || accountCompletion ? "CHATGPT_AUTH_UNAVAILABLE"
       : route === "/api/v1/preflight" ? "PREFLIGHT_READ_UNAVAILABLE"
       : route === "/api/v1/settings/editable" || route === "/api/v1/settings/facts" ? "SETTINGS_INITIAL_READ_UNAVAILABLE"
       : route?.startsWith("/api/v1/workbooks") || route === "/api/v1/explorer" || route?.startsWith("/api/v1/reports/activity") ? "DASHBOARD_READ_FAILED" : undefined;
     if (code === undefined || accountCompletion && init?.signal !== undefined) return sendUnbounded(path, init);
-    return readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code,
-      accountCompletion ? CHATGPT_COMPLETION_READ_DEADLINE_MS : route === "/api/v1/storage/doctor" ? STORAGE_DOCTOR_DEADLINE_MS : SETTINGS_READ_DEADLINE_MS, init?.signal ?? undefined).catch((error: unknown) => {
+    const deadline = accountCompletion ? CHATGPT_COMPLETION_READ_DEADLINE_MS
+      : accountStatus ? CHATGPT_ACCOUNT_READ_DEADLINE_MS : SETTINGS_READ_DEADLINE_MS;
+    return readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code, deadline, init?.signal ?? undefined).catch((error: unknown) => {
         if (init?.signal?.aborted) throw networkError(`${method} ${path}`, init.signal.reason);
         throw error;
       });

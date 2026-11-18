@@ -1,3 +1,4 @@
+import { FIXTURE_ACTIVE_PROFILE_STATE } from "../../support/helpers/dashboard/profiles/fixture-profile-setup.js";
 import { profileActivationResponse } from "../../support/helpers/dashboard/shared-profile-cookie-tabs.js";
 import { chatGptStatusFixture } from "../../support/helpers/chatgpt-status-fixture.js";
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
@@ -101,6 +102,9 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
   settingsSections: [],
   featureAvailability: [],
 });
+/** The same workflow with a typed Run input, so the Start run dialog mounts an input box. */
+const APP_BOOTSTRAP_WITH_INPUT = FrontendBootstrapWireSchema_m1.parse({ ...APP_BOOTSTRAP, workflows: (APP_BOOTSTRAP.workflows as readonly { readonly start: object }[]).map(flow => ({ ...flow,
+  start: { ...flow.start, inputRun: { placeholder: "Employee ID", parser: { split: { kind: "delimited", delimiters: [",", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "eid" }] } } } })) });
 const APP_DAY = DashboardDayWireSchema_m1.parse({
   day: "2026-08-27",
   descriptorHash: FIXTURE_FINGERPRINT,
@@ -174,6 +178,7 @@ async function mountSurface(client: DashboardClient_m1, children: ReactNode_m1):
 /** The whole app client is closed: an unserved read is a fixture defect, not an empty answer. */
 function appClient(): DashboardClient_m1 {
   const served = {
+    readProfileSession: () => Promise.resolve(FIXTURE_ACTIVE_PROFILE_STATE),
     subscribeProfileSessionStale: () => () => undefined,
     bootstrap: () => Promise.resolve(APP_BOOTSTRAP),
     applicationLifecycle: () => Promise.resolve(ApplicationLifecycleSchema.parse({ runtimeGeneration: 1, state: "ready", pause: "running", targets: [], update: "installer-unavailable" })),
@@ -202,7 +207,8 @@ function appClient(): DashboardClient_m1 {
 
 async function mountDashboard(search: string): Promise<void> {
   window.history.replaceState(null, "", `/${search}`);
-  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1,
+    previewPreferences: createPersonPreferences("preview", NEUTRAL_PERSON_PREFERENCES) }));
   await act_m1(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -288,7 +294,7 @@ describe_m1("served signed-out appearance", () => {
       const client = { ...appClient(), readProfileSession: async () => { reads++; return { state: "signed-out" as const }; } };
       localStorage.setItem("rebuild-demo.theme", "light");
       try {
-        await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served",
+        await mountSurface(client, createElement_m1(DashboardApp_m1, {
           workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1,
           ...(preview ? { previewPreferences: createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: "light" }) } : {}),
         }));
@@ -318,13 +324,13 @@ describe_m1("served sign-up Finish", () => {
       if (path.endsWith("/bootstrap")) {
         if (defer) { defer = false; dispatched.resolve(); return old.promise; }
         if (restarted && resumes === 0 || invalidateFresh) return stale();
-        return Response.json(APP_BOOTSTRAP);
+        return Response.json(APP_BOOTSTRAP_WITH_INPUT);
       }
       throw new Error(`unexpected draft-preservation request ${path}`);
     } });
     const client: DashboardClient_m1 = { ...appClient(), bootstrap: () => live.bootstrap(), readProfileSession: () => live.readProfileSession(),
       resumeProfile: () => live.resumeProfile(), subscribeProfileSessionStale: listener => live.subscribeProfileSessionStale(listener) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => assert_m1.ok(document.querySelector(".dashboard-shell")));
     defer = true; const pending = assert_m1.rejects(client.bootstrap()); await dispatched.promise;
     try {
@@ -333,7 +339,7 @@ describe_m1("served sign-up Finish", () => {
       await vi_m1.waitFor(() => { assert_m1.equal(resumes, 1); assert_m1.ok(document.querySelector(".dashboard-shell")); });
       await act_m1(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Start run"]')?.click(); });
       const dialog = document.querySelector('[role="dialog"]'); assert_m1.ok(dialog);
-      const workflow = [...dialog.querySelectorAll("button")].find(button => button.textContent?.includes("Person Lookup"));
+      const workflow = [...dialog.querySelectorAll("button")].find(button => button.textContent?.includes("Fixture workflow"));
       assert_m1.ok(workflow); await act_m1(async () => workflow.click());
       const draft = dialog.querySelector<HTMLTextAreaElement | HTMLInputElement>('[aria-label="Input"] textarea, [aria-label="Input"] input:not([type="checkbox"])');
       assert_m1.ok(draft, "the actual Run input must be mounted");
@@ -366,7 +372,7 @@ describe_m1("served sign-up Finish", () => {
     } });
     const client: DashboardClient_m1 = { ...appClient(), bootstrap: () => live.bootstrap(), readProfileSession: () => live.readProfileSession(),
       resumeProfile: () => live.resumeProfile(), subscribeProfileSessionStale: listener => live.subscribeProfileSessionStale(listener) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => assert_m1.ok(document.querySelector(".dashboard-shell")));
     restarted = true;
     await act_m1(async () => { await assert_m1.rejects(client.bootstrap()); });
@@ -383,7 +389,7 @@ describe_m1("served sign-up Finish", () => {
     let resumed = 0;
     const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: false, resumable: true as const }),
       resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_TRANSITION_BLOCKED" as const }; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
     await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
@@ -401,7 +407,7 @@ describe_m1("served sign-up Finish", () => {
     const client = { ...appClient(),
       readProfileSession: async () => resumed > 0 ? active : { state: "signed-out" as const, signUpRequired: false, resumable: true as const },
       resumeProfile: async () => { resumed++; return active; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => {
       assert_m1.equal(resumed, 1);
       assert_m1.equal(new URLSearchParams(window.location.search).has("onboarding"), false);
@@ -418,7 +424,7 @@ describe_m1("served sign-up Finish", () => {
     const client = { ...appClient(),
       readProfileSession: async () => { if (cookie) return active; readsBeforeWinner++; return { state: "signed-out" as const, signUpRequired: false, resumable: true as const }; },
       resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_TRANSITION_BLOCKED" as const }; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(readsBeforeWinner >= 2, true); }, { timeout: 3000 });
     assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
     release(); await winner;
@@ -432,7 +438,7 @@ describe_m1("served sign-up Finish", () => {
     const client = { ...appClient(),
       readProfileSession: async () => { reads++; return { state: "signed-out" as const, signUpRequired: false, resumable: true as const }; },
       resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const }; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(reads >= 3, true); }, { timeout: 3500 });
     assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
     assert_m1.equal(resumed, 1);
@@ -445,7 +451,7 @@ describe_m1("served sign-up Finish", () => {
     window.history.replaceState(null, "", "/");
     let finished = false, reads = 0;
     const client = { ...appClient(), readProfileSession: async () => { reads++; return finished ? { state: "signed-out" as const, signUpRequired: false } : waiting; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(reads >= 2, true); }, { timeout: 3000 });
     assert_m1.equal(document.querySelector(".form-error")?.textContent, operatorFailureSentence("PROFILE_LOGOUT_BLOCKED"));
     finished = true;
@@ -462,7 +468,7 @@ describe_m1("served sign-up Finish", () => {
     let finished = false, reads = 0, signIns = 0;
     const client = { ...appClient(), readProfileSession: async () => { reads++; return finished || !clears ? { state: "signed-out" as const, signUpRequired: false } : answer; },
       signInProfile: async () => { signIns++; return answer; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
     for (const [name, value] of [["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"]] as const) {
       await act_m1(async () => { const field = document.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
@@ -486,7 +492,7 @@ describe_m1("served sign-up Finish", () => {
   it_m1("opens the sign-up form from the Sign up link after a refused login", async () => {
     window.history.replaceState(null, "", "/");
     const client = { ...appClient(), readProfileSession: async () => ({ state: "refused" as const, code: "PROFILE_SIGN_IN_REFUSED" as const }) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
     await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
@@ -498,7 +504,7 @@ describe_m1("served sign-up Finish", () => {
     window.history.replaceState(null, "", "/?onboarding=signup");
     const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: false,
       ...(logoutIncomplete ? { logoutIncomplete: true as const } : {}) }) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
     assert_m1.equal(document.body.textContent?.includes(operatorFailureSentence("PROFILE_LOGOUT_INCOMPLETE")), logoutIncomplete);
     await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
@@ -508,7 +514,7 @@ describe_m1("served sign-up Finish", () => {
   it_m1("opens sign-up on a computer with no profiles", async () => {
     window.history.replaceState(null, "", "/");
     const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: true }) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
   });
 
@@ -518,7 +524,7 @@ describe_m1("served sign-up Finish", () => {
     let finished = false;
     const client = { ...appClient(), readProfileSession: async () => finished ? { state: "signed-out" as const, signUpRequired: false } : ready,
       completeProfileOnboarding: async () => { finished = true; return PublicProfileStateSchema.parse({ state: "error", code: "INTERNAL_FAILURE" }); } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await act_m1(async () => { [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Finish setup")?.click(); });
     assert_m1.equal(finished, true);
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
@@ -769,10 +775,10 @@ async function settle() { await act_m2(async () => { await new Promise(resolve =
 function servedSessionMocks(workflows: Parameters<typeof MOCK_WORKFLOW_COMPOSITION_m2>[0]) {
   const composition = MOCK_WORKFLOW_COMPOSITION_m2(workflows);
   const registered = new Set(workflows.map(flow => flow.workflowId));
-  for (const id of Object.keys(WORKFLOW_SOURCES)) assert_m2.equal(composition.sources[id], WORKFLOW_SOURCES[id] === "hidden" ? "hidden" : registered.has(id) ? "served" : "mock", id);
-  return Object.freeze({ ...composition, sessions: "served" as const });
+  for (const id of Object.keys(WORKFLOW_SOURCES)) assert_m2.equal(composition.sources[id], registered.has(id) ? "served" : "hidden", id);
+  return Object.freeze({ ...composition, sessionsHarness: undefined });
 }
-async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof MOCK_WORKFLOW_COMPOSITION_m2 } = {}) {
+async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof MOCK_WORKFLOW_COMPOSITION_m2; accountless?: boolean } = {}) {
   const { app } = createFixtureBff_m2();
   const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
   const requests: { url: string; resume?: string | null }[] = [];
@@ -789,6 +795,7 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
       if (options.boot) return options.boot;
       if (options.bootFailure) return Response.json({ code: 'FIXTURE_UNAVAILABLE', message: 'Synthetic boot unavailable' }, { status: 503 });
     }
+    if (options.accountless === true && url.endsWith("/profile/state")) return Response.json({ ...FIXTURE_ACTIVE_PROFILE_STATE, account: undefined });
     if (url.endsWith("/settings/editable") && options.settingsRead !== undefined) return Response.json(options.settingsRead());
     if (url.includes('/events/v1?')) {
       const body = new ReadableStream<Uint8Array>({ start(controller) {
@@ -993,7 +1000,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
   ]) for (const replacement of ["confirmed", "conflict", "refused"] as const) it_m2(`replaces one ${save.title} warning on ${replacement} exact replay`, async () => {
     const commands: unknown[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
-    const h = await mount({ search: `settings=${save.section}`, settingsRead: authority.read, command: body => {
+    const h = await mount({ accountless: true, search: `settings=${save.section}`, settingsRead: authority.read, command: body => {
       commands.push(body);
       if (commands.length <= 2) return Promise.reject(new Error("private-transport-sentinel"));
       const command = CommandRequestSchema.parse(body);
@@ -1042,14 +1049,16 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
   it_m2("keeps an ordinary failure toast apart from the credentials warning and dismisses a replayed command's own warning", async () => {
     const commands: ReturnType<typeof CommandRequestSchema.parse>[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
-    const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
+    const h = await mount({ accountless: true, search: "settings=performance", settingsRead: authority.read, command: body => {
       const command = CommandRequestSchema.parse(body); commands.push(command);
       const attempts = commands.filter(candidate => candidate.commandId === command.commandId).length;
       if (attempts === 1) return Promise.reject(new Error("Synthetic lost response"));
       return Promise.resolve(Response.json(authority.execute(command)));
     } });
     const edit = async (field: string, value: string) => {
-      const label = [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === field);
+      const find = () => [...h.host.querySelectorAll("label")].find(candidate => candidate.textContent?.trim() === field);
+      for (let tries = 0; find() === undefined && tries < 20; tries++) await settle();
+      const label = find();
       assert_m2.ok(label);
       const input = document.getElementById(label.htmlFor); assert_m2.ok(input instanceof HTMLInputElement);
       await act_m2(async () => {
@@ -1120,7 +1129,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     const recover = [...h.host.querySelectorAll('button')].find(button => button.textContent === 'Open dashboard'); assert_m2(recover);
     await act_m2(async () => recover.click());
     assert_m2.equal(h.host.querySelectorAll('[aria-label="Session Panel"]').length, 1);
-    assert_m2.equal(h.host.querySelectorAll('button[aria-label="Assistant"]').length, 1);
+    assert_m2.equal(h.host.querySelectorAll('button[data-assistant-launcher]').length, 1);
   });
   it_m2('keeps slow bootstrap in loading geometry until a parsed response arrives', async () => {
     let resolve!: (response: Response) => void;
