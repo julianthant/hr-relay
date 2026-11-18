@@ -25,6 +25,15 @@ const TARGET = KualiFinalizationTargetSchema.parse({
 });
 const DOCUMENT_URL = `${ACTION_LIST_URL}/${TARGET.actionId}`;
 const GRAPHQL_URL = "https://ucsd.kualibuild.com/app/api/v0/graphql";
+const SAVE_QUERY = `mutation submitDocumentV2(
+  $documentId: ID!, $actionId: ID!, $data: JSON!, $status: String!, $timeZone: String
+) {
+  submitDocumentV2(documentId: $documentId, actionId: $actionId, data: $data, status: $status, timeZone: $timeZone) {
+    status
+    validations
+    __typename
+  }
+}`;
 
 let browser: Browser;
 let context: BrowserContext;
@@ -69,11 +78,12 @@ function documentForm(transactionNumber = "", payrollTitle = ""): string {
     </script>`;
 }
 
-function saveVariables(): { actionId: string; status: string; data: Record<string, unknown>; documentId: string } {
+function saveVariables(): { actionId: string; status: string; data: Record<string, unknown>; documentId: string; timeZone: string } {
   return {
     actionId: TARGET.actionId,
     documentId: "fixture-document-id",
     status: "saved",
+    timeZone: "America/Los_Angeles",
     data: {
       JPYGckVxcf: { id: "dept", label: TARGET.variables.department },
       "2FlOeR5pd9": TARGET.variables.payrollTitleCode,
@@ -91,7 +101,8 @@ function saveVariables(): { actionId: string; status: string; data: Record<strin
   };
 }
 
-async function stageSave(variables: ReturnType<typeof saveVariables>) {
+async function stageSave(variables: ReturnType<typeof saveVariables>, query = SAVE_QUERY) {
+  const payload = { operationName: "submitDocumentV2", query, variables };
   const forwarded: unknown[] = [];
   await context.route(DOCUMENT_URL, route => route.fulfill({
     contentType: "text/html",
@@ -109,14 +120,14 @@ async function stageSave(variables: ReturnType<typeof saveVariables>) {
         await fetch(graphqlUrl, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ operationName: "submitDocumentV2", variables: payload }),
+          body: JSON.stringify(payload),
         });
       } catch { /* The fixture observes forwarding at the server boundary. */ }
     };
     document.querySelector("button")?.addEventListener("click", () => { void submit(); });
-  }, { graphqlUrl: GRAPHQL_URL, payload: variables });
+  }, { graphqlUrl: GRAPHQL_URL, payload });
   const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
-  return { driver, forwarded, commit: () => driver.commit(KUALI_RRSS_SAVE_BUTTON, capability) };
+  return { driver, forwarded, payload, commit: () => driver.commit(KUALI_RRSS_SAVE_BUTTON, capability) };
 }
 
 describe("Kuali finalization safety", () => {
@@ -125,8 +136,8 @@ describe("Kuali finalization safety", () => {
       contentType: "text/html",
       body: `
         <input aria-label="Search">
-        <button onclick="document.querySelector('#match').hidden = false">GO</button>
-        <a href="/neighbor">9123456</a>
+        <button onclick="document.querySelector('#match').hidden = false; document.querySelector('#neighbor').remove()">GO</button>
+        <a id="neighbor" href="/neighbor">654321</a>
         <a id="match" href="${DOCUMENT_URL}" hidden>${DOCUMENT_NUMBER}</a>`,
     }));
     const driver = createKualiRrssDocumentDriver(() => undefined, page, systemClock);
@@ -142,6 +153,22 @@ describe("Kuali finalization safety", () => {
         <input aria-label="Search">
         <button>GO</button>
         <a href="/previous">123455</a>`,
+    }));
+    const driver = createKualiRrssDocumentDriver(() => undefined, page, systemClock);
+
+    await assert.rejects(
+      driver.readActionListForDocument({ documentNumber: DOCUMENT_NUMBER }),
+      /Kuali Action List lookup for document 123456.*outcome is unknown/u,
+    );
+  }, 25_000);
+
+  it("reports an unknown lookup when failed GO leaves an old exact-number row", async () => {
+    await context.route(ACTION_LIST_URL, route => route.fulfill({
+      contentType: "text/html",
+      body: `
+        <input aria-label="Search">
+        <button>GO</button>
+        <a href="${ACTION_LIST_URL}/abcdef0123456789abcdef01">${DOCUMENT_NUMBER}</a>`,
     }));
     const driver = createKualiRrssDocumentDriver(() => undefined, page, systemClock);
 
@@ -191,8 +218,8 @@ describe("Kuali finalization safety", () => {
     const retry = await page.evaluate(({ url, payload }) => fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ operationName: "submitDocumentV2", variables: payload }),
-    }).then(() => "answered", () => "aborted"), { url: GRAPHQL_URL, payload: variables });
+      body: JSON.stringify(payload),
+    }).then(() => "answered", () => "aborted"), { url: GRAPHQL_URL, payload: fixture.payload });
     assert.equal(retry, "aborted");
     assert.deepEqual(fixture.forwarded, []);
   });
@@ -211,11 +238,29 @@ describe("Kuali finalization safety", () => {
     assert.deepEqual(fixture.forwarded, []);
   });
 
+  it.each([
+    ["a missing executable document", ""],
+    ["a mislabeled mutation", SAVE_QUERY.replace("  submitDocumentV2(", "  advanceDocument(")],
+    ["an additional root mutation", SAVE_QUERY.replace("    __typename\n  }", "    __typename\n  }\n  advanceDocument { status }")],
+    ["a substituted action argument", SAVE_QUERY.replace("actionId: $actionId", "actionId: $documentId")],
+  ])("blocks %s before forwarding", async (_description, query) => {
+    const fixture = await stageSave(saveVariables(), query);
+    await assert.rejects(fixture.commit(), /save shape|Save operation/u);
+    assert.deepEqual(fixture.forwarded, []);
+  });
+
+  it("blocks unexpected variables in the Save envelope", async () => {
+    const variables = { ...saveVariables(), extensions: { unexpected: true } };
+    const fixture = await stageSave(variables);
+    await assert.rejects(fixture.commit(), /save shape/u);
+    assert.deepEqual(fixture.forwarded, []);
+  });
+
   it("forwards one valid Save and still requires persisted values after reload", async () => {
     const variables = saveVariables();
     const fixture = await stageSave(variables);
     assert.equal((await fixture.commit()).performed, true);
-    assert.deepEqual(fixture.forwarded, [{ operationName: "submitDocumentV2", variables }]);
+    assert.deepEqual(fixture.forwarded, [fixture.payload]);
     assert.equal(kualiFinalizationVerdict(TARGET, await fixture.driver.readSavedSeparationFinalization(TARGET)).state, "absent");
   });
 });
