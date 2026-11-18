@@ -15,6 +15,7 @@ deriveTerminalDependencyDigest,
 deriveTerminalFailureDigest,
 terminalEvidenceResult,
 type RunResultRecord,
+type RunPreviewResult,
 type TerminalNotRunReason,
 } from "../../../models/run/result.js";
 import type { AnyCommitTaskContract,AnyTaskContract } from "../../../models/task/task-contract.js";
@@ -82,6 +83,7 @@ type AnyWorkflowDescriptor,
 } from "../../../workflow-kit/workflow.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import {
+assertRetainedReceiptDependencies,
 evaluateReceiptDerivationBinding,
 evaluateReceiptRederivation,
 type ReceiptBindingCheckResult,
@@ -285,11 +287,16 @@ export function deriveActionWriteProof(input: Readonly<{
       + "refusing to redact a proof under a declaration authored for a different shape",
     );
   }
-  const scope: EvidenceValueScope = { kind: "write-proof", taskId: commitContract.id };
+  return writeProofFromOutcome(commitContract.id, commitContract.writeSafety.completion.kind, outcome, intent);
+}
+
+function writeProofFromOutcome(taskId: WriteIntentRecord["taskId"], completion: ActionWriteProof["completion"],
+  outcome: z.infer<typeof TransactionOutcomeSchema>, intent: WriteIntentRecord): ActionWriteProof {
+  const scope: EvidenceValueScope = { kind: "write-proof", taskId };
   return ActionWriteProofSchema.parse({
     system: intent.system,
     idempotencyKeyDigest: publicTransactionKeyDigest(intent.idempotencyKeyDigest, false),
-    completion: commitContract.writeSafety.completion.kind,
+    completion,
     proofSource: outcome.proofSource,
     values: evidenceLeaves(outcome.proof.value).map((leaf) => redactEvidenceLeaf(scope, leaf)),
     recordedAt: outcome.disposition === "committed" ? outcome.confirmedAt : outcome.observedAt,
@@ -419,7 +426,7 @@ function deriveReceipt(
   }
 
 
-  const binding = evaluateReceiptDerivationBinding({
+  const bindingInput = {
     ...(input.schemaReader === undefined ? {} : { schemaReader: input.schemaReader }),
     descriptor,
     run,
@@ -428,8 +435,11 @@ function deriveReceipt(
     writes: writes.map((entry) => entry.intent),
     gateResults: admittedGateResults,
     delegations,
-  });
-  if (binding.state === "incompatible") throw new Error(binding.message);
+  };
+  const binding = evaluateReceiptDerivationBinding(bindingInput);
+  if (binding.state === "incompatible" && (retained === undefined || descriptor.id !== envelope.workflow)) {
+    throw new Error(binding.message);
+  }
 
   const receiptId = deriveEvidenceReceiptId(envelope.runId, envelope.attempt, input.settlementVersion);
   const generatedAt = lifecycle.endedAt;
@@ -471,6 +481,13 @@ function deriveReceipt(
       state: "satisfied",
       value: retainSsnDigest ? { key: leaf.path, ...redactValue("direct-identifier", "digest", leaf.value) } : value,
     });
+  }
+
+  if (binding.state === "incompatible" && retained !== undefined) {
+    assertRetainedReceiptDependencies(bindingInput, result);
+    checkHistoricalReceipt({ receipt: retained, run, result, receiptId, inputFacts, checkpoints,
+      gates: admittedGateResults, writes, failure });
+    return { receipt: retained, checks: binding.checks };
   }
 
   /* ── node walk ─────────────────────────────────────────────────────────── */
@@ -840,24 +857,9 @@ function deriveReceipt(
       evidence: [],
     });
 
-    const reached = preview.steps.flatMap(step => step.state === "delegation-preview" ? [`child stage "${step.nodeId}" previewed changes without saving`]
-      : step.state === "publication-preview" ? [`publication node "${step.nodeId}" prepared its output without saving`]
-      : step.state !== "transaction-preview" ? [] : [
-      `transaction node "${step.nodeId}" ${step.preview.outcome.state === "would-prepare"
-        ? `staged its page and observed subject ${step.preview.outcome.subject.state}`
-        : `settled already-present at its ${step.preview.probe.state} probe, before anything was staged`}`,
-    ]).join("; ");
-    const unavailable = preview.steps.filter(step => step.state === "unavailable").map(step => step.nodeId);
-    const samples = preview.steps.flatMap(step => step.state === "transaction-preview" ? step.samples : []);
     warnings.push({
       id: entryId("warning", "dry-run-preview"), code: ErrorCodeSchema.parse("DRY_RUN_PREVIEW"),
-      summary: `this run was a DRY RUN: ${reached || "no preparation was completed"}. `
-        + (preview.coverage.state === "partial" ? preview.coverage.reason === "historical-first-transaction-only"
-          ? "Historical partial preview; later stages were not recorded. " : "Some delegated work was dispatched without waiting for its preview. "
-          : "Every declared stage is accounted for. ")
-        + (unavailable.length === 0 ? "" : `Unavailable stages: ${unavailable.join(", ")}. `)
-        + (samples.length === 0 ? "" : samples.map(sample => `${sample.label}: ${sample.field} = ${canonicalJsonStringify(sample.value)}. `).join(""))
-        + "No external write was attempted — no write intent, no fence, no commit. Samples are preview-only values, never receipts or write authority.",
+      summary: previewWarningSummary(preview, retained?.warnings.find(row => row.code === "DRY_RUN_PREVIEW")?.summary),
       loadBearing: true, evidence: [],
     });
   } else if (result !== undefined && terminalEvidence === undefined) {
@@ -955,29 +957,28 @@ function deriveReceipt(
 
   /* ── verdict ───────────────────────────────────────────────────────────── */
 
-  const facts = [...inputFacts, ...observations, ...outputs];
-  const unresolvedMandatoryFact = facts.some((fact) => fact.mandatory && fact.state === "unresolved");
-  const unresolvedMandatoryObligation = verification.some((entry) => (
-    entry.mandatory && (entry.verdict === "unknown" || entry.verdict === "ambiguous")
-  ));
-  const absentMandatoryObligation = verification.some((entry) => entry.mandatory && entry.verdict === "absent");
-  const loadBearingWarning = warnings.some(({ loadBearing }) => loadBearing);
+  if (retained !== undefined) {
+    // Mandatory flags describe the producer's declaration. Verdicts still use the recorded facts.
+    const prior = new Map([...retained.observations, ...retained.verification].map(row => [String(row.id), row.mandatory]));
+    for (const row of observations) row.mandatory = prior.get(row.id) ?? row.mandatory;
+    for (const row of verification) {
+      if (row.obligation !== "completion.terminal-result") row.mandatory = prior.get(row.id) ?? row.mandatory;
+    }
+    const decisionsById = new Map(retained.decisions.map(row => [String(row.id), row]));
+    for (const row of decisions) {
+      const issued = decisionsById.get(row.id);
+      if (issued !== undefined) row.reason = issued.reason;
+    }
+    const warningsById = new Map(retained.warnings.map(row => [String(row.id), row]));
+    for (const row of warnings) {
+      const issued = warningsById.get(row.id);
+      if (issued !== undefined && row.code !== "DRY_RUN_PREVIEW" && row.id !== entryId("warning", "failure")) row.summary = issued.summary;
+    }
+  }
 
-  const confidence = unresolvedMandatoryFact || unresolvedMandatoryObligation || absentMandatoryObligation
-    ? "unknown"
-    : warnings.length > 0
-      ? "partial"
-      : "verified";
-
-  const receiptResult = lifecycle.outcome === "failed"
-    ? "failed"
-    : lifecycle.outcome !== "done"
-      ? "cancelled"
-      : confidence === "verified"
-        ? "verified-done"
-        : loadBearingWarning || confidence === "unknown"
-          ? "partial"
-          : "done-with-warnings";
+  const { confidence, result: receiptResult } = receiptVerdict(lifecycle.outcome, {
+    input: inputFacts, observations, output: outputs, verification, warnings,
+  });
 
   const receiptData = {
     composition,
@@ -1010,6 +1011,10 @@ function deriveReceipt(
   const parsedReceipt = RunEvidenceReceiptSchema.parse(receiptData);
   const receipt = RunEvidenceReceiptSchema.parse(JSON.parse(canonicalJsonStringify(parsedReceipt)));
   assertEvidenceRefsResolve(receipt);
+  if (retained !== undefined) {
+    const comparison = evaluateReceiptRederivation({ run, descriptor, stored: retained, derived: receipt, checks: binding.checks });
+    if (comparison.state === "incompatible") throw new Error(comparison.message);
+  }
   return Object.freeze({ receipt, checks: binding.checks });
 }
 
@@ -1051,6 +1056,201 @@ export function assertEvidenceRefsResolve(receipt: RunEvidenceReceipt): void {
       `receipt ${receipt.receiptId} cites evidence rows it does not carry: ${dangling.join(", ")}`,
     );
   }
+}
+
+function previewWarningSummary(preview: RunPreviewResult, stored?: string): string {
+  const reached = preview.steps.flatMap(step => step.state === "delegation-preview" ? [`child stage "${step.nodeId}" previewed changes without saving`]
+    : step.state === "publication-preview" ? [`publication node "${step.nodeId}" prepared its output without saving`]
+    : step.state !== "transaction-preview" ? [] : [
+    `transaction node "${step.nodeId}" ${step.preview.outcome.state === "would-prepare"
+      ? `staged its page and observed subject ${step.preview.outcome.subject.state}`
+      : `settled already-present at its ${step.preview.probe.state} probe, before anything was staged`}`,
+  ]).join("; ");
+  const unavailable = preview.steps.filter(step => step.state === "unavailable").map(step => step.nodeId);
+  const samples = preview.steps.flatMap(step => step.state === "transaction-preview" ? step.samples : []);
+  const currentSummary = `this run was a DRY RUN: ${reached || "no preparation was completed"}. `
+      + (preview.coverage.state === "partial" ? preview.coverage.reason === "historical-first-transaction-only"
+        ? "Historical partial preview; later stages were not recorded. " : "Some delegated work was dispatched without waiting for its preview. "
+        : "Every declared stage is accounted for. ")
+      + (unavailable.length === 0 ? "" : `Unavailable stages: ${unavailable.join(", ")}. `)
+      + (samples.length === 0 ? "" : samples.map(sample => `${sample.label}: ${sample.field} = ${canonicalJsonStringify(sample.value)}. `).join(""))
+      + "No external write was attempted — no write intent, no fence, no commit. Samples are preview-only values, never receipts or write authority.";
+  const first = preview.steps[0];
+  let issuedSummary: string | undefined;
+  if (preview.coverage.state === "partial" && preview.coverage.reason === "historical-first-transaction-only"
+    && first?.state === "transaction-preview" && first.nodeId === preview.coverage.boundaryNodeId && preview.steps.length === 1) {
+    const transaction = first.preview;
+    const outcome = transaction.outcome.state === "would-prepare"
+      ? `staged its page and observed subject ${transaction.outcome.subject.state}`
+      : `settled ${transaction.outcome.state} at its ${transaction.probe.state} probe, before anything was staged`;
+    issuedSummary = `this run was a DRY RUN: transaction node "${first.nodeId}" was previewed `
+      + `(${outcome}, observed ${transaction.observedAt}) and the run ended `
+      + "there. No external write was attempted — no write intent, no fence, no commit — so this "
+      + "receipt states what WOULD have been written, never what was";
+  }
+  return issuedSummary !== undefined && issuedSummary === stored ? issuedSummary : currentSummary;
+}
+
+function receiptVerdict(outcome: string, { input, observations, output, verification, warnings }:
+  Pick<ReceiptInput, "input" | "observations" | "output" | "verification" | "warnings">): Pick<RunEvidenceReceipt, "confidence" | "result"> {
+  const facts = [...input, ...observations, ...output];
+  const unresolvedMandatoryFact = facts.some((fact) => fact.mandatory && fact.state === "unresolved");
+  const unresolvedMandatoryObligation = verification.some((entry) => (
+    entry.mandatory && (entry.verdict === "unknown" || entry.verdict === "ambiguous")
+  ));
+  const absentMandatoryObligation = verification.some((entry) => entry.mandatory && entry.verdict === "absent");
+  const loadBearingWarning = warnings.some(({ loadBearing }) => loadBearing);
+
+  const confidence = unresolvedMandatoryFact || unresolvedMandatoryObligation || absentMandatoryObligation
+    ? "unknown"
+    : warnings.length > 0
+      ? "partial"
+      : "verified";
+
+  const receiptResult: RunEvidenceReceipt["result"] = outcome === "failed"
+    ? "failed"
+    : outcome !== "done"
+      ? "cancelled"
+      : confidence === "verified"
+        ? "verified-done"
+        : loadBearingWarning || confidence === "unknown"
+          ? "partial"
+          : "done-with-warnings";
+  return { confidence, result: receiptResult };
+}
+
+function checkHistoricalReceipt(input: {
+  receipt: RunEvidenceReceipt;
+  run: RunRecord;
+  result: RunResultRecord;
+  receiptId: RunEvidenceReceipt["receiptId"];
+  inputFacts: Fact[];
+  checkpoints: readonly RunCheckpointRecord[];
+  gates: readonly GateResultRecord[];
+  writes: readonly ReceiptWriteEvidence[];
+  failure?: FailureRecord;
+}): void {
+  const { receipt, run, result, receiptId, checkpoints, gates, writes } = input;
+  const { envelope, lifecycle } = run;
+  const same = (left: unknown, right: unknown) => canonicalJsonStringify(left) === canonicalJsonStringify(right);
+  if (lifecycle.state !== "terminal" || receipt.receiptId !== receiptId || receipt.runId !== envelope.runId
+    || receipt.traceId !== envelope.traceId || receipt.workflowId !== envelope.workflow || receipt.attempt !== envelope.attempt
+    || receipt.descriptorFingerprint !== envelope.contractFingerprint || receipt.configFingerprint !== envelope.configFingerprint
+    || receipt.generatedAt !== lifecycle.endedAt || (receipt.retryOf.state === "present" ? receipt.retryOf.value : undefined) !== envelope.retryOf
+    || (receipt.failure.state === "present" ? receipt.failure.value : undefined) !== input.failure?.failureId
+    || (receipt.result === "failed") !== (lifecycle.outcome === "failed")
+    || (receipt.result === "cancelled") !== (lifecycle.outcome !== "failed" && lifecycle.outcome !== "done")) {
+    throw new Error("receipt-settlement-identity-mismatch");
+  }
+  const verdict = receiptVerdict(lifecycle.outcome, receipt);
+  if (receipt.confidence !== verdict.confidence || receipt.result !== verdict.result) throw new Error("receipt-settlement-verdict-conflict");
+  assertEvidenceRefsResolve(receipt);
+  if (!same(receipt.input, input.inputFacts)) throw new Error("receipt-input-conflict");
+  const preview = readRunPreviewResult(result);
+  if (preview !== undefined && !envelope.dryRun) throw new Error("receipt-preview-conflict");
+  const leaves = terminalEvidenceResult(result) === undefined && preview === undefined ? evidenceLeaves(result.result.value) : [];
+  if (leaves.length !== receipt.output.length) throw new Error("receipt-output-conflict");
+  const id = (kind: Parameters<typeof deriveEvidenceEntryId>[1], key: string) => deriveEvidenceEntryId(receiptId, kind, key);
+  const outputRefs = result.dependencies.map(dep => evidenceEntryRef(id("verification", `node.${dep.nodeId}`)));
+  const terminalCheck = receipt.verification.find(row => row.id === id("verification", "completion.terminal-result"));
+  const previewWarning = receipt.warnings.find(row => row.id === id("warning", "dry-run-preview"));
+  if (preview !== undefined && (previewWarning?.code !== "DRY_RUN_PREVIEW" || !previewWarning.loadBearing
+    || previewWarning.summary !== previewWarningSummary(preview, previewWarning.summary))) throw new Error("receipt-preview-conflict");
+  const terminalVerdict = preview !== undefined ? "unknown" : lifecycle.outcome === "done" ? "verified" : "absent";
+  if (terminalCheck?.obligation !== "completion.terminal-result" || !terminalCheck.mandatory
+    || terminalCheck.verdict !== terminalVerdict || !same(terminalCheck.evidence, receipt.output.map(row => evidenceEntryRef(row.id)))
+    || (preview !== undefined) !== (previewWarning !== undefined)) {
+    throw new Error("receipt-terminal-result-conflict");
+  }
+  for (const leaf of leaves) {
+    const fact = receipt.output.find(row => row.id === id("output", leaf.path));
+    if (fact?.state !== "satisfied" || fact.field !== leaf.field || fact.source.kind !== "derived"
+      || !same(fact.source.evidence, outputRefs.length ? outputRefs : [evidenceEntryRef(id("verification", "completion.terminal-result"))])
+      || !same(fact.value, redactEvidenceLeaf({ kind: "workflow-result", workflowId: envelope.workflow }, leaf))) {
+      throw new Error("receipt-output-conflict");
+    }
+  }
+
+  const observations = new Map(receipt.observations.map(fact => [fact.id, fact]));
+  const actions = new Map(receipt.actions.map(action => [action.id, action]));
+  const checkObservation = (nodeId: string, leaf: EvidenceLeaf, scope: EvidenceValueScope, source: Fact["source"]) => {
+    const factId = id("observation", `${nodeId}.${leaf.path}`), fact = observations.get(factId);
+    if (fact?.state !== "satisfied" || fact.field !== leaf.field || !same(fact.source, source)
+      || !same(fact.value, redactEvidenceLeaf(scope, leaf))) throw new Error(`receipt-observation-conflict: ${nodeId}`);
+    observations.delete(factId);
+  };
+  for (const gate of gates) {
+    if ("source" in gate) {
+      const factId = id("observation", `${gate.nodeId}.sourceEvent`), fact = observations.get(factId);
+      if (fact?.state !== "unresolved" || !same(fact.source, { kind: "gate-source-event", gateId: gate.gateId,
+        sourceKind: gate.source.kind, sourceId: gate.source.sourceId, eventId: gate.source.eventId,
+        eventDigest: gate.source.eventDigest, correlationDigest: gate.source.correlationDigest,
+        attempt: gate.source.attempt, resolvedAt: gate.resolvedAt })) throw new Error("receipt-gate-event-conflict");
+      observations.delete(factId);
+      continue;
+    }
+    const owner = { gateId: gate.gateId, resolvedAt: gate.resolvedAt, resolvedBy: gate.resolvedBy };
+    const source: Fact["source"] = gate.runId === envelope.runId ? { kind: "gate-result", ...owner }
+      : { kind: "continued-gate-result", ...owner, sourceRunId: gate.runId, commandId: gate.commandId };
+    for (const leaf of evidenceLeaves(gate.result.value)) {
+      checkObservation(gate.nodeId, leaf, { kind: "gate-result", workflowId: envelope.workflow, gateId: gate.gateId }, source);
+    }
+  }
+  for (const nodeId of new Set(checkpoints.map(row => row.nodeId))) {
+    const record = pickCheckpoint(checkpoints, nodeId, envelope.attempt);
+    if (record === undefined) continue;
+    const read = actions.get(id("action", `${nodeId}.read`)), commit = actions.get(id("action", `${nodeId}.commit`));
+    const marker = receipt.verification.find(row => row.id === id("verification", `node.${nodeId}`));
+    if (marker === undefined && read === undefined && commit === undefined && record.runId !== envelope.runId) continue;
+    if (marker?.obligation !== `node.${nodeId}`) throw new Error("receipt-checkpoint-verification-missing");
+    const fields = evidenceLeaves(commit === undefined ? record.output.value : transactionOutcomeOf(record).output);
+    const asserted = record.assertion;
+    for (const leaf of fields) {
+      const factId = id("observation", `${nodeId}.${leaf.path}`), fact = observations.get(factId);
+      if (asserted !== undefined) {
+        if (fact?.source.kind !== "operator-assertion" || fact.source.step !== asserted.step || fact.source.assertedAt !== asserted.assertedAt
+          || !envelope.stepOmissions?.some(entry => entry.step === asserted.step)) throw new Error("receipt-assertion-conflict");
+        checkObservation(nodeId, leaf, { kind: "task-output", taskId: fact.source.taskId }, fact.source);
+        continue;
+      }
+      const action = commit ?? read;
+      if (action === undefined || fact === undefined) throw new Error("receipt-checkpoint-action-missing");
+      const superseded: Fact[] = [];
+      const expected = observationFact({ composition: receipt.composition, factId, entryId: id, nodeId, taskId: action.taskId,
+        leaf, scope: { kind: "task-output", taskId: action.taskId }, provenance: provenanceFor(record, commit === undefined ? leaf.path : `output.value.${leaf.path}`),
+        replayed: record.runId !== envelope.runId || record.attempt !== envelope.attempt || record.claimGeneration !== run.claimGeneration,
+        checkpointFingerprint: deriveCheckpointOutputDigest(record.output), writtenAt: record.writtenAt, upstream: [],
+        mandatory: fact.mandatory, supersededFacts: superseded });
+      if (expected.source.kind === "derived" && fact.source.kind === "derived") expected.source = fact.source;
+      if (!same(fact, expected)) throw new Error(`receipt-checkpoint-fact-conflict: ${nodeId}`);
+      observations.delete(factId);
+      for (const old of superseded) {
+        if (!same(old, observations.get(old.id))) throw new Error("receipt-superseded-fact-conflict");
+        observations.delete(old.id);
+      }
+    }
+    if (read !== undefined) {
+      if (read.occurredAt !== record.writtenAt || read.writeState !== "not-attempted"
+        || read.kind !== "external-read" && read.kind !== "local-projection") throw new Error("receipt-read-action-conflict");
+      actions.delete(read.id);
+    }
+    if (commit !== undefined) {
+      const matching = writes.filter(({ intent }) => intent.taskId === commit.taskId && intent.runId === envelope.runId);
+      const write = matching[0], outcome = TransactionOutcomeSchema.parse(record.output.value);
+      const prepare = actions.get(id("action", `${nodeId}.prepare`)), proof = commit.proved;
+      if (matching.length !== 1 || write === undefined || prepare?.kind !== "prepare" || prepare.writeState !== "prepared"
+        || prepare.occurredAt !== record.writtenAt || proof === undefined) throw new Error("receipt-write-owner-conflict");
+      const { intent } = write;
+      const durable = intent.status === "committed" ? intent.completionProof : intent.status === "observed-present" ? intent.observedProof : undefined;
+      if (durable !== undefined && !same(durable, outcome.proof)) throw new Error("receipt-write-proof-conflict");
+      const expected = commitActionOf({ id: commit.id, taskId: intent.taskId, occurredAt: record.writtenAt, write });
+      expected.proved = writeProofFromOutcome(intent.taskId, proof.completion, outcome, intent);
+      if (!same(commit, expected)) throw new Error("receipt-write-proof-conflict");
+      actions.delete(prepare.id);
+      actions.delete(commit.id);
+    }
+  }
+  if (observations.size || actions.size) throw new Error("receipt-evidence-owner-missing");
 }
 
 /* ── persistence ─────────────────────────────────────────────────────────── */
@@ -1096,7 +1296,7 @@ export function ensureRunEvidenceReceipt(
     : RunEvidenceReceiptSchema.parse(existingRaw);
   const result = store.getResult(runId);
   const composition = existing?.composition ?? LATEST_RECEIPT_COMPOSITION;
-  const { receipt: derived, checks } = deriveReceipt({
+  const { receipt: derived } = deriveReceipt({
     ...(store.schemaReader === undefined ? {} : { schemaReader: store.schemaReader }),
     descriptor,
     run,
@@ -1110,16 +1310,6 @@ export function ensureRunEvidenceReceipt(
     ...(store.listDelegationsByRun === undefined ? {} : { delegations: store.listDelegationsByRun(runId, existing === undefined ? undefined : RunResultRecordSchema.parse(result)) }),
     ...(store.authenticateSnapshotApproval === undefined ? {} : { authenticateSnapshotApproval: store.authenticateSnapshotApproval }),
   }, composition, existing);
-  if (existing !== undefined) {
-    const rederivation = evaluateReceiptRederivation({
-      run,
-      descriptor,
-      stored: existing,
-      derived,
-      checks,
-    });
-    if (rederivation.state === "incompatible") throw new Error(rederivation.message);
-  }
   const stored = store.insertReceipt(derived);
   return Object.freeze({
     state: stored.state === "inserted" ? "derived" : "existing",

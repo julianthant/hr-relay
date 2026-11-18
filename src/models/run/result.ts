@@ -253,9 +253,9 @@ const previewResultSchemas = new Map<string, z.ZodType<RunPreviewResult>>([
   ["f738e4b4f4f486242d97892b7927f1e5605823b687c59af9da799e83b2b6797b", firstTransactionPreviewSchema],
   ["328c2ad1f69a1425501408231a9f6cf22ec35a0abec986c98fdc7cba10e41077", transactionNumberPreviewSchema],
   ["aa91aab7f1fc10d775a82949af2ab3a7610f6c799dfc7c8678443a183f4776ff", transactionNumberPreviewSchema],
-  [deriveSchemaHash(RunDryRunPreviewResultSchema, "output"), RunDryRunPreviewResultSchema],
-  [deriveSchemaHash(RunDelegatedDryRunPreviewResultSchema, "output"), RunDelegatedDryRunPreviewResultSchema],
-  [deriveSchemaHash(RunPublicationDryRunPreviewResultSchema, "output"), RunPublicationDryRunPreviewResultSchema],
+  ["56c14ccc71d195b045352f4a0c198b9fa0b87245ff4e399ff6f9ad4fe1589a1c", RunDryRunPreviewResultSchema],
+  ["06bdc474498e86c00a7982fce5a5b223704504ccd91f8c4ed2f9fb5384c6984f", RunDelegatedDryRunPreviewResultSchema],
+  ["2dbf8b1c9d095bae59c16f3243dfb05a01cdfdd7b3de8aff42ee3f25742ec373", RunPublicationDryRunPreviewResultSchema],
 ]);
 
 export function isRunPreviewSchemaHash(schemaHash: string): boolean {
@@ -290,7 +290,7 @@ export type RunTerminalEvidenceResult = z.infer<typeof RunTerminalEvidenceResult
 
 const terminalEvidenceSchemaHashes: ReadonlySet<string> = new Set([
   "491980e23e4128e69e199f95f6a56ef735cc08e5419b2c5d587143e2621d18ec",
-  RUN_TERMINAL_EVIDENCE_SCHEMA_HASH,
+  "375dea61ba605dd18f3df49745fa9d8f03eef3328af8a8ca446c877b658b6f94",
 ]);
 
 export function deriveTerminalFailureDigest(failure: FailureRecord): Fingerprint {
@@ -298,8 +298,9 @@ export function deriveTerminalFailureDigest(failure: FailureRecord): Fingerprint
 }
 
 export function terminalEvidenceResult(record: RunResultRecord): RunTerminalEvidenceResult | undefined {
-  return terminalEvidenceSchemaHashes.has(record.resultSchemaHash)
-    ? RunTerminalEvidenceResultSchema.parse(record.result.value) : undefined;
+  if (!terminalEvidenceSchemaHashes.has(record.resultSchemaHash)) return undefined;
+  if (record.result.schemaHash !== record.resultSchemaHash) throw new Error("terminal-evidence-schema-identity-mismatch");
+  return RunTerminalEvidenceResultSchema.parse(record.result.value);
 }
 
 export function createRunTerminalEvidenceResult(run: PredecessorRunRecord, evidence: RunTerminalEvidenceResult): RunResultRecord {
