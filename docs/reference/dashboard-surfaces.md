@@ -761,8 +761,6 @@ canonical command authorization. `src/backend/assistant/service.ts` runs one too
 - The operator's message goes to ChatGPT after `references.ts` masks it: Employee IDs become `[[E<n>.g<generation>]]`
   references; SSNs, email addresses, phone numbers and runs of 10 or more digits become fixed `[redacted …]` markers
   that no tool resolves; typed `[[`/`]]` brackets are neutralized. Names and dates pass as typed (operator decision D1).
-  A text attachment's decoded content gets the same mask. Later turns replay only answered operator turns; refused and
-  delivery-unknown turns and their attachments stay in local history.
 - The developer prompt states the untrusted-data, reference and confirm-only rules and lists the served workflows.
 - Every model call offers every plugin tool from `src/backend/assistant/plugins/` in one strict `relay` namespace.
   A response carries at most one call; an unknown tool or malformed arguments end the turn as a typed refusal.

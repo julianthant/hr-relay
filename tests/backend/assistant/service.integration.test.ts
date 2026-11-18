@@ -573,6 +573,40 @@ it("masks spaced, hyphenated, mixed and unseparated SSNs in the composer text an
   } finally { await w.f.cleanup(); }
 });
 
+it("masks an SSN a stored answered turn still holds when replaying it, keeping its stored references and local text", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(), messageId = randomUUID(), history = w.db.database.authority.assistantHistory, now = w.f.clock.now().toISOString();
+    const stored = "SSN 123 45 6789 for [[E1.g1]]";
+    assert.equal(history.accept({ conversationId, expectedRevision: w.revision(conversationId), messageId, text: stored, modelText: stored, subjectRef: null, attachments: [], now }).state, "accepted");
+    assert.equal(typeof history.settle(conversationId, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: "Noted.", modelText: "Noted." } }, now), "number");
+    w.script.push(assistantMessageStream("Again."));
+    assert.deepEqual(await w.ask("Next", undefined, conversationId), { state: "answered", text: "Again." });
+    const [body] = w.bodies; assert.ok(body);
+    assert.equal(JSON.stringify(body.input).includes("6789"), false);
+    assert.deepEqual(userTexts(body), ["SSN [redacted SSN] for [[E1.g1]]", "Next"]);
+    assert.equal(w.service.conversation(conversationId)?.messages[0]?.text, stored);
+  } finally { await w.f.cleanup(); }
+});
+
+it("keeps no references from a send refused while its request was assembled, so a later send in the chat gets fresh ones", async () => {
+  const w = await world();
+  try {
+    const conversationId = randomUUID(); w.revision(conversationId);
+    const many = Array.from({ length: 500 }, (_, index) => String(20_000_000 + index)).join("\n");
+    const ids = [await stagedId(w, conversationId, "many.txt", "text/plain", new TextEncoder().encode(many))];
+    const refused = await w.service.respond({ conversationId, expectedRevision: w.revision(conversationId), messageId: randomUUID(), message: "Summarize", attachments: ids },
+      new AbortController().signal);
+    assert.deepEqual(refused.kind === "result" && refused.result.state === "refused" && refused.result.code, "ASSISTANT_LIMIT");
+    assert.equal(w.posts(), 0);
+    w.script.push(assistantMessageStream("Found."));
+    assert.deepEqual(await w.ask("Look up 30000000", undefined, conversationId), { state: "answered", text: "Found." });
+    const [body] = w.bodies; assert.ok(body);
+    assert.equal(JSON.stringify(body.input).includes("30000000"), false);
+    assert.match(userTexts(body).at(-1) ?? "", /^Look up \[\[E1\.g\d+\]\]$/u);
+  } finally { await w.f.cleanup(); }
+});
+
 it("masks a text attachment's decoded content like the composer text, on first send and on replay", async () => {
   const w = await world();
   try {

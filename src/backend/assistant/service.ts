@@ -16,7 +16,7 @@ import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, Cha
 import type { Clock } from "../../rules/time/clock.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../runs/commands/refusals.js";
 import { PreflightAdmissionRefusal } from "../../rules/preflight/preflight-admission.js";
-import { AssistantReferenceError, type AssistantReferenceTable, createAssistantReferences, maskOperatorText } from "./references.js";
+import { AssistantReferenceError, type AssistantReferenceTable, createAssistantReferences, maskOperatorText, maskStoredSsn } from "./references.js";
 import { AssistantAuthorizationError, type createAssistantSessionAuthorization } from "./authorization.js";
 import { admitAttachment, AssistantAttachmentRefusal, attachmentMediaType } from "./attachments.js";
 import { AssistantToolRefusal, type AssistantPlugin, type AssistantProposalDraft, type AssistantSessionTool, type AssistantTypedProposalTool } from "./plugins/plugin.js";
@@ -194,7 +194,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         assertCurrent();
         // The table's generation is the turn's ordinal: above every ordinal an earlier process issued tokens for.
         const table = references.table(request.conversationId, options.owner(), history.nextOrdinal(request.conversationId));
-        const masked = maskOperatorText(request.message, table);
+        const masked = table.assemble(() => maskOperatorText(request.message, table));
         const acceptance = history.accept({ conversationId: request.conversationId, expectedRevision: request.expectedRevision, messageId: request.messageId,
           text: request.message, modelText: masked, subjectRef: request.subjectRef ?? null, attachments: request.attachments ?? [], now: options.clock.now().toISOString() });
         if (acceptance.state === "repeat") return { repeat: { conversationId: request.conversationId, messageId: request.messageId, ordinal: acceptance.ordinal,
@@ -223,13 +223,13 @@ export function createAssistantService(options: AssistantServiceOptions) {
           return rows;
         };
         const selectedRun = request.subjectRef === undefined ? undefined : selectedRunReference(request.subjectRef);
-        const input: AssistantInputItem[] = [
+        const input = table.assemble<AssistantInputItem[]>(() => [
           { role: "developer", content: developerPrompt(facts, selectedRun === undefined ? undefined
             : table.issue("R", selectedRun.runId, options.runReferenceLabel(selectedRun.runId, selectedRun.revision), selectedRun.runId, selectedRun.revision), options.clock.now().toISOString().slice(0, 10)) },
           ...history.replay(request.conversationId, current.ordinal).map(row => row.messageId === undefined ? replayed(row)
-            : userTurn(row.modelText, files(history.turnAttachments(row.messageId)), table)),
+            : userTurn(maskStoredSsn(row.modelText), files(history.turnAttachments(row.messageId)), table)),
           userTurn(masked, files(history.turnAttachments(request.messageId)), table),
-        ];
+        ]);
         if (assistantInputMedia(input).bytes > ASSISTANT_CONTEXT_MEDIA_MAX_BYTES || textBytes > ASSISTANT_CONTEXT_TEXT_MAX_BYTES) return { result: refused("ASSISTANT_ATTACHMENT_TOO_LARGE") };
         if (structureBytes(input) > MAX_HISTORY_BYTES) return { result: refused("ASSISTANT_CHAT_FULL") };
         const unrecovered = new Map<string, AssistantFailureCode>(), outcomes = new Map<string, Readonly<{ output: string; code?: AssistantFailureCode }>>(), callIds = new Set<string>();
@@ -337,7 +337,7 @@ function userTurn(text: string, files: readonly (AssistantAttachmentRecord & Rea
 const ATTACHMENT_TEXT = new TextDecoder("utf-8", { fatal: true });
 /** Replay text as plain messages; tool items and reasoning are never replayed. */
 function replayed(row: Readonly<{ role: "operator" | "assistant"; modelText: string }>): AssistantInputItem {
-  if (row.role === "operator") return { role: "user", content: row.modelText };
+  if (row.role === "operator") return { role: "user", content: maskStoredSsn(row.modelText) };
   const parts = row.modelText.match(/[\s\S]{1,8000}/gu) ?? [];
   return { type: "message", role: "assistant", status: "completed", content: parts.map(text => ({ type: "output_text", text })) };
 }
@@ -461,7 +461,7 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
       };
       assertCurrent();
       const table = references.table(conversationId, owner, history.nextOrdinal(conversationId, now()));
-      const masked = maskOperatorText(request.message, table);
+      const masked = table.assemble(() => maskOperatorText(request.message, table));
       // Only a typed yes right after the open proposal's rendered reply answers it; anything else goes to the model and supersedes it.
       const open = options.proposals?.open(conversationId), shown = open?.snapshot;
       const proposalAnswer = shown !== undefined && isTypedYes(request.message) && history.conversation(conversationId, now())?.messages.at(-1)?.id === shown.renderedMessageId
@@ -561,12 +561,12 @@ export function createAssistantM1Service(options: AssistantM1ServiceOptions) {
             return rows;
           };
           const selectedRun = request.subjectRef === undefined ? undefined : selectedRunReference(request.subjectRef);
-          const input: AssistantInputItem[] = [
+          const input = table.assemble<AssistantInputItem[]>(() => [
             { role: "developer", content: developerPrompt(facts, selectedRun === undefined ? undefined : table.issue("R", selectedRun.runId,
               options.runReferenceLabel(selectedRun.runId, selectedRun.revision), selectedRun.runId, selectedRun.revision), now().slice(0, 10)) },
-            ...history.replay(conversationId, acceptance.ordinal, now()).map(row => row.messageId === undefined ? replayed(row) : userTurn(row.modelText, files(row.messageId), table)),
+            ...history.replay(conversationId, acceptance.ordinal, now()).map(row => row.messageId === undefined ? replayed(row) : userTurn(maskStoredSsn(row.modelText), files(row.messageId), table)),
             userTurn(masked, files(messageId), table),
-          ];
+          ]);
           if (assistantInputMedia(input).bytes > ASSISTANT_CONTEXT_MEDIA_MAX_BYTES || textBytes > ASSISTANT_CONTEXT_TEXT_MAX_BYTES) return { reason: "ASSISTANT_ATTACHMENT_TOO_LARGE" };
           if (structureBytes(input) > MAX_HISTORY_BYTES) return { reason: "ASSISTANT_CHAT_FULL" };
           const outcomes = new Map<string, Readonly<{ output: string; code?: AssistantFailureCode }>>(), callIds = new Set<string>(), unrecovered = new Map<string, AssistantFailureCode>();
