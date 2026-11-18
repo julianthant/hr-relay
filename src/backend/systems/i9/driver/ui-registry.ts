@@ -18,8 +18,6 @@ export const I9_CREATION_UI = deepFreeze({
   remoteSection1: (page: Page) => page.getByRole("radio", { name: "Remote - Section 1 Only", exact: true }),
   startDate: (page: Page) => page.getByRole("textbox", { name: "Start Date*", exact: true }),
   createRemote: (page: Page) => page.getByRole("button", { name: "Create I-9", exact: true }),
-  remoteSuccess: (page: Page) => page.getByText(/^Remote Access Form I-9 (?:email\(s\)|message\(s\)) has been sent$/u, { exact: true }),
-  remoteError: (page: Page) => page.locator(".ErrorMessage:visible"),
 });
 
 export const I9_UI_REGISTRY = deepFreeze({
@@ -43,6 +41,5 @@ export const I9_UI_REGISTRY = deepFreeze({
   restricted: (dialog: Locator) => dialog.getByText(/has not been granted access/iu).filter({ visible: true }),
   summaryHeading: (page: Page) => page.getByRole("heading", { name: "I-9 Record Summary Information", exact: true }),
   auditHeader: (page: Page) => page.getByRole("row", { name: /Audit History Event/u }),
-  signedAuditRows: (page: Page) => page.getByRole("row", { name: /Signed Section 2/u }).evaluateAll(rows =>
-    rows.map(row => Array.from(row.querySelectorAll(":scope > td, :scope > [role=cell]"), cell => cell.textContent ?? ""))),
+  signedAuditRows: (page: Page) => page.getByRole("row", { name: /Signed Section 2/u }),
 });

@@ -8,7 +8,7 @@ export function i9SearchRow(overrides: Partial<{ lastName: string; firstName: st
 export function fakeI9Page(options: Readonly<{
   rows?: readonly (readonly string[])[];
   restricted?: boolean;
-  signedCells?: readonly string[] | null;
+  signedRows?: number;
   summaryRoute?: string;
   missingAudit?: boolean;
   missingResults?: boolean;
@@ -22,7 +22,6 @@ export function fakeI9Page(options: Readonly<{
   const actions: string[] = [];
   const fields = new Map<string, string>();
   const rows = options.rows ?? [i9SearchRow()];
-  const signedCells = options.signedCells === undefined ? ["2", "01/01/2030", "Signed Section 2", "Example Representative"] : options.signedCells;
   type Target = "options" | "dialog" | "clear" | "search" | "grid" | "rows" | "row" | "gridcell" | "empty" | "restricted" | "heading" | "header" | "signed" | "field" | "settled";
   function locator(target: Target, index = 0, field = "") {
     const count = (): number => {
@@ -34,7 +33,7 @@ export function fakeI9Page(options: Readonly<{
       }
       if (target === "signed") {
         if (!auditReady) throw new Error("audit was read before it was ready");
-        return signedCells === null ? 0 : 1;
+        return options.signedRows ?? 1;
       }
       return 1;
     };
@@ -61,10 +60,6 @@ export function fakeI9Page(options: Readonly<{
         if (target === "search") searched = true;
       },
       fill: async (value: string) => { fields.set(field, value); },
-      evaluateAll: async () => {
-        if (target !== "signed" || !auditReady) throw new Error(`unexpected row evaluation: ${target}`);
-        return signedCells === null ? [] : [signedCells];
-      },
       allTextContents: async () => {
         if (target === "gridcell") {
           const row = rows[index];

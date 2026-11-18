@@ -1,5 +1,5 @@
 import type { Page } from "playwright";
-import { I9LookupError, I9LookupInputSchema, I9RecordIdsSchema, I9SignerOutputSchema } from "../../../../models/systems/i9/read-section2-signer.js";
+import { I9LookupError, I9LookupInputSchema, I9RecordIdsSchema } from "../../../../models/systems/i9/read-section2-signer.js";
 import { I9SearchCriteriaSchema, I9SearchOutputSchema, I9SearchRowSchema, type I9Driver, type I9SearchRow } from "../../../../models/ui/i9.js";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { I9_APP_ORIGIN, I9_UI_REGISTRY as ui } from "./ui-registry.js";
@@ -29,7 +29,7 @@ export function createI9Driver(assertCurrent: () => void, page: Page, clock: Clo
 
   const driver: I9Driver = {
     ...createI9CreationOperations(assertCurrent, page, clock, {
-      searchEmployees: input => driver.searchEmployees(input), readRecordSummary: input => driver.readRecordSummary(input),
+      searchEmployees: input => driver.searchEmployees(input),
     }),
     system: "i9",
     async searchEmployees(input) {
@@ -89,16 +89,11 @@ export function createI9Driver(assertCurrent: () => void, page: Page, clock: Clo
       recordBrowserAction("opened", "i9.record.summary");
       if (historical) return { i9Status: "historical", signerName: "", ...record };
       await current(() => ui.auditHeader(page).waitFor({ state: "visible", timeout: CONTROL_MS }));
-      const signedRows = await current(() => ui.signedAuditRows(page));
       assertRecordRoute();
-      if (signedRows.length > 1) throw new I9LookupError("I9_LOOKUP_AMBIGUOUS");
-      const [cells] = signedRows;
-      if (cells === undefined) return { i9Status: "unsigned", signerName: "", ...record };
-      const event = cells.at(-2);
-      if (cells.length < 4 || event === undefined || normalize(event) !== "signed section 2") throw new I9LookupError();
-      const signerName = cells.at(-1)?.trim();
-      recordBrowserAction("read", "i9.record.section2-signer");
-      return I9SignerOutputSchema.parse({ i9Status: "signed", signerName, ...record });
+      const signedCount = await current(() => ui.signedAuditRows(page).count());
+      assertRecordRoute();
+      if (signedCount > 1) throw new I9LookupError("I9_LOOKUP_AMBIGUOUS");
+      throw new I9LookupError("I9_LOOKUP_FAILED", { cause: new Error("i9-audit-completion-unverified") });
     },
     async readSection2Signer(input) {
       const criteria = I9LookupInputSchema.parse(input);

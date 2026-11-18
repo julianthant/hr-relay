@@ -4,6 +4,9 @@ import { afterAll, beforeAll, describe, it } from "vitest";
 import { createI9Driver } from "../../../../../src/backend/systems/i9/driver/interpreter.js";
 import { I9_APP_ORIGIN } from "../../../../../src/backend/systems/i9/driver/ui-registry.js";
 import { I9LookupError } from "../../../../../src/models/systems/i9/read-section2-signer.js";
+import { I9_PROFILE_EXAMPLE } from "../../../../../src/models/ui/i9-creation.js";
+import { FingerprintSchema, PositiveIntSchema } from "../../../../../src/rules/identity/ids.js";
+import { mintMutationCapability } from "../../../../../src/workflow-kit/mutation-capability.js";
 
 type Scenario = "empty" | "rows" | "restricted";
 
@@ -27,6 +30,7 @@ function i9App(scenario: Scenario): string {
     <label for="ln">Last Name</label><input id="ln">
     <label for="fn">First Name</label><input id="fn">
     <label for="ssn">Social Security Number</label><input id="ssn">
+    <label for="profile-id">Profile ID</label><input id="profile-id">
   </td></tr></tbody></table>
   <a href="#" id="clear">Clear Search Filters &amp; Results</a>
   <button type="button" id="search">Search</button>
@@ -96,6 +100,20 @@ describe("I-9 search dialog as rendered by I-9 Complete", () => {
 
 const record = { profileId: "900001", i9Id: "900002" };
 const summaryRoute = `/form-I9/summary/${record.profileId}/${record.i9Id}`;
+const profileRoute = `/employee/profile/${record.profileId}`;
+const remoteTarget = { ...I9_PROFILE_EXAMPLE, firstName: "Person", lastName: "Example",
+  expectedName: "Person Example", profileId: record.profileId, startDate: "01/01/2030" };
+const profile = `<!doctype html>
+<input aria-label="First Name (Given Name)*" value="Person">
+<input aria-label="Last Name (Family Name)*" value="Example">
+<input aria-label="Middle Name" value="">
+<input aria-label="Date of Birth" value="01/14/2000">
+<input aria-label="Employee's Email Address" value="hire@example.test">
+<select aria-label="Worksite *" size="2"><option selected>6-000412 Example Worksite</option></select>
+<label><input type="radio">Remote - Section 1 Only</label>
+<input aria-label="Start Date*">
+<button onclick="this.dataset.clicked = 'true'; document.querySelector('.ErrorMessage').hidden = false">Create I-9</button>
+<div class="ErrorMessage" hidden>Fixture submit error</div>`;
 
 function recordSummary(rows: string): string {
   return `<!doctype html>
@@ -105,11 +123,13 @@ function recordSummary(rows: string): string {
 }
 
 describe("I-9 saved record reads", () => {
-  it("reads the signer from a single Section 2 audit event", async () => {
+  it("refuses a preliminary signer when only the audit header and rows are observable", async () => {
     const row = "<tr><td>2</td><td>01/01/2030</td><td>Signed Section 2</td><td>Example Signer</td></tr>";
     await withI9App("rows", async page => {
       const driver = createI9Driver(() => undefined, page);
-      assert.deepEqual(await driver.readRecordSummary(record), { i9Status: "signed", signerName: "Example Signer", ...record });
+      await assert.rejects(driver.readRecordSummary(record), error => error instanceof I9LookupError
+        && error.code === "I9_LOOKUP_FAILED" && error.cause instanceof Error
+        && error.cause.message === "i9-audit-completion-unverified");
     }, { [summaryRoute]: recordSummary(row) });
   });
 
@@ -121,5 +141,34 @@ describe("I-9 saved record reads", () => {
       await assert.rejects(driver.readRecordSummary(record),
         error => error instanceof I9LookupError && error.code === "I9_LOOKUP_AMBIGUOUS");
     }, { [summaryRoute]: recordSummary(rows) });
+  });
+
+  it("refuses to decide unsigned from an audit header with no rows", async () => {
+    await withI9App("rows", async page => {
+      const driver = createI9Driver(() => undefined, page);
+      await assert.rejects(driver.readRecordSummary(record), error => error instanceof I9LookupError
+        && error.cause instanceof Error && error.cause.message === "i9-audit-completion-unverified");
+    }, { [summaryRoute]: recordSummary("") });
+  });
+
+  for (const scenario of ["rows", "empty"] as const) {
+    it(`refuses remote creation authority for ${scenario === "rows" ? "a same-date record" : "an empty search"} without saved-mode evidence`, async () => {
+      await withI9App(scenario, async page => {
+        const driver = createI9Driver(() => undefined, page);
+        const verdict = await driver.probeRemote(remoteTarget);
+        assert.ok(verdict.state === "unknown");
+        assert.equal(verdict.reason, "i9-remote-saved-mode-unverified");
+      }, { [profileRoute]: profile, [summaryRoute]: recordSummary("") });
+    });
+  }
+
+  it("refuses a staged remote creation before clicking Create I-9", async () => {
+    await withI9App("empty", async page => {
+      const driver = createI9Driver(() => undefined, page);
+      await driver.prepareRemote(remoteTarget, async () => {});
+      const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 30_000);
+      await assert.rejects(driver.createRemote(capability), /i9-remote-saved-mode-unverified/u);
+      assert.equal(await page.getByRole("button", { name: "Create I-9", exact: true }).getAttribute("data-clicked"), null);
+    }, { [profileRoute]: profile });
   });
 });

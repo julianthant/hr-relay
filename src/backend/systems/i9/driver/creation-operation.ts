@@ -4,7 +4,7 @@ import { IsoInstantSchema, FingerprintSchema, EvidenceRefSchema } from "../../..
 import type { Page } from "playwright";
 import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
-import { I9_PROFILE_STAGED, I9_REMOTE_STAGED, I9_PROFILE_SUBJECT, I9_SEARCH_RESULTS, I9_SEARCH_READ, I9ProfileProofSchema, I9RemoteProofSchema,
+import { I9_PROFILE_STAGED, I9_REMOTE_STAGED, I9_PROFILE_SUBJECT, I9_SEARCH_RESULTS, I9_SEARCH_READ, I9ProfileProofSchema,
   I9ProfileTargetSchema, I9RemoteTargetSchema, i9ProfileKey, i9RemoteKey,
   type I9CreationDriver, type I9ProfileTarget, type I9RemoteTarget } from "../../../../models/ui/i9-creation.js";
 import type { I9Driver } from "../../../../models/ui/i9.js";
@@ -16,11 +16,12 @@ import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { I9_APP_ORIGIN, I9_CREATION_UI as ui } from "./ui-registry.js";
 
 const CONTROL_MS = 15_000;
+const REMOTE_MODE_UNVERIFIED = "i9-remote-saved-mode-unverified";
 const normalize = (value: string) => value.trim().replace(/\s+/gu, " ").toLowerCase();
 const usDate = (value: string) => `${value.slice(5, 7)}/${value.slice(8, 10)}/${value.slice(0, 4)}`;
 
 export function createI9CreationOperations(assertCurrent: () => void, page: Page, clock: Clock,
-  reads: Pick<I9Driver, "searchEmployees" | "readRecordSummary">): I9CreationDriver {
+  reads: Pick<I9Driver, "searchEmployees">): I9CreationDriver {
   let stagedProfile: I9ProfileTarget | undefined;
   let stagedRemote: I9RemoteTarget | undefined;
   const field = (key: "firstName" | "lastName" | "middleName" | "ssn" | "dob" | "email") => ui.field(page, key);
@@ -71,7 +72,7 @@ export function createI9CreationOperations(assertCurrent: () => void, page: Page
     return I9ProfileProofSchema.parse({ kind: "i9-profile", profileId: match[1], firstName: observed.firstName,
       lastName: observed.lastName, dob: input.dob, email: observed.email, departmentNumber: input.departmentNumber, source: "saved-profile-read" });
   };
-  const operations: I9CreationDriver = {
+  return {
     async read(id) {
       if (id !== I9_PROFILE_SUBJECT) throw new Error("i9-write-observation-refused");
       if (stagedProfile !== undefined) {
@@ -145,22 +146,18 @@ export function createI9CreationOperations(assertCurrent: () => void, page: Page
       const input = I9RemoteTargetSchema.parse(raw); requireApp(); stagedProfile = undefined; stagedRemote = undefined;
       await page.goto(`${I9_APP_ORIGIN}/employee/profile/${input.profileId}`, { waitUntil: "domcontentloaded", timeout: CONTROL_MS });
       requireProfileRoute(input.profileId);
-      const observed = await requireIdentity(input);
+      await requireIdentity(input);
       const search = await reads.searchEmployees({ profileId: input.profileId });
       if (search.restricted || search.rows.some(row => row.profileId !== input.profileId
         || normalize(row.firstName) !== normalize(input.firstName) || normalize(row.lastName) !== normalize(input.lastName))) return unknown("record-search-unverified");
       const rows = search.rows.filter(row => row.i9Id !== "" && row.startDate === input.startDate);
-      if (rows.length === 0) {
-        if (search.rows.length > 1 || search.rows.some(row => row.i9Id !== "")) return unknown("record-list-absence-unverified");
-        return absent(i9RemoteKey(input));
+      if (rows.length === 0 && (search.rows.length > 1 || search.rows.some(row => row.i9Id !== ""))) {
+        return unknown("record-list-absence-unverified");
       }
       if (rows.length > 1) return { state: "ambiguous", matches: rows.length, observedAt: IsoInstantSchema.parse(clock.now().toISOString()),
         queryDigest: FingerprintSchema.parse(sha256Hex(i9RemoteKey(input))), evidence: rows.map(row => EvidenceRefSchema.parse(`observation:${redactedEvidenceId("i9-match", [row.i9Id])}`)) };
-      const row = rows[0]; if (row === undefined) throw new Error("i9-record-search-inconsistent");
-      const summary = await reads.readRecordSummary({ profileId: row.profileId, i9Id: row.i9Id });
-      if (!("profileId" in summary) || summary.profileId !== input.profileId || summary.i9Id !== row.i9Id) return unknown("record-summary-unverified");
-      return { state: "present", proof: I9RemoteProofSchema.parse({ kind: "i9-remote-record", profileId: row.profileId,
-        i9Id: row.i9Id, startDate: row.startDate, email: observed.email, source: "i9-record-read" }) };
+      // The creation radio proves selection only. Without a saved-mode read, even absence cannot authorize creation.
+      return unknown(REMOTE_MODE_UNVERIFIED);
     },
     async prepareRemote(raw, capture) {
       const input = I9RemoteTargetSchema.parse(raw); stagedProfile = undefined; stagedRemote = undefined;
@@ -183,21 +180,7 @@ export function createI9CreationOperations(assertCurrent: () => void, page: Page
       if (containsDryRunSample(target)) throw new Error("i9-remote-preview-target-refused");
       requireProfileRoute(target.profileId);
       stagedRemote = undefined;
-      await requireIdentity(target);
-      if (await ui.startDate(page).inputValue() !== target.startDate) throw new Error("i9-remote-start-date-changed");
-      await clickWithMutationCapability(capability, ui.createRemote(page), CONTROL_MS);
-      recordBrowserAction("clicked", "i9.remote.create");
-      const success = ui.remoteSuccess(page);
-      const error = ui.remoteError(page);
-      await Promise.race([success.waitFor({ state: "visible", timeout: CONTROL_MS }), error.waitFor({ state: "visible", timeout: CONTROL_MS })]);
-      if (await error.isVisible() || !await success.isVisible()) throw new Error("i9-remote-submit-unverified");
-      await ui.ok(page).click({ timeout: CONTROL_MS });
-      await page.waitForURL(url => url.origin === I9_APP_ORIGIN && url.pathname === `/employee/profile/${target.profileId}` && url.hash === ""
-        && (url.search === "" || url.searchParams.size === 1 && url.searchParams.get("isNewProfileCreated") === "true"), { timeout: CONTROL_MS });
-      const verdict = await operations.probeRemote(target);
-      if (verdict.state !== "present") throw new Error("i9-remote-saved-record-unverified");
-      return verdict.proof;
+      throw new Error(REMOTE_MODE_UNVERIFIED);
     },
   };
-  return operations;
 }

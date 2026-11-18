@@ -6,15 +6,17 @@ import { fakeI9Page, i9SearchRow } from "../../../../support/helpers/browser/fak
 
 const input = { lastName: "Example", firstName: "Person" };
 const record = { profileId: "900001", i9Id: "900002" };
+const auditUnverified = (error: unknown) => error instanceof I9LookupError && error.code === "I9_LOOKUP_FAILED"
+  && error.cause instanceof Error && error.cause.message === "i9-audit-completion-unverified";
 const driverFor = (options: Parameters<typeof fakeI9Page>[0] = {}) => {
   const fixture = fakeI9Page(options);
   return { ...fixture, driver: createI9Driver(() => undefined, fixture.page) };
 };
 
 describe("I-9 employee search and summary", () => {
-  it("searches the exact fields and reads the last signer cell after audit readiness", async () => {
-    const { driver, fields, actions } = driverFor({ signedCells: ["icon", "2", "01/01/2030", "Signed Section 2", " Example Representative "] });
-    assert.deepEqual(await driver.readSection2Signer({ ...input, ssn: "123456789" }), { i9Status: "signed", signerName: "Example Representative", ...record });
+  it("searches the exact fields but refuses a signer when only the audit header and rows are visible", async () => {
+    const { driver, fields, actions } = driverFor();
+    await assert.rejects(driver.readSection2Signer({ ...input, ssn: "123456789" }), auditUnverified);
     assert.equal(fields.get("Last Name"), input.lastName);
     assert.equal(fields.get("/First Name/u"), input.firstName);
     assert.equal(fields.get("Social Security Number"), "123-45-6789");
@@ -29,8 +31,8 @@ describe("I-9 employee search and summary", () => {
     await assert.rejects(driverFor({ rows: [], missingResults: true }).driver.readSection2Signer(input), /never rendered/u);
   });
 
-  it("distinguishes unsigned electronic records, incomplete records and historical imports", async () => {
-    assert.deepEqual(await driverFor({ signedCells: null }).driver.readSection2Signer(input), { i9Status: "unsigned", signerName: "", ...record });
+  it("refuses an unproved empty audit and distinguishes incomplete records and historical imports", async () => {
+    await assert.rejects(driverFor({ signedRows: 0 }).driver.readSection2Signer(input), auditUnverified);
     const incomplete = driverFor({ rows: [i9SearchRow({ nextAction: " Complete   Section 2 ", i9Id: "" })] });
     assert.deepEqual(await incomplete.driver.readSection2Signer(input), { i9Status: "unsigned", signerName: "" });
     assert.equal(incomplete.actions.some(action => action.includes("/summary/")), false);
@@ -39,8 +41,9 @@ describe("I-9 employee search and summary", () => {
   });
 
   it("selects the first eligible record only within one exact-name employee profile", async () => {
-    const { driver } = driverFor({ rows: [i9SearchRow({ nextAction: "Complete Section 1", i9Id: "" }), i9SearchRow()] });
-    assert.equal((await driver.readSection2Signer(input)).i9Status, "signed");
+    const { driver, actions } = driverFor({ rows: [i9SearchRow({ nextAction: "Complete Section 1", i9Id: "" }), i9SearchRow()] });
+    await assert.rejects(driver.readSection2Signer(input), auditUnverified);
+    assert.ok(actions.includes("goto:https://wwwe.i9complete.com/form-I9/summary/900001/900002"));
     for (const rows of [
       [i9SearchRow(), i9SearchRow({ profileId: "900003" })],
       [i9SearchRow({ firstName: "Other Person" })],
@@ -48,15 +51,16 @@ describe("I-9 employee search and summary", () => {
   });
 
   it("reads a blank next action from the summary and refuses a missing I-9 ID", async () => {
-    assert.equal((await driverFor({ rows: [i9SearchRow({ nextAction: "" })] }).driver.readSection2Signer(input)).i9Status, "signed");
+    const { driver, actions } = driverFor({ rows: [i9SearchRow({ nextAction: "" })] });
+    await assert.rejects(driver.readSection2Signer(input), auditUnverified);
+    assert.ok(actions.includes("goto:https://wwwe.i9complete.com/form-I9/summary/900001/900002"));
     await assert.rejects(driverFor({ rows: [i9SearchRow({ nextAction: "", i9Id: "" })] }).driver.readSection2Signer(input), I9LookupError);
   });
 
-  it("fails malformed rows, missing audit, blank signer and mismatched summary routes", async () => {
+  it("fails malformed rows, missing audit and mismatched summary routes", async () => {
     for (const options of [
       { rows: [["too", "short"]] },
-      { missingAudit: true, signedCells: null },
-      { signedCells: ["2", "date", "Signed Section 2", ""] },
+      { missingAudit: true, signedRows: 0 },
       { summaryRoute: "https://wwwe.i9complete.com/form-I9/summary/900003/900004" },
       { summaryRoute: "https://wwwe.i9complete.com/Account/Login" },
       { routeAfterAudit: "https://wwwe.i9complete.com/form-I9/summary/900003/900004" },
