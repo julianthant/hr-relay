@@ -4,6 +4,7 @@ import { I9CheckInput } from "../../../../models/workflows/i9-check/input.js";
 import { ReadI9CheckRows } from "../../../../models/workflows/i9-check-start/read-rows.js";
 import { ReadI9CheckPublication } from "../../../../models/workflows/i9-check-start/read-publication.js";
 import { I9CheckStartInput, i9CheckStartMatchKey } from "../../../../models/workflows/i9-check/start.js";
+import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import { FingerprintSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import { i9CheckWorkbookTable } from "../../../../rules/i9-check/workbook.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
@@ -32,7 +33,7 @@ const step = Object.freeze({
           { id: "name", label: "Employee name", taskFields: [{ nodeId: "read-rows", kind: "output", fieldPath: "tracker.rows.employeeName" }], example: "Morrow, Bea",
             source: { origin: "Approved PDF records", detail: "The person whose I-9 sections you approved.",
               read: { stepKey: "documents", page: "I-9 PDFs and approved records", field: "Approved person" }, chain: [] } },
-          { id: "eid", label: "Employee ID", taskFields: [{ nodeId: "read-rows", kind: "output", fieldPath: "tracker.rows.ucpathEmplId" }], example: "10000001",
+          { id: "eid", label: "Employee ID", taskFields: [{ nodeId: "read-rows", kind: "output", fieldPath: "tracker.rows.ucpathEmplId" }], example: PERSON_LOOKUP_EXAMPLE_EID,
             source: { origin: "Person check", detail: "The Employee ID confirmed by the delegated UCPath retention check; absent when identity is unresolved.", chain: [] } },
           { id: "result", label: "UCPath result", taskFields: [{ nodeId: "read-rows", kind: "output", fieldPath: "tracker.rows.foundInUcpath" }], example: "Yes",
             source: { origin: "Person check", detail: "Whether UCPath found one person, no person or an ambiguous identity.", chain: [] } },

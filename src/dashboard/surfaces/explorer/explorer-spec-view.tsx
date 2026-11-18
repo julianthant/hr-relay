@@ -10,7 +10,7 @@ import { PickTableView } from "../shared/steps/pick-table-view.js";
 import { StepFrame } from "../shared/steps/step-frame.js";
 import { ExplorerSource } from "./explorer-source.js";
 import type { ExplorerPickerEntry } from "./explorer-picker-model.js";
-import { fieldSource, resolveExplorer, rowValue, systemName, visible, type SpecCard, type SpecDecision, type SpecRow, type SpecValues } from "./explorer-spec.js";
+import { fieldSource, resolveExplorer, rowValue, systemName, visible, type SpecBlock, type SpecCard, type SpecDecision, type SpecRow, type SpecValues } from "./explorer-spec.js";
 
 type ExplorerWorkflowOption = Pick<ExplorerPickerEntry, "id" | "title"> & Partial<Pick<ExplorerPickerEntry, "depth">>;
 

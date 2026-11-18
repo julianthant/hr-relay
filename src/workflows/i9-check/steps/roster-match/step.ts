@@ -1,5 +1,6 @@
 import { ReadRetentionRow } from "../../../../models/workflows/i9-check/read-retention-row.js";
 import { I9CheckInput } from "../../../../models/workflows/i9-check/input.js";
+import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
@@ -27,7 +28,7 @@ export const rosterMatch = Object.freeze({
         fields: [
           { id: "name", label: "Employee name", inputField: "person.name", example: "Morrow, Bea",
             source: { origin: "Approved PDF record", detail: "The approved name retained on the results row.", chain: [] } },
-          { id: "employee-id", label: "Employee ID", taskFields: [{ nodeId: "retention-row", kind: "output", fieldPath: "row.ucpathEmplId" }], example: "10000001", when: [{ "retention-identity": ["found"] }],
+          { id: "employee-id", label: "Employee ID", taskFields: [{ nodeId: "retention-row", kind: "output", fieldPath: "row.ucpathEmplId" }], example: PERSON_LOOKUP_EXAMPLE_EID, when: [{ "retention-identity": ["found"] }],
             source: { origin: "UCPath", detail: "The Employee ID confirmed by identifier matching or the hire-date comparison.", chain: [] } },
           { id: "pps-id", label: "PPS ID", taskFields: [{ nodeId: "retention-row", kind: "output", fieldPath: "row.ppsEid" }], example: "700001",
             source: { origin: "Captured retention roster", detail: "The matching roster row or the approved roster seed when no row matches.", chain: [] } },

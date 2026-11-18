@@ -1,5 +1,6 @@
 import { ReadMatchOutcome } from "../../../../models/workflows/i9-check/read-match-outcome.js";
 import { I9CheckInput } from "../../../../models/workflows/i9-check/input.js";
+import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
@@ -57,7 +58,7 @@ export const personMatch = Object.freeze({
         fields: [
           { id: "hire-date", label: "Hire date", taskFields: [{ nodeId: "initial-name-search", kind: "output", fieldPath: "results.startDate" }], example: "2020-06-15",
             source: { origin: "UCPath", detail: "Each candidate's start date, or effective date when start date is absent.", chain: [] } },
-          { id: "candidate-id", label: "Employee ID", taskFields: [{ nodeId: "initial-name-search", kind: "output", fieldPath: "results.emplId" }], example: "10000001",
+          { id: "candidate-id", label: "Employee ID", taskFields: [{ nodeId: "initial-name-search", kind: "output", fieldPath: "results.emplId" }], example: PERSON_LOOKUP_EXAMPLE_EID,
             source: { origin: "UCPath", detail: "The Employee ID on a candidate's Person Organizational Summary record; not yet confirmed as this person.", chain: [] } },
         ]
       },
@@ -76,7 +77,7 @@ export const personMatch = Object.freeze({
           }
         ],
         fields: [
-          { id: "employee-id", label: "Employee ID", taskFields: [{ nodeId: "match-outcome", kind: "output", fieldPath: "identity.eid" }], example: "10000001",
+          { id: "employee-id", label: "Employee ID", taskFields: [{ nodeId: "match-outcome", kind: "output", fieldPath: "identity.eid" }], example: PERSON_LOOKUP_EXAMPLE_EID,
             source: { origin: "UCPath", detail: "The unique identity confirmed by the identifier search, when one is found.", chain: [] } },
           { id: "confirmed-name", label: "Confirmed name", taskFields: [{ nodeId: "match-outcome", kind: "output", fieldPath: "identity.name" }], example: "Morrow, Bea",
             source: { origin: "UCPath", detail: "The name confirmed in Person Organizational Summary for the identifier match.", chain: [] } },

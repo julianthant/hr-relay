@@ -77,7 +77,7 @@ function both(choices: Choices, ...gates: readonly (When | undefined)[]): When |
   let joined: readonly Condition[] | undefined;
   for (const gate of gates) {
     if (gate === undefined) continue;
-    joined = (joined ?? [{}]).flatMap(left => gate.flatMap(right => join(left, right) ?? []));
+    joined = (joined ?? [{}]).flatMap((left): Condition[] => gate.flatMap((right): Condition[] => { const next = join(left, right); return next === undefined ? [] : [next]; }));
     if (joined.length === 0) throw new Error(`explorer gates ${JSON.stringify(gates)} admit no run`);
   }
   return joined === undefined ? undefined : simplify(joined, choices);
@@ -237,7 +237,7 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
     const { shape } = nodeWire(id);
     const branches = nodes.flatMap((node): When[] => {
       if (node.shape.kind !== "branch") return [];
-      const selected = node.shape.cases.filter(branch => branch.nodes.includes(id)).map(branch => branch.name);
+      const selected = node.shape.cases.filter(branch => branch.nodes.some(node => node === id)).map(branch => branch.name);
       return selected.length === 0 ? [] : [[{ [node.id]: selected }]];
     });
     return both(known, run.conditionGate(shape.kind === "task" || shape.kind === "gate" ? shape.condition : undefined), ...branches);

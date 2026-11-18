@@ -115,7 +115,8 @@ it("follows the person's identifier result through the conditional hire-date sea
   }
   for (const value of ["", "Keep", "Shred"]) {
     const outcome = retention.find(decision => decision.id === "retention-action")?.outcomes.find(candidate => candidate.value === value);
-    assert.ok(outcome?.then.trim(), value);
+    assert.ok(outcome, value);
+    assert.ok(outcome.then.trim(), value);
     assert.equal(outcome.stops, false);
   }
   const checks = blocks(spec, "reference-check", "decision")[0]; assert.ok(checks);
