@@ -49,10 +49,14 @@ const reviewEntry = entries.operatorGate(REFERENCE_CHECK_REVIEW_GATE, {
 const ReferenceCheckStepResultSchema = z.strictObject({ check: VerifyWorkbookPerson.output.nullable() });
 
 /** Checks the Employee ID the hire review settled on; a new hire has none yet, so its check finds no person and never asks. */
-export function buildReferenceCheck(author: WorkflowAuthor<typeof OnboardingInput>, crm: ReturnType<typeof buildCrmData>, reviewed: ReturnType<typeof buildHireReview>) {
-  const check = author.task(checkEntry, [crm.plan, reviewed.approval], ({ outputs }) => {
-    const approval = outputs[ONBOARDING_WRITE_REVIEW_GATE], employee = outputs["hire-plan"].employee;
-    return { typeId: REFERENCE_CHECK.id, eid: approval.decision === "existing-person" ? approval.emplId : null, name: `${employee.firstName} ${employee.lastName}` };
+export function buildReferenceCheck(author: WorkflowAuthor<typeof OnboardingInput>, crm: ReturnType<typeof buildCrmData>,
+  ucpath: ReturnType<typeof buildUcpathSearch>, reviewed: ReturnType<typeof buildHireReview>) {
+  const check = author.task(checkEntry, [crm.plan, ucpath.subject, reviewed.approval], ({ outputs }) => {
+    const approval = outputs[ONBOARDING_WRITE_REVIEW_GATE], subject = outputs["hire-subject"], employee = outputs["hire-plan"].employee;
+    // With no review the hire-subject settled the person by name, DOB and SSN.
+    const eid = approval === undefined ? subject.state === "existing-person" ? subject.person.emplId : null
+      : approval.decision === "existing-person" ? approval.emplId : null;
+    return { typeId: REFERENCE_CHECK.id, eid, name: `${employee.firstName} ${employee.lastName}` };
   });
   const stop = author.task(stopEntry, [check], ({ outputs, dryRun }) => ({ check: outputs[REFERENCE_CHECK_NODE] ?? null, writes: dryRun === undefined }));
   const review = author.gate(reviewEntry, [stop]);
@@ -72,7 +76,7 @@ export const onboardingReferenceCheckDefinition = defineStep({
       label: REFERENCE_CHECK_STEP.label, summary: "Reviews one hire and checks the reviewed Employee ID against the picked reference spreadsheets.",
       steps: (author: WorkflowAuthor<typeof OnboardingInput>) => {
         const crm = buildCrmData(author), ucpath = buildUcpathSearch(author, crm), i9 = buildI9Search(author, crm, ucpath);
-        const reviewed = buildHireReview(author, crm, ucpath, i9), reference = buildReferenceCheck(author, crm, reviewed);
+        const reviewed = buildHireReview(author, crm, ucpath, i9), reference = buildReferenceCheck(author, crm, ucpath, reviewed);
         return { steps: [...crm.steps, ...ucpath.steps, ...i9.steps, ...reviewed.steps, ...reference.steps], result: reference.result };
       },
     }),

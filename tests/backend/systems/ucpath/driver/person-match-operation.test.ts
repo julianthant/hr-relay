@@ -63,6 +63,29 @@ describe("UCPath Match guarded decisions", () => {
       assert.equal(absent.dropped.length, 1);
     }
   });
+  it("confirms the one exact-name hit of a name, DOB and SSN search without the Person Org veto", async () => {
+    const calls: string[] = [];
+    const port = { search: async () => { calls.push("search"); return [hit]; }, confirm: async () => { calls.push("confirm"); return org("Example, Person Middle"); } };
+    const output = await searchPersonMatchWithPort(() => undefined, port, input);
+    assert.deepEqual(output, { hits: [hit], confirmed: [hit], dropped: [] });
+    assert.deepEqual(calls, ["search"]);
+  });
+  it("keeps the Person Org veto without SSN, over several hits, and for a hit under another first name", async () => {
+    const second = { emplId: EidSchema.parse("10000002"), name: "Example, Person" };
+    for (const [criteria, hits] of [
+      [{ lastName: "Example", firstName: "Person", dob: "01/15/2000" }, [hit]],
+      [{ lastName: "Example", firstName: "Person", ssn: "123456789" }, [hit]],
+      [input, [hit, second]],
+      [input, [{ ...hit, name: "Example, Other" }]],
+    ] as const) {
+      let confirmations = 0;
+      const output = await searchPersonMatchWithPort(() => undefined, {
+        search: async () => hits, confirm: async () => { confirmations++; return org("Example, Person Middle"); },
+      }, criteria);
+      assert.deepEqual(output.confirmed, []);
+      assert.equal(confirmations, hits.length);
+    }
+  });
   it("refuses complete-set drift, including a changed rejected surname", async () => {
     for (const restored of [[], [{ ...hit, name: "Example, Another" }], [hit, { ...hit, emplId: EidSchema.parse("10000002") }]]) {
       let searches = 0;

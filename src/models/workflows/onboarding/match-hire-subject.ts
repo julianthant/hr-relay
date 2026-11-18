@@ -5,7 +5,8 @@ import { defineTaskContract } from "../../task/task-contract.js";
 
 export const HireSubjectSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("new-hire"), candidateEids: z.array(EidSchema).length(0) }),
-  z.strictObject({ state: z.literal("existing-person"), person: UcpathMatchHitSchema }),
+  // `matchedBy` is set only when a name, DOB and SSN search settled the person; the hire review then has nothing to decide.
+  z.strictObject({ state: z.literal("existing-person"), person: UcpathMatchHitSchema, matchedBy: z.literal("name-dob-ssn").optional() }),
   z.strictObject({ state: z.literal("review-required"), candidates: z.array(UcpathMatchHitSchema).min(1) }),
 ]);
 
@@ -13,7 +14,7 @@ export const OnboardingMatchHireSubject = defineTaskContract({
   id: taskId("workflow:onboarding/match-hire-subject"), title: "Check UCPath duplicate identity", effect: "read",
   input: z.strictObject({
     mode: z.enum(["new-hire", "rehire"]), firstName: z.string().min(1), lastName: z.string().min(1),
-    match: SearchPersonMatchOutputSchema,
+    ssnSearched: z.boolean(), match: SearchPersonMatchOutputSchema,
   }), output: HireSubjectSchema,
   errorCodes: ["ONBOARDING_MATCH_INVALID", "ONBOARDING_EXISTING_PERSON_REQUIRED"],
   subject: { kind: "none", reason: "pure classification of UCPath Search/Match and Person Org confirmation against the roster-snapshot legal name" },
