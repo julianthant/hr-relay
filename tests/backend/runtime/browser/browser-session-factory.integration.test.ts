@@ -12,6 +12,7 @@ import { join,resolve as resolvePath } from "node:path";
 import { tsImport } from "tsx/esm/api";
 import { beforeEach, describe,it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { FullPageCaptureRestoreError } from "../../../../src/backend/runtime/browser/full-page-capture.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { assertFastDuoReady, BrowserProfileAdmissionSchema, browserSignInFingerprint, DuoProvisioningError, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError, workerProfileDirectory, type BrowserDeadlineScheduler } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import type {
@@ -383,6 +384,71 @@ describe("worker browser session factory", () => {
       } finally { await resource.close({ reason: "worker-stop" }); }
     });
   });
+
+  for (const phase of ["observer cleanup", "final secret probe"] as const) {
+    for (const failure of ["detachment", "unrelated error"] as const) {
+      const detachFailure = failure === "detachment";
+      const title = detachFailure ? `returns the verified image when a child frame detaches during ${phase}`
+        : `reports a genuine ${phase} error even when the child frame detaches`;
+      it(title, async () => {
+        await withTempRuntime(async ({ config }) => {
+          const launcher = fakeLauncher();
+          const main = launcher.page.mainFrame();
+          const childDocument = fakePage({ url: "https://example.test/embedded" }).mainFrame();
+          let childDetached = false;
+          let observerStopped = false;
+          const message = detachFailure ? "Frame was detached" : "Error: fixture operation failed";
+          const call = phase === "observer cleanup" ? "frame.evaluate" : "locator.count";
+          const fault = new Error(`${call}: ${message}`);
+          const detachDuringCall = async (): Promise<never> => {
+            await Promise.resolve();
+            childDetached = true;
+            launcher.page.emitFrameEvent("framedetached", child);
+            throw fault;
+          };
+          const child: typeof main = {
+            ...childDocument,
+            isDetached: () => childDetached,
+            evaluate: async (callback, arg) => {
+              const stopsObserver = arg === undefined && callback.toString().includes("__relaySsnWatch?.stop()");
+              if (stopsObserver && phase === "observer cleanup") return detachDuringCall();
+              const value = await childDocument.evaluate(callback, arg);
+              if (stopsObserver) observerStopped = true;
+              return value;
+            },
+            locator(selector) {
+              const locator = childDocument.locator(selector);
+              return { ...locator, count: async () => {
+                if (observerStopped && selector.includes('input[type="password"]')) return detachDuringCall();
+                return locator.count();
+              } };
+            },
+          };
+          launcher.page.frames = () => childDetached ? [main] : [main, child];
+          const resource = await factoryFor(config, launcher, recordingBindings()).open(OPEN_INPUT);
+          try {
+            await resource.authentication.authenticate("ucpath", {});
+            const pending = resource.screenshot?.();
+            assert.ok(pending);
+            if (!detachFailure && phase === "observer cleanup") {
+              await assert.rejects(pending, error => error instanceof FullPageCaptureRestoreError && error.errors.includes(fault));
+            } else {
+              const screenshot = await pending;
+              if (detachFailure) {
+                assert.ok(screenshot.state === "available", screenshot.state === "unavailable" ? screenshot.reason : undefined);
+                assert.equal(screenshot.pageVersion, 1);
+                assert.deepEqual(Buffer.from(screenshot.bytes), PNG.sync.write(new PNG({ width: config.display.screenWidth + 24, height: config.display.screenHeight })));
+              } else {
+                assert.deepEqual(screenshot, { state: "unavailable", reason: "verification-failed", detail: "secret-check-locator-count-error",
+                  pageVersion: 1, sessionId: SESSION_ID, observedAt: CLOCK.now().toISOString() });
+              }
+            }
+            assert.equal(child.isDetached(), true);
+          } finally { await resource.close({ reason: "worker-stop" }); }
+        });
+      });
+    }
+  }
 
   it("launches the run's headed presentation in its own profile partition", async () => {
     await withTempRuntime(async ({ config }) => {
