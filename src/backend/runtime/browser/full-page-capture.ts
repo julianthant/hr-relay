@@ -185,7 +185,7 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
         else targetWindow.scrollTo({ left, top, behavior: "instant" });
         const r = target?.getBoundingClientRect() ?? { left: 0, top: 0, width: vw, height: Math.min(vh, scrollHeight) };
         // Chromium paints a box at its pixel-snapped edges, scrolled content with it; a sub-pixel clip loses a band row.
-        const dpr = window.devicePixelRatio;
+        const dpr = window.devicePixelRatio || 1;
         const left0 = Math.max(0, r.left + (target?.clientLeft ?? 0));
         const top0 = Math.max(0, r.top + (target?.clientTop ?? 0));
         const x = Math.round(left0 * dpr) / dpr;
