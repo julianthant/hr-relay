@@ -658,7 +658,7 @@
       "file": "tests/architecture/storage/native-doctor-limits.test.ts",
       "status": "active",
       "owner": "docs/reference/stores.md",
-      "invariant": "Doctor refuses excess native event count, UTF-8 payload bytes and run identities before parsing, without changing authority bytes.",
+      "invariant": "Doctor refuses an oversized native event or excess run identities among the timeline rows it inspects, before parsing and without changing authority bytes. It skips debug and note rows and reads the rest one page at a time, re-reading a run's pre-root events from the same snapshot instead of buffering them, so timeline length set by ordinary retention never refuses inspection.",
       "replacementRequired": true
     },
     {
