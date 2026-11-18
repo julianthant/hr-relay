@@ -2,9 +2,10 @@ import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { MOCK_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
+import { mockOutDir } from "./helpers/out-dir.js";
 
 // Decision cards with buttons (synthetic reference fixtures): footer buttons are 28px. Frames go to the gitignored .work folder.
-const OUT = `${process.env.NOTIFICATIONS_MOCK_OUT ?? "/Users/julianhein/Projects/hr-relay/.work/next-20261101/notifications-mock"}/sweep`;
+const OUT = `${mockOutDir(process.env.NOTIFICATIONS_MOCK_OUT, "notifications-mock")}/sweep`;
 const THEMES = (process.env.NOTIFICATIONS_MOCK_THEMES ?? "light,dark").split(",") as ("light" | "dark")[];
 test.use({ deviceScaleFactor: Number(process.env.NOTIFICATIONS_MOCK_SCALE ?? 1) });
 let server: FixtureServer;

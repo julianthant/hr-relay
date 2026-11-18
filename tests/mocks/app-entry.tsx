@@ -11,6 +11,7 @@ import { DashboardApp } from "../../src/dashboard/app/dashboard-app.js";
 import { productWorkflowComposition } from "../../src/dashboard/app/workflow-sources.js";
 import { servedFixtureSources, MOCK_WORKFLOW_COMPOSITION } from "./helpers/workflow-composition.js";
 import { RestoreNoticeContext } from "../../src/dashboard/surfaces/settings/storage/storage-settings-model.js";
+import { ToastProvider } from "../../src/dashboard/ds/ui.js";
 import "../../src/dashboard/app/index.css";
 
 Reflect.set(window, "relayMockSurfaces", true);
@@ -38,6 +39,6 @@ const restoredNotice = fixture === "restore-notice" ? { backupCapturedAt: "2026-
 const theme: unknown = Reflect.get(window, "relayMockTheme");
 const preferences = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: theme === "light" ? "light" : "dark", animations: Reflect.get(window, "relayMockMotion") !== false });
 const accountPort = createServedChatGptAccountPort(client, { open: () => ({ navigate: () => undefined, close: () => undefined }) });
-createRoot(container).render(<PersonPreferencesContext.Provider value={preferences}>{ControlPreview ? <Suspense fallback={<p role="status">Loading control preview…</p>}><ControlPreview /></Suspense> : <StrictMode><DashboardClientProvider client={client}>
+createRoot(container).render(<PersonPreferencesContext.Provider value={preferences}>{ControlPreview ? <ToastProvider><Suspense fallback={<p role="status">Loading control preview…</p>}><ControlPreview /></Suspense></ToastProvider> : <StrictMode><DashboardClientProvider client={client}>
   <RestoreNoticeContext.Provider value={restoredNotice}><ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} profileSource={fixture === "picked-onboarding" || fixture === "run-history" || personAppearance ? "served" : "mock"} previewPreferences={personAppearance ? undefined : preferences} /></ChatGptAccountContext.Provider></RestoreNoticeContext.Provider>
 </DashboardClientProvider></StrictMode>}</PersonPreferencesContext.Provider>);

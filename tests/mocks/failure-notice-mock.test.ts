@@ -6,11 +6,12 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { test } from "./helpers/fixtures.js";
 import { NOTICE_COPY, NOTICE_SCENES } from "./helpers/failure-notice-scenes.js";
+import { mockOutDir } from "./helpers/out-dir.js";
 
 // Failure-notice scenes (the approved beneath notice) in the parity mock harness; frames are evidence, never test references.
 const repoRoot = resolve(import.meta.dirname, "../..");
-const fixtureRoot = join(repoRoot, "tests/mocks/.output/failure-notice-fixture");
-const OUT = process.env.FAILURE_NOTICE_MOCK_OUT ?? "/home/julian/Projects/hr-relay/.work/evidence/ui-state-fixes/failure-notice-mock";
+const fixtureRoot = join(repoRoot, `tests/mocks/.output/failure-notice-fixture-${process.pid}`);
+const OUT = mockOutDir(process.env.FAILURE_NOTICE_MOCK_OUT, "failure-notice-mock");
 const THEMES = ["light", "dark"] as const;
 const WIDTHS = [1280, 1024] as const;
 

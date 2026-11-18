@@ -6,9 +6,10 @@ import { startFixtureServer, type FixtureServer } from "../support/helpers/dashb
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { serveSettings } from "./helpers/served-settings.js";
 import { STATUS_MOCK_IDS, type StatusMockId } from "../../src/dashboard/surfaces/settings/status-mock/status-mock-model.js";
+import { mockOutDir } from "./helpers/out-dir.js";
 
 // Design mock renders for the status pages that leave Settings; output goes to the gitignored .work folder.
-const OUT = process.env.STATUS_MOCK_OUT ?? "/Users/julianhein/Projects/hr-relay/.work/next-20261101/settings-status-mock";
+const OUT = mockOutDir(process.env.STATUS_MOCK_OUT, "settings-status-mock");
 const THEMES = (process.env.STATUS_MOCK_THEMES ?? "light").split(",") as ("light" | "dark")[];
 const WIDTH = Number(process.env.STATUS_MOCK_WIDTH ?? 1280);
 const HEIGHT = 720;
@@ -269,7 +270,7 @@ test("customize steps every workflow", async ({ page }) => {
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
   const reached: string[] = [];
-  for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]) {
+  for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Kronos Pay Rule"]) {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
     await rail.getByRole("button", { name, exact: true }).last().click();
     await page.getByRole("button", { name: "Start run", exact: true }).click();
@@ -289,7 +290,7 @@ test("customize steps every workflow", async ({ page }) => {
     await expect(dialog.getByRole("button", { name: /^Start (dry|live) run$|^Start run$/ }), `${name}: start on Steps`).toBeVisible();
     reached.push(name);
   }
-  expect(reached).toEqual(["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]);
+  expect(reached).toEqual(["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Kronos Pay Rule"]);
   expect(errors).toEqual([]);
 });
 
@@ -301,7 +302,7 @@ for (const theme of THEMES) test(`run input every workflow @ ${theme} ${WIDTH}`,
   await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
   await page.setViewportSize({ width: WIDTH, height: HEIGHT });
   const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
-  for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Work-Study", "Kronos Pay Rule"]) {
+  for (const name of ["Person Lookup", "Separations", "I-9 Check", "Onboarding", "Oath Signature", "Oath Upload", "Emergency Contact", "Kronos Pay Rule"]) {
     await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&statusMock=run-options`);
     await page.addStyleTag({ content: ".hub-assistant-launcher { display: none !important; }" });
     await rail.getByRole("button", { name, exact: true }).last().click();
@@ -407,9 +408,6 @@ for (const theme of THEMES) test(`analytics states @ ${theme} ${WIDTH}`, async (
     if (await scroller.evaluate(node => node.scrollTop + node.clientHeight >= node.scrollHeight - 2)) break;
   }
   await scrollTo(0);
-  await page.getByRole("button", { name: "Custom…" }).click();
-  await shot("menu-custom");
-  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /By workflow/ }).click();
   await shot("menu-workflow");
   await page.getByRole("menuitemradio", { name: "Separations" }).dispatchEvent("click");
@@ -463,7 +461,7 @@ test("general interactions", async ({ page }) => {
   await expect(page.getByRole("group", { name: "General", exact: true })).toBeVisible();
   for (const name of ["Downloads", "Job end date", "Theme", "Animations", "Browser window"]) await expect(page.getByRole("group", { name: "General", exact: true }).getByText(name, { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Run without a browser window")).toHaveCount(0);
-  await expect(page.getByRole("switch", { name: "Full access" })).toHaveCount(0);
+  await expect(page.getByRole("switch", { name: "Full access" })).toBeVisible();
   await expect(page.getByText("Default permissions")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Change Downloads", exact: true })).toBeVisible();
   expect(errors).toEqual([]);

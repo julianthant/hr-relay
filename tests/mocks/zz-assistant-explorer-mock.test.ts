@@ -6,9 +6,10 @@ import { MOCK_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { ASSISTANT_FRAMES } from "../../src/dashboard/surfaces/assistant/assistant-mock-frames.js";
+import { mockOutDir } from "./helpers/out-dir.js";
 
 // Design mock renders for the floating Sessions dock, the assistant launcher and Explorer; output goes to the gitignored .work folder.
-const OUT = process.env.AX_MOCK_OUT ?? "/Users/julianhein/Projects/hr-relay/.work/next-20261101/assistant-explorer-mock";
+const OUT = mockOutDir(process.env.AX_MOCK_OUT, "assistant-explorer-mock");
 const THEMES = (process.env.AX_MOCK_THEMES ?? "light,dark").split(",");
 const WIDTH = Number(process.env.AX_MOCK_WIDTH ?? 1280);
 const ONLY = process.env.AX_MOCK_ONLY?.split(",");
@@ -56,7 +57,7 @@ const FRAMES: Frame[] = [
   { id: "explorer-pick", settings: "explorer", query: "assistantOpen=0", act: async page => {
     await page.getByRole("combobox", { name: "Explorer workflow", exact: true }).click();
     await page.getByRole("option", { name: "Person Lookup", exact: true }).click();
-    await page.getByText("Enter employee ID", { exact: false }).first().scrollIntoViewIfNeeded();
+    await expect(page.getByRole("combobox", { name: "Explorer workflow", exact: true })).toContainText("Person Lookup");
     await page.locator("main").evaluate(main => { main.scrollBy(0, 140); });
   } },
   { id: "explorer-bottom", settings: "explorer", query: "assistantOpen=0", act: async page => {
@@ -82,7 +83,7 @@ for (const theme of THEMES) test(`assistant explorer mock @ ${theme} ${WIDTH}`, 
   for (const frame of FRAMES.filter(item => ONLY === undefined || ONLY.includes(item.id))) {
     await page.setViewportSize({ width: WIDTH, height: 720 });
     const view = frame.view ? `&view=${encodeURIComponent(JSON.stringify(frame.view))}` : "";
-    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}${frame.settings ? `&settings=${frame.settings}` : ""}${view}${frame.query ? `&${frame.query}` : ""}&statusMock=general-a`);
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}${frame.settings ? `&settings=${frame.settings}` : ""}${frame.settings === "explorer" || frame.query?.includes("explore=") ? "&fixture=workflow-catalog" : ""}${view}${frame.query ? `&${frame.query}` : ""}&statusMock=general-a`);
     if (frame.settings || frame.query?.includes("explore=")) await expect(page.getByRole("heading", { name: "Explorer", exact: true })).toBeVisible();
     else await expect(page.getByRole("navigation", { name: "Workflows", exact: true })).toBeVisible();
     await frame.act?.(page);
@@ -222,7 +223,7 @@ for (const theme of THEMES) test(`assistant full access and Ask mark @ ${theme} 
   await page.goto(url("assistantOpen=0&assistantFullAccess=1&settings=general"));
   await expect(page.getByRole("switch", { name: "Full access" })).toBeChecked();
   await page.screenshot({ path: join(OUT, `settings-assistant-${theme}.png`) });
-  await page.getByText("Full access", { exact: true }).click();
+  await page.getByRole("switch", { name: "Full access" }).click();
   await expect(page.getByRole("switch", { name: "Full access" })).not.toBeChecked();
 
   // The Orbit mark circles slowly at idle and faster while hovered.

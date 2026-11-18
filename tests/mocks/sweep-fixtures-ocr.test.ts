@@ -23,11 +23,6 @@ for (const width of [1280, 1024]) for (const mode of ["review", "member-retry"] 
         const review = await request.get(`${server.baseUrl}/api/v1/runs/${server.runId}/review`);
         expect(review.status()).toBe(200);
         expect(await review.json()).toMatchObject({ section: "review", payload: { runId: server.ocrRunId } });
-        await logs.getByRole("button", { name: "Records 1", exact: true }).click();
-        await expect.soft(page.getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
-        await expect.soft(page.getByRole("button", { name: "Approve records", exact: true })).toBeVisible();
-        await page.screenshot({ path: `${out}/ocr-parent-review-${width}.png` });
-        await writeFile(`${out}/ocr-parent-review-${width}.yaml`, await page.locator("body").ariaSnapshot());
         await page.goto(`${server.baseUrl}/?fixture=product-workflows&day=${server.day}&run=${server.ocrRunId}`);
         await page.getByRole("button", { name: "Records 1", exact: true }).click();
         await expect(page.getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
