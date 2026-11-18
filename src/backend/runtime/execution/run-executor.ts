@@ -894,7 +894,8 @@ export async function executeClaimedRun(
         const stored = recheckAncestor ? payPathRecheckInputs.get(node.id) : retainedAccounting
           ? deps.authority.authority.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, node.id, envelope.attempt)
             .filter(record => record.runId === runId).at(-1)
-          : readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
+          : readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true,
+            node.when?.of.from === "reference" ? node.when.of.typeId : undefined);
 
         if ((envelope.recovery === "restart-from-start" || envelope.sourceBound !== undefined && envelope.continuation === undefined) && stored !== undefined && stored.runId !== runId) {
           if (explicit) {
