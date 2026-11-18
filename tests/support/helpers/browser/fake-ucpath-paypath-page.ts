@@ -1,4 +1,4 @@
-import { fakeCommitHandle } from "./fake-commit-handle.js";
+import { fakeCommitHandle, waitForFixturePageClose } from "./fake-commit-handle.js";
 import type { Page } from "playwright";
 
 const HEADER = (field: string) => `[id*="${field}"]:not([id^="win0div"]):not(input):not(select):not(label):visible`;
@@ -60,6 +60,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
         if (key in values && options.revert !== key) values[key] = value;
         if (key !== "empl-id-input" && options.alertAfterFill !== undefined) alertNow(options.alertAfterFill);
       },
+      page: () => page,
       async elementHandle() { return fakeCommitHandle(() => this.click()); },
       click: async () => {
         actions.push(`click:${key}`);
@@ -101,6 +102,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
     },
   };
   const page = {
+    waitForEvent: waitForFixturePageClose,
     url: () => "https://ucphrprdpub.universityofcalifornia.edu/",
     goto: async (destination: string) => { gotos.push(destination); return null; },
     /** The network-idle settle: a PeopleSoft postback named by `postbackClears` empties that field once the page settles after its Tab. */

@@ -228,6 +228,60 @@ describe("browser dispatch of a fenced click", () => {
     } finally { await browser.close(); }
   });
 
+  for (const source of ["explicit", "page", "context"] as const) {
+    it(`charges attachment and actionability to one ${source} timeout`, async () => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const context = await browser.newContext();
+        context.setDefaultTimeout(source === "context" ? 1200 : 5000);
+        const page = await context.newPage();
+        if (source === "page") page.setDefaultTimeout(1200);
+        await page.setContent("<main></main>");
+        await page.evaluate(() => {
+          const button = document.createElement("button");
+          button.disabled = true;
+          button.textContent = "Save";
+          button.onclick = () => { button.textContent = "clicked"; };
+          setTimeout(() => document.body.append(button), 650);
+          setTimeout(() => { button.disabled = false; }, 1400);
+        });
+        const action = clickWithMutationCapability(expiringCapability(5000), page.getByRole("button"),
+          source === "explicit" ? 1200 : undefined);
+        await assert.rejects(action, /[Tt]imeout/u);
+        await page.waitForFunction(() => document.querySelector("button")?.disabled === false, undefined, { timeout: 3000 });
+        assert.equal(await page.getByRole("button").textContent(), "Save");
+      } finally { await browser.close(); }
+    });
+  }
+
+  it("charges a timely click's navigation to the action window that began before attachment", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      let requests = 0;
+      let responseReleased = false;
+      await page.route("https://fixture.invalid/receipt", async route => {
+        requests++;
+        await delay(950);
+        responseReleased = true;
+        await route.fulfill({ contentType: "text/html", body: "<output>saved</output>" });
+      });
+      await page.setContent("<main></main>");
+      await page.evaluate(() => {
+        const link = document.createElement("a");
+        link.href = "https://fixture.invalid/receipt";
+        link.textContent = "Save";
+        setTimeout(() => document.body.append(link), 600);
+      });
+      const action = clickWithMutationCapability(expiringCapability(5000), page.getByRole("link"), 1400);
+      await assert.rejects(action, /[Tt]imeout/u);
+      assert.equal(requests, 1);
+      assert.equal(responseReleased, false);
+      await page.waitForURL("https://fixture.invalid/receipt");
+      assert.equal(await page.locator("output").textContent(), "saved");
+    } finally { await browser.close(); }
+  });
+
   it("preserves the configured default when the probe outlasts the control", async () => {
     const browser = await chromium.launch({ headless: true });
     try {

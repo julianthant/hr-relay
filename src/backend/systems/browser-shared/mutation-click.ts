@@ -36,12 +36,16 @@ function guardCommit(control: Element, expiresAt: number) {
   };
 }
 
-async function guardedClick(capability: MutationCapability, control: Control, timeout?: number): Promise<void> {
+async function guardedClick(
+  capability: MutationCapability, control: Control, timeout?: number, actionSignal?: AbortSignal,
+): Promise<void> {
+  actionSignal?.throwIfAborted();
   // The browser samples first, so transport time can only shorten the original probe window.
   const sampledAt = await control.evaluate(() => new Event("click").timeStamp);
   if (!Number.isFinite(sampledAt)) throw new Error("commit control has no valid browser timestamp");
   // Round toward the earlier millisecond on the browser's coarsened timestamp.
   const expiresAt = Math.floor(sampledAt) + remainingMutationProbeMs(capability) - 1;
+  actionSignal?.throwIfAborted();
   const guard = await control.evaluateHandle(guardCommit, expiresAt);
   const cancel = new AbortController();
   let dispatch: Dispatch | undefined;
@@ -53,7 +57,9 @@ async function guardedClick(capability: MutationCapability, control: Control, ti
   async function click() {
     try {
       remainingMutationProbeMs(capability);
-      await control.click({ timeout, signal: cancel.signal });
+      const signal = actionSignal ? AbortSignal.any([actionSignal, cancel.signal]) : cancel.signal;
+      signal.throwIfAborted();
+      await control.click({ timeout, signal });
     } finally {
       try {
         await guard.evaluate(state => state.stop());
@@ -82,10 +88,24 @@ export async function clickWithMutationCapability(
 ): Promise<void> {
   const remaining = remainingMutationProbeMs(capability);
   if (!("elementHandle" in target)) return guardedClick(capability, target, timeout);
-  const control = await target.elementHandle({ timeout, signal: AbortSignal.timeout(remaining) });
+  // The page applies its effective action timeout (including context defaults) once for the whole operation.
+  const finished = new AbortController();
+  const lifetime = target.page().waitForEvent("close", { timeout, signal: finished.signal }).then(() => {
+    throw new Error("page closed during the commit click");
+  });
+  const click = async () => {
+    const signal = AbortSignal.any([finished.signal, AbortSignal.timeout(remaining)]);
+    const control = await target.elementHandle({ timeout: 0, signal });
+    try {
+      await guardedClick(capability, control, 0, finished.signal);
+    } finally {
+      await control.dispose();
+    }
+  };
   try {
-    await guardedClick(capability, control, timeout);
+    await Promise.race([lifetime, click()]);
   } finally {
-    await control.dispose();
+    // Cancel pending input at the cutoff even when cleanup awaits a navigating document.
+    finished.abort();
   }
 }

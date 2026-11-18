@@ -1,3 +1,10 @@
+import { once } from "node:events";
+
+export async function waitForFixturePageClose(event: "close", options: { signal: AbortSignal; timeout: number }): Promise<void> {
+  const signal = options.timeout > 0 ? AbortSignal.any([options.signal, AbortSignal.timeout(options.timeout)]) : options.signal;
+  await once(new EventTarget(), event, { signal });
+}
+
 // Fake pages use synchronous trusted input. The headless integration tests exercise Chromium's input queue.
 export function fakeCommitHandle(click: () => Promise<void>) {
   const view = Object.assign(new EventTarget(), { setTimeout, clearTimeout });

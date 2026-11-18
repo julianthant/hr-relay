@@ -1,4 +1,4 @@
-import { fakeCommitHandle } from "./fake-commit-handle.js";
+import { fakeCommitHandle, waitForFixturePageClose } from "./fake-commit-handle.js";
 import assert from "node:assert/strict";
 import { runInNewContext } from "node:vm";
 import type { Page } from "playwright";
@@ -67,6 +67,7 @@ export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stall
       }
     }
     async setInputFiles(file: { name: string; buffer: Buffer }) { queued.push(file); actions.push("upload"); }
+    page() { return page; }
     async elementHandle() {
       if (this.name === "Import") return fakeCommitHandle(() => this.click());
       return Object.assign(new FixtureInput(await this.inputValue()), {
@@ -89,6 +90,7 @@ export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stall
     async getAttribute(name: string) { assert.equal(name, "href"); const row = saved[this.index]; assert.ok(row); return row.href ?? `/251ids/download.pdf?id=${row.id}`; }
   }
   const page = {
+    waitForEvent: waitForFixturePageClose,
     on() {},
     url: () => options.foreignRoute ? "https://example.test/NavPanel.aspx" : "https://ucsd.hylandcloud.com/251ids/NavPanel.aspx",
     getByRole: (_role: string, input: { name: string }) => new Locator(input.name),

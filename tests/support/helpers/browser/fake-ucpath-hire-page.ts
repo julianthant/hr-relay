@@ -1,4 +1,4 @@
-import { fakeCommitHandle } from "./fake-commit-handle.js";
+import { fakeCommitHandle, waitForFixturePageClose } from "./fake-commit-handle.js";
 import type { Page } from "playwright";
 import { UCPATH_HIRE_PROOF_EXAMPLE } from "../../../../src/models/ui/ucpath-hire.js";
 
@@ -55,6 +55,7 @@ export function fakeUcpathHirePage(options: Readonly<{
       check: async () => { checked = true; }, isChecked: async () => key === "case-sensitive" ? false : checked,
       isEnabled: async () => !options.disabled,
       first: () => control(key),
+      page: () => page,
       async elementHandle() { return fakeCommitHandle(() => this.click()); },
       click: async () => {
         actions.push(`click:${key}`);
@@ -80,6 +81,7 @@ export function fakeUcpathHirePage(options: Readonly<{
     "#UC_SS_TBH_DVW_NAME": "search-name", "#PTS_CFG_CL_WRK_PTS_SRCH_BTN": "search", 'tr[id^="trPTS_CFG_CL_STD_RSL"]': "rows", '[id="#ICList"]': "back",
      '[id="NAME$span$0"]': "detail-name", '[id="UC_SS_TBH_VW_ACTION$0"]': "detail-action", '[id="UC_SS_TBH_VW_START_DT$0"]': "detail-date" };
   const page = {
+    waitForEvent: waitForFixturePageClose,
     url: () => url,
     goto: async (destination: string) => {
       url = destination; view = destination.endsWith("UC_SS_TBH.GBL") ? "clear" : "wizard";
