@@ -68,3 +68,8 @@ it('offers Import inside an empty library', async () => {
   wiring.catalog = []; await render();
   assert.ok(host.querySelector('[class*="border-ui-stroke"] button')?.textContent?.includes('Import'));
 });
+
+it('hides the search box in an empty library', async () => {
+  wiring.catalog = []; await render();
+  assert.equal(host.querySelector('input[aria-label="Search spreadsheets"]'), null);
+});

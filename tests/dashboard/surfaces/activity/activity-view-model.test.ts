@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import { ACTIVITY_SAMPLE_RANGE,activitySample } from "../../../../src/dashboard/surfaces/activity/activity-fixture.js";
+import { ACTIVITY_SAMPLE_RANGE,activitySample } from "../../../support/fixtures/dashboard/activity-sample.js";
 import { activityCompletionRate,activityDuration } from "../../../../src/dashboard/surfaces/activity/activity-view-model.js";
 describe("frontend presentation producers", () => {
   it("keeps new performance metrics scoped to finished and measured runs, with unknown distinct from zero", () => {

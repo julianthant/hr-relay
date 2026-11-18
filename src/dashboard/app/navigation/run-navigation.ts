@@ -6,12 +6,12 @@ import { routeWithoutTakeovers, type AppRouteState } from "./url-state.js";
 
 export const notificationTargetUnavailable = () => formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text;
 
-type Destination = Readonly<{ state: "ready"; route: AppRouteState; workflowId?: string }>
+export type RunNavigation = Readonly<{ state: "ready"; route: AppRouteState; workflowId?: string }>
   | Readonly<{ state: "refused"; message: string }>;
 
 export async function resolveRunNavigation(client: Pick<DashboardClient, "dashboardDay" | "runDetail" | "runSection">,
-  target: NotificationTarget, route: AppRouteState, canSelectWorkflow: (id: string, row: QueueSurfaceWire) => boolean): Promise<Destination> {
-  const refuse = (): Destination => ({ state: "refused", message: notificationTargetUnavailable() });
+  target: NotificationTarget, route: AppRouteState, canSelectWorkflow: (id: string, row: QueueSurfaceWire) => boolean): Promise<RunNavigation> {
+  const refuse = (): RunNavigation => ({ state: "refused", message: notificationTargetUnavailable() });
   if (target.kind === "refused" || target.kind === "storage" || target.kind === "recovery" || target.kind === "command-result" || target.kind === "bulk-result") return refuse();
   if (target.kind === "archive") return { state: "refused", message: formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_ARCHIVE_RETIRED", {})).text };
   const base = { ...routeWithoutTakeovers(route), start: false, run: undefined, section: undefined,
