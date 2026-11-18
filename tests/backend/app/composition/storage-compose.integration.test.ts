@@ -240,8 +240,10 @@ afterEach(_afterEachFixture0);
     await assert.rejects(repairAutomatically(p), /automatic-repair-verified-backup-missing/u);
     assert.deepEqual(readFileSync(p.authorityPath), before);
     assert.equal(existsSync(join_m0(p.repoRoot, ".tracker", "control", "journal.json")), false);
-    const retained = AuthorityDatabase.inspectTimelineReadOnly(admissions.get(p.repoRoot)!, p.authorityPath, 500, true);
-    assert.deepEqual(retained.records.map(record => record.payload.kind === "span" ? record.payload.event.t : record.payload.kind), ["run.queued", "transaction.fenced"]);
+    const retained: string[] = [];
+    AuthorityDatabase.inspectTimelineReadOnly(admissions.get(p.repoRoot)!, p.authorityPath,
+      record => retained.push(record.payload.kind === "span" ? record.payload.event.t : record.payload.kind), 500, true);
+    assert.deepEqual(retained, ["run.queued", "transaction.fenced"]);
     const current = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "fenced-source-retained" }, CLOCK);
     try { assert.ok(current.authority.runs.get(e.runId)); } finally { current.close(); }
   });
