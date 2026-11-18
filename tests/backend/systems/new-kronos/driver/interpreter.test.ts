@@ -168,6 +168,7 @@ interface Script {
   readonly startField: FakeField;
   readonly endField: FakeField;
   readonly gridHarvests?: readonly Readonly<{
+    debugInfoEnabled?: boolean;
     headers: readonly string[];
     dateRows: readonly Readonly<{ key: string; label: string }>[];
     dataRows: readonly Readonly<{ key: string; cells: readonly string[] }>[];
@@ -289,7 +290,11 @@ function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock>)
           </div>
         </div>`;
       vi.stubGlobal("angular", {
-        element: (element: Element) => ({ isolateScope: () => ({ row: { uid: element.getAttribute("data-key") } }) }),
+        element: (element: Element) => ({
+          isolateScope: () => harvest.debugInfoEnabled === false
+            ? undefined
+            : { row: { uid: element.getAttribute("data-key") } },
+        }),
       });
       try {
         return Promise.resolve(fn());
@@ -327,14 +332,25 @@ describe("timecard grid structural completeness", () => {
     await assert.rejects(readGrid({ headers, dateRows, dataRows }), /unpaired timecard row keys/u);
   });
 
-  it("keeps a continuation punch with its date when the data pane has a different row order", async () => {
+  it("keeps a continuation punch with its date when the keyed data pane rotates by one row on repaint", async () => {
     const continuedDates = [...dateRows, { key: "day-2-continuation", label: "" }];
-    const dataRows = [
-      { key: "day-2-continuation", cells: punches }, { key: "day-1", cells: empty }, { key: "day-2", cells: empty },
-    ];
-    const read = await readGrid({ headers, dateRows: continuedDates, dataRows });
+    const first = { key: "day-1", cells: empty };
+    const second = { key: "day-2", cells: empty };
+    const continuation = { key: "day-2-continuation", cells: punches };
+    const read = await readGrid(
+      { headers, dateRows: continuedDates, dataRows: [first, second, continuation] },
+      { headers, dateRows: continuedDates, dataRows: [continuation, first, second] },
+    );
     assert.deepEqual(read.grid.punchDates, ["06/02/2026"]);
     assert.equal(read.grid.lastPunchDate, "06/02/2026");
+  });
+
+  it("refuses aligned panes without debug scope and directs the operator to review the dates", async () => {
+    const dataRows = [{ key: "day-1", cells: empty }, { key: "day-2", cells: punches }];
+    await assert.rejects(
+      readGrid({ headers, dateRows, dataRows, debugInfoEnabled: false }),
+      /unpaired timecard row keys.*Review the separation dates manually/u,
+    );
   });
 
   it.each(["", "day-1"])("refuses a missing or repeated data row key (%j)", async key => {

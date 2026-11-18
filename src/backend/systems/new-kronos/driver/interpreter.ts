@@ -536,7 +536,7 @@ export function createNewKronosTimecardDriver(assertCurrent: () => void, page: P
           };
         }
         const angular = "angular" in window ? window.angular : undefined;
-        // UI Grid's pinned and body panes share the logical GridRow uid across virtualized windows.
+        // The panes share the logical GridRow uid, which is unavailable here without AngularJS debug scope.
         const rowIdentity = {
           key(element: Element): string | number | null {
             if (typeof angular !== "object" || angular === null
@@ -579,13 +579,15 @@ export function createNewKronosTimecardDriver(assertCurrent: () => void, page: P
       if (dateRows.length !== dataRows.length) {
         throw new NewKronosDriverError(
           `the timecard grid has unaligned date/data row counts ${String(dateRows.length)}/${String(dataRows.length)} `
-          + "— refusing an incomplete row window",
+          + "— refusing an incomplete row window. Review the separation dates manually.",
         );
       }
       const dataByKey = new Map<string | number, readonly string[]>();
       for (const { key, cells } of dataRows) {
         if (key === null || dataByKey.has(key)) {
-          throw new NewKronosDriverError("unpaired timecard row keys: missing or duplicate GridRow uid in the data pane");
+          throw new NewKronosDriverError(
+            "unpaired timecard row keys: missing or duplicate GridRow uid in the data pane. Review the separation dates manually.",
+          );
         }
         dataByKey.set(key, cells);
       }
@@ -595,7 +597,9 @@ export function createNewKronosTimecardDriver(assertCurrent: () => void, page: P
       for (const { key, label } of dateRows) {
         const cells = key === null ? undefined : dataByKey.get(key);
         if (key === null || cells === undefined) {
-          throw new NewKronosDriverError("unpaired timecard row keys: missing, duplicate or unmatched GridRow uid in the date pane");
+          throw new NewKronosDriverError(
+            "unpaired timecard row keys: missing, duplicate or unmatched GridRow uid in the date pane. Review the separation dates manually.",
+          );
         }
         dataByKey.delete(key);
         const match = /([A-Za-z]{3})\s+(\d{1,2})\/(\d{1,2})/.exec(label);
