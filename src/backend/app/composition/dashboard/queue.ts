@@ -7,7 +7,7 @@ import {
 } from "../../../storage/sqlite/index.js";
 
 import { createRunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
-import { endedUnfinished, hostedOcrRun, ocrReviewOffered, readQueueRecordMembers } from "../../../runs/queries/ocr-record-members.js";
+import { endedUnfinished, hostedOcrRun, offeredOcrReview, readQueueRecordMembers } from "../../../runs/queries/ocr-record-members.js";
 import { workflowQueueCapabilities } from "../../registries/workflow-registry.js";
 import { queryAssistantUsage } from "../../../assistant/usage-counts.js";
 
@@ -34,7 +34,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
         const current = input.reader.read(runId);
         if (current.state !== "present" || current.disposition !== "live") return false;
         const ocr = current.run.envelope.workflow === "ocr" ? current.run : hostedOcrRun(database.authority, current.run);
-        return ocr !== undefined && !endedUnfinished(current.run) && ocrReviewOffered(database.authority, input.reader, ocr);
+        return ocr !== undefined && !endedUnfinished(current.run) && offeredOcrReview(database.authority, input.reader, ocr) !== undefined;
       }),
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
       command: (commandId) => database.authority.commands.get(commandId),

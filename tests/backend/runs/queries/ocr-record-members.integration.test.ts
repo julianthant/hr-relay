@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { scaledMs } from "../../../support/time-scale.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { ocrHostRun, readOcrRecordBindings, readOcrQueueMembers } from "../../../../src/backend/runs/queries/ocr-record-members.js";
 import type { DelegatedRecordBinding } from "../../../../src/models/workflow/delegated-record.js";
@@ -10,6 +11,7 @@ import { readDelegationScopeEvidence } from "../../../../src/backend/storage/sql
 import { OcrReviewCheckpointSchema } from "../../../../src/models/workflows/ocr/review-seed.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { createOperatorProjection, createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/operator.js";
+import { readOcrReviewAuthority } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
 import { buildRunDetail, readRunSection } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { OcrInputSchema, OcrCanonicalInputSchema, OCR_INPUT_EXAMPLE } from "../../../../src/models/workflows/ocr/input.js";
@@ -274,6 +276,40 @@ it("presents the hosted OCR run through its host: one visible row, the host serv
   assert.deepEqual(cards.map(card => card.disposition.label), ["Pending", "Pending"]);
   assert.deepEqual(cards.map(card => card.pages[0].imageUrl), [1, 2].map(page => `/source/${childRow.runId}/1/${page}`));
   assert.equal(database.authority.runs.get(f.run.envelope.runId)?.envelope.shape, f.run.envelope.shape);
+});
+
+it("serves the day's queue for a cancelled hosted OCR run whose retained review no longer rebuilds equal, offering no review", async () => {
+  const f = await world.fixture({ record: true, release: true, pageCount: 2, parent });
+  const host = f.database.authority.runs.get(f.parentRun.envelope.runId); assert.ok(host);
+  assert.equal(f.canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "cancel", source: "queue-row", requestedBy: "local-operator",
+    requestedAt: f.clock.now().toISOString(), target: { runId: host.envelope.runId, expectedVersion: host.version } }).state, "applied");
+  for (const runId of [f.parentRun.envelope.runId, f.run.envelope.runId]) {
+    const ended = f.database.authority.runs.get(runId)?.lifecycle;
+    assert.ok(ended?.state === "terminal" && ended.outcome === "cancelled", JSON.stringify(ended));
+  }
+  const raw = new DatabaseSync(f.path);
+  try {
+    const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='ocr_review_revisions_immutable'").get() as { sql: string };
+    const row = raw.prepare("SELECT id, payload_json FROM ocr_review_revisions WHERE run_id=? AND revision=1").get(f.run.envelope.runId) as { id: string; payload_json: string };
+    const payload = JSON.parse(row.payload_json) as { records: { assertedEid: string | null }[] };
+    const [first] = payload.records; assert.ok(first);
+    first.assertedEid = first.assertedEid === "10000001" ? null : "10000001";
+    raw.exec("DROP TRIGGER ocr_review_revisions_immutable");
+    raw.prepare("UPDATE ocr_review_revisions SET payload_json=? WHERE id=?").run(JSON.stringify(payload), row.id);
+    raw.exec(trigger.sql);
+  } finally { raw.close(); }
+  assert.throws(() => f.database.withAuthorityReadSnapshot(() => readOcrReviewAuthority(f.database.authority, f.canonical.lifecycle, f.run.envelope.runId)),
+    /OCR_REVIEW_REFUSED/u);
+  const projection = createOperatorProjection({ database: f.database, stateRoot: f.harness.authority.stateRoot, clock: f.clock, reader: f.canonical.lifecycle,
+    appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(f.database.authority), descriptors: { resolve: f.resolve } });
+  projection.ingestFromTimeline();
+  const wire = projection.buildDashboardDayWire(f.clock.todayLocal());
+  const hostRow = wire.queueSurfaces.find(row => row.runId === f.parentRun.envelope.runId);
+  assert.ok(hostRow);
+  assert.equal(hostRow.status, "cancelled");
+  assert.notEqual(hostRow.panelKind, "review");
+  const targets = wire.queueSurfaces.flatMap(row => row.surfaceKind === "operation" ? row.recordMembers?.members ?? [] : []).map(member => member.target);
+  assert.ok(targets.every(target => target.panelKind !== "review" && target.section !== "review"), JSON.stringify(targets));
 });
 
 it("shows verified shared identities while another native lookup is still queued before review publication", async () => {
