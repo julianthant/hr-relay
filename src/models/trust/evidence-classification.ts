@@ -1,6 +1,8 @@
 /** Declared evidence classification: redaction is schema-owned, and a receipt's facts are classified where they are declared rather than at the UI. */
 import { z } from "zod";
-import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
+import { JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
+import { AdmittedAnswerSchema } from "../ocr/extraction.js";
+import { OCR_FORMS } from "../ocr/form-registry.js";
 import { GateIdSchema, TaskIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import {
   DataClassificationSchema,
@@ -1237,4 +1239,29 @@ export function redactEvidenceLeaf(
     );
   }
   return RedactedFieldSchema.parse({ ...field, key: leaf.path });
+}
+
+/** OCR answer paths that carry the canonical SSN on any registered form. */
+const OCR_SSN_ANSWER_PATHS: ReadonlySet<string> = new Set(Object.values(OCR_FORMS).flatMap(({ fields }) =>
+  fields.filter(({ canonicalFieldId }) => canonicalFieldId === "ssn").map(({ path }) => path)));
+
+/** An admitted OCR answer is one array member, below the leaf the `ssn` guard sees, so each is classified by its own field: an SSN answer keeps its path and state and loses its raw, canonical value and read text. */
+function withoutOcrSsnAnswers(value: JsonValue): JsonValue {
+  if (Array.isArray(value)) return value.map(withoutOcrSsnAnswers);
+  if (value === null || typeof value !== "object") return value;
+  const answer = AdmittedAnswerSchema.safeParse(value);
+  if (answer.success && OCR_SSN_ANSWER_PATHS.has(answer.data.path)) {
+    return answer.data.state === "absent" ? answer.data : { state: answer.data.state, path: answer.data.path, confidence: answer.data.confidence };
+  }
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, withoutOcrSsnAnswers(child)]));
+}
+
+/** The observation copy of a leaf: OCR authority keeps the original answers; timeline, Context Data and Logs never receive an OCR SSN. */
+export function redactObservedEvidenceLeaf(
+  scope: EvidenceValueScope,
+  leaf: EvidenceLeaf,
+): z.infer<typeof RedactedFieldSchema> {
+  const redacted = redactEvidenceLeaf(scope, leaf);
+  if (redacted.state !== "allowed") return redacted;
+  return RedactedFieldSchema.parse({ ...redacted, value: withoutOcrSsnAnswers(redacted.value) });
 }
