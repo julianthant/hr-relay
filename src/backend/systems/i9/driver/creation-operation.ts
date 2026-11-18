@@ -2,7 +2,8 @@ import { redactedEvidenceId } from "../../../../rules/redaction/redaction.js";
 import { AbsentEvidenceSchema } from "../../../../rules/write-safety/write-safety-primitives.js";
 import { IsoInstantSchema, FingerprintSchema, EvidenceRefSchema } from "../../../../rules/identity/ids.js";
 import type { Page } from "playwright";
-import { assertMintedMutationCapability, clickWithMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { I9_PROFILE_STAGED, I9_REMOTE_STAGED, I9_PROFILE_SUBJECT, I9_SEARCH_RESULTS, I9_SEARCH_READ, I9ProfileProofSchema, I9RemoteProofSchema,
   I9ProfileTargetSchema, I9RemoteTargetSchema, i9ProfileKey, i9RemoteKey,
   type I9CreationDriver, type I9ProfileTarget, type I9RemoteTarget } from "../../../../models/ui/i9-creation.js";

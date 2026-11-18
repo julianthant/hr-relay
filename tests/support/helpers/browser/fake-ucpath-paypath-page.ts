@@ -1,3 +1,4 @@
+import { fakeCommitHandle } from "./fake-commit-handle.js";
 import type { Page } from "playwright";
 
 const HEADER = (field: string) => `[id*="${field}"]:not([id^="win0div"]):not(input):not(select):not(label):visible`;
@@ -59,6 +60,7 @@ export function fakeUcpathPayPathPage(options: Readonly<{
         if (key in values && options.revert !== key) values[key] = value;
         if (key !== "empl-id-input" && options.alertAfterFill !== undefined) alertNow(options.alertAfterFill);
       },
+      async elementHandle() { return fakeCommitHandle(() => this.click()); },
       click: async () => {
         actions.push(`click:${key}`);
         if (key === "search") searched = true;

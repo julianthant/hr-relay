@@ -5,7 +5,8 @@ import {
   UCPATH_PAYPATH_POSITION_READY, UCPATH_PAYPATH_WORK_STUDY_STAGED, UcpathPayPathReadSchema, UcpathPayPathRefusedError, UcpathPayPathStagedSchema,
   UcpathPayPathStagedValuesSchema, UcpathPayPathSubmitRefusedError, type UcpathPayPathDriver, type UcpathPayPathRefusalCode, type UcpathPayPathStagedValues, type UcpathPayPathWorkStudyTarget,
 } from "../../../../models/ui/ucpath-paypath.js";
-import { assertMintedMutationCapability, clickWithMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { UCPATH_PAYPATH_UI as ui } from "./paypath-ui-registry.js";
 import { waitForUcpathContentFrameDocument } from "./registry-locators.js";

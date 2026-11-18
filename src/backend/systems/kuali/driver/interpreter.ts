@@ -6,7 +6,8 @@ import type { Clock } from "../../../../rules/time/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
 import type { ElementId, ObservationId } from "../../../../rules/identity/ids.js";
 import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
-import { assertMintedMutationCapability, clickWithMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import {
   KUALI_ACTION_LIST_DOCUMENT_LINK,
   KUALI_ACTION_LIST_MATCHED_NUMBER,

@@ -1,3 +1,4 @@
+import { fakeCommitHandle } from "./fake-commit-handle.js";
 import type { Page } from "playwright";
 import { UCPATH_HIRE_PROOF_EXAMPLE } from "../../../../src/models/ui/ucpath-hire.js";
 
@@ -54,6 +55,7 @@ export function fakeUcpathHirePage(options: Readonly<{
       check: async () => { checked = true; }, isChecked: async () => key === "case-sensitive" ? false : checked,
       isEnabled: async () => !options.disabled,
       first: () => control(key),
+      async elementHandle() { return fakeCommitHandle(() => this.click()); },
       click: async () => {
         actions.push(`click:${key}`);
         if (key.startsWith("tab:")) { tab = key.slice(4); visited.add(tab); }

@@ -5,7 +5,8 @@ import { UcpathHireIdentitySchema, UcpathHireTargetSchema, UcpathHireFindingSche
   UcpathHireStagingSchema, UCPATH_HIRE_STAGED,
   ucpathHireSearchDigest, type UcpathHireTarget, type UcpathHireDriver, type UcpathHireScan } from "../../../../models/ui/ucpath-hire.js";
 import { containsDryRunSample } from "../../../../models/workflow/dry-run.js";
-import { assertMintedMutationCapability, clickWithMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { textOf } from "./transaction-findings-operation.js";
 import { UCPATH_HIRE_UI as ui } from "./hire-ui-registry.js";

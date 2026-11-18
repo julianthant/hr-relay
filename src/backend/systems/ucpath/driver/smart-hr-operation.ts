@@ -7,7 +7,8 @@ import type { Clock } from "../../../../rules/time/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
 import type { Eid, ElementId } from "../../../../rules/identity/ids.js";
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
-import { assertMintedMutationCapability, clickWithMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { UiActionProofSchema } from "../../../../models/ui/driver.js";
 import type { MutationCapability, UiActionProof } from "../../../../models/ui/driver.js";
 import {
@@ -557,6 +558,7 @@ async function clickGuardedPendingSweepDelete(assertCurrent: () => void, page: P
       { ...pendingSweepGridQuery(staging.target.emplId), button },
     );
     let dispatch: PendingSweepDispatch | undefined;
+    let click: PromiseSettledResult<void>;
     try {
       assertCurrent();
       const grid = await observation.evaluate(({ grid }) => grid);
@@ -570,7 +572,7 @@ async function clickGuardedPendingSweepDelete(assertCurrent: () => void, page: P
         guard.armed = true;
       });
       assertCurrent();
-      await clickWithMutationCapability(capability, button);
+      [click] = await Promise.allSettled([clickWithMutationCapability(capability, button)]);
     } finally {
       try {
         dispatch = await observation.evaluate(({ guard }) => {
@@ -585,6 +587,7 @@ async function clickGuardedPendingSweepDelete(assertCurrent: () => void, page: P
     if (dispatch === "refused") {
       throw new Error("the checked set changed at Delete Selected dispatch");
     }
+    if (click.status === "rejected") throw click.reason;
     if (dispatch !== "accepted") {
       throw new Error("Delete Selected dispatch was not observed by the checked-set guard");
     }

@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { chromium, type Page } from "playwright";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import { joinPendingSweepGridRows, readInProgressSubjectOnPage, ucpathSmartHrOperations } from "../../../../../src/backend/systems/ucpath/driver/smart-hr-operation.js";
 import { UCPATH_SMART_HR_DELETE_SELECTED_BUTTON } from "../../../../../src/models/ui/ucpath-smart-hr-termination.js";
 import type { UcpathPendingSweepTarget, UcpathTransactionRow } from "../../../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { EidSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../../../../../src/rules/identity/ids.js";
+import { clickWithMutationCapability } from "../../../../../src/backend/systems/browser-shared/mutation-click.js";
 import { mintMutationCapability } from "../../../../../src/workflow-kit/mutation-capability.js";
 import { createDeterministicUcpathDriverRow } from "../../../../support/helpers/ucpath-pending-row-fixtures.js";
 
@@ -158,6 +160,85 @@ async function routeSweepFixture(page: Page, foreignChecked: boolean): Promise<v
   }));
 }
 
+function expiringCapability(budgetMs: number) {
+  const expires = performance.now() + budgetMs;
+  return mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => expires - performance.now());
+}
+
+describe("browser dispatch of a fenced click", () => {
+  it("refuses a real click queued before expiry and delivered afterwards", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`<button onclick="this.textContent = 'clicked'">ready</button>`);
+      const button = await page.getByRole("button").elementHandle();
+      const original = button.click.bind(button);
+      let queued = 0;
+      vi.spyOn(button, "click").mockImplementation(options => {
+        const action = original(options);
+        queued++;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 800);
+        return action;
+      });
+      const result = await Promise.allSettled([clickWithMutationCapability(expiringCapability(500), button)]);
+      assert.equal(queued, 1);
+      assert.equal(await button.textContent(), "ready");
+      assert.equal(result[0].status, "rejected");
+    } finally { await browser.close(); }
+  });
+
+  it("refuses the click when pointerdown stalls the renderer past expiry", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent("<button>ready</button>");
+      const button = page.getByRole("button");
+      await button.evaluate(element => {
+        element.addEventListener("pointerdown", () => {
+          element.textContent = "pressed";
+          const resume = performance.now() + 700;
+          while (performance.now() < resume) { /* Hold this event turn across the cutoff. */ }
+        });
+        element.addEventListener("click", () => { element.textContent = "clicked"; });
+      });
+      await assert.rejects(clickWithMutationCapability(expiringCapability(400), button), /probe deadline/u);
+      assert.equal(await button.textContent(), "pressed");
+    } finally { await browser.close(); }
+  });
+
+  it("preserves the navigation wait and receipt read after timely dispatch", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      let requests = 0;
+      await page.route("https://fixture.invalid/**", async route => {
+        if (route.request().url().endsWith("/receipt")) {
+          requests++;
+          await delay(900);
+          await route.fulfill({ contentType: "text/html", body: "<output>saved</output>" });
+        } else {
+          await route.fulfill({ contentType: "text/html", body: '<a href="/receipt">Save</a>' });
+        }
+      });
+      await page.goto("https://fixture.invalid/start");
+      await clickWithMutationCapability(expiringCapability(600), page.getByRole("link"), 4000);
+      assert.equal(requests, 1);
+      assert.equal(new URL(page.url()).pathname, "/receipt");
+      assert.equal(await page.locator("output").textContent(), "saved");
+    } finally { await browser.close(); }
+  });
+
+  it("preserves the configured default when the probe outlasts the control", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      page.setDefaultTimeout(175);
+      await page.setContent("<button disabled>Save</button>");
+      await assert.rejects(clickWithMutationCapability(expiringCapability(1000), page.getByRole("button")), /Timeout 175ms exceeded/u);
+    } finally { await browser.close(); }
+  });
+});
+
 describe("Transactions in Progress selection at the delete boundary", () => {
   it("refuses Delete Selected when the probe expires while the driver waits for the control", async () => {
     const browser = await chromium.launch({ headless: true });
@@ -191,7 +272,7 @@ describe("Transactions in Progress selection at the delete boundary", () => {
       const capability = mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)), () => 125);
       await assert.rejects(
         ucpathSmartHrOperations.commit(() => undefined, page, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON, capability),
-        /Timeout 125ms exceeded/u,
+        /probe deadline/u,
       );
       assert.equal(await page.locator("#ALERTMSG").textContent(), "");
     } finally { await browser.close(); }

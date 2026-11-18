@@ -20,21 +20,12 @@ export function mintMutationCapability(
   return capability;
 }
 
-function remainingClickMs(capability: unknown, controlTimeoutMs?: number): number {
+export function remainingMutationProbeMs(capability: unknown): number {
   const budget = capability !== null && typeof capability === "object" ? remainingProbeBudgets.get(capability) : undefined;
   if (budget === undefined) throw new Error("mutation capability was not minted by the fenced write sequencer; refusing to click");
-  const remaining = Math.floor(Math.min(budget(), controlTimeoutMs ?? Infinity));
-  // A zero Playwright timeout disables the deadline.
+  const remaining = Math.floor(budget());
   if (!Number.isFinite(remaining) || remaining <= 0) throw new Error("probe deadline expired before the commit click");
   return remaining;
-}
-
-export function clickWithMutationCapability(
-  capability: MutationCapability,
-  control: { click(options: { timeout: number }): Promise<void> },
-  controlTimeoutMs?: number,
-): Promise<void> {
-  return control.click({ timeout: remainingClickMs(capability, controlTimeoutMs) });
 }
 
 /** The driver-side verification seam: a commit-capable driver calls this BEFORE resolving a locator; an unminted or mis-bound capability throws rather than clicking. */
@@ -42,7 +33,7 @@ export function assertMintedMutationCapability(
   capability: unknown,
   expected?: Readonly<{ intentGeneration: number; bindingDigest: string }>,
 ): void {
-  remainingClickMs(capability);
+  remainingMutationProbeMs(capability);
   if (expected === undefined) return;
   const minted = capability as MintedCapabilityShape;
   if (minted.intentGeneration !== expected.intentGeneration
