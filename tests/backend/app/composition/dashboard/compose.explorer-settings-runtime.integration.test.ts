@@ -56,7 +56,7 @@ function settingsCommand(
   });
 }
 
-function protectedUcpathSettingsCommand(
+function protectedSettingsCommand(
   commandId: string,
   requestedAt: string,
   expectedRevision: number,
@@ -73,10 +73,7 @@ function protectedUcpathSettingsCommand(
     payload: {
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
       writeId,
-      entries: {
-        ucpathUserId: { set: "fixture@ucsd.edu" },
-        ucpathPassword: { set: "disposable-fixture-password" },
-      },
+      entries: { sharepointOnboardingRosterUrl: { set: "https://roster.example.test/onboarding" } },
     },
   });
 }
@@ -221,7 +218,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.equal(protectedSettings.state, "available");
     if (protectedSettings.state !== "available") throw new Error("fixture-protected-settings-unavailable");
     const protectedRevision = protectedSettings.readback.revision;
-    const protectedApplied = await client.executeCommand(protectedUcpathSettingsCommand(
+    const protectedApplied = await client.executeCommand(protectedSettingsCommand(
       "44444444-4444-4444-8444-444444444444",
       clock.now().toISOString(),
       protectedRevision,
@@ -273,7 +270,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.equal(protectedSettings.state, "available");
     if (protectedSettings.state !== "available") throw new Error("fixture-protected-settings-unavailable");
     const protectedRevision = protectedSettings.readback.revision;
-    const protectedApplied = await firstClient.executeCommand(protectedUcpathSettingsCommand(
+    const protectedApplied = await firstClient.executeCommand(protectedSettingsCommand(
       "44444444-4444-4444-8444-444444444444",
       clock.now().toISOString(),
       protectedRevision,
