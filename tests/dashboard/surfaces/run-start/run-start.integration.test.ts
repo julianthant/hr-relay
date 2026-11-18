@@ -52,6 +52,13 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(document.querySelector('[role="dialog"]'), null); assert.match(text(), /Rerun created/u);
     await press("Open run"); assert.equal(openedRuns.length, 1); assert.match(openedRuns[0], /\S/u);
   });
+  it("reopening a start after closing with typed input says the draft was kept; an untouched start says nothing", async () => {
+    const h = await setup(); await mount(h, undefined);
+    await press("Cancel"); await press("Run workflow"); assert.doesNotMatch(text(), /Draft kept/u);
+    const typed = () => { const node = document.querySelector("textarea"); assert.ok(node); return node; };
+    await fill(typed(), "10812345"); await press("Cancel"); await press("Run workflow");
+    assert.match(text(), /Draft kept/u); assert.equal(typed().value, "10812345");
+  });
   it("a stale source refuses in the mounted launcher before warning navigation or plan allocation", async () => {
     const h = await setup(); const source = await h.completeSource();
     const before = h.authoritySnapshot(); await mount(h, { ...source, version: PositiveIntSchema.parse(source.version - 1) });

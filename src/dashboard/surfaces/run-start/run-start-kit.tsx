@@ -287,7 +287,7 @@ export function StepOmissionFactsForm({
         const error = errors[field.key] ?? null;
         const help = field.help;
         const saved = previous?.[field.key];
-        const savedControl = saved && <div className="mt-[5px] flex items-center justify-between gap-2 text-caption text-ui-muted"><span>{compact ? "Previous" : "Saved"} <span className="tabular-nums">{saved.value}</span></span><Button size="sm" variant="ghost" className="h-auto p-0 text-caption text-ui-info" aria-label={`Copy ${step} · ${field.label}`} onClick={saved.onUse}>Use previous</Button></div>;
+        const savedControl = saved && <div className="mt-[5px] flex items-center justify-between gap-2 text-caption text-ui-muted"><span>{compact ? "Previous" : "Saved"} <span className="tabular-nums">{saved.value}</span></span><Button size="sm" variant="outline" aria-label={`Copy ${step} · ${field.label}`} onClick={saved.onUse}>Use previous</Button></div>;
         if (field.kind === "boolean") {
           return (
             <div key={field.key}>

@@ -509,12 +509,12 @@ export function RunStartDialog({
   const [draftKept, setDraftKept] = useState(false);
   const keptPending = useRef(false);
   const closeAndReset = useCallback((next: boolean) => {
-    if (!next && rerunSource === undefined && !previewLaunch) {
-      keptPending.current = canonicalJsonStringify(draftRef.current) !== canonicalJsonStringify(launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === workflowId), commandBinding?.authority.today));
+    if (!next && rerunSource === undefined) {
+      keptPending.current = JSON.stringify(draftRef.current) !== JSON.stringify(launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === workflowId), commandBinding?.authority.today));
     }
     onOpenChange(next);
     if (!next) send({ type: "close" });
-  }, [onOpenChange, send, rerunSource, previewLaunch, workflows, workflowId, commandBinding?.authority.today]);
+  }, [onOpenChange, send, rerunSource, workflows, workflowId, commandBinding?.authority.today]);
   useEffect(() => {
     if (!open) return;
     if (!keptPending.current) return;
