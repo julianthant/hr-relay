@@ -91,9 +91,15 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
     await click(tab, targetId);
     await settle(frame);
   };
-  /** One pass over all five staged values as the page now shows them, ending on Additional Pay Data where Save and Submit sits. */
-  const readStagedValues = async (frame: FrameLocator) => {
+  const assertPosition = async (frame: FrameLocator, expected: string) => {
+    if ((await valueOf(ui.positionNumber(frame))).trim() !== expected) {
+      throw new UcpathPayPathRefusedError("paypath-position-mismatch");
+    }
+  };
+  /** Recheck Position Data and the staged values, ending on Additional Pay Data where Save and Submit sits. */
+  const readStagedValues = async (frame: FrameLocator, positionNumber: string) => {
     await openTab(frame, ui.positionDataTab(frame), "ucpath.paypath.position-data-tab");
+    await assertPosition(frame, positionNumber);
     const effectiveDate = await valueOf(ui.effectiveDate(frame));
     const positionChangeReason = await valueOf(ui.positionChangeReason(frame));
     const positionPool = await valueOf(ui.positionPool(frame));
@@ -132,7 +138,7 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
     return kind;
   };
   const stagedKey = (input: UcpathPayPathWorkStudyTarget) =>
-    JSON.stringify([input.emplId, input.expectedName, input.effectiveDate, input.positionChangeReason, input.positionPool, input.comments]);
+    JSON.stringify([input.emplId, input.expectedName, input.positionNumber, input.effectiveDate, input.positionChangeReason, input.positionPool, input.comments]);
 
   /**
    * Opens exactly one PayPath record for the Empl ID and returns its frame and displayed name once the header proves the Empl ID
@@ -210,6 +216,7 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
     async stagePayPathWorkStudy(input) {
       staged = undefined;
       const { frame, displayedName, emplId } = await openRecord(input.emplId);
+      await assertPosition(frame, input.positionNumber);
       await fillField(frame, ui.effectiveDate(frame), input.effectiveDate, "ucpath.paypath.effective-date");
       await fillField(frame, ui.positionChangeReason(frame), input.positionChangeReason, "ucpath.paypath.position-change-reason");
       await fillField(frame, ui.positionPool(frame), input.positionPool, "ucpath.paypath.position-pool");
@@ -217,7 +224,7 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
       await fillField(frame, ui.jobDataComments(frame), input.comments, "ucpath.paypath.job-data-comments");
       await openTab(frame, ui.additionalPayDataTab(frame), "ucpath.paypath.additional-pay-data-tab");
       await fillField(frame, ui.initiatorComments(frame), input.comments, "ucpath.paypath.initiator-comments");
-      const values = await readStagedValues(frame);
+      const values = await readStagedValues(frame, input.positionNumber);
       await saveControl(frame);
       const result = UcpathPayPathStagedSchema.parse({
         pageStateId: UCPATH_PAYPATH_WORK_STUDY_STAGED, emplId, displayedName, values, observedAt: clock.now().toISOString(),
@@ -238,9 +245,10 @@ export function createUcpathPayPathOperations(assertCurrent: () => void, page: P
       const frame = ui.frame(page);
       const header = EidSchema.safeParse(await textOf(ui.emplIdDisplay(frame)));
       if (!header.success || header.data !== input.emplId) throw new UcpathPayPathRefusedError("subject-mismatch");
-      if (!keepsTarget(await readStagedValues(frame), input)) throw new UcpathPayPathRefusedError("staged-value-mismatch");
+      if (!keepsTarget(await readStagedValues(frame, input.positionNumber), input)) throw new UcpathPayPathRefusedError("staged-value-mismatch");
       const save = await saveControl(frame);
       await shown(save);
+      await reached("paypath-position-mismatch", () => assertPosition(frame, input.positionNumber));
       await clickWithMutationCapability(capability, save, BOUND_MS);
       assertCurrent();
       recordBrowserAction("clicked", "ucpath.paypath.save-and-submit");
