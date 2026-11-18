@@ -61,9 +61,9 @@ export function MappingGrid({ fields, dataset, mapping, onMap, worksheets, colum
   const [selection, setSelection] = useState<Range>();
   const [dragging, setDragging] = useState(false);
   const mappedOrder = [...new Set(fields.map(field => mapping[field.key]).filter((header): header is string => !!header && dataset.headers.includes(header)))];
-  const shown = [...mappedOrder, ...dataset.headers.filter(header => extra.includes(header) && !mappedOrder.includes(header))].map(header => ({ header, index: dataset.headers.indexOf(header) }));
-  const others = dataset.headers.filter(header => !mappedOrder.includes(header));
-  const unseen = others.filter(header => !extra.includes(header)).length;
+  const shown = (mappedOrder.length ? [...mappedOrder, ...dataset.headers.filter(header => extra.includes(header) && !mappedOrder.includes(header))] : dataset.headers).map(header => ({ header, index: dataset.headers.indexOf(header) }));
+  const others = mappedOrder.length ? dataset.headers.filter(header => !mappedOrder.includes(header)) : [];
+  const unseen = mappedOrder.length ? others.filter(header => !extra.includes(header)).length : 0;
   useEffect(() => { const up = () => setDragging(false); window.addEventListener('mouseup', up); return () => window.removeEventListener('mouseup', up); }, []);
   const box = selection && { r0: Math.min(selection.r0, selection.r1), r1: Math.max(selection.r0, selection.r1), c0: Math.min(selection.c0, selection.c1), c1: Math.max(selection.c0, selection.c1) };
   const inside = (row: number, column: number) => !!box && row >= box.r0 && row <= box.r1 && column >= box.c0 && column <= box.c1;
@@ -93,11 +93,11 @@ export function MappingGrid({ fields, dataset, mapping, onMap, worksheets, colum
             {fields.map(field => <FieldRow key={field.key} field={field} dataset={dataset} value={mapping[field.key]} onPicking={setPicking}
               onChange={header => { setSelection(undefined); onMap({ [field.key]: header }); }} />)}
           </section>
-          <div className="ds-menu-separator" />
+          {others.length > 0 && <><div className="ds-menu-separator" />
           <section aria-label="Show columns">
             <h3 className="ds-menu-label m-0">Show columns (view only)</h3>
             <div className={MENU}>{others.map(header => <div key={header} className="ds-menu-item"><Checkbox className="[&_.ds-checkbox-label]:!font-normal" label={header} checked={extra.includes(header)} onCheckedChange={checked => { setSelection(undefined); setExtra(current => checked === true ? [...current, header] : current.filter(item => item !== header)); }} /></div>)}</div>
-          </section>
+          </section></>}
         </PopoverContent>
       </Popover>
     </div>

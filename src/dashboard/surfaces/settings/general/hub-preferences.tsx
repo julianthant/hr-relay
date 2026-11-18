@@ -1,5 +1,6 @@
 import { useContext } from "react";
-import { Field, Input } from "../../../ds/ui.js";
+import { BodySection, Field, FormGroup, Input, Switch } from "../../../ds/ui.js";
+import { setFullAccessAllowed, useFullAccessAllowed } from "../../shell/assistant-approval-model.js";
 import { HubPreferencesPreviewContext, useHubPreferences } from "./hub-preferences-model.js";
 
 export function HubBrowserWindowSettings({ binding }: { binding?: { width: string; height: string; disabled: boolean; error?: string; onChange: (path: "display.screenWidth" | "display.screenHeight", value: string) => void } }) {
@@ -11,4 +12,14 @@ export function HubBrowserWindowSettings({ binding }: { binding?: { width: strin
       <span aria-hidden>×</span><Input disabled={preview ? false : !binding || binding.disabled} name="display.screenHeight" aria-label="Browser window height" type="number" min={1} value={!preview && binding ? binding.height : preferences.value.height} onChange={event => { if (!preview && binding) binding.onChange("display.screenHeight", event.target.value); else preferences.change({ ...preferences.value, height: event.target.value }); }} />
     </div></Field>
   </div>;
+}
+
+/** The Assistant's permission settings, directly under the ChatGPT card in General. */
+export function AssistantPermissionsSettings() {
+  const fullAccess = useFullAccessAllowed();
+  return <BodySection title="Permissions"><FormGroup label="Permissions">
+    <div data-settings-path="assistant.fullAccess" className="settings-compact-row">
+      <Switch name="assistant.fullAccess" label="Full access" description="Lets the assistant choose Full access in its approval menu. Off, every action waits for your confirmation." checked={fullAccess} onCheckedChange={setFullAccessAllowed} />
+    </div>
+  </FormGroup></BodySection>;
 }

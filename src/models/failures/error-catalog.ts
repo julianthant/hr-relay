@@ -100,7 +100,8 @@ export const ERROR_CATALOG = Object.freeze({
   CRM_DOCUMENT_DOWNLOAD_FAILED: catalogEntry("CRM documents could not be downloaded and verified. No document collection was published.", EmptyParametersSchema),
   CRM_DOCUMENT_PACKAGE_FAILED: catalogEntry("CRM documents could not be verified and packaged. No document collection was published.", EmptyParametersSchema),
   TOO_MANY_PAGES: catalogEntry("This PDF has more than 120 pages. Split the scan into files of at most 120 pages.", EmptyParametersSchema),
-  OCR_SOURCE_REFUSED: catalogEntry("This PDF or source page could not be admitted for the current person and review. Reload the saved review or choose a valid PDF up to 25 MB.", EmptyParametersSchema),
+  OCR_SOURCE_REFUSED: catalogEntry("Relay could not use this PDF. It may be a duplicate or unreadable. Choose a different PDF up to 25 MB.", EmptyParametersSchema),
+  OCR_UPLOAD_FAILED: catalogEntry("The PDF did not upload. Check your connection and choose it again.", EmptyParametersSchema),
   OCR_REVIEW_REFUSED: catalogEntry("The saved OCR review or selection changed or could not be authenticated. Reload the review before continuing.", EmptyParametersSchema),
   OCR_APPROVAL_UNAVAILABLE: catalogEntry("The approved OCR record authority is unavailable. Reload the run before continuing.", EmptyParametersSchema),
   OCR_PUBLICATION_REFUSED: catalogEntry("The OCR reading could not be bound to its saved run, source page and operator. Preserve the run and review its evidence.", EmptyParametersSchema),
@@ -114,6 +115,7 @@ export const ERROR_CATALOG = Object.freeze({
   ONBOARDING_EXISTING_PERSON_REQUIRED: catalogEntry("Concurrent hire requires an existing UCPath person. Review the hire mode and source identity.", EmptyParametersSchema),
   ONBOARDING_I9_LOOKUP_UNRESOLVED: catalogEntry("The delegated I-9 lookup did not establish a result for this hire. No profile will be created.", EmptyParametersSchema),
   DELEGATION_OUTCOME_POLICY_UNSATISFIED: catalogEntry("A step this run depends on did not finish, so the run stopped. Open that step for the reason.", EmptyParametersSchema),
+  RESUME_VALIDATION_FAILED: catalogEntry("Saved results could not be reused for this run. Review its completed steps and the saved-result problem, then start again from the step it names.", EmptyParametersSchema),
   RUN_CONTINUATION_REFUSED: catalogEntry("Saved completed steps could not be authenticated for recovery. No saved result was reused; review the source run before starting work.", EmptyParametersSchema),
   APPLICATION_ADMISSION_REFUSED: catalogEntry("Relay could not secure idle update or shutdown admission. Work remains held; restart Relay after resolving the retained failure.", EmptyParametersSchema),
   UNEXPECTED_CONTACT_PAGE: catalogEntry("UCPath did not show the expected Emergency Contact page.", EmptyParametersSchema),
@@ -199,19 +201,19 @@ export const ERROR_CATALOG = Object.freeze({
   STORAGE_DOCTOR_OBSERVATION_CHANGED: catalogEntry("Storage changed during inspection; readiness could not be verified.", EmptyParametersSchema),
   PROFILE_BROWSER_ROOT_REFUSED: catalogEntry("Browser storage must stay inside the selected profile in an owned directory without links.", EmptyParametersSchema),
   STORAGE_FIXED_LAYOUT_REFUSED: catalogEntry("Relay could not verify its app data at the fixed location. Your data has been retained; startup cannot continue.", EmptyParametersSchema),
-  ASSISTANT_INVALID: catalogEntry("The assistant request or response was invalid.", EmptyParametersSchema),
-  ASSISTANT_CONTEXT_UNAVAILABLE: catalogEntry("Verified public source context is unavailable.", EmptyParametersSchema),
-  ASSISTANT_CONTEXT_STALE: catalogEntry("The public source context does not match this runtime.", EmptyParametersSchema),
-  CHATGPT_ASSISTANT_REFUSED: catalogEntry("The model refused this assistant request.", EmptyParametersSchema),
-  ASSISTANT_MODEL_UNAVAILABLE: catalogEntry("The selected model is not available in the current ChatGPT account catalog.", EmptyParametersSchema),
-  ASSISTANT_RESPONSE_REFUSED: catalogEntry("The model refused this assistant request.", EmptyParametersSchema),
-  ASSISTANT_RESPONSE_INCOMPLETE: catalogEntry("ChatGPT returned an incomplete assistant response. Test again; if it repeats, review the model and connection.", EmptyParametersSchema),
-  ASSISTANT_RESPONSE_FAILED: catalogEntry("ChatGPT could not complete the assistant response. Review the connection and test again.", EmptyParametersSchema),
+  ASSISTANT_INVALID: catalogEntry("The assistant could not use that reply. Send your message again.", EmptyParametersSchema),
+  ASSISTANT_CONTEXT_UNAVAILABLE: catalogEntry("The assistant could not load Relay's workflow details, so it did not reply. Send your message again.", EmptyParametersSchema),
+  ASSISTANT_CONTEXT_STALE: catalogEntry("The assistant is out of date with Relay. Reload the page, then ask again.", EmptyParametersSchema),
+  CHATGPT_ASSISTANT_REFUSED: catalogEntry("The assistant declined that request.", EmptyParametersSchema),
+  ASSISTANT_MODEL_UNAVAILABLE: catalogEntry("That model is not available on your ChatGPT account. Pick another model.", EmptyParametersSchema),
+  ASSISTANT_RESPONSE_REFUSED: catalogEntry("The assistant declined that request.", EmptyParametersSchema),
+  ASSISTANT_RESPONSE_INCOMPLETE: catalogEntry("The reply stopped partway. Send your message again.", EmptyParametersSchema),
+  ASSISTANT_RESPONSE_FAILED: catalogEntry("The assistant could not reply. Send your message again.", EmptyParametersSchema),
   ASSISTANT_MODEL_CHANGED: catalogEntry("The model, effort or ChatGPT account changed during the reply. Send the message again.", EmptyParametersSchema),
-  ASSISTANT_USAGE_LIMIT: catalogEntry("ChatGPT usage limit reached. Try again later.", EmptyParametersSchema),
+  ASSISTANT_USAGE_LIMIT: catalogEntry("You have used all your ChatGPT messages for now. Try again later.", EmptyParametersSchema),
   ASSISTANT_PLAN_DISABLED: catalogEntry("Your ChatGPT plan can't be used here.", EmptyParametersSchema),
   ASSISTANT_ACCOUNT_EXPIRED: catalogEntry("Reconnect ChatGPT to use the assistant.", EmptyParametersSchema),
-  ASSISTANT_UNAVAILABLE: catalogEntry("The assistant is unavailable.", EmptyParametersSchema),
+  ASSISTANT_UNAVAILABLE: catalogEntry("The assistant is not available right now. Try again later.", EmptyParametersSchema),
   ASSISTANT_READ_UNAVAILABLE: catalogEntry("Run details are unavailable. Check the run in Logs.", EmptyParametersSchema),
   ASSISTANT_READ_STALE: catalogEntry("The run changed. Ask again.", EmptyParametersSchema),
   ASSISTANT_USAGE_LOG_UNAVAILABLE: catalogEntry("Token usage could not be logged.", EmptyParametersSchema),
@@ -221,7 +223,7 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_CHAT_LIMIT: catalogEntry("Delete an old chat before starting another.", EmptyParametersSchema),
   ASSISTANT_HISTORY_FULL: catalogEntry("Chat history is full. Delete an old chat.", EmptyParametersSchema),
   ASSISTANT_CONVERSATION_STALE: catalogEntry("This chat changed elsewhere and was reloaded.", EmptyParametersSchema),
-  ASSISTANT_OUTCOME_UNKNOWN: catalogEntry("Couldn't finish this.", EmptyParametersSchema),
+  ASSISTANT_OUTCOME_UNKNOWN: catalogEntry("Relay could not tell whether this finished. Check it before asking again.", EmptyParametersSchema),
   ASSISTANT_CONVERSATION_BUSY: catalogEntry("This chat is still waiting for a reply.", EmptyParametersSchema),
   ASSISTANT_ATTACHMENT_UNSUPPORTED: catalogEntry("This file type can't be attached. Attach a PNG, JPEG, WebP, PDF, text, Markdown, Excel or CSV file.", EmptyParametersSchema),
   ASSISTANT_ATTACHMENT_INVALID: catalogEntry("This file could not be read. Check that it is not damaged and matches its file type.", EmptyParametersSchema),
@@ -231,7 +233,7 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_ATTACHMENT_UNAVAILABLE: catalogEntry("An attached file is no longer available. Attach it again.", EmptyParametersSchema),
   ASSISTANT_ATTACHMENT_STORAGE_LIMIT: catalogEntry("Chat attachments are full. Delete an old chat before attaching more files.", EmptyParametersSchema),
   ASSISTANT_CANCELLED: catalogEntry("The assistant request was cancelled.", EmptyParametersSchema),
-  ASSISTANT_LIMIT: catalogEntry("The assistant reached its request limit.", EmptyParametersSchema),
+  ASSISTANT_LIMIT: catalogEntry("The assistant needed too many steps for that. Ask for something smaller.", EmptyParametersSchema),
   ASSISTANT_SUBJECT_REQUIRED: catalogEntry("Select an unambiguous subject before preparing a proposal.", EmptyParametersSchema),
   ASSISTANT_SPREADSHEET_REFUSED: catalogEntry("The Spreadsheets library refused this change. Review the workbook in Spreadsheets.", EmptyParametersSchema),
   ASSISTANT_PROPOSAL_REFUSED: catalogEntry("The current planner refused this proposal. Review it in Run.", EmptyParametersSchema),
@@ -256,7 +258,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   PREFLIGHT_READ_UNAVAILABLE: catalogEntry(
-    "Preflight report could not be read or verified. Re-check readiness.",
+    "Relay could not check this run. Try again.",
     EmptyParametersSchema,
   ),
   PROFILE_FIRST_RUN_CHECK_UNAVAILABLE: catalogEntry(
@@ -264,7 +266,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   PREFLIGHT_RERUN_UNAVAILABLE: catalogEntry(
-    "Preflight re-check could not be completed or verified. Read current readiness before retrying.",
+    "Relay could not finish checking this run. Try again.",
     EmptyParametersSchema,
   ),
   PREFLIGHT_SCOPE_UNAVAILABLE: catalogEntry(
@@ -272,7 +274,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   PREFLIGHT_REPORT_INVALID: catalogEntry(
-    "Preflight report is stale or empty. Re-check readiness.",
+    "The last check of this run is out of date. Check again.",
     EmptyParametersSchema,
   ),
   RUN_START_PLAN_EXPIRED: catalogEntry(
@@ -292,7 +294,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   PREFLIGHT_EVIDENCE_EXPIRED: catalogEntry(
-    "Preflight evidence expired; re-check readiness.",
+    "The last check of this run is out of date. Check again.",
     EmptyParametersSchema,
   ),
   PREFLIGHT_SETTINGS_RESTART_REQUIRED: catalogEntry(
@@ -501,8 +503,16 @@ export const ERROR_CATALOG = Object.freeze({
     "The source input is protected and cannot be copied into a rerun. Start a new run and enter the values again.",
     EmptyParametersSchema,
   ),
+  QUEUE_READ_UNAVAILABLE: catalogEntry(
+    "Relay could not load the queue. Reload the page to try again.",
+    EmptyParametersSchema,
+  ),
+  RUN_READ_UNAVAILABLE: catalogEntry(
+    "Relay could not load this run. Reload the page to try again.",
+    EmptyParametersSchema,
+  ),
   TASK_UNHANDLED_FAILURE: catalogEntry(
-    "The task stopped with an unclassified failure. Review local diagnostic evidence.",
+    "This task stopped for a reason Relay does not recognize. Open the run in Logs to see what happened.",
     EmptyParametersSchema,
   ),
   CAPABILITY_UNAVAILABLE: catalogEntry(
@@ -517,7 +527,6 @@ export const ERROR_CATALOG = Object.freeze({
     "The failure could not be formatted safely. Review local diagnostic evidence.",
     EmptyParametersSchema,
   ),
-  SEARCH_LOADING: catalogEntry("Loading runs…", EmptyParametersSchema),
   SEARCH_UNAVAILABLE: catalogEntry("Search is unavailable. Reopen search and try again.", EmptyParametersSchema),
   SEARCH_LIBRARY_UNAVAILABLE: catalogEntry("Spreadsheets are unavailable. Reopen search and try again.", EmptyParametersSchema),
   SEARCH_SUBJECT_UNAVAILABLE: catalogEntry("Subject unavailable", EmptyParametersSchema),
@@ -525,7 +534,6 @@ export const ERROR_CATALOG = Object.freeze({
   NOTIFICATION_HISTORY_INCOMPLETE: catalogEntry("Notification history is incomplete. Reconcile the affected work before relying on it.", EmptyParametersSchema),
   NOTIFICATION_OBSERVATION_FAILED: catalogEntry("Notification observation failed. Some updates may be unavailable.", EmptyParametersSchema),
   NOTIFICATION_RECEIPT_MISSING: catalogEntry("Notification receipt evidence is missing. Some updates may be unavailable.", EmptyParametersSchema),
-  NOTIFICATION_CONTEXT_UNAVAILABLE: catalogEntry("Notification context unavailable", EmptyParametersSchema),
   NOTIFICATION_REFRESH_PENDING: catalogEntry("Refreshing notifications…", EmptyParametersSchema),
   NOTIFICATION_COMMAND_PENDING: catalogEntry("Notification change pending.", EmptyParametersSchema),
   NOTIFICATION_TARGET_UNAVAILABLE: catalogEntry(
@@ -650,7 +658,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   SETTINGS_INITIAL_READ_UNAVAILABLE: catalogEntry(
-    "Settings could not be read. Try again.",
+    "Relay could not load your settings. Reload the page to try again.",
     EmptyParametersSchema,
   ),
   SETTINGS_REFRESH_UNAVAILABLE: catalogEntry(
@@ -722,7 +730,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   PROFILE_NAME_REFUSED: catalogEntry(
-    "That name cannot be used as the timekeeper name.",
+    "That name cannot be used. Use a first and last name that each start with a letter.",
     EmptyParametersSchema,
   ),
   PROFILE_DISPLAY_NAME_REFUSED: catalogEntry(
@@ -783,6 +791,22 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   PROFILE_USERNAME_REFUSED: catalogEntry(
     "Enter a different @ucsd.edu email with no spaces around it. Nothing was changed.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_DETAILS_CHANGE_UNKNOWN: catalogEntry(
+    "Relay could not confirm that your change was saved. Check the value shown, then try again if it is not what you entered.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_CONNECT_FAILED: catalogEntry(
+    "Relay could not connect ChatGPT. Try connecting again.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_DISCONNECT_FAILED: catalogEntry(
+    "Relay could not disconnect ChatGPT. Try disconnecting again.",
+    EmptyParametersSchema,
+  ),
+  SETTINGS_SAVE_UNCONFIRMED: catalogEntry(
+    "Relay could not confirm this change was saved. Check the setting, then change it again if it is not what you picked.",
     EmptyParametersSchema,
   ),
   PROFILE_LOGIN_CHANGE_UNKNOWN: catalogEntry(
@@ -986,6 +1010,8 @@ export const ERROR_CATALOG = Object.freeze({
   WORKBOOK_SYNC_LINK_REQUIRED: catalogEntry("Link a SharePoint workbook before syncing.", EmptyParametersSchema),
   WORKBOOK_SYNC_CONTEXT_CHANGED: catalogEntry("The profile, settings or credentials changed during Sync. Start a new Sync command.", EmptyParametersSchema),
   WORKBOOK_SYNC_IMPORT_FAILED: catalogEntry("The downloaded file cannot be imported as a supported workbook.", EmptyParametersSchema),
+  WORKBOOK_SYNC_FAILED: catalogEntry("Sync did not finish. Start Sync again.", EmptyParametersSchema),
+  WORKBOOK_SYNC_NOT_APPLIED: catalogEntry("Sync downloaded the workbook, but its rows could not be applied to this spreadsheet. Review the spreadsheet, then start Sync again.", EmptyParametersSchema),
   WORKBOOK_TYPE_UNAVAILABLE: catalogEntry("This workflow's spreadsheet type is unavailable. Restore its reference definition before importing a file for it.", EmptyParametersSchema),
   WORKBOOK_LIBRARY_EMPTY: catalogEntry("Import a Library spreadsheet before selecting a workflow source.", EmptyParametersSchema),
   WORKBOOK_FIELDS_MISSING: catalogEntry("A Library worksheet is missing fields required by this workflow. Review its column mappings.", EmptyParametersSchema),

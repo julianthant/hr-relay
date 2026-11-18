@@ -118,6 +118,7 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
     endedAt: terminal
       ? { state: "present", value: NOW }
       : { state: "absent", reason: `run is ${status} and has not ended` },
+    operatorWait: { state: "absent" },
     gateOpenedAt: status === "awaiting-approval"
       ? { state: "present", value: NOW }
       : { state: "absent", reason: `run is ${status} and is not waiting on a gate` },
@@ -292,11 +293,12 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.equal(keysFor("failed", { parkedWrite: true }).includes("rerun"), false);
 
 
-    const parked = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("blocked", { parkedWrite: true }))[0];
-    assert.ok(parked?.kind === "command" && parked.command === "cancel");
-    assert.match(parked.confirm?.body ?? "", /outcome is UNKNOWN/);
-    assert.match(parked.confirm?.body ?? "", /REFUSED until that write is answered/);
-    assert.match(parked.confirm?.body ?? "", /present or absent/);
+    const parked = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("blocked", { parkedWrite: true }));
+    assert.deepEqual(parked.map(action => action.key), ["rename"]);
+    assert.ok(!parked.some(action => action.kind === "command" && action.command === "cancel"));
+    assert.ok(!parked.some(action => action.kind === "command" && action.confirm !== undefined && action.confirm.tone === "destructive"));
+    assert.ok(!parked.some(action => action.placement.includes("footer")));
+    assert.ok(!parked.some(action => action.key === "recover-run"));
   });
 
 

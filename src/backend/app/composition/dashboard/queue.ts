@@ -1,4 +1,4 @@
-import { batchMemberRetryAvailable } from "../../../runs/queries/run-retry.js";
+import { aggregateMemberRetryAvailable, batchMemberRetryAvailable } from "../../../runs/queries/run-retry.js";
 import type { WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 
@@ -27,6 +27,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
     queueCapabilities: workflowQueueCapabilities,
     authority: {
       batchMemberRetryAvailable: run => batchMemberRetryAvailable(database.authority, run, descriptors.resolve(run.envelope.workflow), workflowQueueCapabilities(run.envelope.workflow)),
+      aggregateMemberRetryAvailable: run => aggregateMemberRetryAvailable(database.authority, input.reader, run, id => descriptors.resolve(id)),
       queueParents: envelopes => database.authority.dependencies.parents(envelopes),
       recordMembers: (run, children) => database.withAuthorityReadSnapshot(() => readQueueRecordMembers(database.authority, input.reader,
         run, children, id => descriptors.resolve(id))),
@@ -46,7 +47,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       listWorkerRuns: workerId => database.authority.runs.listByWorker(workerId),
       ...(input.workerMembers === undefined ? {} : { workerMembers: input.workerMembers }),
       ...(input.workerStartupPending === undefined ? {} : { workerStartupPending: input.workerStartupPending }),
-      heldDuoSystems: workerId => database.heldDuoSystems(workerId),
+      heldDuoLeases: workerId => database.heldDuoLeases(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),

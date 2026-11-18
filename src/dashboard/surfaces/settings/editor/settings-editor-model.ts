@@ -1,12 +1,11 @@
 import { useCallback,useEffect,useEffectEvent,useMemo,useRef,useState,useSyncExternalStore } from "react";
-import { attemptUnresolved, commandAttemptView } from "../../../app/commands/command-outcome.js";
 import { deriveSettingsPatchFingerprint } from "../../../../models/config/settings.js";
 import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
 import { createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { SettingsCommandRequestSchema } from "../../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
-import type { CommandExecutionOptions,CommandExecutionScope } from "../../../app/commands/command-executor.js";
+import type { CommandExecutionOptions } from "../../../app/commands/command-executor.js";
 import { readWithDeadline } from "../../../client/read-deadline.js";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
 import { SettingsReadSuperseded,useSettingsRead } from "../../../state/settings-read-model.js";
@@ -14,7 +13,7 @@ import { useSettingsPreflight } from "../preflight/settings-preflight-model.js";
 import { useProtectedSettings } from "../providers/settings-protected-model.js";
 import { routePresentation } from "../routes/settings-routes-model.js";
 import { settingTitle } from "../settings-presentation.js";
-import { checkedSettingsResult,commandSaveState,ordinaryReadbackState,settingsSaveNotice,settingsSaveProblem,settingsScopeRecoveryState,type OrdinarySettingsAttempt,type SettingsSaveListener,type SettingsSaveProblemListener,type SettingsSaveState } from "./settings-attempt-model.js";
+import { checkedSettingsResult,commandSaveState,ordinaryReadbackState,settingsSaveNotice,settingsSaveFailure,type OrdinarySettingsAttempt,type SettingsSaveListener,type SettingsSaveProblemListener,type SettingsSaveState } from "./settings-attempt-model.js";
 import { blurredSettingsPath,type SettingsBlurEvent } from "./settings-autosave-model.js";
 import { useSettingsClient } from "./settings-client.js";
 import { coupledSettingsLeaves,draftError,patchFromSettingsDraft,settingInput,settingsLeaves,type SettingsDraft,type SettingsDraftInput } from "./settings-draft-model.js";
@@ -22,6 +21,9 @@ import { coupledSettingsLeaves,draftError,patchFromSettingsDraft,settingInput,se
 export type EditableSettingsState = { readonly state: "loading" } | { readonly state: "failed"; readonly message: string } | { readonly state: "loaded"; readonly document: EditableSettingsWire };
 export type { PreflightRerunState } from "../preflight/settings-preflight-model.js";
 export type { SettingsSaveState } from "./settings-attempt-model.js";
+
+/** Ordinary Settings never lock or show a save row: the control keeps the new value while the save runs. */
+const IDLE_SAVE: SettingsSaveState = Object.freeze({ state: "idle" });
 
 /** One ordinary atomic draft, independent protected draft, no browser-persisted values or attempts. */
 export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener }>) {
@@ -45,14 +47,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const setEditor = useCallback((editor: EditableSettingsState): void => setObserved({ resource, editor }), [resource]);
   const [reportedReadProblem, setReadProblem] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState<SettingsDraft>({});
-  const [save, setSave] = useState<SettingsSaveState>({ state: "idle" });
-  const pending = useRef<OrdinarySettingsAttempt | undefined>(undefined);
+  const [saving, setSaving] = useState(false);
   const busy = useRef(false);
-  const attemptScope = useRef<CommandExecutionScope | undefined>(undefined);
-  const retained = binding?.executor.retainedAttempts().find(attempt => attemptUnresolved(attempt) && attempt.scope.actorId === binding.scope.actorId
-    && attempt.request.source === "settings-surface" && attempt.request.family === "settings" && attempt.request.type === "apply-settings");
-  if (pending.current === undefined && retained?.request.family === "settings" && retained.request.type === "apply-settings") pending.current = retained.request;
-  if (attemptScope.current === undefined && retained !== undefined) attemptScope.current = retained.scope;
   const readReady = acceptedRequest.current === request && observation.state === "loaded";
   const readProblem = reportedReadProblem;
   const { preflight, rerunPreflight } = useSettingsPreflight(editor, input);
@@ -93,7 +89,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     return [path, leaf === undefined ? "This setting is no longer served. Reset its draft." : draftError(leaf, operation)];
   }));
   const update = (path: string, raw: SettingsDraftInput): void => {
-    if (!readReady || readProblem !== undefined || busy.current || pending.current !== undefined) return;
+    if (!readReady || readProblem !== undefined) return;
     const leaf = leaves.find(candidate => candidate.path === path); if (leaf === undefined) return;
     setDraft(previous => {
       const next = { ...previous };
@@ -102,16 +98,14 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       }
       next[path] = { kind: "set", raw }; return next;
     });
-    setSave({ state: "idle" });
   };
   const clear = (path: string): void => {
-    if (!readReady || readProblem !== undefined || busy.current || pending.current !== undefined) return;
+    if (!readReady || readProblem !== undefined) return;
     const leaf = leaves.find(candidate => candidate.path === path); if (leaf === undefined) return;
     setDraft(previous => ({ ...previous, ...Object.fromEntries(coupledSettingsLeaves(leaf, leaves).map(value => [value.path, { kind: "clear" as const }])) }));
-    setSave({ state: "idle" });
   };
   const reset = (path: string): void => {
-    if (!readReady || readProblem !== undefined || busy.current || pending.current !== undefined) return;
+    if (!readReady || readProblem !== undefined) return;
     const leaf = leaves.find(candidate => candidate.path === path); if (leaf === undefined) return;
     setDraft(previous => {
       const next = { ...previous };
@@ -121,84 +115,74 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       else for (const other of coupled) delete next[other.path];
       return next;
     });
-    setSave({ state: "idle" });
   };
-  const discard = (): void => {
-    if (busy.current) return;
-    pending.current = undefined; setDraft({}); setSave({ state: "idle" });
+  /** Drops every unsaved edit when the operator chooses to leave Settings without saving. */
+  const discard = (): void => setDraft({});
+  /** Drops only what this save sent; an edit made while it was in flight stays and saves next. */
+  const settle = (sent: SettingsDraft): void => setDraft(previous => Object.fromEntries(Object.entries(previous).filter(([path, operation]) => sent[path] !== operation)));
+  const failed = (sent: SettingsDraft): void => {
+    settle(sent);
+    input.onSaveProblem?.(settingsSaveFailure());
+    // The control shows what the backend holds, never a guess about an unknown outcome.
+    void refresh().catch(() => undefined);
   };
-  const perform = async (command: OrdinarySettingsAttempt): Promise<void> => {
+  const perform = async (command: OrdinarySettingsAttempt, sent: SettingsDraft): Promise<void> => {
     if (busy.current) return;
-    busy.current = true; pending.current = command; setSave({ state: "saving" });
-    if (binding === undefined) {
-      busy.current = false; pending.current = undefined;
-      setSave(commandSaveState(undefined)); return;
-    }
-    if (command.requestedBy !== binding.scope.actorId) { busy.current = false; setSave(settingsScopeRecoveryState()); return; }
-    attemptScope.current = binding.scope;
-    let readDocument: EditableSettingsWire | undefined;
-    const options: CommandExecutionOptions = {
-      scope: binding.scope,
-      readback: async (_request, reply) => {
-        const result = checkedSettingsResult(command, reply);
-        readDocument = await refresh(false);
-        const readback = ordinaryReadbackState(command, result, readDocument);
-        return { state: readback === "confirmed" ? "matched" : readback === "superseded" ? "conflict" : "mismatch", evidence: readDocument };
-      },
-      publish: outcome => {
-        if (generation.current !== request) return;
-        binding.feedback(outcome);
-        if (readDocument !== undefined) {
-          acceptedRequest.current = request; resource.accept(readDocument); setEditor({ state: "loaded", document: readDocument }); setReadProblem(undefined);
-        }
-        if (outcome.kind === "conflict") void refresh().catch(() => undefined);
-        const view = commandAttemptView(outcome);
-        if (view.view !== "unknown" && !(view.view === "call-refused" && view.reason === "locked")) pending.current = undefined;
-        const next = outcome.kind === "refused" && outcome.reason === "locked" ? settingsScopeRecoveryState() : commandSaveState(outcome);
-        setSave(next);
-        if (outcome.kind === "confirmed") {
-          setDraft({});
-          input.onSaved?.(settingsSaveNotice(leaves.filter(leaf => leaf.path in command.payload.patch).map(leaf => leaf.path.startsWith("urls.") ? `${routePresentation(leaf).name} routes` : settingTitle(leaf)), next.state === "applied" && next.replayed, readDocument?.runtimeStatus.state === "restart-required"));
-        }
-        const problem = settingsSaveProblem(next);
-        if (problem) input.onSaveProblem?.(problem);
-      },
-    };
+    busy.current = true; setSaving(true);
     try {
-      if (binding.executor.retainedAttempts().some(attempt => attempt.request.commandId === command.commandId)) await binding.executor.replay(command.commandId, options);
-      else await binding.executor.execute(command, options);
-    } finally { busy.current = false; }
+      if (binding === undefined || command.requestedBy !== binding.scope.actorId) { failed(sent); return; }
+      let readDocument: EditableSettingsWire | undefined;
+      const options: CommandExecutionOptions = {
+        scope: binding.scope,
+        readback: async (_request, reply) => {
+          const result = checkedSettingsResult(command, reply);
+          readDocument = await refresh(false);
+          const readback = ordinaryReadbackState(command, result, readDocument);
+          return { state: readback === "confirmed" ? "matched" : readback === "superseded" ? "conflict" : "mismatch", evidence: readDocument };
+        },
+        publish: outcome => {
+          if (generation.current !== request) return;
+          binding.feedback(outcome);
+          if (readDocument !== undefined) {
+            acceptedRequest.current = request; resource.accept(readDocument); setEditor({ state: "loaded", document: readDocument }); setReadProblem(undefined);
+          }
+          const next = commandSaveState(outcome);
+          if (next.state !== "applied") { failed(sent); return; }
+          settle(sent);
+          input.onSaved?.(settingsSaveNotice(leaves.filter(leaf => leaf.path in command.payload.patch).map(leaf => leaf.path.startsWith("urls.") ? `${routePresentation(leaf).name} routes` : settingTitle(leaf)), next.replayed, readDocument?.runtimeStatus.state === "restart-required"));
+        },
+      };
+      await binding.executor.execute(command, options);
+    } finally { busy.current = false; setSaving(false); }
   };
 
   const submit = (): void => {
-    if (!readReady || editor.state !== "loaded" || busy.current || pending.current !== undefined || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined) || readProblem !== undefined) return;
-    if (binding === undefined) { setSave(commandSaveState(undefined)); return; }
+    if (!readReady || editor.state !== "loaded" || busy.current || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined) || readProblem !== undefined) return;
+    if (binding === undefined) { failed(draft); return; }
     try {
       const patch = patchFromSettingsDraft(leaves, draft);
       const command = deepFreeze(SettingsCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso, requestedBy: binding.scope.actorId, source: "settings-surface", family: "settings", type: "apply-settings",
         target: { expectedRevision: editor.document.revision }, payload: { settingsSchemaHash: editor.document.settingsSchemaHash, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }));
-      void perform(command);
-    } catch { setSave({ state: "refused", code: "SETTINGS_DRAFT_INVALID", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_DRAFT_INVALID", {})).text }); }
+      void perform(command, draft);
+    } catch { failed(draft); }
   };
   const autosave = useEffectEvent(submit);
   const invalid = Object.values(errors).some(error => error !== undefined);
   useEffect(() => {
-    if (!readReady || editor.state !== "loaded" || save.state !== "idle" || readProblem !== undefined
+    if (!readReady || editor.state !== "loaded" || saving || readProblem !== undefined
       || Object.keys(draft).length === 0 || invalid) return;
     const timer = window.setTimeout(() => autosave(), 700);
     return () => window.clearTimeout(timer);
-  }, [draft, editor, invalid, readProblem, readReady, save.state]);
-  const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
+  }, [draft, editor, invalid, readProblem, readReady, saving]);
   const onFieldBlur = (event: SettingsBlurEvent): void => {
     const path = blurredSettingsPath(event);
     if (path === undefined) return;
     if (path.startsWith("protected.")) {
       if (protectedEditor.save.state === "idle" && !protectedEditor.explicitSave) protectedEditor.submit();
-    } else if (save.state === "idle" && Object.keys(draft).some(key => path === key || path.startsWith(`${key}.`))) submit();
+    } else if (!busy.current && Object.keys(draft).some(key => path === key || path.startsWith(`${key}.`))) submit();
   };
   const reload = (): void => { void refresh().catch(() => undefined); };
-  const visibleSave = pending.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save.state === "idle" && retained?.outcome !== undefined ? commandSaveState(retained.outcome) : save;
-  return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: visibleSave, preflight, protectedEditor, leaves, readProblem,
-    dirtyCount: Object.keys(draft).length, locked: !readReady || readProblem !== undefined || save.state === "saving" || pending.current !== undefined,
-    update, reset, clear, discard, submit, retry, reload, rerunPreflight, onFieldBlur });
+  return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: IDLE_SAVE, preflight, protectedEditor, leaves, readProblem,
+    dirtyCount: Object.keys(draft).length, locked: !readReady || readProblem !== undefined,
+    update, reset, clear, discard, submit, reload, rerunPreflight, onFieldBlur });
 }

@@ -67,7 +67,7 @@ describe('assistant proposal card rows', () => {
   it('renders no card for an unknown outcome; its one line is the transcript message', () => {
     expect(render(withRows([person('Sample, Avery', '10101010')]), 'unknown').host.innerHTML).toBe('');
     expect(presentResult({ state: 'unknown', actionId: start.actionId, action: withRows([person('Sample, Avery', '10101010')]) }, 1, 'prompt').message.text).toBe(ASSISTANT_UNKNOWN_NOTICE);
-    expect(ASSISTANT_UNKNOWN_NOTICE).toBe('Couldn\'t finish this.');
+    expect(ASSISTANT_UNKNOWN_NOTICE).toBe('Relay could not tell whether this finished. Check it before asking again.');
   });
   it('names the one row or the served count on the resolved line', () => {
     expect(render(withRows([person('Sample, Avery', '10101010')]), 'confirmed').host.textContent).toBe('Start Person Lookup · Sample, AveryStarted');

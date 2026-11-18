@@ -7,10 +7,20 @@ import { importSpreadsheetInWorker } from '../spreadsheets/spreadsheet-import-cl
 import { cellText, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { MOCK_WORKFLOWS } from '../workflows/mocks/workflow-mock-catalog.js';
 import type { ComposerValue } from './composer-model.js';
+import { ASSISTANT_ATTACHMENT_TYPES, ASSISTANT_ATTACHMENTS_PER_SEND, ASSISTANT_FAILURES, type AssistantAttachmentMediaType } from '../../../models/dashboard/assistant.js';
 
-export interface AssistantFile { readonly id: string; readonly name: string; readonly status: 'Attached' | 'Updated' | 'Generated'; readonly workbook?: EditableWorkbook }
+/** Where a served attachment stands: staged for the model, failed with its reason, or kept on the spreadsheet path and never sent. */
+export type AssistantFileStage = { readonly state: 'staged' } | { readonly state: 'failed'; readonly message: string } | { readonly state: 'spreadsheet' };
+export interface AssistantFile { readonly id: string; readonly name: string; readonly status: 'Attached' | 'Updated' | 'Generated'; readonly workbook?: EditableWorkbook; readonly stage?: AssistantFileStage }
+const SPREADSHEET_NAME = /\.(xlsx?|csv|tsv)$/i;
+function attachmentType(name: string): { mediaType: AssistantAttachmentMediaType; maxBytes: number } | undefined {
+  const extension = /\.([^.]+)$/u.exec(name)?.[1]?.toLowerCase();
+  for (const [mediaType, type] of Object.entries(ASSISTANT_ATTACHMENT_TYPES) as [AssistantAttachmentMediaType, typeof ASSISTANT_ATTACHMENT_TYPES[AssistantAttachmentMediaType]][])
+    if (extension !== undefined && (type.extensions as readonly string[]).includes(extension)) return { mediaType, maxBytes: type.maxBytes };
+  return undefined;
+}
 export type AssistantScene = 'new' | 'conversation' | 'ask-read' | 'ask-write' | 'permission-changed' | 'working' | 'cancelling' | 'done' | 'failed' | 'handoff' | 'destructive' | 'delete-working' | 'resolved' | 'declined';
-export interface AssistantMessage { readonly role: 'operator' | 'assistant'; readonly text: string; readonly attachments?: readonly { readonly id: string; readonly name: string }[] }
+export interface AssistantMessage { readonly role: 'operator' | 'assistant'; readonly text: string; readonly code?: never; readonly attachments?: readonly { readonly id: string; readonly name: string }[] }
 export interface AssistantRow { readonly sheet: string; readonly row: number; readonly person: string; readonly values: Readonly<Record<string, string>>; readonly issue: string | null }
 export interface AssistantWorkflow { readonly workflowId: string; readonly label: string; readonly file: AssistantFile; readonly rows: readonly AssistantRow[]; readonly state: 'review' | 'running' | 'complete' | 'uncertain' | 'failed'; readonly outputs: readonly AssistantFile[]; readonly message?: string }
 export interface AssistantConversation { readonly id: string; readonly title: string; readonly source: 'mock'; readonly scene: AssistantScene; readonly messages: readonly AssistantMessage[]; readonly files: readonly AssistantFile[]; readonly workflow?: AssistantWorkflow }
@@ -123,6 +133,10 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
     if (served !== undefined && assistantSetupCommand(value.text) !== undefined && value.files.length > 0) {
       setError('Assistant setup commands accept text only. Remove attachments before sending.'); return true;
     }
+    if (served !== undefined && value.files.some(file => file.stage?.state === 'failed')) { setError('An attachment did not upload. Retry or remove it before sending.'); return true; }
+    if (served !== undefined && value.files.filter(file => file.stage?.state === 'staged').length > ASSISTANT_ATTACHMENTS_PER_SEND) {
+      setError(`Attach at most ${ASSISTANT_ATTACHMENTS_PER_SEND} files to one message.`); return true;
+    }
     return false;
   }
   function refuseAttachmentInput() {
@@ -133,7 +147,19 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
   }
   async function attachFile(file?: File): Promise<AssistantFile | null> {
     if (refuseAttachmentInput()) return null;
-    return ports.onAttachFile?.(file) ?? null;
+    if (file !== undefined && served !== undefined && !SPREADSHEET_NAME.test(file.name)) {
+      const type = attachmentType(file.name);
+      if (type === undefined) throw new Error(ASSISTANT_FAILURES.ASSISTANT_ATTACHMENT_UNSUPPORTED);
+      if (file.size > type.maxBytes) throw new Error(ASSISTANT_FAILURES.ASSISTANT_ATTACHMENT_TOO_LARGE);
+    }
+    const attached = await ports.onAttachFile?.(file) ?? null;
+    if (attached === null || file === undefined || served === undefined) return attached;
+    if (SPREADSHEET_NAME.test(file.name)) return { ...attached, stage: { state: 'spreadsheet' } };
+    try {
+      const result = await served.stageAttachment({ name: file.name, mediaType: attachmentType(file.name)!.mediaType, bytes: new Uint8Array(await file.arrayBuffer()) });
+      return result.state === 'staged' ? { ...attached, id: result.attachment.id, stage: { state: 'staged' } }
+        : { ...attached, stage: { state: 'failed', message: ASSISTANT_FAILURES[result.code] } };
+    } catch { return { ...attached, stage: { state: 'failed', message: 'Could not attach the file. Try again.' } }; }
   }
   async function send(value: ComposerValue) {
     if (refuseAttachments(value)) return false;
@@ -145,7 +171,8 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
       const next = sentMock === undefined ? { ...conversation, files: [...conversation.files, ...value.files] } : withSentAttachments(sentMock, conversation.messages.length, attachments);
       for (const file of value.files) if (file.workbook) await ports.onRegisterSpreadsheet?.(file);
       if (served && identity === generation.current && authority === currentAuthority.current) {
-        served.onAction({ type: 'edit', value: value.text }); served.onAction({ type: 'send', attachments }); dispatched = true;
+        served.onAction({ type: 'edit', value: value.text });
+        served.onAction({ type: 'send', attachments, staged: value.files.filter(file => file.stage?.state === 'staged').map(file => file.id) }); dispatched = true;
       }
       return next;
     });

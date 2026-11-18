@@ -119,7 +119,7 @@ export type RunDialogEffect =
   | { kind: "retain-and-submit"; request: number; command: LaunchFinalCommand; plan?: StartPlanResponse }
   | { kind: "dismiss-recovery"; command: LaunchFinalCommand }
   | { kind: "feedback" }
-  | { kind: "applied"; workflowId: string; count?: number; workerStartup?: RunWorkerStartupFailure }
+  | { kind: "applied"; workflowId: string; count?: number; runId?: string; workerStartup?: RunWorkerStartupFailure }
   | { kind: "close-dialog" } | { kind: "refusal-toast" }
   /** A clean plan from Start: the runner sends `start` again with fresh authority and gates. */
   | { kind: "auto-start" };
@@ -273,8 +273,9 @@ function submitSettled(state: RunDialogState, event: Extract<RunDialogEvent, { t
       case "landed": {
         const reply = event.reply;
         const workerStartup = reply !== undefined && (reply.state === "applied" || reply.state === "already-applied") ? reply.workerStartup : undefined;
+        const startedRunId = reply !== undefined && (reply.state === "applied" || reply.state === "already-applied") ? reply.affectedTargets.find(target => target.family === "run")?.runId : undefined;
         return step(closed, [{ kind: "dismiss-recovery", command: request.command }, { kind: "feedback" },
-          { kind: "applied", workflowId: request.command.target.workflowId,
+          { kind: "applied", workflowId: request.command.target.workflowId, ...(startedRunId === undefined ? {} : { runId: startedRunId }),
             ...(request.plannedCount === undefined ? {} : { count: request.plannedCount }), ...(workerStartup === undefined ? {} : { workerStartup }) },
           { kind: "close-dialog" }]);
       }
@@ -479,7 +480,7 @@ export type RunDialogEffects = Readonly<{
   submit: (command: LaunchFinalCommand, verification: LaunchVerificationPlan | undefined) => Promise<CommandOutcome>;
   dismissRecovery: (command: LaunchFinalCommand) => void;
   feedback: (outcome: CommandOutcome) => void;
-  applied: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
+  applied: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure, runId?: string) => void;
   closeDialog: () => void;
   refusalToast: () => void;
   /** Runs after the clean plan has rendered, so the component sends `start` with fresh gates and authority. */
@@ -550,7 +551,7 @@ export function useRunDialogMachine(input: Readonly<{ stage: RunStartStage; setS
         }
         case "dismiss-recovery": fx.dismissRecovery(effect.command); break;
         case "feedback": if (outcome.current !== undefined) fx.feedback(outcome.current); break;
-        case "applied": fx.applied(effect.workflowId, effect.count, effect.workerStartup); break;
+        case "applied": fx.applied(effect.workflowId, effect.count, effect.workerStartup, effect.runId); break;
         case "close-dialog": fx.closeDialog(); break;
         case "refusal-toast": fx.refusalToast(); break;
         case "auto-start": autoStart.current = true; break;

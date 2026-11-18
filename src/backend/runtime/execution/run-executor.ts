@@ -890,11 +890,14 @@ export async function executeClaimedRun(
         }
         if (load.found) {
           const record = requireStoredCheckpoint(stored, String(node.id));
-          // A stale always-rerun fact is read again; only checkpoint tasks refuse.
-          if (node.replay === "always-rerun" && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
+          // A stale always-rerun fact is read again, and so is a stale ancestor of a plain Start;
+          // only an explicit start node or a continuation refuses a stale checkpoint.
+          const implicitAncestor = !explicit && envelope.continuation === undefined && !retainedAccounting;
+          if ((node.replay === "always-rerun" || implicitAncestor) && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
             replayed: [{ nodeId: node.id, taskId: node.uses.id, freshness: node.uses.freshness, provenance: record.provenance }],
             scheduled: pendingCommits, now: clock.now(), attempt: envelope.attempt,
             ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) }).length > 0) {
+            if (node.replay !== "always-rerun") ancestorRegionOpen = false;
             plan.set(String(node.id), { mode: "execute" });
             continue;
           }

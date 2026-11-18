@@ -22,7 +22,7 @@ import { admitAttachment, AssistantAttachmentRefusal, attachmentMediaType } from
 import { AssistantToolRefusal, type AssistantPlugin, type AssistantProposalDraft, type AssistantSessionTool, type AssistantTypedProposalTool } from "./plugins/plugin.js";
 import { assistantProposalParts, isTypedYes, type AssistantTypedProposals } from "./typed-proposals.js";
 import { ASSISTANT_TOOL_NAMESPACE, assistantToolRegistry } from "./plugins/registry.js";
-import type { AssistantWorkflowFacts } from "./plugins/workflows/facts.js";
+import { AssistantWorkflowFactsError, type AssistantWorkflowFacts } from "./plugins/workflows/facts.js";
 import { AssistantHistoryRefusal, type AssistantHistoryRepository, type AssistantSettlement } from "../storage/sqlite/assistant-history.js";
 import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 import { ASSISTANT_PROVIDER_EFFORTS, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
@@ -77,6 +77,11 @@ export function createAssistantService(options: AssistantServiceOptions) {
   /** Value-free fault lines: the code, the tool name and each cause's class, never a message. */
   const fault = (error: unknown, area: string, reason: string, code: AssistantFailureCode) => {
     if (options.debugEvents !== undefined) emitFaultWithCauses(options.debugEvents, undefined, error, { category: "http", area, reason, code });
+  };
+  /** One value-free fault: the reason names the served workflow (a definition id, never file or operator text); the cause row carries the facts code. */
+  const contextFault = (error: unknown) => {
+    const workflow = error instanceof AssistantWorkflowFactsError ? error.workflowId ?? "unknown-workflow" : "unclassified-failure";
+    fault(error, "assistant-context", /^[a-z0-9-]+$/u.test(workflow) ? workflow : "unknown-workflow", "ASSISTANT_CONTEXT_UNAVAILABLE");
   };
   return Object.freeze({
     activity: options.activity?.read,
@@ -198,7 +203,11 @@ export function createAssistantService(options: AssistantServiceOptions) {
         onAccepted(current);
         if (options.plugins === undefined) return stop("ASSISTANT_UNAVAILABLE");
         let facts: AssistantWorkflowFacts;
-        try { facts = options.facts(); } catch (error) { if (closure(error)) throw error; return stop("ASSISTANT_CONTEXT_UNAVAILABLE"); }
+        try { facts = options.facts(); } catch (error) {
+          if (closure(error)) throw error;
+          contextFault(error);
+          return stop("ASSISTANT_CONTEXT_UNAVAILABLE");
+        }
         const registry = assistantToolRegistry(options.plugins());
         const { catalog, authority } = await options.account.listAssistantModels(signal);
         assertCurrent();

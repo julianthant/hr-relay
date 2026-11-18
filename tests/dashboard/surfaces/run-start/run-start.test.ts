@@ -487,7 +487,7 @@ describe("Start is not sent while an omitted step's form does not parse", () => 
     assert.equal(dialog.stage(), "Steps", "an unparsable fact reached the server");
     assert.equal(asked, 0, "the dialog asked the server for a plan it knew would be refused");
     assert.ok(dialog.text().includes("a date fact must be MM/DD/YYYY"), "the declared refusal was not drawn");
-    assert.ok(dialog.text().includes("Fill in the facts"), "the footer never said why Next did nothing");
+    assert.ok(dialog.text().includes("Fill in Last day worked"), "the footer never named the value Next is waiting for");
 
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.press("Start live run");

@@ -25,7 +25,7 @@ describe("shared run catalog", () => {
     expect(ids()).not.toContain("i9-lookup"); expect(ids()).not.toContain("sharepoint-download");
     expect(ids("OCR")).toEqual([]); expect(ids("i-9")).toEqual(["i9-check-start"]);
     expect(ids("I-9 Lookup")).toEqual([]); expect(ids("SharePoint")).toEqual([]);
-    expect(ids("Onboarding Documents")).toEqual(["crm-doc-download"]); expect(ids("Search")).toEqual(["person-lookup"]);
+    expect(ids("Onboarding Documents")).toEqual(["crm-doc-download"]); expect(ids("Lookup")).toEqual(["person-lookup"]);
     expect(catalog.filter(flow => flow.launch.state === "unavailable").map(flow => flow.id).sort()).toEqual([]);
     expect(catalog.find(flow => flow.id === "ocr")).toBeUndefined(); expect(catalog.find(flow => flow.id === "onbase")).toBeUndefined();
   });
@@ -43,7 +43,7 @@ describe("shared run catalog", () => {
     expect(runPickerGroups(buildWorkflowCatalog([{ ...served[0], code: "zz" }], false, servedFixtureSources([served[0]])), "zz")[0].entries[0].entry.id).toBe(served[0].workflowId);
   });
   it("shares sidebar category order and retains subordinate proving harnesses", () => {
-    expect(runPickerGroups(catalog, "").map(group => group.label)).toEqual(["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "Timekeeping"]);
+    expect(runPickerGroups(catalog, "").map(group => group.label)).toEqual(["Lookup", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "Timekeeping"]);
     const composition: RunStartWorkflow = { ...served[0], workflowId: "test-composition", role: defineWorkflowRole({ kind: "composition" }) };
     const harness: RunStartWorkflow = { ...served[0], workflowId: "test-harness", role: defineWorkflowRole({ kind: "chunk-harness", of: "test-composition", step: composition.steps[0].key }) };
     const groups = runPickerGroups(buildWorkflowCatalog([composition, harness], false, servedFixtureSources([composition, harness])), "");
