@@ -1,4 +1,4 @@
-import type { Frame, Page } from "playwright";
+import type { Page } from "playwright";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 
 const fields = {
@@ -12,7 +12,7 @@ const fields = {
 export const UCPATH_HIRE_UI = deepFreeze({
   wizardUrl: "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).HR_TBH_JOB.GBL",
   searchUrl: "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/UC_EXTENSIONS.UC_SS_TBH.GBL",
-  field: (page: Page | Frame, key: keyof typeof fields) => key === "emplId" ? page.locator("#HR_TBH_WRK_EMPLID_PROMPT2") : page.getByRole("textbox", { name: fields[key], exact: true }),
+  field: (page: Page, key: keyof typeof fields) => key === "emplId" ? page.locator("#HR_TBH_WRK_EMPLID_PROMPT2") : page.getByRole("textbox", { name: fields[key], exact: true }),
   tab: (page: Page, name: "Personal Data" | "Job Data" | "Earns Dist" | "Employee Experience") => page.getByRole("tab", { name, exact: true }),
   reason: (page: Page) => page.getByLabel("Reason Code", { exact: true }),
   createDraft: (page: Page) => page.getByRole("button", { name: "Create Transaction", exact: true }),

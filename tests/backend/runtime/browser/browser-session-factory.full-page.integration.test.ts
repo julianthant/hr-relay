@@ -163,14 +163,25 @@ describe("whole-page factory screenshots", () => {
       for (const y of [220, 1220, 2220]) assert.deepEqual(pixel(png, 30, y), [255, 0, 255]);
     });
   });
-  // The I-9 creation form, the I-9 search dialog and the UCPath Hire wizard each label their SSN control.
-  for (const label of ["U.S. Social Security Number", "Social Security Number", "National ID"]) {
-    for (const target of ["window", "element", "iframe"] as const) it(`masks the "${label}" control in every ${target} band`, async () => {
-      const fields = [0, 1, 2].map(i => `<div style="height:1000px;padding-top:200px;background:white"><label for="ssn-${i}" style="display:block;height:20px">${label}</label><input id="ssn-${i}" style="width:200px;height:40px;background:red" value="fixture-${i}"></div>`).join("");
-      const body = target === "window" ? fields : target === "element" ? `<div style="height:600px;overflow:auto">${fields}</div>` : `<iframe style="border:0;width:100%;height:600px" srcdoc='${html(fields)}'></iframe>`;
-      await withPage(body, async (_page, resource) => {
+  // The I-9 creation form, the I-9 search dialog and the UCPath Hire wizard each label their SSN control on the top-level page.
+  const recipeForms = [{ label: "U.S. Social Security Number", wrap: (fields: string) => fields },
+    { label: "Social Security Number", wrap: (fields: string) => `<div role="dialog" aria-label="Search for Existing Employee">${fields}</div>` },
+    { label: "National ID", wrap: (fields: string) => fields }];
+  const recipeFields = (label: string) => [0, 1, 2].map(i => `<div style="height:1000px;padding-top:200px;background:white"><label for="ssn-${i}" style="display:block;height:20px">${label}</label><input id="ssn-${i}" style="width:200px;height:40px;background:red" value="fixture-${i}"></div>`).join("");
+  for (const { label, wrap } of recipeForms) {
+    for (const target of ["window", "element"] as const) it(`masks the "${label}" control in every ${target} band`, async () => {
+      const fields = wrap(recipeFields(label));
+      await withPage(target === "window" ? fields : `<div style="height:600px;overflow:auto">${fields}</div>`, async (_page, resource) => {
         const png = await image(resource);
         for (const y of [240, 1240, 2240]) assert.deepEqual(pixel(png, 30, y), [255, 0, 255]);
+      });
+    });
+    it(`refuses the "${label}" control in a child frame, where no driver addresses it`, async () => {
+      await withPage(`<iframe style="border:0;width:100%;height:600px" srcdoc='${html(wrap(recipeFields(label)))}'></iframe>`, async (_page, resource) => {
+        const evidence = await resource.screenshot?.();
+        assert.ok(evidence?.state === "unavailable");
+        assert.equal(evidence.reason, "secret-controls-present");
+        assert.equal("bytes" in evidence, false);
       });
     });
   }
@@ -220,6 +231,40 @@ describe("whole-page factory screenshots", () => {
       assert.equal(evidence.reason, "secret-controls-present");
       assert.equal("bytes" in evidence, false);
       assert.equal(bands, 2);
+    });
+  });
+  it("refuses a recipe-masked SSN control that loses its recipe match during a band", async () => {
+    await withPage(`<div id="ssn-form"><label for="lost-ssn">U.S. Social Security Number</label><input id="lost-ssn" value="fixture-value"></div>${content}`, async (page, resource) => {
+      const screenshot = page.screenshot.bind(page);
+      let bands = 0;
+      page.screenshot = async options => {
+        if (++bands !== 2) return screenshot(options);
+        await page.locator("#ssn-form").evaluate(el => { el.setAttribute("aria-hidden", "true"); });
+        try { return await screenshot(options); }
+        finally { await page.locator("#ssn-form").evaluate(el => { el.removeAttribute("aria-hidden"); }); }
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal("bytes" in evidence, false);
+      assert.equal(bands, 2);
+    });
+  });
+  it("refuses an unmasked SSN control the wider capture viewport reveals without a DOM change", async () => {
+    await withPage(`<style>@media (min-width: 1000px) { #wide-ssn { display: block !important; } }</style>${content}<input id="wide-ssn" aria-label="Employee SSN" value="fixture-value" style="display:none">`, async (_page, resource) => {
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal("bytes" in evidence, false);
+    });
+  });
+  it("refuses a painted SSN control inside an open shadow root", async () => {
+    await withPage(`<div id="ssn-host"></div>${content}`, async (page, resource) => {
+      await page.locator("#ssn-host").evaluate(host => { host.attachShadow({ mode: "open" }).innerHTML = '<input aria-label="Employee SSN" value="fixture-value">'; });
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal("bytes" in evidence, false);
     });
   });
   it("captures a page whose unmasked SSN control is never painted", async () => {
