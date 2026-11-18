@@ -93,7 +93,7 @@ it('blocks every setup attachment before panel registration and both local file 
 
 describe('assistant attachments', () => {
   const sendValue = (text: string, files: readonly AssistantFile[]) => ({ text, files, model: 'ignored', effort: 'ignored', approval: 'ignored' });
-  const upload = (name: string, bytes = 'fixture', size = bytes.length) => ({ name, size, async arrayBuffer() { return new TextEncoder().encode(bytes).buffer as ArrayBuffer; } }) as unknown as File;
+  const upload = (name: string, bytes = 'fixture', size = bytes.length) => ({ name, size, async arrayBuffer() { return new TextEncoder().encode(bytes).buffer; } }) as unknown as File;
   async function mountServed(client: ReturnType<typeof resultClient>, ports: AssistantPorts = { async onAttachFile(picked) { return { id: crypto.randomUUID(), name: picked!.name, status: 'Attached' }; } }) {
     let controller!: ReturnType<typeof useAssistantController>;
     function Harness() { controller = useAssistantController(client, 'profile', undefined, false); model = useAssistantPanel({ producer: createAssistantMockProducer(), accountClient, ports, served: controller }); return null; }
@@ -109,7 +109,7 @@ describe('assistant attachments', () => {
     });
     return { client, staged, requests };
   }
-  const stagedResult = (name: string, byteLength: number, mediaType: AssistantStageResult extends infer R ? (R extends { state: 'staged' } ? R['attachment']['mediaType'] : never) : never = 'application/pdf'): AssistantStageResult =>
+  const stagedResult = (name: string, byteLength: number, mediaType: Extract<AssistantStageResult, { state: 'staged' }>['attachment']['mediaType'] = 'application/pdf'): AssistantStageResult =>
     ({ state: 'staged', attachment: { id: crypto.randomUUID(), mediaType, name, byteLength, expiresAt: '2099-01-01T00:00:00.000Z' } });
 
   it('stages a PDF before send and names its staged id in the request', async () => {
@@ -117,13 +117,15 @@ describe('assistant attachments', () => {
     const controller = await mountServed(client);
     let attached: AssistantFile | null = null;
     await act(async () => { attached = await model.attachFile(upload('report.pdf', '%PDF-1.4')); });
-    expect(staged).toEqual([{ conversationId: expect.any(String), name: 'report.pdf', mediaType: 'application/pdf', bytes: 8 }]);
+    expect(staged).toHaveLength(1);
+    expect(staged[0]).toHaveProperty('conversationId', expect.any(String));
+    expect(staged).toEqual([{ conversationId: staged[0]?.conversationId, name: 'report.pdf', mediaType: 'application/pdf', bytes: 8 }]);
     expect(attached).toMatchObject({ name: 'report.pdf', stage: { state: 'staged' } });
     await act(async () => controller().onAction({ type: 'edit', value: 'Check this file' }));
     await act(async () => { await model.send(sendValue('Check this file', [attached!])); });
     await vi.waitFor(() => expect(requests).toHaveLength(1));
-    expect(requests[0]!.attachments).toEqual([attached!.id]);
-    expect(requests[0]!.conversationId).toBe(staged[0]!.conversationId);
+    expect(requests[0].attachments).toEqual([attached!.id]);
+    expect(requests[0].conversationId).toBe(staged[0].conversationId);
   });
   it('refuses an unsupported type before any upload or send, with a plain reason', async () => {
     const { client, staged, requests } = recordingClient(async name => stagedResult(name, 1));
@@ -142,7 +144,8 @@ describe('assistant attachments', () => {
     const controller = await mountServed(client);
     let attached: AssistantFile | null = null;
     await act(async () => { attached = await model.attachFile(upload('report.pdf', '%PDF-1.4')); });
-    expect(attached).toMatchObject({ stage: { state: 'failed', message: expect.stringContaining('Try again') } });
+    expect(attached).toMatchObject({ stage: { state: 'failed' } });
+    expect(attached).toHaveProperty('stage.message', expect.stringContaining('Try again'));
     await act(async () => controller().onAction({ type: 'edit', value: 'Check this file' }));
     await act(async () => { expect(await model.send(sendValue('Check this file', [attached!]))).toBe(false); });
     expect(model.error).toContain('Retry or remove'); expect(requests).toHaveLength(0);
@@ -163,6 +166,6 @@ describe('assistant attachments', () => {
     await act(async () => controller().onAction({ type: 'edit', value: 'Check this file' }));
     await act(async () => { await model.send(sendValue('Check this file', [attached!])); });
     await vi.waitFor(() => expect(requests).toHaveLength(1));
-    expect(requests[0]!.attachments).toBeUndefined();
+    expect(requests[0].attachments).toBeUndefined();
   });
 });

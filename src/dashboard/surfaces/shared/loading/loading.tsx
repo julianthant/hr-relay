@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { DsBodyScope, Field, FormGroup, Panel, PanelBody, PanelHeader, ResultRow, SectionLabel, Skeleton, Table, TBody, TD, TH, THead, TR, dsBorder, dsRadius, dsSurface, dsText } from "../../../ds/ui.js";
+import { DsBodyScope, Field, FormGroup, ResultRow, SectionLabel, Skeleton, Table, TBody, TD, TH, THead, TR, dsBorder, dsRadius, dsSurface, dsText } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 
 export function LoadingRegion({ label, children, className }: { label: string; children: ReactNode; className?: string }) {

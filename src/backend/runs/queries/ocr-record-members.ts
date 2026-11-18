@@ -57,6 +57,26 @@ function readingMember(repositories: AuthorityRepositories, owner: RunRecord, pa
       panelKind: panelKindOf(owner.envelope.shape, reviewAvailable), section: "logs" as const } };
 }
 
+function runStatus(repositories: AuthorityRepositories, run: RunRecord) {
+  return deriveRunStatus({ ...run, delegationWait: repositories.dependencies.waitState(run.envelope.runId) });
+}
+
+function runLink(repositories: AuthorityRepositories, run: RunRecord, workflowLabel: (workflowId: string) => string, reviewAvailable: boolean) {
+  return { runId: run.envelope.runId, workflowId: run.envelope.workflow,
+    partitionDay: LocalDateSchema.parse(searchPartitionDay(new Date(run.envelope.enqueuedAt))), label: workflowLabel(run.envelope.workflow),
+    status: runStatus(repositories, run), panelKind: panelKindOf(run.envelope.shape, reviewAvailable) };
+}
+
+function pageFailureMembers(repositories: AuthorityRepositories, owner: RunRecord, pages: AuthenticatedGroup | undefined,
+  link: (run: RunRecord) => Omit<Extract<QueueMemberTarget, { section: "logs" }>, "section">) {
+  return (pages?.children ?? []).filter(member => runStatus(repositories, member.child) === "failed").map(member => {
+    const input = OcrPageWorkflowInputSchema.parse(member.child.input.parsed.value);
+    return { kind: "page-failure" as const, ownerRunId: owner.envelope.runId, sourcePage: input.page.sourcePage,
+      title: `Page ${input.page.sourcePage}`, status: "failed" as const, statusLabel: "Failed", childRunIds: member.history,
+      target: { ...link(member.child), section: "logs" as const } };
+  });
+}
+
 function readOcrRecordSource(repositories: AuthorityRepositories, runId: string) {
   const owner = repositories.runs.get(runId);
   if (owner?.envelope.workflow !== "ocr") throw new OcrReviewRefusedError();
@@ -117,10 +137,8 @@ function readOcrRecordPresentation(repositories: AuthorityRepositories, reader: 
   if (owner.envelope.workflow !== "ocr") return undefined;
   authenticateOcrOperator(repositories, reader, owner);
   const reviewAuthority = readOcrReviewAuthority(repositories, reader, runId);
-  const statusOf = (run: RunRecord) => deriveRunStatus({ ...run, delegationWait: repositories.dependencies.waitState(run.envelope.runId) });
-  const link = (run: RunRecord) => ({ runId: run.envelope.runId, workflowId: run.envelope.workflow,
-    partitionDay: LocalDateSchema.parse(searchPartitionDay(new Date(run.envelope.enqueuedAt))), label: workflowLabel(run.envelope.workflow),
-    status: statusOf(run), panelKind: panelKindOf(run.envelope.shape, run.envelope.runId === owner.envelope.runId && reviewAuthority !== undefined) });
+  const statusOf = (run: RunRecord) => runStatus(repositories, run);
+  const link = (run: RunRecord) => runLink(repositories, run, workflowLabel, run.envelope.runId === owner.envelope.runId && reviewAuthority !== undefined);
   const source = readOcrRecordSource(repositories, runId);
   const groups = source?.groups ?? repositories.dependencies.groups(runId);
   const lookups = groups.filter(({ group }) => ["lookup-identities", "lookup-signers"].includes(group.invocation.nodeId));
@@ -132,12 +150,7 @@ function readOcrRecordPresentation(repositories: AuthorityRepositories, reader: 
   if (pageGroups.length > 1) throw new OcrReviewRefusedError();
   const covered = (source?.retained ?? repositories.dependencies.groups(runId,"retained")).filter(({ group }) => ["read-pages", "lookup-identities", "lookup-signers"].includes(group.invocation.nodeId));
   const runIds = [...new Set(covered.flatMap(({ group }) => group.children.flatMap(member => member.history)))];
-  const failures = (pages?.group.children ?? []).filter(member => statusOf(member.child) === "failed").map(member => {
-    const input = OcrPageWorkflowInputSchema.parse(member.child.input.parsed.value);
-    return { kind: "page-failure" as const, ownerRunId: owner.envelope.runId, sourcePage: input.page.sourcePage,
-      title: `Page ${input.page.sourcePage}`, status: "failed" as const, statusLabel: "Failed", childRunIds: member.history,
-      target: { ...link(member.child), section: "logs" as const } };
-  });
+  const failures = pageFailureMembers(repositories, owner, pages?.group, link);
   if (source === undefined) {
     if (pages === undefined) return undefined;
     return QueueRecordMembersSchema.parse({ runIds, members: [readingMember(repositories,owner,pages.group,
@@ -343,8 +356,13 @@ export function readQueueRecordMembers(repositories: AuthorityRepositories, read
           if (pages.length > 1) throw new OcrReviewRefusedError();
           if (pages[0] === undefined) return [];
           const runIds = [...new Set(groups.flatMap(({ group }) => group.children.flatMap(child => child.history)))];
-          const status = deriveRunStatus({ ...run,delegationWait: repositories.dependencies.waitState(run.envelope.runId) });
-          return [QueueRecordMembersSchema.parse({ runIds, members: [readingMember(repositories,member.child,pages[0].group,runIds,status,workflowLabel,readOcrReviewAuthority(repositories,reader,member.child.envelope.runId) !== undefined)] })];
+          // A failed page stays on the host's row with its own Logs; once no page is left reading, nothing says Reading.
+          const failures = pageFailureMembers(repositories, member.child, pages[0].group, page => runLink(repositories, page, workflowLabel, false));
+          const failed = new Set(failures.flatMap(failure => failure.childRunIds));
+          const reading = failures.length < pages[0].group.children.length
+            ? [readingMember(repositories,member.child,pages[0].group,runIds.filter(id => !failed.has(id)),runStatus(repositories, run),workflowLabel,
+              readOcrReviewAuthority(repositories,reader,member.child.envelope.runId) !== undefined)] : [];
+          return [QueueRecordMembersSchema.parse({ runIds, members: [...reading, ...failures] })];
         }
         const descriptor = resolve(run.envelope.workflow);
         const hasMembers = repositories.dependencies.groups(run.envelope.runId)
