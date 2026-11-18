@@ -26,7 +26,7 @@ import { AuthorityDatabase } from "./authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "./backup-inspection.js";
 import { parseBackupManifestFile,verifyBackupBytesAtPath,verifyBackupManifestAtPath } from "./backup-service.js";
 import { withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
-import { assertRestorePreservesWriteFences, readRestoreWriteFences, restoreWriteFenceDigest } from "./restore-write-fences.js";
+import { assertRestoreDatabasePreservesWriteFences, readRestoreWriteFenceDigest } from "./restore-write-fences.js";
 import { isCurrentAuthoritySchemaVersion, OPENABLE_AUTHORITY_SCHEMA_VERSIONS } from "./migrations.js";
 
 import { OfflineRestoreReportSchema,OfflineRestoreRequestSchema,type OfflineRestoreReport } from "./recovery-contracts.js";
@@ -205,6 +205,13 @@ function restoreCandidateConfig(admission: RuntimeAdmission, facts: ReturnType<t
   return config;
 }
 
+function assertSnapshotPreservesWriteFences(
+  sourcePath: string, restoredPath: string, sourceDigest: string, sourceChangedError = "restore-write-fences-changed",
+): void {
+  withReadonlyAuthoritySnapshot(sourcePath, source => withReadonlyAuthoritySnapshot(restoredPath, restored =>
+    assertRestoreDatabasePreservesWriteFences(source, restored, sourceDigest, sourceChangedError)));
+}
+
 export class OfflineAuthorityRestoreService {
   readonly #browserClosure: ProfileBrowserClosure;
   readonly #runtimeAdmission: RuntimeAdmission;
@@ -250,7 +257,7 @@ export class OfflineAuthorityRestoreService {
       assertMaintenanceCustodyAvailable("restore");
       admission.captureProfileRestore(operation);
       const directory = join(admission.stateRoot, "backups", "authority"); admission.assertStateRoot(directory);
-      const originalFences = withReadonlyAuthoritySnapshot(this.#authorityPath, readRestoreWriteFences);
+      const originalFenceDigest = withReadonlyAuthoritySnapshot(this.#authorityPath, readRestoreWriteFenceDigest);
       const rejected: unknown[] = [], candidates: Array<{ path: string; createdAt: string }> = [];
       if (!existsSync(directory)) throw new Error("automatic-repair-backup-missing");
       for (const name of readdirSync(directory).filter(name => name.endsWith(".manifest.json")).sort()) {
@@ -262,7 +269,7 @@ export class OfflineAuthorityRestoreService {
             rejected.push(new Error("automatic-repair-backup-identity-version-or-time-invalid")); continue;
           }
           const verified = await verifyBackupManifestAtPath(admission, path);
-          assertRestorePreservesWriteFences(originalFences, withReadonlyAuthoritySnapshot(verified.backupPath, readRestoreWriteFences));
+          assertSnapshotPreservesWriteFences(this.#authorityPath, verified.backupPath, originalFenceDigest);
           const copy = admission.verifiedReadOnlyCopy(verified.backupPath, verified.manifest.sha256);
           let candidateFailure: { error: unknown } | undefined;
           try { restoreCandidateConfig(admission, AuthorityDatabase.readRestoreCandidateInventory(admission, copy, verified.backupPath, operation), this.#clock); }
@@ -328,7 +335,7 @@ export class OfflineAuthorityRestoreService {
     const profile = admission.captureProfileRestore(restoreAdmission);
     assertProfileRestoreDatabaseBinding(this.#authorityPath, profile.binding);
     const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
-    const originalFences = withReadonlyAuthoritySnapshot(this.#authorityPath, readRestoreWriteFences);
+    const originalFenceDigest = withReadonlyAuthoritySnapshot(this.#authorityPath, readRestoreWriteFenceDigest);
     if (!existsSync(this.#authorityPath) || statSync(this.#authorityPath).size === 0) {
       throw new Error(`suspect authority database ${this.#authorityPath} is missing or empty`);
     }
@@ -408,9 +415,7 @@ export class OfflineAuthorityRestoreService {
             throw new Error("projection rebuild mutated non-rebuildable authority state");
           }
 
-          const restoredFences = withReadonlyAuthoritySnapshot(stagedPath, readRestoreWriteFences);
-          assertRestorePreservesWriteFences(originalFences, restoredFences);
-          if (restoreWriteFenceDigest(withReadonlyAuthoritySnapshot(this.#authorityPath, readRestoreWriteFences)) !== restoreWriteFenceDigest(originalFences)) throw new Error("restore-write-fences-changed");
+          assertSnapshotPreservesWriteFences(this.#authorityPath, stagedPath, originalFenceDigest);
           (this.#fileOperations.syncPath ?? fsyncPath)(stagedPath);
           const liveIdentityBeforeReplace = fileIdentity(this.#authorityPath);
           const stagedIdentityBeforeReplace = fileIdentity(stagedPath);
@@ -420,7 +425,7 @@ export class OfflineAuthorityRestoreService {
             backupPath: verified.backupPath, backupSha256: verified.manifest.sha256,
             sourceDatabaseIdentity, authorityGeneration: afterProjection.authorityGeneration,
             authorityContentFingerprint: afterProjection.authorityContentFingerprint,
-            browserMembershipDigest: restoreBrowserMembershipDigest(admission), retainedFilesDigest: restoreRetainedFilesDigest(admission.stateRoot), unresolvedWriteDigest: restoreWriteFenceDigest(originalFences), backupTime: verified.manifest.createdAt, restoredAt: this.#clock.now().toISOString(),
+            browserMembershipDigest: restoreBrowserMembershipDigest(admission), retainedFilesDigest: restoreRetainedFilesDigest(admission.stateRoot), unresolvedWriteDigest: originalFenceDigest, backupTime: verified.manifest.createdAt, restoredAt: this.#clock.now().toISOString(),
             live: liveIdentityBeforeReplace, staged: stagedIdentityBeforeReplace, suspect: fileIdentity(suspectPath),
             companions: (["-wal", "-shm"] as const).filter(suffix => existsSync(`${this.#authorityPath}${suffix}`))
               .map(suffix => ({ suffix, binding: fileIdentity(`${this.#authorityPath}${suffix}`), suspect: fileIdentity(`${suspectPath}${suffix}`) })),
@@ -636,12 +641,12 @@ export async function resumeAutomaticAuthorityRestore(input: Readonly<{
     if (!fileIdentityEquals(fileIdentity(path), expected)) throw new Error("restore-recovery-file-changed");
   };
   same(binding.suspectPath, binding.suspect);
-  const original = withReadonlyAuthoritySnapshot(binding.suspectPath, readRestoreWriteFences);
-  if (restoreWriteFenceDigest(original) !== binding.unresolvedWriteDigest) throw new Error("restore-recovery-write-fences-changed");
+  const originalFenceDigest = withReadonlyAuthoritySnapshot(binding.suspectPath, readRestoreWriteFenceDigest);
+  if (originalFenceDigest !== binding.unresolvedWriteDigest) throw new Error("restore-recovery-write-fences-changed");
   const stagePresent = authorityRestoreStageOf(journal, existsSync(binding.stagedPath)) === "staged";
   if (stagePresent) {
     same(binding.authorityPath, binding.live); same(binding.stagedPath, binding.staged);
-    assertRestorePreservesWriteFences(original, withReadonlyAuthoritySnapshot(binding.stagedPath, readRestoreWriteFences));
+    assertSnapshotPreservesWriteFences(binding.suspectPath, binding.stagedPath, originalFenceDigest, "restore-recovery-write-fences-changed");
   } else same(binding.authorityPath, binding.staged);
   for (const suffix of ["-wal", "-shm"] as const) {
     const row = binding.companions.find(value => value.suffix === suffix), live = `${binding.authorityPath}${suffix}`,
@@ -660,7 +665,7 @@ export async function resumeAutomaticAuthorityRestore(input: Readonly<{
   fsyncPath(dirname(binding.authorityPath)); admission.assertAuthorityRestoreCurrent(binding, operation);
   if (stagePresent) { renameSync(binding.stagedPath, binding.authorityPath); fsyncPath(dirname(binding.authorityPath)); }
   same(binding.authorityPath, binding.staged);
-  assertRestorePreservesWriteFences(original, withReadonlyAuthoritySnapshot(binding.authorityPath, readRestoreWriteFences));
+  assertSnapshotPreservesWriteFences(binding.suspectPath, binding.authorityPath, originalFenceDigest, "restore-recovery-write-fences-changed");
   for (const row of binding.companions) {
     const path = `${binding.stagedPath}${row.suffix}.live-companion`;
     if (existsSync(path)) { same(path, row.binding); rmSync(path); }
