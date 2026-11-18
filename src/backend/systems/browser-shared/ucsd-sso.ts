@@ -1,4 +1,4 @@
-import { nativeSsoGuardKeys, withPinnedSsoPost, type NativeSsoGuardKeys } from "../../runtime/browser/native-browser.js";
+import { nativeSsoGuardKeys, withPinnedSsoPost, type NativeSsoGuardKeys } from "./ucsd-sso-guard.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 // Select SSO submit by name: the enrollment navigation also looks like a Login button.
 import type { Frame, JSHandle, Locator, Page } from "playwright";

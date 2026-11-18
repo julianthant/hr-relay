@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { createServer } from "node:http";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, it, vi } from "vitest";
-import { installNativeSsoGuard, withPinnedSsoPost } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { installNativeSsoGuard, withPinnedSsoPost } from "../../../../src/backend/systems/browser-shared/ucsd-sso-guard.js";
 import { probeSessionCookie } from "../../../../src/backend/systems/browser-shared/authenticated-application.js";
 import { submitPinnedUcsdSsoCredentials, verifyUcsdAuthenticatedApplication, waitForAuthenticatedLanding, waitForUcsdDuoSignIn } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
 import { BrowserLandingStallError, DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
