@@ -406,12 +406,24 @@ describe("whole-page factory screenshots", () => {
       assert.equal(evidence.reason, "observer-unavailable");
     });
   });
-  it("refuses a capture that cannot reach the content bottom", async () => {
+  it("refuses a capture that cannot reach the content bottom and names the measured heights", async () => {
     await withPage(content, async (page, resource) => {
       await page.evaluate(() => { window.scrollTo = () => undefined; });
       const evidence = await resource.screenshot?.();
       assert.ok(evidence?.state === "unavailable");
       assert.equal(evidence.reason, "content-bottom-unreached");
+      assert.equal(evidence.detail, "page-capture-covered-600-of-3000px");
+    });
+  });
+  it("captures to the bottom of a scroller clipped at a sub-pixel offset, as the Kronos timecard grid is", async () => {
+    // The page cannot scroll the grid's 120.1875px top to zero, so its clipped height is fractional while clientHeight rounds up.
+    const grid = '<div style="height:120.1875px"></div><div style="height:700px;overflow:auto">'
+      + '<div style="height:2000px;background:rgb(210,20,30)"></div><div style="height:191px;background:rgb(20,30,210)"></div></div>';
+    await withPage(grid, async (_page, resource) => {
+      const png = await image(resource);
+      assert.equal(png.height, 2191);
+      assert.deepEqual(pixel(png, 20, 20), [210, 20, 30]);
+      assert.deepEqual(pixel(png, 20, 2189), [20, 30, 210]);
     });
   });
   it("names an unpainted gap when scroll snapping moves a band past the covered content", async () => {
