@@ -46,16 +46,16 @@ export function hireReviewChoices(mode: "new-hire" | "rehire", match: Match, hir
 }
 
 export function matchHireSubject(input: z.output<typeof OnboardingMatchHireSubject.input>): z.infer<typeof HireSubjectSchema> {
-  const { mode, firstName, lastName, match } = OnboardingMatchHireSubject.input.parse(input);
+  const { mode, firstName, lastName, ssnSearched, match } = OnboardingMatchHireSubject.input.parse(input);
   assertClassifiedMatch(match);
   if (match.hits.length === 0) {
     if (mode === "rehire") throw new Error("Concurrent hire requires an existing UCPath person");
     return { state: "new-hire", candidateEids: [] };
   }
   const person = match.confirmed[0];
-  if (mode === "rehire" || match.hits.length !== 1 || match.confirmed.length !== 1 || person === undefined
-    || normalizedName(person.name) !== normalizedName(`${lastName}, ${firstName}`)) {
-    return { state: "review-required", candidates: match.hits };
-  }
-  return { state: "existing-person", person };
+  const exact = match.hits.length === 1 && match.confirmed.length === 1 && person !== undefined
+    && normalizedName(person.name) === normalizedName(`${lastName}, ${firstName}`);
+  if (!exact) return { state: "review-required", candidates: match.hits };
+  if (ssnSearched) return { state: "existing-person", person, matchedBy: "name-dob-ssn" };
+  return mode === "rehire" ? { state: "review-required", candidates: match.hits } : { state: "existing-person", person };
 }

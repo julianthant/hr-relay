@@ -583,7 +583,9 @@ export function buildHireReview(author: WorkflowAuthor<typeof OnboardingInput>, 
     employee: outputs["hire-plan"].employee, expectedName: `${outputs["hire-plan"].employee.firstName} ${outputs["hire-plan"].employee.lastName}`,
   }));
   const approval = author.gate({ step: review, id: ONBOARDING_WRITE_REVIEW_GATE, label: "Review transactions and approve the hire path",
-    result: OnboardingWriteApprovalSchema, statusKey: "awaitingHireReview" }, [crm.plan, ucpath.matches, ucpath.subject, i9.lookup, findings]);
+    result: OnboardingWriteApprovalSchema, statusKey: "awaitingHireReview",
+    // A person a name, DOB and SSN search settled leaves nothing to decide.
+    when: { kind: "is-absent", of: { from: "node", nodeId: "hire-subject", path: "matchedBy" } } }, [crm.plan, ucpath.matches, ucpath.subject, i9.lookup, findings]);
   return { findings, approval, steps: [[review, [findings, approval]]] as const };
 }
 
@@ -595,7 +597,7 @@ export function buildHireWrites(author: WorkflowAuthor<typeof OnboardingInput>, 
   const firstSave = reference === undefined ? [] : [reference.review];
   const plan = author.task(entries.task("write-plan", OnboardingReadWritePlan, { replay: "always-rerun" }), [crm.plan, ucpath.matches, ucpath.subject, i9.lookup, findings, approval], ({ input, outputs }) => ({
     mode: input.mode, plan: outputs["hire-plan"], match: outputs["ucpath-source"], subject: outputs["hire-subject"], lookup: outputs["i9-lookup"],
-    findings: outputs["hire-findings"], approval: outputs[ONBOARDING_WRITE_REVIEW_GATE],
+    findings: outputs["hire-findings"], ...(outputs[ONBOARDING_WRITE_REVIEW_GATE] === undefined ? {} : { approval: outputs[ONBOARDING_WRITE_REVIEW_GATE] }),
   }));
   const route = author.branch({ step: group, id: "i9-route", label: "Choose the reviewed I-9 path",
     cases: { create: ["i9-profile-save", "i9-remote-create", "hire-create", "hire-receipt", "master-results"],
