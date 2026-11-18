@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { it } from "vitest";
-import { createProfileVerifiers } from "../../../../../src/backend/storage/configuration/verifier-store.js";
+import { createServer, request } from "node:http";
+import { it, vi } from "vitest";
+import type { DashboardComposeInput } from "../../../../../src/backend/app/composition/dashboard/runtime-contracts.js";
+import * as startup from "../../../../../src/backend/app/composition/dashboard/runtime-startup.js";
+import * as verifierStore from "../../../../../src/backend/storage/configuration/verifier-store.js";
+import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
@@ -10,14 +14,31 @@ import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/pre
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
 import { publicProfileShellFixture, readyPublicSignUp } from "../../../../support/helpers/backend/public-profile-shell.js";
 
+vi.mock("../../../../../src/backend/app/composition/dashboard/runtime-startup.js", { spy: true });
+vi.mock("../../../../../src/backend/storage/configuration/verifier-store.js", { spy: true });
+
+function start(fixture: Awaited<ReturnType<typeof publicProfileShellFixture>>, overrides: Partial<DashboardComposeInput> = {}) {
+  return composeDashboardApplication({
+    admission: fixture.machine, lifetimeLock: fixture.lifetime, isolation: rebuildRuntimeIsolation, repoRoot: fixture.root,
+    backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {},
+    preflightRunnerFactory: healthyRuntimePreflightRunners, ...overrides,
+  });
+}
+
+function tabStorage() {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+  };
+}
+
 it("completes authenticated onboarding without sending a host cookie", async () => {
   const fixture = await publicProfileShellFixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
-    runtime = await composeDashboardApplication({
-      lifetimeLock: fixture.lifetime, admission: fixture.machine, isolation: rebuildRuntimeIsolation, repoRoot: fixture.root,
-      backendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
-    });
+    runtime = await start(fixture);
     const origin = `http://127.0.0.1:${runtime.port}`;
     const onboarding = await readyPublicSignUp(origin);
     const response = await onboarding.finish();
@@ -28,7 +49,7 @@ it("completes authenticated onboarding without sending a host cookie", async () 
     assert.ok(registry.activeProfileId);
     const binding = { installationId: registry.installationId, profileId: registry.activeProfileId, epoch, origin };
     const proof = response.headers.get("x-relay-resume");
-    const verifiers = createProfileVerifiers(fixture.machine.stateRoot);
+    const verifiers = verifierStore.createProfileVerifiers(fixture.machine.stateRoot);
     assert.ok(proof && verifiers.verifyResumeProof(binding, proof));
     for (const changed of [{ installationId: crypto.randomUUID() }, { profileId: crypto.randomUUID() }, { epoch: epoch + 1 },
       { origin: `http://127.0.0.1:${runtime.port === 65535 ? 65534 : runtime.port + 1}` }]) assert.equal(verifiers.verifyResumeProof({ ...binding, ...changed }, proof), false);
@@ -90,4 +111,168 @@ it("delivers protected resources only at the dashboard origin and discards a sup
   await client.logOutProfile();
   image.resolve(new Response("superseded image"));
   await assert.rejects(pending);
+});
+
+it("joins two enrolled tabs through state and resume during a cold mount", async () => {
+  const fixture = await publicProfileShellFixture();
+  let machine = fixture.machine;
+  let runtime: Awaited<ReturnType<typeof start>> | undefined;
+  const mounting = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const requests: Promise<Response>[] = [];
+  try {
+    runtime = await start(fixture);
+    const port = runtime.port, origin = `http://127.0.0.1:${port}`;
+    const enrollment = await (await readyPublicSignUp(origin)).finish();
+    assert.equal(PublicProfileStateSchema.parse(await enrollment.json()).state, "active");
+    const proof = enrollment.headers.get("x-relay-resume");
+    assert.ok(proof);
+    const epoch = machine.readProfileRegistry().sessionGeneration;
+    await runtime.stop();
+    runtime = undefined;
+    machine = acquireEntrypointAdmission(fixture.root, "exclusive", fixture.lifetime);
+    const actual = await vi.importActual<typeof startup>("../../../../../src/backend/app/composition/dashboard/runtime-startup.js");
+    vi.mocked(startup.composeDashboardRuntime).mockImplementationOnce(async input => {
+      mounting.resolve();
+      await release.promise;
+      return actual.composeDashboardRuntime(input);
+    });
+    const verified = Promise.withResolvers<void>();
+    let observeJoin = false;
+    const store = await vi.importActual<typeof verifierStore>("../../../../../src/backend/storage/configuration/verifier-store.js");
+    vi.mocked(verifierStore.createProfileVerifiers).mockImplementation(root => {
+      const verifiers = store.createProfileVerifiers(root);
+      return { ...verifiers, verifyResumeProof(binding, supplied) {
+        const valid = verifiers.verifyResumeProof(binding, supplied);
+        if (valid && observeJoin) verified.resolve();
+        return valid;
+      } };
+    });
+    runtime = await start(fixture, { admission: machine, backendPortOverride: port });
+    const state = async () => {
+      const response = await fetch(origin + "/api/v1/profile/state", { headers: { origin, "x-relay-resume": proof } });
+      return PublicProfileStateSchema.parse(await response.json());
+    };
+    const resume = (enrolled: boolean) => fetch(origin + "/api/v1/profile/resume", {
+      method: "POST", headers: { origin, "content-type": "application/json", ...(enrolled && { "x-relay-resume": proof }) }, body: "{}",
+    });
+    const denied = await resume(false);
+    assert.deepEqual(await denied.json(), { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" });
+    for (const header of ["x-relay-session", "x-relay-resume", "set-cookie"]) assert.equal(denied.headers.has(header), false);
+    assert.equal(machine.readProfileRegistry().sessionGeneration, epoch);
+    const resumable = { state: "signed-out", resumable: true, signUpRequired: false };
+    assert.deepEqual(await state(), resumable);
+    const firstRequest = resume(true);
+    requests.push(firstRequest);
+    await Promise.race([mounting.promise, firstRequest.then(() => assert.fail("first resume did not reach mount"))]);
+    assert.equal(machine.readProfileRegistry().sessionGeneration, epoch + 1);
+    assert.deepEqual(await state(), resumable);
+    observeJoin = true;
+    const secondRequest = resume(true);
+    requests.push(secondRequest);
+    await Promise.race([verified.promise, secondRequest.then(() => assert.fail("second resume did not join the mount"))]);
+    release.resolve();
+    const [first, second] = await Promise.all([firstRequest, secondRequest]);
+    for (const response of [first, second]) {
+      const session = PublicProfileStateSchema.parse(await response.json());
+      assert.ok(session.state === "active" && session.epoch === epoch + 1);
+      assert.ok(response.headers.has("x-relay-session") && response.headers.has("x-relay-resume"));
+    }
+    assert.ok(first.headers.get("x-relay-resume") === second.headers.get("x-relay-resume"));
+    assert.deepEqual(await state(), { state: "signed-out", signUpRequired: false });
+  } finally {
+    release.resolve();
+    await Promise.allSettled(requests);
+    vi.mocked(verifierStore.createProfileVerifiers).mockReset();
+    vi.mocked(startup.composeDashboardRuntime).mockReset();
+    await runtime?.stop();
+    machine.release();
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+it("continues an unfinished logout after the initiating tab reloads", async () => {
+  const fixture = await publicProfileShellFixture();
+  let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  const actual = await vi.importActual<typeof startup>("../../../../../src/backend/app/composition/dashboard/runtime-startup.js");
+  vi.mocked(startup.composeDashboardRuntime).mockImplementationOnce(async input => {
+    const mounted = await actual.composeDashboardRuntime(input);
+    let held = true;
+    return { ...mounted, async detach() {
+      await mounted.detach();
+      if (held) { held = false; throw new Error("fixture closure confirmation delayed"); }
+    } };
+  });
+  try {
+    runtime = await start(fixture);
+    const origin = `http://127.0.0.1:${runtime.port}`;
+    const enrolled = await (await readyPublicSignUp(origin)).finish();
+    assert.equal(PublicProfileStateSchema.parse(await enrolled.json()).state, "active");
+    const localStorage = tabStorage(), sessionStorage = tabStorage();
+    const load = () => {
+      vi.stubGlobal("window", { location: { origin }, localStorage, sessionStorage,
+        navigator: { locks: { request: (_name: string, callback: () => unknown) => callback() } } });
+      try { return createDashboardClient({ baseUrl: origin }); } finally { vi.unstubAllGlobals(); }
+    };
+    const first = load();
+    const active = await first.signInProfile({ email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
+    assert.ok(active.state === "active");
+    assert.equal((await first.logOutProfile()).state, "error");
+    assert.equal(fixture.machine.readProfileRegistry().activeProfileId, null);
+    const stranger = createDashboardClient({ baseUrl: origin });
+    assert.equal((await stranger.readProfileSession()).state, "signed-out");
+    assert.deepEqual(await stranger.logOutProfile(), { state: "refused", code: "PROFILE_SESSION_STALE" });
+    const reloaded = load();
+    assert.equal((await reloaded.readProfileSession()).state, "cancelling");
+    assert.deepEqual(await reloaded.deleteProfileAccount({ confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch }),
+      { state: "refused", code: "PROFILE_LOGOUT_BLOCKED" });
+    assert.deepEqual(await reloaded.logOutProfile(), { state: "signed-out", signUpRequired: false });
+    assert.deepEqual(await load().logOutProfile(), { state: "refused", code: "PROFILE_SESSION_STALE" });
+  } finally {
+    vi.mocked(startup.composeDashboardRuntime).mockReset();
+    await runtime?.stop();
+    fixture.machine.release();
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+it("admits the owned frontend but refuses its use of the backend origin's active credential", async () => {
+  const fixture = await publicProfileShellFixture();
+  let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  const path = "/api/v1/profile/state";
+  const frontend = createServer((incoming, outgoing) => {
+    if (!runtime || incoming.url !== path || incoming.method !== "GET") { outgoing.writeHead(404).end(); return; }
+    const upstream = request({ hostname: "127.0.0.1", port: runtime.port, path, headers: incoming.headers }, response => {
+      outgoing.writeHead(response.statusCode ?? 502, response.headers);
+      response.pipe(outgoing);
+    });
+    upstream.on("error", error => outgoing.destroy(error));
+    upstream.end();
+  });
+  try {
+    await new Promise<void>((resolve, reject) => { frontend.once("error", reject); frontend.listen(0, "127.0.0.1", resolve); });
+    const address = frontend.address();
+    assert.ok(address && typeof address === "object");
+    let probed = false;
+    runtime = await start(fixture, {
+      frontendPortOverride: address.port,
+      frontendProbe: async ({ port }) => { assert.equal(port, address.port); probed = true; return { state: "owned" }; },
+    });
+    const origin = `http://127.0.0.1:${runtime.port}`, otherOrigin = `http://127.0.0.1:${address.port}`;
+    const enrollment = await (await readyPublicSignUp(origin)).finish();
+    const credential = enrollment.headers.get("x-relay-session");
+    assert.ok(credential);
+    const stateAt = async (target: string) => {
+      const response = await fetch(target + path, { headers: { origin: target, "x-relay-session": credential } });
+      assert.equal(response.status, 200);
+      return PublicProfileStateSchema.parse(await response.json());
+    };
+    assert.equal((await stateAt(origin)).state, "active");
+    assert.deepEqual(await stateAt(otherOrigin), { state: "signed-out", signUpRequired: false });
+    assert.ok(probed);
+  } finally {
+    await frontend[Symbol.asyncDispose]();
+    await runtime?.stop();
+    fixture.machine.release();
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
 });

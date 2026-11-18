@@ -88,7 +88,9 @@ export function createDashboardClient(input: Readonly<{
   const origin = new URL(input.baseUrl).origin;
   const browser = typeof window !== "undefined" && window.location?.origin === origin ? window : undefined;
   const resumeKey = "relay.profile.resume", draftKey = "relay.profile.draft";
-  let session: string | null = null, memoryProof: string | null = null, memoryDraft: string | null = null;
+  const endingKey = "relay.profile.ending";
+  let session = browser?.sessionStorage.getItem(endingKey) ?? null;
+  let memoryProof: string | null = null, memoryDraft: string | null = null;
   const resumeProof = () => browser === undefined ? memoryProof : browser.localStorage.getItem(resumeKey);
   const draft = () => browser === undefined ? memoryDraft : browser.sessionStorage.getItem(draftKey);
   const saveDraft = (value: string | null) => {
@@ -143,6 +145,7 @@ export function createDashboardClient(input: Readonly<{
           if (next === null || proof === null) throw schemaError(path, "missing profile credential");
           saveProof(proof);
           session = next;
+          browser?.sessionStorage.removeItem(endingKey);
           profileAuthority = { profileId: state.profileId, epoch: state.epoch };
         } else if (state.state === "onboarding") {
           const next = response.headers.get("x-relay-session");
@@ -150,6 +153,7 @@ export function createDashboardClient(input: Readonly<{
           saveDraft(next);
         } else if (state.state === "signed-out") {
           session = null;
+          browser?.sessionStorage.removeItem(endingKey);
           saveDraft(null);
           saveProof(null);
           profileAuthority = undefined;
@@ -158,6 +162,11 @@ export function createDashboardClient(input: Readonly<{
       };
       return browser === undefined ? settle() : await browser.navigator.locks.request(resumeKey, settle);
     } finally { request.pending = false; }
+  };
+  const endProfile = (path: string, body: unknown) => {
+    if (session !== null) browser?.sessionStorage.setItem(endingKey, session);
+    profileAuthority = undefined;
+    return activateProfile(path, { method: "POST", body: JSON.stringify(body) });
   };
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
@@ -240,14 +249,10 @@ export function createDashboardClient(input: Readonly<{
       });
     },
     async deleteProfileAccount(request) {
-      profileAuthority = undefined;
-      return activateProfile("/api/v1/profile/delete-account", {
-        method: "POST", body: JSON.stringify(DeleteProfileAccountRequestSchema.parse(request)),
-      });
+      return endProfile("/api/v1/profile/delete-account", DeleteProfileAccountRequestSchema.parse(request));
     },
     async logOutProfile() {
-      profileAuthority = undefined;
-      return activateProfile("/api/v1/profile/logout", { method: "POST", body: "{}" });
+      return endProfile("/api/v1/profile/logout", {});
     },
     async changeProfilePassword(request) {
       return parseLoginChange((await transport.requestJsonResponse("/api/v1/profile/account/password", {

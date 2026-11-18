@@ -115,6 +115,16 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     return registry.activeProfileId === null ? undefined : { installationId: registry.installationId,
       profileId: registry.activeProfileId, epoch: registry.sessionGeneration, origin: originOf(request) };
   };
+  type ResumeBinding = NonNullable<ReturnType<typeof bindingFor>>;
+  let resumeInFlight: { predecessor: ResumeBinding; result: Promise<PublicProfileState> } | undefined;
+  const verifiedResumeBinding = (request: Request, registry = machine.readProfileRegistry()) => {
+    const current = bindingFor(request, registry);
+    if (current === undefined) return undefined;
+    const bound = resumeInFlight?.predecessor ?? current;
+    if (bound.origin !== current.origin || bound.installationId !== current.installationId || bound.profileId !== current.profileId
+      || (current.epoch !== bound.epoch && current.epoch !== bound.epoch + 1)) return undefined;
+    return verifiers.verifyResumeProof(bound, request.headers.get(resumeHeader)) ? bound : undefined;
+  };
   const issue = (c: Context, active: Selection, verifiedPredecessor?: string) => {
     const binding = bindingFor(c.req.raw);
     if (selection !== active || binding?.profileId !== active.profileId || binding.epoch !== active.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
@@ -123,11 +133,12 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     c.header(sessionHeader, credential(c.req.raw, active.sessionId));
     c.header(resumeHeader, proof);
   };
+  const frontendPort = input.frontendPortOverride || input.isolation.frontendPort;
   const loopback = (request: Request): boolean => {
     const host = request.headers.get("host");
     if (host === null || !URL.canParse(`http://${host}`)) return false;
     const url = new URL(`http://${host}`);
-    const allowedPorts = frontend === "vite-dev" ? [registeredPort, input.isolation.frontendPort] : [registeredPort];
+    const allowedPorts = frontend === "vite-dev" ? [registeredPort, frontendPort] : [registeredPort];
     return (url.hostname === "127.0.0.1" || url.hostname === "localhost") && allowedPorts.includes(Number(url.port || 80))
       && url.pathname === "/" && url.search === "" && url.hash === "" && url.username === "" && url.password === ""
       && (request.headers.get("origin") === null || request.headers.get("origin") === url.origin);
@@ -170,8 +181,8 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.use("/api/v1/profile/*", async (c, next) => {
     if (!loopback(c.req.raw)) return c.json(PublicProfileStateSchema.parse({ state: "refused", code: "PROFILE_SESSION_STALE" }), 403);
     // Vite proxies with the browser's Host, so a dev-frontend request names the frontend port; direct BFF requests are not probed.
-    if (frontend === "vite-dev" && !frontendOwned && new URL(`http://${c.req.header("host") ?? ""}`).port === String(input.isolation.frontendPort)) {
-      const probe = await (input.frontendProbe ?? probeOwnedViteServer)({ port: input.isolation.frontendPort, signal: c.req.raw.signal,
+    if (frontend === "vite-dev" && !frontendOwned && new URL(`http://${c.req.header("host") ?? ""}`).port === String(frontendPort)) {
+      const probe = await (input.frontendProbe ?? probeOwnedViteServer)({ port: frontendPort, signal: c.req.raw.signal,
         deadlineMonotonicMs: clock.monotonicMs() + FRONTEND_PROBE_MS, clock, ownerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] });
       if (probe.state !== "owned") return c.json(PublicProfileStateSchema.parse({ state: "refused", code: "DASHBOARD_FRONTEND_NOT_OWNED" }), 403);
       frontendOwned = true;
@@ -184,10 +195,8 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       return c.json(profileRuntime.session.readOnboarding(onboardingSelection.token, onboardingSelection.operationId));
     }
     if (selection === undefined && pending !== undefined && carries(c.req.raw, pending.sessionId)) return c.json(PublicProfileStateSchema.parse({ state: "cancelling", operationId: pending.operationId }));
-    const resumeState = (registry: ReturnType<typeof machine.readProfileRegistry>) => {
-      const bound = bindingFor(c.req.raw, registry);
-      return bound !== undefined && verifiers.verifyResumeProof(bound, c.req.header(resumeHeader) ?? null) ? { resumable: true } : {};
-    };
+    const resumeState = (registry: ReturnType<typeof machine.readProfileRegistry>) =>
+      verifiedResumeBinding(c.req.raw, registry) === undefined ? {} : { resumable: true };
     if (selection === undefined) {
       const registry = machine.readProfileRegistry();
       return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: registry.profiles.length === 0,
@@ -243,8 +252,6 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     selection = { sessionId: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
     return activeState(result.profileId, result.epoch);
   };
-  type ResumeBinding = NonNullable<ReturnType<typeof bindingFor>>;
-  let resumeInFlight: { predecessor: ResumeBinding; result: Promise<PublicProfileState> } | undefined;
   const activate = async (request: Request, mode: "signup" | "signin" | "resume", expected?: ResumeBinding): Promise<PublicProfileState> => {
     if (transitioning || pending !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
     if (selection !== undefined) {
@@ -287,8 +294,8 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   };
   const resume = async (request: Request): Promise<PublicProfileState> => {
     const flight = resumeInFlight;
-    const bound = flight?.predecessor ?? bindingFor(request);
-    if (bound === undefined || bound.origin !== originOf(request) || !verifiers.verifyResumeProof(bound, request.headers.get(resumeHeader))) {
+    const bound = verifiedResumeBinding(request);
+    if (bound === undefined) {
       return { state: "refused", code: "PROFILE_SIGN_IN_REFUSED" };
     }
     if (flight !== undefined) return flight.result;
