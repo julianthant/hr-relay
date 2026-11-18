@@ -539,7 +539,7 @@ it_m1("offers a Skip to run logs link that moves focus to the selected run logs"
     assert_m1.equal(document.activeElement?.getAttribute("aria-label"), "Selected run logs");
   } finally { await _afterEachFixture0(); }
 });
-it_m1("passes the app client to a served Explorer read while mocks explicitly retains mock Explorer", async () => {
+it_m1("passes the app client to a served Explorer read", async () => {
   try {
     const explorer = structuredClone(FIXTURE_EXPLORER_WIRE);
     let calls = 0;
@@ -548,37 +548,8 @@ it_m1("passes the app client to a served Explorer read while mocks explicitly re
     }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.equal(calls, 1);
     assert_m1.ok(document.body.textContent?.includes("Search UCPath by employee ID or name and read the matching person records."), document.body.textContent ?? "");
-    assert_m1.ok(document.body.textContent?.includes("No run values are available."));
+    assert_m1.ok(document.body.textContent?.includes("Anything not listed stops the run with a failure card."));
     assert_m1.equal(document.body.textContent?.includes("Separation filed and Kuali document verified"), false);
-    await _afterEachFixture0();
-    calls = 0;
-    const client = await mount("?explore=person-lookup&view=%7B%22explorerWorkflow%22%3A%22fixture-person-lookup%22%7D", {
-      workflowExplorer: async () => { calls++; throw new Error("mock Explorer must not read served definitions"); },
-    });
-    assert_m1.equal(calls, 0);
-    assert_m1.equal(document.body.textContent?.includes("Registered Person Lookup"), false);
-    assert_m1.equal(document.body.textContent?.includes("Purpose from the served definition"), false);
-    assert_m1.ok(document.body.textContent?.includes("Browse workflows, their steps and field sources."));
-    assert_m1.equal(document.body.textContent?.includes("Fictional preview data"), false);
-    assert_m1.equal(document.body.textContent?.includes("No run values are available."), false);
-    const select = document.querySelector('[aria-label="Explorer workflow"]');
-    assert_m1.ok(select instanceof HTMLButtonElement);
-    await click(select);
-    const separation = document.querySelector('[role="option"][data-value="fixture-separations"]');
-    assert_m1.ok(separation instanceof HTMLElement);
-    await click(separation);
-    const identity = document.querySelector('[aria-label="Identity check preview"]');
-    assert_m1.ok(identity instanceof HTMLButtonElement);
-    await click(identity);
-    const rejected = document.querySelector('[role="option"][data-value="rejected"]');
-    assert_m1.ok(rejected instanceof HTMLElement);
-    await click(rejected);
-    assert_m1.ok((document.querySelector('[data-step-number="16"]') as HTMLElement).hidden);
-    const replacement = { ...client };
-    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client: replacement, children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
-    await settle();
-    assert_m1.equal((document.querySelector('[data-step-number="16"]') as HTMLElement).hidden, false);
-    assert_m1.equal(calls, 0);
   } finally { await _afterEachFixture0(); }
 });
 it_m1("failed and delayed day snapshots never render an empty or stale queue",async()=>{

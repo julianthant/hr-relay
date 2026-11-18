@@ -34,6 +34,7 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
     { label: "Status note", visibility: "logs", sources: [{ nodeId: "active-status", kind: "output", fieldPath: "reason" }] },
   ],
   review: {
+    when: [{ mode: ["search"] }],
     pages: [
       {
         id: "person-org-detail",
@@ -41,8 +42,7 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
         mode: "Read only",
         nodeIds: ["crm-only-recovery", "active-status"],
         lines: [
-          { id: "recover-ucpath", kind: "action", text: "When CRM supplies an employee ID, look up that person in UCPath.", nodeIds: ["crm-only-recovery"] },
-          { id: "read-status", kind: "read", text: "Determine employment status and read department and termination details when present.", nodeIds: ["active-status"] }
+          { id: "recover-ucpath", kind: "action", text: "When only CRM finds the person, searches UCPath by the CRM employee ID.", nodeIds: ["crm-only-recovery"] }
         ],
         fields: [
           {
@@ -68,6 +68,7 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
           },
           {
             id: "hdh-department",
+            when: [{ "employment-status": ["active", "inactive", "undetermined"] }],
             operatorField: "HDH department",
             source: {
               origin: "UCPath",
@@ -78,6 +79,7 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
           },
           {
             id: "department",
+            when: [{ "employment-status": ["active", "inactive", "crm-only", "undetermined"] }],
             operatorField: "Department",
             source: {
               origin: "UCPath",
@@ -88,6 +90,7 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
           },
           {
             id: "end-date",
+            when: [{ "employment-status": ["inactive"] }],
             operatorField: "End date",
             source: {
               origin: "UCPath",
@@ -98,6 +101,7 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
           },
           {
             id: "termination-reason",
+            when: [{ "employment-status": ["inactive"] }],
             operatorField: "Termination reason",
             source: {
               origin: "UCPath",
@@ -109,7 +113,24 @@ export const ACTIVE_STATUS_STEP = Object.freeze({
         ]
       }
     ],
-    branchLabels: []
+    branchLabels: [],
+    decisions: [
+      {
+        id: "employment-status",
+        label: "Employment status",
+        reads: { nodeId: "active-status", fieldPath: "state" },
+        nodeIds: ["crm-only-recovery", "active-status"],
+        initial: "active",
+        outcomes: [
+          { value: "active", then: "The run's outcome is Active." },
+          { value: "inactive", then: "The run's outcome is Inactive." },
+          { value: "crm-only", then: "The run's outcome is CRM only." },
+          { value: "multiple-matches", then: "The run's outcome is Multiple matches." },
+          { value: "not-found", then: "The run's outcome is Not found." },
+          { value: "undetermined", then: "The run's outcome is Undetermined." }
+        ]
+      }
+    ]
   } as const,
 } as const);
 

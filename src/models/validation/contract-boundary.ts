@@ -345,7 +345,9 @@ function relativeLeaves(
     return relativeLeaves(definition.innerType as z.core.$ZodType, presence, ancestors, collections, vocabulary);
   }
   if (["optional", "nullable", "default", "prefault", "catch"].includes(type)) {
-    return relativeLeaves(definition.innerType as z.core.$ZodType, SOMETIMES, ancestors, collections, vocabulary);
+    const leaves = relativeLeaves(definition.innerType as z.core.$ZodType, SOMETIMES, ancestors, collections, vocabulary);
+    return type !== "nullable" || !collections ? leaves : leaves.map(leaf => leaf.path === "" && leaf.options !== undefined
+      ? Object.freeze({ ...leaf, options: [...new Set([...leaf.options, "null"])].sort() }) : leaf);
   }
   if (type === "array" && collections) {
     return relativeLeaves(definition.element as z.core.$ZodType, presence, [...ancestors, currentObject], collections, vocabulary);
@@ -361,7 +363,8 @@ function relativeLeaves(
       + "subtree count as one field",
     );
   }
-  const options = vocabularyOf(definition, type);
+  const options = collections && type === "boolean" ? ["false", "true"]
+    : collections && type === "null" ? ["null"] : vocabularyOf(definition, type);
   return [Object.freeze({
     path: "",
     kind,

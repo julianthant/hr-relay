@@ -26,6 +26,18 @@ export const REFERENCE_CHECK_STEP = Object.freeze({
       fields: [],
     }],
     branchLabels: [],
+    decisions: [
+      { id: "reference-result", label: "Reference spreadsheet result", reads: { nodeId: REFERENCE_CHECK_NODE, fieldPath: "result" },
+        nodeIds: [REFERENCE_CHECK_NODE, REFERENCE_STOP_NODE], initial: "confirmed", outcomes: [
+          { value: "confirmed", label: "Person confirmed" },
+          { value: "unconfirmed", label: "Person not confirmed", then: "In a live run, waits for your review before saving. A dry run continues to the preview." },
+          { value: "no-person", label: "No person to check", then: "Continues without a reference match." },
+        ] },
+      { id: "reference-review", label: "Review reference spreadsheets", reads: { nodeId: REFERENCE_CHECK_REVIEW_GATE, fieldPath: "decision" },
+        nodeIds: [REFERENCE_CHECK_REVIEW_GATE], when: [{ "dry-run": ["false"], "reference-result": ["unconfirmed"] }], initial: "continue",
+        outcomes: [{ value: "continue", label: "Continue anyway", then: "Continues to the contact Save despite the unconfirmed reference spreadsheets." }],
+        cancellation: { label: "Cancel run", then: "Cancels this person's run before the contact Save or OnBase filing." } },
+    ],
   } as const,
 });
 

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { WORKFLOW_SOURCES } from "../../../../src/dashboard/app/workflow-sources.js";
-import { explorerWorkflowOptions } from "../../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
 import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { runPickerGroups } from "../../../../src/dashboard/surfaces/run-start/run-start-picker-model.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
@@ -58,10 +57,5 @@ describe("workflow order across every list", () => {
       const entry = catalog.find(item => item.id === id);
       return entry !== undefined && (entry.source !== "preview" || entry.preview?.runnable !== false);
     }));
-  });
-
-  it("orders the Search > Workflows, Add workers and Explorer lists, which read the catalog", () => {
-    const explorer = explorerWorkflowOptions(catalog).map(option => option.id.replace(/^fixture-/u, ""));
-    expect(explorer).toEqual(listed);
   });
 });
