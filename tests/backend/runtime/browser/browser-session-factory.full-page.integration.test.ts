@@ -283,6 +283,26 @@ describe("whole-page factory screenshots", () => {
       assert.ok((await image(resource)).height >= 3000);
     });
   });
+  it("refuses an SSN control moved into a closed shadow root in the change that removes a control named through aria-labelledby", async () => {
+    await withPage(`<span id="ref-label">Reference</span><input id="ref" aria-labelledby="ref-label" value="fixture-value"><div id="closed-host" style="position:absolute;top:1500px;left:0"></div>${content}<input id="moved-ssn" aria-label="Employee SSN" value="fixture-value" style="display:none;width:200px;height:40px">`, async (page, resource) => {
+      await page.evaluate(() => { (window as Window & { closedRoot?: ShadowRoot }).closedRoot = document.querySelector("#closed-host")!.attachShadow({ mode: "closed" }); });
+      const screenshot = page.screenshot.bind(page);
+      let bands = 0;
+      page.screenshot = async options => {
+        if (++bands === 2) await page.evaluate(() => {
+          document.querySelector("#ref")!.remove();
+          const ssn = document.querySelector<HTMLElement>("#moved-ssn")!;
+          (window as Window & { closedRoot?: ShadowRoot }).closedRoot!.append(ssn);
+          ssn.style.display = "block";
+        });
+        return screenshot(options);
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal("bytes" in evidence, false);
+    });
+  });
   it("refuses an unmasked SSN control the wider capture viewport reveals without a DOM change", async () => {
     await withPage(`<style>@media (min-width: 1000px) { #wide-ssn { display: block !important; } }</style>${content}<input id="wide-ssn" aria-label="Employee SSN" value="fixture-value" style="display:none">`, async (_page, resource) => {
       const evidence = await resource.screenshot?.();
