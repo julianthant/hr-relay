@@ -8,20 +8,24 @@ import { createNotificationHealthObserver, readNotificationHealth } from "../../
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import * as authorityInspection from "../../../../../src/backend/storage/sqlite/authority-inspection-off-thread.js";
 import { AuthoritySourceChangedError } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
-import { RunRecordSchema } from "../../../../../src/models/run/record.js";
-import { QUEUED_RUN, sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
+import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
+import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
 import { syntheticStateRoot } from "../../../../support/helpers/synthetic-storage-admission.js";
 
-const { fixture, seedRun } = createNotificationCompositionTestWorld();
+const { fixture } = createNotificationCompositionTestWorld();
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 const read = (f: Fixture, signal?: AbortSignal) => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock,
   ...(signal === undefined ? {} : { signal }) });
-let seeded = 0;
-const queuedRun = () => RunRecordSchema.parse({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId: randomUUID(), itemId: randomUUID(),
-  traceId: `pl-170000-${(seeded++ % 0x10000).toString(16).padStart(4, "0")}` } });
-/** Enough queued runs that the whole-store inspection takes well over a second. */
-const LARGE_STORE_RUNS = 3_000;
+/** Enough diagnostic events that the whole-store inspection takes over a second; events, unlike live runs, add nothing to the reading's own run list. */
+const LARGE_STORE_EVENTS = 60_000;
+function seedLargeStore(f: Fixture): void {
+  f.db.withAuthorityTransaction(repos => {
+    const events = createDebugEventWriter({ repository: repos.timelineEvents, clock: f.clock, build: "test", development: false });
+    for (let index = 0; index < LARGE_STORE_EVENTS; index++) events.emit({ category: "boot", phase: "settled", area: "event-loop", reason: "event-loop-stall",
+      correlationId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, durationMs: 250 });
+  });
+}
 
 /** A consistent copy of the store in its own state root, with an audit row whose command does not exist: it fails foreign-key validation. */
 function damagedCopy(f: Fixture): string {
@@ -39,27 +43,18 @@ function damagedCopy(f: Fixture): string {
 describe("notification health off the event loop", () => {
   it("keeps the event loop running while it inspects a store that takes over a second to inspect", async () => {
     const f = await fixture();
-    const inspect = authorityInspection.inspectAuthorityOffThread;
-    let started = 0, ended = 0, last = 0, longestGap = 0;
-    // Timed from the inspection's start: the fixture's thousands of live runs make the heartbeat list before it slower than a real store's.
-    const inspections = vi.spyOn(authorityInspection, "inspectAuthorityOffThread").mockImplementation(async (...args) => {
-      started = last = performance.now();
-      try { return await inspect(...args); } finally { ended = performance.now(); }
-    });
-    const ticks = setInterval(() => {
-      if (started === 0 || ended !== 0) return;
-      const now = performance.now();
-      longestGap = Math.max(longestGap, now - last);
-      last = now;
-    }, 10);
     try {
-      f.db.withAuthorityTransaction(() => { for (let index = 0; index < LARGE_STORE_RUNS; index++) seedRun(f, queuedRun()); });
-      expect((await read(f)).integrityFailed).toBe(false);
-      // An inspection that held the loop to its end leaves no tick behind to see the block.
-      longestGap = Math.max(longestGap, ended - last);
-      expect(ended - started).toBeGreaterThan(1_000);
+      seedLargeStore(f);
+      let last = performance.now(), longestGap = 0;
+      const ticks = setInterval(() => { const now = performance.now(); longestGap = Math.max(longestGap, now - last); last = now; }, 10);
+      const started = performance.now();
+      try { expect((await read(f)).integrityFailed).toBe(false); }
+      finally { clearInterval(ticks); }
+      // A reading that held the loop to its end leaves no tick behind to see the block.
+      longestGap = Math.max(longestGap, performance.now() - last);
+      expect(performance.now() - started).toBeGreaterThan(1_000);
       expect(longestGap).toBeLessThan(250);
-    } finally { clearInterval(ticks); inspections.mockRestore(); await f.close(); }
+    } finally { await f.close(); }
   });
 
   it("still raises the integrity-check concern for a damaged store", async () => {
