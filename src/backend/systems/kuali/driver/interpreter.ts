@@ -657,7 +657,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
 
   /** See `StagedExpectation` — the staging this page's `Save` may act on, if any. */
   let staged: StagedExpectation | undefined;
-  let saveRouteInstalled: Promise<void> | undefined;
+  let saveRouteInstalled: ReturnType<Page["route"]> | undefined;
   let forwardSave: ((route: Route) => Promise<void>) | undefined;
 
   async function routeKualiGraphql(route: Route): Promise<void> {
