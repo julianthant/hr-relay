@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { serializeErrorCauses } from "../../../models/failures/error-origins.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { appendLocalDebug } from "../../storage/events/local-debug-log.js";
@@ -9,11 +10,11 @@ export function installProcessCrashHandlers(input: { stateRoot: string; processK
     .parse(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"))).version;
   const fail = (value: unknown, reason: "uncaught-exception" | "unhandled-rejection"): never => {
     try {
-      const error = value instanceof Error ? value : new Error(String(value));
+      const [cause] = serializeErrorCauses(value);
+      // Unbound errors can supply their own code.
       appendLocalDebug({ stateRoot: input.stateRoot, build, now: systemClock.now(),
         event: { category: "boot", phase: "failed", area: `${input.processKind}-process`, reason,
-          message: sanitizeDebugText(`${error.name}: ${error.message}`),
-          ...(error.stack === undefined ? {} : { stack: sanitizeDebugText(error.stack) }), pinned: true } });
+          code: "INTERNAL_FAILURE", message: sanitizeDebugText(cause.name), stack: sanitizeDebugText(cause.stack), pinned: true } });
     } finally { process.exit(1); }
   };
   const onException = (error: Error, origin: NodeJS.UncaughtExceptionOrigin): never =>

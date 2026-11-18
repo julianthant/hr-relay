@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach,it,vi } from "vitest";
-import type { DashboardErrorReport } from "../../../src/models/events/debug-report.js";
+import { dashboardReportAccepted, type DashboardErrorReport } from "../../../src/models/events/debug-report.js";
 
 const { report, render } = vi.hoisted(() => ({ report: vi.fn<(input: DashboardErrorReport) => Promise<void>>(), render: vi.fn() }));
 vi.mock("../../../src/dashboard/client/index.js", () => ({ createDashboardClient: () => ({ reportError: report }) }));
@@ -34,13 +34,18 @@ it("surfaces rejected error delivery once without recursively reporting it, and 
   await vi.waitFor(() => assert.equal(surfaced.length, 1));
   assert.equal(report.mock.calls.length, 1);
   assert.equal(surfaced[0].message, "Dashboard error report was not recorded");
-  assert.equal(report.mock.calls[0][0].message, "ordinary error");
+  assert.equal(report.mock.calls[0][0].code, "INTERNAL_FAILURE");
+  assert.equal(report.mock.calls[0][0].message, "UnknownCause");
+  assert.equal(report.mock.calls[0][0].stack, "UnknownCause");
+  assert.ok(dashboardReportAccepted(report.mock.calls[0][0]));
   assert.equal(JSON.stringify(surfaced.map(error => error.message)).includes("private"), false);
 
   browser.dispatchEvent(Object.assign(new Event("unhandledrejection", { cancelable: true }), { reason: new Error("ordinary rejection") }));
   await vi.waitFor(() => assert.equal(surfaced.length, 2));
   assert.equal(report.mock.calls.length, 2);
-  assert.equal(report.mock.calls[1][0].message, "ordinary rejection");
+  assert.equal(report.mock.calls[1][0].code, "INTERNAL_FAILURE");
+  assert.equal(report.mock.calls[1][0].message, "UnknownCause");
+  assert.equal(report.mock.calls[1][0].stack, "UnknownCause");
   assert.ok(errors.every(event => !event.defaultPrevented));
 
   browser.dispatchEvent(new Event("pagehide"));
@@ -60,7 +65,7 @@ it("reports errors and rejections after persisted pagehide and pageshow, then di
   browser.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }));
   browser.dispatchEvent(Object.assign(new Event("error"), { error: new Error("restored error") }));
   browser.dispatchEvent(Object.assign(new Event("unhandledrejection"), { reason: new Error("restored rejection") }));
-  assert.deepEqual(report.mock.calls.map(([input]) => input.message), ["restored error", "restored rejection"]);
+  assert.deepEqual(report.mock.calls.map(([input]) => input.code), ["INTERNAL_FAILURE", "INTERNAL_FAILURE"]);
   browser.dispatchEvent(Object.assign(new Event("pagehide"), { persisted: false }));
   browser.dispatchEvent(Object.assign(new Event("error"), { error: new Error("disposed error") }));
   browser.dispatchEvent(Object.assign(new Event("unhandledrejection"), { reason: new Error("disposed rejection") }));
@@ -76,5 +81,5 @@ it("ignores the browser's deferred ResizeObserver notice but still reports other
   await import("../../../src/dashboard/app/main.js");
   browser.dispatchEvent(Object.assign(new Event("error"), { error: null, message: "ResizeObserver loop completed with undelivered notifications." }));
   browser.dispatchEvent(Object.assign(new Event("error"), { error: null, message: "Script error." }));
-  assert.deepEqual(report.mock.calls.map(([input]) => input.message), ["Script error."]);
+  assert.deepEqual(report.mock.calls.map(([input]) => input.code), ["INTERNAL_FAILURE"]);
 });

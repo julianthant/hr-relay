@@ -20,10 +20,16 @@ function crash(root: string, body: string, processKind = "dashboard", args: stri
   `], { encoding: "utf8", timeout: 10_000 });
 }
 
-it("persists one sanitized uncaught dashboard exception for import at the next start and exits non-zero", () => {
+it("persists an uncaught dashboard exception without HR text for import at the next start and exits non-zero", () => {
   const root = mkdtempSync(join(tmpdir(), "relay-process-crash-"));
   try {
-    const child = crash(root, `setImmediate(() => { throw new TypeError("synthetic crash password=${CREDENTIAL}"); });`);
+    const hrText = "Synthetic employee River Example";
+    const child = crash(root, `setImmediate(() => {
+      const error = new TypeError(${JSON.stringify(`${hrText} password=${CREDENTIAL}`)});
+      error.code = "EID_SYNTHETIC_001";
+      error.stack += "\\n    at /synthetic/worktree/src/backend/app/bootstrap/process-crash.ts:12:4";
+      throw error;
+    });`);
     assert.equal(child.error, undefined);
     assert.equal(child.signal, null);
     assert.equal(child.status, 1);
@@ -38,9 +44,13 @@ it("persists one sanitized uncaught dashboard exception for import at the next s
     assert.equal(payload.event.phase, "failed");
     assert.equal(payload.event.build, "crash-test");
     assert.equal(payload.event.pid, child.pid);
-    assert.match(payload.event.message ?? "", /^TypeError: synthetic crash password=\[removed\]$/u);
-    assert.match(payload.event.stack ?? "", /TypeError: synthetic crash password=\[removed\][\s\S]+at /u);
-    assert.equal(readFileSync(join(root, "logs", "boot.jsonl"), "utf8").includes(CREDENTIAL), false);
+    const spool = readFileSync(join(root, "logs", "boot.jsonl"), "utf8");
+    assert.equal(spool.includes(CREDENTIAL), false);
+    assert.equal(spool.includes(hrText), false);
+    assert.equal(spool.includes("EID_SYNTHETIC_001"), false);
+    assert.equal(payload.event.code, "INTERNAL_FAILURE");
+    assert.equal(payload.event.message, "TypeError");
+    assert.equal(payload.event.stack, "TypeError\n    at src/backend/app/bootstrap/process-crash.ts:12:4");
     const { repository, records } = debugTimelineFixture();
     assert.equal(importLocalDebugLog(root, repository), 1);
     assert.deepEqual(records.map(record => record.payload), [payload]);
@@ -63,6 +73,8 @@ it.each(["strict", "warn"])("records a rejection once under Node's %s rejection 
     const payload = local.records[0]?.payload;
     assert.ok(payload?.kind === "debug");
     assert.equal(payload.event.reason, "unhandled-rejection");
+    assert.equal(payload.event.code, "INTERNAL_FAILURE");
+    assert.equal(readFileSync(join(root, "logs", "boot.jsonl"), "utf8").includes("synthetic primitive rejection"), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -109,8 +121,9 @@ it("persists one unhandled worker rejection with its error name and sanitized st
     assert.equal(payload.event.area, "worker-process");
     assert.equal(payload.event.reason, "unhandled-rejection");
     assert.equal(payload.event.pid, child.pid);
-    assert.equal(payload.event.message, "RangeError: synthetic rejection token=[removed]");
-    assert.match(payload.event.stack ?? "", /RangeError: synthetic rejection token=\[removed\][\s\S]+at /u);
+    assert.equal(payload.event.code, "INTERNAL_FAILURE");
+    assert.equal(payload.event.message, "RangeError");
+    assert.equal(payload.event.stack?.split("\n")[0], "RangeError");
     assert.equal(readFileSync(join(root, "logs", "boot.jsonl"), "utf8").includes(CREDENTIAL), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -141,6 +154,7 @@ it.each(["dashboard", "worker"])("installs crash capture through the %s process 
     const payload = local.records[0]?.payload;
     assert.ok(payload?.kind === "debug");
     assert.equal(payload.event.area, `${processKind}-process`);
-    assert.equal(payload.event.message, "SyntaxError: synthetic bootstrap crash");
+    assert.equal(payload.event.code, "INTERNAL_FAILURE");
+    assert.equal(payload.event.message, "SyntaxError");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

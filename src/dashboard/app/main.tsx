@@ -4,7 +4,6 @@ import { createRoot } from "react-dom/client";
 import { createDashboardClient } from "../client/index.js";
 import { DashboardClientError, DashboardReportDeliveryError } from "../client/errors.js";
 import { serializeErrorCauses } from "../../models/failures/error-origins.js";
-import { DASHBOARD_UNHANDLED_ERROR } from "../../models/events/debug-report.js";
 import { RunIdSchema } from "../../rules/identity/ids.js";
 import { DashboardClientProvider } from "../state/client-context.js";
 import { DashboardApp } from "./dashboard-app.js";
@@ -27,12 +26,9 @@ const client = createDashboardClient({ baseUrl: window.location.origin,
 
 const clientId = crypto.randomUUID();
 const report = (error: unknown) => {
-  const failure = error instanceof Error ? error : new Error("Dashboard rejected a non-Error value");
-  const [cause] = failure instanceof DashboardClientError ? serializeErrorCauses(failure) : [];
+  const [cause] = serializeErrorCauses(error instanceof DashboardClientError ? error : undefined);
   void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard", route: window.location.pathname, surface: "app",
-    ...(cause === undefined
-      ? { code: DASHBOARD_UNHANDLED_ERROR, message: failure.message, ...(failure.stack === undefined ? {} : { stack: failure.stack }) }
-      : { code: cause.code, reason: cause.reason, message: cause.name, stack: cause.stack }) })
+    code: cause.code, reason: cause.reason, message: cause.name, stack: cause.stack })
     .catch(() => {
       window.reportError(new DashboardReportDeliveryError());
     });
@@ -41,7 +37,7 @@ const onError = (event: ErrorEvent) => {
   if (event.error instanceof DashboardReportDeliveryError) return;
   // The browser delivers the remaining ResizeObserver notifications next frame; nothing failed.
   if (event.error === null && event.message.startsWith("ResizeObserver loop")) return;
-  report(event.error ?? new Error(event.message));
+  report(event.error);
 };
 const onRejection = (event: PromiseRejectionEvent) => report(event.reason);
 window.addEventListener("error", onError);
