@@ -226,7 +226,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         const assembled = table.assemble(() => admitted([
           { role: "developer", content: developerPrompt(facts, selectedRun === undefined ? undefined
             : table.issue("R", selectedRun.runId, options.runReferenceLabel(selectedRun.runId, selectedRun.revision), selectedRun.runId, selectedRun.revision), options.clock.now().toISOString().slice(0, 10)) },
-          ...history.replay(request.conversationId, current.ordinal).map(row => row.messageId === undefined ? replayed(row)
+          ...history.replay(request.conversationId, acceptance.ordinal).map(row => row.messageId === undefined ? replayed(row)
             : userTurn(maskStoredSsn(row.modelText), files(history.turnAttachments(row.messageId)), table)),
           userTurn(masked, files(history.turnAttachments(request.messageId)), table),
         ], textBytes), value => "input" in value);
