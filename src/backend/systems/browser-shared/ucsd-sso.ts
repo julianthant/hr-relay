@@ -1,6 +1,6 @@
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 // Select SSO submit by name: the enrollment navigation also looks like a Login button.
-import type { Locator, Page } from "playwright";
+import type { Frame, JSHandle, Locator, Page } from "playwright";
 import { recordBrowserAction } from "./action-notes.js";
 import { assertDuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import type { DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
@@ -120,11 +120,83 @@ export async function waitForUcsdDuoSignIn(page: Page, assertCurrent: () => void
   return "sso-form";
 }
 
+type SsoFormAction = { kind: "prove" | "submit" } | { kind: "username" | "password"; value: string };
 type UcsdSsoPath = "/tritON/profile/SAML2/Redirect/SSO" | "/idp/profile/SAML2/Redirect/SSO";
 
 function requireSsoPath(path: string): UcsdSsoPath {
   if (path !== "/tritON/profile/SAML2/Redirect/SSO" && path !== "/idp/profile/SAML2/Redirect/SSO") throw new Error("UCSD_SSO_SCOPE");
   return path;
+}
+
+function applyPinnedSsoAction(user: SVGElement | HTMLElement, input: {
+  password: SVGElement | HTMLElement;
+  button: SVGElement | HTMLElement;
+  form: HTMLFormElement | null;
+  action: SsoFormAction;
+  path: UcsdSsoPath;
+  url: string;
+  selectors: { user: string; password: string; button: string };
+}): boolean {
+  const { password, button, form, action } = input;
+  if (!(user instanceof HTMLInputElement) || !(password instanceof HTMLInputElement)
+    || !(button instanceof HTMLButtonElement) || !(form instanceof HTMLFormElement)) return false;
+
+  const proof = {
+    matches(selector: string, control: HTMLElement) {
+      const nodes = document.querySelectorAll(selector);
+      return nodes.length === 1 && nodes[0] === control && control.getClientRects().length > 0
+        && getComputedStyle(control).visibility === "visible" && !control.matches(":disabled");
+    },
+    allowed(raw: string) {
+      const target = new URL(raw);
+      return target.origin === "https://a5.ucsd.edu" && !target.username && !target.password && target.pathname === input.path;
+    },
+    valid() {
+      return location.href === input.url && this.allowed(location.href)
+        && this.matches(input.selectors.user, user) && this.matches(input.selectors.password, password) && this.matches(input.selectors.button, button)
+        && user.form === form && password.form === form && button.form === form
+        && (user.type === "text" || user.type === "email") && !user.readOnly && !password.readOnly
+        && password.type === "password" && button.type === "submit"
+        && form.method === "post" && (button.formMethod === "" || button.formMethod === "post")
+        && (form.target === "" || form.target === "_self") && (button.formTarget === "" || button.formTarget === "_self")
+        && this.allowed(form.action) && this.allowed(button.formAction);
+    },
+  };
+  if (!proof.valid()) return false;
+  if (action.kind === "username" || action.kind === "password") {
+    const field = action.kind === "username" ? user : password;
+    field.value = action.value;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+  } else if (action.kind === "submit") {
+    if (!form.noValidate && !button.formNoValidate && !form.reportValidity()) return false;
+    if (!proof.valid()) return false;
+    const destination = button.hasAttribute("formaction") ? button.formAction : form.action;
+    const fields = new FormData(form, button);
+    if (!proof.valid() || destination !== (button.hasAttribute("formaction") ? button.formAction : form.action)) return false;
+
+    // Native form serialization can run page handlers before the browser reads the destination.
+    // Post the successful controls and submitter from a private form with a fixed destination.
+    const host = document.createElement("div");
+    host.hidden = true;
+    const root = host.attachShadow({ mode: "closed" });
+    const post = document.createElement("form");
+    post.action = destination;
+    post.method = "post";
+    post.target = "_self";
+    post.enctype = button.getAttribute("formenctype") === null ? form.enctype : button.formEnctype;
+    post.acceptCharset = form.acceptCharset;
+    post.addEventListener("formdata", event => {
+      for (const [name, value] of fields) event.formData.append(name, value);
+    }, { once: true });
+    const send = document.createElement("button");
+    send.type = "submit";
+    post.append(send);
+    root.append(post);
+    document.body.append(host);
+    try { send.click(); } finally { host.remove(); }
+  }
+  return true;
 }
 
 export async function submitPinnedUcsdSsoCredentials(page: Page,
@@ -150,56 +222,46 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
   let user: Awaited<ReturnType<typeof username.elementHandle>> | null = null;
   let secret: Awaited<ReturnType<typeof password.elementHandle>> | null = null;
   let button: Awaited<ReturnType<typeof submit.elementHandle>> | null = null;
+  let formHandle: JSHandle<HTMLFormElement | null> | undefined;
   let failure: { error: unknown } | undefined;
   const cleanup: unknown[] = [];
   try {
-    user = await username.elementHandle(); check();
-    secret = await password.elementHandle(); check();
-    button = await submit.elementHandle(); check();
+    user = await username.elementHandle({ timeout }); check();
+    secret = await password.elementHandle({ timeout }); check();
+    button = await submit.elementHandle({ timeout }); check();
     if (!user || !secret || !button) throw new Error("UCSD_SSO_FIELDS");
     const pinnedUser = user, pinnedSecret = secret, pinnedSubmit = button;
-    const controls = async () => {
+    formHandle = await pinnedUser.evaluateHandle(el => el instanceof HTMLInputElement ? el.form : null);
+    check();
+    const pinnedForm = formHandle;
+    const act = async (action: SsoFormAction): Promise<void> => {
       check();
-      const users = await username.count(); check();
-      const passwords = await password.count(); check();
-      const buttons = await submit.count(); check();
-      if (users !== 1 || passwords !== 1 || buttons !== 1) throw new Error("UCSD_SSO_FIELDS");
-      for (const field of [pinnedUser, pinnedSecret]) {
-        const visible = await field.isVisible(); check();
-        const editable = await field.isEditable(); check();
-        if (!visible || !editable) throw new Error("UCSD_SSO_FIELDS");
-      }
-      const visible = await pinnedSubmit.isVisible(); check();
-      const enabled = await pinnedSubmit.isEnabled(); check();
-      if (!visible || !enabled) throw new Error("UCSD_SSO_FIELDS");
-      const valid = await pinnedUser.evaluate((element, input) => {
-        if (!(element instanceof HTMLInputElement) || !(input.other instanceof HTMLInputElement) || !(input.submit instanceof HTMLButtonElement)) return false;
-        const form = element.form, action = form === null ? null : new URL(form.action);
-        const buttonAction = new URL(input.submit.formAction);
-        return element.isConnected && input.other.isConnected && input.submit.isConnected
-          && element.ownerDocument === document && input.other.ownerDocument === document && input.submit.ownerDocument === document
-          && form !== null && form === input.other.form && form === input.submit.form && input.other.type === "password" && input.submit.type === "submit"
-          && form.method === "post" && (input.submit.formMethod === "" || input.submit.formMethod === "post")
-          && (form.target === "" || form.target === "_self") && (input.submit.formTarget === "" || input.submit.formTarget === "_self")
-          && buttonAction.origin === "https://a5.ucsd.edu" && buttonAction.username === "" && buttonAction.password === "" && buttonAction.port === "" && buttonAction.pathname === input.path
-          && action?.origin === "https://a5.ucsd.edu" && action.username === "" && action.password === "" && action.port === "" && action.pathname === input.path;
-      }, { other: pinnedSecret, submit: pinnedSubmit, path });
-      check(); if (!valid) throw new Error("UCSD_SSO_FIELDS");
+      const valid = await pinnedUser.evaluate(applyPinnedSsoAction, { password: pinnedSecret, button: pinnedSubmit, form: pinnedForm, action, path, url,
+        selectors: { user: SSO_USERNAME_SELECTOR, password: SSO_PASSWORD_SELECTOR, button: SSO_SUBMIT_SELECTOR } });
+      assertCurrent();
+      if (!valid) throw new Error("UCSD_SSO_FIELDS");
     };
-    await controls();
-    const credentials = await acquire(); check();
-    await controls();
-    await user.fill(credentials.userId, { timeout }); check();
+    await act({ kind: "prove" });
+    check();
+    const credentials = await acquire();
+    await act({ kind: "username", value: credentials.userId });
     onAction?.("typed", "ucsd.sso.username");
-    await controls();
-    await secret.fill(credentials.password, { timeout }); check();
+    await act({ kind: "password", value: credentials.password });
     onAction?.("typed", "ucsd.sso.password");
-    await controls();
-    await button.click({ timeout }); assertCurrent();
+    const stop = new AbortController();
+    const navigation = page.waitForEvent("framenavigated", {
+      predicate: frame => frame === page.mainFrame(), timeout, signal: stop.signal,
+    }).then(() => null, (error: unknown) => ({ error }));
+    try {
+      await act({ kind: "submit" });
+      const failure = await navigation;
+      if (failure !== null) throw failure.error;
+    } finally { stop.abort(); }
+    assertCurrent();
     onAction?.("clicked", "ucsd.sso.submit");
   } catch (error) { failure = { error }; }
   finally {
-    for (const handle of [user, secret, button]) {
+    for (const handle of [user, secret, button, formHandle]) {
       try { await handle?.dispose(); } catch (error) { cleanup.push(error); }
     }
   }
@@ -547,27 +609,39 @@ export async function verifyUcsdAuthenticatedApplication(
   const url = page.url();
   if (!input.urlIsApplication(url)) return { authenticated: false, reason: input.urlRefusal, check: "application-route" };
 
-  input.assertCurrent();
-  const positive = await input.positive();
-  input.assertCurrent();
-  if (!positive.holds) return { authenticated: false, reason: positive.detail, check: "positive-evidence" };
-
-  const absences = [await probeSsoFormAbsent(page, input.assertCurrent)];
-  for (const absence of input.additionalAbsences ?? []) {
-    input.assertCurrent();
-    absences.push(await absence());
-  }
-  input.assertCurrent();
-  const present = absences.find((fact) => !fact.holds);
-  if (present !== undefined) return { authenticated: false, reason: present.detail, check: "sign-in-form-absent" };
-
-  return {
-    authenticated: true,
-    evidence: {
-      system,
-      url,
-      positive: positive.detail,
-      negative: absences.map((fact) => fact.detail).join("; "),
-    },
+  let navigated = false;
+  const onNavigation = (frame: Frame): void => {
+    if (frame === page.mainFrame()) navigated = true;
   };
+  page.on("framenavigated", onNavigation);
+  try {
+    input.assertCurrent();
+    const positive = await input.positive();
+    input.assertCurrent();
+    if (!positive.holds) return { authenticated: false, reason: positive.detail, check: "positive-evidence" };
+
+    const absences = [await probeSsoFormAbsent(page, input.assertCurrent)];
+    for (const absence of input.additionalAbsences ?? []) {
+      input.assertCurrent();
+      absences.push(await absence());
+    }
+    input.assertCurrent();
+    if (navigated || page.url() !== url) {
+      return { authenticated: false, reason: "the application page navigated during verification", check: "application-route" };
+    }
+    const present = absences.find((fact) => !fact.holds);
+    if (present !== undefined) return { authenticated: false, reason: present.detail, check: "sign-in-form-absent" };
+
+    return {
+      authenticated: true,
+      evidence: {
+        system,
+        url,
+        positive: positive.detail,
+        negative: absences.map((fact) => fact.detail).join("; "),
+      },
+    };
+  } finally {
+    page.off("framenavigated", onNavigation);
+  }
 }

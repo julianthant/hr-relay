@@ -112,10 +112,12 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
   };
   let navigationGeneration = 0;
   const navigationListeners = new Set<() => void>();
+  const frameObservers = new Set<(frame: typeof mainFrame) => void>();
   const navigate = (url: string): void => {
     current = url;
     navigationGeneration += 1;
     for (const listener of navigationListeners) listener();
+    for (const observe of frameObservers) observe(mainFrame);
   };
 
   const scriptFor = (name: FakeElementName): FakeElementScript =>
@@ -135,7 +137,18 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
           isVisible: async () => (locator.isVisible as () => Promise<boolean>)(),
           isEditable: async () => name === "sso-username" || name === "sso-password",
           isEnabled: async () => name === "sso-submit",
-          evaluate: async () => name === "sso-username" && generation === navigationGeneration,
+          evaluateHandle: async () => ({ dispose: async () => undefined }),
+          evaluate: async (_fn: unknown, input: {
+            action: { kind: "prove" | "submit" } | { kind: "username" | "password"; value: string };
+            password: { fill: (value: string) => Promise<void> }; button: { click: () => Promise<void> };
+          }) => {
+            if (name !== "sso-username" || generation !== navigationGeneration) return false;
+            const action = input.action;
+            if (action.kind === "username") await (locator.fill as (value: string) => Promise<void>)(action.value);
+            if (action.kind === "password") await input.password.fill(action.value);
+            if (action.kind === "submit") await input.button.click();
+            return true;
+          },
           fill: async (value: string) => {
             if (generation !== navigationGeneration) throw new Error("fake page: original element detached");
             await (locator.fill as (value: string) => Promise<void>)(value);
@@ -183,6 +196,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
         }
         actions.push(`click:${name}`);
         if (element.navigatesTo !== undefined) navigate(element.navigatesTo);
+        else if (name === "sso-submit") navigate(current);
       },
       inputValue: async () => {
         if (name === undefined) throw new Error("fake page: inputValue on an unclassified locator");
@@ -214,6 +228,8 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
     url: () => current,
     mainFrame: () => mainFrame,
     frames: () => [mainFrame],
+    on: (_event: "framenavigated", listener: (frame: typeof mainFrame) => void) => frameObservers.add(listener),
+    off: (_event: "framenavigated", listener: (frame: typeof mainFrame) => void) => frameObservers.delete(listener),
     waitForEvent: async (_event: string, options: Readonly<{ predicate: (frame: unknown) => boolean; timeout: number }>) =>
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -245,7 +261,7 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
       if (settled === NEVER_SETTLES) return await new Promise<void>(() => undefined);
       if (settled === undefined) throw new Error("fake page: waitForURL timed out");
       if (!predicate(new URL(settled))) throw new Error("fake page: waitForURL timed out");
-      current = settled;
+      navigate(settled);
     },
     locator: (selector: string) => makeLocator(classify("locator", selector)),
     getByLabel: (text: string) => makeLocator(classify("label", text)),

@@ -53,28 +53,37 @@ async function world(options: Options = {}) {
   const chunkCounts: number[] = [];
   let metadataRead = false, scopes = 0, controllerCount = 0;
   const identity = { Id: 7, LoginName: "i:0#.f|membership|fixture-user@ucsd.edu" };
-  vi.stubGlobal("location", { get origin() { return URL.parse(original.harness.url())?.origin; },
+  vi.stubGlobal("location", { get href() { return original.harness.url(); }, get origin() { return URL.parse(original.harness.url())?.origin; },
     get pathname() { return URL.parse(original.harness.url())?.pathname; } });
-  const document = {};
-  const form = { get action() { return options.formValid === false ? "https://elsewhere.invalid/" : original.harness.url(); },
-    method: options.poison === "method" ? "get" : "post", target: options.poison === "target" ? "_blank" : "" };
-  class InputElement {
-    readonly form = form;
-    readonly ownerDocument = document;
-    isConnected = true;
-    constructor(readonly type: string) {}
+  class FormElement {
+    get action() { return options.formValid === false ? "https://elsewhere.invalid/" : original.harness.url(); }
+    readonly method = options.poison === "method" ? "get" : "post";
+    readonly target = options.poison === "target" ? "_blank" : "";
   }
-  class ButtonElement {
+  const form = new FormElement();
+  class Control {
     readonly form = form;
-    readonly ownerDocument = document;
-    readonly isConnected = true;
+    getClientRects() { return [{}]; }
+    matches() { return false; }
+  }
+  class InputElement extends Control {
+    value = "";
+    isConnected = true;
+    dispatchEvent() { return true; }
+    constructor(readonly type: string) { super(); }
+  }
+  class ButtonElement extends Control {
     readonly type = "submit";
     readonly formTarget = options.poison === "button-target" ? "_blank" : "";
     readonly formMethod = options.poison === "button-method" ? "get" : "";
     get formAction() { return options.poison === "button-action" ? "https://elsewhere.invalid/" : form.action; }
   }
   const userElement = new InputElement("text"), secretElement = new InputElement("password"), buttonElement = new ButtonElement();
-  vi.stubGlobal("document", document); vi.stubGlobal("HTMLInputElement", InputElement); vi.stubGlobal("HTMLButtonElement", ButtonElement);
+  const document = { querySelectorAll: (selector: string) => selector.includes("ssousername")
+    ? userElement.isConnected ? [userElement] : [] : selector.includes("ssopassword") ? [secretElement] : [buttonElement] };
+  vi.stubGlobal("getComputedStyle", () => ({ visibility: "visible" }));
+  vi.stubGlobal("document", document); vi.stubGlobal("HTMLFormElement", FormElement);
+  vi.stubGlobal("HTMLInputElement", InputElement); vi.stubGlobal("HTMLButtonElement", ButtonElement);
   vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
     requests.push({ url, init });
     const file = url.endsWith("/$value"), metadata = url.includes("GetFileByServerRelativePath");
@@ -112,16 +121,24 @@ async function world(options: Options = {}) {
         const element = selector.includes("ssousername") ? userElement : selector.includes("ssopassword") ? secretElement : buttonElement;
         return { ...underlying, first: () => underlying,
           count: async () => options.poison === "duplicate" && element === userElement ? 2 : 1,
-          elementHandle: async () => ({ element, isVisible: async () => true, isEditable: async () => true, isEnabled: async () => true,
-            async evaluate(callback: (element: unknown, input: unknown) => unknown,
-              input: { other: { element: unknown }; submit: { element: unknown }; path: string }) {
-              return callback(element, { other: input.other.element, submit: input.submit.element, path: input.path });
+          elementHandle: async () => ({ element,
+            evaluateHandle: async () => ({ element: form, dispose: async () => { cleanup.push("sso-disposed"); } }),
+            async evaluate(callback: (element: unknown, input: unknown) => boolean,
+              input: { password: { element: InputElement }; button: { element: ButtonElement }; form: { element: FormElement };
+                action: { kind: string; value?: string }; path: string; url: string }) {
+              const { action } = input;
+              const valid = callback(element, { ...input, password: input.password.element, button: input.button.element,
+                form: input.form.element, action: action.kind === "submit" ? { kind: "prove" } : action });
+              if (!valid) return false;
+              if (action.kind === "username" || action.kind === "password") {
+                const selector = action.kind === "username" ? "#ssousername" : "#ssopassword";
+                await original.context.page.locator(selector).fill(action.kind === "username" ? userElement.value : secretElement.value);
+                if (options.poison === "replacement" && action.kind === "username") userElement.isConnected = false;
+              }
+              if (action.kind === "submit") await original.context.page.locator('button[name="_eventId_proceed"]').click();
+              return true;
             },
-            async fill(value: string) {
-              await underlying.fill(value);
-              if (options.poison === "replacement" && element === userElement) userElement.isConnected = false;
-            },
-            click: () => underlying.click(), dispose: async () => { cleanup.push("sso-disposed"); },
+            dispose: async () => { cleanup.push("sso-disposed"); },
           }),
         };
       }

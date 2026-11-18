@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, it } from "vitest";
 import { probeSessionCookie } from "../../../../src/backend/systems/browser-shared/authenticated-application.js";
-import { submitPinnedUcsdSsoCredentials, waitForAuthenticatedLanding, waitForUcsdDuoSignIn } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
+import { submitPinnedUcsdSsoCredentials, verifyUcsdAuthenticatedApplication, waitForAuthenticatedLanding, waitForUcsdDuoSignIn } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
 import { BrowserLandingStallError, DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { crmLoginRecipe } from "../../../../src/backend/systems/crm/session.js";
 import { i9LoginRecipe } from "../../../../src/backend/systems/i9/login.js";
@@ -38,6 +38,51 @@ it("requires the session cookie to apply to the current application path", async
   } finally { await context.close(); }
 });
 
+it.each(["cookie read", "absence check"] as const)("refuses mixed application documents after a reload during %s", async stage => {
+  const context = await browser.newContext();
+  try {
+    const domain = "application.example.invalid";
+    const url = `https://${domain}/app`;
+    await context.route("**/*", route => route.fulfill({ contentType: "text/html", body: "Application" }));
+    await context.addCookies([{ domain, path: "/app", name: "sid", value: "fixture" }]);
+    const page = await context.newPage();
+    await page.goto(url);
+    const assertCurrent = () => undefined;
+    const result = await verifyUcsdAuthenticatedApplication("crm", page, {
+      assertCurrent, urlIsApplication: raw => raw === url, urlRefusal: "unexpected application URL",
+      positive: async () => {
+        const fact = await probeSessionCookie(page, { assertCurrent, name: "sid", domainSuffix: domain, issuer: "application" });
+        if (stage === "cookie read") await page.reload();
+        return fact;
+      },
+      additionalAbsences: [async () => {
+        if (stage === "absence check") await page.reload();
+        return { holds: true, detail: "no sign-in control" };
+      }],
+    });
+    assert.equal(result.authenticated, false);
+  } finally { await context.close(); }
+});
+
+it("checks the submitted form after its fields are serialized", async () => {
+  const context = await browser.newContext();
+  try {
+    let posts = 0;
+    await context.route("**/*", route => {
+      if (route.request().method() === "POST") posts++;
+      return route.fulfill({ contentType: "text/html", body: form() });
+    });
+    const page = await context.newPage();
+    await page.goto(SSO);
+    await page.locator("form").evaluate(form => {
+      form.addEventListener("formdata", () => form.setAttribute("method", "dialog"), { once: true });
+    });
+    await assert.rejects(submitPinnedUcsdSsoCredentials(page, async () => ({ userId: "fixture", password: "" }),
+      () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO"), /UCSD_SSO_FIELDS/);
+    assert.equal(posts, 0);
+  } finally { await context.close(); }
+});
+
 for (const [system, recipe] of [
   ["crm", crmLoginRecipe], ["kuali", kualiLoginRecipe], ["new-kronos", newKronosLoginRecipe],
   ["ucpath", ucpathLoginRecipe], ["i9", i9LoginRecipe], ["onbase", onbaseLoginRecipe],
@@ -47,7 +92,7 @@ for (const [system, recipe] of [
     try {
       const page = await browserContext.newPage();
       const { context } = await contextFor({ url: "about:blank" }, undefined, system);
-      const other = "https://sso.example.invalid/login";
+      const other = SSO.replace("a5.ucsd.edu", "sso.example.invalid");
       const landing = scenario === "wrong-origin" ? other : SSO;
       const config = {
         ...context.config,
@@ -200,11 +245,13 @@ it("hands a direct Duo landing back without treating a page on another host as a
 
 it("submits the exact UCSD form once and refuses wrong origin, action, fields and authority before secrets", async () => {
   const context = await browser.newContext();
-  let html = form(), acquisitions = 0, submissions = 0, current = true;
+  let focused: string | null = null;
+  let html = form().replace("</form>", '<input type="hidden" name="focused" value="no"></form>'), acquisitions = 0, submissions = 0, current = true;
   await context.route("**/*", async route => {
     if (route.request().method() !== "GET") {
       submissions++;
       const values = new URLSearchParams(route.request().postData() ?? "");
+      focused = values.get("focused"); assert.ok(values.has("_eventId_proceed"));
       assert.equal(values.get("username"), "synthetic-user"); assert.equal(values.get("password"), "synthetic-password");
       await route.fulfill({ contentType: "text/html", body: "Awaiting native MFA" });
     }
@@ -215,9 +262,15 @@ it("submits the exact UCSD form once and refuses wrong origin, action, fields an
   const assertCurrent = () => { if (!current) throw new Error("synthetic-revoked"); };
   try {
     await page.goto(SSO);
+    await page.locator("form").evaluate(form => {
+      const focused = form.querySelector('input[name="focused"]');
+      if (!(focused instanceof HTMLInputElement)) throw new Error("missing focus observation");
+      form.addEventListener("focusin", () => { focused.value = "yes"; });
+    });
     await submitPinnedUcsdSsoCredentials(page, acquire, assertCurrent, 1000, "/tritON/profile/SAML2/Redirect/SSO");
     assert.equal(await page.locator("body").textContent(), "Awaiting native MFA");
     assert.equal(acquisitions, 1); assert.equal(submissions, 1);
+    assert.equal(focused, "no");
     for (const [url, body] of [
       [SSO.replace("a5.ucsd.edu", "a5.ucsd.edu.invalid"), form()],
       [SSO.replace("https:", "http:"), form()],
