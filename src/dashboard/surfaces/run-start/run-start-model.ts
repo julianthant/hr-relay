@@ -517,7 +517,8 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
   });
   return Array.from({ length: submissionCount }, (_, index) => [...requiredTypes.map(typeId => {
     const selection = selections[typeId];
-    const entry = catalog.find(entry => entry.libraryId === selection?.libraryId);
+    if (selection === undefined) throw new Error(ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text);
+    const entry = catalog.find(entry => entry.libraryId === selection.libraryId);
     if (!entry || entry.state.removed || entry.state.origin.kind !== 'local'
       || !entry.state.versions.some(version => version.id === selection.versionId)
       || writable && entry.state.selectedVersionId !== selection.versionId
