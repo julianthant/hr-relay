@@ -111,7 +111,7 @@ describe("Onboarding reference spreadsheet check", () => {
     const decision = f.card(root);
     assert.equal(decision.type, "review-before-write");
     assert.deepEqual(decision.options.map(option => [option.id, option.label, option.send.via]), [["continue", "Continue anyway", "gate-arm"], ["cancel-run", "Cancel run", "row-action"]]);
-    assert.equal(decision.context, "Badge list · Issued: not found. Relay compared the Employee ID, and the name where the sheet has one.");
+    assert.equal(decision.context, "Badge list · Issued: not found · Compared: Employee ID, and name where the sheet has one.");
 
     assert.equal(f.continueAnyway(root).state, "applied");
     const done = await f.rawExecution.execute(f.current(root), signal());
@@ -124,7 +124,7 @@ describe("Onboarding reference spreadsheet check", () => {
     const f = await fixture(), root = f.start([f.renamed()]);
     const parked = await f.reviewThenRun(root);
     assert.equal(parked.lifecycle.state, "parked-gate");
-    assert.equal(f.card(root).context, "Fall roster · Hires: name differs in row 2. Relay compared the Employee ID, and the name where the sheet has one.");
+    assert.equal(f.card(root).context, "Fall roster · Hires: name differs in row 2 · Compared: Employee ID, and name where the sheet has one.");
     assert.equal(JSON.stringify([f.events(root), f.card(root)]).includes(ROW_ONLY_NAME), false);
 
     assert.equal(f.cancel(root).state, "applied");
