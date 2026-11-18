@@ -14,6 +14,7 @@ import { decideDurableIntent } from "../policies/durable-intent.js";
 import { runMandatorySavedVerification, completeProtectedWrite } from "./mandatory-saved-verification.js";
 
 import { z } from "zod";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { TaskError } from "../../../workflow-kit/errors.js";
 import type { AnyTask, BrowserDriver, TaskLogger } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
@@ -1144,6 +1145,66 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
   }
 
+  async function readPrewriteProbe(
+    context: WriteSequencerContext,
+    commitContract: AnyCommitTaskContract,
+    commitInput: unknown,
+    keyDigest: string,
+    businessKeyDigest: string,
+  ) {
+    let verdict: RuntimeProbeVerdict;
+    try {
+      verdict = await runLiveProbe(context, commitContract, commitInput);
+    } catch (error) {
+      throw new WriteSafetyAuthorityError(
+        `pre-write probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} failed; `
+          + "refusing to fence or click because the target state is unknown",
+        authorityReason(context.run, "prewrite-probe-exception", "exception", error),
+        error,
+      );
+    }
+    if (verdict.state === "ambiguous" || verdict.state === "unknown") {
+      const detail = verdict.state === "ambiguous"
+        ? `found ${String(verdict.matches)} matches`
+        : "is indeterminate";
+      throw new WriteSafetyAuthorityError(
+        `pre-write probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} ${detail}; `
+        + "refusing to fence or click — "
+        + "verify in the target system, then retry",
+        authorityReason(context.run,
+          verdict.state === "ambiguous" ? "prewrite-probe-ambiguous" : "prewrite-probe-unknown",
+          "probe",
+          verdict,
+        ),
+      );
+    }
+    if (verdict.state === "absent" && verdict.evidence.idempotencyKeyDigest !== businessKeyDigest) {
+      throw new WriteSafetyAuthorityError(
+        `pre-write probe absent evidence does not match ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))}; `
+        + "refusing to treat foreign evidence as absence",
+        authorityReason(context.run, "prewrite-probe-foreign-absence", "probe", verdict),
+      );
+    }
+    return verdict;
+  }
+
+  async function requireHistoricalSavePresent(
+    context: WriteSequencerContext,
+    commitContract: AnyCommitTaskContract,
+    commitInput: unknown,
+    durable: WriteIntentRecord,
+  ): Promise<void> {
+    if (durable.status !== "committed" || durable.runId === context.run.envelope.runId) return;
+    if (context.previewBinding !== undefined && context.previewBinding.samples.length > 0) {
+      throw new TaskError(commitContract.id, "DRY_RUN_SAMPLE_REFUSED", "Preview samples cannot confirm an earlier Save.");
+    }
+    const verdict = await readPrewriteProbe(context, commitContract, commitInput, durable.idempotencyKeyDigest,
+      durable.occurrence?.businessKeyDigest ?? durable.idempotencyKeyDigest);
+    if (verdict.state === "absent") {
+      throw new TaskError(commitContract.id, "WRITE_COMMITTED_EFFECT_ABSENT", ERROR_CATALOG.WRITE_COMMITTED_EFFECT_ABSENT.text);
+    }
+  }
+
   /** Persist an already-present settlement (checkpoint + run advance, one txn). */
   function settleAlreadyPresent(input: Readonly<{
     context: WriteSequencerContext;
@@ -1221,11 +1282,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   }
 
 
-  function reuseDurableIntent(
+  async function reuseDurableIntent(
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
+    commitInput: unknown,
     durable: WriteIntentRecord,
-  ): unknown {
+  ): Promise<unknown> {
     const completion = commitContract.writeSafety.completion;
     const proofSchemaHash = deriveSchemaHash(completion.proofSchema, "output");
     const stored = durable.status === "committed"
@@ -1245,6 +1307,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const proof = completion.proofSchema.parse(stored.value);
     const outputRaw: unknown = Reflect.apply(completion.outputFromProof, undefined, [proof]);
     const outputValue = JsonValueSchema.parse(commitContract.output.parse(outputRaw));
+    await requireHistoricalSavePresent(context, commitContract, commitInput, durable);
     return settleAlreadyPresent({
       context,
       commitContract,
@@ -1255,14 +1318,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   }
 
   // Fresh facts must address the exact settled permanent intent and proof before checkpoint replay can reuse a write.
-  function assertReplayMatchesFreshFacts(
+  function intentMatchingCheckpoint(
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
     stored: RunCheckpointRecord,
     system: BrowserSystemId,
     key: string,
     keyDigest: string,
-  ): void {
+  ): WriteIntentRecord {
     // Drift first: a checkpoint from another descriptor/impl is reported as
     // drift, never dressed up as a fresh-fact mismatch.
     assertNoCheckpointDrift(context, commitContract, stored);
@@ -1299,6 +1362,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         + "consequence of new facts",
       );
     }
+    return durable;
   }
 
   /** A transaction checkpoint never replays across descriptor/impl/schema drift and never re-clicks. */
@@ -1849,8 +1913,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
 
 
     if (replaysCommittedOutcome) {
-
-      assertReplayMatchesFreshFacts(context, commitContract, storedCheckpoint, system, key, keyDigest);
+      const intent = intentMatchingCheckpoint(context, commitContract, storedCheckpoint, system, key, keyDigest);
+      if (storedCheckpoint.runId !== envelope.runId && envelope.continuation === undefined && envelope.retryOf === undefined) {
+        await requireHistoricalSavePresent(context, commitContract, commitInput, intent);
+      }
       return replayCheckpoint(context, commitContract, storedCheckpoint);
     }
     refuseRetiredPermanentKeys(commitContract, commitInput, system, naturalKey, hasProtectedTransactionInput(context.run));
@@ -1859,7 +1925,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const durable = deps.authority.authority.writeIntents.findByPermanentKey(system, key);
     const decision = decideDurableIntent(durable, { runId: envelope.runId, runAttempt: envelope.attempt });
     if (decision.kind === "reuse") {
-      return reuseDurableIntent(context, commitContract, decision.record);
+      return reuseDurableIntent(context, commitContract, commitInput, decision.record);
     }
     if (decision.kind === "recover-own") {
       return await recoverOwnIntent(context, commitContract, commitInput, decision.record);
@@ -1891,17 +1957,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       || durable !== undefined
       || envelope.attempt > 1;
     if (mustProbe) {
-      let verdict: RuntimeProbeVerdict;
-      try {
-        verdict = await runLiveProbe(context, commitContract, commitInput);
-      } catch (error) {
-        throw new WriteSafetyAuthorityError(
-          `pre-write probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} failed; `
-            + "refusing to fence or click because the target state is unknown",
-          authorityReason(context.run, "prewrite-probe-exception", "exception", error),
-          error,
-        );
-      }
+      const verdict = await readPrewriteProbe(context, commitContract, commitInput, keyDigest, businessKeyDigest);
       if (verdict.state === "present" && occurrence !== undefined) {
         const completion = commitContract.writeSafety.completion;
         const proof = completion.proofSchema.parse(Reflect.apply(completion.proofFromPresentProbe, undefined, [verdict]));
@@ -1952,28 +2008,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           outputValue,
           recordObservedPresent: observedPresentRecord,
         });
-      }
-      if (verdict.state === "ambiguous" || verdict.state === "unknown") {
-        const detail = verdict.state === "ambiguous"
-          ? `found ${String(verdict.matches)} matches`
-          : "is indeterminate";
-        throw new WriteSafetyAuthorityError(
-          `pre-write probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} ${detail}; `
-          + "refusing to fence or click — "
-          + "verify in the target system, then retry",
-          authorityReason(context.run,
-            verdict.state === "ambiguous" ? "prewrite-probe-ambiguous" : "prewrite-probe-unknown",
-            "probe",
-            verdict,
-          ),
-        );
-      }
-      if (verdict.state === "absent" && verdict.evidence.idempotencyKeyDigest !== businessKeyDigest) {
-        throw new WriteSafetyAuthorityError(
-          `pre-write probe absent evidence does not match ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))}; `
-          + "refusing to treat foreign evidence as absence",
-          authorityReason(context.run, "prewrite-probe-foreign-absence", "probe", verdict),
-        );
       }
     }
     const probeDeadline = deps.clock.monotonicMs() + node.probeToFenceMaxMs;
@@ -2338,7 +2372,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         // committed / observed-present reuses its proof; anything else refuses.
         const winner = error.existing;
         if (winner.status === "committed" || winner.status === "observed-present") {
-          return { state: "existing" as const, result: reuseDurableIntent(context, commitContract, winner) };
+          return { state: "existing" as const, result: await reuseDurableIntent(context, commitContract, commitInput, winner) };
         }
         throw new Error(
           `write fence for ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} lost the race to intent `
@@ -2489,6 +2523,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           );
         }
         const settled = presentFromProof(stored.value);
+        await requireHistoricalSavePresent(context, commitContract, commitInput, durable);
         return TransactionDryRunPreviewSchema.parse({
           kind: "transaction-dry-run-preview",
           nodeId: String(node.id),
