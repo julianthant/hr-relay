@@ -306,13 +306,14 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     if (current.state !== "available") throw new Error("protected-settings-unavailable");
     const revision = current.readback.revision;
     const commandId = "00000000-0000-4000-8000-000000000903";
+    const rosterUrl = "https://roster.example.test/synthetic-http-retry-private";
     const request = { commandId, family: "settings", type: "apply-protected-settings", target: { expectedRevision: revision + (operation === "clear" ? 1 : 0) },
       payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000904",
-        entries: { ucpathPassword: operation === "clear" ? { clear: true } : { set: "synthetic-http-retry-private" } } } };
+        entries: { sharepointOnboardingRosterUrl: operation === "clear" ? { clear: true } : { set: rosterUrl } } } };
     const send = (body: unknown = request) => h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body) });
     if (operation === "clear") {
       const seed = { ...request, commandId: "00000000-0000-4000-8000-000000000905", target: { expectedRevision: revision },
-        payload: { ...request.payload, writeId: "00000000-0000-4000-8000-000000000906", entries: { ucpathPassword: { set: "synthetic-http-retry-private" } } } };
+        payload: { ...request.payload, writeId: "00000000-0000-4000-8000-000000000906", entries: { sharepointOnboardingRosterUrl: { set: rosterUrl } } } };
       assert.equal((await send(seed)).status, 200);
       h.clock.advanceWall(1000);
     }
@@ -334,7 +335,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual({ ...settingsAuthoritySnapshot(h, commandId), authorityGeneration: beforeForeign.authorityGeneration }, beforeForeign);
     assertHttpFaultOnly(h, beforeForeignFault, 1);
     h.clock.advanceWall(1000);
-    const divergent = { ...request, payload: { ...request.payload, entries: { ucpathPassword: { set: "synthetic-http-retry-divergent" } } } };
+    const divergent = { ...request, payload: { ...request.payload, entries: { sharepointOnboardingRosterUrl: { set: "https://roster.example.test/synthetic-http-retry-divergent" } } } };
     const denied = await json(await send(divergent));
     assert.equal(denied.code, "command-divergent");
     h.clock.advanceWall(1000);
@@ -345,7 +346,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(readFileSync(privatePath), bytes);
     const audit = h.database.authority.commandAudits.findByCommand(commandId); assert.ok(audit);
     assert.equal(audit.request.requestedAt, acceptedAt);
-    assert.equal(JSON.stringify(audit).includes("synthetic-http-retry-private"), false);
+    assert.equal(JSON.stringify(audit).includes(rosterUrl), false);
   });
 
   it("returns invalid-value for an ordinary settings leaf before authority access", async () => {

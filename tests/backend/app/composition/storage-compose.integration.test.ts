@@ -102,16 +102,16 @@ afterEach(_afterEachFixture0);
     assert.equal(restored.authority.commands.get(request.commandId), undefined);
     assert.equal(restored.authority.commandAudits.findByCommand(request.commandId), undefined);
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
-    const divergent = structuredClone(request); divergent.payload.entries.ucpathPassword.set = "divergent-after-restore";
+    const divergent = structuredClone(request); divergent.payload.entries.sharepointOnboardingRosterUrl.set = "https://roster.example.test/divergent-after-restore";
     assert.equal(renewed.execute(divergent, restored).state, "rejected");
     assert.equal(restored.getMeta().authorityGeneration, generation);
     assert.equal(renewed.execute(request, restored).state, "applied");
     assert.equal(renewed.execute(request, restored).state, "already-applied");
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
-    assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(renewed.store)), "synthetic-private-value");
+    assert.equal(requireSecret("sharepointOnboardingRosterUrl", createCredentialSecretSource(renewed.store)), "https://roster.example.test/synthetic-private-value");
     const doctor = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["doctor", "--json"], f.clock, f.repoRoot, renewed.admission, renewed.store);
     assert.equal(doctor.exitCode, 0, doctor.output);
-    for (const value of ["synthetic-private-value", "divergent-after-restore"]) {
+    for (const value of ["https://roster.example.test/synthetic-private-value", "https://roster.example.test/divergent-after-restore"]) {
       assert.equal(doctor.output.includes(value), false); assert.equal(restore.output.includes(value), false);
       assert.equal(readFileSync(f.path).includes(Buffer.from(value)), false);
       for (const bytes of Object.values(backupFiles)) assert.equal(bytes.includes(Buffer.from(value)), false);

@@ -6,11 +6,13 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/co
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH,type ProtectedSettingsPatch } from "../../../../src/models/config/protected-settings.js";
 import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
+import { ProtectedSettingsCommandRequestSchema,deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { seedInitialSettingsRuntimeConfig } from "../../../support/fixtures/operator-command-fixtures.js";
 import { settingsSetOperations } from "../../../support/fixtures/settings-operation-fixtures.js";
-import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
+import { createSyntheticProfileSession,openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -22,14 +24,99 @@ async function fixture() {
   seedInitialSettingsRuntimeConfig(database, clock);
   const store = createCredentialStore({ stateRoot: opened.stateRoot });
   const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, hostConfigFacts({}), clock), store);
-  return { database, read: () => readSettings(database.authority), execute: (request: unknown) => executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings }, request) };
+  return { database, profile: opened.profile, store, read: () => readSettings(database.authority),
+    execute: (request: unknown) => executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings }, request) };
 }
 function apply(service: Awaited<ReturnType<typeof fixture>>, expectedRevision: number, value: unknown) {
   const patch = settingsSetOperations(value);
   return service.execute({ commandId: randomUUID(), requestedAt: "2026-08-30T12:00:00.000Z", requestedBy: "local-operator", source: "settings-surface", family: "settings", type: "apply-settings",
     target: { expectedRevision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
 }
+
+function protectedCommand(expectedRevision: number, entries: ProtectedSettingsPatch) {
+  return ProtectedSettingsCommandRequestSchema.parse({
+    commandId: randomUUID(), requestedAt: "2026-10-01T12:01:00.000Z", requestedBy: "local-operator", source: "settings-surface", family: "settings", type: "apply-protected-settings",
+    target: { expectedRevision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries },
+  });
+}
+
 describe("native settings domain invariants", () => {
+  it("refuses writes to the saved Relay login through protected Settings", async () => {
+    const service = await fixture();
+    const before = service.store.read();
+    assert.ok(before.entries.ucpathUserId);
+    assert.ok(before.entries.ucpathPassword);
+
+    const loginEdits: ProtectedSettingsPatch[] = [
+      { ucpathPassword: { set: "replacement-fixture-password" } },
+      { ucpathUserId: { clear: true } },
+      { ucpathUserId: { set: "replacement@ucsd.edu" }, ucpathPassword: { set: "replacement-fixture-password" } },
+      { ucpathPassword: { clear: true }, sharepointOnboardingRosterUrl: { set: "https://roster.example.test/onboarding" } },
+    ];
+    for (const entries of loginEdits) {
+      const command = protectedCommand(before.revision, entries);
+      const result = service.execute(command);
+      assert.equal(result.state, "rejected");
+      assert.equal(result.code, "not-editable");
+      assert.deepEqual(service.store.read(), before);
+      assert.equal(service.database.authority.commands.get(command.commandId), undefined);
+      assert.equal(service.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    }
+  });
+
+  it("accepts the replacement login after the account password change", async () => {
+    const { profile } = await fixture();
+    const { machine } = profile;
+    const openSession = () => {
+      const session = createSyntheticProfileSession({ admission: machine, machineRoot: machine.stateRoot,
+        activity: { hasUnquiescedWork: () => false } });
+      cleanups.push(() => session.close());
+      return session;
+    };
+    const session = openSession();
+    const active = session.resumeSignedInProfile({ at: "2026-10-01T12:02:00.000Z" });
+    assert.equal(active.state, "active");
+    const newPassword = "replacement-fixture-password";
+    const changed = session.changePassword(active.token, { currentPassword: "disposable-fixture-password", newPassword, at: "2026-10-01T12:03:00.000Z" });
+    assert.equal(changed.state, "changed");
+
+    const freshSession = openSession();
+    const refused = freshSession.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-01T12:04:00.000Z" });
+    assert.equal(refused.state, "refused");
+    assert.equal(refused.code, "PROFILE_SIGN_IN_REFUSED");
+    const signedIn = freshSession.signIn({ email: "fixture@ucsd.edu", password: newPassword, at: "2026-10-01T12:05:00.000Z" });
+    assert.equal(signedIn.state, "active");
+    assert.equal(signedIn.profileId, active.profileId);
+  });
+
+  it("still applies protected Settings writes for the SharePoint roster URL", async () => {
+    const { store, execute } = await fixture();
+    const before = store.read();
+    const url = "https://roster.example.test/onboarding";
+    const result = execute(protectedCommand(before.revision, { sharepointOnboardingRosterUrl: { set: url } }));
+    assert.equal(result.state, "applied");
+    const after = store.read();
+    assert.equal(after.revision, before.revision + 1);
+    assert.equal(after.entries.sharepointOnboardingRosterUrl?.value, url);
+    assert.deepEqual(after.entries.ucpathUserId, before.entries.ucpathUserId);
+    assert.deepEqual(after.entries.ucpathPassword, before.entries.ucpathPassword);
+  });
+
+  it("settles the exact retry of a login write already committed by an older build", async () => {
+    const { store, execute } = await fixture();
+    const { revision, entries: saved } = store.read();
+    assert.ok(saved.ucpathPassword);
+    const command = protectedCommand(revision, { ucpathPassword: { set: saved.ucpathPassword.value } });
+    const committed = store.apply({ ...command.payload, commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command), expectedRevision: revision, updatedAt: command.requestedAt });
+    assert.equal(committed.state, "applied");
+
+    const result = execute(command);
+    assert.equal(result.state, "applied");
+    assert.deepEqual(execute(command), { ...result, state: "already-applied" });
+    assert.deepEqual(store.read(), committed.record);
+  });
+
   it("accepts a job-end-date-only annual entry over the baseline", async () => {
     const service = await fixture();
 
