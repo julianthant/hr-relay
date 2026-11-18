@@ -25,9 +25,9 @@ for folder owners and the [dashboard contract](../../docs/reference/dashboard-su
   vocabulary go in a sibling `*-model.ts`. The `ds/ui.tsx` barrel is the exception.
 - Use served data for availability, identity, status and write results. Never invent them in the
   browser. Keep exact run joins.
-- Select served or mock data once per workflow in `config/dashboard-workflow-sources.json`.
-  Keep mock data until the workflow's signed-off activation. Never fall back to mock at runtime;
-  render served failures as failures.
+- Declare a workflow `served` or `hidden` in `config/dashboard-workflow-sources.json` once it is
+  built and ready for testing; an undeclared workflow does not appear. Never fall back to mock at
+  runtime; render served failures as failures.
 - The Logs timeline lists every step and action in the order it happened. Steps that don't apply
   stay visible as Skipped.
 - Desktop only, with a minimum canvas of 1024×720 CSS pixels: queue beside detail, and the document

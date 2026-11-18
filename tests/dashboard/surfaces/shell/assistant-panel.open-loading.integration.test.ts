@@ -6,7 +6,6 @@ import { afterEach, beforeEach, it, vi } from "vitest";
 import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { HubShell } from "../../../../src/dashboard/surfaces/shell/hub-shell.js";
 import { AssistantPanel } from "../../../../src/dashboard/surfaces/shell/assistant-panel.js";
-import { createAssistantMockProducer } from "../../../../src/dashboard/surfaces/shell/assistant-panel-model.js";
 import { assistantOpen } from "../../../../src/dashboard/surfaces/shell/assistant-launcher-model.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
@@ -37,7 +36,7 @@ function servedShell(reads: { history: unknown; conversation?: unknown }, gate?:
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   const render = () => act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(HubShell, {
-    source: "served", settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {}, onRunWorkflow: async () => ({ state: "failed" as const, message: "Unused" }),
+    settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {},
   }))) })));
   return { host, render, close: async () => { await act(async () => root.unmount()); host.remove(); } };
 }
@@ -95,7 +94,7 @@ it("shows the typing row with Cancel while a reply is prepared, and Cancel cance
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(AssistantPanel, {
-      producer: createAssistantMockProducer("new"), accountClient: { chatGptAccount: () => new Promise(() => {}) } as never, served: served as never, onRunWorkflow: async () => ({ state: "failed" as const, message: "Unused" }) })))));
+      conversationPort: { initial: () => ({ id: "chat", title: "New chat", files: [] }) }, served: served as never })))));
     const row = host.querySelector(".hub-typing"); assert.ok(row, "typing row");
     assert.equal(row.getAttribute("role"), "status");
     assert.equal(row.querySelectorAll(".hub-typing-dots i").length, 3);
