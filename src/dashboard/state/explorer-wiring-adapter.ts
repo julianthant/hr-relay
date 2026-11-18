@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { WorkflowExplorerWire } from "../../models/dashboard/explorer.js";
 import type { ExplorerReviewSpec } from "../../models/dashboard/explorer-review-spec.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogFailure } from "../../models/failures/error-catalog.js";
@@ -22,11 +22,15 @@ export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplore
     void resource.read(() => client.workflowExplorer(), "DASHBOARD_READ_FAILED").catch(() => resource.snapshot());
   }, [client, resource]);
   const held = result.value?.workflows.find(candidate => candidate.id === workflowId);
-  // The one wire serves every workflow; it is read again only when none is held or the held version is not the catalog's.
-  const stale = result.value === undefined || (held !== undefined && version !== undefined && held.version !== version);
+  // The one wire serves every workflow; it is read on mount, on a client change and when the held version is not the catalog's.
+  const mismatched = held !== undefined && version !== undefined && held.version !== version;
   const selected = workflowId !== undefined;
-  useEffect(() => { if (selected) retry(); }, [retry, selected]);
-  useEffect(() => { if (selected && stale) retry(); }, [retry, selected, stale]);
+  const readBy = useRef<unknown>(undefined);
+  useEffect(() => {
+    if (!selected || (readBy.current === retry && !mismatched)) return;
+    readBy.current = retry;
+    retry();
+  }, [retry, selected, mismatched]);
   const projected = useMemo((): ExplorerWiringState => {
     const workflow = result.value?.workflows.find(candidate => candidate.id === workflowId);
     if (result.value === undefined) return { state: "loading" };

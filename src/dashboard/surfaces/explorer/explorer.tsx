@@ -16,7 +16,7 @@ export function WorkflowExplorer({ catalog, client }: { catalog: readonly Workfl
   const workflows = useMemo(() => explorerPickerEntries(catalog, known), [catalog, known]);
   // The choice stands, listed or not: a workflow the wire does not list says so in place; only an empty choice takes the first one.
   const workflowId = chosen !== "" ? chosen : workflows[0]?.id;
-  const options = workflowId !== undefined && !workflows.some(entry => entry.id === workflowId) ? [...workflows, { id: workflowId, title: workflowId, depth: 0 }] : workflows;
+  const options = workflowId !== undefined && !workflows.some(entry => entry.id === workflowId) ? [...workflows, { id: workflowId, title: catalog.find(entry => entry.id === workflowId)?.label ?? "Unavailable workflow", depth: 0 }] : workflows;
   const registered = catalog.find(entry => entry.id === workflowId && entry.source === "served");
   const { state, retry, workflows: wire } = useExplorerWiring(client, workflowId, registered?.served?.version);
   if (wire !== undefined && wire !== known) setKnown(wire);

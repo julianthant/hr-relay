@@ -86,10 +86,11 @@ it("reads the explorer wire once while moving between workflows", async () => {
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root?.render(createElement(TooltipProvider, null, createElement(WorkflowExplorer, { catalog, client: counting }))));
+  assert.equal(reads, 1, "mount reads once");
   await choose('[aria-label="Explorer workflow"]', "onboarding");
   await choose('[aria-label="Explorer workflow"]', "separations");
   await choose('[aria-label="Explorer workflow"]', "person-lookup");
-  assert.equal(reads, 1);
+  assert.equal(reads, 1, "a workflow switch reads nothing");
 });
 
 it("a starts link to a workflow the wire does not list says so in place instead of showing another workflow", async () => {
@@ -103,4 +104,6 @@ it("a starts link to a workflow the wire does not list says so in place instead 
   await click(start);
   assert.ok(host.textContent?.includes("Workflow unavailable"));
   assert.equal(host.querySelector('[aria-label="Explorer workflow"]')?.getAttribute("data-value"), "i9-lookup");
+  assert.ok(host.textContent?.includes("Unavailable workflow"), "the picker shows a plain label");
+  assert.ok(!host.textContent?.includes("i9-lookup"), "no internal id on screen");
 });
