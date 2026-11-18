@@ -7,13 +7,14 @@ import { valueLeafSchemaExact, valueLeafSchemaForManual } from "../../src/models
 import { EidSchema } from "../../src/rules/identity/ids.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/models/workflow/presentation.js";
 import type { StepManualDeclaration } from "../../src/models/workflow/step-omission.js";
+import type { JsonValue } from "../../src/rules/validation/canonical-json.js";
 import { defineTaskContract } from "../../src/models/task/task-contract.js";
 import { compileWorkflow, defineWorkflow } from "../../src/workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../src/workflow-kit/validation/module-role.js";
 import { Plan1Input, Plan1CanonicalInput, plan1Contract } from "../support/fixtures/plan1-operation-workflows.js";
 
 const { __sealed: _sealed, ...contract } = plan1Contract;
-function fixture(output: z.ZodType, example: unknown, manual: StepManualDeclaration) {
+function fixture(output: z.ZodType<JsonValue>, example: unknown, manual: StepManualDeclaration) {
   const read = defineTaskContract({ ...contract, output, example });
   return compileWorkflow(defineWorkflow({
     id: "manual-path-fixture", version: 1, code: "mpf", label: "Manual paths", icon: "Search", category: "operations",

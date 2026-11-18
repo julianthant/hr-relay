@@ -38,9 +38,9 @@ import { useDashboardCommandBinding, useDashboardClient } from "../../state/clie
 import { TypedInput, StepOmissionFactsForm, RunReferenceRows, RunCheckRows, RunCheckCard, type CheckSheet } from "./run-start-kit.js";
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
-import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-model.js";
+import { SYSTEM_NAME } from "../shared/status/system-chip-model.js";
 import { planRefusalNotice, forcedStepOmissions, initialStepOmissionDraft, startRequestFingerprint, previewRunInput, launchWorkbookReferences, MISSING_REFERENCE_REASON, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable, type RunInputPreview, type StepOmissionFactDraft } from "./run-start-model.js";
-import { firstStepsFailure, includedRowCount, lastIncludedSwitch, rowFieldsOpen, rowIncluded, rowOpenFold, sourceBadge, startRowsOf, stepEntries, type OpenStepRow, type StepRow } from "./run-steps-model.js";
+import { firstStepsFailure, includedRowCount, lastIncludedSwitch, rowFieldsOpen, rowIncluded, rowOpenFold, sourceBadge, startRowsOf, stepEntries, type OpenStepRow, type StartStep, type StepRow } from "./run-steps-model.js";
 import { adjacentRunStartStage, reconcileRunStartStage, runStartStages, type RunStartStage } from "./run-start-timeline.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import { WorkflowPdfInput } from "../workflows/mocks/workflow-pdf-input.js";
@@ -75,17 +75,7 @@ export interface RunStartWorkflow {
   readonly enqueue: EnqueuePolicy;
   /** The served descriptor version, shown in Options and Confirm. */
   readonly version: number;
-  readonly steps: readonly Readonly<{
-    key: string;
-    label: string;
-    includedByDefault: boolean;
-    systems?: readonly BrowserSystemId[];
-    control:
-      | { state: "selectable"; inputField: string }
-      /** the step declares an omission the operator may take instead of running */
-      | { state: "omittable"; form: StepOmissionForm; forces: readonly string[] }
-      | { state: "required"; reason: string };
-  }>[];
+  readonly steps: readonly StartStep[];
   /** The served rows of the Steps stage; a workflow that serves none shows one row per step. */
   readonly rows?: NonNullable<WorkflowStartWire["rows"]>;
   /** the descriptor's declared typed-input surface */

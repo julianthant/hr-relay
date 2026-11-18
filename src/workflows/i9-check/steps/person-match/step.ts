@@ -85,7 +85,11 @@ export function personMatchEntries({ task }: I9Author) {
   const searchCall = searchPersonOrgTask(personMatch, "initial-name-search", { kind: "is-false", of: { from: "input", path: "person.useMatch" } });
   const initialSearch = task(searchCall.identity, [], searchCall.bind);
   const initial = task(match.task("match-outcome", ReadMatchOutcome, { replay: "always-rerun" }), [matching, initialSearch], ({ outputs }) => ({ match: outputs["identifier-match"] }));
-  const candidates = task(match.task("initial-candidates", ReadEmploymentCandidates, { replay: "always-rerun", when: searchCall.identity.when }), [initialSearch], ({ outputs }) => ({ search: outputs["initial-name-search"] }));
+  const candidates = task(match.task("initial-candidates", ReadEmploymentCandidates, { replay: "always-rerun", when: searchCall.identity.when }), [initialSearch], ({ outputs }) => {
+    const search = outputs["initial-name-search"];
+    if (search === undefined) throw new Error("initial-candidates ran without the initial-name-search it shares a condition with");
+    return { search };
+  });
   return { matching, initialSearch, initial, candidates };
 }
 export function buildStep(author: I9Author) {

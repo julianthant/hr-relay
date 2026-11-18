@@ -8,7 +8,7 @@ import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../.
 import { RerunValuesRequestSchema, RerunValuesResponseSchema,
   type RerunValuesRefusalCode, type RerunValuesResponse, type RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
-import { FingerprintSchema } from "../../../rules/identity/ids.js";
+import { FingerprintSchema, NodeIdSchema } from "../../../rules/identity/ids.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { projectTransactionOutcome } from "../../../models/workflow/graph.js";
@@ -87,11 +87,18 @@ function delegationSettled(repositories: AuthorityDatabase["authority"], runId: 
     if (manifest === undefined) return false;
     if (manifest.join !== "none" && repositories.dependencies.members(manifest.manifestId)
       .some((member) => (member.terminal?.run ?? member.child).lifecycle.state !== "terminal")) return false;
-    resolveDelegationEvidenceOutput(repositories.dependencies.evidence(runId, String(node.id)), node.target.result);
-    return true;
+    return delegationJoin(repositories.dependencies.evidence(runId, String(node.id)), node.target.result) === "satisfied";
+  } catch { refuse("source-invalid"); }
+}
+
+/** An unsatisfied join is a fact of the retained evidence; any other resolution failure propagates. */
+function delegationJoin(...args: Parameters<typeof resolveDelegationEvidenceOutput>): "satisfied" | "unsatisfied" {
+  try {
+    resolveDelegationEvidenceOutput(...args);
+    return "satisfied";
   } catch (error) {
-    if (error instanceof DelegationOutcomePolicyUnsatisfiedError) return false;
-    refuse("source-invalid");
+    if (error instanceof DelegationOutcomePolicyUnsatisfiedError) return "unsatisfied";
+    throw error;
   }
 }
 
@@ -135,7 +142,7 @@ function childUnitFacts(repositories: AuthorityDatabase["authority"], descriptor
   const preparedSpans = preparedBySpan(repositories, run, nodes);
   const facts = new Map<string, NodeFact>();
   for (const node of nodes) {
-    const nodeId = String(node.id), checkpoint = checkpoints.get(nodeId);
+    const nodeId = String(node.id), checkpoint = checkpoints.get(node.id);
     if (node.kind === "transaction") {
       const taskId = String(node.commit.uses.id);
       const asserted = checkpoint?.assertion !== undefined;
@@ -168,7 +175,7 @@ function leastAdvancedSteps(descriptor: AnyWorkflowDescriptor, runs: readonly Re
   const kinds = new Map(descriptorRuntimeNodes(descriptor).map((node) => [String(node.id), node.kind]));
   return descriptor.timeline.map((step) => {
     const nodes = step.nodes.flatMap(({ id }) => (kinds.get(String(id)) === "transaction" ? (["prepare", "commit"] as const) : [undefined]).map((phase): NodeFact => {
-      const blank: NodeFact = { nodeId: id, ...(phase === undefined ? {} : { phase }), state: "unfinished", reason: "not-recorded" };
+      const blank: NodeFact = { nodeId: NodeIdSchema.parse(id), ...(phase === undefined ? {} : { phase }), state: "unfinished", reason: "not-recorded" };
       const facts = runs.map((run) => run.get(unitKey(String(id), phase)) ?? blank);
       return facts.reduce((least, fact) => ADVANCE[fact.state] < ADVANCE[least.state] ? fact : least, facts[0] ?? blank);
     }));
@@ -348,7 +355,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       // The source's typed facts refill a step it had typed, its own or a child's a row targets; they stay typed by hand.
       const typed = (run.envelope.stepOmissions ?? []).filter((entry) => (entry.workflow === undefined
         ? descriptor.stepOmissions.some((spec) => spec.step === entry.step)
-        : descriptor.startRows.some(({ target }) => target?.workflow === entry.workflow && target.step === entry.step))
+        : descriptor.startRows.some(({ target }) => target !== undefined && target.workflow === entry.workflow && target.step === entry.step))
         && !containsProtected(JsonValueSchema.parse(entry.facts), privateValues));
       let sourceInput: RerunValuesSnapshot["sourceInput"] = { state: "available", value: run.input.parsed.value };
       if (canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)

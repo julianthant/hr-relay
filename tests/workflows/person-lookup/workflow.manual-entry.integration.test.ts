@@ -237,7 +237,7 @@ describe("Person Lookup Search for person typed by hand", () => {
     const f = await world.fixture();
     const settled = await f.run(SEARCH, [], except("searching"), [{ step: "searching", facts: { ...PERSON, emplId: "10000002" } }]);
     assert.deepEqual(f.database.authority.failures.listByRun(settled.run.envelope.runId).map(failure => failure.summary),
-      ["The typed Employee ID 10000002 is not the searched Employee ID 10000001"]);
+      ["The typed Employee ID is not the searched Employee ID"]);
   });
 });
 

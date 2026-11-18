@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
+import type { z } from "zod";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
+import type { RerunSourceSchema } from "../../../../src/models/run/rerun.js";
 import type { StepOmissionEntry } from "../../../../src/models/workflow/step-omission.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
@@ -20,7 +22,8 @@ const LAST_DAY = "09/30/2026";
 const SEPARATION = "10/01/2026";
 const SOURCE_RUN = uuidOf(9);
 
-type CopiedFrom = NonNullable<NonNullable<RunRecord["envelope"]["sourceBound"]>["source"]["copiedFrom"]>;
+/** Parsed with the run record, so written as the schema input. */
+type CopiedFrom = NonNullable<z.input<typeof RerunSourceSchema>["copiedFrom"]>;
 
 function sourceBoundOf(copiedFrom: CopiedFrom) {
   return {

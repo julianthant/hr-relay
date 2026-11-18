@@ -9,6 +9,7 @@ import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
+import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { plan1Contract, plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
@@ -52,7 +53,7 @@ const pairChild = compileWorkflow(defineWorkflow({ ...common, id: "child-phases-
     return { steps: [[{ key: "pair", label: "Pair" }, [first, second]]], result: result(Pair, [first, second], ({ input }) => ({ eid: input.eid })) };
   } })).descriptor;
 
-function parentOver(child: typeof writeChild, result: z.ZodType, rows: readonly StartRowDeclaration[], binds: readonly string[]) {
+function parentOver(child: AnyWorkflowDescriptor, result: z.ZodType, rows: readonly StartRowDeclaration[], binds: readonly string[]) {
   return compileWorkflow(defineWorkflow({ ...common, id: `${child.id}-parent`, code: "cpr", label: "Child phases parent", rows, scenarios: ["write-fixture/happy"],
     steps: ({ delegate, result: derived }) => {
       const members = delegate({ id: "members", target: { id: child.id, input: Input, result }, edgeId: "members",
@@ -69,7 +70,7 @@ const writeRows: readonly StartRowDeclaration[] = [members,
   { key: "prepare", label: "Prepare", members: [{ workflow: writeChild.id, step: "write", nodes: ["write"], phase: "prepare" }] },
   { key: "commit", label: "Commit", members: [{ workflow: writeChild.id, step: "write", nodes: ["write"], phase: "commit" }] }];
 
-async function harness(child: typeof writeChild, result: z.ZodType, binds: readonly string[], rows: readonly StartRowDeclaration[]) {
+async function harness(child: AnyWorkflowDescriptor, result: z.ZodType, binds: readonly string[], rows: readonly StartRowDeclaration[]) {
   const parent = parentOver(child, result, rows, binds);
   const h = await sourceBoundHarness(parent, (world) => {
     const write = buildWriteFixtureRegistry(world), stores = [...plan1Stores.stores, ...write.stores];

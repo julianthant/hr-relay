@@ -11,7 +11,7 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import type { StepManualDeclaration } from "../../../../src/models/workflow/step-omission.js";
-import { EidSchema } from "../../../../src/rules/identity/ids.js";
+import { EidSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { compileWorkflow, composeWorkflowModule, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { bindWorkflowDelegationTargets } from "../../../../src/workflow-kit/workflow.js";
@@ -23,7 +23,7 @@ import { createCredentialStore } from "../../../support/helpers/synthetic-storag
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
 
-const CHILD = "fixture-typed-child-member";
+const CHILD = WorkflowIdSchema.parse("fixture-typed-child-member");
 const common = { version: 1, label: "Synthetic typed child", icon: "Search" as const, category: "operations" as const,
   input: Plan1Input, canonicalInput: Plan1CanonicalInput, inputSubject: "eid" as const, surface: { shape: "single" as const },
   enqueue: "reject-active" as const, actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [],
@@ -171,6 +171,7 @@ it("serves a child row's steps from the least advanced of several child runs", a
   const { execution, parent, rerun } = await harness();
   const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "confirmed" }, { dryRun: false, selectedStepKeys: ["members"] });
   const run = await settle(execution, root);
+  assert.ok(run.lifecycle.state === "terminal");
   assert.equal(run.lifecycle.outcome, "failed");
   assert.deepEqual(rerun(root.envelope.runId).children?.map(({ workflow, steps }) => [workflow, stepStates(steps)]),
     [[CHILD, [["reading", "failed"], ["finish", "unfinished"]]]]);

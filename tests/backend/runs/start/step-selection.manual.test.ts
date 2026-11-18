@@ -90,7 +90,7 @@ function fixture(options: Options = {}) {
           [options.saving === undefined ? saving : group(saving, { manual: options.saving }), [save, receipt]],
           [options.extra === undefined ? extra : group(extra, { manual: options.extra }), [more]],
         ],
-        result: result(Result, [check, receipt, more], ({ outputs }) => ({ eid: outputs.check.eid })),
+        result: result(Result, [check, receipt, more], ({ input }) => ({ eid: input.emplId })),
       };
     },
   })).descriptor;

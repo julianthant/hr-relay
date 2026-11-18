@@ -58,6 +58,8 @@ export interface FlowScope<InputSchema extends z.ZodType, S> {
   readonly input: z.output<InputSchema>;
   readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: OutputsOf<S>;
+  /** The scope's dependencies the operator typed by hand in this run; absent when none was typed. */
+  readonly asserted?: readonly string[];
 }
 export type TerminalWorkflowScope<InputSchema extends z.ZodType, S> = FlowScope<InputSchema, S>;
 
