@@ -12,7 +12,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach,it,vi } from 'vitest';
 import { IDLE_REFRESH_MS,IdleSessionSchedule,useIdleSessionRefresh } from '../../../../src/dashboard/surfaces/sessions/session-idle-model.js';
 import { type SessionPreviewRequest } from '../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js';
-import { sessionsSample } from '../../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
+import { sessionsSample } from '../../../support/fixtures/dashboard/sessions-sample.js';
 import type { SessionsViewState } from '../../../../src/dashboard/surfaces/sessions/sessions-view-model.js';
 import { manualClock } from '../../../../src/rules/time/clock.js';
 

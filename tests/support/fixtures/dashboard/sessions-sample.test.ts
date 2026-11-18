@@ -7,7 +7,7 @@ const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG
 const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,describe as describe_m1,expect as expect_m1,it as it_m0,it as it_m1 } from "vitest";
-import { previewSessionAdd as previewSessionAdd_m0,previewSessionAdd as previewSessionAdd_m1,previewSessionControl as previewSessionControl_m0,sessionsSample as sessionsSample_m0 } from "../../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
+import { previewSessionAdd as previewSessionAdd_m0,previewSessionAdd as previewSessionAdd_m1,previewSessionControl as previewSessionControl_m0,sessionsSample as sessionsSample_m0 } from "./sessions-sample.js";
 import { sessionTallies as sessionTallies_m0 } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 
 

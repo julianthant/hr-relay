@@ -15,7 +15,7 @@ import { act as act_m0,createElement as createElement_m0 } from "react";
 import { createRoot as createRoot_m0 } from "react-dom/client";
 import { describe as describe_m0,it as it_m0 } from "vitest";
 import { useSessionPreviewCommands as useSessionPreviewCommands_m0,type SessionPreviewCommandPort as SessionPreviewCommandPort_m0,type SessionPreviewRequest as SessionPreviewRequest_m0 } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
-import { sessionsSample as sessionsSample_m0 } from "../../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
+import { sessionsSample as sessionsSample_m0 } from "../../../support/fixtures/dashboard/sessions-sample.js";
 // @vitest-environment jsdom
 import assert_m1 from 'node:assert/strict';
 import { act as act_m1,createElement as createElement_m1 } from 'react';
@@ -23,7 +23,7 @@ import { TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { createRoot as createRoot_m1,type Root as Root_m1 } from 'react-dom/client';
 import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1 } from 'vitest';
 import { useSessionPreviewCommands as useSessionPreviewCommands_m1,type SessionPreviewCommandPort as SessionPreviewCommandPort_m1,type SessionPreviewRequest as SessionPreviewRequest_m1,type SessionPreviewResult as SessionPreviewResult_m1 } from '../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js';
-import { createFixtureSessionPort, previewSessionControl, sessionsSample as sessionsSample_m1 } from '../../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
+import { createFixtureSessionPort, previewSessionControl, sessionsSample as sessionsSample_m1 } from '../../../support/fixtures/dashboard/sessions-sample.js';
 import { SessionsView as SessionsView_m1 } from '../../../../src/dashboard/surfaces/sessions/sessions-view.js';
 import { buildWorkflowCatalog as buildWorkflowCatalog_m1 } from '../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js';
 // @vitest-environment jsdom
@@ -33,7 +33,7 @@ import { createRoot as createRoot_m2 } from 'react-dom/client';
 import { it as it_m2 } from 'vitest';
 import { IDLE_REFRESH_MS as IDLE_REFRESH_MS_m2 } from '../../../../src/dashboard/surfaces/sessions/session-idle-model.js';
 import { useSessionPreviewCommands as useSessionPreviewCommands_m2,type SessionPreviewCommandPort as SessionPreviewCommandPort_m2,type SessionPreviewRequest as SessionPreviewRequest_m2 } from '../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js';
-import { sessionsSample as sessionsSample_m2 } from '../../../../src/dashboard/surfaces/sessions/sessions-fixture.js';
+import { sessionsSample as sessionsSample_m2 } from '../../../support/fixtures/dashboard/sessions-sample.js';
 
 
 {

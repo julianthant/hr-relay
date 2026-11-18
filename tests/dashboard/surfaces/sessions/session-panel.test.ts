@@ -1,3 +1,4 @@
+import { sessionsSampleHarness } from "../../../support/fixtures/dashboard/sessions-sample.js";
 import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
 import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
@@ -15,7 +16,7 @@ const catalog = SERVED_CATALOG;
 
 describe("frontend timeline and sessions", () => {
   it("renders the canonical Sessions host inside the shell toast provider without a dashboard client provider", () => {
-    const markup = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, { catalog, source: "mock", open: true, onOpenChange: () => {} }))));
+    const markup = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, { catalog, harness: sessionsSampleHarness, open: true, onOpenChange: () => {} }))));
     assert.equal((markup.match(/<article /gu) ?? []).length, 4);
     assert.doesNotMatch(markup, /Sample data|Add to preview/);
     assert.match(markup, /No run assigned/);

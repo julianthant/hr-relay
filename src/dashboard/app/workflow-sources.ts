@@ -1,5 +1,7 @@
 import { z } from "zod";
 import configuredSources from "../../../config/dashboard-workflow-sources.json";
+import type { SessionsHarness } from "../surfaces/sessions/session-panel.js";
+import type { ActivityReportHook } from "../surfaces/activity/activity.js";
 import type { AssistantWorkflowRequest, AssistantWorkflowResult } from "../surfaces/shell/assistant-panel-model.js";
 
 /** Where a surface (sessions, activity, inbox, search, assistant) reads from; the design-mock harness composes "mock" surfaces, the product only "served". */
@@ -21,8 +23,10 @@ export interface WorkflowComposition {
   readonly logs?: SurfaceSource;
   readonly dataSources?: WorkflowSourcePolicy;
   readonly servedDay?: boolean;
-  readonly sessions?: SurfaceSource;
-  readonly activity?: SurfaceSource;
+  /** The design-mock harness supplies sample workers and a command port; the product leaves it unset and reads the served day. */
+  readonly sessionsHarness?: SessionsHarness;
+  /** The design-mock harness supplies its own report hook; the product leaves it unset and reads the served population. */
+  readonly useActivityReport?: ActivityReportHook;
   readonly inbox: SurfaceSource;
   readonly search: SurfaceSource;
   readonly assistant?: SurfaceSource;
@@ -31,7 +35,7 @@ export interface WorkflowComposition {
 }
 
 export function workflowComposition(sources: WorkflowSourcePolicy): WorkflowComposition {
-  return Object.freeze({ sources, sessions: "served" as const, activity: "served" as const, inbox: "served" as const, search: "served" as const });
+  return Object.freeze({ sources, inbox: "served" as const, search: "served" as const });
 }
 
 export const PRODUCT_WORKFLOW_COMPOSITION = workflowComposition(WORKFLOW_SOURCES);

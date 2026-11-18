@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { sessionsSampleHarness } from "../../../support/fixtures/dashboard/sessions-sample.js";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -29,7 +30,7 @@ it.each(["normal", "refused", "uncertain"] as const)("keeps add progress, succes
   window.history.replaceState(null, "", `/?sessionsPreview=empty${outcome === "normal" ? "" : `&workerCommandPreview=${outcome}`}`);
   const host = document.createElement("div"); document.body.append(host);
   root = createRoot(host);
-  const render = () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, { catalog, source: "mock", open: true, onOpenChange() {} }))));
+  const render = () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, { catalog, harness: sessionsSampleHarness, open: true, onOpenChange() {} }))));
   await act(async () => render());
   const panel = host.querySelector('section[aria-label="Session Panel"]'); assert(panel);
   const trigger = panel.querySelector('button[aria-label="Add workers"]'); assert(trigger instanceof HTMLButtonElement);
@@ -80,7 +81,7 @@ it("dismisses add progress when the panel unmounts and ignores its late settleme
   window.history.replaceState(null, "", "/?sessionsPreview=empty");
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   let shown = true;
-  const render = () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, shown ? createElement(SessionPanel, { catalog, source: "mock", open: true, onOpenChange() {} }) : null)));
+  const render = () => root?.render(createElement(TooltipProvider, null, createElement(ToastProvider, null, shown ? createElement(SessionPanel, { catalog, harness: sessionsSampleHarness, open: true, onOpenChange() {} }) : null)));
   await act(async () => render());
   const trigger = host.querySelector('button[aria-label="Add workers"]'); assert(trigger instanceof HTMLButtonElement);
   await act(async () => trigger.click());

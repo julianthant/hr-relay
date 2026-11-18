@@ -423,7 +423,7 @@ function LoadedApp({
   const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows, boot.workbookCompatibility), workflowComposition.sources, boot.featureAvailability), [workflows, workflowComposition, boot.featureAvailability, boot.workbookCompatibility]);
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
-  const dayState = useDashboardDay((hasServedWorkflows || workflowComposition.sessions !== "mock") && dateSelection.state === "valid" ? day : undefined, nowIso, authorityEpoch, boot.actor.id);
+  const dayState = useDashboardDay((hasServedWorkflows || workflowComposition.sessionsHarness === undefined) && dateSelection.state === "valid" ? day : undefined, nowIso, authorityEpoch, boot.actor.id);
   const dayResource = dayState.day;
   const [logsAttempt, setLogsAttempt] = useState(0);
   const streamDown = dayState.connection.state === "stopped" || dayState.connection.state === "reconnecting";
@@ -1186,7 +1186,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
           {/* Intake is a durable workspace; leaving it must not discard mapping progress. */}
-          <DashboardTakeovers deleteAccount={deleteAccount} accountPage={accountPage} onOpenRun={selectRun} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
+          <DashboardTakeovers deleteAccount={deleteAccount} accountPage={accountPage} onOpenRun={selectRun} useActivityReport={workflowComposition.useActivityReport} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
             client={client} workflowCatalog={workflowCatalog} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
@@ -1295,7 +1295,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       {/* The Sessions bar and its Ask control belong to the workflow workspace: every Settings page hides them. */}
       {!settingsOpen && (
         <SessionPanel
-          source={workflowComposition.sessions ?? "served"}
+          harness={workflowComposition.sessionsHarness}
           binding={{ client, executor, scope: commandScope, dayState, day, nowIso }}
           catalog={workflowCatalog}
           open={sessionsOpen}

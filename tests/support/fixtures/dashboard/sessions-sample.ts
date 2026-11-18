@@ -1,6 +1,7 @@
-import type { SessionPreviewCommandPort, SessionPreviewResult } from "./session-preview-command-model.js";
-import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
-import type { SessionControl, SessionNode, SessionWorker, SessionsViewState } from "./sessions-view-model.js";
+import type { SessionsHarness } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
+import type { SessionPreviewCommandPort, SessionPreviewResult } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
+import type { WorkflowCatalogEntry } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import type { SessionControl, SessionNode, SessionWorker, SessionsViewState } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 
 export const SESSION_SAMPLE_OPTIONS = [
   { id: "active", label: "Active workers" }, { id: "attention", label: "Needs attention" },
@@ -83,3 +84,12 @@ export function createFixtureSessionPort(initial: SessionsViewState, catalog: re
     async check(request) { await wait(); return outcomes.get(request.id) ?? { id: request.id, state: 'uncertain', message: 'This command has no confirmed outcome yet.' }; },
   };
 }
+
+/** The mock harness's sessions source: the `sessionsPreview` sample workers and a `workerCommandPreview` command port. */
+export const sessionsSampleHarness: SessionsHarness = catalog => {
+  const search = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search);
+  const initial = sessionsSample(search.get("sessionsPreview") ?? "active");
+  const scenario = search.get("workerCommandPreview");
+  if (scenario !== null && scenario !== "refused" && scenario !== "uncertain") throw new Error("SESSION_COMMAND_SCENARIO_INVALID");
+  return { initial, port: createFixtureSessionPort(initial, catalog, scenario ?? "normal") };
+};
