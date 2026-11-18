@@ -31,19 +31,13 @@ it("authors every registered step and retains every visible operator field exact
   }
 });
 
-/** Rows that serve no sample value; each workflow's count may only shrink, and Person Lookup has none. */
-const ROWS_WITHOUT_SAMPLE: Readonly<Record<string, number>> = {
-  "crm-doc-download": 3,
-};
 const deps = () => explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("d".repeat(64)));
 const explorer = () => buildWorkflowExplorer(deps());
 const rowsWithoutSample = (spec: ExplorerReviewSpec) => spec.steps.flatMap(step => step.blocks.flatMap(block =>
   block.kind === "card" ? block.rows.filter(row => row.value === undefined).map(row => `${step.id}/${block.id}/${row.id}`) : []));
 
-it("serves a sample value for every row, except the pinned rows of workflows still to be completed", () => {
-  for (const workflow of explorer().workflows) {
-    assert.equal(rowsWithoutSample(workflow.reviewSpec).length, ROWS_WITHOUT_SAMPLE[workflow.id] ?? 0, workflow.id);
-  }
+it("serves a sample value for every row of every workflow", () => {
+  for (const workflow of explorer().workflows) assert.deepEqual(rowsWithoutSample(workflow.reviewSpec), [], workflow.id);
 });
 
 it("fails the completeness check on a broken Person Lookup example or an outcome with no words", () => {

@@ -23,7 +23,8 @@ const hash = FingerprintSchema.parse("c".repeat(64));
 function workflows() { return buildWorkflowExplorer(explorerQueryDeps(clock, hash)).workflows; }
 function workflow(id: string): ExplorerWorkflowWire { const found = workflows().find(entry => entry.id === id); assert.ok(found, id); return found; }
 const decisions = (spec: ExplorerReviewSpec) => spec.steps.flatMap(step => step.blocks.flatMap(block => block.kind === "decision" ? [block] : []));
-const decision = (spec: ExplorerReviewSpec, id: string) => { const found = decisions(spec).find(block => block.id === id); assert.ok(found, id); return found; };
+type Decision = ReturnType<typeof decisions>[number];
+const decision = (spec: ExplorerReviewSpec, id: string): Decision => { const found = decisions(spec).find(block => block.id === id); assert.ok(found, id); return found; };
 
 it("serves every readable definition with its ordered steps and every declared task failure as a stopping outcome", () => {
   const entries = workflows();
@@ -151,7 +152,7 @@ it("applies a task's outcome explanation to every decision that owns it", () => 
   const entry = buildWorkflowExplorer({ ...deps, modules: deps.modules.map(candidate => candidate === original ? module : candidate) })
     .workflows.find(workflow => workflow.id === "onboarding"); assert.ok(entry);
   for (const id of ["write-path", "existing-write-path"]) {
-    const outcome = decision(entry.reviewSpec, id).outcomes.find(item => item.value === "ONBOARDING_WRITE_REVIEW_REFUSED");
+    const outcome: Decision["outcomes"][number] | undefined = decision(entry.reviewSpec, id).outcomes.find(item => item.value === "ONBOARDING_WRITE_REVIEW_REFUSED");
     assert.ok(outcome);
     assert.deepEqual([outcome.then, outcome.stops], [`${operatorFailureSentence("ONBOARDING_WRITE_REVIEW_REFUSED")} ${then}`, true]);
   }
