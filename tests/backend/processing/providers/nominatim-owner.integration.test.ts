@@ -80,7 +80,8 @@ it("reports a failed Nominatim reply send through the child process error event"
   const sent: unknown[] = [];
   const attempted = Promise.withResolvers<void>();
   const requestId = randomUUID();
-  const child = Object.assign(new EventEmitter(), {
+  const events = new EventEmitter();
+  const child = Object.assign(events, {
     connected: true,
     send(message: unknown, callback: (error: Error) => void) {
       sent.push(message);
@@ -89,7 +90,7 @@ it("reports a failed Nominatim reply send through the child process error event"
     },
     disconnect() {
       this.connected = false;
-      this.emit("disconnect");
+      events.emit("disconnect");
     },
   });
   child.on("error", (error: Error) => { errors.push(error); });
