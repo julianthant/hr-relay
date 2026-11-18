@@ -13,6 +13,8 @@ import { AssistantAuthorizationError } from "../../../src/backend/assistant/auth
 import { AssistantWorkflowFactsError, assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
 import { ASSISTANT_FAILURES, AssistantInferenceRequestSchema, type AssistantFailureCode } from "../../../src/models/dashboard/assistant.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
+import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.js";
+import { debugTimelineFixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 import { createAssistantProposals } from "../../../src/backend/assistant/proposals.js";
 import { createStartPlanService } from "../../../src/backend/runs/commands/start-plan-service.js";
 import { PreflightAdmissionRefusal } from "../../../src/rules/preflight/preflight-admission.js";
@@ -261,18 +263,17 @@ it("refuses before inference without plugins, with a failed facts pin or a model
   }
 });
 
-it("logs which served workflow's facts failed to load, without personal data", async () => {
-  const events: Record<string, unknown>[] = [];
-  const w = await world({ options: { debugEvents: { emit(event) { events.push(event); } },
-    facts: () => { throw new AssistantWorkflowFactsError("ASSISTANT_WORKFLOW_FACTS_STALE", "onboarding"); } } });
+it("logs which served workflow's facts failed to load in the mirrored dashboard log, without personal data", async () => {
+  const lines: Record<string, unknown>[] = [], timeline = debugTimelineFixture();
+  const debugEvents = createDebugEventWriter({ repository: timeline.repository, clock: systemClock, build: "test", development: true,
+    writeStderr(line) { lines.push(z.record(z.string(), z.unknown()).parse(JSON.parse(line))); } });
+  const w = await world({ options: { debugEvents, facts: () => { throw new AssistantWorkflowFactsError("ASSISTANT_WORKFLOW_FACTS_STALE", "onboarding"); } } });
   try {
     assert.deepEqual(await w.ask("hi PRIVATE_CANARY"), { state: "refused", code: "ASSISTANT_CONTEXT_UNAVAILABLE", message: ASSISTANT_FAILURES.ASSISTANT_CONTEXT_UNAVAILABLE });
-    const faults = events.filter(event => event.area === "assistant-context" && event.code === "ASSISTANT_CONTEXT_UNAVAILABLE");
-    assert.equal(faults.length, 1);
-    assert.equal(faults[0]?.reason, "assistant-workflow-facts-stale");
-    assert.equal(faults[0]?.message, "onboarding");
-    assert.ok(events.some(event => event.area === "assistant-context" && event.code === "ASSISTANT_WORKFLOW_FACTS_STALE"));
-    assert.equal(JSON.stringify(events).includes("CANARY"), false);
+    const context = lines.filter(line => line.area === "assistant-context");
+    assert.deepEqual(context.filter(line => line.code === "ASSISTANT_CONTEXT_UNAVAILABLE").map(line => line.reason), ["onboarding"]);
+    assert.ok(context.some(line => line.code === "ASSISTANT_WORKFLOW_FACTS_STALE"));
+    assert.equal(JSON.stringify(lines).includes("CANARY"), false);
   } finally { await w.f.cleanup(); }
 });
 

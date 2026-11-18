@@ -78,13 +78,10 @@ export function createAssistantService(options: AssistantServiceOptions) {
   const fault = (error: unknown, area: string, reason: string, code: AssistantFailureCode) => {
     if (options.debugEvents !== undefined) emitFaultWithCauses(options.debugEvents, undefined, error, { category: "http", area, reason, code });
   };
-  /** The facts failure's code, plus the served workflow it came from (a repository id, never operator text). */
+  /** One value-free fault: the reason names the served workflow (a definition id, never file or operator text); the cause row carries the facts code. */
   const contextFault = (error: unknown) => {
-    if (options.debugEvents === undefined) return;
-    const known = error instanceof AssistantWorkflowFactsError;
-    emitFaultWithCauses(options.debugEvents, undefined, error, { category: "http", area: "assistant-context",
-      reason: known ? error.message : "unclassified-failure", code: "ASSISTANT_CONTEXT_UNAVAILABLE",
-      ...(known && error.workflowId !== undefined ? { message: error.workflowId } : {}) });
+    const workflow = error instanceof AssistantWorkflowFactsError ? error.workflowId ?? "unknown-workflow" : "unclassified-failure";
+    fault(error, "assistant-context", /^[a-z0-9-]+$/u.test(workflow) ? workflow : "unknown-workflow", "ASSISTANT_CONTEXT_UNAVAILABLE");
   };
   return Object.freeze({
     activity: options.activity?.read,
