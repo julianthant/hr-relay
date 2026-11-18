@@ -83,7 +83,7 @@ async function owners(source: (profileFixture: typeof profiles.create) => Promis
   cleanups.push(() => { release(); });
   const repository = database.authority.workbooks;
   const sync: { download: WorkbookSyncDownload["withDownload"]; record: typeof repository.recordSync } = {
-    download: () => Promise.reject(new Error("no SharePoint download in this test")), record: repository.recordSync,
+    download: () => Promise.reject(new Error("no SharePoint download in this test")), record: repository.recordSync.bind(repository),
   };
   const library = createWorkbookLibraryService({ repository: { ...repository, recordSync: (libraryId, record) => sync.record(libraryId, record) },
     clock, sync: { withDownload: (command, use) => sync.download(command, use) } });
