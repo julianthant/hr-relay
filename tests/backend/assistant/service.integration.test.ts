@@ -719,3 +719,33 @@ it("logs an unclassified tool failure before answering that the assistant is una
     assert.equal(JSON.stringify(events).includes("CANARY"), false);
   } finally { await w.f.cleanup(); }
 });
+
+it("answers the model list from memory after the first read and reads it again after a sign-in change", async () => {
+  const w = await world();
+  try {
+    const reads = () => w.f.calls.filter(call => call.url.endsWith("/models")).length;
+    const before = reads();
+    const first = await w.service.models(new AbortController().signal);
+    assert.equal(reads(), before + 1);
+    w.f.setModels({ models: [{ slug: "other", display_name: "Other", visibility: "list" }] });
+    assert.deepEqual(await w.service.models(new AbortController().signal), first);
+    assert.equal(reads(), before + 1);
+    await w.f.service.signOut(); await w.f.connected();
+    const afterSignIn = reads();
+    assert.deepEqual(await w.service.models(new AbortController().signal), { models: [{ slug: "other", displayName: "Other" }] });
+    assert.equal(reads(), afterSignIn + 1);
+  } finally { await w.f.cleanup(); }
+});
+
+it("never remembers a failed model list read", async () => {
+  const w = await world();
+  try {
+    const reads = () => w.f.calls.filter(call => call.url.endsWith("/models")).length;
+    w.f.setModelsHook(async () => new Response("unavailable", { status: 503 }));
+    const before = reads();
+    await assert.rejects(w.service.models(new AbortController().signal));
+    w.f.setModelsHook(async () => Response.json({ models: [{ slug: "gpt-6.1-sol", display_name: "Sol", visibility: "list" }] }));
+    assert.deepEqual(await w.service.models(new AbortController().signal), { models: [{ slug: "gpt-6.1-sol", displayName: "Sol" }] });
+    assert.equal(reads(), before + 2);
+  } finally { await w.f.cleanup(); }
+});

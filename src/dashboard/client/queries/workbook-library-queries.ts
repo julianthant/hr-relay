@@ -2,10 +2,11 @@ import type { z } from "zod";
 import {
   WorkbookImportRequestSchema, WorkbookImportResultSchema, SavedWorkbookWireSchema, WorkbookRevisionSchema, WorkbookListWireSchema, WorkbookHistoryWireSchema,
   WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema,
-  WorkbookIntakeResultSchema, encodeEditableWorkbook, decodeSavedWorkbook, type SavedWorkbook,
+  WorkbookIntakeResultSchema, encodeEditableWorkbook, decodeSavedWorkbook, type SavedWorkbook, type WorkbookSummary,
   WorkbookTypeSchema,
 } from "../../../models/dashboard/workbooks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { httpError, schemaError } from "../errors.js";
 import type { DashboardTransport } from "../transport.js";
 import { parseOrThrow } from "./query-parse.js";
@@ -25,7 +26,7 @@ export interface WorkbookLibraryQueries {
   workbookLibraryVersion(libraryId: string, versionId: string): Promise<z.infer<typeof WorkbookLibraryVersionViewSchema>>;
   workbookLibraryAction(libraryId: string, action: WorkbookLibraryAction): Promise<WorkbookLibraryActionResult>;
   workbookLibraryActionStatus(libraryId: string, operationId: string): Promise<z.infer<typeof WorkbookLibraryActionStatusSchema>>;
-  workbookList(): Promise<readonly SavedWorkbook[]>;
+  workbookList(): Promise<readonly WorkbookSummary[]>;
   workbookOpen(libraryId: string): Promise<SavedWorkbook>;
   workbookRevision(libraryId: string, version: number): Promise<SavedWorkbook>;
   workbookCreate(workbook: unknown): Promise<SavedWorkbook>;
@@ -113,7 +114,7 @@ export function createWorkbookLibraryQueries(transport: DashboardTransport): Wor
       const path = "/api/v1/workbooks/list";
       const records = parseOrThrow(WorkbookListWireSchema, path, await transport.requestJson(path));
       if (new Set(records.map(record => record.libraryId)).size !== records.length) throw schemaError(path, "duplicate workbook identities");
-      return records.map(decodeSavedWorkbook);
+      return deepFreeze(records);
     },
     async workbookOpen(libraryId: string) {
       const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}`;

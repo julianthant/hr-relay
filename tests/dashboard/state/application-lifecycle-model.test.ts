@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
 import { useApplicationLifecycle } from "../../../src/dashboard/state/application-lifecycle-model.js";
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
@@ -46,4 +46,32 @@ it("exposes read failure until the operator refreshes, without retaining old aut
     await act(async () => result?.refresh());
     assert.equal(result?.resource.state, "loaded");
   } finally { await act(async () => root.unmount()); }
+});
+
+it("re-renders only when the lifecycle answer changes", async () => {
+  vi.useFakeTimers();
+  let pause: "running" | "paused" = "running", failing = false;
+  const transport = createDashboardClient({ baseUrl: "http://fixture.test" });
+  const client = { ...transport, async applicationLifecycle() {
+    if (failing) throw new DashboardClientError({ kind: "http", status: 503, code: "DASHBOARD_READ_FAILED", message: "fixture failure" });
+    return ApplicationLifecycleSchema.parse({ runtimeGeneration: 2, state: "ready", pause, targets: [], update: "installer-unavailable" });
+  } };
+  const authority = {};
+  let result: ReturnType<typeof useApplicationLifecycle> | undefined, renders = 0;
+  function Probe() { renders++; result = useApplicationLifecycle(client, authority); return null; }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    assert.equal(result?.resource.state, "loaded");
+    const settled = renders;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    assert.equal(renders, settled);
+    pause = "paused";
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    assert.equal(result?.resource.state === "loaded" && result.resource.value.pause, "paused");
+    assert.equal(renders, settled + 1);
+    failing = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    assert.equal(result?.resource.state, "failed");
+  } finally { await act(async () => root.unmount()); vi.useRealTimers(); }
 });
