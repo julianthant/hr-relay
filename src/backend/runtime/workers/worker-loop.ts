@@ -71,6 +71,7 @@ export interface WorkerRunResources {
  readonly providers?: RunProviderWiring;
 }
 const PREFLIGHT_RETRY_CAP_MS = 60_000;
+const WORKER_REPORT_OUTCOME_LIMIT = 32;
 
 export interface WorkerLoopDependencies {
   readonly debugEvents?: import("../execution/run-executor.js").RunExecutorDependencies["debugEvents"];
@@ -143,6 +144,7 @@ export interface WorkerLoopDependencies {
 export const WorkerLoopReportSchema = z.strictObject({
   workerId: z.string().min(1),
   workflowId: z.string().min(1),
+  /** Recent outcomes in execution order; the run store owns full history. */
   outcomes: z.array(RunExecutionOutcomeSchema),
   /** `stop-directive` = the durable lease directive said stop, between items. */
   stopped: z.enum(["idle", "stop-signal", "stop-directive", "preflight-refused"]),
@@ -164,24 +166,30 @@ function startHeartbeat(input: Readonly<{
   clock: Clock;
   scheduler: MonotonicDeadlineScheduler;
   intervalMs: number;
-  onLost: (message: string) => void;
+  onLost: () => void;
+  onFailure: (cause: unknown) => void;
 }>): Readonly<{ stop: () => void }> {
   let stopped = false;
   let handle = { cancel: (): void => undefined };
   const tick = (): void => {
     if (stopped) return;
-    const outcome = input.lifecycle.renewClaim({
-      commandId: lifecycleCommandId("heartbeat", { runId: input.runId, claim: input.claim, nonce: input.ids.uuid() }),
-      runId: input.runId,
-      claim: input.claim,
-    });
-    if (outcome.state === "refused" && outcome.refusal.reason === "lost") {
+    try {
+      const outcome = input.lifecycle.renewClaim({
+        commandId: lifecycleCommandId("heartbeat", { runId: input.runId, claim: input.claim, nonce: input.ids.uuid() }),
+        runId: input.runId,
+        claim: input.claim,
+      });
+      if (outcome.state === "refused" && outcome.refusal.reason === "lost") {
+        stopped = true;
+        input.onLost();
+        return;
+      }
+      requireLifecycleApplied(outcome);
+      handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
+    } catch (error) {
       stopped = true;
-      input.onLost("lost");
-      return;
+      input.onFailure(error);
     }
-    requireLifecycleApplied(outcome);
-    handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
   };
   handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
   return Object.freeze({
@@ -288,7 +296,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     void operation.then(() => { callbacks.delete(operation); }, () => { callbacks.delete(operation); });
   };
   const outcomes: RunExecutionOutcome[] = [];
-  let closure: WorkerLoopReport["closure"];
+  const drainFailures: unknown[] = [];
+  let heartbeatFailure: Error | undefined;
   let stopped: WorkerLoopReport["stopped"] = "stop-signal";
   let preflightRefusal: WorkerPreflightRefusal | undefined;
   try {
@@ -391,8 +400,12 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         clock,
         scheduler: deps.scheduler,
         intervalMs: deps.heartbeatIntervalMs,
-        onLost: (message: string): void => {
-          runController.abort(new Error(`claim lost during heartbeat renewal: ${message}`));
+        onLost: (): void => {
+          runController.abort(new Error("claim lost during heartbeat renewal: lost"));
+        },
+        onFailure: (cause): void => {
+          heartbeatFailure = new Error("worker claim heartbeat renewal failed", { cause });
+          runController.abort(heartbeatFailure);
         },
       });
       try {
@@ -443,6 +456,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             descriptorFingerprint: run.envelope.contractFingerprint,
           },
         );
+        if (heartbeatFailure !== undefined) break;
+        if (outcomes.length === WORKER_REPORT_OUTCOME_LIMIT) outcomes.shift();
         outcomes.push(outcome);
       } finally {
         workPolling = false;
@@ -455,22 +470,42 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         if (idleDelayMs !== undefined) await boundedWait(deps.scheduler, clock, idleDelayMs, deps.stopSignal);
       }
     }
-  } finally {
-    closure = await sessions.closeAll("worker-stop").then(() => "proved" as const, (error: unknown) => {
+  } catch (error) {
+    drainFailures.push(error);
+  }
+
+  let closureFailure: WorkerSessionClosureUnprovedError | undefined;
+  try {
+    closureFailure = await sessions.closeAll("worker-stop").then(() => undefined, (error: unknown) => {
       if (!(error instanceof WorkerSessionClosureUnprovedError)) throw error;
-      deps.onClosureUnproved?.(error);
-      return "unproved" as const;
+      return error;
     });
+    if (closureFailure !== undefined) deps.onClosureUnproved?.(closureFailure);
+    const errorSummary = closureFailure !== undefined ? `worker ${workerId} browser session closure is unproved`
+      : heartbeatFailure?.message ?? (preflightRefusal === undefined ? undefined : ERROR_CATALOG[preflightRefusal.code].text);
     emit({ t: "span.ended", kind: "worker", workerId, spanPath: workerPath,
-      outcome: closure === "proved" && preflightRefusal === undefined ? "done" : "failed",
-      ...(closure === "proved" && preflightRefusal === undefined ? {} : {
+      outcome: errorSummary === undefined ? "done" : "failed",
+      ...(errorSummary === undefined ? {} : {
         diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
-        errorSummary: closure === "unproved" ? `worker ${workerId} browser session closure is unproved`
-          : ERROR_CATALOG[preflightRefusal?.code ?? "PREFLIGHT_OBSERVATION_CHANGED"].text,
+        errorSummary,
       }),
     });
+  } catch (error) {
+    drainFailures.push(error);
   }
-  return WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes, stopped, closure,
+  if (heartbeatFailure !== undefined) {
+    const causes = closureFailure === undefined
+      ? [heartbeatFailure, ...drainFailures]
+      : [heartbeatFailure, closureFailure, ...drainFailures];
+    if (causes.some(cause => cause instanceof WorkerSessionClosureUnprovedError)) {
+      throw new WorkerSessionClosureUnprovedError(workerId, causes);
+    }
+    if (causes.length > 1) throw new AggregateError(causes, heartbeatFailure.message, { cause: heartbeatFailure.cause });
+    throw heartbeatFailure;
+  }
+  if (drainFailures.length > 0) throw drainFailures.at(-1);
+  return WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes, stopped,
+    closure: closureFailure === undefined ? "proved" : "unproved",
     ...(preflightRefusal === undefined ? {} : { preflightRefusal }) });
 }
 
