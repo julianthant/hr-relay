@@ -15,7 +15,7 @@ import type { BrowserProfileProbeFactory } from "../browser-roots.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../source-closure.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
-import { AuthorityBackupService,verifyBackupManifestAtPath,verifyStoppedBackupManifestAtPath,type VerifiedBackup } from "../sqlite/backup-service.js";
+import { AuthorityBackupService,reconcileBackupsAfterBrowserClosure,verifyBackupManifestAtPath,verifyStoppedBackupManifestAtPath,type VerifiedBackup } from "../sqlite/backup-service.js";
 import { BASELINE_FROM_AUTHORITY_SCHEMA_VERSIONS, isUpgradeableAuthoritySchemaVersion } from "../../../models/config/authority-schema-versions.js";
 import { BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,deriveAuthorityUpgradePlanDigest,WORKER_CUSTODY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
@@ -209,8 +209,9 @@ async function upgradeRegisteredProfile(browserClosure: ProfileBrowserClosure, m
   let result: StorageUpgradeReport | undefined;
   let primary: { error: unknown } | undefined;
   try {
-    admission = await (purpose === "startup" ? machine.forStartupProfileUpgrade(browserClosure, claim, restore, clock, input.hostFacts)
-      : machine.forStoppedProfileUpgrade(browserClosure, claim, restore, clock, input.hostFacts));
+    const admissionClosure = input.plan ? browserClosure : reconcileBackupsAfterBrowserClosure(browserClosure, machine, restore);
+    admission = await (purpose === "startup" ? machine.forStartupProfileUpgrade(admissionClosure, claim, restore, clock, input.hostFacts)
+      : machine.forStoppedProfileUpgrade(admissionClosure, claim, restore, clock, input.hostFacts));
     result = await runReadyProfileUpgrade(browserClosure, machine, admission, processLockRoot, restore, input, clock);
   } catch (error) { primary = { error }; }
   if (primary !== undefined && hasUnprovedSourceClosure(primary.error)) throw retainAuthoritySourceClosure([primary.error], { ...(admission === undefined ? {} : { admission }), restore });

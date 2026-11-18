@@ -1,5 +1,6 @@
-import { descriptorStatus, fileStatus, privateFileNumber } from "../file-identity.js";
+import { descriptorStatus, fileStatus, privateFileNumber, type DirectoryIdentity } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
+import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { authoritySourceDatabaseIdentity, type AuthorityBackupExpectedSource } from "./database-identity.js";
 import { privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
@@ -12,13 +13,14 @@ import {
   fsyncSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { readPrivateFile } from "../configuration/credential-safe-file.js";
+import { ensureChildDirectory, noSymlinkAncestry, readPrivateFile, removeExactPath, statDirectory } from "../configuration/credential-safe-file.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { pipeline } from "node:stream/promises";
 import { basename, dirname, join, resolve } from "node:path";
@@ -29,6 +31,7 @@ import { inspectAuthorityBackupReadOnly, type AuthorityBackupSourceReadOnly, typ
 import { inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
+import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import {
   StoppedAuthorityBackupManifestSchema,
   UnboundPredecessorBackupManifestSchema,
@@ -249,6 +252,93 @@ function verifyStoppedManifest(manifestPath: string, expected: AuthorityBackupEx
 function backupSuffix(purpose: "clean-shutdown" | "in-session" | undefined): string {
   if (purpose === "clean-shutdown") return ".shutdown";
   return purpose === "in-session" ? ".session" : "";
+}
+
+const BackupAttemptToken = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+const BackupStageName = new RegExp(`^\\.authority-${BackupAttemptToken}\\.(?:sqlite\\.tmp(?:-(?:journal|wal|shm))?|manifest\\.json\\.tmp)$`, "u");
+const FinalBackupName = new RegExp(`^authority-g\\d+-(\\d{17}-${BackupAttemptToken})(?:\\.shutdown|\\.session)?\\.sqlite$`, "u");
+
+export function reconcileBackupsAfterBrowserClosure(browserClosure: ProfileBrowserClosure, machine: RuntimeAdmission,
+  operation: OfflineMaintenanceOperation): ProfileBrowserClosure {
+  return {
+    workerDirectory: input => browserClosure.workerDirectory(input),
+    async probeClosed(...args) {
+      await browserClosure.probeClosed(...args);
+      const owner = args[4];
+      if (!("assertLive" in owner)) throw new Error("abandoned-backup-stopped-profile-required");
+      const admission = requireRuntimeAdmission(owner);
+      const assertHeld = () => {
+        admission.assertReadyStoppedProfileUpgradeOwner(machine);
+        admission.assertOfflineMaintenance(operation);
+      };
+      assertHeld();
+      reconcileAbandonedBackups(admission, assertHeld);
+    },
+  };
+}
+
+function reconcileAbandonedBackups(admission: RuntimeAdmission, assertHeld: () => void): void {
+  const parent = join(admission.stateRoot, "backups"), directory = join(parent, "authority");
+  const ancestry = new Map<string, DirectoryIdentity>();
+  if (!noSymlinkAncestry(directory, ancestry)) return;
+  const names = new Set(readdirSync(directory));
+  const stages = [...names].filter(name => BackupStageName.test(name));
+  const unpaired = [...names].flatMap(name => {
+    const attempt = FinalBackupName.exec(name)?.[1];
+    if (attempt === undefined || names.has(`${name}.manifest.json`) || names.has(`${name}.manifest.json.retiring`)) return [];
+    return [{ name, attempt }];
+  });
+  if (stages.length === 0 && unpaired.length === 0) return;
+  assertMaintenanceCustodyAvailable("backup");
+  statDirectory(directory, "authority backup", 0o700);
+
+  const claimed = new Set<string>();
+  if (unpaired.length > 0) {
+    for (const name of names) {
+      if (!name.endsWith(".manifest.json")) continue;
+      const file = readPrivateFile(join(directory, name), { label: "lock", maxBytes: 64_000 });
+      if (file === undefined) throw new Error("abandoned-backup-manifest-changed");
+      const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes));
+      claimed.add(parseCurrentBackupManifest(value).backupFileName);
+    }
+  }
+  const privateFile = (name: string) => {
+    const path = join(directory, name), status = fileStatus(path);
+    if (!status.isFile() || privateFileNumber(status.nlink) !== 1 || privatePathRejects(path, status, "group-write")) {
+      throw new Error("abandoned-backup-file-unsafe");
+    }
+    return { path, device: status.dev, inode: status.ino };
+  };
+  const stagedFiles = stages.map(privateFile);
+  const orphans = unpaired.filter(({ name }) => !claimed.has(name)).map(({ name, attempt }) => {
+    if (["-wal", "-shm", "-journal"].some(suffix => names.has(`${name}${suffix}`))) throw new Error("abandoned-backup-companion-unproved");
+    return { file: privateFile(name), targetName: `suspect-${attempt}.sqlite` };
+  });
+  const suspects = join(parent, "suspects");
+  if (orphans.length > 0) {
+    assertHeld();
+    noSymlinkAncestry(directory, ancestry);
+    ensureChildDirectory(parent, suspects, "preserved authority", 0o700, 0o700);
+  }
+  for (const { file, targetName } of orphans) {
+    assertHeld();
+    noSymlinkAncestry(directory, ancestry);
+    noSymlinkAncestry(suspects, ancestry);
+    const target = join(suspects, targetName), current = privateFile(basename(file.path));
+    if (current.device !== file.device || current.inode !== file.inode || fileStatus(target, true) !== undefined) {
+      throw new Error("abandoned-backup-quarantine-unproved");
+    }
+    // A missing manifest does not establish why the image is unpaired. Retain its bytes as a suspect.
+    renameSync(file.path, target);
+    fsyncPath(suspects);
+    fsyncPath(directory);
+  }
+  for (const file of stagedFiles) {
+    assertHeld();
+    noSymlinkAncestry(directory, ancestry);
+    removeExactPath(file.path, file, false, "abandoned-backup-stage-changed");
+  }
+  if (stagedFiles.length > 0) fsyncPath(directory);
 }
 
 export class AuthorityBackupService {
