@@ -33,3 +33,18 @@ for (const width of [1280, 1024]) for (const mode of ["review", "member-retry"] 
     } finally { await page.goto("about:blank"); await server.close(); }
   });
 }
+
+// Known product bug owned by dashboard-fixes-01: the parent run's review resolves to the child's run id, so Records opens "Review unavailable".
+for (const width of [1280, 1024]) test(`served OCR parent Records opens the review at ${width}`, async ({ page }) => {
+  test.fail();
+  const server = await startOcrSweepServer("review");
+  try {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto(`${server.baseUrl}/?fixture=product-workflows&day=${server.day}&run=${server.runId}`);
+    const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
+    await expect(logs).toBeVisible();
+    await logs.getByRole("button", { name: "Records 1", exact: true }).click();
+    await expect(page.getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Approve records", exact: true })).toBeVisible();
+  } finally { await page.goto("about:blank"); await server.close(); }
+});
