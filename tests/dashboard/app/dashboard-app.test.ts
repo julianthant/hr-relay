@@ -1,3 +1,4 @@
+import { FIXTURE_ACTIVE_PROFILE_STATE } from "../../support/helpers/dashboard/profiles/fixture-profile-setup.js";
 import { chatGptStatusFixture } from "../../support/helpers/chatgpt-status-fixture.js";
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
@@ -173,6 +174,7 @@ async function mountSurface(client: DashboardClient_m1, children: ReactNode_m1):
 /** The whole app client is closed: an unserved read is a fixture defect, not an empty answer. */
 function appClient(): DashboardClient_m1 {
   const served = {
+    readProfileSession: () => Promise.resolve(FIXTURE_ACTIVE_PROFILE_STATE),
     subscribeProfileSessionStale: () => () => undefined,
     bootstrap: () => Promise.resolve(APP_BOOTSTRAP),
     applicationLifecycle: () => Promise.resolve(ApplicationLifecycleSchema.parse({ runtimeGeneration: 1, state: "ready", pause: "running", targets: [], update: "installer-unavailable" })),
@@ -199,7 +201,7 @@ function appClient(): DashboardClient_m1 {
 
 async function mountDashboard(search: string): Promise<void> {
   window.history.replaceState(null, "", `/${search}`);
-  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { profileSource: "mock", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
   await act_m1(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -207,7 +209,7 @@ async function mountDashboard(search: string): Promise<void> {
 }
 
 async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
-  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { profileSource: "mock", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+  await mountSurface(appClient(), createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
   await act_m1(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -285,7 +287,7 @@ describe_m1("served signed-out appearance", () => {
       const client = { ...appClient(), readProfileSession: async () => { reads++; return { state: "signed-out" as const }; } };
       localStorage.setItem("rebuild-demo.theme", "light");
       try {
-        await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served",
+        await mountSurface(client, createElement_m1(DashboardApp_m1, {
           workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1,
           ...(preview ? { previewPreferences: createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: "light" }) } : {}),
         }));
@@ -321,7 +323,7 @@ describe_m1("served sign-up Finish", () => {
     } });
     const client: DashboardClient_m1 = { ...appClient(), bootstrap: () => live.bootstrap(), readProfileSession: () => live.readProfileSession(),
       resumeProfile: () => live.resumeProfile(), subscribeProfileSessionStale: listener => live.subscribeProfileSessionStale(listener) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => assert_m1.ok(document.querySelector(".dashboard-shell")));
     defer = true; const pending = assert_m1.rejects(client.bootstrap()); await dispatched.promise;
     try {
@@ -363,7 +365,7 @@ describe_m1("served sign-up Finish", () => {
     } });
     const client: DashboardClient_m1 = { ...appClient(), bootstrap: () => live.bootstrap(), readProfileSession: () => live.readProfileSession(),
       resumeProfile: () => live.resumeProfile(), subscribeProfileSessionStale: listener => live.subscribeProfileSessionStale(listener) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => assert_m1.ok(document.querySelector(".dashboard-shell")));
     restarted = true;
     await act_m1(async () => { await assert_m1.rejects(client.bootstrap()); });
@@ -380,7 +382,7 @@ describe_m1("served sign-up Finish", () => {
     let resumed = 0;
     const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: false, resumable: true as const }),
       resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_TRANSITION_BLOCKED" as const }; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
     await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
@@ -398,7 +400,7 @@ describe_m1("served sign-up Finish", () => {
     const client = { ...appClient(),
       readProfileSession: async () => resumed > 0 ? active : { state: "signed-out" as const, signUpRequired: false, resumable: true as const },
       resumeProfile: async () => { resumed++; return active; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => {
       assert_m1.equal(resumed, 1);
       assert_m1.equal(new URLSearchParams(window.location.search).has("onboarding"), false);
@@ -415,7 +417,7 @@ describe_m1("served sign-up Finish", () => {
     const client = { ...appClient(),
       readProfileSession: async () => { if (cookie) return active; readsBeforeWinner++; return { state: "signed-out" as const, signUpRequired: false, resumable: true as const }; },
       resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_TRANSITION_BLOCKED" as const }; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(readsBeforeWinner >= 2, true); }, { timeout: 3000 });
     assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
     release(); await winner;
@@ -429,7 +431,7 @@ describe_m1("served sign-up Finish", () => {
     const client = { ...appClient(),
       readProfileSession: async () => { reads++; return { state: "signed-out" as const, signUpRequired: false, resumable: true as const }; },
       resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const }; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(reads >= 3, true); }, { timeout: 3500 });
     assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
     assert_m1.equal(resumed, 1);
@@ -442,7 +444,7 @@ describe_m1("served sign-up Finish", () => {
     window.history.replaceState(null, "", "/");
     let finished = false, reads = 0;
     const client = { ...appClient(), readProfileSession: async () => { reads++; return finished ? { state: "signed-out" as const, signUpRequired: false } : waiting; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(reads >= 2, true); }, { timeout: 3000 });
     assert_m1.equal(document.querySelector(".form-error")?.textContent, operatorFailureSentence("PROFILE_LOGOUT_BLOCKED"));
     finished = true;
@@ -459,7 +461,7 @@ describe_m1("served sign-up Finish", () => {
     let finished = false, reads = 0, signIns = 0;
     const client = { ...appClient(), readProfileSession: async () => { reads++; return finished || !clears ? { state: "signed-out" as const, signUpRequired: false } : answer; },
       signInProfile: async () => { signIns++; return answer; } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
     for (const [name, value] of [["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"]] as const) {
       await act_m1(async () => { const field = document.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
@@ -483,7 +485,7 @@ describe_m1("served sign-up Finish", () => {
   it_m1("opens the sign-up form from the Sign up link after a refused login", async () => {
     window.history.replaceState(null, "", "/");
     const client = { ...appClient(), readProfileSession: async () => ({ state: "refused" as const, code: "PROFILE_SIGN_IN_REFUSED" as const }) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
     await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
@@ -495,7 +497,7 @@ describe_m1("served sign-up Finish", () => {
     window.history.replaceState(null, "", "/?onboarding=signup");
     const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: false,
       ...(logoutIncomplete ? { logoutIncomplete: true as const } : {}) }) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
     assert_m1.equal(document.body.textContent?.includes(operatorFailureSentence("PROFILE_LOGOUT_INCOMPLETE")), logoutIncomplete);
     await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
@@ -505,7 +507,7 @@ describe_m1("served sign-up Finish", () => {
   it_m1("opens sign-up on a computer with no profiles", async () => {
     window.history.replaceState(null, "", "/");
     const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: true }) };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
   });
 
@@ -515,7 +517,7 @@ describe_m1("served sign-up Finish", () => {
     let finished = false;
     const client = { ...appClient(), readProfileSession: async () => finished ? { state: "signed-out" as const, signUpRequired: false } : ready,
       completeProfileOnboarding: async () => { finished = true; return PublicProfileStateSchema.parse({ state: "error", code: "INTERNAL_FAILURE" }); } };
-    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }));
     await act_m1(async () => { [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Finish setup")?.click(); });
     assert_m1.equal(finished, true);
     await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
@@ -808,7 +810,7 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
   const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
   const host = document.createElement('div'); document.body.append(host); root = createRoot_m2(host);
   const workflowComposition = options.workflowComposition ?? MOCK_WORKFLOW_COMPOSITION_m2;
-  await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { profileSource: "mock", workflowComposition, previewPreferences: preview }) })));
+  await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { workflowComposition, previewPreferences: preview }) })));
   await settle(); disposers.push(() => { open = false; });
   return { host, requests, streams,
     deliver: async (day: DashboardDayWire_m2, index = streams.length - 1) => { await act_m2(async () => snapshot(streams[index], day)); await settle(); },

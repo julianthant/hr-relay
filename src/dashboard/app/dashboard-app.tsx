@@ -144,43 +144,43 @@ const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
 const noHarnessSearch = (): undefined => undefined;
 const noHarnessInbox = (): undefined => undefined;
 
-export function DashboardApp({ workflowComposition = productWorkflowComposition, profileSource = "served", previewPreferences }: { previewPreferences?: PersonPreferencesOwner; profileSource?: "served" | "mock"; workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
+export function DashboardApp({ workflowComposition = productWorkflowComposition, previewPreferences }: { previewPreferences?: PersonPreferencesOwner; workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
   const profileClient = useDashboardClient();
-  const publicProfile = usePublicProfileSession(profileClient, profileSource === "served");
-  const session = profileSource === "served" ? publicProfile.state : undefined;
-  const duoReenrol = useDuoReenrol(profileClient, profileSource === "served" && publicProfile.state?.state === "active");
+  const publicProfile = usePublicProfileSession(profileClient, true);
+  const session = publicProfile.state;
+  const duoReenrol = useDuoReenrol(profileClient, publicProfile.state?.state === "active");
   const startup = useStartupGate(session, publicProfile.failure, publicProfile.port);
   const [profileCreationChosen, setProfileCreationChosen] = useState(false);
   useEffect(() => { if (session?.state === "active") setProfileCreationChosen(false); }, [session?.state]);
-  const bootstrap = useBootstrap(session, profileSource === "mock" || session?.state === "active");
+  const bootstrap = useBootstrap(session, session?.state === "active");
   const inheritedAccount = useContext(ChatGptAccountContext);
   const inheritedOcr = useContext(PreflightOcrContext);
   const profileId = session?.state === "active" ? session.profileId : undefined;
   const profileEpoch = session?.state === "active" ? session.epoch : undefined;
   const profileTarget = useMemo(() => profileId === undefined || profileEpoch === undefined ? undefined : { profileId, epoch: profileEpoch }, [profileId, profileEpoch]);
-  const accountScope = useMemo(() => ({ profileClient, profileSource, profileId, profileEpoch }), [profileClient, profileSource, profileId, profileEpoch]);
+  const accountScope = useMemo(() => ({ profileClient, profileId, profileEpoch }), [profileClient, profileId, profileEpoch]);
   const [accountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort>; ocr: ReturnType<typeof createServedPreflightOcrPort> }>();
   const account = accountOwner?.scope === accountScope ? accountOwner.port : undefined;
   useEffect(() => {
-    if (profileSource !== "served" || profileId === undefined || profileEpoch === undefined) return;
+    if (profileId === undefined || profileEpoch === undefined) return;
     const port = createServedChatGptAccountPort(profileClient);
     const ocr = createServedPreflightOcrPort(profileClient, port);
     setAccountOwner({ scope: accountScope, port, ocr });
     const close = (event: PageTransitionEvent) => { if (!event.persisted) { ocr.dispose(); port.dispose(); } };
     window.addEventListener("pagehide", close);
     return () => { window.removeEventListener("pagehide", close); ocr.dispose(); port.dispose(); };
-  }, [accountScope, profileClient, profileSource, profileId, profileEpoch]);
+  }, [accountScope, profileClient, profileId, profileEpoch]);
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
   const onboardingProfile = useRef<string | undefined>(undefined);
   const onboardingRoute = route.onboarding;
   useEffect(() => {
     if (session?.state === PROFILE_ONBOARDING_STATE) onboardingProfile.current = session.profileId;
-    else if (session?.state === "active" && session.duoState === "ready" && (onboardingProfile.current === session.profileId || profileSource === "served" && onboardingRoute !== undefined)) {
+    else if (session?.state === "active" && session.duoState === "ready" && (onboardingProfile.current === session.profileId || onboardingRoute !== undefined)) {
       onboardingProfile.current = undefined; setRoute({ start: false });
     } else if (session?.state === "signed-out") onboardingProfile.current = undefined;
-  }, [session, setRoute, profileSource, onboardingRoute]);
-  const preferencesMode: Parameters<typeof createPersonPreferences>[0] = profileSource === "mock" ? "preview" : session?.state === "active" && session.duoState === "ready" ? "person" : "signed-out";
+  }, [session, setRoute, onboardingRoute]);
+  const preferencesMode: Parameters<typeof createPersonPreferences>[0] = session?.state === "active" && session.duoState === "ready" ? "person" : "signed-out";
   const preferenceRequest = useMemo(() => ({ client: profileClient, profileId, profileEpoch, mode: preferencesMode }), [profileClient, profileId, profileEpoch, preferencesMode]);
   const preferences = useMemo(() => previewPreferences ?? createPersonPreferences(preferenceRequest.mode), [preferenceRequest, previewPreferences]);
   const previousPreferences = useRef(preferences);
@@ -218,11 +218,11 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
         <EmptyState title="Invalid navigation link" description="The view parameters are invalid. Open the dashboard to recover." action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />
       ) : duoReenrol.port !== undefined ? (
         <OnboardingSetup page="fast" port={duoReenrol.port} />
-      ) : route.onboardingSetup !== undefined && profileSource === "served" && session?.state === PROFILE_ONBOARDING_STATE ? (
+      ) : route.onboardingSetup !== undefined && session?.state === PROFILE_ONBOARDING_STATE ? (
         <OnboardingSetup page="fast" port={publicProfile.port} />
-      ) : profileSource === "served" && startup.loading ? (
+      ) : startup.loading ? (
         <StartupLoading />
-      ) : profileSource === "served" && (publicProfile.failure || session !== undefined && (session.state !== "active" || session.duoState !== "ready")) ? (
+      ) : (publicProfile.failure || session !== undefined && (session.state !== "active" || session.duoState !== "ready")) ? (
         <Onboarding step={session?.state === PROFILE_ONBOARDING_STATE ? "duo" : session?.state === "active" ? "duo" : session?.state === "signed-out" && session.resumable ? "login" : route.onboarding === "signup" && profileCreationChosen || route.onboarding !== "login" && session?.state === "signed-out" && session.signUpRequired ? "signup" : "login"}
           authenticated={session?.state === "active"} port={publicProfile.port}
           problem={publicProfile.failure || startup.unavailable ? operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE")
@@ -230,11 +230,9 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
               : session?.state === "cancelling" ? operatorFailureSentence("PROFILE_LOGOUT_BLOCKED")
                 : session?.state === "signed-out" && session.logoutIncomplete ? operatorFailureSentence("PROFILE_LOGOUT_INCOMPLETE") : undefined}
           onStep={onboarding => { setProfileCreationChosen(onboarding === "signup"); setRoute({ start: false, onboarding }); }} onDashboard={() => setRoute({ start: false })} />
-      ) : route.onboardingSetup !== undefined && profileSource === "mock" ? (
-        <OnboardingSetup page={route.onboardingSetup} />
       ) : route.onboarding !== undefined ? (
-        <Onboarding step={route.onboarding} port={profileSource === "served" ? publicProfile.port : undefined} authenticated={session?.state === "active"} onStep={onboarding => setRoute({ start: false, onboarding })} onDashboard={() => setRoute({ start: false })} />
-      ) : profileSource === "served" && account === undefined && session?.state === "active" ? (
+        <Onboarding step={route.onboarding} port={publicProfile.port} authenticated={session?.state === "active"} onStep={onboarding => setRoute({ start: false, onboarding })} onDashboard={() => setRoute({ start: false })} />
+      ) : account === undefined && session?.state === "active" ? (
         <DashboardSkeleton />
       ) : boot === undefined ? (
         <BootGate bootstrap={bootstrap} />
@@ -243,15 +241,15 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           preferences={preferences}
           profileTarget={profileTarget}
           boot={boot}
-          onProfileLogout={profileSource === "served" ? publicProfile.logout : undefined}
-          deleteAccount={profileSource === "served" && session?.state === "active" && session.duoState === "ready"
+          onProfileLogout={publicProfile.logout}
+          deleteAccount={session?.state === "active" && session.duoState === "ready"
             ? <DeleteAccountControl key={`${session.profileId}:${session.epoch}`} presentation={publicProfile.accountDeletion.state === "idle"
               ? { state: "ready", personName: boot.actor.label, onConfirm: () => { void publicProfile.deleteAccount(); } }
               : publicProfile.accountDeletion.state === "deleting" ? { state: "deleting", personName: boot.actor.label }
                 : { state: publicProfile.accountDeletion.state, personName: boot.actor.label,
                   message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
             : undefined}
-          accountPage={profileSource === "served" && session?.state === "active" && session.account !== undefined && publicProfile.logout !== undefined ? { values: session.account, onSignOut: () => { void publicProfile.logout(); }, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
+          accountPage={session?.state === "active" && session.account !== undefined && publicProfile.logout !== undefined ? { values: session.account, onSignOut: () => { void publicProfile.logout(); }, onDuoSetup: session.duoState === "ready" ? duoReenrol.begin : undefined, details: request => profileClient.changeProfileDetails(request), login: { changePassword: request => profileClient.changeProfilePassword(request), changeUsername: request => profileClient.changeProfileUsername(request) } } : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}
@@ -271,7 +269,6 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           onSelectMode={setSelectMode}
           bulkIds={bulkIds}
           onBulkIds={setBulkIds}
-          startupPreflight={profileSource === "served"}
         /></DashboardPageBoundary></ViewNavigationProvider>
       )}
     </ToastProvider>
@@ -355,8 +352,6 @@ interface LoadedAppProps {
   onSelectMode: (on: boolean) => void;
   bulkIds: ReadonlySet<string>;
   onBulkIds: (next: ReadonlySet<string>) => void;
-  /** Served sign-in reads the readiness report once and toasts attention failures. */
-  startupPreflight?: boolean;
 }
 
 
@@ -393,7 +388,6 @@ function LoadedApp({
   onSelectMode,
   bulkIds,
   onBulkIds,
-  startupPreflight = false,
 }: LoadedAppProps) {
   /** THE clock. The server's instant is the authority; the browser contributes
  * only the monotonic time since that instant arrived, and every live elapsed */
@@ -932,7 +926,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [setRoute]);
   const shownPreflight = useRef(new Set<string>());
   useEffect(() => {
-    if (!startupPreflight) return;
     let active = true;
     void (async () => {
       let wire: Awaited<ReturnType<typeof client.readPreflight>>;
@@ -947,7 +940,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       toast({ tone: attention.tone, title: attention.title, sticky: true });
     })();
     return () => { active = false; };
-  }, [startupPreflight, client, toast]);
+  }, [client, toast]);
 
   const renderQueueBody = useCallback((body: ReactNode) => (
     <FocusQueueHeader active={filter} counts={scopedStatusCounts} onFilter={onFilter}

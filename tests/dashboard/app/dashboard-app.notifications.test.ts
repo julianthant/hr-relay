@@ -61,7 +61,7 @@ async function mount(missing = false, mixed = false, view?: Readonly<Record<stri
   };
   window.history.replaceState(null, "", `/?day=2026-08-04${view ? `&view=${encodeURIComponent(JSON.stringify(view))}` : ""}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { profileSource: "mock", workflowComposition: () => workflowComposition(sources) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(sources) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert(bell);
   await act(async () => { bell.click(); await new Promise(resolve => setTimeout(resolve, 10)); });
   const targetButton = document.querySelector<HTMLButtonElement>("button.notification-item"); assert(targetButton);
@@ -176,7 +176,7 @@ it("mounts served inbox controls and reports only the served search authority to
   };
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { profileSource: "mock", workflowComposition: () => PRODUCT_WORKFLOW_COMPOSITION }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => PRODUCT_WORKFLOW_COMPOSITION }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
   await act(async () => bell.click());
   assert(host.textContent?.includes("Storage degraded")); assert.equal(host.textContent?.includes("Canonical history"), false);
@@ -239,7 +239,7 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   };
   window.history.replaceState(null, "", "/?day=2026-08-02");
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { profileSource: "mock", workflowComposition: () => PRODUCT_WORKFLOW_COMPOSITION }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => PRODUCT_WORKFLOW_COMPOSITION }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
   await act(async () => bell.click());
   const open = host.querySelector<HTMLButtonElement>("button.notification-item"); assert(open);
