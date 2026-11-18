@@ -19,6 +19,18 @@ function restoreSchema32CommandTable(database: DatabaseSync): void {
   for (const statement of owned) database.exec(statement);
 }
 
+/** Drops the library state's last SharePoint sync column that schema 36 added; the schema version is left to the caller. */
+export function dropSchema36WorkbookSyncStatusColumn(database: DatabaseSync): void {
+  database.exec("ALTER TABLE workbook_library_state DROP COLUMN sync_json");
+}
+
+/** Steps a current authority back to schema 35: schema 36 added the library state's last SharePoint sync column. */
+export function removeSchema36WorkbookSyncStatus(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 36);
+  dropSchema36WorkbookSyncStatusColumn(database);
+  database.exec("UPDATE database_states SET schema_version=35; PRAGMA user_version=35");
+}
+
 /** Steps a current authority back to schema 34: schema 35 converts settings records in place and keeps the same layout. */
 export function regressSchema35SendShortcut(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 35);
@@ -33,6 +45,7 @@ export function regressSchema34FailureNotes(database: DatabaseSync): void {
 
 /** Steps a current authority back to schema 32. */
 export function restoreSchema32CommandRows(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 36) removeSchema36WorkbookSyncStatus(database);
   if (database.prepare("PRAGMA user_version").get()?.user_version === 35) regressSchema35SendShortcut(database);
   if (database.prepare("PRAGMA user_version").get()?.user_version === 34) regressSchema34FailureNotes(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 33);
@@ -112,6 +125,7 @@ export function removeEmptySchema26AssistantHistory(database: DatabaseSync): voi
 /** Returns a current store to the schema-22 worker custody DDL, keeping each worker slot in its predecessor row shape; the schema version is left to the caller. */
 export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  dropSchema36WorkbookSyncStatusColumn(database);
   removeSchema30WorkbookPinTags(database);
   // The schema comparison below drops every changed table; `commands` goes back first so its rows stay.
   restoreSchema32CommandTable(database);

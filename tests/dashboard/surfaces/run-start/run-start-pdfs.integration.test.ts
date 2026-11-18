@@ -10,6 +10,8 @@ import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
 import { StartPlanRequestSchema } from "../../../../src/models/dashboard/start-plan.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { createHash } from "node:crypto";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
+import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { WorkbookLibraryEntrySchema, WorkbookLibraryVersionViewSchema, projectWorkbookCompatibility } from "../../../../src/models/dashboard/workbook-library.js";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
@@ -72,8 +74,9 @@ it("uploads both original PDFs through the typed client and plans one parent wit
   await attach([pdf("first.pdf", "%PDF first"), pdf("second.pdf", "%PDF second")]);
   expect(uploads).toEqual(["first.pdf", "second.pdf"]);
   expect(dialog.text()).toContain("2 PDFs selected");
-  expect(dialog.disabled("Continue")).toBe(false);
+  expect(dialog.disabled("Continue")).toBe(true);
   await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
+  expect(dialog.disabled("Continue")).toBe(false);
   await dialog.press("Continue");
   await dialog.press("Continue");
   expect(dialog.text()).toContain("Action History.xlsx · Fall review");
@@ -115,6 +118,37 @@ it("offers the Dry run switch for the PDF workflow and plans and confirms a dry 
   expect(dialog.text()).not.toContain("I-9 Check results");
 });
 
+it("holds Continue until the required reference spreadsheet is chosen and shows it on the last stage", async () => {
+  const plans: unknown[] = [];
+  const dialog = await h.openDialog(client({ uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
+    artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }),
+  submitStartPlan: async request => { plans.push(request); throw new Error("a missing reference must not reach planning"); } }), { workflows: [workflow], panelWorkflowId: workflow.workflowId });
+  await attach([pdf("first.pdf", "%PDF first")]);
+  expect(dialog.disabled("Continue")).toBe(true);
+  expect(dialog.text()).toContain("Add a reference spreadsheet first.");
+  expect(dialog.text()).not.toContain("malformed");
+  await h.chooseReference('Action History.xlsx', 'Fall review', 'Action History');
+  expect(dialog.disabled("Continue")).toBe(false);
+  expect(dialog.text()).not.toContain("Add a reference spreadsheet first.");
+  await dialog.press("Continue"); await dialog.press("Continue");
+  expect(dialog.text()).toContain("Reference spreadsheet");
+  expect(dialog.text()).toContain("Action History.xlsx");
+  expect(plans).toEqual([]);
+});
+
+it("keeps Continue held when only a reference check is picked and no roster is chosen", async () => {
+  const checkWorkflow = { ...workflow, workbookCheck: { id: "reference-check", keyFieldId: "eid" } } as RunStartWorkflow;
+  const dialog = await h.openDialog(client({ uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
+    artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }) }),
+  { workflows: [checkWorkflow], panelWorkflowId: checkWorkflow.workflowId });
+  await attach([pdf("first.pdf", "%PDF first")]);
+  const use = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.getAttribute("aria-label") === `Use ${reference.name}`); assert.ok(use, "the check row offers Use");
+  await act(async () => use.click()); await h.settle();
+  expect(dialog.disabled("Continue")).toBe(true);
+  expect(dialog.text()).toContain("Add a reference spreadsheet first.");
+  expect(dialog.text()).toContain("Also check");
+});
+
 it("keeps the accepted selection and refuses invalid PDFs before planning or uploading them", async () => {
   let uploads = 0;
   const dialog = await h.openDialog(client({ uploadOcrSource: async request => {
@@ -124,7 +158,7 @@ it("keeps the accepted selection and refuses invalid PDFs before planning or upl
   } }), { workflows: [workflow], panelWorkflowId: workflow.workflowId });
   await attach([pdf("accepted.pdf", "%PDF accepted")]);
   await attach([new File(["wrong"], "wrong.txt", { type: "text/plain" })]);
-  expect(uploads).toBe(1); expect(dialog.text()).toContain("PDF selection refused"); expect(dialog.text()).toContain("Choose valid PDF files.");
+  expect(uploads).toBe(1); expect(dialog.text()).not.toContain("PDF selection refused"); expect(dialog.text()).toContain("Choose valid PDF files.");
   expect(dialog.text()).toContain("accepted.pdf"); expect(dialog.disabled("Continue")).toBe(true);
   await dialog.press("Remove accepted.pdf");
   expect(dialog.text()).toContain("No PDFs selected"); expect(dialog.disabled("Continue")).toBe(true);
@@ -139,7 +173,8 @@ it("refuses the same PDF bytes under another filename without replacing the acce
   } }), { workflows: [workflow], panelWorkflowId: workflow.workflowId });
   await attach([pdf("original.pdf", "%PDF same content")]);
   await attach([pdf("renamed.pdf", "%PDF same content")]);
-  expect(dialog.text()).toContain("PDF selection refused");
+  expect(dialog.text()).not.toContain("PDF selection refused");
+  expect(dialog.text()).toContain(ERROR_CATALOG.OCR_SOURCE_REFUSED.text);
   expect(dialog.text()).toContain("original.pdf");
   expect(document.querySelector('[aria-label="Remove original.pdf"]')).not.toBeNull();
   expect(document.querySelector('[aria-label="Remove renamed.pdf"]')).toBeNull();
@@ -202,4 +237,21 @@ it("plans one Emergency Contact run per uploaded PDF", async () => {
   // The last stage shows the pick before Start.
   expect(dialog.text()).toContain("File to OnBase");
   expect(dialog.text()).toContain("Do not file");
+});
+
+it("shows a plain upload failure in the notice slot with one Retry that sends the same file again", async () => {
+  let calls = 0;
+  const dialog = await h.openDialog(client({ uploadOcrSource: async request => {
+    calls += 1;
+    if (calls === 1) throw new DashboardClientError({ kind: "http", message: "ENOSPC: no space left on device, write '/var/relay/tmp/ocr/6f1c.pdf'", status: 500 });
+    return OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
+      artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } });
+  } }), { workflows: [workflow], panelWorkflowId: workflow.workflowId });
+  await attach([pdf("report.pdf", "%PDF report")]);
+  expect(dialog.text()).toContain(ERROR_CATALOG.OCR_UPLOAD_FAILED.text);
+  for (const raw of ["ENOSPC", "/var/relay", "PDF selection refused"]) expect(dialog.text()).not.toContain(raw);
+  await dialog.press("Retry");
+  expect(calls).toBe(2);
+  expect(dialog.text()).not.toContain(ERROR_CATALOG.OCR_UPLOAD_FAILED.text);
+  expect(dialog.text()).toContain("report.pdf");
 });

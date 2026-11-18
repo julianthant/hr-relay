@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { chatGptStatusFixture } from "../../../support/helpers/chatgpt-status-fixture.js";
 import { useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
-import { ASSISTANT_MODEL_COMMAND, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_FAILURES, ASSISTANT_MODEL_COMMAND, type AssistantRequest, type AssistantResult, type AssistantStageResult } from '../../../../src/models/dashboard/assistant.js';
 
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAssistantMockProducer, useAssistantPanel, type AssistantPorts, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
 import { ChatGptAccountViewSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
 import type { DashboardClient } from '../../../../src/dashboard/client/index.js';
@@ -89,4 +89,80 @@ it('blocks every setup attachment before panel registration and both local file 
   await act(async () => controller.onAction({ type: "edit", value: 'ordinary attachment' }));
   await act(async () => { expect(await model.attachFile()).toBe(file); });
   expect(attachments).toBe(1);
+});
+
+describe('assistant attachments', () => {
+  const sendValue = (text: string, files: readonly AssistantFile[]) => ({ text, files, model: 'ignored', effort: 'ignored', approval: 'ignored' });
+  const upload = (name: string, bytes = 'fixture', size = bytes.length) => ({ name, size, async arrayBuffer() { return new TextEncoder().encode(bytes).buffer as ArrayBuffer; } }) as unknown as File;
+  async function mountServed(client: ReturnType<typeof resultClient>, ports: AssistantPorts = { async onAttachFile(picked) { return { id: crypto.randomUUID(), name: picked!.name, status: 'Attached' }; } }) {
+    let controller!: ReturnType<typeof useAssistantController>;
+    function Harness() { controller = useAssistantController(client, 'profile', undefined, false); model = useAssistantPanel({ producer: createAssistantMockProducer(), accountClient, ports, served: controller }); return null; }
+    host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+    await act(async () => root?.render(createElement(Harness)));
+    return () => controller;
+  }
+  function recordingClient(stage: (name: string) => Promise<AssistantStageResult>) {
+    const staged: { conversationId: string; name: string; mediaType: string; bytes: number }[] = [], requests: AssistantRequest[] = [];
+    const client = resultClient({
+      async assistantStageAttachment(conversationId: string, picked: Readonly<{ name: string; mediaType: string; bytes: Uint8Array }>) { staged.push({ conversationId, name: picked.name, mediaType: picked.mediaType, bytes: picked.bytes.byteLength }); return stage(picked.name); },
+      async assistantRespond(request: AssistantRequest): Promise<AssistantResult> { requests.push(request); return { state: 'answered', text: 'Read it' }; },
+    });
+    return { client, staged, requests };
+  }
+  const stagedResult = (name: string, byteLength: number, mediaType: AssistantStageResult extends infer R ? (R extends { state: 'staged' } ? R['attachment']['mediaType'] : never) : never = 'application/pdf'): AssistantStageResult =>
+    ({ state: 'staged', attachment: { id: crypto.randomUUID(), mediaType, name, byteLength, expiresAt: '2099-01-01T00:00:00.000Z' } });
+
+  it('stages a PDF before send and names its staged id in the request', async () => {
+    const { client, staged, requests } = recordingClient(async name => stagedResult(name, 7));
+    const controller = await mountServed(client);
+    let attached: AssistantFile | null = null;
+    await act(async () => { attached = await model.attachFile(upload('report.pdf', '%PDF-1.4')); });
+    expect(staged).toEqual([{ conversationId: expect.any(String), name: 'report.pdf', mediaType: 'application/pdf', bytes: 8 }]);
+    expect(attached).toMatchObject({ name: 'report.pdf', stage: { state: 'staged' } });
+    await act(async () => controller().onAction({ type: 'edit', value: 'Check this file' }));
+    await act(async () => { await model.send(sendValue('Check this file', [attached!])); });
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]!.attachments).toEqual([attached!.id]);
+    expect(requests[0]!.conversationId).toBe(staged[0]!.conversationId);
+  });
+  it('refuses an unsupported type before any upload or send, with a plain reason', async () => {
+    const { client, staged, requests } = recordingClient(async name => stagedResult(name, 1));
+    await mountServed(client);
+    await act(async () => { await expect(model.attachFile(upload('bad.exe'))).rejects.toThrow(ASSISTANT_FAILURES.ASSISTANT_ATTACHMENT_UNSUPPORTED); });
+    expect(staged).toHaveLength(0); expect(requests).toHaveLength(0);
+  });
+  it('refuses an oversized file before any upload', async () => {
+    const { client, staged } = recordingClient(async name => stagedResult(name, 1));
+    await mountServed(client);
+    await act(async () => { await expect(model.attachFile(upload('notes.txt', 'x', 33 * 1024))).rejects.toThrow(ASSISTANT_FAILURES.ASSISTANT_ATTACHMENT_TOO_LARGE); });
+    expect(staged).toHaveLength(0);
+  });
+  it('keeps a staging failure on the chip and blocks the send until it is removed', async () => {
+    const { client, requests } = recordingClient(async () => { throw new Error('500'); });
+    const controller = await mountServed(client);
+    let attached: AssistantFile | null = null;
+    await act(async () => { attached = await model.attachFile(upload('report.pdf', '%PDF-1.4')); });
+    expect(attached).toMatchObject({ stage: { state: 'failed', message: expect.stringContaining('Try again') } });
+    await act(async () => controller().onAction({ type: 'edit', value: 'Check this file' }));
+    await act(async () => { expect(await model.send(sendValue('Check this file', [attached!]))).toBe(false); });
+    expect(model.error).toContain('Retry or remove'); expect(requests).toHaveLength(0);
+  });
+  it('shows a server refusal on the chip', async () => {
+    const { client } = recordingClient(async () => ({ state: 'refused', code: 'ASSISTANT_ATTACHMENT_INVALID' }));
+    await mountServed(client);
+    let attached: AssistantFile | null = null;
+    await act(async () => { attached = await model.attachFile(upload('report.pdf', 'nope')); });
+    expect(attached).toMatchObject({ stage: { state: 'failed', message: ASSISTANT_FAILURES.ASSISTANT_ATTACHMENT_INVALID } });
+  });
+  it('keeps a csv on the spreadsheet path: not staged, labelled as such, not named in the request', async () => {
+    const { client, staged, requests } = recordingClient(async name => stagedResult(name, 1));
+    const controller = await mountServed(client, { async onAttachFile(picked) { return { ...file, name: picked!.name }; }, async onRegisterSpreadsheet() {} });
+    let attached: AssistantFile | null = null;
+    await act(async () => { attached = await model.attachFile(upload('tracker.csv', 'Name,Hire date')); });
+    expect(staged).toHaveLength(0); expect(attached).toMatchObject({ stage: { state: 'spreadsheet' } });
+    await act(async () => controller().onAction({ type: 'edit', value: 'Check this file' }));
+    await act(async () => { await model.send(sendValue('Check this file', [attached!])); });
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]!.attachments).toBeUndefined();
+  });
 });

@@ -16,7 +16,7 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
 
 const APPROVED_NAV = [
-  ["Personal", ["general", "account", "subscription"]],
+  ["Personal", ["general", "account"]],
   ["Data", ["spreadsheets", "explorer", "activity"]],
   ["Help", ["keyboard"]],
 ];
@@ -78,7 +78,7 @@ describe("canonical Settings navigation", () => {
   it("folds legacy section URLs to their new page and keeps unknown requests explicit", () => {
     const groups = buildSettingsNav();
     for (const [legacy, canonical] of [
-      ["display", "general"], ["annual-dates", "general"], ["runtime-isolation", "general"],
+      ["display", "general"], ["subscription", "general"], ["annual-dates", "general"], ["runtime-isolation", "general"],
       ["paths", "general"], ["routes", "general"], ["storage", "general"], ["preflight", "general"],
       [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, "general"],
       ["providers", "general"], ["provider-env", "general"], ["protected-store", "account"], ["credentials", "account"],

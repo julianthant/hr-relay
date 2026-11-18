@@ -5,7 +5,7 @@ import type { WorkflowCategoryGroup, WorkflowGroupEntry } from "../workflows/wor
 import { workflowInitials, type WorkflowNavigationEntry } from "./workflow-rail-model.js";
 import { WorkflowHarnessTag } from "../workflows/mocks/workflow-harness-tag.js";
 
-const categoryIcons = { Search, Separations: LogOut, Onboarding: UserPlus, "Work Study": GraduationCap, Payroll: BriefcaseBusiness, Utils: Wrench, OnBase: FileSearch, Timekeeping: Clock3 };
+const categoryIcons = { Lookup: Search, Separations: LogOut, Onboarding: UserPlus, "Work Study": GraduationCap, Payroll: BriefcaseBusiness, Utils: Wrench, OnBase: FileSearch, Timekeeping: Clock3 };
 
 const WorkflowNavigationRow = memo(function WorkflowNavigationRow({ node, selected, onSelect, metadata, unavailable, description }: {
   node: WorkflowGroupEntry<WorkflowNavigationEntry>; selected: boolean; onSelect: (id: string) => void; metadata?: ReactNode; unavailable?: string; description?: string;

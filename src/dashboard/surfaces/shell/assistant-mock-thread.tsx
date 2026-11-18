@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Check, ChevronRight, Paperclip } from "lucide-react";
-import { EmptyState, useToasts } from "../../ds/ui.js";
+import { EmptyState, FailureNotice, Skeleton, useToasts } from "../../ds/ui.js";
 import type { AssistantActivityWire } from "../../../models/dashboard/assistant.js";
 import { cn } from "../../lib/utils.js";
 import { ACTIVITY, type AssistantFrame, type ChatItem, type Row } from "../assistant/assistant-mock-frames.js";
@@ -9,9 +9,9 @@ export function AssistantReply({ children }: { children: React.ReactNode }) {
   return <div className="hub-assistant-line"><div className="hub-message">{children}</div></div>;
 }
 
-/** Inline markup for mock replies; see assistant-mock-frames.ts. */
-function Inline({ text }: { text: string }) {
-  return <>{text.split(/(\*\*.+?\*\*|\{\{.+?\}\}|~~.+?~~|!!.+?!!|__.+?__)/u).map((part, index) => {
+/** Inline markup; see assistant-mock-frames.ts. Served replies take bold only; links and data markup are mock-only. */
+function Inline({ text, served = false }: { text: string; served?: boolean }) {
+  return <>{text.split(served ? /(\*\*.+?\*\*)/u : /(\*\*.+?\*\*|\{\{.+?\}\}|~~.+?~~|!!.+?!!|__.+?__)/u).map((part, index) => {
     const inner = part.slice(2, -2);
     if (part.startsWith("**")) return <strong key={index} className="font-medium">{inner}</strong>;
     if (part.startsWith("{{")) return <button key={index} type="button" className="cursor-pointer font-medium text-ui-info underline-offset-2 hover:underline">{inner}</button>;
@@ -23,7 +23,7 @@ function Inline({ text }: { text: string }) {
 }
 
 /** Sentences first; consecutive "- " lines become one bullet list. */
-function Text({ text }: { text: string }) {
+export function AssistantText({ text, served = false }: { text: string; served?: boolean }) {
   const blocks: (string | string[])[] = [];
   for (const line of text.split("\n")) {
     const last = blocks.at(-1);
@@ -32,8 +32,8 @@ function Text({ text }: { text: string }) {
     else blocks.push([line.slice(2)]);
   }
   return <AssistantReply>{blocks.map((block, index) => Array.isArray(block)
-    ? <ul key={index} className="my-1 list-disc pl-5">{block.map(line => <li key={line}><Inline text={line} /></li>)}</ul>
-    : <p key={index} className="m-0"><Inline text={block} /></p>)}</AssistantReply>;
+    ? <ul key={index} className="my-1 list-disc pl-5">{block.map(line => <li key={line}><Inline text={line} served={served} /></li>)}</ul>
+    : <p key={index} className="m-0"><Inline text={block} served={served} /></p>)}</AssistantReply>;
 }
 
 /** History · Activity rows: hairline separators, no box or header; a row opens its log behind the panel. */
@@ -52,7 +52,7 @@ function Rows({ rows, onOpen }: { rows: readonly Row[]; onOpen?: () => void }) {
 function Item({ item }: { item: ChatItem }) {
   switch (item.kind) {
     case "you": return <div className="hub-message operator">{item.text}{item.file && <span className="hub-sent-file"><Paperclip aria-hidden />{item.file}</span>}</div>;
-    case "text": return <Text text={item.text} />;
+    case "text": return <AssistantText text={item.text} />;
     case "session": return <AssistantReply><div className="hub-session" role="status"><span className="hub-spinner" aria-hidden />
       <span className="hub-session-copy"><span>{item.label}</span><small>{item.meta}</small></span><button type="button" className="hub-pill">Stop</button></div></AssistantReply>;
     case "answered": return <p className="hub-answered"><Check aria-hidden />{item.text}</p>;
@@ -65,22 +65,30 @@ export function AssistantMockActivity({ query, onOpen }: { query: string; onOpen
   return rows.length === 0 ? <div className="hub-empty">No matching activity.</div> : <Rows rows={rows} onOpen={onOpen} />;
 }
 
+/** Same row height, divider and columns as the loaded list, so nothing moves when it arrives. */
+function ActivitySkeleton() {
+  return <div className="flex flex-col" role="status" aria-label="Loading activity">{[0, 1, 2, 3].map(index =>
+    <div key={index} className={cn("flex w-full items-start gap-3 py-2.5", index > 0 && "border-t border-solid border-ui-stroke")}>
+      <span className="flex min-w-0 flex-1 flex-col"><Skeleton className="my-1 h-4 w-2/3" /></span><Skeleton className="my-1 h-4 w-10 shrink-0" /></div>)}</div>;
+}
+
 const clock = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" });
 
-/** The served Activity list: read once when it opens, filtered in place by the search. */
+/** The served Activity list: read once when it opens, filtered in place by the search; a failed read shows one notice with Retry. */
 export function AssistantServedActivity({ query, read }: { query: string; read: (signal: AbortSignal) => Promise<AssistantActivityWire> }) {
-  const { toast } = useToasts();
-  const [rows, setRows] = useState<readonly Row[]>();
+  const [rows, setRows] = useState<readonly Row[] | "failed">();
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const abort = new AbortController();
+    setRows(undefined);
     read(abort.signal).then(view => setRows(view.rows.map(row => ({ primary: row.label, value: clock.format(new Date(row.at)) }))), () => {
-      if (abort.signal.aborted) return;
-      setRows([]); toast({ tone: "warning", title: "Activity unavailable" });
+      if (!abort.signal.aborted) setRows("failed");
     });
     return () => abort.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the read happens once per opening
-  }, []);
-  if (rows === undefined) return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the read happens once per opening and once per Retry
+  }, [attempt]);
+  if (rows === undefined) return <ActivitySkeleton />;
+  if (rows === "failed") return <FailureNotice sentence="Activity did not load." stillWorks="Your chats are not affected." action={{ label: "Retry", onClick: () => setAttempt(count => count + 1) }} />;
   const needle = query.trim().toLowerCase(), shown = rows.filter(row => row.primary.toLowerCase().includes(needle));
   if (rows.length === 0) return <EmptyState title="No activity today" />;
   return shown.length === 0 ? <div className="hub-empty">No matching activity.</div> : <Rows rows={shown} />;

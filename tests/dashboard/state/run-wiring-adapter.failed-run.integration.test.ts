@@ -78,6 +78,9 @@ it("serves a run that failed in its first step with its planned steps and the fa
   assert.ok(failure.kind === "decision");
   assert.equal(failure.decision.footer, "No changes were made.");
   assert.doesNotMatch(failure.decision.title, /^[A-Z_]+$/u, "the card is titled in words, not a code");
+  assert.equal(failure.decision.title, "Search for person", "the card is titled with the step's plain name");
+  assert.equal(failure.decision.attemptedAction, "Search for person");
+  assert.deepEqual(failure.decision.served?.options.map(option => option.label), ["Retry step"], "the card offers the served retry");
   // No capture service is wired here, so the browser refuses the screenshot with an Error.
   assert.equal(failure.decision.unavailableCapture, "No screenshot: the browser could not take it.");
   assert.equal(logs.timeline[0]?.stepId !== undefined, true, "the failed stage jumps to its failure card");

@@ -1,8 +1,10 @@
-import { ArrowLeft,ArrowUp,Check,CircleAlert,CreditCard,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Sparkles,Table2 } from "lucide-react";
+import { CURRENT_FISCAL_TARGET, runCheckForTarget } from "./preflight/preflight-remedy-model.js";
+import { CHECK_COPY } from "./preflight/preflight-check-copy.js";
+import { ArrowUp,Check,CircleAlert,Database,Folder,Gauge,UserRound,History,MessagesSquare,Monitor,Search,Sparkles,Table2,X } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { useViewState } from "../../app/navigation/view-route-model.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,PageHeading,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, Notice } from "../../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,PageHeading,SearchInput,SectionLabel,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText, FailureNotice, Notice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
 import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";
@@ -17,7 +19,6 @@ import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
 import { AccountSettings, type AccountPage } from "./account/account-settings.js";
 import { relayUsername } from "./account/relay-username.js";
-import { ChatGptAccountSettings } from "./general/chatgpt-account.js";
 import { DeleteAccountControl } from "./general/ui-settings-records-general-paths.js";
 import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import {type StorageHealthSummary } from "./storage/storage-settings-model.js";
@@ -45,7 +46,6 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   capabilities: Table2,
   keyboard: MessagesSquare,
   unrendered: CircleAlert,
-  subscription: CreditCard,
   spreadsheets: Folder,
   explorer: Search,
   activity: History,
@@ -107,7 +107,7 @@ function SearchResultLink({ result, active, onSelect }: { result: SettingsSearch
 
 export function SettingsPage({
   section,
-  searchTarget,
+  searchTarget: requestedTarget,
   dataContent,
   appearance,
   deleteAccount,
@@ -158,6 +158,10 @@ export function SettingsPage({
   const searchResults = useRef<HTMLDivElement>(null);
   const index = useMemo(() => settingsSearchIndex(groups, settingsDocument), [groups, settingsDocument]);
   const results = useMemo(() => searchSettings(index, navQuery), [index, navQuery]);
+  const searchTarget = requestedTarget === CURRENT_FISCAL_TARGET && settingsDocument !== undefined
+    ? `annualDates.FY${String(settingsDocument.currentFiscalYear)}.jobEndDate` : requestedTarget;
+  const openedForCheck = backToRun ? runCheckForTarget(requestedTarget) : undefined;
+  const openedForCheckName = openedForCheck === undefined ? undefined : CHECK_COPY[openedForCheck]?.name;
   const selectedResult = index.find(result => result.target === searchTarget && result.entry.id === activeId);
   const target = selectedResult?.target;
   const searchContext = useMemo(() => ({ target, visit: searchVisit }), [target, searchVisit]);
@@ -172,7 +176,7 @@ export function SettingsPage({
     return () => { element.removeEventListener("scroll", remember); };
   }, [activeId, searchTarget, searchVisit]);
   useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
-  useEffect(() => { if (backToRun) content.current?.focus(); }, [backToRun]);
+  useEffect(() => { if (backToRun && requestedTarget === undefined) content.current?.focus(); }, [backToRun, requestedTarget]);
   const settingsEntries = groups.filter(group => group.id === "personal" || group.id === "advanced").flatMap(group => group.entries);
   const activeSettingsEditorSection = activeId !== undefined && (settingsEntries.some(entry => entry.id === activeId) || activeId === "performance");
   const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount;
@@ -200,6 +204,17 @@ export function SettingsPage({
   }, [hasDirtyDraft]);
 
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || pendingExit !== undefined) return;
+      if (event.target instanceof Element && event.target.closest('[role="dialog"],[role="alertdialog"],[role="listbox"],[role="menu"]')) return;
+      event.preventDefault();
+      requestExit(onClose);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose, pendingExit, requestExit]);
+
+  useEffect(() => {
     onExitGuardChange?.(requestExit);
     return () => onExitGuardChange?.(undefined);
   }, [onExitGuardChange, requestExit]);
@@ -216,7 +231,7 @@ export function SettingsPage({
   return (
     <TakeoverFrame label="Settings" direction="row" animateFrame={false} className="settings-takeover">
       <nav aria-label="Settings sections" className="settings-panel-nav rail-scroll">
-        <header className="settings-nav-header"><h2>Settings</h2><IconButton label={backToRun ? "Back to run" : "Back to dashboard"} size="sm" icon={<ArrowLeft className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
+        <header className="settings-nav-header"><h2>Settings</h2><IconButton label={backToRun ? "Back to run" : "Back to dashboard"} size="sm" icon={<X className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
         <SearchInput ref={navSearch} variant="sidebar" aria-label="Search settings" placeholder="Search" value={navQuery} onChange={event => setNavQuery(event.target.value)} onClear={() => setNavQuery("")} className="settings-nav-search"
           aria-controls={navQuery.trim() ? "settings-search-results" : undefined}
           onKeyDown={event => {
@@ -241,12 +256,11 @@ export function SettingsPage({
 
       <div id="dashboard-settings-content" data-settings-target={target} tabIndex={-1} ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
         <SettingsSearchTargetContext.Provider value={searchContext}><DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
+        {openedForCheckName !== undefined && <Banner tone="info" title={`Opened for the ${openedForCheckName} check`}>Change the highlighted setting, then press Back to run.</Banner>}
         {searchTarget !== undefined && settingsDocument !== undefined && target === undefined && <Notice tone="warning" title="Setting unavailable" description="Not on the selected page." />}
-        {editor.editor.state === "failed" && !activeSettingsEditorSection
-          && !isDataSection
-          && activeId !== "spreadsheets"
-          && (
-          <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />
+        {editor.editor.state === "failed" && !isDataSection && activeId !== "spreadsheets" && (
+          <FailureNotice sentence="Relay could not read your settings." stillWorks="Nothing was changed."
+            action={{ label: "Retry", onClick: editor.reload }} />
         )}
         {/* Refuse unknown settings destinations; redirecting would label the wrong page as the requested one. */}
         {resolution.state === "unknown" && (
@@ -260,11 +274,10 @@ export function SettingsPage({
         {isDataSection && dataContent}
         {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SheetsV2 onOpenRun={onOpenRun} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
-        {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
+        {resolution.state === "open" && editor.editor.state !== "failed" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />
         )}
         {resolution.state === "open" && resolution.entry.id === "account" && (accountPage === undefined ? <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} /> : <AccountSettings page={accountPage} username={relayUsername(editor)} ucpath={<SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} embedded />} deleteAccount={deleteAccount ?? <DeleteAccountControl presentation={{ state: "unavailable" }} />} />)}
-        {resolution.state === "open" && resolution.entry.id === "subscription" && <section className="settings-compact-page"><PageHeading title="Subscription" /><ChatGptAccountSettings /></section>}
         {resolution.state === "open"
           && resolution.entry.source === "served"
           && !RENDERED_SERVED_SECTION_IDS.has(resolution.entry.id) && (

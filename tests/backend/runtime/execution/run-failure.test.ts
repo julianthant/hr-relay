@@ -69,7 +69,7 @@ describe("node failure code selection", () => {
     const failure = buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
       failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
       error: wrapUnhandledTaskError(TASK_ID, new Error("Timeout 30000ms exceeded")), occurredAt: "2026-08-29T08:00:00.000Z" });
-    assert.equal(projectFailureForOperator(failure).summary, "The task stopped with an unclassified failure. Review local diagnostic evidence.");
+    assert.equal(projectFailureForOperator(failure).summary, "This task stopped for a reason Relay does not recognize. Open the run in Logs to see what happened.");
   });
 
   it("records each named secondary cause after the task's own primary cause", () => {

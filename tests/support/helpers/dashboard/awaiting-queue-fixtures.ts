@@ -24,6 +24,7 @@ export function createAwaitingQueueFixtures(RUN_ID: string, HASH_A: string, HASH
       startedAt: NOW,
       updatedAt: NOW,
       endedAt: { state: "absent", reason: "run has not ended" },
+      operatorWait: { state: "absent" },
       gateOpenedAt: { state: "absent", reason: "no gate has opened on this run" },
       displayName: { state: "absent", reason: "the operator has not renamed this run" },
       title: "Jordan Reyes",

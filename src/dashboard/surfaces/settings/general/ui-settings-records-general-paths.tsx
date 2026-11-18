@@ -2,16 +2,17 @@ import { Form } from "@heroui/react";
 import { useRef,useState,type ReactNode } from "react";
 import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
-import {BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Select,Switch,dsText, Notice, ResultRow } from "../../../ds/ui.js";
+import {BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Select,Switch, Notice, ResultRow } from "../../../ds/ui.js";
 import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
-import { formatSetting,settingInput,type SettingsDraftOperation } from "../editor/settings-draft-model.js";
+import { settingInput,type SettingsDraftOperation } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
-import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
 import { settingNote,settingTitle } from "../settings-presentation.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
 import type { DeleteAccountPresentation } from "./delete-account-model.js";
 import { BrowserWindowRow } from "./browser-window-row.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
+import { ChatGptAccountSettings } from "./chatgpt-account.js";
+import { AssistantPermissionsSettings } from "./hub-preferences.js";
 import { GENERAL_RUN_GROUPS,type GeneralChoice } from "./general-groups-model.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
@@ -35,7 +36,6 @@ function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: Edita
   const description = settingNote(leaf);
   if (leaf.input === "boolean") return <div data-settings-path={leaf.path} className="settings-compact-row">
     <Switch name={leaf.path} label={title} description={description} checked={raw === "true"} disabled={editor.locked} onCheckedChange={value => editor.update(leaf.path, String(value))} />
-    {editor.save.state === "conflict" && editor.draft[leaf.path] !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
   </div>;
   return <div data-settings-path={leaf.path} className="settings-compact-row" onKeyDown={event => {
     if (leaf.input !== "date" || editor.draft[leaf.path] === undefined || event.defaultPrevented || event.repeat
@@ -49,7 +49,6 @@ function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: Edita
         : <Input type="text" name={leaf.path} autoComplete="off" value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value)} />}
       </div>
     </Field>
-    {editor.save.state === "conflict" && editor.draft[leaf.path] !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
   </div>;
 }
 
@@ -60,7 +59,6 @@ function ChoiceRow({ editor, leaf, choices }: { editor: Editor; leaf: EditableSe
     <ResultRow label={title} description={settingNote(leaf)} value={<Select aria-label={title} value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value)}>
       {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
     </Select>} />
-    {editor.save.state === "conflict" && editor.draft[leaf.path] !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
   </div>;
 }
 
@@ -79,7 +77,6 @@ function PathRow({ editor, field }: { editor: Editor; field: NativePathField }) 
         <SettingsPathPicker field={field} label={title} value={raw} disabled={editor.locked} onSelected={path => editor.update(field, path)} />
       </div>
     </Field>
-    {editor.save.state === "conflict" && editor.draft[field] !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
   </div>;
 }
 
@@ -103,6 +100,8 @@ function RunGroups({ editor }: { editor: Editor }) {
 export function CompactSettingsSection({ editor, appearance }: { editor: Editor; appearance?: ReactNode }) {
   return <section className="settings-compact-page">
     <PageHeading title="General" />
+    <ChatGptAccountSettings />
+    <AssistantPermissionsSettings />
     {editor.editor.state === "failed" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message.replace(/ Try again\.$/u, " Reopen Settings to try again.")} />}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} appearance={appearance} />
       : editor.editor.state === "loading" && <SettingsSectionSkeleton section="general" contentOnly />}
@@ -116,7 +115,6 @@ function CompactSettingsForm({ editor, appearance }: { editor: Editor; appearanc
   return <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Notice sticky tone="warning" title="Restart required" description="Saved settings apply after Relay restarts." />}
       {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current settings unavailable" description={`${editor.readProblem} Reopen Settings to refresh.`} />}
-      <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
       <div className="ds-body-stack"><GeneralContent editor={editor} year={document.currentFiscalYear} appearance={appearance} /><RunGroups editor={editor} /></div>
     </Form>;
 }
