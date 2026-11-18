@@ -88,8 +88,10 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
   }, [retry,onAction,selection.row.runId,selection.row.rowRevision]);
   const linkedRuns = useMemo(() => linkedRunEntries(selection.row), [selection.row]);
   const recordCount = resource.snapshot?.detail.ocrRecordCount;
-  const rerunAction = rerunFooterAction(selection, onAction);
-  const rerun = rerunAction === undefined ? undefined : <LogFooterButton label={rerunAction.label} icon={<RotateCw aria-hidden className="size-4" />} onClick={rerunAction.run} />;
+  const rerun = useMemo(() => {
+    const action = rerunFooterAction(selection, onAction);
+    return action === undefined ? undefined : <LogFooterButton label={action.label} icon={<RotateCw aria-hidden className="size-4" />} onClick={action.run} />;
+  }, [selection, onAction]);
   const footerActions = useMemo(() => {
     const records = reviewAvailable && recordCount !== undefined && onReview !== undefined;
     const members = selection.row.parent !== null && selection.row.status === "running";

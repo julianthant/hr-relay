@@ -102,7 +102,7 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
   featureAvailability: [],
 });
 /** The same workflow with a typed Run input, so the Start run dialog mounts an input box. */
-const APP_BOOTSTRAP_WITH_INPUT = FrontendBootstrapWireSchema_m1.parse({ ...APP_BOOTSTRAP, workflows: APP_BOOTSTRAP.workflows.map(flow => ({ ...flow,
+const APP_BOOTSTRAP_WITH_INPUT = FrontendBootstrapWireSchema_m1.parse({ ...APP_BOOTSTRAP, workflows: (APP_BOOTSTRAP.workflows as readonly { readonly start: object }[]).map(flow => ({ ...flow,
   start: { ...flow.start, inputRun: { placeholder: "Employee ID", parser: { split: { kind: "delimited", delimiters: [",", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "eid" }] } } } })) });
 const APP_DAY = DashboardDayWireSchema_m1.parse({
   day: "2026-08-27",
