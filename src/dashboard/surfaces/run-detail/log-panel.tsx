@@ -35,20 +35,20 @@ function LogHeader({ title, status, children }: { title: string; status?: ReactN
 }
 
 /** The production log layout accepts presentation data and has no transport dependency. */
-export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar, status, linkedRuns, onOpenLinkedRun, onDecision, onCancelRun, onReview, initialStepId, navigation, content, afterStep, footerActions }: {
+export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar, status, linkedRuns, onOpenLinkedRun, onDecision, onCancelRun, onReview, initialStepId, navigation, content, afterStep, trailingContent, footerActions }: {
   onDecision?: LogDecisionHandler;
   onCancelRun?: (entryId: string) => void;
   onReview?: () => void;
   linkedRuns?: readonly LinkedRunEntry[]; onOpenLinkedRun?: (target: LinkedRunWire) => void;
   title: string; status?: ReactNode; steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; toolbar?: ReactNode; initialStepId?: string;
-  footerActions?: ReactNode; navigation?: ReactNode; content?: ReactNode; afterStep?: (id: string) => ReactNode;
+  footerActions?: ReactNode; navigation?: ReactNode; content?: ReactNode; afterStep?: (id: string) => ReactNode; trailingContent?: ReactNode;
 }) {
   const action = runHeaderAction(steps, timeline);
   const header = (jump?: (stepId: string, entryId?: string) => void) => <LogHeader title={title} status={status}>
     {action && jump && <LogActionButton label={action.label} variant={action.label === 'Review' ? 'primary' : undefined} icon={headerIcon(action.label)} onClick={() => action.label === 'Review' && onReview ? onReview() : jump(action.stepId, action.entryId)} />}{toolbar}{linkedRuns && <LinkedRunsButton entries={linkedRuns} onOpen={onOpenLinkedRun} />}
   </LogHeader>;
   return <section id={DASHBOARD_LOGS_REGION_ID} tabIndex={-1} aria-label="Selected run logs" className="ui-theme-scope flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-fg:var(--ui-primary)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
-    {content ? <>{header()}{navigation}{content}{footerActions && <footer className="flex shrink-0 items-center justify-end gap-1 border-t border-ui-stroke bg-ui-panel px-3 py-2">{footerActions}</footer>}</> : <LogFeed steps={steps} afterStep={afterStep} footerActions={footerActions} initialStepId={initialStepId} onDecision={onDecision} onCancelRun={onCancelRun}
+    {content ? <>{header()}{navigation}{content}{footerActions && <footer className="flex shrink-0 items-center justify-end gap-1 border-t border-ui-stroke bg-ui-panel px-3 py-2">{footerActions}</footer>}</> : <LogFeed steps={steps} afterStep={afterStep} trailingContent={trailingContent} footerActions={footerActions} initialStepId={initialStepId} onDecision={onDecision} onCancelRun={onCancelRun}
       navigation={jump => <>{header(jump)}{navigation}<LogTimeline stages={timeline} onJump={jump} /></>} />}
   </section>;
 });
