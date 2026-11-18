@@ -1422,6 +1422,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         onSubmitPreview={submitMock}
         previewStartable={workflowComposition.previewStarts === true}
         onPreviewClose={closeMockLaunch}
+        onOpenRun={runId => selectRun(runId)}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
         onApplied={(workflowId) => {

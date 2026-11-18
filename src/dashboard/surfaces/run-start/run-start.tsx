@@ -48,6 +48,15 @@ import { pdfRunLaunchFields, previewPdfRun, unpickedPdfRunField, usePdfRunInput 
 
 /** What the app composes from the descriptor and bootstrap projections. The
  * dialog reads exactly this and imports no workflow module. */
+/** Why a previous value cannot be reused, in the operator's words. */
+const RERUN_VALUE_UNAVAILABLE_TEXT = Object.freeze({
+  "not-completed": "The earlier run did not get far enough to record this.",
+  "not-recorded": "The earlier run did not record this.",
+  "provenance-unavailable": "Where this came from is no longer available.",
+  protected: "This is protected and is not copied.",
+  "target-invalid": "This no longer fits the workflow.",
+} as const);
+
 export interface RunStartWorkflow {
   readonly uploadRun?: UploadRunSurface;
   readonly workflowId: string;
@@ -203,7 +212,7 @@ export function RunStartDialog({
   panelWorkflowId: string;
   /** echoed from bootstrap; the server matches it against the request identity */
   actorId: string;
-  onApplied?: (workflowId: string, count?: number) => void;
+  onApplied?: (workflowId: string, count?: number, runId?: string) => void;
   /** Hand intake the picker’s workflow, never the panel’s incidental scope. */
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
@@ -429,7 +438,7 @@ export function RunStartDialog({
       },
       dismissRecovery: command => dismissLaunchRecovery(window.sessionStorage, command),
       feedback: outcome => commandBindingRef.current?.feedback(outcome),
-      applied: (applied, count) => onApplied?.(applied, count),
+      applied: (applied, count, _workerStartup, runId) => onApplied?.(applied, count, runId),
       closeDialog: () => onOpenChange(false),
       refusalToast: () => toast(runStartRefusalToast(formatErrorCatalogFailure(createErrorCatalogFailure("RUN_START_READINESS_UNAVAILABLE", {})).text)),
       autoStart: () => startRef.current(),
@@ -496,10 +505,25 @@ export function RunStartDialog({
     }
   }, [catalog, selectWorkflow, onSubmitPreview, setPreviewSelection, send, sending]);
 
+  /** Closing without starting keeps the draft; the next open says so for a few seconds. */
+  const [draftKept, setDraftKept] = useState(false);
+  const keptPending = useRef(false);
   const closeAndReset = useCallback((next: boolean) => {
+    if (!next && rerunSource === undefined) {
+      keptPending.current = JSON.stringify(draftRef.current) !== JSON.stringify(launchDraft.freshLaunchDraft(workflows.find(entry => entry.workflowId === workflowId), commandBinding?.authority.today));
+    }
     onOpenChange(next);
     if (!next) send({ type: "close" });
-  }, [onOpenChange, send]);
+  }, [onOpenChange, send, rerunSource, workflows, workflowId, commandBinding?.authority.today]);
+  useEffect(() => {
+    if (!open) return;
+    if (!keptPending.current) return;
+    keptPending.current = false;
+    setDraftKept(true);
+    const timer = window.setTimeout(() => setDraftKept(false), 6000);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+  useEffect(() => { if (!open) setDraftKept(false); }, [open]);
 
   const checks = useRunChecks(client, previewOwnsStages ? undefined : workflow?.workflowId, open && !hidden);
   /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
@@ -770,6 +794,7 @@ export function RunStartDialog({
               })}
             </ol>
             {notice !== null && <div className="shrink-0 border-b border-ui-stroke px-5 py-3"><FailureNotice {...notice} /></div>}
+            {notice === null && draftKept && <p role="status" className="m-0 shrink-0 border-b border-ui-stroke px-5 py-2 text-caption text-ui-muted">Draft kept. Your earlier entries are still here.</p>}
           <DialogBody key={currentStage} className="launch-content @container">
             {isRerun && snapshot === null && sourceError === null && <p role="status">Loading source…</p>}
             {sourceError !== null && <Banner tone="danger" title="Rerun unavailable">{sourceError}</Banner>}
@@ -800,7 +825,7 @@ export function RunStartDialog({
                 <section aria-label={isRerun ? "Values" : "Input"} className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
                   {pdfSurface !== undefined ? <>
                     <WorkflowPdfInput files={pdfInput.draft?.files.map(file => ({ name: file.source.fileName, size: file.source.artifact.bytes })) ?? []}
-                      busy={busy || pdfInput.loading} onChoose={files => { void pdfInput.choose(pdfSurface, files); }} onRemove={pdfInput.remove} />
+                      busy={busy || pdfInput.loading} onChoose={files => { void pdfInput.choose(pdfSurface, files); }} onRemove={pdfInput.remove} onClear={pdfInput.clear} />
                   </> : inputRun.state === "present" ? (
                     !declaredInput && isRerun && rerunInputText === undefined && snapshot?.values.some(candidate => candidate.state === "available" && candidate.targetStepKey === undefined && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) ? null : <TypedInput
                       surface={inputRun.surface}
@@ -851,8 +876,8 @@ export function RunStartDialog({
                         return <div key={`${candidate.nodeId}:${candidate.fieldPath}`} className="min-w-0">
                           {candidate.state === "available" && <Field label={label}><Input className="h-9" value={valueDrafts[index]?.text ?? ""} onChange={event => update(current => launchDraft.changeValueText(current, index, event.target.value))} /></Field>}
                           {!(candidate.state === "available" && valueDrafts[index]?.copied && inputRun.state === "present" && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) && <div className="mt-[var(--ds-space-tight)] flex flex-wrap items-baseline justify-between gap-[var(--ds-space-base)] text-caption">
-                            <span className="min-w-0 break-words text-[color:var(--ds-fg-muted)]">{candidate.state === "available" ? `Saved ${candidateText(candidate.value)}` : `Unavailable: ${candidate.reason}`}</span>
-                            {candidate.state === "available" && <Button size="sm" variant="ghost" className="h-auto p-0 text-caption text-ui-info" aria-label={`Copy ${label}`} onClick={() => update(current => ({ ...current, valueDrafts: { ...current.valueDrafts, [index]: { text: candidateText(candidate.value), copied: true } } }))}>Use previous</Button>}
+                            <span className="min-w-0 break-words text-[color:var(--ds-fg-muted)]">{candidate.state === "available" ? `Saved ${candidateText(candidate.value)}` : RERUN_VALUE_UNAVAILABLE_TEXT[candidate.reason]}</span>
+                            {candidate.state === "available" && <Button size="sm" variant="outline" aria-label={`Copy ${label}`} onClick={() => update(current => ({ ...current, valueDrafts: { ...current.valueDrafts, [index]: { text: candidateText(candidate.value), copied: true } } }))}>Use previous</Button>}
                           </div>}
                         </div>;
                       })}
@@ -1019,7 +1044,7 @@ export function RunStartSurfaces({
   catalog: readonly WorkflowCatalogEntry[];
   panelWorkflowId: string;
   actorId: string;
-  onApplied?: (workflowId: string, count?: number) => void;
+  onApplied?: (workflowId: string, count?: number, runId?: string) => void;
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;

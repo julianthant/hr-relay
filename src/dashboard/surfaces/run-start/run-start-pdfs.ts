@@ -80,7 +80,7 @@ export function usePdfRunInput(client: DashboardClient, binding: DashboardComman
       }
     } finally { if (current.current === operation) { current.current = null; setLoading(false); } }
   }, [client]);
-  return { draft, picks, pick: (field: string, value: string) => setPicks(previous => ({ ...previous, [field]: value })), loading, error, reset, choose, retryable: error !== null && failed.current !== null, retry: () => { const last = failed.current; if (last !== null) void choose(last.surface, last.files); }, remove: (index: number) => {
+  return { draft, picks, pick: (field: string, value: string) => setPicks(previous => ({ ...previous, [field]: value })), loading, error, reset, choose, retryable: error !== null && failed.current !== null, retry: () => { const last = failed.current; if (last !== null) void choose(last.surface, last.files); }, clear: () => { setError(null); setDraft(previous => previous === null ? null : { ...previous, files: [] }); }, remove: (index: number) => {
     setError(null);
     setDraft(previous => previous === null ? null : { ...previous, files: previous.files.filter((_file, position) => position !== index) });
   } };
