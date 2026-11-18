@@ -14,7 +14,10 @@ describe("decision catalog", () => {
       const ids = declaration.options.map(({ id }) => id);
       assert.equal(new Set(ids).size, ids.length, type);
       for (const id of declaration.recommended) assert.ok(ids.includes(id), `${type} recommends undeclared ${id}`);
-      for (const option of declaration.options) assert.ok(option.label.length > 0 && option.hint.length > 0, `${type}/${option.id}`);
+      for (const option of declaration.options) {
+        assert.ok(option.label.length > 0, `${type}/${option.id}`);
+        if (option.hint !== undefined) assert.ok(option.hint.length > 0 && option.hint.split(" ").length <= 8, `${type}/${option.id} hint stays short`);
+      }
     }
   });
 
