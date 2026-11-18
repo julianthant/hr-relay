@@ -1,20 +1,17 @@
-import { RotateCw } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils.js";
 import { Button } from "./primitives-core.js";
-import { Banner } from "./primitives-layout.js";
 
-/** The one failure notice: a plain sentence, what still works, then a single action beneath. */
-export function FailureNotice({ sentence, stillWorks, action, className }: {
+/** The one failure notice: a dark strip with a triangle, one short line and at most one secondary button. */
+export function FailureNotice({ sentence, action, className }: {
   sentence: string;
-  stillWorks: string;
   action?: { label: string; onClick: () => void; icon?: ReactNode };
   className?: string;
 }) {
-  return <Banner tone="danger" className={className} title={<span>{sentence}</span>}>
-    <span>{stillWorks}</span>
-    {action && <div className={cn("mt-[var(--ds-space-base)] flex items-center")}>
-      <Button variant="primary" icon={action.icon ?? <RotateCw aria-hidden width={14} height={14} />} onClick={action.onClick}>{action.label}</Button>
-    </div>}
-  </Banner>;
+  return <div role="alert" className={cn("flex items-center gap-2.5 rounded-[10px] border border-ui-stroke bg-ui-panel px-3 py-2 text-[12px] leading-[18px] text-ui-secondary", className)}>
+    <TriangleAlert aria-hidden width={14} height={14} className="shrink-0 text-ui-muted" />
+    <span className="min-w-0 flex-1 truncate" title={sentence}>{sentence}</span>
+    {action && <Button size="sm" variant="secondary" icon={action.icon} onClick={action.onClick} className="shrink-0">{action.label}</Button>}
+  </div>;
 }

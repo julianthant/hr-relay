@@ -316,7 +316,7 @@ it('shows one retryable failure after a lost chat response', async () => {
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));
   await act(async () => { current.onAction({ type: 'edit', value: 'start selected workflow' }); current.onAction({ type: 'send' }); });
   assert.equal(current.state.turn.state, 'failed');
-  assert.match(document.body.textContent ?? '', /Reply unavailable\. Your request is kept\./u);
+  assert.match(document.body.textContent ?? '', /Reply unavailable\./u);
   assert.equal(document.body.textContent?.includes('lost workflow proposal response'), false);
   await act(async () => { current.onAction({ type: 'confirm' }); });
   assert.equal(calls, 1);
@@ -413,7 +413,7 @@ it('shows a failed activity read as one notice, not "No activity today", and Ret
   const read = async () => { reads++; if (reads === 1) throw Error('activity raw failure'); return { rows: [] } as never; };
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(AssistantServedActivity, { query: '', read })));
-  assert.match(host.textContent ?? '', /Activity did not load\./u);
+  assert.match(host.textContent ?? '', /Couldn't load activity\./u);
   assert.equal(host.textContent?.includes('No activity today'), false);
   assert.equal(host.textContent?.includes('activity raw failure'), false);
   await act(async () => { [...host.querySelectorAll('button')].find(button => button.textContent === 'Retry')?.click(); });

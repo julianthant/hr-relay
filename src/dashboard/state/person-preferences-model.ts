@@ -27,7 +27,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
   let document: EditableSettingsWire | undefined;
   const listeners = new Set<() => void>();
   const publish = (next: PersonPreferencesState) => { state = next; for (const listener of listeners) listener(); };
-  const fail = (problem: string, uncertain = false) => publish({ ...state, state: uncertain ? "uncertain" : "failed", problem });
+  const fail = (problem: string, uncertain = false, value = state.value) => publish({ value, state: uncertain ? "uncertain" : "failed", problem });
   const port: PersonPreferencesPort = {
     snapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
@@ -45,8 +45,8 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
         requestedBy: binding.scope.actorId, source: "person-preferences", family: "settings", type: "apply-settings",
         target: { expectedRevision: document.revision }, payload: { settingsSchemaHash: document.settingsSchemaHash,
           patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
-      resolvePersonPreferences(mergeSettingsPatch({ preferences: state.value }, patch).preferences);
-      publish({ ...state, state: "saving" });
+      const previous = state.value;
+      publish({ value: resolvePersonPreferences(mergeSettingsPatch({ preferences: previous }, patch).preferences), state: "saving" });
       let readback: EditableSettingsWire | undefined;
       const outcome = await binding.executor.execute(command, { scope: binding.scope,
         readback: async (_request, reply) => {
@@ -57,7 +57,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
         } });
       if (started !== generation) return false;
       if (outcome.kind !== "confirmed" || readback === undefined) {
-        fail(outcome.kind === "confirmed" ? operatorFailureSentence("COMMAND_OUTCOME_UNCERTAIN") : outcome.feedback.text, commandAttemptView(outcome).view === "unknown");
+        fail(outcome.kind === "confirmed" ? operatorFailureSentence("COMMAND_OUTCOME_UNCERTAIN") : outcome.feedback.text, commandAttemptView(outcome).view === "unknown", commandAttemptView(outcome).view === "unknown" ? state.value : previous);
         return false;
       }
       document = readback;

@@ -65,7 +65,7 @@ export function AssistantServedActivity({ query, read }: { query: string; read: 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the read happens once per opening and once per Retry
   }, [attempt]);
   if (rows === undefined) return <ActivitySkeleton />;
-  if (rows === "failed") return <FailureNotice sentence="Activity did not load." stillWorks="Your chats are not affected." action={{ label: "Retry", onClick: () => setAttempt(count => count + 1) }} />;
+  if (rows === "failed") return <FailureNotice sentence="Couldn't load activity." action={{ label: "Retry", onClick: () => setAttempt(count => count + 1) }} />;
   const needle = query.trim().toLowerCase(), shown = rows.filter(row => row.primary.toLowerCase().includes(needle));
   if (rows.length === 0) return <EmptyState title="No activity today" />;
   return shown.length === 0 ? <div className="hub-empty">No matching activity.</div> : <Rows rows={shown} />;

@@ -40,7 +40,7 @@ it('shows a loading frame with the table header', async () => {
 
 it('shows a failure notice with one Retry button when the list cannot be read', async () => {
   wiring.error = 'down'; await render();
-  assert.match(host.textContent ?? '', /Spreadsheets couldn't be loaded\./);
+  assert.match(host.textContent ?? '', /Couldn't load spreadsheets\./);
   const retry = [...host.querySelectorAll('button')].filter(node => node.textContent?.trim() === 'Retry');
   assert.equal(retry.length, 1);
   await click(retry[0]);

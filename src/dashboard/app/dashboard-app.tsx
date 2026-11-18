@@ -304,7 +304,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
         className="flex min-h-screen items-center justify-center bg-[color:var(--ds-surface-page)] p-[var(--ds-space-loose)]"
       >
         <div className="w-full max-w-[560px]">
-          <FailureNotice sentence="Relay could not start." stillWorks="Nothing was changed."
+          <FailureNotice sentence="Couldn't start Relay."
             action={{ label: "Reload", onClick: () => window.location.reload() }} />
         </div>
       </main>
@@ -1126,7 +1126,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         />
         {quitting && <Notice sticky tone="info" title="Relay quits after runs pause" description={PAUSE_ALL_EFFECT} />}
         {dayResource.state !== "failed" && (streamDown || lifecycle.resource.state === "failed")
-          ? <div className="px-[var(--ds-space-base)] pt-[var(--ds-space-base)]"><FailureNotice sentence="Can't reach Relay. Reconnecting." stillWorks="What you see may be out of date, and runs already filed are not affected."
+          ? <div className="px-[var(--ds-space-base)] pt-[var(--ds-space-base)]"><FailureNotice sentence="Can't reach Relay."
             action={{ label: "Retry", onClick: () => { dayState.refresh(); lifecycle.refresh(); } }} /></div> : null}
         {dayResource.state === "loaded" && stoppedWorkerToasts(dayResource.value, id => workflowCatalog.find(entry => entry.id === id)?.label ?? id)
           .map(warning => <Notice key={warning.description} sticky tone={warning.tone} title={warning.title} description={warning.description} />)}
@@ -1176,7 +1176,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
                 <h1 className="sr-only">{workflowLabelOf(activeWorkflowId)} queue</h1>
               {dayWire === undefined || !queueWorkflowAvailable ? (
                 dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && !streamDown ? <QueueSkeleton /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
-                  {dateError === undefined && dayResource.state === "failed" ? <FailureNotice sentence="Relay could not load the queue." stillWorks="Settings and the Assistant still work."
+                  {dateError === undefined && dayResource.state === "failed" ? <FailureNotice sentence="Couldn't load the queue."
                     action={{ label: "Retry", onClick: dayState.refresh }} /> : <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
                     description={dateError ?? (dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />}
                 </PanelBody></Panel>

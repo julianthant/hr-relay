@@ -36,7 +36,8 @@ describe("General ChatGPT account", () => {
     const port = controlledPort({ state: "unavailable", message: "Account read failed", account: { state: "connected", name: "Held operator", email: "held@example.com", expiresAt: IsoInstantSchema.parse("2099-01-01T00:00:00.000Z"), planUsage: "enabled" } });
     const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port }));
     assert.match(html, /Held operator.*held@example\.com/u);
-    assert.match(html, /Account read failed.*This is the last account Relay confirmed\./u);
+    assert.match(html, /Account read failed/u);
+    assert.match(html, />Retry</u);
     assert.doesNotMatch(html, /Disconnect/u);
     assert.doesNotMatch(html, />Connect</u);
   });
@@ -47,7 +48,7 @@ describe("General ChatGPT account", () => {
     assert.doesNotMatch(loading, /aria-busy="true"/u);
     assert.doesNotMatch(loading, />Connect</u);
     const failed = render({ state: "unavailable", message: "Account read failed" });
-    assert.match(failed, /Relay couldn&#x27;t check ChatGPT\./u);
+    assert.match(failed, /Couldn&#x27;t check ChatGPT\./u);
     assert.match(failed, />Retry</u);
     assert.doesNotMatch(failed, /Not connected|>Connect</u);
     const limited = render({ state: "connected", name: "Preview operator", email: "operator@example.com", planUsage: "limit-reached" });
@@ -58,16 +59,17 @@ describe("General ChatGPT account", () => {
 });
 
 
-it("places a rejected account port action outside the field group with its original failure copy", async () => {
+it("shows a rejected account port action in the card with its original failure copy and keeps Connect", async () => {
   const port = controlledPort({ state: "signed-out" }, { signIn: async () => { throw new Error("synthetic action failure"); } });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
   const action = [...host.querySelectorAll("button")].find(button => button.textContent === "Connect");
   assert.ok(action); await act(async () => action.click());
   const banner = [...host.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes(ERROR_CATALOG.CHATGPT_CONNECT_FAILED.text));
-  assert.ok(banner); assert.equal(banner.closest(".ds-form-group"), null);
+  assert.ok(banner); assert.ok(banner.closest(".ds-form-group"));
   assert.match(banner.textContent ?? "", /Relay could not connect ChatGPT\. Try connecting again\./);
-  assert.deepEqual([...banner.querySelectorAll("button")].map(button => button.textContent), ["Try again"]);
+  assert.deepEqual([...banner.querySelectorAll("button")], []);
+  assert.ok([...host.querySelectorAll("button")].some(button => button.textContent === "Connect"));
 });
 
 
@@ -190,7 +192,7 @@ describe("ChatGPT card states", () => {
     assert.doesNotMatch(html, /<span class="min-w-0 truncate/u);
   });
 
-  it("uses the disconnect sentence for a failed disconnect and a beneath Try again button", async () => {
+  it("uses the disconnect sentence in the card for a failed disconnect and keeps Disconnect as the retry", async () => {
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: controlledPort(connected, { signOut: async () => "CHATGPT_AUTH_UNAVAILABLE" }) })));
     await act(async () => [...document.body.querySelectorAll("button")].find(node => node.textContent === "Disconnect")?.click());
@@ -199,7 +201,7 @@ describe("ChatGPT card states", () => {
     const text = document.body.textContent ?? "";
     assert.ok(text.includes(ERROR_CATALOG.CHATGPT_DISCONNECT_FAILED.text));
     assert.equal(text.includes("sign-in"), false);
-    assert.ok([...document.body.querySelectorAll("button")].some(node => node.textContent === "Try again"));
+    assert.ok([...document.body.querySelectorAll("button")].some(node => node.textContent === "Disconnect"));
   });
 
   it("sizes the loading skeleton as the one status row", () => {
