@@ -86,16 +86,9 @@ function placementOf(command: ServedCommand): ActionDescriptorWire["placement"] 
 
 // Cancellation of parked writes cannot promise to cancel an unresolved external action.
 function cancelBody(facts: QueueRowActionFacts): string {
-  const scope = facts.memberCount > 0
-    ? `This cancels the group and every one of its ${String(facts.memberCount)} delegated members. `
-    : "This stops the run where it is and settles it cancelled. ";
-  if (facts.parkedWrite) {
-    return `${scope}This run is parked on a fenced write whose outcome is UNKNOWN, and cancelling is `
-      + "REFUSED until that write is answered — a cancelled run cannot be resolved, so the cancel would "
-      + "strand a real HR transaction nobody settled. Record it present or absent on the run's parked "
-      + "write panel first, then cancel.";
-  }
-  return `${scope}Cancelling is final: a cancelled run is never resumed, only run again.`;
+  const scope = facts.memberCount > 0 ? `Cancels the group and its ${String(facts.memberCount)} delegated members. ` : "";
+  if (facts.parkedWrite) return `${scope}REFUSED until the parked write, outcome UNKNOWN, is answered present or absent.`;
+  return `${scope}Final: a cancelled run is never resumed.`;
 }
 
 function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
@@ -163,7 +156,7 @@ export function queueRowActions(
     && policyEnables(policy, "recover-run", facts)
     ? [ActionDescriptorWireSchema.parse({ key: "recover-run", label: facts.crashed ? "Rerun" : "Recover completed steps", kind: "command",
       command: "recover-run", expectedVersion: facts.rowRevision, intent: "neutral", icon: "retry", placement: ["footer", "menu"],
-      confirm: { title: "Recover completed steps", body: "Continue using authenticated completed steps. Unfinished work runs again. Uncertain writes require their own resolution.",
+      confirm: { title: "Recover completed steps", body: "Unfinished steps run again; uncertain writes stay parked.",
         confirmLabel: "Recover", tone: "neutral" } })] : [];
   const rerun = (!facts.crashed || recover.length === 0) && !facts.isChild && !facts.parkedWrite
     && ["done", "failed", "partial"].includes(facts.status)

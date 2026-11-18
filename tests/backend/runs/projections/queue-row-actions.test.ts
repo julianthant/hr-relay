@@ -294,8 +294,8 @@ describe("queue-row action descriptors — the per-status set", () => {
 
     const parked = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("blocked", { parkedWrite: true }))[0];
     assert.ok(parked?.kind === "command" && parked.command === "cancel");
-    assert.match(parked.confirm?.body ?? "", /outcome is UNKNOWN/);
-    assert.match(parked.confirm?.body ?? "", /REFUSED until that write is answered/);
+    assert.match(parked.confirm?.body ?? "", /outcome UNKNOWN/);
+    assert.match(parked.confirm?.body ?? "", /REFUSED until the parked write/);
     assert.match(parked.confirm?.body ?? "", /present or absent/);
   });
 
