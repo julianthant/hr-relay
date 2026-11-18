@@ -15,11 +15,13 @@ import { ProfileCustodyUnavailableError, profileReservations, assertPrivateProfi
 export { ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT, workerProfileDirectory } from "../../storage/browser-roots.js";
 export type { BrowserDeadlineScheduler, PersistentContextLauncher } from "./native-browser.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
+import { UCPATH_HIRE_UI } from "../../systems/ucpath/driver/hire-ui-registry.js";
+import { I9_CREATION_UI, I9_UI_REGISTRY } from "../../systems/i9/driver/ui-registry.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { lstatSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
-import type { BrowserContext, Frame, Page } from "playwright";
+import type { BrowserContext, Frame, Locator, Page } from "playwright";
 import type {
   BrowserSessionCloseProof,
   BrowserSessionCloseReason,
@@ -137,6 +139,24 @@ function bindingFor(bindings: BrowserSystemBindings, system: BrowserSystemId): B
     );
   }
   return binding;
+}
+
+/** Every form recipe's SSN control, masked in each frame of every capture. */
+const ssnMasks = (frame: Frame): Locator[] => [frame.locator(UCPATH_PENDING_READ_RECIPES.ssn), UCPATH_HIRE_UI.field(frame, "ssn"),
+  I9_CREATION_UI.field(frame, "ssn"), I9_UI_REGISTRY.ssn(frame)];
+const SSN_CONTROL_NAME = /social security|national id|\bssn\b/iu;
+
+/** Whether the frame paints an SSN-named control that no form recipe masks. */
+async function unmaskedSsnControl(frame: Frame, assertCurrent: () => void): Promise<boolean> {
+  assertCurrent();
+  const painted = frame.getByRole("textbox", { name: SSN_CONTROL_NAME }).or(frame.getByRole("spinbutton", { name: SSN_CONTROL_NAME })).filter({ visible: true });
+  if (await painted.count() === 0) return false;
+  assertCurrent();
+  const masked = (await Promise.all(ssnMasks(frame).map(mask => mask.elementHandles()))).flat();
+  try {
+    assertCurrent();
+    return await painted.evaluateAll((controls, covered) => controls.some(control => !covered.includes(control)), masked);
+  } finally { await Promise.all(masked.map(handle => handle.dispose())); }
 }
 
 // A Playwright message starts "<object>.<method>: [<Class>: ]", and the page chooses the class text; only these fixed names leave it.
@@ -365,7 +385,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
               return reachable !== watched;
             };
             for (const frame of frames) {
-              if (await secretPresent(frame)) return unavailable("secret-controls-present");
+              if (await secretPresent(frame) || await unmaskedSsnControl(frame, assertCurrent)) return unavailable("secret-controls-present");
             }
             if (pageVersion !== version) return unavailable("page-changed");
             stage = "page-capture";
@@ -380,12 +400,12 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
                 assertCurrent();
                 if (!after.authenticated || pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
               },
-              mask: () => page.frames().map(frame => frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)),
+              mask: () => page.frames().flatMap(ssnMasks),
               assertSafe: async () => {
                 assertCurrent();
                 if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
                 for (const frame of page.frames()) {
-                  if (await secretPresent(frame)) throw new FullPageCaptureRefusedError("secret-controls-present");
+                  if (await secretPresent(frame) || await unmaskedSsnControl(frame, assertCurrent)) throw new FullPageCaptureRefusedError("secret-controls-present");
                 }
                 if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
               },
@@ -394,7 +414,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             stage = "secret-check";
             if (pageVersion !== version) return unavailable("page-changed");
             for (const frame of frames) {
-              if (await secretPresent(frame)) return unavailable("secret-controls-present");
+              if (await secretPresent(frame) || await unmaskedSsnControl(frame, assertCurrent)) return unavailable("secret-controls-present");
             }
             if (pageVersion !== version) return unavailable("page-changed");
             return Object.freeze({ ...identity, state: "available", ...capture, diagnosticAttachments: diagnostics.snapshot() });

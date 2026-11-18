@@ -163,6 +163,45 @@ describe("whole-page factory screenshots", () => {
       for (const y of [220, 1220, 2220]) assert.deepEqual(pixel(png, 30, y), [255, 0, 255]);
     });
   });
+  // The I-9 creation form, the I-9 search dialog and the UCPath Hire wizard each label their SSN control.
+  for (const label of ["U.S. Social Security Number", "Social Security Number", "National ID"]) {
+    for (const target of ["window", "element", "iframe"] as const) it(`masks the "${label}" control in every ${target} band`, async () => {
+      const fields = [0, 1, 2].map(i => `<div style="height:1000px;padding-top:200px;background:white"><label for="ssn-${i}" style="display:block;height:20px">${label}</label><input id="ssn-${i}" style="width:200px;height:40px;background:red" value="fixture-${i}"></div>`).join("");
+      const body = target === "window" ? fields : target === "element" ? `<div style="height:600px;overflow:auto">${fields}</div>` : `<iframe style="border:0;width:100%;height:600px" srcdoc='${html(fields)}'></iframe>`;
+      await withPage(body, async (_page, resource) => {
+        const png = await image(resource);
+        for (const y of [240, 1240, 2240]) assert.deepEqual(pixel(png, 30, y), [255, 0, 255]);
+      });
+    });
+  }
+  for (const child of [false, true]) {
+    it(`refuses a painted SSN control in the ${child ? "child frame" : "page"} that no form recipe masks`, async () => {
+      const field = '<label for="unmasked">Employee SSN</label><input id="unmasked" value="fixture-value">';
+      await withPage(`${content}${child ? `<iframe srcdoc='${html(field)}'></iframe>` : field}`, async (_page, resource) => {
+        const evidence = await resource.screenshot?.();
+        assert.ok(evidence?.state === "unavailable");
+        assert.equal(evidence.reason, "secret-controls-present");
+        assert.equal("bytes" in evidence, false);
+      });
+    });
+  }
+  it("refuses an unmasked SSN control painted during a band", async () => {
+    await withPage(content, async (page, resource) => {
+      const screenshot = page.screenshot.bind(page);
+      page.screenshot = async options => {
+        await page.evaluate(() => document.body.insertAdjacentHTML("afterbegin", '<input aria-label="Social Security No." value="fixture-value">'));
+        return screenshot(options);
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+    });
+  });
+  it("captures a page whose unmasked SSN control is never painted", async () => {
+    await withPage(`${content}<input aria-label="Employee SSN" value="fixture-value" hidden>`, async (_page, resource) => {
+      assert.equal((await image(resource)).height, 3000);
+    });
+  });
   for (const target of ["window", "element", "iframe"] as const) {
     it(`restores the ${target} scroll position after capture`, async () => {
       const body = target === "window" ? content : target === "element" ? `<div id="scroller" style="height:600px;overflow:auto">${content}</div>` : `<iframe style="border:0;width:100%;height:600px" srcdoc='${html(content)}'></iframe>`;

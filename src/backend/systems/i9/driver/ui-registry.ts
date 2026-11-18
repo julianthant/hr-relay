@@ -1,10 +1,10 @@
-import type { Locator, Page } from "playwright";
+import type { Frame, Locator, Page } from "playwright";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 
 export const I9_APP_ORIGIN = "https://wwwe.i9complete.com";
 
 export const I9_CREATION_UI = deepFreeze({
-  field: (page: Page, key: "firstName" | "lastName" | "middleName" | "ssn" | "dob" | "email") => page.getByRole("textbox", {
+  field: (page: Page | Frame, key: "firstName" | "lastName" | "middleName" | "ssn" | "dob" | "email") => page.getByRole("textbox", {
     name: { firstName: "First Name (Given Name)*", lastName: "Last Name (Family Name)*", middleName: "Middle Name",
       ssn: "U.S. Social Security Number", dob: "Date of Birth", email: "Employee's Email Address" }[key], exact: true }),
   createProfile: (page: Page) => page.getByRole("link", { name: "create new I9: new employee", exact: true }),
@@ -33,7 +33,7 @@ export const I9_UI_REGISTRY = deepFreeze({
   clear: (page: Page) => page.getByRole("link", { name: "Clear Search Filters & Results", exact: true }),
   lastName: (dialog: Locator) => dialog.getByRole("textbox", { name: "Last Name", exact: true }),
   firstName: (dialog: Locator) => dialog.getByRole("textbox", { name: /First Name/u }),
-  ssn: (dialog: Locator) => dialog.getByRole("textbox", { name: "Social Security Number", exact: true }),
+  ssn: (dialog: Locator | Frame) => dialog.getByRole("textbox", { name: "Social Security Number", exact: true }),
   profileId: (dialog: Locator) => dialog.getByRole("textbox", { name: "Profile ID", exact: true }),
   employeeId: (dialog: Locator) => dialog.getByRole("textbox", { name: "Employee ID", exact: true }),
   submitSearch: (page: Page) => page.getByRole("button", { name: "Search", exact: true }),
