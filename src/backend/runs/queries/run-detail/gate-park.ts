@@ -55,7 +55,7 @@ import { timelineCheckpointReference } from "../../../../models/events/timeline.
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
 import type { DecisionInputWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
 import { IDENTITY_REVIEW_TEXT, PARKED_WRITE_RECORDS, REFERENCE_CHECK_REVIEW_TEXT, parkedWriteRecordId, type ParkedWriteRecord } from "../../decisions/decision-catalog.js";
-import { projectDecision, rowActionOption } from "../../decisions/project-decision.js";
+import { projectDecision, rowActionOption, type ServedOption } from "../../decisions/project-decision.js";
 import { decisionAnswerer, type DecisionAnswerer } from "../../decisions/decision-answer.js";
 
 
@@ -139,15 +139,15 @@ function reviewBeforeWriteDecision(deps: RunDetailQueryDeps, authority: RunRecor
 }
 
 /** The reference review: the gate's declared arm plus the run's own cancel; the context names each spreadsheet that did not confirm the person, never a row's values. */
-function referenceCheckReviewDecision(deps: RunDetailQueryDeps, authority: RunRecord, arms: readonly Readonly<{ value: string; label: string; hint: string }>[], gateId: string): RunDecisionWire | undefined {
+function referenceCheckReviewDecision(deps: RunDetailQueryDeps, authority: RunRecord, arms: readonly Readonly<{ value: string; label: string; hint?: string }>[], gateId: string): RunDecisionWire | undefined {
   const check = hireReviewCheckpoint(deps, authority, "reference-check", VerifyWorkbookPerson.output);
   const unconfirmed = check?.checks.filter(item => item.outcome !== "found") ?? [];
   if (unconfirmed.length === 0) return undefined;
   const send = (arm: string) => ({ via: "gate-arm" as const, gateNodeId: gateId, expectedVersion: authority.version, arm });
   return projectDecision("review-before-write", [
     ...arms.map(arm => ({ id: arm.value, label: arm.label, hint: arm.hint, send: send(arm.value) })),
-    ...rowActionOption("cancel-run", "cancel", deps.projection.queueSurface(authority.envelope.runId)?.actions).map(option => ({ ...option, hint: REFERENCE_CHECK_REVIEW_TEXT.cancelHint })),
-  ], { title: REFERENCE_CHECK_REVIEW_TEXT.title, context: `${unconfirmed.map(item => item.line).join("; ")}. ${REFERENCE_CHECK_REVIEW_TEXT.compared}` });
+    ...rowActionOption("cancel-run", "cancel", deps.projection.queueSurface(authority.envelope.runId)?.actions),
+  ], { title: REFERENCE_CHECK_REVIEW_TEXT.title, context: [...unconfirmed.map(item => item.line), REFERENCE_CHECK_REVIEW_TEXT.compared].join(" · ") });
 }
 
 /** The reference review's one stored answer is "continue"; a stale version or another arm is refused. */
@@ -206,23 +206,23 @@ function classifyHireReviewChoices(mode: "new-hire" | "rehire", match: z.infer<t
 
 type HireNames = Pick<z.infer<typeof HirePlanSchema>["employee"], "firstName" | "middleName" | "lastName"
   | "preferredFirstName" | "preferredMiddleName" | "preferredLastName" | "ssn">;
-const nameParts = (first: string, middle: string, last: string) => `first ${first}, ${middle === "" ? "no middle name" : `middle ${middle}`}, last ${last}`;
+const nameParts = (first: string, middle: string, last: string) => `last ${last}, first ${first}${middle === "" ? "" : `, middle ${middle}`}`;
 
-/** The split legal and preferred names are served before approval because the hire writes them; an unconfirmed match lists every dropped hit with its reason. No SSN or date of birth is served. */
+/** The split legal names, and preferred names where they differ, are served before approval because the hire writes them; an unconfirmed match lists every dropped hit with its reason. No SSN or date of birth is served. */
 export function hireReviewDecision(mode: "new-hire" | "rehire", match: z.infer<typeof SearchPersonMatchOutputSchema>, names: HireNames,
-  arms: readonly Readonly<{ value: string; label: string; hint: string }>[], gateId: string, expectedVersion: number): RunDecisionWire | undefined {
+  arms: readonly Readonly<{ value: string; label: string; hint?: string }>[], gateId: string, expectedVersion: number): RunDecisionWire | undefined {
   const choices = safeHireReviewChoices(mode, match, names);
   if (choices === undefined) return undefined;
   const unconfirmed = match.hits.length > 0 && match.confirmed.length === 0, count = match.hits.length;
   const unpickable = unconfirmed ? match.dropped.filter(hit => !choices.existing.some(person => person.emplId === hit.emplId)) : [];
   const send = (arm: string) => ({ via: "gate-arm" as const, gateNodeId: gateId, expectedVersion, arm });
-  const served = arms.flatMap(arm => {
+  const served = arms.flatMap<ServedOption>(arm => {
     if (arm.value === "new-hire" && choices.newHire) return [unconfirmed
-      ? { id: arm.value, label: "File as a new hire", hint: `None of the ${String(count)} UCPath matches is this person. Relay creates a new person.`, send: send(arm.value),
-        confirm: { title: "File as a new hire", body: `You are ruling out all ${String(count)} UCPath matches. Relay creates a new person in UCPath.`, confirmLabel: "File new hire", tone: "destructive" as const } }
+      ? { id: arm.value, label: "File as a new hire", send: send(arm.value),
+        confirm: { title: "File as a new hire", body: `Rules out all ${String(count)} UCPath ${count === 1 ? "match" : "matches"}.`, confirmLabel: "File new hire", tone: "destructive" as const } }
       : { id: arm.value, label: arm.label, hint: arm.hint, send: send(arm.value) }];
     if (arm.value === "existing-person" && choices.existing.length > 0) return [{ id: arm.value, label: arm.label, send: send(arm.value),
-      hint: unconfirmed ? "One of the UCPath matches is this person. Relay files the hire under that employee ID." : arm.hint,
+      hint: arm.hint,
       input: { kind: "candidate" as const, table: {
         title: unconfirmed ? "UCPath matches" : "Confirmed UCPath matches",
         columns: [{ id: "name", label: "Name" }, { id: "eid", label: "Employee ID" }, ...unconfirmed ? [{ id: "check", label: "UCPath check" }] : []],
@@ -231,18 +231,21 @@ export function hireReviewDecision(mode: "new-hire" | "rehire", match: z.infer<t
           ...person.reason === undefined ? [] : [{ columnId: "check", value: person.reason, tone: "attention" as const }],
         ] })),
       } },
-      ...unconfirmed ? { confirm: { title: "Use an unconfirmed employee", body: "Relay did not confirm this person in Person Org. The hire is filed under the employee ID you picked.",
+      ...unconfirmed ? { confirm: { title: "Use an unconfirmed employee", body: "Not confirmed in Person Org.",
         confirmLabel: "Use this employee", tone: "destructive" as const } } : {} }];
     return [];
   });
   // The confirmable existing-person arm opens first, so the matches are on screen when the card opens.
   const ordered = [...served.filter(option => option.id === "existing-person"), ...served.filter(option => option.id !== "existing-person")];
-  const context = `Legal name: ${nameParts(names.firstName, names.middleName, names.lastName)}. `
-    + `Preferred name: ${nameParts(names.preferredFirstName, names.preferredMiddleName, names.preferredLastName)}.`
-    + (unconfirmed ? ` UCPath returned ${String(count)} possible ${count === 1 ? "match" : "matches"} and Relay confirmed none. `
-      + (names.ssn === null ? "Searched by name and date of birth." : "Searched by name, date of birth and SSN.") : "")
-    + (unpickable.length === 0 ? "" : ` Under another name: ${unpickable.map(hit => `${hit.name} (${directIdentifierDisplay(maskedEid(hit.emplId))}): ${hit.reason}`).join("; ")}. `
-      + "Relay cannot file a hire under another name. If one of them is this person, cancel this run and file the rehire by hand in UCPath.");
+  const legal = nameParts(names.firstName, names.middleName, names.lastName);
+  const preferred = nameParts(names.preferredFirstName, names.preferredMiddleName, names.preferredLastName);
+  const context = [
+    `Legal: ${legal}`,
+    ...preferred === legal ? [] : [`Preferred: ${preferred}`],
+    ...unconfirmed ? [`UCPath: ${String(count)} ${count === 1 ? "match" : "matches"}, 0 confirmed`, `Searched: ${names.ssn === null ? "name, DOB" : "name, DOB, SSN"}`] : [],
+    ...unpickable.map(hit => `Other name: ${hit.name} (${directIdentifierDisplay(maskedEid(hit.emplId))}, ${hit.reason})`),
+    ...unpickable.length === 0 ? [] : ["If one is this person, cancel and file the rehire by hand in UCPath"],
+  ].join(" · ");
   // With no eligible arm (a concurrent hire whose hits are all under another name) the card still explains the manual rehire.
   return ordered.length === 0 && unpickable.length === 0 ? undefined : projectDecision("review-before-write", ordered, { context });
 }
@@ -396,7 +399,7 @@ function parkedWriteActions(
     {
       key: "recheck-write",
       label: "Check again",
-      detail: "Read the target system again. A verified transaction continues the run; uncertainty keeps the write parked.",
+      detail: "Files nothing.",
       intent: "warning",
       icon: "resolve",
       placement: ["banner", "footer"],
@@ -405,7 +408,7 @@ function parkedWriteActions(
       expectedVersion: authority.version,
       confirm: {
         title: "Check the target system again",
-        body: `Relay reads ${intent.system} again and submits nothing. If it finds this write, the run continues to its next step.`,
+        body: `Reads ${intent.system}; submits nothing.`,
         confirmLabel: "Check again",
         tone: "neutral",
       },
@@ -414,7 +417,7 @@ function parkedWriteActions(
     {
       key: "resolve-write-absent",
       label: "I confirmed it is NOT there",
-      detail: "Release the fence so the run may attempt the write again under a new generation.",
+      detail: "Allows one more attempt.",
       intent: "primary",
       icon: "resolve",
       placement: ["banner", "footer"],
@@ -423,8 +426,7 @@ function parkedWriteActions(
       expectedVersion: authority.version,
       confirm: {
         title: "Confirm the transaction is absent",
-        body: `This authorizes a fresh attempt against ${intent.system}. If the transaction does exist, `
-          + "the retry submits it a SECOND time.",
+        body: `If it is in ${intent.system}, the retry submits it a second time.`,
         confirmLabel: "It is not there",
         tone: "destructive",
       },
@@ -435,7 +437,7 @@ function parkedWriteActions(
 
 
 type IdentityOption = Readonly<{ ref: string; eid: string; chosenFrom: "checked" | "name-search" | "manual"; displayName: string; maskedEid: string; origin: string }>;
-type IdentityArm = Readonly<{ outcome: string; label: string; hint: string; rejectReason?: string }>;
+type IdentityArm = Readonly<{ outcome: string; label: string; hint?: string; rejectReason?: string }>;
 type IdentityGateFacts = Readonly<{
   runId: string; gateId: string; label: string; parkedAt: string; version: number; resultSchemaHash: string;
   packet: IdentityEvidencePacket; evidenceDigest: string; gateRef: string; order: number | undefined;
@@ -642,7 +644,7 @@ function identityComparisons(packet: IdentityEvidencePacket): readonly Readonly<
 export function identityGateDecision(
   options: readonly Pick<IdentityOption, "ref" | "displayName" | "maskedEid" | "origin">[],
   actions: readonly ActionDescriptorWire[],
-  arms: readonly Readonly<{ outcome: string; label: string; hint: string }>[],
+  arms: readonly Readonly<{ outcome: string; label: string; hint?: string }>[],
   rowActions: readonly ActionDescriptorWire[] | undefined,
   subject?: Readonly<{ documentName: string }>,
   typed?: Readonly<{ label: string; placeholder: string; pattern: string }>,
@@ -668,7 +670,7 @@ export function identityGateDecision(
       ...(typed === undefined ? {} : { typed: { label: typed.label, placeholder: typed.placeholder, pattern: typed.pattern, lookup: true as const } }),
     } } }]),
     ...rowActionOption("cancel-run", "cancel", rowActions),
-  ], subject === undefined ? {} : { title: `Which ${subject.documentName} is this run about?`, context: `UCPath found ${options.length} people with this name.` });
+  ], subject === undefined ? {} : { title: `Which ${subject.documentName} is this run about?`, context: `${options.length} UCPath name matches` });
 }
 
 function identityGateActions(facts: IdentityGateFacts): unknown[] {
@@ -679,9 +681,6 @@ function identityGateActions(facts: IdentityGateFacts): unknown[] {
     {
       key: "resolve-gate-approved",
       label: options.length === 1 ? "Approve this person" : "Approve the chosen person",
-      detail: options.length > 1
-        ? "Choose which candidate the separation document means."
-        : "Confirm the one candidate the separation document means.",
       intent: "primary",
       icon: "resolve",
       placement: ["banner", "footer"],
@@ -884,10 +883,10 @@ export function parkedWriteDecision(parked: Readonly<{ taskId: string; parkedCod
   const record = PARKED_WRITE_RECORDS[parked.taskId];
   const transaction = parked.acceptsTransactionId ? { kind: "text" as const, label: "Transaction number", placeholder: "T00000000", pattern: "^T\\d+$" } : undefined;
   return projectDecision(parked.parkedCode === "unknown" ? "write-unknown" : "write-parked", [
-    ...sending("check-again", find("check-parked-write"), record === undefined ? {} : { hint: `Reads ${record.check} again; files nothing.` }),
+    ...sending("check-again", find("check-parked-write"), {}),
     ...sending("saved", find("recheck-write"), record === undefined ? {} : { label: `Saved in ${record.system}`,
-      hint: transaction === undefined ? `Relay checks ${record.system}, then the run continues.` : "Relay checks this number, then the run continues." }, transaction),
-    ...sending("not-saved", find("resolve-write-absent"), record === undefined ? {} : { label: `Not saved, ${record.again}`, hint: record.againHint }),
+      ...(transaction === undefined ? {} : { hint: "Relay verifies this number first." }) }, transaction),
+    ...sending("not-saved", find("resolve-write-absent"), record === undefined ? {} : { label: `Not saved, ${record.again}` }),
   ], { ...(record === undefined ? {} : parkedWriteText(record, parked.readBack, parked.recordId)),
     // After a failed read-back the frame preselects the read that files nothing.
     ...(parked.readBack ? { recommend: "check-again" } : {}) });
@@ -898,7 +897,7 @@ function parkedWriteText(record: ParkedWriteRecord, readBack: boolean, recordId:
   const where = recordId === undefined || record.id === undefined ? `${record.check} in ${record.system}` : record.id.where(recordId);
   return readBack
     ? { title: `${record.record[0]?.toUpperCase() ?? ""}${record.record.slice(1)} saved, but the read-back failed`,
-      context: `${record.system} accepted the ${record.act.toLowerCase()}, but Relay could not read its status. Check ${where}.` }
+      context: `${record.system} accepted the ${record.act.toLowerCase()}; status unreadable. Check ${where}.` }
     : { title: `Did the ${record.record} save in ${record.system}?`, context: `${record.act} did not confirm. Check ${where}.` };
 }
 
@@ -908,12 +907,12 @@ function parkedWriteActionsWithCheck(
   check: { state: "available"; target: ParkedWriteCheckTarget } | { state: "unavailable"; code: "PARKED_CHECK_UNAVAILABLE" },
 ): unknown[] {
   return [...parkedWriteActions(authority, intent), ...(intent.taskId !== "ucpath/create-termination" || check.state !== "available" ? [] : [{
-      key: "check-parked-write", label: "Check again", detail: "Read UCPath while keeping this write parked.",
+      key: "check-parked-write", label: "Check again", detail: "Files nothing.",
       intent: "warning", icon: "resolve", placement: ["review"], kind: "command", command: "check-parked-write",
       expectedVersion: authority.version, checkTarget: check.target,
       writeTarget: publicWriteTarget({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId,
         bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest }),
-      confirm: { title: "Read UCPath transaction findings", body: "Read the transaction list and details. The write stays parked; Relay submits nothing and does not authorize a retry.",
+      confirm: { title: "Read UCPath transaction findings", body: "Submits nothing; the write stays parked.",
         confirmLabel: "Check again", tone: "neutral" },
     }])];
 }

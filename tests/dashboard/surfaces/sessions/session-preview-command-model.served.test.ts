@@ -1,5 +1,11 @@
 import { IdleSessionSchedule, IDLE_REFRESH_MS } from "../../../../src/dashboard/surfaces/sessions/session-idle-model.js";
-import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { FIXTURE_START_PICKER_BOOTSTRAP as SERVED_CATALOG_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { launchWorkflows as launchServedWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
+import { parseWorkflows as parseServedWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
+import { buildWorkflowCatalog as buildServedCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+const SERVED_FIXTURE = launchServedWorkflows(parseServedWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
+const SERVED_CATALOG = buildServedCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/worker-stop-reason-label.js";
@@ -17,14 +23,13 @@ import { createSessionPreviewPort, sessionCommandEffect, type SessionCommandBind
 import { sessionsFromDay, sessionWorkerAuthorityKey } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
 import { DashboardDayWireSchema, WorkerCardWireSchema, UnavailableWorkerCardWireSchema, type DashboardDayWire } from "../../../../src/models/dashboard/projection.js";
-import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../mocks/helpers/fixture-day.js";
 
 function SessionPanelWithToasts(props: ComponentProps<typeof SessionPanel>) {
   return createElement(TooltipProvider, null, createElement(ToastProvider, null, createElement(SessionPanel, props)));
 }
 
-const catalog = buildWorkflowCatalog([], true, previewFixtureSources([]));
+const catalog = SERVED_CATALOG;
 const now = FIXTURE_NOW;
 const LIFETIME = uuidOf(7001), NEXT_LIFETIME = uuidOf(7002);
 function basis(lifetimeId: string | null, version = 0) {
@@ -171,7 +176,7 @@ it.each([
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
     const button = document.querySelector<HTMLButtonElement>('button[aria-label="Remove worker"]'); assert(button);
     await act(async () => button.click());
     if (via === "check") {
@@ -201,7 +206,7 @@ it("removes the card when a lost Remove reply is confirmed by its audit and serv
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding, open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding, open: true, onOpenChange() {} })));
     const button = document.querySelector<HTMLButtonElement>('button[aria-label="Remove worker"]'); assert(button);
     await act(async () => button.click());
     assert.equal(document.querySelectorAll("article").length, 0);
@@ -219,7 +224,7 @@ it("keeps both removed cards gone when their readbacks arrive out of order", asy
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding, open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding, open: true, onOpenChange() {} })));
     const [first, second] = document.querySelectorAll<HTMLButtonElement>('button[aria-label="Remove worker"]');
     assert(first && second);
     await act(async () => first.click());
@@ -317,7 +322,7 @@ it.each(["pending", "lost", "applied"] as const)("follows a Remove still in flig
   const h = harness(); let release!: (value: unknown) => void; let original: CommandRequest | undefined;
   h.effect(command => { original = command; return new Promise((resolve, reject) => { release = value => { if (value instanceof Error) reject(value); else resolve(value); }; }); });
   const host = document.createElement("div"); document.body.append(host); let root = createRoot(host);
-  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} }));
   const text = () => document.body.textContent ?? "";
   try {
     await act(async () => render());
@@ -355,7 +360,7 @@ it("hydrates mounted Remove after remount, retains it through outage and a faile
   const h = harness(); let original: CommandRequest | undefined;
   h.effect(command => { original = command; return applied(command); });
   const host = document.createElement("div"); document.body.append(host); let root = createRoot(host);
-  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} }));
   const click = async (label: string) => {
     const button = [...document.querySelectorAll("button")].find(button => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === label);
     assert(button, label); await act(async () => button.click());
@@ -424,7 +429,7 @@ it("maps unavailable served authority/catalog to fixed text while retaining diag
   const error = new DashboardClientError({ kind: "network", message: "private transport diagnostic" });
   const base = h.binding();
   try {
-    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", open: true, onOpenChange() {}, binding: { ...base, dayState: { ...base.dayState, day: { state: "failed", error } } } })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, open: true, onOpenChange() {}, binding: { ...base, dayState: { ...base.dayState, day: { state: "failed", error } } } })));
     assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /private transport diagnostic/);
     assert.equal(error.message, "private transport diagnostic");
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
@@ -435,9 +440,9 @@ it("maps a cached ready card to fixed unavailable when the mounted catalog remov
   const h = harness(); const binding = h.binding();
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding, open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding, open: true, onOpenChange() {} })));
     assert.equal(document.querySelectorAll("article").length, 1);
-    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog: [], source: "served", binding, open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog: [], binding, open: true, onOpenChange() {} })));
     assert.equal(document.querySelectorAll("article").length, 0);
     assert.match(document.body.textContent ?? "", /Session information is unavailable/);
     assert.doesNotMatch(document.body.textContent ?? "", /SESSION_WORKFLOW_UNREGISTERED|person-lookup/);
@@ -453,7 +458,7 @@ it.each(["present", "unavailable"] as const)("renders starting browser requireme
   h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], state: "starting", browsers: [], browserRequirements: requirements }] }));
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
     const article = host.querySelector("article"); assert(article);
     if (requirementState === "present") {
       assert.deepEqual([...article.querySelectorAll("li")].map(item => item.textContent), ["UCPathNot opened", "KualiNot opened"]);
@@ -516,7 +521,7 @@ it.each(["outside-day", "empty", "skipped", "cancelled"] as const)("keeps the se
   const reason = scenario === "outside-day" ? "Run timeline is not served on this day" : scenario === "empty" ? "No steps are served for this run" : "The current timeline contains states unavailable in this view";
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
     const article = host.querySelector("article"); assert(article);
     assert(!article.textContent?.includes(reason), "the served timeline refusal is a data gap, not card text");
     assert.equal((sessionsFromDay(h.day(), catalog, now) as Extract<ReturnType<typeof sessionsFromDay>, { state: "ready" }>).workers[0].timelineUnavailable, reason);
@@ -530,7 +535,7 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
   const h = harness(); const card = h.day().workerCards[0];
   const row = h.day().queueSurfaces.find(row => row.workflowId === card.workflowId); assert(row);
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} }));
   try {
     h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state: "running", currentRun: { state: "present", runId: row.runId, traceId: row.traceId } }],
       queueSurfaces: [{ ...row, pipeline: [{ id: "served-active", label: "Served active step", state: "active" }] }] }));
@@ -571,7 +576,7 @@ it("distinguishes unopened browser requirements from observed unavailable health
         browserRequirements: { state: "present", systems: ["crm", "ucpath"] }, browsers: [{ sessionId: uuidOf(9200), system: "crm", openedAt: now, observation }] }] }));
       const view = sessionsFromDay(h.day(), catalog, now); assert(view.state === "ready");
       assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", observation?.state === "present" && observation.health === "failed" ? "failed" : "unavailable"], ["UCPath", "unopened"]]);
-      await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+      await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
       assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), [observation?.state === "present" && observation.health === "failed" ? "CRMFailed" : observation?.state === "unavailable" ? "CRMUnavailable. Browser health was not served" : "CRMUnavailable", "UCPathNot opened"]);
       assert.match(host.querySelector("article")?.textContent ?? "", /Idle.*No run assigned/s);
       assert.equal(h.sent.length, 0);
@@ -626,7 +631,7 @@ async function lostRetry(options: { audit?: (command: CommandRequest) => unknown
   const { audit } = options;
   if (audit) h.auditBy((commandId: string) => { const sent = h.sent.find(command => command.commandId === commandId); return sent ? audit(sent) : { state: "unavailable" }; });
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  const render = () => act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+  const render = () => act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
   const text = () => document.body.textContent ?? "";
   const retry = () => document.querySelector<HTMLButtonElement>('button[aria-label="Retry"]');
   const toasts = () => [...document.querySelectorAll('[data-slot="toast"]')].filter(toast => (toast.textContent ?? "").includes("Couldn't restart this worker."));
@@ -748,7 +753,7 @@ it("keeps a system nickname's full name and an unavailable reason in the chip's 
     browsers: [{ sessionId: uuidOf(9500), system: "servicenow", openedAt: now, observation: { state: "unavailable", reason: "ServiceNow did not answer" } }] }] }));
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding: h.binding(), open: true, onOpenChange() {} })));
     const [chip, plain] = [...host.querySelectorAll("article li")];
     assert.equal(chip.textContent, "SNowServiceNowUnavailable. ServiceNow did not answer");
     assert.equal(chip.querySelector("span[aria-hidden='true']")?.textContent, "SNow");

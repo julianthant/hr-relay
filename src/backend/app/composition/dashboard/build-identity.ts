@@ -41,13 +41,14 @@ const INPUT_FILES = [
   "package-lock.json",
 ] as const;
 
+const MOCK_INPUT_ROOTS = ["tests/support/helpers/dashboard/controls", "tests/mocks/workflows"] as const;
 const MOCK_INPUT_FILES = ["vite.mocks.config.ts", "tests/mocks/app-entry.tsx", "tests/mocks/helpers/workflow-composition.ts"] as const;
 
 export function computeDashboardBuildInputDigest(repoRoot: string, buildScript: DashboardBuildCommand = DASHBOARD_BUILD_COMMAND): string {
   const root = resolve(repoRoot);
   const files: string[] = [];
   for (const inputRoot of INPUT_ROOTS) filesUnder(join(root, inputRoot), files);
-  if (buildScript === MOCK_BUILD_COMMAND) filesUnder(join(root, "tests/support/helpers/dashboard/controls"), files);
+  if (buildScript === MOCK_BUILD_COMMAND) for (const inputRoot of MOCK_INPUT_ROOTS) filesUnder(join(root, inputRoot), files);
   for (const inputFile of [...INPUT_FILES, ...(buildScript === MOCK_BUILD_COMMAND ? MOCK_INPUT_FILES : [])]) {
     const path = join(root, inputFile);
     if (!lstatSync(path).isFile()) throw new Error(`dashboard build input is not a regular file: ${inputFile}`);
