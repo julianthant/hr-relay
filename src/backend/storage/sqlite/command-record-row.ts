@@ -1,3 +1,4 @@
+import { createNativeRecordReadMemo } from "./run-record-row.js";
 import { validateNativeLifecycleRequest } from "./native-lifecycle-request.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -50,6 +51,8 @@ const RowSchema = z.strictObject({
   request_digest: z.string(), request_json: z.string(), state: CommandRowStateSchema,
   outcome_json: z.string().nullable(), created_at: z.string(), updated_at: z.string(),
 });
+const InternalTargetSchema = z.object({ runId: z.string().optional(), bundleId: z.string().optional(),
+  terminal: z.object({ result: z.object({ runId: z.string() }).optional(), authorization: z.object({ runId: z.string() }).optional() }).optional() });
 function isRunLifecycleCommand(input: unknown): boolean {
   return typeof input === "object" && input !== null && "kind" in input && input.kind === "run-lifecycle";
 }
@@ -64,15 +67,18 @@ export function commandIdentity(input: unknown, validateLifecycle: (command: unk
   const createdAt = "requestedAt" in request ? request.requestedAt : "recordedAt" in request ? request.recordedAt
     : "initializedAt" in request ? request.initializedAt : request.acceptance.request.requestedAt;
   const internalTarget = "kind" in request && request.kind === "run-lifecycle"
-    ? z.object({runId:z.string().optional(),bundleId:z.string().optional(),
-      terminal:z.object({result:z.object({runId:z.string()}).optional(),authorization:z.object({runId:z.string()}).optional()}).optional()}).parse(request.request) : undefined;
+    ? InternalTargetSchema.parse(request.request) : undefined;
   const target: unknown = "target" in request ? Object.entries(request.target).find(([key, value]) => key.endsWith("Id") && typeof value === "string")?.[1]
     : internalTarget?.runId ?? internalTarget?.terminal?.result?.runId ?? internalTarget?.terminal?.authorization?.runId ?? internalTarget?.bundleId;
   const targetId = typeof target === "string" ? target : null;
   return { request, family, actor, createdAt, targetId, json: canonicalJsonStringify(request) };
 }
+const readCommandRecord = createNativeRecordReadMemo<ReturnType<typeof commandIdentity>["request"]>();
 export function commandFromRow(input: unknown, validateLifecycle?: (command: unknown) => void) {
   const row = RowSchema.parse(input);
+  return validateLifecycle === undefined ? readCommandRecord(row, () => decodeCommandRow(row)) : decodeCommandRow(row, validateLifecycle);
+}
+function decodeCommandRow(row: z.infer<typeof RowSchema>, validateLifecycle?: (command: unknown) => void) {
   const identity = commandIdentity(JSON.parse(row.request_json), validateLifecycle);
   if (row.id !== identity.request.commandId || row.family !== identity.family || row.actor_id !== identity.actor
     || row.target_id !== identity.targetId || row.request_digest !== sha256Hex(identity.json) || row.created_at !== identity.createdAt) {
