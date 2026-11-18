@@ -427,8 +427,8 @@ Do not derive an empty requirement set from an empty open-session list. Actual w
 
 ## Assistant
 
-The served assistant starts closed and opens through its launcher. Explicit mock specimens retain
-their open panel for presentation checks.
+The served assistant starts closed and opens through its launcher; the mock harness opens it through
+the `assistantOpen` URL switch.
 
 The HUB shell is the single mounted assistant. Product chats retain C1 controller state per chat and
 send through the typed assistant client. Account, selected-profile and authority changes invalidate
@@ -457,8 +457,7 @@ rename, named versions). An attached PDF can start a served workflow whose input
 (Emergency Contact), through a confirmed card only. Sent attachments show as name-only pills on the
 operator message. The model,
 effort, approval and voice controls remain unavailable. The served model and effort labels come from
-the selected person’s preference; setup changes use the existing composer command. The explicit mock composition supplies approved mock conversations and sample workflow
-scenes; product failures never select those producers. Chat titles, selected chat, text drafts and displayed replies survive refresh in the current browser
+the selected person’s preference; setup changes use the existing composer command. The assistant has no mock conversation or sample-workflow path; the mock harness renders the served panel. Chat titles, selected chat, text drafts and displayed replies survive refresh in the current browser
 tab’s session storage, scoped only after the server verifies the selected person. Another person’s
 key is never adopted. Saved text confers no command or model authority: restored pending requests
 remain unknown, and review proposals expire. File bodies and
