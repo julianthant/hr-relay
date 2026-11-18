@@ -287,6 +287,21 @@ for (const role of ["profile", "remote"] as const) it(`parks an UNKNOWN ${role} 
   assert.equal(h.database.authority.writeIntents.findByPermanentKey("i9", key)?.generation, 1);
 });
 
+it("keeps the unresolved I-9 profile fence after an email correction", async () => {
+  const h = await harness({ profileSubmitFailure: new Error("synthetic lost profile response") });
+  const initial = await h.run();
+  assert.equal(initial.lifecycle.state, "parked-write");
+  const [intent] = h.database.authority.writeIntents.listByRun(initial.envelope.runId);
+  assert.equal(intent?.status, "parked");
+  const events = h.driver.events.slice();
+
+  const retry = await h.run(false, { ...h.example, email: "hire.corrected@example.test" });
+  assert.ok(retry.lifecycle.state === "terminal" && retry.lifecycle.outcome === "failed");
+  assert.deepEqual(h.driver.events, events, "the existing fence refuses before another Tracker probe or save");
+  assert.deepEqual(h.database.authority.writeIntents.listByRun(retry.envelope.runId), []);
+  assert.equal(h.database.authority.writeIntents.findByPermanentKey("i9", i9ProfileKey(h.example))?.generation, 1);
+});
+
 it("files the hire through the sequencer after both I-9 receipts and reuses all three saved effects", async () => {
   const h = await harness({}, {}), run = await h.run();
   assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify({ lifecycle: run.lifecycle, failures: h.database.authority.failures.listByRun(run.envelope.runId), intents: h.database.authority.writeIntents.listByRun(run.envelope.runId) }));
