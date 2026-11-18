@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { buildWorkflowExplorer } from "../../src/backend/runs/queries/explorer.js";
 import { READABLE_WORKFLOW_MODULES } from "../../src/backend/app/registries/workflow-registry.js";
-import { ErrorCatalogCodeSchema, failureCodeFromTaskCode, operatorFailureSentence } from "../../src/models/failures/error-catalog.js";
-import { WorkflowStepReviewSchema } from "../../src/models/workflow/review-spec.js";
+import type { ExplorerReviewSpec } from "../../src/models/dashboard/explorer-review-spec.js";
+import { WorkflowStepReviewSchema, type WorkflowStepReview } from "../../src/models/workflow/review-spec.js";
 import { FingerprintSchema } from "../../src/rules/identity/ids.js";
 import { manualClock } from "../../src/rules/time/clock.js";
-import { compileWorkflow } from "../../src/workflow-kit/workflow-definition.js";
+import { compileWorkflow, composeWorkflowModule } from "../../src/workflow-kit/workflow-definition.js";
+import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
 import { explorerQueryDeps } from "../support/fixtures/explorer-seams.js";
 
 function assertFrozenRecursively(value: unknown): void {
@@ -30,25 +31,41 @@ it("authors every registered step and retains every visible operator field exact
   }
 });
 
-it("serves complete pages, branch labels and catalog sentences for every declared task failure", () => {
-  const wire = buildWorkflowExplorer(explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("d".repeat(64))));
-  for (const workflow of wire.workflows) {
-    for (const step of workflow.reviewSpec.steps) {
-      assert.equal(step.pages.state, "authored", `${workflow.id}/${step.id}`);
-      for (const decision of step.decisions) {
-        assert.equal(decision.label.state, "authored", `${workflow.id}/${decision.id}`);
-        if (decision.kind !== "failure") continue;
-        const code = failureCodeFromTaskCode(decision.outcome);
-        assert.equal(ErrorCatalogCodeSchema.safeParse(code).success, true, `${workflow.id}/${decision.taskId}/${decision.outcome}`);
-        assert.deepEqual(decision.label, { state: "authored", text: operatorFailureSentence(code) });
-        assert.equal(decision.action, "stop");
-      }
-    }
+const deps = () => explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("d".repeat(64)));
+const explorer = () => buildWorkflowExplorer(deps());
+const rowsWithoutSample = (spec: ExplorerReviewSpec) => spec.steps.flatMap(step => step.blocks.flatMap(block =>
+  block.kind === "card" ? block.rows.filter(row => row.value === undefined).map(row => `${step.id}/${block.id}/${row.id}`) : []));
+
+it("serves a sample value for every row of every workflow", () => {
+  for (const workflow of explorer().workflows) assert.deepEqual(rowsWithoutSample(workflow.reviewSpec), [], workflow.id);
+});
+
+it("fails the completeness check on a broken Person Lookup example or an outcome with no words", () => {
+  const original = deps().modules.find(module => module.descriptor.id === "person-lookup"); assert.ok(original);
+  const rebuild = (edit: (review: WorkflowStepReview) => WorkflowStepReview) => {
+    const definition = { ...personLookupWorkflow, steps: personLookupWorkflow.steps.map(([group, entries]) =>
+      [group.key !== "searching" || group.review === undefined ? group : { ...group, review: edit(group.review) }, entries] as const) };
+    return buildWorkflowExplorer({ ...deps(), modules: [composeWorkflowModule(compileWorkflow(definition), original.stores)] }).workflows[0]?.reviewSpec;
+  };
+  const broken = rebuild(review => ({ ...review, pages: review.pages.map(page => ({ ...page, fields: page.fields.map(field => {
+    if (!("inputField" in field) || field.inputField !== "name") return field;
+    const { example: _example, ...rest } = field;
+    return rest;
+  }) })) }));
+  assert.ok(broken);
+  assert.deepEqual(rowsWithoutSample(broken), ["searching/person-search/search-name"]);
+  assert.throws(() => rebuild(review => ({ ...review, decisions: review.decisions?.map(decision => ({ ...decision,
+    outcomes: decision.outcomes.map(outcome => outcome.value === "resolved" ? { value: outcome.value } : outcome) })) })), /outcome resolved has no label/u);
+  assert.throws(() => rebuild(review => ({ ...review, decisions: review.decisions?.map(decision => ({ ...decision,
+    outcomes: decision.outcomes.map(outcome => outcome.value === "not-found" ? { value: outcome.value, label: "Nobody found", stops: true } : outcome) })) })), /without saying what the run does/u);
+});
+
+it("titles each Explorer step from the one timeline label that Logs shows for its nodes", () => {
+  for (const workflow of explorer().workflows) {
+    assert.deepEqual(workflow.reviewSpec.steps.map(step => step.title), workflow.timeline.map(group => group.label), workflow.id);
   }
-  const lookup = wire.workflows.find(workflow => workflow.id === "i9-lookup"); assert.ok(lookup);
-  const fields = lookup.reviewSpec.steps.flatMap(step => step.pages.state === "authored" ? step.pages.items.flatMap(page => page.fields) : []);
-  assert.equal(fields.find(field => field.label === "Authorized official signer")?.options, undefined);
-  assert.deepEqual(fields.find(field => field.label === "I-9 status")?.options, ["Signed", "Unsigned", "Historical", "Not found", "Unable to access"]);
+  const [group] = personLookupWorkflow.steps[0] ?? []; assert.ok(group?.review);
+  assert.equal(WorkflowStepReviewSchema.safeParse({ ...group.review, title: "Another title" }).success, false);
 });
 
 it("keeps review presentation out of execution fingerprints, task identities and existing timelines", () => {
@@ -64,12 +81,4 @@ it("keeps review presentation out of execution fingerprints, task identities and
     const original = compileWorkflow(definition);
     assert.deepEqual(stripped.contracts, original.contracts, definition.id);
   }
-});
-
-it("offers the dry-run preview outcome on I-9 Check Start's save-workbook step", () => {
-  const wire = buildWorkflowExplorer(explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("d".repeat(64))));
-  const workflow = wire.workflows.find(candidate => candidate.id === "i9-check-start"); assert.ok(workflow);
-  const outcome = workflow.reviewSpec.steps.flatMap(step => step.decisions).find(decision => decision.nodeId === "save-workbook" && decision.outcome === "dry-run");
-  assert.deepEqual(outcome?.action, "continue");
-  assert.deepEqual(outcome?.label, { state: "authored", text: "Preview the prepared output without saving it." });
 });

@@ -21,7 +21,7 @@ export const i9CheckWorkflow = defineWorkflow({
   workbookCheck: REFERENCE_CHECK,
   version: 1,
   code: "ic",
-  label: "I-9 Check",
+  label: "I-9 Check person",
   icon: "ClipboardCheck",
   category: "separation",
   summary: "Checks one OCR-derived person in UCPath and produces an I-9 retention row for the workbook library.",

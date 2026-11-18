@@ -34,7 +34,7 @@ export const TRANSACTION_STEP = Object.freeze({
         { id: "plan-values", kind: "check", text: "Plan the effective date, reason JRL, pool F and the matching comments.", nodeIds: [TRANSACTION_PLAN_NODE] },
         { id: "check-existing", kind: "check", text: "Check UCPath for a work-study transaction already filed for this employee on the effective date.", nodeIds: [SAVE_NODE] },
         { id: "fill-paypath", kind: "action", text: "Fill Position Data, the Job Data comments and the Initiator's comments, and read every value back.", nodeIds: [SAVE_NODE] },
-        { id: "save-and-submit", kind: "action", text: "In a live run, click Save and Submit once and read the filed transaction back.", nodeIds: [SAVE_NODE] },
+        { id: "save-and-submit", kind: "click", target: "Save and Submit", nodeIds: [SAVE_NODE], when: [{ "dry-run": ["false"], [SAVE_NODE]: ["saved", "unconfirmed"] }] },
       ],
       fields: [
         plannedField("effective-date", "Effective date", "The effective date typed for this run."),

@@ -77,7 +77,8 @@ describe_m1("frontend presentation producers", () => {
     assert_m1.match(activity, /Workflows/);
     assert_m1.doesNotMatch(activity, /Sample data/);
     const explorer = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(WorkflowExplorer_m1, { catalog: buildWorkflowCatalog_m1([], true, previewFixtureSources([])) })));
-    assert_m1.equal((explorer.match(/data-step-number=/g) ?? []).length, 22);
+    assert_m1.equal((explorer.match(/data-step-number=/g) ?? []).length, 0);
+    assert_m1.match(explorer, /No workflow is registered to inspect\./);
     assert_m1.doesNotMatch(explorer, /Registered definition|Back to dashboard/);
     const logs = renderToStaticMarkup_m1(createElement_m1(TooltipProvider_m1, null, createElement_m1(LogSample_m1)));
     assert_m1.match(logs, /Save and Submit/);
