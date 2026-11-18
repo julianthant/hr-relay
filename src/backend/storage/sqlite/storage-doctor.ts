@@ -11,6 +11,7 @@ import { constants as systemConstants } from "node:os";
 import { basename,isAbsolute,join,relative,resolve,sep } from "node:path";
 import { z } from "zod";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
+import type { TimelineEventRecord } from "../../../models/events/timeline.js";
 import {
 type RunQueuedWire,
 type SpanEventWire,
@@ -358,27 +359,23 @@ function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: str
 }> {
   const file = fileStatus(authorityPath);
   if (!file.isFile() || file.isSymbolicLink()) throw new SafeSpanCorpusError("timeline authority is not a regular no-follow file");
-  const snapshot = AuthorityDatabase.inspectTimelineReadOnly(admission, authorityPath, busyTimeoutMs, includeRecoveryEvidence);
-  const after = fileStatus(authorityPath);
-  if (file.dev !== after.dev || file.ino !== after.ino) throw new SafeSpanCorpusError("timeline authority file changed identity during inspection");
-  const rows = snapshot.records;
   const roots: MutableSpanAuthorityRoot[] = [];
   const firstRoot = new Map<string, MutableSpanAuthorityRoot>();
   const attempts = new Map<string, number>();
-  const pending = new Map<string, typeof rows[number][]>();
-  const validate = (root: MutableSpanAuthorityRoot, row: typeof rows[number]): void => {
+  const pending = new Map<string, TimelineEventRecord[]>();
+  const validate = (root: MutableSpanAuthorityRoot, row: TimelineEventRecord): void => {
     if (row.payload.kind !== "span" || row.payload.event.t === "run.queued") return;
     validateRunEventAgainstRoot(root, row.payload.event, `timeline:${row.workflow}:${row.retentionDate}`,
       row.cursor, attempts, row.source.kind === "native");
   };
-  for (const row of rows) {
-    if (row.payload.kind !== "span" || !("runId" in row.payload.event)) continue;
+  const visit = (row: TimelineEventRecord): void => {
+    if (row.payload.kind !== "span" || !("runId" in row.payload.event)) return;
     const event = row.payload.event;
     if (event.t !== "run.queued") {
       const root = firstRoot.get(event.runId);
       if (root !== undefined) validate(root, row);
       else pending.set(event.runId, [...(pending.get(event.runId) ?? []), row]);
-      continue;
+      return;
     }
     const root: MutableSpanAuthorityRoot = { queued: event, finalAttempt: event.attempt, possibleExternalWrite: false,
       streamIssues: [], lastTimestampMs: Date.parse(event.ts), terminal: false, taskSpans: new Set() };
@@ -410,7 +407,10 @@ function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: str
         for (const entry of prior) validate(root, entry);
       } else addStreamIssue(root, "run.queued appears after prior run event(s) without authority-reconstruction repair");
     }
-  }
+  };
+  const snapshot = AuthorityDatabase.inspectTimelineReadOnly(admission, authorityPath, visit, busyTimeoutMs, includeRecoveryEvidence);
+  const after = fileStatus(authorityPath);
+  if (file.dev !== after.dev || file.ino !== after.ino) throw new SafeSpanCorpusError("timeline authority file changed identity during inspection");
   // Retention may remove an ordinary queued root while retaining later events.
   // The canonical reconciliation reports that missing root without inventing it.
   return { state: "present", roots: roots.map(immutableSpanRoot),
