@@ -2,7 +2,7 @@ import type { RunQueueProjection } from "../../../runs/projections/run-queue-pro
 import { exportSearchMetadata } from "../../../runs/exports/search-metadata-export.js";
 import { createCalendarQuery } from "../../../runs/queries/calendar.js";
 import { randomBytes } from "node:crypto";
-import { WORKFLOW_MODULES, READABLE_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
+import { DASHBOARD_CATALOG_MODULES, WORKFLOW_MODULES, READABLE_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../../models/config/settings.js";
 import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import type { BootstrapQueryDeps } from "../../../runs/queries/bootstrap.js";
@@ -20,8 +20,6 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
   & { projection: Pick<RunQueueProjection, "queueSurfaces">; activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
 ): ShellRouteDeps {
   const { database, projection, clock, ids, artifacts } = input;
-  const catalogModules = READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module)
-    || module.descriptor.capabilities?.review === true);
   database.registerRunSearchDeclarations(WORKFLOW_MODULES.map(({ descriptor }) => ({
     workflow: descriptor.id, version: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
     subjectProjection: descriptor.subjectProjection ?? null,
@@ -44,7 +42,7 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
     })) },
   });
   return {
-    bootstrap: { appVersion: input.appVersion, actorLabel: input.actorLabel, clock, modules: catalogModules,
+    bootstrap: { appVersion: input.appVersion, actorLabel: input.actorLabel, clock, modules: DASHBOARD_CATALOG_MODULES,
       descriptorSetHash: input.descriptorSetHash, settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       preflightReport: input.preflightReport, projection, authorityMeta: () => database.getMeta(),
       workbookCompatibility: input.workbookCompatibility },

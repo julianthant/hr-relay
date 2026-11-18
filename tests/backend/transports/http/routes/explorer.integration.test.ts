@@ -4,7 +4,10 @@ import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness } from "../../.
 import { WorkflowExplorerWireSchema, type ExplorerWorkflowWire } from "../../../../../src/models/dashboard/explorer.js";
 import type { ExplorerReviewSpec, ExplorerSpecGate, ExplorerSpecValue } from "../../../../../src/models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../../src/models/failures/error-catalog.js";
-import { READABLE_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { DASHBOARD_CATALOG_MODULES, READABLE_WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { explorerPickerEntries } from "../../../../../src/dashboard/surfaces/explorer/explorer-picker-model.js";
+import type { RunStartWorkflow } from "../../../../../src/dashboard/surfaces/run-start/run-start.js";
+import { buildWorkflowCatalog } from "../../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 
 afterEach(disposeHttpRouteHarness);
 
@@ -197,9 +200,6 @@ it("serves a valid review spec for every readable workflow", async () => {
 
 it("serves the picker tree: startable workflows as roots, each delegated child under its parent, every title once", async () => {
   const workflows = await served();
-  const roots = WORKFLOW_MODULES.map(module => String(module.descriptor.id));
-  for (const root of roots) assert.ok(workflows.some(workflow => workflow.id === root), root);
-  assert.deepEqual([...roots].sort(), ["crm-doc-download", "emergency-contact", "i9-check-start", "onboarding", "person-lookup", "separations", "work-study"]);
   const pairs = workflows.flatMap(workflow => workflow.reviewSpec.steps.flatMap(entry => entry.blocks.flatMap(block =>
     block.kind === "starts" ? [`${workflow.id} > ${block.workflowId}`] : [])));
   assert.deepEqual([...new Set(pairs)].sort(), [
@@ -208,6 +208,16 @@ it("serves the picker tree: startable workflows as roots, each delegated child u
   ]);
   const titles = workflows.map(workflow => workflow.label);
   assert.deepEqual(titles.filter((title, index) => titles.indexOf(title) !== index), []);
+
+  const bootstrapped = DASHBOARD_CATALOG_MODULES.map(({ descriptor, role }) => ({ workflowId: String(descriptor.id), label: descriptor.label,
+    categoryId: descriptor.category, role, code: descriptor.code, inputRun: { state: "absent", reason: "" } }) as unknown as RunStartWorkflow);
+  const picker = explorerPickerEntries(buildWorkflowCatalog(bootstrapped, false), workflows);
+  assert.deepEqual(picker.filter(entry => entry.depth === 0).map(entry => entry.id).sort(),
+    ["emergency-contact", "i9-check-start", "onboarding", "person-lookup", "separations", "work-study"]);
+  assert.deepEqual(picker.map(entry => `${"  ".repeat(entry.depth)}${entry.title}`), [
+    "Person Lookup", "Separations", "I-9 Check", "  OCR", "    OCR Page", "    I-9 Lookup", "  I-9 Check person", "Onboarding",
+    "Emergency Contact", "  Emergency Contact member", "    OnBase Emergency Contact", "Work-Study",
+  ]);
 });
 
 it("serves a value for every Read row of every readable workflow", async () => {
