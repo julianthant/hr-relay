@@ -1,6 +1,7 @@
 /** The read-only Workflow Explorer wire: a projection of registration state derived at the server from the one composition root, never a second authority. */
 import { z } from "zod";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../failures/error-catalog.js";
+import { isUnlistedStorageFailure, operatorFailureLabel } from "../failures/failure-labels.js";
 import { ExplorerReviewSpecSchema } from "./explorer-review-spec.js";
 import { ContractSchemaLeafKindSchema } from "../validation/contract-boundary.js";
 
@@ -414,8 +415,10 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
         if (!decisions.some(decision => decision.id === node.id && decision.outcomes.some(outcome => outcome.value === branch.name))) issue(`review omits branch outcome ${node.id}/${branch.name}`);
       }
       for (const task of node.tasks) for (const code of task.errorCodes) {
-        const label = operatorFailureSentence(failureCodeFromTaskCode(code));
-        if (!decisions.some(decision => decision.outcomes.some(outcome => outcome.value === code && outcome.stops && outcome.label === label))) {
+        const catalogCode = failureCodeFromTaskCode(code);
+        if (isUnlistedStorageFailure(catalogCode)) continue;
+        const [label, sentence] = [operatorFailureLabel(catalogCode), `${operatorFailureSentence(catalogCode)} `];
+        if (!decisions.some(decision => decision.outcomes.some(outcome => outcome.value === code && outcome.stops && outcome.label === label && outcome.then.startsWith(sentence)))) {
           issue(`review omits declared failure ${node.id}/${task.taskId}/${code}`);
         }
       }

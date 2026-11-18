@@ -4,6 +4,7 @@ import { disposeHttpRouteHarness, harness } from "../../../../support/helpers/ba
 import { WorkflowExplorerWireSchema } from "../../../../../src/models/dashboard/explorer.js";
 import type { ExplorerReviewSpec, ExplorerSpecGate, ExplorerSpecValue } from "../../../../../src/models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../../src/models/failures/error-catalog.js";
+import { isUnlistedStorageFailure, operatorFailureLabel } from "../../../../../src/models/failures/failure-labels.js";
 
 afterEach(disposeHttpRouteHarness);
 
@@ -189,7 +190,9 @@ it("lists every task's declared failure intentionally, leaving only undeclared f
       const step = workflow.reviewSpec.steps[index]; assert.ok(step);
       const outcomes = step.blocks.flatMap(block => block.kind === "decision" ? block.outcomes : []);
       for (const node of workflow.nodes.filter(node => group.nodes.includes(node.id))) for (const task of node.tasks) for (const code of task.errorCodes) {
-        assert.ok(outcomes.some(outcome => outcome.value === code && outcome.stops && outcome.label === operatorFailureSentence(failureCodeFromTaskCode(code))), `${workflow.id}/${node.id}/${code}`);
+        if (isUnlistedStorageFailure(failureCodeFromTaskCode(code))) continue;
+        assert.ok(outcomes.some(outcome => outcome.value === code && outcome.stops && outcome.label === operatorFailureLabel(failureCodeFromTaskCode(code))
+          && outcome.then.startsWith(operatorFailureSentence(failureCodeFromTaskCode(code)))), `${workflow.id}/${node.id}/${code}`);
       }
       prose.push(step.title, ...step.description.map(line => line.text), ...step.checks.map(line => line.text));
       for (const block of step.blocks) {

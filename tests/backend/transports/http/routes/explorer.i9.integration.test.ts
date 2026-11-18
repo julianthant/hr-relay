@@ -4,6 +4,7 @@ import { disposeHttpRouteHarness, harness } from "../../../../support/helpers/ba
 import { WorkflowExplorerWireSchema } from "../../../../../src/models/dashboard/explorer.js";
 import type { ExplorerReviewSpec, ExplorerSpecGate, ExplorerSpecValue } from "../../../../../src/models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../../src/models/failures/error-catalog.js";
+import { isUnlistedStorageFailure, operatorFailureLabel } from "../../../../../src/models/failures/failure-labels.js";
 
 afterEach(disposeHttpRouteHarness);
 
@@ -198,7 +199,8 @@ it("serves the I-9 Lookup search and every Section 2 status without inventing a 
   }
   const ambiguous = walk(spec, {}, { "signer-status": "I9_LOOKUP_AMBIGUOUS" });
   assert.equal(ambiguous.stop?.stops, true);
-  assert.equal(ambiguous.stop?.then, "The run stops with a failure card.");
+  assert.equal(ambiguous.stop?.then, `${operatorFailureSentence("I9_LOOKUP_AMBIGUOUS")} The run stops with a failure card.`);
+  assert.equal(ambiguous.stop?.label, operatorFailureLabel("I9_LOOKUP_AMBIGUOUS"));
   assert.ok(spec.steps.every(entry => entry.blocks.every(block => ["card", "click", "decision"].includes(block.kind))));
 });
 
@@ -250,9 +252,10 @@ it("lists every declared task failure explicitly; only undeclared failures delib
     for (const group of workflow.timeline) {
       const decisions = blocks(spec, group.key, "decision");
       for (const node of workflow.nodes.filter(candidate => group.nodes.includes(candidate.id))) for (const task of node.tasks) for (const code of task.errorCodes) {
+        if (isUnlistedStorageFailure(failureCodeFromTaskCode(code))) continue;
         const decision = decisions.find(candidate => candidate.outcomes.some(outcome => outcome.value === code)); assert.ok(decision, `${group.label}: ${code}`);
         const outcome = decision.outcomes.find(candidate => candidate.value === code); assert.ok(outcome);
-        assert.deepEqual([outcome.label, outcome.then, outcome.stops], [operatorFailureSentence(failureCodeFromTaskCode(code)), "The run stops with a failure card.", true]);
+        assert.deepEqual([outcome.label, outcome.then, outcome.stops], [operatorFailureLabel(failureCodeFromTaskCode(code)), `${operatorFailureSentence(failureCodeFromTaskCode(code))} The run stops with a failure card.`, true]);
         const stopped = walk(spec, {}, { "identifier-result": "ambiguous", "hire-date-needed": "true", [decision.id]: code });
         assert.equal(stopped.stop?.value, code); assert.equal(stopped.steps.at(-1)?.id, group.key);
       }

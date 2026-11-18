@@ -1,6 +1,7 @@
 import type { ExplorerNodeWire } from "../../../models/dashboard/explorer.js";
 import { ExplorerReviewSpecSchema, type ExplorerReviewSpec, type ExplorerSpecValue } from "../../../models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../models/failures/error-catalog.js";
+import { isUnlistedStorageFailure, operatorFailureLabel } from "../../../models/failures/failure-labels.js";
 import type { NodeCondition } from "../../../models/workflow/node-condition.js";
 import type { OperatorFieldDisplay } from "../../../models/workflow/presentation.js";
 import { WorkflowStepReviewSchema } from "../../../models/workflow/review-spec.js";
@@ -379,15 +380,19 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
           { value: "already-present", label: "Already present", then: "Uses the verified existing change without saving it again, then continues.", stops: false },
           { value: "unconfirmed", label: "Save unconfirmed", then: "Parks the write for your review in Logs and does not retry it.", stops: true, ...gated(live) },
           ...(live === undefined ? [] : [{ value: DRY_RUN, label: "Dry run", then: "Prepares the change without saving it, then continues.", stops: false, ...gated(DRY) }])]);
-      } else if (shape.kind === "child-run" && shape.await === "terminal") {
-        point("succeeded", [continuing("succeeded", "Delegated work succeeds"), shape.onChildFailed === "fail-parent"
-          ? { value: "child-failed", label: "Delegated work fails", then: STOPS, stops: true }
-          : { value: "child-failed", label: "Delegated work fails", then: shape.onChildFailed === "allow-partial"
+      } else if (shape.kind === "child-run" && shape.await === "terminal" && child !== undefined) {
+        const name = child.descriptor.label;
+        const [finished, failed] = shape.cardinality === "many" ? [`${name}: all finished`, `${name}: some failed`] : [`${name} finished`, `${name} failed`];
+        point("succeeded", [continuing("succeeded", finished), shape.onChildFailed === "fail-parent"
+          ? { value: "child-failed", label: failed, then: STOPS, stops: true }
+          : { value: "child-failed", label: failed, then: shape.onChildFailed === "allow-partial"
             ? "Retains completed and failed results for review, then continues." : "Holds this run for your review in Logs.", stops: shape.onChildFailed === "block-parent" }]);
       }
     }
     const generic: Decision = { kind: "decision", id: `${group.key}-result`, label: "Step result", initial: "succeeded", outcomes: [continuing("succeeded", "Finishes")] };
     const owners = new Map<string, Decision[]>();
+    /** The catalog sentence of each listed failure outcome, which leads what the run does. */
+    const failureSentences = new Map<Outcome, string>();
     for (const member of group.nodes) {
       const node = nodeWire(member.id);
       const authored = decisions.filter(candidate => candidate.nodeIds.includes(node.id)).map(candidate => candidate.block);
@@ -399,13 +404,19 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
           if (typeof owner.initial === "string") owner.initial = { by: DRY_RUN, values: { true: DRY_RUN }, otherwise: owner.initial };
         }
         for (const task of node.tasks) for (const code of task.errorCodes) {
+          const catalogCode = failureCodeFromTaskCode(code);
+          if (isUnlistedStorageFailure(catalogCode)) continue;
+          const label = operatorFailureLabel(catalogCode);
+          if (label === undefined) throw new Error(`workflow ${descriptor.id} failure ${code} has no short operator label`);
+          const sentence = operatorFailureSentence(catalogCode);
           // A dry run prepares a transaction and never commits it, so commit failures apply only to a live run.
           const when = both(known, nodeGate(node.id), task.arm === "commit" && previewsOnDryRun(node) ? LIVE : undefined);
           const existing = owner.outcomes.findIndex(outcome => outcome.value === code);
           const previous = owner.outcomes[existing];
-          const outcome: Outcome = { value: code, label: operatorFailureSentence(failureCodeFromTaskCode(code)), then: STOPS, stops: true,
+          const outcome: Outcome = { value: code, label, then: `${sentence} ${STOPS}`, stops: true,
             ...gated(previous === undefined ? when : either(known, [previous.when, when])) };
           if (previous === undefined) owner.outcomes.push(outcome); else owner.outcomes[existing] = outcome;
+          failureSentences.set(outcome, sentence);
         }
       }
     }
@@ -413,7 +424,8 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
       const outcomes = owners.get(override.nodeId)?.flatMap(owner => owner.outcomes.filter(outcome => outcome.value === override.value)) ?? [];
       if (outcomes.length === 0) throw new Error(`workflow ${descriptor.id} review overrides unknown outcome ${override.nodeId}/${override.value}`);
       for (const outcome of outcomes) {
-        outcome.then = override.then;
+        const sentence = failureSentences.get(outcome);
+        outcome.then = sentence === undefined ? override.then : `${sentence} ${override.then}`;
         if (override.stops !== undefined) outcome.stops = override.stops;
       }
     }

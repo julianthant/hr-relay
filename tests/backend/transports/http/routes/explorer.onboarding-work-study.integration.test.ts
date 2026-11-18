@@ -3,6 +3,8 @@ import { afterEach, it } from "vitest";
 import { disposeHttpRouteHarness, harness } from "../../../../support/helpers/backend/http-route-harness.js";
 import { WorkflowExplorerWireSchema } from "../../../../../src/models/dashboard/explorer.js";
 import type { ExplorerReviewSpec, ExplorerSpecGate, ExplorerSpecValue } from "../../../../../src/models/dashboard/explorer-review-spec.js";
+import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../../src/models/failures/error-catalog.js";
+import { isUnlistedStorageFailure, operatorFailureLabel } from "../../../../../src/models/failures/failure-labels.js";
 
 afterEach(disposeHttpRouteHarness);
 
@@ -275,10 +277,11 @@ it("lists every declared task failure deliberately; only undeclared failures use
     for (const group of workflow.timeline) {
       const outcomes = blocks(spec, group.key, "decision").flatMap(block => block.outcomes);
       for (const node of workflow.nodes.filter(node => group.nodes.includes(node.id))) for (const task of node.tasks) for (const code of task.errorCodes) {
+        if (isUnlistedStorageFailure(failureCodeFromTaskCode(code))) continue;
         const outcome = outcomes.find(outcome => outcome.value === code); assert.ok(outcome, `${id}/${group.key}/${code}`);
         assert.equal(outcome.stops, true);
-        assert.equal(outcome.then, "The run stops with a failure card.");
-        assert.ok(!outcome.label.includes(code));
+        assert.equal(outcome.then, `${operatorFailureSentence(failureCodeFromTaskCode(code))} The run stops with a failure card.`);
+        assert.equal(outcome.label, operatorFailureLabel(failureCodeFromTaskCode(code)));
       }
     }
     assert.equal(spec.unlistedFailure, "Anything not listed stops the run with a failure card.");

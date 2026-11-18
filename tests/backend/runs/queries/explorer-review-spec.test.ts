@@ -7,6 +7,7 @@ import { READABLE_WORKFLOW_MODULES } from "../../../../src/backend/app/registrie
 import { ExplorerWorkflowWireSchema, type ExplorerWorkflowWire } from "../../../../src/models/dashboard/explorer.js";
 import { ExplorerReviewSpecSchema, type ExplorerReviewSpec } from "../../../../src/models/dashboard/explorer-review-spec.js";
 import { failureCodeFromTaskCode, operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
+import { isUnlistedStorageFailure, operatorFailureLabel } from "../../../../src/models/failures/failure-labels.js";
 import { contractSchemaLeaves } from "../../../../src/models/validation/contract-boundary.js";
 import { WorkflowStepReviewSchema } from "../../../../src/models/workflow/review-spec.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
@@ -34,10 +35,11 @@ it("serves every readable definition with its ordered steps and every declared t
     for (const [index, group] of entry.timeline.entries()) for (const node of entry.nodes.filter(candidate => group.nodes.includes(candidate.id))) {
       const declaration = READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === entry.id)?.definition.steps.find(([step]) => step.key === group.key)?.[0];
       for (const task of node.tasks) for (const code of task.errorCodes) {
+        if (isUnlistedStorageFailure(failureCodeFromTaskCode(code))) continue;
         const outcomes = review.steps[index]?.blocks.flatMap(block => block.kind === "decision" ? block.outcomes : []).filter(outcome => outcome.value === code) ?? [];
         assert.ok(outcomes.length > 0, `${entry.id}/${node.id}/${code}`);
         for (const outcome of outcomes) assert.deepEqual([outcome.label, outcome.then, outcome.stops],
-          [operatorFailureSentence(failureCodeFromTaskCode(code)), declaration?.review?.outcomes?.find(outcome => outcome.value === code)?.then ?? "The run stops with a failure card.", true], `${entry.id}/${node.id}/${code}`);
+          [operatorFailureLabel(failureCodeFromTaskCode(code)), `${operatorFailureSentence(failureCodeFromTaskCode(code))} ${declaration?.review?.outcomes?.find(outcome => outcome.value === code)?.then ?? "The run stops with a failure card."}`, true], `${entry.id}/${node.id}/${code}`);
       }
     }
     assert.ok(decisions(review).every(block => block.outcomes.every(outcome => outcome.label !== "Anything else")), entry.id);
@@ -142,7 +144,7 @@ it("applies a task's outcome explanation to every decision that owns it", () => 
   for (const id of ["write-path", "existing-write-path"]) {
     const outcome = decision(entry.reviewSpec, id).outcomes.find(outcome => outcome.value === "ONBOARDING_WRITE_REVIEW_REFUSED");
     assert.ok(outcome);
-    assert.deepEqual([outcome.then, outcome.stops], [then, true]);
+    assert.deepEqual([outcome.then, outcome.stops], [`${operatorFailureSentence("ONBOARDING_WRITE_REVIEW_REFUSED")} ${then}`, true]);
   }
 });
 

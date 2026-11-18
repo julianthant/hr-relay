@@ -261,8 +261,12 @@ const group = Object.freeze({ ...defineWorkflowStep({ key: "i9-creation", label:
       ] }],
     branches: [{ nodeId: "i9-route", label: "I-9 record path", initial: { by: "hire-approval", values: { "existing-person": "existing" }, otherwise: "create" } }],
     branchLabels: [
-      { nodeId: "i9-route", outcome: "create", label: "Create an I-9 profile and remote record for a new hire" },
-      { nodeId: "i9-route", outcome: "existing", label: "Use the confirmed existing person without creating an I-9 record" }
+      { nodeId: "i9-route", outcome: "create", label: "Create a new I-9 record" },
+      { nodeId: "i9-route", outcome: "existing", label: "Use the existing person" }
+    ],
+    outcomes: [
+      { nodeId: "i9-route", value: "create", then: "Creates an I-9 profile and remote record for the new hire, then continues." },
+      { nodeId: "i9-route", value: "existing", then: "Uses the confirmed existing person without creating an I-9 record, then continues." }
     ]
   } as const,
 });
