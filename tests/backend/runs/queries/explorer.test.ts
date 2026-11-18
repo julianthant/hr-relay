@@ -32,7 +32,7 @@ import {
   compileWorkflow,
   composeWorkflowModule,
 } from "../../../../src/workflow-kit/workflow-definition.js";
-import { defineWorkflowDescriptor, descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
+import { defineWorkflowDescriptor, descriptorRuntimeNodes, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { registration as separationsKualiReadWorkflowRegistration } from "../../../../src/workflows/separations/index.js";
 import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
 const separationsKualiReadWorkflow = separationsKualiReadWorkflowRegistration.proofs[1].definition;
@@ -554,6 +554,11 @@ describe("the workflow explorer projection", () => {
           nodes: nodes.map(({ id }) => String(id)),
         })),
       );
+      assert.deepEqual(
+        projected.scenarios.map(({ scenarioId }) => String(scenarioId)),
+        workflowProjections(module.descriptor).scenarios.map(String).sort(),
+      );
+      assert.ok(projected.scenarios.length > 0, `${String(module.descriptor.id)} serves no scenario`);
     }
 
     const harness = composeWorkflowModule(
