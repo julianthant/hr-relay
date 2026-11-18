@@ -43,6 +43,6 @@ export const I9_UI_REGISTRY = deepFreeze({
   restricted: (dialog: Locator) => dialog.getByText(/has not been granted access/iu).filter({ visible: true }),
   summaryHeading: (page: Page) => page.getByRole("heading", { name: "I-9 Record Summary Information", exact: true }),
   auditHeader: (page: Page) => page.getByRole("row", { name: /Audit History Event/u }),
-  signedRow: (page: Page) => page.getByRole("row", { name: /Signed Section 2/u }).first(),
-  auditCells: (row: Locator) => row.getByRole("cell"),
+  signedAuditRows: (page: Page) => page.getByRole("row", { name: /Signed Section 2/u }).evaluateAll(rows =>
+    rows.map(row => Array.from(row.querySelectorAll(":scope > td, :scope > [role=cell]"), cell => cell.textContent ?? ""))),
 });

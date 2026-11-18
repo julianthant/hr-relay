@@ -23,7 +23,7 @@ export function fakeI9Page(options: Readonly<{
   const fields = new Map<string, string>();
   const rows = options.rows ?? [i9SearchRow()];
   const signedCells = options.signedCells === undefined ? ["2", "01/01/2030", "Signed Section 2", "Example Representative"] : options.signedCells;
-  type Target = "options" | "dialog" | "clear" | "search" | "grid" | "rows" | "row" | "gridcell" | "empty" | "restricted" | "heading" | "header" | "signed" | "cells" | "field" | "settled";
+  type Target = "options" | "dialog" | "clear" | "search" | "grid" | "rows" | "row" | "gridcell" | "empty" | "restricted" | "heading" | "header" | "signed" | "field" | "settled";
   function locator(target: Target, index = 0, field = "") {
     const count = (): number => {
       if (target === "rows" || target === "row") return searched ? rows.length : 0;
@@ -61,13 +61,16 @@ export function fakeI9Page(options: Readonly<{
         if (target === "search") searched = true;
       },
       fill: async (value: string) => { fields.set(field, value); },
+      evaluateAll: async () => {
+        if (target !== "signed" || !auditReady) throw new Error(`unexpected row evaluation: ${target}`);
+        return signedCells === null ? [] : [signedCells];
+      },
       allTextContents: async () => {
         if (target === "gridcell") {
           const row = rows[index];
           if (row === undefined) throw new Error("fixture row missing");
           return row;
         }
-        if (target === "cells" && signedCells !== null) return signedCells;
         throw new Error(`unexpected text read: ${target}`);
       },
       getByRole: (role: string, input?: { name: string | RegExp }) => byRole(role, input),
@@ -81,7 +84,6 @@ export function fakeI9Page(options: Readonly<{
       if (role === "grid") return locator("grid");
       if (role === "row" && target === "grid") return locator("rows");
       if (role === "gridcell" && target === "row") return locator("gridcell", index);
-      if (role === "cell" && target === "signed") return locator("cells");
       if (role === "textbox" && target === "dialog") return locator("field", 0, String(input?.name));
       if (role === "heading" && input?.name instanceof RegExp && input.name.test("No results found. Search again or click Create New Profile to create a new employee.")) return locator("empty");
       throw new Error(`unknown nested role ${role} in ${target}`);

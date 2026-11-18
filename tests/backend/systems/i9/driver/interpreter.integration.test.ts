@@ -3,6 +3,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { createI9Driver } from "../../../../../src/backend/systems/i9/driver/interpreter.js";
 import { I9_APP_ORIGIN } from "../../../../../src/backend/systems/i9/driver/ui-registry.js";
+import { I9LookupError } from "../../../../../src/models/systems/i9/read-section2-signer.js";
 
 type Scenario = "empty" | "rows" | "restricted";
 
@@ -50,10 +51,13 @@ let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch({ headless: true }); });
 afterAll(async () => { await browser?.close(); });
 
-async function withI9App(scenario: Scenario, check: (page: Page) => Promise<void>): Promise<void> {
+async function withI9App(scenario: Scenario, check: (page: Page) => Promise<void>, pages: Readonly<Record<string, string>> = {}): Promise<void> {
   const context = await browser.newContext();
   try {
-    await context.route(`${I9_APP_ORIGIN}/**`, route => route.fulfill({ contentType: "text/html", body: i9App(scenario) }));
+    await context.route(`${I9_APP_ORIGIN}/**`, route => {
+      const path = new URL(route.request().url()).pathname;
+      return route.fulfill({ contentType: "text/html", body: pages[path] ?? i9App(scenario) });
+    });
     const page = await context.newPage();
     await page.goto(I9_APP_ORIGIN);
     await check(page);
@@ -87,5 +91,35 @@ describe("I-9 search dialog as rendered by I-9 Complete", () => {
           profileId: "900001", i9Id: "900002", nextAction: "Purge", startDate: "01/01/2030", createdOn: "01/01/2030" }],
       });
     });
+  });
+});
+
+const record = { profileId: "900001", i9Id: "900002" };
+const summaryRoute = `/form-I9/summary/${record.profileId}/${record.i9Id}`;
+
+function recordSummary(rows: string): string {
+  return `<!doctype html>
+<h1>I-9 Record Summary Information</h1>
+<table><thead><tr><th>Section</th><th>Date</th><th>Audit History Event</th><th>Created By</th></tr></thead>
+<tbody>${rows}</tbody></table>`;
+}
+
+describe("I-9 saved record reads", () => {
+  it("reads the signer from a single Section 2 audit event", async () => {
+    const row = "<tr><td>2</td><td>01/01/2030</td><td>Signed Section 2</td><td>Example Signer</td></tr>";
+    await withI9App("rows", async page => {
+      const driver = createI9Driver(() => undefined, page);
+      assert.deepEqual(await driver.readRecordSummary(record), { i9Status: "signed", signerName: "Example Signer", ...record });
+    }, { [summaryRoute]: recordSummary(row) });
+  });
+
+  it("refuses to pick between Section 2 audit rows with different signers", async () => {
+    const rows = ["Example First Signer", "Example Second Signer"].map(name =>
+      `<tr><td>2</td><td>01/01/2030</td><td>Signed Section 2</td><td>${name}</td></tr>`).join("");
+    await withI9App("rows", async page => {
+      const driver = createI9Driver(() => undefined, page);
+      await assert.rejects(driver.readRecordSummary(record),
+        error => error instanceof I9LookupError && error.code === "I9_LOOKUP_AMBIGUOUS");
+    }, { [summaryRoute]: recordSummary(rows) });
   });
 });

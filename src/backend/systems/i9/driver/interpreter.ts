@@ -89,12 +89,11 @@ export function createI9Driver(assertCurrent: () => void, page: Page, clock: Clo
       recordBrowserAction("opened", "i9.record.summary");
       if (historical) return { i9Status: "historical", signerName: "", ...record };
       await current(() => ui.auditHeader(page).waitFor({ state: "visible", timeout: CONTROL_MS }));
-      const row = ui.signedRow(page);
-      const signedCount = await current(() => row.count());
+      const signedRows = await current(() => ui.signedAuditRows(page));
       assertRecordRoute();
-      if (signedCount === 0) return { i9Status: "unsigned", signerName: "", ...record };
-      const cells = await current(() => ui.auditCells(row).allTextContents());
-      assertRecordRoute();
+      if (signedRows.length > 1) throw new I9LookupError("I9_LOOKUP_AMBIGUOUS");
+      const [cells] = signedRows;
+      if (cells === undefined) return { i9Status: "unsigned", signerName: "", ...record };
       const event = cells.at(-2);
       if (cells.length < 4 || event === undefined || normalize(event) !== "signed section 2") throw new I9LookupError();
       const signerName = cells.at(-1)?.trim();
