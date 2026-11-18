@@ -33,11 +33,9 @@ describe("the run-detail route at Onboarding's hire review", () => {
     assert.ok(detail.gate.state === "open" && detail.gate.decision !== undefined, "the served gate carries its decision packet");
     assert.equal(detail.gate.nodeId, "hire-review");
     assert.deepEqual(detail.gate.decision.options.map(option => [option.id, option.label, option.hint]),
-      [["new-hire", "File as a new hire", "None of the 3 UCPath matches is this person. Relay creates a new person."]]);
-    assert.equal(detail.gate.decision.context, "Legal name: first Fixture, middle Marie, last Hire. Preferred name: first Fix, no middle name, last Hire. "
-      + "UCPath returned 3 possible matches and Relay confirmed none. Searched by name and date of birth. "
-      + "Under another name: Other, Person (••••0001): Last name does not match; Other, Person (••••0002): Last name does not match; Other, Person (••••0003): Last name does not match. "
-      + "Relay cannot file a hire under another name. If one of them is this person, cancel this run and file the rehire by hand in UCPath.");
+      [["new-hire", "File as a new hire", undefined]]);
+    assert.equal(detail.gate.decision.context, "Legal: last Hire, first Fixture, middle Marie · Preferred: last Hire, first Fix · UCPath: 3 matches, 0 confirmed · Searched: name, DOB · "
+      + "Other name: Other, Person (••••0001, Last name does not match) · Other name: Other, Person (••••0002, Last name does not match) · Other name: Other, Person (••••0003, Last name does not match) · If one is this person, cancel and file the rehire by hand in UCPath");
     // The dashboard draws the packet on the gate's own blocked timeline line.
     assert.deepEqual(detail.timeline.events.filter(event => event.native?.nodeId === "hire-review").map(event => [event.label, event.state]), [["gate:hire-review", "blocked"]]);
   });

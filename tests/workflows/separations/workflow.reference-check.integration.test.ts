@@ -92,7 +92,7 @@ describe("Separations reference spreadsheet check", () => {
     const decision = f.card(started);
     assert.equal(decision.type, "review-before-write");
     assert.deepEqual(decision.options.map(option => [option.id, option.label, option.send.via]), [["continue", "Continue anyway", "gate-arm"], ["cancel-run", "Cancel run", "row-action"]]);
-    assert.equal(decision.context, "Badge list · Issued: not found. Relay compared the Employee ID, and the name where the sheet has one.");
+    assert.equal(decision.context, "Badge list · Issued: not found · Compared: Employee ID, and name where the sheet has one.");
     assert.equal(f.continueAnyway(started).state, "applied");
     const done = await f.execute(started);
     assert.ok(done.lifecycle.state === "terminal" && done.lifecycle.outcome === "done");
@@ -101,7 +101,7 @@ describe("Separations reference spreadsheet check", () => {
   it("stops with the same card when the name differs, without recording any value from the row, and Cancel run ends it", async () => {
     const f = await fixture(), started = f.start(INPUT, [f.renamed()]);
     assert.equal((await f.execute(started)).lifecycle.state, "parked-gate");
-    assert.equal(f.card(started).context, "Separations roster · People: name differs in row 2. Relay compared the Employee ID, and the name where the sheet has one.");
+    assert.equal(f.card(started).context, "Separations roster · People: name differs in row 2 · Compared: Employee ID, and name where the sheet has one.");
     assert.equal(JSON.stringify([f.events(started), f.card(started)]).includes(ROW_ONLY_NAME), false);
     assert.equal(f.cancel(started).state, "applied");
     const cancelled = f.current(started);
