@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, it } from "vitest";
+import { installNativeSsoGuard } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { probeSessionCookie } from "../../../../src/backend/systems/browser-shared/authenticated-application.js";
 import { submitPinnedUcsdSsoCredentials, verifyUcsdAuthenticatedApplication, waitForAuthenticatedLanding, waitForUcsdDuoSignIn } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
 import { BrowserLandingStallError, DuoTerminalRefusalError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
@@ -22,8 +23,52 @@ let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch({ channel: "chromium", headless: true }); });
 afterAll(async () => { await browser?.close(); });
 
-it("requires the session cookie to apply to the current application path", async () => {
+async function guardedContext() {
   const context = await browser.newContext();
+  await installNativeSsoGuard(context);
+  return context;
+}
+
+it.each(["missing guard", "late installation", "worker-controlled document", "registered worker"] as const)("refuses credentials before filling an unguarded form (%s)", async scenario => {
+  const context = scenario === "missing guard" || scenario === "late installation" ? await browser.newContext() : await guardedContext();
+  try {
+    if (scenario === "worker-controlled document") await context.addInitScript(() => {
+      Object.defineProperty(navigator.serviceWorker, "controller", { get: () => ({}) });
+    });
+    if (scenario === "registered worker") await context.addInitScript(() => {
+      Object.defineProperty(navigator.serviceWorker, "getRegistration", { value: async () => ({}) });
+    });
+    await context.route("**/*", route => route.fulfill({ contentType: "text/html", body: form() }));
+    const page = await context.newPage();
+    await page.goto(SSO);
+    if (scenario === "late installation") await installNativeSsoGuard(context);
+    let reads = 0;
+    await assert.rejects(submitPinnedUcsdSsoCredentials(page, async () => { reads++; return { userId: "fixture", password: "" }; },
+      () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO"), /UCSD_SSO_FIELDS/);
+    assert.equal(reads, 0);
+    assert.equal(await page.locator("#ssopassword").inputValue(), "");
+  } finally { await context.close(); }
+});
+
+it.each(["registration", "execution URL"] as const)("rechecks a changed %s after acquiring credentials", async change => {
+  const context = await guardedContext();
+  try {
+    await context.route("**/*", route => route.fulfill({ contentType: "text/html", body: form() }));
+    const page = await context.newPage();
+    await page.goto(SSO);
+    await assert.rejects(submitPinnedUcsdSsoCredentials(page, async () => {
+      await page.evaluate(change => {
+        if (change === "registration") Object.defineProperty(navigator.serviceWorker, "getRegistration", { value: async () => ({}) });
+        else document.forms[0]?.setAttribute("action", "?execution=changed");
+      }, change);
+      return { userId: "fixture", password: "fixture-password" };
+    }, () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO"), /UCSD_SSO_FIELDS/);
+    assert.equal(await page.locator("#ssopassword").inputValue(), "");
+  } finally { await context.close(); }
+});
+
+it("requires the session cookie to apply to the current application path", async () => {
+  const context = await guardedContext();
   try {
     const domain = "application.example.invalid";
     await context.route("**/*", route => route.fulfill({ body: "Application" }));
@@ -40,7 +85,7 @@ it("requires the session cookie to apply to the current application path", async
 });
 
 it.each(["cookie read", "absence check"] as const)("refuses mixed application documents after a reload during %s", async stage => {
-  const context = await browser.newContext();
+  const context = await guardedContext();
   try {
     const domain = "application.example.invalid";
     const url = `https://${domain}/app`;
@@ -66,7 +111,7 @@ it.each(["cookie read", "absence check"] as const)("refuses mixed application do
 });
 
 it("checks the submitted form after its fields are serialized", async () => {
-  const context = await browser.newContext();
+  const context = await guardedContext();
   try {
     let posts = 0;
     await context.route("**/*", route => {
@@ -84,9 +129,77 @@ it("checks the submitted form after its fields are serialized", async () => {
   } finally { await context.close(); }
 });
 
+it("refuses a submit handler that changes the pinned execution URL", async () => {
+  const context = await guardedContext();
+  try {
+    let posts = 0;
+    await context.route("**/*", route => {
+      if (route.request().method() === "POST") posts++;
+      return route.fulfill({ contentType: "text/html", body: form() });
+    });
+    const page = await context.newPage();
+    await page.goto(SSO);
+    await page.locator("form").evaluate(form => {
+      form.addEventListener("submit", () => form.setAttribute("action", "?execution=changed"));
+    });
+    await assert.rejects(submitPinnedUcsdSsoCredentials(page, async () => ({ userId: "fixture", password: "" }),
+      () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO"), /UCSD_SSO_FIELDS/);
+    await page.locator("form").waitFor();
+    assert.equal(posts, 0);
+  } finally { await context.close(); }
+});
+
+it.each(["prepare", "cancel click", "cancel submit"] as const)("honors the original sign-in handlers (%s)", async behavior => {
+  const context = await guardedContext();
+  try {
+    const posted: (string | null)[] = [];
+    await context.route("**/*", route => {
+      if (route.request().method() === "POST") posted.push(new URLSearchParams(route.request().postData() ?? "").get("stage"));
+      return route.fulfill({ contentType: "text/html", body: form().replace("</form>", '<input name="stage" type="hidden"></form>') });
+    });
+    const page = await context.newPage();
+    await page.goto(SSO);
+    await page.evaluate(behavior => {
+      const form = document.forms[0];
+      const button = form?.querySelector("button");
+      const stage = form?.elements.namedItem("stage");
+      if (!form || !button || !(stage instanceof HTMLInputElement)) throw new Error("fixture form missing");
+      button.onclick = event => {
+        if (event instanceof MouseEvent) stage.value = "clicked";
+        if (behavior === "cancel click") event.preventDefault();
+      };
+      form.onsubmit = event => {
+        const prepared = new FormData(form).get("stage");
+        if (event.isTrusted && prepared === "clicked" && event.submitter === button) stage.value += "-submitted";
+        if (behavior === "cancel submit") {
+          event.preventDefault();
+          location.hash = "cancelled";
+        }
+      };
+    }, behavior);
+    const actions: string[] = [];
+    const signing = submitPinnedUcsdSsoCredentials(page, async () => ({ userId: "fixture", password: "" }),
+      () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO", kind => actions.push(kind));
+    if (behavior === "prepare") {
+      await signing;
+      assert.deepEqual(posted, ["clicked-submitted"]);
+      assert.deepEqual(actions, ["typed", "typed", "clicked"]);
+    } else {
+      await assert.rejects(signing);
+      assert.deepEqual(posted, []);
+      assert.deepEqual(actions, ["typed", "typed"]);
+    }
+  } finally { await context.close(); }
+});
+
 it("accepts the committed landing reached by redirect from the pinned POST", async () => {
-  const context = await browser.newContext();
-  const server = createServer((_request, response) => response.end("Application"));
+  const context = await guardedContext();
+  const server = createServer((request, response) => {
+    if (request.url === "/sw.js") {
+      response.setHeader("content-type", "application/javascript");
+      response.end('self.addEventListener("fetch", event => { if (new URL(event.request.url).pathname === "/worker-check") event.respondWith(new Response("worker")); });');
+    } else response.end("Application");
+  });
   try {
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
@@ -108,13 +221,19 @@ it("accepts the committed landing reached by redirect from the pinned POST", asy
     await submitPinnedUcsdSsoCredentials(page, async () => ({ userId: "fixture", password: "" }),
       () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO");
     assert.equal(page.url(), landing);
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+    });
+    await page.reload();
+    assert.equal(await page.evaluate(async () => (await fetch("/worker-check")).text()), "worker");
   } finally {
     try { await context.close(); } finally { await server[Symbol.asyncDispose](); }
   }
 });
 
 it("requires the pinned POST to complete before recording submission", async () => {
-  const context = await browser.newContext();
+  const context = await guardedContext();
   try {
     await context.route("**/*", route => route.request().method() === "POST"
       ? route.abort() : route.fulfill({ contentType: "text/html", body: form() }));
@@ -132,7 +251,7 @@ for (const [system, recipe] of [
   ["ucpath", ucpathLoginRecipe], ["i9", i9LoginRecipe], ["onbase", onbaseLoginRecipe],
 ] as const) {
   it.each(["trusted", "wrong-origin", "wrong-destination"] as const)(`${system} requests credentials only for the proved SSO form (%s)`, async scenario => {
-    const browserContext = await browser.newContext();
+    const browserContext = await guardedContext();
     try {
       const page = await browserContext.newPage();
       const { context } = await contextFor({ url: "about:blank" }, undefined, system);
@@ -176,7 +295,7 @@ for (const [system, recipe] of [
 }
 
 it.each(["application", "duo", "embedded-duo"] as const)("binds terminal refusal text to the Duo document (%s)", async surface => {
-  const browserContext = await browser.newContext();
+  const browserContext = await guardedContext();
   try {
     const page = await browserContext.newPage();
     const { context } = await contextFor({ url: "about:blank" });
@@ -200,7 +319,7 @@ it.each(["application", "duo", "embedded-duo"] as const)("binds terminal refusal
 });
 
 it("waits through a client redirect and a delayed ready form before acquiring credentials", async () => {
-  const context = await browser.newContext();
+  const context = await guardedContext();
   let acquisitions = 0, submissions = 0;
   await context.route("**/*", async route => {
     if (route.request().method() === "POST") submissions++;
@@ -230,7 +349,7 @@ it("waits through a client redirect and a delayed ready form before acquiring cr
 });
 
 it("waits at duo.ucsd.edu for a delayed client redirect to the exact a5 form", async () => {
-  const context = await browser.newContext();
+  const context = await guardedContext();
   await context.route("**/*", route => route.fulfill({ contentType: "text/html", body: route.request().url() === SSO ? form() : "<main>Loading</main>" }));
   const page = await context.newPage();
   try {
@@ -245,7 +364,7 @@ it("waits at duo.ucsd.edu for a delayed client redirect to the exact a5 form", a
 });
 
 it("reports redirect and form timeouts without acquiring or sending credentials", async () => {
-  const context = await browser.newContext();
+  const context = await guardedContext();
   let submissions = 0;
   await context.route("**/*", async route => {
     if (route.request().method() === "POST") submissions++;
@@ -266,7 +385,7 @@ it("reports redirect and form timeouts without acquiring or sending credentials"
 });
 
 it("hands a direct Duo landing back without treating a page on another host as an SSO form", async () => {
-  const context = await browser.newContext();
+  const context = await guardedContext();
   let submissions = 0;
   await context.route("**/*", async route => {
     if (route.request().method() !== "GET") submissions++;
@@ -288,7 +407,7 @@ it("hands a direct Duo landing back without treating a page on another host as a
 });
 
 it("submits the exact UCSD form once and refuses wrong origin, action, fields and authority before secrets", async () => {
-  const context = await browser.newContext();
+  const context = await guardedContext();
   let focused: string | null = null;
   let html = form().replace("</form>", '<input type="hidden" name="focused" value="no"></form>'), acquisitions = 0, submissions = 0, current = true;
   await context.route("**/*", async route => {
@@ -322,6 +441,7 @@ it("submits the exact UCSD form once and refuses wrong origin, action, fields an
       [SSO, form("https://a5.ucsd.edu.invalid/tritON/profile/SAML2/Redirect/SSO")],
       [SSO, form("https://wrong@a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO")],
       [SSO, form("https://a5.ucsd.edu:444/tritON/profile/SAML2/Redirect/SSO")],
+      [SSO, '<base target="_blank">' + form()],
       [SSO, form().replace('method="post"', 'method="get"')],
       [SSO, form().replace('name="_eventId_proceed"', 'name="_eventId_proceed" formaction="https://elsewhere.invalid/"')],
       [SSO, form().replace('name="_eventId_proceed"', 'name="_eventId_proceed" formtarget="_blank"')],
@@ -341,7 +461,7 @@ it("submits the exact UCSD form once and refuses wrong origin, action, fields an
 });
 
 it("refuses replacement, navigation and generation changes during acquisition and a changed form before the password fill", async () => {
-  const context = await browser.newContext();
+  const context = await guardedContext();
   await context.route("**/*", route => route.fulfill({ contentType: "text/html", body: form() }));
   const page = await context.newPage();
   let current = true;

@@ -1,6 +1,7 @@
 import type { BrowserProfileProbeFactory, BrowserProfileProbeOptions } from "../../storage/browser-roots.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
@@ -61,6 +62,128 @@ export interface OwnedBrowserProcess {
 const PROFILE_IN_USE_MESSAGES = ["Failed to create a ProcessSingleton for your profile directory.", "Opening in existing browser session."] as const;
 // CDP command ids are signed 32-bit; a negative id stays clear of Playwright's positive ids. Its reply is consumed here.
 const BROWSER_CLOSE_MESSAGE_ID = -(2 ** 31);
+
+interface PinnedFormAttempt {
+  readonly form: HTMLFormElement;
+  readonly button: HTMLButtonElement;
+  readonly password: HTMLInputElement;
+  readonly destination: string;
+  readonly valid: () => boolean;
+}
+
+declare global {
+  interface Window {
+    readonly relaySsoFormGuard?: {
+      readonly installationId: string;
+      arm(key: string, attempt: PinnedFormAttempt): boolean;
+      click(key: string, form: HTMLFormElement): boolean;
+    };
+  }
+}
+
+export interface NativeSsoGuardKeys {
+  readonly installationId: string;
+  readonly actionKey: string;
+}
+
+const ssoGuards = new WeakMap<BrowserContext, { keys: NativeSsoGuardKeys } | { error: unknown }>();
+
+export function nativeSsoGuardKeys(context: BrowserContext): NativeSsoGuardKeys | undefined {
+  const guard = ssoGuards.get(context);
+  if (guard && "error" in guard) throw new Error("UCSD_SSO_GUARD_UNAVAILABLE", { cause: guard.error });
+  return guard?.keys;
+}
+
+function installDocumentSsoGuard({ installationId, actionKey }: NativeSsoGuardKeys): void {
+  if (window !== top || location.origin !== "https://a5.ucsd.edu"
+    || !["/tritON/profile/SAML2/Redirect/SSO", "/idp/profile/SAML2/Redirect/SSO"].includes(location.pathname)) return;
+  const navigation: unknown = Reflect.get(window, "navigation");
+  const navigateEvent: unknown = Reflect.get(window, "NavigateEvent");
+  if (!(navigation instanceof EventTarget) || !Reflect.get(navigation, "currentEntry") || typeof navigateEvent !== "function") return;
+  const prototype: unknown = Reflect.get(navigateEvent, "prototype");
+  if (typeof prototype !== "object" || prototype === null) return;
+  if (!("sourceElement" in prototype) || !("formData" in prototype)) return;
+
+  let attempt: PinnedFormAttempt | undefined;
+  let unused = false, clicking = false, serialized = false, permitted = false;
+  const submissions: SubmitEvent[] = [];
+  window.addEventListener("submit", event => {
+    if (!event.isTrusted || !attempt || (event.target !== attempt.form && event.target !== attempt.password.form)) return;
+    if (!clicking || event.submitter !== attempt.button || event.target !== attempt.form || !attempt.valid()) event.preventDefault();
+    else submissions.push(event);
+  }, true);
+  // Chromium snapshots submitter overrides before formdata, then checks the form is still connected.
+  window.addEventListener("formdata", event => {
+    const target = event.target;
+    if (!event.isTrusted || !attempt || !(target instanceof HTMLFormElement) || (target !== attempt.form && target !== attempt.password.form)) return;
+    if (target === attempt.form && target.target === "_self" && attempt.valid() && (!clicking || attempt.button.formTarget === "_self")) {
+      if (clicking && submissions.length === 1) serialized = true;
+      return;
+    }
+    permitted = false;
+    event.stopImmediatePropagation();
+    for (const name of new Set(event.formData.keys())) event.formData.delete(name);
+    const parent = target.parentNode, next = target.nextSibling;
+    target.remove();
+    setTimeout(() => {
+      if (parent && !target.parentNode) parent.insertBefore(target, next?.parentNode === parent ? next : null);
+    }, 0);
+  }, true);
+  // This event precedes the initial fetch, including dispatch to a service worker.
+  navigation.addEventListener("navigate", event => {
+    if (!attempt || !("sourceElement" in event) || (event.sourceElement !== attempt.button && event.sourceElement !== attempt.form)) return;
+    const destination = "destination" in event && event.destination;
+    const allowed = permitted && event.sourceElement === attempt.button && "formData" in event && event.formData instanceof FormData
+      && typeof destination === "object" && destination !== null && "url" in destination && destination.url === attempt.destination && attempt.valid();
+    permitted = false;
+    if (!allowed) event.preventDefault();
+  }, true);
+  const guard: NonNullable<Window["relaySsoFormGuard"]> = {
+    installationId,
+    arm(candidate, next) {
+      if (candidate !== actionKey || navigator.serviceWorker.controller !== null || !next.valid()) return false;
+      next.form.target = "_self";
+      attempt = next;
+      unused = true;
+      permitted = false;
+      return true;
+    },
+    click(candidate, form) {
+      if (candidate !== actionKey || !unused || !attempt || attempt.form !== form || !attempt.valid() || navigator.serviceWorker.controller !== null) return false;
+      unused = false;
+      const button = attempt.button;
+      const previous = button.getAttribute("formtarget");
+      button.formTarget = "_self";
+      clicking = true;
+      serialized = false;
+      submissions.length = 0;
+      permitted = false;
+      try {
+        button.click();
+        permitted = serialized && submissions.length === 1 && submissions[0]?.defaultPrevented === false && attempt.valid() && button.formTarget === "_self";
+        return permitted;
+      } finally {
+        clicking = false;
+        if (button.formTarget === "_self") {
+          if (previous === null) button.removeAttribute("formtarget");
+          else button.setAttribute("formtarget", previous);
+        }
+      }
+    },
+  };
+  Object.defineProperty(window, "relaySsoFormGuard", { value: Object.freeze(guard) });
+}
+
+export async function installNativeSsoGuard(context: BrowserContext): Promise<void> {
+  const keys = Object.freeze({ installationId: randomUUID(), actionKey: randomUUID() });
+  try {
+    await context.addInitScript(installDocumentSsoGuard, keys);
+    ssoGuards.set(context, { keys });
+  } catch (error) {
+    // Only credential submission depends on this installation.
+    ssoGuards.set(context, { error });
+  }
+}
 
 async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["launch"]>[0]): Promise<BrowserContext> {
   const timeoutMs = z.number().positive().parse(input.timeoutMs);
@@ -139,6 +262,7 @@ async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["
     const pipe = await browser.newBrowserCDPSession();
     await pipe.send("Browser.setDownloadBehavior", { behavior: "deny" });
     await pipe.detach();
+    await installNativeSsoGuard(context);
     return context;
   })();
   const timedOut = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("DUO_SETUP_OPEN_FAILED")), timeoutMs); });
@@ -156,7 +280,7 @@ async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["
 export const DEFAULT_BROWSER_LAUNCHER: PersistentContextLauncher = {
   async launch(input) {
     if (input.ownedProcess !== undefined) return launchOwnedChromium(input);
-    return chromium.launchPersistentContext(input.profileDirectory, {
+    const context = await chromium.launchPersistentContext(input.profileDirectory, {
       channel: "chromium",
       headless: input.headless,
       ...(input.timeoutMs === undefined ? {} : { timeout: input.timeoutMs }),
@@ -167,6 +291,8 @@ export const DEFAULT_BROWSER_LAUNCHER: PersistentContextLauncher = {
         ...(input.disablePasswordManager === true ? ["--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"] : []),
       ],
     });
+    await installNativeSsoGuard(context);
+    return context;
   },
 };
 

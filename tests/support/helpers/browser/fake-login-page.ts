@@ -140,11 +140,12 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
           isEnabled: async () => name === "sso-submit",
           evaluateHandle: async () => ({ dispose: async () => undefined }),
           evaluate: async (_fn: unknown, input: {
-            action: { kind: "prove" | "submit" } | { kind: "username" | "password"; value: string };
+            action: { kind: "arm" | "check-worker" | "prove" | "submit" } | { kind: "username" | "password"; value: string };
             password: { fill: (value: string) => Promise<void> }; button: { click: () => Promise<void> };
           }) => {
             if (name !== "sso-username" || generation !== navigationGeneration) return false;
             const action = input.action;
+            if (action.kind === "prove") return current;
             if (action.kind === "username") await (locator.fill as (value: string) => Promise<void>)(action.value);
             if (action.kind === "password") await input.password.fill(action.value);
             if (action.kind === "submit") {

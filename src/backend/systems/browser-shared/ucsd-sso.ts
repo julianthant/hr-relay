@@ -1,3 +1,4 @@
+import { nativeSsoGuardKeys, type NativeSsoGuardKeys } from "../../runtime/browser/native-browser.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 // Select SSO submit by name: the enrollment navigation also looks like a Login button.
 import type { Frame, JSHandle, Locator, Page } from "playwright";
@@ -120,7 +121,7 @@ export async function waitForUcsdDuoSignIn(page: Page, assertCurrent: () => void
   return "sso-form";
 }
 
-type SsoFormAction = { kind: "prove" | "submit" } | { kind: "username" | "password"; value: string };
+type SsoFormAction = { kind: "prove" | "check-worker" } | { kind: "arm" | "submit"; keys: NativeSsoGuardKeys | undefined } | { kind: "username" | "password"; value: string };
 type UcsdSsoPath = "/tritON/profile/SAML2/Redirect/SSO" | "/idp/profile/SAML2/Redirect/SSO";
 
 function requireSsoPath(path: string): UcsdSsoPath {
@@ -128,15 +129,16 @@ function requireSsoPath(path: string): UcsdSsoPath {
   return path;
 }
 
-function applyPinnedSsoAction(user: SVGElement | HTMLElement, input: {
+async function applyPinnedSsoAction(user: SVGElement | HTMLElement, input: {
   password: SVGElement | HTMLElement;
   button: SVGElement | HTMLElement;
   form: HTMLFormElement | null;
   action: SsoFormAction;
+  pinnedDestination: string | undefined;
   path: UcsdSsoPath;
   url: string;
   selectors: { user: string; password: string; button: string };
-}): boolean | string {
+}): Promise<boolean | string> {
   const { password, button, form, action } = input;
   if (!(user instanceof HTMLInputElement) || !(password instanceof HTMLInputElement)
     || !(button instanceof HTMLButtonElement) || !(form instanceof HTMLFormElement)) return false;
@@ -148,53 +150,42 @@ function applyPinnedSsoAction(user: SVGElement | HTMLElement, input: {
         && getComputedStyle(control).visibility === "visible" && !control.matches(":disabled");
     },
     allowed(raw: string) {
-      const target = new URL(raw);
-      return target.origin === "https://a5.ucsd.edu" && !target.username && !target.password && target.pathname === input.path;
+      const target = URL.parse(raw);
+      return target?.origin === "https://a5.ucsd.edu" && !target.username && !target.password && target.pathname === input.path;
     },
+    destination() { return button.hasAttribute("formaction") ? button.formAction : form.action; },
     valid() {
-      return location.href === input.url && this.allowed(location.href)
+      return (input.pinnedDestination === undefined || this.destination() === input.pinnedDestination) && location.href === input.url && this.allowed(location.href)
         && this.matches(input.selectors.user, user) && this.matches(input.selectors.password, password) && this.matches(input.selectors.button, button)
         && user.form === form && password.form === form && button.form === form
         && (user.type === "text" || user.type === "email") && !user.readOnly && !password.readOnly
         && password.type === "password" && button.type === "submit"
         && form.method === "post" && (button.formMethod === "" || button.formMethod === "post")
         && (form.target === "" || form.target === "_self") && (button.formTarget === "" || button.formTarget === "_self")
+        && (form.target !== "" || ["", "_self"].includes(document.querySelector("base[target]")?.getAttribute("target") ?? ""))
         && this.allowed(form.action) && this.allowed(button.formAction);
     },
   };
   if (!proof.valid()) return false;
+  const destination = proof.destination();
+  if (action.kind === "prove") return destination;
+  if (action.kind === "arm" || action.kind === "check-worker") {
+    if (await navigator.serviceWorker.getRegistration(destination) || !proof.valid() || proof.destination() !== destination) return false;
+    if (action.kind === "check-worker") return navigator.serviceWorker.controller === null;
+  }
   if (action.kind === "username" || action.kind === "password") {
+    if (navigator.serviceWorker.controller !== null) return false;
     const field = action.kind === "username" ? user : password;
     field.value = action.value;
     field.dispatchEvent(new Event("input", { bubbles: true }));
     field.dispatchEvent(new Event("change", { bubbles: true }));
-  } else if (action.kind === "submit") {
-    if (!form.noValidate && !button.formNoValidate && !form.reportValidity()) return false;
-    if (!proof.valid()) return false;
-    const destination = button.hasAttribute("formaction") ? button.formAction : form.action;
-    const fields = new FormData(form, button);
-    if (!proof.valid() || destination !== (button.hasAttribute("formaction") ? button.formAction : form.action)) return false;
-
-    // Native form serialization can run page handlers before the browser reads the destination.
-    // Post the successful controls and submitter from a private form with a fixed destination.
-    const host = document.createElement("div");
-    host.hidden = true;
-    const root = host.attachShadow({ mode: "closed" });
-    const post = document.createElement("form");
-    post.action = destination;
-    post.method = "post";
-    post.target = "_self";
-    post.enctype = button.getAttribute("formenctype") === null ? form.enctype : button.formEnctype;
-    post.acceptCharset = form.acceptCharset;
-    post.addEventListener("formdata", event => {
-      for (const [name, value] of fields) event.formData.append(name, value);
-    }, { once: true });
-    const send = document.createElement("button");
-    send.type = "submit";
-    post.append(send);
-    root.append(post);
-    document.body.append(host);
-    try { send.click(); } finally { host.remove(); }
+  } else if (action.kind === "arm" || action.kind === "submit") {
+    const guard = window.relaySsoFormGuard;
+    if (!action.keys || !guard || guard.installationId !== action.keys.installationId) return false;
+    if (action.kind === "arm") {
+      return guard.arm(action.keys.actionKey, { form, button, password, destination, valid() { return proof.valid(); } });
+    }
+    if (!guard.click(action.keys.actionKey, form)) return false;
     const requestUrl = new URL(destination);
     requestUrl.hash = "";
     return requestUrl.href;
@@ -237,26 +228,32 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
     formHandle = await pinnedUser.evaluateHandle(el => el instanceof HTMLInputElement ? el.form : null);
     check();
     const pinnedForm = formHandle;
+    let pinnedDestination: string | undefined;
     const act = async (action: SsoFormAction) => {
       check();
-      const valid = await pinnedUser.evaluate(applyPinnedSsoAction, { password: pinnedSecret, button: pinnedSubmit, form: pinnedForm, action, path, url,
+      const valid = await pinnedUser.evaluate(applyPinnedSsoAction, { password: pinnedSecret, button: pinnedSubmit, form: pinnedForm, action, path, url, pinnedDestination,
         selectors: { user: SSO_USERNAME_SELECTOR, password: SSO_PASSWORD_SELECTOR, button: SSO_SUBMIT_SELECTOR } });
       assertCurrent();
       if (!valid) throw new Error("UCSD_SSO_FIELDS");
       return valid;
     };
-    await act({ kind: "prove" });
+    const keys = nativeSsoGuardKeys(page.context());
+    const destination = await act({ kind: "prove" });
+    if (typeof destination !== "string") throw new Error("UCSD_SSO_FIELDS");
+    pinnedDestination = destination;
+    await act({ kind: "arm", keys });
     check();
     const credentials = await acquire();
     await act({ kind: "username", value: credentials.userId });
     onAction?.("typed", "ucsd.sso.username");
+    await act({ kind: "check-worker" });
     await act({ kind: "password", value: credentials.password });
     onAction?.("typed", "ucsd.sso.password");
     const stop = new AbortController();
     const navigation = page.waitForNavigation({ waitUntil: "commit", timeout, signal: stop.signal })
       .then(response => ({ response }), (error: unknown) => ({ error }));
     try {
-      const destination = await act({ kind: "submit" });
+      const destination = await act({ kind: "submit", keys });
       const outcome = await navigation;
       if ("error" in outcome) throw outcome.error;
       let request = outcome.response?.request();

@@ -11,6 +11,7 @@ it.each([false, true])("guards credential effects and retains element disposal a
   const handles = new Map(["ssousername", "ssopassword", "sso-submit"].map(name => [name, {
     evaluateHandle: async () => ({ dispose: async () => { disposed.push("form"); } }),
     evaluate: async (_fn: unknown, input: { action: { kind: string } }) => {
+      if (input.action.kind === "prove") return url;
       if (input.action.kind === "username") {
         effects.push("fill:ssousername");
         if (revoke) current = false;
@@ -22,6 +23,7 @@ it.each([false, true])("guards credential effects and retains element disposal a
     dispose: async () => { disposed.push(name); },
   }]));
   const page = {
+    context: () => ({}),
     waitForNavigation: async () => ({ request: () => ({ method: () => "POST", url: () => url, redirectedFrom: () => null }) }),
     url: () => url,
     locator: (selector: string) => {

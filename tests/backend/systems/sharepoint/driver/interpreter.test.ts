@@ -76,11 +76,13 @@ async function world(options: Options = {}) {
     readonly type = "submit";
     readonly formTarget = options.poison === "button-target" ? "_blank" : "";
     readonly formMethod = options.poison === "button-method" ? "get" : "";
+    hasAttribute() { return false; }
     get formAction() { return options.poison === "button-action" ? "https://elsewhere.invalid/" : form.action; }
   }
   const userElement = new InputElement("text"), secretElement = new InputElement("password"), buttonElement = new ButtonElement();
-  const document = { querySelectorAll: (selector: string) => selector.includes("ssousername")
+  const document = { querySelector: () => null, querySelectorAll: (selector: string) => selector.includes("ssousername")
     ? userElement.isConnected ? [userElement] : [] : selector.includes("ssopassword") ? [secretElement] : [buttonElement] };
+  vi.stubGlobal("navigator", { serviceWorker: { controller: null, getRegistration: async () => undefined } });
   vi.stubGlobal("getComputedStyle", () => ({ visibility: "visible" }));
   vi.stubGlobal("document", document); vi.stubGlobal("HTMLFormElement", FormElement);
   vi.stubGlobal("HTMLInputElement", InputElement); vi.stubGlobal("HTMLButtonElement", ButtonElement);
@@ -123,13 +125,14 @@ async function world(options: Options = {}) {
           count: async () => options.poison === "duplicate" && element === userElement ? 2 : 1,
           elementHandle: async () => ({ element,
             evaluateHandle: async () => ({ element: form, dispose: async () => { cleanup.push("sso-disposed"); } }),
-            async evaluate(callback: (element: unknown, input: unknown) => boolean,
+            async evaluate(callback: (element: unknown, input: unknown) => Promise<boolean | string>,
               input: { password: { element: InputElement }; button: { element: ButtonElement }; form: { element: FormElement };
                 action: { kind: string; value?: string }; path: string; url: string }) {
               const { action } = input;
-              const valid = callback(element, { ...input, password: input.password.element, button: input.button.element,
-                form: input.form.element, action: action.kind === "submit" ? { kind: "prove" } : action });
+              const valid = await callback(element, { ...input, password: input.password.element, button: input.button.element,
+                form: input.form.element, action: action.kind === "submit" || action.kind === "arm" ? { kind: "prove" } : action });
               if (!valid) return false;
+              if (action.kind === "prove") return valid;
               if (action.kind === "username" || action.kind === "password") {
                 const selector = action.kind === "username" ? "#ssousername" : "#ssopassword";
                 await original.context.page.locator(selector).fill(action.kind === "username" ? userElement.value : secretElement.value);
