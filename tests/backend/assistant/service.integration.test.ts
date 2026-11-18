@@ -10,7 +10,7 @@ import { assistantMessageStream, completedAssistantStream } from "../../support/
 import { createAssistantService, type AssistantServiceOptions } from "../../../src/backend/assistant/service.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantTool } from "../../../src/backend/assistant/plugins/plugin.js";
 import { AssistantAuthorizationError } from "../../../src/backend/assistant/authorization.js";
-import { assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
+import { AssistantWorkflowFactsError, assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
 import { ASSISTANT_FAILURES, AssistantInferenceRequestSchema, type AssistantFailureCode } from "../../../src/models/dashboard/assistant.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
 import { createAssistantProposals } from "../../../src/backend/assistant/proposals.js";
@@ -259,6 +259,21 @@ it("refuses before inference without plugins, with a failed facts pin or a model
       assert.equal(w.posts(), 0);
     } finally { await w.f.cleanup(); }
   }
+});
+
+it("logs which served workflow's facts failed to load, without personal data", async () => {
+  const events: Record<string, unknown>[] = [];
+  const w = await world({ options: { debugEvents: { emit(event) { events.push(event); } },
+    facts: () => { throw new AssistantWorkflowFactsError("ASSISTANT_WORKFLOW_FACTS_STALE", "onboarding"); } } });
+  try {
+    assert.deepEqual(await w.ask("hi PRIVATE_CANARY"), { state: "refused", code: "ASSISTANT_CONTEXT_UNAVAILABLE", message: ASSISTANT_FAILURES.ASSISTANT_CONTEXT_UNAVAILABLE });
+    const faults = events.filter(event => event.area === "assistant-context" && event.code === "ASSISTANT_CONTEXT_UNAVAILABLE");
+    assert.equal(faults.length, 1);
+    assert.equal(faults[0]?.reason, "assistant-workflow-facts-stale");
+    assert.equal(faults[0]?.message, "onboarding");
+    assert.ok(events.some(event => event.area === "assistant-context" && event.code === "ASSISTANT_WORKFLOW_FACTS_STALE"));
+    assert.equal(JSON.stringify(events).includes("CANARY"), false);
+  } finally { await w.f.cleanup(); }
 });
 
 it("refuses an invalid selected run before inference", async () => {
