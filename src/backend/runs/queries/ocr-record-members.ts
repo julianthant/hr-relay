@@ -129,6 +129,17 @@ export function readOcrRecordBindings(repositories: AuthorityRepositories, runId
   return source === undefined ? undefined : { seed: source.seed,bindings: source.bindings };
 }
 
+export function endedUnfinished(run: RunRecord): boolean {
+  return run.lifecycle.state === "terminal" && ["cancelled", "discarded", "superseded"].includes(run.lifecycle.outcome);
+}
+
+/** The OCR review a queue or run summary read offers for this run. A run that ended without finishing offers none, so its retained
+ * revision is re-verified only when its review is opened, and a refusal there never fails the queue. */
+export function offeredOcrReview(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
+  ocr: RunRecord): ReturnType<typeof readOcrReviewAuthority> {
+  return endedUnfinished(ocr) ? undefined : readOcrReviewAuthority(repositories, reader, ocr.envelope.runId);
+}
+
 function readOcrRecordPresentation(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
   runId: string, workflowLabel: (workflowId: string) => string, applyLookupVisibility: boolean): QueueRecordMembers | undefined {
   const existence = reader.read(runId);
@@ -136,7 +147,7 @@ function readOcrRecordPresentation(repositories: AuthorityRepositories, reader: 
   const owner = existence.run;
   if (owner.envelope.workflow !== "ocr") return undefined;
   authenticateOcrOperator(repositories, reader, owner);
-  const reviewAuthority = readOcrReviewAuthority(repositories, reader, runId);
+  const reviewAuthority = offeredOcrReview(repositories, reader, owner);
   const statusOf = (run: RunRecord) => runStatus(repositories, run);
   const link = (run: RunRecord) => runLink(repositories, run, workflowLabel, run.envelope.runId === owner.envelope.runId && reviewAuthority !== undefined);
   const source = readOcrRecordSource(repositories, runId);
@@ -361,7 +372,7 @@ export function readQueueRecordMembers(repositories: AuthorityRepositories, read
           const failed = new Set(failures.flatMap(failure => failure.childRunIds));
           const reading = failures.length < pages[0].group.children.length
             ? [readingMember(repositories,member.child,pages[0].group,runIds.filter(id => !failed.has(id)),runStatus(repositories, run),workflowLabel,
-              readOcrReviewAuthority(repositories,reader,member.child.envelope.runId) !== undefined)] : [];
+              !endedUnfinished(run) && offeredOcrReview(repositories, reader, member.child) !== undefined)] : [];
           return [QueueRecordMembersSchema.parse({ runIds, members: [...reading, ...failures] })];
         }
         const descriptor = resolve(run.envelope.workflow);
