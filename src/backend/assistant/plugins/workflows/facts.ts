@@ -21,6 +21,15 @@ export const AssistantWorkflowFactSchema = z.strictObject({
 });
 export type AssistantWorkflowFact = z.infer<typeof AssistantWorkflowFactSchema>;
 
+/** Why the facts did not load, and the served workflow they came from when one is known; never a value. */
+export class AssistantWorkflowFactsError extends Error {
+  constructor(readonly code: "ASSISTANT_WORKFLOW_FACTS_STALE" | "ASSISTANT_WORKFLOW_FACTS_INVALID" | "ASSISTANT_WORKFLOW_FACTS_DUPLICATE" | "ASSISTANT_WORKFLOW_FACTS_TOO_LARGE",
+    readonly workflowId?: string, options?: ErrorOptions) {
+    super(code.toLowerCase().replaceAll("_", "-"), options);
+    this.name = "AssistantWorkflowFactsError";
+  }
+}
+
 function fact(descriptor: AnyWorkflowDescriptor): AssistantWorkflowFact {
   const inputRun = descriptor.surfaces.inputRun, support = workflowDryRunSupport(descriptor);
   const split = inputRun?.parser.split;
@@ -41,10 +50,13 @@ function fact(descriptor: AnyWorkflowDescriptor): AssistantWorkflowFact {
 
 /** Facts for the served workflows, generated from their registered definitions (the same source as Explorer). */
 export function assistantWorkflowFacts(served: readonly AnyWorkflowDescriptor[]) {
-  const facts = served.map(fact).toSorted((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  if (new Set(facts.map(entry => entry.id)).size !== facts.length) throw new Error("assistant-workflow-facts-duplicate");
+  const facts = served.map(descriptor => {
+    try { return fact(descriptor); } catch (error) { throw new AssistantWorkflowFactsError("ASSISTANT_WORKFLOW_FACTS_INVALID", descriptor.id, { cause: error }); }
+  }).toSorted((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const duplicate = facts.find((entry, index) => facts.findIndex(other => other.id === entry.id) !== index);
+  if (duplicate !== undefined) throw new AssistantWorkflowFactsError("ASSISTANT_WORKFLOW_FACTS_DUPLICATE", duplicate.id);
   const bytes = canonicalJsonStringify({ format: 1, workflows: facts });
-  if (Buffer.byteLength(bytes) > MAX_BYTES) throw new Error("assistant-workflow-facts-too-large");
+  if (Buffer.byteLength(bytes) > MAX_BYTES) throw new AssistantWorkflowFactsError("ASSISTANT_WORKFLOW_FACTS_TOO_LARGE");
   return Object.freeze({ facts, bytes, sha256: createHash("sha256").update(bytes).digest("hex") });
 }
 export type AssistantWorkflowFacts = ReturnType<typeof assistantWorkflowFacts>;
@@ -58,6 +70,16 @@ export function loadAssistantWorkflowFacts(repoRoot: string, served: readonly An
     const buffer = Buffer.alloc(MAX_BYTES + 2);
     stored = buffer.subarray(0, readSync(descriptor, buffer, 0, buffer.length, 0)).toString("utf8");
   } finally { closeSync(descriptor); }
-  if (stored !== `${expected.bytes}\n`) throw new Error("assistant-workflow-facts-stale");
+  if (stored !== `${expected.bytes}\n`) throw new AssistantWorkflowFactsError("ASSISTANT_WORKFLOW_FACTS_STALE", staleWorkflow(stored, expected.facts));
   return expected;
+}
+
+/** The first served workflow whose stored facts differ from its definition's; a row only the file has is never named, since its id is untrusted. */
+function staleWorkflow(stored: string, expected: readonly AssistantWorkflowFact[]): string | undefined {
+  let parsed: unknown;
+  try { parsed = JSON.parse(stored); } catch { return undefined; }
+  const file = z.object({ workflows: z.array(z.looseObject({ id: z.string() })) }).safeParse(parsed);
+  if (!file.success) return undefined;
+  const storedById = new Map(file.data.workflows.map(entry => [entry.id, canonicalJsonStringify(entry)]));
+  return expected.find(entry => storedById.get(entry.id) !== canonicalJsonStringify(entry))?.id;
 }

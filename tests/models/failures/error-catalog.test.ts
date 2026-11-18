@@ -102,7 +102,7 @@ describe("error catalog", () => {
 
   it("registers the exact Settings integration codes and fixed messages", () => {
     const expected = {
-      SETTINGS_INITIAL_READ_UNAVAILABLE: "Settings could not be read. Try again.",
+      SETTINGS_INITIAL_READ_UNAVAILABLE: "Relay could not load your settings. Reload the page to try again.",
       SETTINGS_REFRESH_UNAVAILABLE: "Current settings could not be read. Your drafts are retained.",
       SETTINGS_DRAFT_INVALID: "Check the draft values. No request was sent.",
       PROTECTED_SETTINGS_DRAFT_INVALID: "Check the credential draft. No request was sent.",
