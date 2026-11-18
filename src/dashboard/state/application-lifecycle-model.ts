@@ -9,6 +9,10 @@ function sameResource(a: AsyncResource<ApplicationLifecycle>, b: AsyncResource<A
   return false;
 }
 
+function changePending(value: ApplicationLifecycle): boolean {
+  return value.state !== "ready" || value.pause === "pause-pending" || value.update === "pending";
+}
+
 export function useApplicationLifecycle(client: DashboardClient, authority: object) {
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision(value => value + 1), []);
@@ -25,11 +29,16 @@ export function useApplicationLifecycle(client: DashboardClient, authority: obje
           shown.current = { request, value };
           setResult(shown.current);
         }
-        if (value.state === "loaded") timer = setTimeout(poll, 1000);
+        if (value.state === "loaded" && changePending(value.value)) timer = setTimeout(poll, 1000);
       });
     };
     poll();
     return () => { close(); clearTimeout(timer); };
   }, [client, request, revision]);
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refresh]);
   return { resource: result?.request === request ? result.value : LOADING, refresh };
 }
