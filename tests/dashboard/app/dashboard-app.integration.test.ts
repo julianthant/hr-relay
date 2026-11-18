@@ -515,7 +515,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     await settle();
     assert_m1.ok(reads > readsBeforeRetry, "Retry reads the logs again");
     const failedReads = reads;
-    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { client,
+    await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { key: "mock-composition", client,
       children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
     await settle();
     assert_m1.equal(reads, failedReads);
