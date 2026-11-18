@@ -11,6 +11,7 @@ import { DashboardCommandRequestSchema, type DashboardCommandRequest } from "../
 import type { DecisionOptionWire } from "../../models/dashboard/run-decision.js";
 import { answeredRow, decisionAnswerValid, failureCardFacts, lookupTyped, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
+import { projectFailureDisplay } from "../../models/dashboard/failure-display.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
@@ -399,10 +400,11 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     } else if (section.section === "failure" && section.payload.state === "available") {
       const failure = section.payload.value;
       const message = operatorFailureSentence(failure.code);
+      const failureTitle = failure.display?.title ?? projectFailureDisplay(failure).title;
       const noScreenshot = failureScreenshotReason(failure);
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
-      steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failure.display?.title ?? failure.code,
-        entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failure.display?.title ?? failure.code,
+      steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failureTitle,
+        entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failureTitle,
           state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message, ...failureCardFacts(failure.display),
           ...(failure.writeState === "not-attempted" ? { footer: WRITE_STATE_NOTE[failure.writeState] } : { caution: WRITE_STATE_NOTE[failure.writeState] }),
           ...(noScreenshot === undefined ? {} : { unavailableCapture: noScreenshot }),
@@ -470,7 +472,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     const previous = grouped.at(-1);
     if (previous !== undefined && key === previousKey && groupable.has(previous.id) && groupable.has(step.id)) {
       grouped[grouped.length - 1] = { ...previous, entries: [...previous.entries, ...step.entries] };
-    } else grouped.push({ ...step, title: category?.label ?? step.title, ...(system === undefined ? {} : { system }) });
+    } else grouped.push({ ...step, title: category === undefined ? step.title : plainStepLabel(category.label), ...(system === undefined ? {} : { system }) });
     previousKey = key;
   }
   const named = grouped.map(({ system: raw, ...step }): LogStep => {
@@ -481,7 +483,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     const members = new Set<string | undefined>(category.members.map(member => member.nodeId));
     const first = grouped.find(step => members.has(node.get(step.id)));
     if (category.key === undefined) throw new RunLogIdentityError("RUN_LOG_CATEGORY_IDENTITY_MISSING");
-    return { id: category.key, label: category.label, state: category.state === "replayed" ? "completed" : TIMELINE_STATE[category.state],
+    return { id: category.key, label: plainStepLabel(category.label), state: category.state === "replayed" ? "completed" : TIMELINE_STATE[category.state],
       ...(first === undefined ? {} : { stepId: first.id, time: first.time }),
       ...(category.durationSec === undefined ? {} : { durationLabel: fmtElapsed(category.durationSec) }),
       substeps: category.members.map(member => {

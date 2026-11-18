@@ -54,6 +54,7 @@ describe("the provenance bar uses the demo's identity wording", () => {
     startedAt: OPENED_AT,
     updatedAt: NOW,
     endedAt: { state: "absent", reason: "run has not ended" },
+    operatorWait: { state: "absent" },
     gateOpenedAt: { state: "absent", reason: "no gate has opened on this run" },
     displayName: { state: "absent", reason: "the operator has not renamed this run" },
     title: "EID 10873698",

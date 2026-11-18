@@ -808,10 +808,12 @@ export interface DsToast {
   tone: DsToastTone;
   title: string;
   description?: string;
-  /** ms before auto-dismiss; default 3000. `danger` never auto-dismisses unless a duration is given. */
+  /** ms before auto-dismiss; default 3000, `danger` 12000. A toast with an action stays until acted on or clicked. */
   duration?: number;
   /** stays until its owner dismisses it or the operator clicks it */
   sticky?: boolean;
+  /** one action, one toast: a new toast with the same key replaces the earlier one; defaults to the title */
+  key?: string;
   action?: { label: string; onClick: () => void };
 }
 
@@ -833,13 +835,18 @@ export function useToasts(): ToastContextValue {
 export function ToastProvider({ children }: { children: ReactNode }) {
   const manager = useMemo(() => ToastPrimitive.createToastManager(), []);
   const nextId = useRef(0);
+  const byKey = useRef(new Map<string, string>());
   const value = useMemo<ToastContextValue>(() => ({
     toast: input => {
       const id = `toast-${++nextId.current}`;
+      const key = input.key ?? input.title;
+      const earlier = byKey.current.get(key);
+      if (earlier !== undefined) manager.close(earlier);
+      byKey.current.set(key, id);
       manager.add({ id, title: input.title, description: input.description,
         ...(input.action === undefined ? {} : { actionProps: { children: input.action.label, onClick: input.action.onClick } }),
         type: input.tone === "danger" ? "error" : input.tone,
-        timeout: input.sticky ? 0 : input.duration ?? (input.tone === "danger" ? 0 : 3000),
+        timeout: input.sticky || input.action !== undefined ? 0 : input.duration ?? (input.tone === "danger" ? 12000 : 3000),
       });
       return id;
     },

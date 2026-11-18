@@ -134,8 +134,8 @@ describe("worker card data the Sessions panel reads", () => {
       signInFingerprint: "b".repeat(64), browserMode: "headless", acceptDownloads: false, exclusive: false, health: "starting",
       observedAt: startedAt, openedAt: startedAt, profileRevision: 1 });
     w.authority.putWorkerMember(workerMemberOf(w.authority, { workerId, browsers: [browser("ucpath", uuidOf(61)), browser("crm", uuidOf(62))] }));
-    let held: readonly string[] = ["ucpath"];
-    Object.assign(w.authority, { heldDuoSystems: () => held });
+    let held: readonly { system: "ucpath"; since: string }[] = [{ system: "ucpath", since: startedAt }];
+    Object.assign(w.authority, { heldDuoLeases: () => held });
     const signIns = () => w.projection.buildDashboardDayWire(DAY).workerCards[0]?.browsers.map(item => [item.system, item.signIn]);
     assert.deepEqual(signIns(), [["ucpath", "needs-duo"], ["crm", "signing-in"]]);
     held = [];

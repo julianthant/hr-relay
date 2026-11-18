@@ -38,7 +38,7 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   await page.addInitScript(value => { Reflect.set(window, "relayMockTheme", value); }, theme);
 
   // Workflows with the bell's unread dot; the bell swaps the sidebar body to the list.
-  // Any statusMock URL shows the mock Settings pages, so Subscription exists.
+  // Any statusMock URL shows the mock Settings pages.
   await open(page, "centre", "&statusMock=toasts-live");
   await page.mouse.move(1, 1);
   await shot(page, "bell-unread", theme);
@@ -128,9 +128,9 @@ for (const theme of THEMES) test(`notification centre @ ${theme}`, async ({ page
   await expect(panel(page).getByRole("button", { name: /Run waiting for you/ })).toHaveAttribute("aria-current", "true");
   await shot(page, "run-clicked", theme);
 
-  // A ChatGPT item opens Settings > Subscription; the read marks survive the visit.
+  // A ChatGPT item opens Settings > General at the ChatGPT card; the read marks survive the visit.
   await panel(page).getByRole("button", { name: /ChatGPT usage limit reached/ }).click();
-  await expect(page.locator(".ds-page-heading-title", { hasText: "Subscription" })).toBeVisible();
+  await expect(page.locator(".ds-page-heading-title", { hasText: "General" })).toBeVisible();
   await shot(page, "settings-sidebar", theme);
   await page.getByRole("button", { name: /^(Back|Close settings)/ }).first().click();
   await expect(panel(page).getByRole("button", { name: /ChatGPT usage limit reached/ })).toHaveAttribute("aria-current", "true");
