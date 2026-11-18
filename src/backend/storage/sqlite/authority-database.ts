@@ -217,6 +217,31 @@ type DelegationOperationReads = {
   invocations: Map<string, readonly z.infer<typeof RunLifecycleCommandRecordSchema>[]>;
 };
 
+const LifecycleLookupSchema = z.strictObject({
+  commandId: z.string(), operation: z.string(), targetId: z.string().nullable(),
+  requestRunId: z.string().nullable(), resultRunId: z.string().nullable(), resultKind: z.string().nullable(),
+  version: PositiveIntSchema.nullable(), continuationKind: z.string().nullable(),
+  sourceCommandId: z.string().nullable(), continuationOwnerRunId: z.string().nullable(),
+  manifestId: z.string().nullable(), cancellationKind: z.string().nullable(),
+  lifecycleState: z.string().nullable(), gateId: z.string().nullable(), currentNodeKind: z.string().nullable(),
+  claimGeneration: PositiveIntSchema.nullable(), expectedVersion: z.number().int().nonnegative().nullable(),
+});
+type LifecycleLookupRow = z.infer<typeof LifecycleLookupSchema> & { row: StoredRow };
+type LifecycleCommandBatch = { byRun: Map<string, LifecycleLookupRow[]>; byManifest: Map<string, LifecycleLookupRow[]> };
+type ProjectionRowReads = {
+  admissions: Map<number, RunAdmission>;
+  runs: Map<string, RunRecord>;
+  commands: Map<string, z.infer<typeof AuthorityCommandRecordSchema>>;
+  audits: Map<string, z.infer<typeof AuthorityCommandAuditRecordSchema>>;
+  settlements: Map<string, NonNullable<ReturnType<AuthorityRepositories["runResults"]["getSettlement"]>>>;
+};
+function lifecycleCommandOrder(left: LifecycleLookupRow, right: LifecycleLookupRow): number {
+  return left.commandId < right.commandId ? -1 : left.commandId > right.commandId ? 1 : 0;
+}
+function lifecycleVersionOrder(left: LifecycleLookupRow, right: LifecycleLookupRow): number {
+  return (right.version ?? 0) - (left.version ?? 0);
+}
+
 type ImmutableInsertResult<RecordValue> = Readonly<{
   state: z.infer<typeof ImmutableInsertDispositionSchema>;
   record: RecordValue;
@@ -407,14 +432,16 @@ type DeletedRunRepository = Readonly<{
 type CanonicalRunClaimOutcome = RunClaimOutcome | Readonly<{ state: "refused"; refusal: RunRecordRefusal }>;
 
 /** A confirmed Pause all and quit of the bound runtime generation (`held`) that no application-admission release names; binds the generation twice. */
-const UNRELEASED_QUIT_HOLD_SQL = `held.family='application'
+function unreleasedQuitHoldSql(indexed = false): string { return `held.family='application'
+  ${indexed ? "AND json_extract(held.request_json,'$.family')='application'" : ""}
   AND json_extract(held.request_json,'$.type')='pause-all-and-quit'
   AND json_extract(held.request_json,'$.payload.confirmed')=1
   AND json_extract(held.request_json,'$.target.runtimeGeneration')=?
   AND NOT EXISTS(SELECT 1 FROM commands release WHERE release.state='succeeded' AND release.family='run-lifecycle'
     AND json_extract(release.request_json,'$.operation')='application-admission'
     AND json_extract(release.request_json,'$.request.runtimeGeneration')=?
-    AND json_extract(release.request_json,'$.request.releases')=held.id)`;
+    AND json_extract(release.request_json,'$.request.releases')=held.id
+    ${indexed ? "AND json_extract(release.request_json,'$.family') IS NULL" : ""})`; }
 
 type RunRepository = Readonly<{
   holdAdmission(input: unknown): void;
@@ -2409,6 +2436,8 @@ export class AuthorityDatabase implements Disposable {
   #logoutBatch: Readonly<{ admission: RuntimeAdmission }> | undefined;
   #validatedExternalDataVersion: number | undefined;
   #snapshotExternalDataVersion: number | undefined;
+  #lifecycleCommandReadSnapshot: LifecycleCommandBatch | undefined;
+  #projectionRowReads: ProjectionRowReads | undefined;
   /** Absent below schema 31, whose readers run the whole-store check after every peer commit. */
   #changeReader: ChangeLogReader | undefined;
   #lastChangePruneMs: number | undefined;
@@ -5024,6 +5053,59 @@ export class AuthorityDatabase implements Disposable {
     return commands;
   }
 
+  #projectionLifecycleRows(key: string, index: "run" | "manifest" = "run"): readonly LifecycleLookupRow[] | undefined {
+    if (this.#transactionMode !== "read" || this.#changeReader === undefined || this.#snapshotExternalDataVersion === undefined
+      || this.#validatedExternalDataVersion !== this.#snapshotExternalDataVersion) return undefined;
+    if (this.#lifecycleCommandReadSnapshot === undefined) {
+      const batch: LifecycleCommandBatch = { byRun: new Map(), byManifest: new Map() };
+      const rows = this.#database.prepare(`SELECT commands.*, json_object(
+        'commandId', id, 'operation', json_extract(request_json,'$.operation'), 'targetId', target_id,
+        'requestRunId', json_extract(request_json,'$.request.runId'),
+        'resultRunId', json_extract(outcome_json,'$.result.runId'), 'resultKind', json_extract(outcome_json,'$.result.kind'),
+        'version', json_extract(outcome_json,'$.result.appliedVersion'), 'continuationKind', json_type(outcome_json,'$.result.continuation'),
+        'sourceCommandId', json_extract(request_json,'$.request.sourceCommandId'),
+        'continuationOwnerRunId', json_extract(request_json,'$.request.continuationOwner.runId'),
+        'manifestId', json_extract(request_json,'$.request.manifestId'),
+        'cancellationKind', json_type(request_json,'$.request.cancellationSource'),
+        'lifecycleState', json_extract(request_json,'$.request.lifecycle.state'),
+        'gateId', json_extract(request_json,'$.request.lifecycle.gateId'),
+        'currentNodeKind', json_type(request_json,'$.request.lifecycle.currentNodeId'),
+        'claimGeneration', json_extract(request_json,'$.request.claim.claimGeneration'),
+        'expectedVersion', json_extract(request_json,'$.request.expectedVersion')) AS lookup_json
+        FROM commands WHERE id IN (SELECT json_extract(row_key,'$[0]') FROM ${RUN_REFERENCES_TABLE} WHERE table_name='commands')
+        AND family='run-lifecycle' AND json_extract(request_json,'$.operation') IN (
+          'create','retry','recover','resume','delegation-retry','worker-transition','transition','terminalize',
+          'delegation-refresh','delegation-invocation','delegation-admission') ORDER BY commands.rowid`).all();
+      for (const { lookup_json, ...row } of rows) {
+        const fields = LifecycleLookupSchema.parse(JSON.parse(z.string().parse(lookup_json)));
+        const entry = { ...fields, row };
+        for (const id of new Set([fields.requestRunId, fields.resultRunId, fields.continuationOwnerRunId, fields.targetId])) {
+          if (id === null) continue;
+          const group = batch.byRun.get(id) ?? [];
+          group.push(entry);
+          batch.byRun.set(id, group);
+        }
+        if (fields.manifestId !== null) {
+          const group = batch.byManifest.get(fields.manifestId) ?? [];
+          group.push(entry);
+          batch.byManifest.set(fields.manifestId, group);
+        }
+      }
+      this.#lifecycleCommandReadSnapshot = batch;
+    }
+    return (index === "run" ? this.#lifecycleCommandReadSnapshot.byRun : this.#lifecycleCommandReadSnapshot.byManifest).get(key) ?? [];
+  }
+
+  #readProjectionRecord<Key, Value>(memo: Map<Key, Value> | undefined, key: Key, read: () => Value): Value {
+    if (memo === undefined) return read();
+    this.#assertOpen();
+    const cached = memo.get(key);
+    if (cached !== undefined) return structuredClone(cached);
+    const value = read();
+    if (value !== undefined) memo.set(key, structuredClone(value));
+    return value;
+  }
+
   #withReadSnapshot<Result>(read: () => Result): Result {
     return withOperationProof(() => {
       if (this.#transactionDepth === 0) clearOperationProofSlots();
@@ -5037,6 +5119,7 @@ export class AuthorityDatabase implements Disposable {
         this.#database.exec("BEGIN");
         this.#transactionDepth = 1;
         this.#transactionMode = "read";
+        this.#projectionRowReads = { admissions: new Map(), runs: new Map(), commands: new Map(), audits: new Map(), settlements: new Map() };
         this.#delegationReadSnapshot = { waits: new Map(), memo: newDelegationAuthenticationMemo(), invocations: new Map() };
         this.#authorityDirty = false;
         try {
@@ -5053,6 +5136,8 @@ export class AuthorityDatabase implements Disposable {
           this.#transactionDepth = 0;
           this.#transactionMode = undefined;
           this.#delegationReadSnapshot = undefined;
+          this.#lifecycleCommandReadSnapshot = undefined;
+          this.#projectionRowReads = undefined;
           this.#snapshotExternalDataVersion = undefined;
           this.#authorityDirty = false;
           slow.finish();
@@ -5627,12 +5712,15 @@ export class AuthorityDatabase implements Disposable {
           return record;
         },
         getSettlement: (runId: string, appliedVersion: number) => {
-          const row = readRunSettlementRow(this.#database,RunIdSchema.parse(runId),PositiveIntSchema.parse(appliedVersion));
-          if (row === undefined) return undefined;
-          const result = RunResultRecordSchema.parse(nativeOrdinaryRecordFromRow("run_results",row));
-          const run = runSettlementContext(row);
-          assertTerminalEvidenceOwner(this.#database,result,CURRENT_READERS,run);
-          return { run, result };
+          const id = RunIdSchema.parse(runId), version = PositiveIntSchema.parse(appliedVersion);
+          return this.#readProjectionRecord(this.#projectionRowReads?.settlements, `${id}:${String(version)}`, () => {
+            const row = readRunSettlementRow(this.#database,id,version);
+            if (row === undefined) return undefined;
+            const result = RunResultRecordSchema.parse(nativeOrdinaryRecordFromRow("run_results",row));
+            const run = runSettlementContext(row);
+            assertTerminalEvidenceOwner(this.#database,result,CURRENT_READERS,run);
+            return { run, result };
+          });
         },
       }),
       failureResolution: createFailureResolutionRepository({ database: this.#database, mutate: (work) => this.#authorityWrite("run_failures", work) }),
@@ -5769,13 +5857,17 @@ export class AuthorityDatabase implements Disposable {
       }),
       lifecycleJournal: Object.freeze({
         findRunResume: (runId: string, throughVersion?: number) => {
-          const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+          const id = RunIdSchema.parse(runId), projected = this.#projectionLifecycleRows(id);
+          const rows = projected === undefined ? this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
             AND json_extract(request_json,'$.operation')='resume'
             AND json_extract(outcome_json,'$.result.kind')='run'
             AND json_extract(outcome_json,'$.result.runId')=?
             AND json_extract(outcome_json,'$.result.appliedVersion')<=?
             ORDER BY CAST(json_extract(outcome_json,'$.result.appliedVersion') AS INTEGER) DESC LIMIT 2`)
-            .all(RunIdSchema.parse(runId), throughVersion ?? Number.MAX_SAFE_INTEGER);
+            .all(id, throughVersion ?? Number.MAX_SAFE_INTEGER)
+            : projected.filter(entry => entry.operation === "resume" && entry.resultKind === "run" && entry.resultRunId === id
+              && entry.version !== null && entry.version <= (throughVersion ?? Number.MAX_SAFE_INTEGER))
+              .sort(lifecycleVersionOrder).slice(0, 2).map(entry => entry.row);
           const row = rows[0];
           if (row === undefined) return undefined;
           const command = RunLifecycleCommandRecordSchema.parse(commandFromRow(row));
@@ -5793,13 +5885,17 @@ export class AuthorityDatabase implements Disposable {
         },
         findContinuationIssue: (runId: string, appliedVersion?: number) => {
           const version = z.number().int().positive().optional().parse(appliedVersion) ?? null;
-          const row = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+          const id = RunIdSchema.parse(runId), projected = this.#projectionLifecycleRows(id);
+          const row = projected === undefined ? this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
             AND json_extract(request_json,'$.operation') IN ('create','retry','resume','recover')
             AND json_extract(outcome_json,'$.result.kind')='run'
             AND json_extract(outcome_json,'$.result.runId')=?
             AND json_type(outcome_json,'$.result.continuation')='object'
             AND (? IS NULL OR json_extract(outcome_json,'$.result.appliedVersion')=?)
-            ORDER BY CAST(json_extract(outcome_json,'$.result.appliedVersion') AS INTEGER) DESC LIMIT 1`).get(RunIdSchema.parse(runId), version, version);
+            ORDER BY CAST(json_extract(outcome_json,'$.result.appliedVersion') AS INTEGER) DESC LIMIT 1`).get(id, version, version)
+            : projected.filter(entry => ["create", "retry", "resume", "recover"].includes(entry.operation)
+              && entry.resultKind === "run" && entry.resultRunId === id && entry.continuationKind === "object"
+              && (version === null || entry.version === version)).sort(lifecycleVersionOrder)[0]?.row;
           if (row === undefined) return undefined;
           const command = RunLifecycleCommandRecordSchema.parse(commandFromRow(row));
           const audit = this.authority.lifecycleJournal.findAuditByCommand(command.commandId);
@@ -5808,10 +5904,13 @@ export class AuthorityDatabase implements Disposable {
           return audit;
         },
         findDelegationParentHold: (runId: string, sourceCommandId: string, appliedVersion: number) => {
-          const retries = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+          const projected = this.#projectionLifecycleRows(runId);
+          const retries = projected === undefined ? this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
             AND json_extract(request_json,'$.operation')='delegation-retry'
             AND json_extract(request_json,'$.request.sourceCommandId')=?
-            AND json_extract(request_json,'$.request.continuationOwner.runId')=?`).all(sourceCommandId,runId);
+            AND json_extract(request_json,'$.request.continuationOwner.runId')=?`).all(sourceCommandId,runId)
+            : projected.filter(entry => entry.operation === "delegation-retry" && entry.sourceCommandId === sourceCommandId
+              && entry.continuationOwnerRunId === runId).map(entry => entry.row);
           for (const row of retries) {
             const retry = RunLifecycleCommandRecordSchema.parse(commandFromRow(row));
             const command = this.authority.lifecycleJournal.getCommand(lifecycleCommandId("delegation-manual-pause",retry.commandId));
@@ -5825,15 +5924,20 @@ export class AuthorityDatabase implements Disposable {
           return undefined;
         },
         findRunOrigin: (runId: string) => {
-          const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+          const id = RunIdSchema.parse(runId), projected = this.#projectionLifecycleRows(id);
+          const rows = projected === undefined ? this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
             AND json_extract(request_json,'$.operation') IN ('create','retry','recover')
             AND json_extract(outcome_json,'$.result.kind')='run'
-            AND json_extract(outcome_json,'$.result.runId')=? ORDER BY id`).all(RunIdSchema.parse(runId));
+            AND json_extract(outcome_json,'$.result.runId')=? ORDER BY id`).all(id)
+            : projected.filter(entry => ["create", "retry", "recover"].includes(entry.operation) && entry.resultKind === "run"
+              && entry.resultRunId === id).sort(lifecycleCommandOrder).map(entry => entry.row);
           if (rows.length > 1) throw new Error("delegation-root-origin-ambiguous");
           return rows[0] === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
         },
         findGatePark: (runId: string, gateId: string, throughVersion: number) => {
-          const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+          const id = RunIdSchema.parse(runId), gate = GateIdSchema.parse(gateId), version = PositiveIntSchema.parse(throughVersion);
+          const projected = this.#projectionLifecycleRows(id);
+          const rows = projected === undefined ? this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
             AND json_extract(request_json,'$.operation')='worker-transition'
             AND json_extract(request_json,'$.request.runId')=?
             AND json_extract(request_json,'$.request.lifecycle.state')='parked-gate'
@@ -5841,43 +5945,74 @@ export class AuthorityDatabase implements Disposable {
             AND json_extract(outcome_json,'$.result.kind')='run'
             AND json_extract(outcome_json,'$.result.runId')=?
             AND CAST(json_extract(outcome_json,'$.result.appliedVersion') AS INTEGER)<=? ORDER BY id`)
-            .all(RunIdSchema.parse(runId), GateIdSchema.parse(gateId), RunIdSchema.parse(runId), PositiveIntSchema.parse(throughVersion));
+            .all(id, gate, id, version)
+            : projected.filter(entry => entry.operation === "worker-transition" && entry.requestRunId === id
+              && entry.lifecycleState === "parked-gate" && entry.gateId === gate && entry.resultKind === "run"
+              && entry.resultRunId === id && entry.version !== null && entry.version <= version)
+              .sort(lifecycleCommandOrder).map(entry => entry.row);
           if (rows.length > 1) throw new Error("delegation-gate-park-ambiguous");
           return rows[0] === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
         },
         findCancellation: (runId: string) => {
-          const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+          const projected = this.#projectionLifecycleRows(runId);
+          const rows = projected === undefined ? this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
             AND json_extract(request_json,'$.operation') IN ('transition','terminalize')
             AND json_extract(request_json,'$.request.runId')=?
-            AND json_type(request_json,'$.request.cancellationSource')='object' ORDER BY id`).all(runId);
+            AND json_type(request_json,'$.request.cancellationSource')='object' ORDER BY id`).all(runId)
+            : projected.filter(entry => ["transition", "terminalize"].includes(entry.operation) && entry.requestRunId === runId
+              && entry.cancellationKind === "object").sort(lifecycleCommandOrder).map(entry => entry.row);
           if (rows.length > 1) throw new Error("delegation-cancellation-source-ambiguous");
           return rows[0] === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
         },
-        listDelegationRefreshes: (runId: string) => readDelegationRefreshCommands(this.#database,runId),
-        listDelegationInvocations: (parentRunId: string) => this.#readDelegationInvocations(`parent:${parentRunId}`, () => this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
-          AND json_extract(request_json,'$.operation')='delegation-invocation'
-          AND json_extract(request_json,'$.request.runId')=? ORDER BY id`).all(parentRunId)
-          .map(row => RunLifecycleCommandRecordSchema.parse(commandFromRow(row)))),
-        findDelegationInvocation: (manifestId: string) => this.#readDelegationInvocations(`manifest:${manifestId}`, () => {
-          const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+        listDelegationRefreshes: (runId: string) => {
+          const id = RunIdSchema.parse(runId), projected = this.#projectionLifecycleRows(id);
+          return projected === undefined ? readDelegationRefreshCommands(this.#database, id)
+            : projected.filter(entry => entry.operation === "delegation-refresh" && entry.requestRunId === id)
+              .sort(lifecycleCommandOrder).map(entry => RunLifecycleCommandRecordSchema.parse(commandFromRow(entry.row)));
+        },
+        listDelegationInvocations: (parentRunId: string) => this.#readDelegationInvocations(`parent:${parentRunId}`, () => {
+          const projected = this.#projectionLifecycleRows(parentRunId);
+          const rows = projected === undefined ? this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
             AND json_extract(request_json,'$.operation')='delegation-invocation'
-            AND json_extract(request_json,'$.request.manifestId')=? ORDER BY id`).all(manifestId);
+            AND json_extract(request_json,'$.request.runId')=? ORDER BY id`).all(parentRunId)
+            : projected.filter(entry => entry.operation === "delegation-invocation" && entry.requestRunId === parentRunId)
+              .sort(lifecycleCommandOrder).map(entry => entry.row);
+          return rows.map(row => RunLifecycleCommandRecordSchema.parse(commandFromRow(row)));
+        }),
+        findDelegationInvocation: (manifestId: string) => this.#readDelegationInvocations(`manifest:${manifestId}`, () => {
+          const projected = this.#projectionLifecycleRows(manifestId, "manifest");
+          const rows = projected === undefined ? this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+            AND json_extract(request_json,'$.operation')='delegation-invocation'
+            AND json_extract(request_json,'$.request.manifestId')=? ORDER BY id`).all(manifestId)
+            : projected.filter(entry => entry.operation === "delegation-invocation" && entry.manifestId === manifestId)
+              .sort(lifecycleCommandOrder).map(entry => entry.row);
           if (rows.length > 1) throw new Error("delegation-invocation-ambiguous");
           return rows[0] === undefined ? [] : [RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]))];
         })[0],
-        listDelegationAdmissions: (runId: string, claimGeneration: number) => this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle' AND target_id=?
-          AND json_extract(request_json,'$.operation')='delegation-admission'
-          AND json_extract(request_json,'$.request.claim.claimGeneration')=?
-          ORDER BY json_extract(request_json,'$.request.expectedVersion') DESC,id`).all(runId, claimGeneration)
-          .map(row => RunLifecycleCommandRecordSchema.parse(commandFromRow(row))),
+        listDelegationAdmissions: (runId: string, claimGeneration: number) => {
+          const projected = this.#projectionLifecycleRows(runId);
+          const rows = projected === undefined ? this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle' AND target_id=?
+            AND json_extract(request_json,'$.operation')='delegation-admission'
+            AND json_extract(request_json,'$.request.claim.claimGeneration')=?
+            ORDER BY json_extract(request_json,'$.request.expectedVersion') DESC,id`).all(runId, claimGeneration)
+            : projected.filter(entry => entry.operation === "delegation-admission" && entry.targetId === runId
+              && entry.claimGeneration === claimGeneration)
+              .sort((left, right) => (right.expectedVersion ?? 0) - (left.expectedVersion ?? 0) || lifecycleCommandOrder(left, right))
+              .map(entry => entry.row);
+          return rows.map(row => RunLifecycleCommandRecordSchema.parse(commandFromRow(row)));
+        },
         findDelegationOwner: (runId: string, claimGeneration: number, throughVersion: number) => {
-          const row = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle' AND target_id=?
+          const projected = this.#projectionLifecycleRows(runId);
+          const row = projected === undefined ? this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle' AND target_id=?
             AND json_extract(request_json,'$.operation')='worker-transition'
             AND json_extract(request_json,'$.request.claim.claimGeneration')=?
             AND json_extract(request_json,'$.request.lifecycle.state')='running'
             AND json_type(request_json,'$.request.lifecycle.currentNodeId')='text'
             AND json_extract(outcome_json,'$.result.appliedVersion')<=?
-            ORDER BY json_extract(outcome_json,'$.result.appliedVersion') DESC LIMIT 1`).get(runId, claimGeneration, throughVersion);
+            ORDER BY json_extract(outcome_json,'$.result.appliedVersion') DESC LIMIT 1`).get(runId, claimGeneration, throughVersion)
+            : projected.filter(entry => entry.operation === "worker-transition" && entry.targetId === runId
+              && entry.claimGeneration === claimGeneration && entry.lifecycleState === "running" && entry.currentNodeKind === "text"
+              && entry.version !== null && entry.version <= throughVersion).sort(lifecycleVersionOrder)[0]?.row;
           return row === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(row));
         },
         insertCommand: (input: unknown) => {
@@ -5902,11 +6037,8 @@ export class AuthorityDatabase implements Disposable {
             };
           });
         },
-        getCommand: (commandId: string) => this.#readRecord(
-          "commands",
-          commandId,
-          AuthorityCommandRecordSchema,
-        ),
+        getCommand: (commandId: string) => this.#readProjectionRecord(this.#projectionRowReads?.commands, commandId,
+          () => this.#readRecord("commands", commandId, AuthorityCommandRecordSchema)),
         insertAudit: (input: unknown) => {
           const record = RunLifecycleCommandAuditRecordSchema.parse(input);
           const json = canonicalJsonStringify(record);
@@ -5935,7 +6067,7 @@ export class AuthorityDatabase implements Disposable {
             };
           });
         },
-        findAuditByCommand: (commandId: string) => {
+        findAuditByCommand: (commandId: string) => this.#readProjectionRecord(this.#projectionRowReads?.audits, commandId, () => {
           const rows = this.#database.prepare(`
             SELECT * FROM command_audits WHERE command_id = ? ORDER BY id
           `).all(commandId);
@@ -5945,7 +6077,7 @@ export class AuthorityDatabase implements Disposable {
           const row = rows[0];
           if (row === undefined) return undefined;
           return this.#parseNativeRow("command_audits",row,AuthorityCommandAuditRecordSchema);
-        },
+        }),
       }),
       dependencies: Object.freeze({
         authenticateGroup: (manifest: DelegationManifest) => this.#readDelegationGroup(manifest),
@@ -6466,7 +6598,8 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #readRunRow(runId: string): RunRecord | undefined {
-    return this.#readRecord("runs", runId, RunRecordSchema);
+    return this.#readProjectionRecord(this.#projectionRowReads?.runs, runId,
+      () => this.#readRecord("runs", runId, RunRecordSchema));
   }
 
 
@@ -6665,19 +6798,24 @@ export class AuthorityDatabase implements Disposable {
 
   #runAdmission(): RunAdmission {
     const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
-    const row = z.strictObject({ commandId: z.uuid(), hold: z.enum(["quit", "update", "shutdown", "logout"]) }).optional().parse(this.#database.prepare(`SELECT id AS commandId,
-      CASE family WHEN 'application' THEN 'quit' ELSE json_extract(request_json,'$.request.reason') END AS hold FROM commands held
-      WHERE state='succeeded' AND ((${UNRELEASED_QUIT_HOLD_SQL}) OR (family='run-lifecycle'
-      AND json_extract(request_json,'$.operation')='application-admission'
-      AND json_type(request_json,'$.request.reason')='text'
-      AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation, generation, generation));
-    return row === undefined ? { state: "open" } : { state: "draining", commandId: row.commandId, hold: row.hold };
+    return this.#readProjectionRecord(this.#projectionRowReads?.admissions, generation, () => {
+      const indexed = this.#transactionMode === "read" && this.#changeReader !== undefined && this.#snapshotExternalDataVersion !== undefined
+        && this.#validatedExternalDataVersion === this.#snapshotExternalDataVersion;
+      const row = z.strictObject({ commandId: z.uuid(), hold: z.enum(["quit", "update", "shutdown", "logout"]) }).optional().parse(this.#database.prepare(`SELECT id AS commandId,
+        CASE family WHEN 'application' THEN 'quit' ELSE json_extract(request_json,'$.request.reason') END AS hold FROM commands held
+        WHERE state='succeeded' AND ((${unreleasedQuitHoldSql(indexed)}) OR (family='run-lifecycle'
+        ${indexed ? "AND json_extract(request_json,'$.family') IS NULL" : ""}
+        AND json_extract(request_json,'$.operation')='application-admission'
+        AND json_type(request_json,'$.request.reason')='text'
+        AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation, generation, generation));
+      return row === undefined ? { state: "open" } : { state: "draining", commandId: row.commandId, hold: row.hold };
+    });
   }
 
   #quitAdmission(): string | undefined {
     const generation = this.authority.runtimeConfig.get()?.generation ?? 0;
     return z.strictObject({ commandId: z.uuid() }).optional().parse(this.#database.prepare(`SELECT id AS commandId FROM commands held
-      WHERE state='succeeded' AND ${UNRELEASED_QUIT_HOLD_SQL} ORDER BY created_at,id LIMIT 1`).get(generation, generation))?.commandId;
+      WHERE state='succeeded' AND ${unreleasedQuitHoldSql()} ORDER BY created_at,id LIMIT 1`).get(generation, generation))?.commandId;
   }
 
   #insertAdmissionCommand(repositories: AuthorityRepositories, request: z.infer<typeof ApplicationAdmissionRequestSchema>): void {
