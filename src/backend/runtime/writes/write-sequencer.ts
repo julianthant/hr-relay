@@ -95,7 +95,7 @@ import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-schedule
 import type { SpanEmitter } from "../../logs/span-emitter.js";
 import { ExecutorSpanEventSchema } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
-import { WriteParkedError } from "../execution/run-executor.js";
+import { requestedPayPathRecheck, WriteParkedError } from "../execution/run-executor.js";
 import type { WriteSequencer, WriteSequencerContext } from "../execution/run-executor.js";
 
 /* ── the mutation capability — this module is the SOLE minting point ──────── */
@@ -512,6 +512,7 @@ export async function executeIdempotencyProbe(
     commitContract: AnyCommitTaskContract;
     commitInput: unknown;
     transactionId?: string;
+    parkedRecheck?: boolean;
     instance: string;
     signal: AbortSignal;
     screenshotOwner?: Readonly<{ nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>;
@@ -524,8 +525,10 @@ export async function executeIdempotencyProbe(
   if (input.transactionId !== undefined && !acceptsRecheckTransactionId(completion)) {
     throw new Error("write-recheck-transaction-id-unsupported");
   }
-  const probeRef = input.transactionId === undefined || completion.kind === "receipt"
-    ? commitContract.writeSafety.idempotency.probe : completion.verify;
+  const payPathRecheck = input.parkedRecheck === true && completion.kind !== "receipt"
+    && completion.verify.taskId === "ucpath/verify-paypath-work-study";
+  const useVerifier = completion.kind !== "receipt" && (input.transactionId !== undefined || payPathRecheck);
+  const probeRef = useVerifier ? completion.verify : commitContract.writeSafety.idempotency.probe;
   const probeTask = taskIndexOf(deps.stores).get(probeRef.taskId);
   if (probeTask === undefined) throw new Error(`no store implements idempotency probe ${probeRef.taskId}`);
   if (probeTask.contract.effect !== "read") {
@@ -563,6 +566,11 @@ export async function executeIdempotencyProbe(
   }, input.screenshotOwner === undefined ? undefined : { ...input.screenshotOwner, taskId: probeRef.taskId });
   try {
     const verdict = probeVerdictSchema(proofSchema).parse(probeTask.contract.output.parse(raw));
+    if (payPathRecheck && verdict.state === "present") {
+      // shortcut: SS Smart HR lacks position and attempt identity, upgrade when UCPath exposes both.
+      return { state: "unknown", reason: "SS Smart HR does not identify the reviewed position and fenced PayPath Save",
+        observedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()) };
+    }
     if (input.transactionId !== undefined && verdict.state === "present") {
       const target = UcpathTerminationTargetSchema.parse(input.commitInput);
       const observed = z.object({ emplId: z.string(), effectiveDate: z.string(), transactionId: z.string() }).parse(verdict.proof);
@@ -1115,7 +1123,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
     commitInput: unknown,
-    transactionId?: string,
+    recheck?: Readonly<{ transactionId?: string }>,
   ): Promise<RuntimeProbeVerdict> {
     const instance = resolvedInstanceFor(context, systemOf(commitContract.id));
     emitTaskSpan(context, "probe", "span.started");
@@ -1123,7 +1131,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       const verdict = await executeIdempotencyProbe(deps, {
         commitContract,
         commitInput,
-        ...(transactionId === undefined ? {} : { transactionId }),
+        parkedRecheck: recheck !== undefined,
+        ...(recheck?.transactionId === undefined ? {} : { transactionId: recheck.transactionId }),
         instance,
         signal: context.signal,
         screenshotOwner: { nodeId: String(context.node.id), attempt: context.run.envelope.attempt, log: context.captureLog ?? deps.log },
@@ -1579,10 +1588,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     commitContract: AnyCommitTaskContract,
     commitInput: unknown,
     intent: Extract<WriteIntentRecord, { status: "attempting" | "parked" }>,
+    recheckKeyDigest?: string,
   ): Promise<unknown> {
     let verdict: RuntimeProbeVerdict;
     try {
-      verdict = await runLiveProbe(context, commitContract, commitInput, intent.status === "parked" ? intent.recheck?.transactionId : undefined);
+      if (recheckKeyDigest !== undefined && recheckKeyDigest !== intent.idempotencyKeyDigest) throw new Error("paypath-recheck-target-drift");
+      verdict = await runLiveProbe(context, commitContract, commitInput, intent.status === "parked" ? intent.recheck : undefined);
     } catch (error) {
       const failure = new PostFenceWriteFailure({
         writeIntentId: intent.writeIntentId,
@@ -1793,8 +1804,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const sourceBound = envelope.continuation !== undefined && storedCheckpoint !== undefined && storedCheckpoint.runId !== envelope.runId
       ? undefined : envelope.sourceBound;
     const replaysCommittedOutcome = storedCheckpoint !== undefined && (sourceBound === undefined || storedCheckpoint.runId === envelope.runId);
-    // A write approved under another build never derives its key, fences or clicks here; only its committed outcome replays.
-    if (!replaysCommittedOutcome && envelope.buildId !== currentBuildId()) {
+    const payPathRecheck = requestedPayPathRecheck(deps.authority.authority, run, node);
+    // An audited PayPath recheck can read across builds without admitting a new write.
+    if (payPathRecheck === undefined && !replaysCommittedOutcome && envelope.buildId !== currentBuildId()) {
       throw new TaskError(commitContract.id, "WRITE_BUILD_CHANGED",
         "Relay was updated after this run was approved. Retry the run to approve its write under this version.");
     }
@@ -1817,6 +1829,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const key = occurrence === undefined ? naturalKey
       : IdempotencyKeySchema.parse(repeatOccurrenceKey(businessKeyDigest, occurrence.confirmationCommandId, String(node.id)));
     const keyDigest = deriveIdempotencyKeyDigest(system, key);
+    if (payPathRecheck !== undefined) {
+      return await recoverOwnIntent(context, commitContract, commitInput, payPathRecheck, keyDigest);
+    }
     const siblings = deps.authority.authority.writeIntents.listByBusinessKey(system, businessKeyDigest);
     if (siblings.some((intent) => intent.idempotencyKey !== key && (intent.status !== "committed" && intent.status !== "observed-present"))) {
       throw new Error("business key has an unresolved write occurrence");
