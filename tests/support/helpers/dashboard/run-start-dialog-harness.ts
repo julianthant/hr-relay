@@ -70,6 +70,7 @@ export function createRunStartDialogHarness() {
         enqueue: start.enqueue,
         version: start.version,
         steps: start.steps,
+        ...(start.rows === undefined ? {} : { rows: start.rows }),
         inputRun:
           start.inputRun === undefined
             ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }

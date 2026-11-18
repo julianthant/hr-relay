@@ -254,9 +254,8 @@ export function StepOmissionFactsForm({
   draft,
   errors,
   onChange,
-  onTouch,
-  previous,
-  compact = false,
+  copied,
+  disabled = false,
 }: {
   step: string;
   form: StepOmissionForm;
@@ -264,39 +263,34 @@ export function StepOmissionFactsForm({
   /** field key → the refusal to draw; a key absent from it draws its help line */
   errors: Readonly<Record<string, string>>;
   onChange: (fieldKey: string, next: StepOmissionFactDraft) => void;
-  onTouch: (fieldKey: string) => void;
-  previous?: Readonly<Record<string, { value: string; onUse: () => void }>>;
-  compact?: boolean;
+  /** The run is starting; nothing in the form changes. */
+  disabled?: boolean;
+  /** Field keys still holding a value copied unedited from the earlier run. */
+  copied?: ReadonlySet<string>;
 }) {
   if (form.fields.length === 0) {
     return (
       <p className={cn(dsText.meta, dsFg.muted)}>
-        This step asks for nothing — omitting it leaves no fact for you to supply.
+        This step asks for nothing.
       </p>
     );
   }
   return (
     <fieldset className="grid min-w-0 grid-cols-1 gap-[var(--ds-space-cozy)] @min-[480px]:grid-cols-2">
-      {/* The legend NAMES the group, so a screen reader landing inside it
-          knows which omitted step these boxes stand in for. */}
-      <legend className={cn(dsText.meta, "font-medium", dsFg.secondary, compact && "sr-only")}>
-        {`What this run reads instead of ${step}`}
-      </legend>
+      {/* The legend names the group, so a screen reader landing inside it knows which step these boxes belong to. */}
+      <legend className="sr-only">{`Manual values for ${step}`}</legend>
       {form.fields.map((field) => {
         const value = draft[field.key];
         const error = errors[field.key] ?? null;
         const help = field.help;
-        const saved = previous?.[field.key];
-        const savedControl = saved && <div className="mt-[5px] flex items-center justify-between gap-2 text-caption text-ui-muted"><span>{compact ? "Previous" : "Saved"} <span className="tabular-nums">{saved.value}</span></span><Button size="sm" variant="outline" aria-label={`Copy ${step} · ${field.label}`} onClick={saved.onUse}>Use previous</Button></div>;
+        const savedControl = copied?.has(field.key) === true ? <p className="mt-[5px] text-caption text-ui-muted">From the earlier run</p> : null;
         if (field.kind === "boolean") {
           return (
             <div key={field.key}>
             <Checkbox
               checked={value === true}
-              onCheckedChange={(next) => {
-                onTouch(field.key);
-                onChange(field.key, next === true);
-              }}
+              disabled={disabled}
+              onCheckedChange={(next) => onChange(field.key, next === true)}
               label={field.label}
               {...(help === undefined ? {} : { description: help })}
             />
@@ -309,17 +303,14 @@ export function StepOmissionFactsForm({
           label: field.label,
           ...(help === undefined ? {} : { description: help }),
           error,
+          disabled,
         };
         if (field.kind === "enum") {
           return (
             <Field key={field.key} {...commonField}>
               <Select
                 value={text}
-                onBlur={() => onTouch(field.key)}
-                onChange={(event) => {
-                  onTouch(field.key);
-                  onChange(field.key, event.target.value);
-                }}
+                onChange={(event) => onChange(field.key, event.target.value)}
               >
                 {/* Do not preselect asserted facts; real-person answers require an explicit operator choice. */}
                 <option value="">Choose a value…</option>
@@ -337,7 +328,6 @@ export function StepOmissionFactsForm({
               <Textarea
                 rows={3}
                 value={text}
-                onBlur={() => onTouch(field.key)}
                 onChange={(event) => onChange(field.key, event.target.value)}
               />
               {savedControl}
@@ -346,11 +336,10 @@ export function StepOmissionFactsForm({
         }
         return (
           <Field key={field.key} {...commonField}>
-            {field.kind === "us-date" ? <DateInput label={field.label} textEntry textDateFormat="MM/DD/YYYY" value={text} onChange={next => { onTouch(field.key); onChange(field.key, next); }} /> : <Input
+            {field.kind === "us-date" || field.kind === "iso-date" ? <DateInput label={field.label} textEntry textDateFormat="MM/DD/YYYY" value={text} disabled={disabled} onChange={next => onChange(field.key, next)} /> : <Input
               value={text}
               {...(field.kind === "eid" ? { placeholder: "12345678", inputMode: "numeric" as const } : {})}
               {...(field.kind === "integer" ? { inputMode: "numeric" as const } : {})}
-              onBlur={() => onTouch(field.key)}
               onChange={(event) => onChange(field.key, event.target.value)}
             />}
             {savedControl}

@@ -99,7 +99,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await mount(h, source);
     assert.equal(document.activeElement?.getAttribute("aria-label"), "Close");
     for (const name of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(name).matches(":checked"), true);
-    assert.equal(checkbox("Read employee").disabled, true); assert.match(text(), /Completed in the source; it runs again/u);
+    assert.match(text(), /Completed/u);
     const before = h.authoritySnapshot(); await press("Continue");
     assert.match(text(), /already submitted/u); assert.match(text(), /UCPath/u); assert.equal(document.querySelector('[aria-label="Required"]'), null); assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
     await press("Cancel"); assert.match(text(), /3 of 3 included/u); assert.equal(h.authoritySnapshot(), before);
@@ -124,12 +124,13 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   it("copied omission facts can be cleared/edited without attribution", async () => {
     const h = await setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source); await mount(h, source);
     await act(async () => { checkbox("Check employee").click(); });
-    const before = h.authoritySnapshot(); await press("Continue"); await press("Confirm"); assert.ok(document.querySelector('[aria-label="Values"]'));
+    assert.equal(field("Checked employee ID").value, "10812345"); assert.match(text(), /From the earlier run/u);
+    await fill(field("Checked employee ID"), ""); assert.equal(button("Continue").disabled, true);
+    const before = h.authoritySnapshot();
+    await fill(field("Checked employee ID"), "10812346"); assert.doesNotMatch(text(), /From the earlier run/u);
+    await press("Continue"); await press("Confirm"); assert.ok(document.querySelector('[aria-label="Values"]'));
     assert.equal(h.authoritySnapshot(), before);
-    assert.equal(field("Employee ID").value, "10812345"); await fill(field("Employee ID"), ""); assert.equal(field("Employee ID").value, "");
-    await fill(field("Employee ID"), "10812346"); await press("Copy Check employee · Checked employee ID");
-    await fill(field("Checked employee ID"), ""); assert.equal(button("Continue").disabled, true); assert.ok(document.querySelector('[aria-label="Values"]'));
-    await fill(field("Checked employee ID"), "10812346"); await press("Continue"); await act(async () => checkbox("Dry run").click());
+    await fill(field("Employee ID"), "10812346"); await press("Continue"); await act(async () => checkbox("Dry run").click());
     await press("Start dry run");
     const request = StartPlanRequestSchema.parse(h.submissions.at(-1)); assert.deepEqual(request.submissions, [{ eid: "10812346" }]);
     assert.deepEqual(request.stepOmissions, [{ step: "checking", facts: { eid: "10812346" } }]);

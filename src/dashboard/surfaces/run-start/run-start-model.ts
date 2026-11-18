@@ -3,6 +3,7 @@ import { WorkbookActiveSelectionSchema } from "../../../models/dashboard/workboo
 import type { WorkbookLibraryEntry } from "../../../models/dashboard/workbook-library.js";
 import {
   stepOmissionFactsSchema,
+  IsoDateFactSchema,
   type StepOmissionField,
   type StepOmissionForm,
 } from "../../../models/workflow/step-omission.js";
@@ -356,11 +357,11 @@ export type StepOmissionFieldRead =
   | Readonly<{ state: "unreadable"; message: string }>;
 
 /** Narrow draft facts to declared form shapes before the shared JSON submission boundary. */
-export type StepOmissionFactValue = string | number | boolean | readonly string[];
+export type StepOmissionFactValue = string | number | boolean | null | readonly string[];
 
 /** the parsed value of one declared field, or a loud refusal — never a widened `unknown` */
 function asFactValue(field: string, value: unknown): StepOmissionFactValue {
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
   if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) return Object.freeze([...value]);
   throw new Error(`omission field "${field}" parsed to a value no declared kind produces`);
 }
@@ -377,7 +378,13 @@ export function readStepOmissionField(
     return { state: "value", value: draft };
   }
   if (typeof draft !== "string") return { state: "unreadable", message: "This field is typed, not a yes/no answer." };
+  if (field.optional === true && draft.trim() === "") return { state: "value", value: null };
   switch (field.kind) {
+    case "iso-date": {
+      const typed = /^(\d{2})\/(\d{2})\/(\d{4})$/u.exec(draft.trim());
+      const iso = typed === null ? "" : `${typed[3]}-${typed[1]}-${typed[2]}`;
+      return IsoDateFactSchema.safeParse(iso).success ? { state: "value", value: iso } : { state: "unreadable", message: "Type a date as MM/DD/YYYY." };
+    }
     case "integer": {
       const typed = draft.trim();
       if (typed.length === 0) return { state: "unreadable", message: "Type a whole number." };
