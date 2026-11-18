@@ -64,6 +64,12 @@ export class WriteCommitInputRebuildError extends Error {
   }
 }
 
+class UnprovedRetiredTargetError extends WriteCommitInputRebuildError {
+  constructor() {
+    super("missing-evidence", "retired-key-without-full-target-proof");
+  }
+}
+
 export const WriteBindingCheckResultSchema = z.strictObject({
   check: WriteBindingCheckSchema,
   // Not-evaluated means a prerequisite moved; it never counts as held.
@@ -155,20 +161,7 @@ function matchesRunConfirmation(
     && consent.writeIntentId === occurrence.writeIntentId && consent.evidenceDigest === occurrence.evidenceDigest;
 }
 
-function isOriginalParkedTarget(run: RunRecord, node: TransactionRuntimeNode, intent: WriteIntentRecord): boolean {
-  const { lifecycle, envelope } = run;
-  return lifecycle.state === "parked-write" && intent.status === "parked"
-    && lifecycle.writeIntentId === intent.writeIntentId && lifecycle.intentGeneration === intent.generation
-    && intent.workflowId === envelope.workflow && intent.itemId === envelope.itemId
-    && intent.runId === envelope.runId && intent.runAttempt === envelope.attempt
-    && node.commit.uses.id === intent.taskId && intent.taskId.startsWith(`${intent.system}/`)
-    && intent.bindingProof.taskId === intent.taskId && intent.bindingProof.runId === intent.runId
-    && intent.bindingProof.attempt === intent.runAttempt
-    && intent.bindingProof.afterPrepareSpanPath === `${envelope.traceId}/${node.id}/prepare`
-    && matchesRunConfirmation(run, node, intent);
-}
-
-// Only the held read and confirmed absence may identify the original fence by a retired key.
+// A retired rule can identify the old fence without identifying all rows it targeted.
 export function rebuildCommitInput(
   repositories: WriteBindingRepositories,
   descriptor: AnyWorkflowDescriptor,
@@ -182,15 +175,16 @@ export function rebuildCommitInput(
     const policy = node.commit.uses.writeSafety.idempotency;
     const deriveKey = (rule: typeof policy.key) =>
       IdempotencyKeySchema.parse(Reflect.apply(rule, undefined, [commitInput]));
-    const keys = [deriveKey(policy.key)];
-    if (policy.retiredKeys && arm !== "recheck" && isOriginalParkedTarget(run, node, intent)
-      && !sameContractAndBuild(descriptor, run)) {
-      for (const rule of policy.retiredKeys) keys.push(deriveKey(rule.key));
+    const currentKey = deriveKey(policy.key);
+    if (intent.status === "parked" && arm !== "recheck" && policy.retiredKeys?.length) {
+      if (policy.retiredKeys.some(rule => matchesFencedKey(deriveKey(rule.key), node, intent))) {
+        throw new UnprovedRetiredTargetError();
+      }
+      if (run.lifecycle.state === "parked-write" && !matchesRunConfirmation(run, node, intent)) {
+        throw new WriteCommitInputRebuildError("key-drift", "parked-confirmation-binding-moved");
+      }
     }
-    if (new Set(keys).size !== keys.length) {
-      throw new WriteCommitInputRebuildError("key-drift", "ambiguous-permanent-key-rules");
-    }
-    if (!keys.some(key => matchesFencedKey(key, node, intent))) {
+    if (!matchesFencedKey(currentKey, node, intent)) {
       throw new WriteCommitInputRebuildError("key-drift", "permanent-key-binding-moved");
     }
     return commitInput;
@@ -353,23 +347,23 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   }
   checks.push(held("canonical-input", `both bind canonical schema ${short(currentInputHash)}`));
 
-  let keyFailure: WriteCommitInputRebuildFailure | undefined;
   try {
     rebuildCommitInput(input.repositories, descriptor, node, run, intent, arm);
   } catch (error) {
-    keyFailure = error instanceof WriteCommitInputRebuildError
+    const keyFailure = error instanceof WriteCommitInputRebuildError
       ? error.failure
       : WriteCommitInputRebuildFailureSchema.parse({
         category: "schema-failure",
         evidenceDigest: sha256Hex("commit-input-rebuild-failed"),
       });
-  }
-  if (keyFailure !== undefined) {
+    const keyReference = idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run));
     checks.push(moved(
       "permanent-key-identity",
-      `this build cannot re-derive intent ${intent.writeIntentId}'s fenced ${intent.system} `
-      + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(run))} from the exact durable input; `
-      + `${keyFailure.category} (evidence ${keyFailure.evidenceDigest.slice(0, 12)}…)`,
+      error instanceof UnprovedRetiredTargetError
+        ? `the fenced ${intent.system} ${keyReference} matches a retired rule. The retired key cannot prove the complete original target.`
+          + " The intent stays parked for review."
+        : `this build cannot re-derive intent ${intent.writeIntentId}'s fenced ${intent.system} ${keyReference} from the exact durable input; `
+          + `${keyFailure.category} (evidence ${keyFailure.evidenceDigest.slice(0, 12)}…)`,
       keyFailure,
     ));
     checks.push(skipped("binding-proof-identity", "permanent-key-identity"));
