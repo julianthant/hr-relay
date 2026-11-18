@@ -33,10 +33,10 @@ describe("start step selection", () => {
         key, includedByDefault, state: control.state,
       })),
       [
-        { key: "searching", includedByDefault: true, state: "required" },
+        { key: "searching", includedByDefault: true, state: "omittable" },
         { key: "cross-verify", includedByDefault: true, state: "selectable" },
-        { key: "active-status", includedByDefault: true, state: "required" },
-        { key: "crm-dates", includedByDefault: false, state: "selectable" },
+        { key: "active-status", includedByDefault: true, state: "omittable" },
+        { key: "crm-dates", includedByDefault: true, state: "selectable" },
         { key: "reference-check", includedByDefault: true, state: "required" },
       ],
     );
@@ -122,10 +122,10 @@ describe("start step omission projection", () => {
     );
   });
 
-  it("leaves Person Lookup steps locked", () => {
-    assert.ok(
-      projectStartSteps(personLookupDescriptor).every(({ control }) => control.state !== "omittable"),
-      String(personLookupDescriptor.id),
+  it("offers only Person Lookup's two required reading steps for manual entry", () => {
+    assert.deepEqual(
+      projectStartSteps(personLookupDescriptor).filter(({ control }) => control.state === "omittable").map(({ key }) => key),
+      ["searching", "active-status"],
     );
   });
 });
@@ -326,7 +326,7 @@ describe("authored start selection admission", () => {
 
 describe("served start rows", () => {
   const SERVED_ROWS: Readonly<Record<string, readonly (readonly [string, string, string | null])[]>> = {
-    "person-lookup": [["searching", "locked", null], ["cross-verify", "switch", null], ["active-status", "locked", null], ["crm-dates", "switch", null], ["reference-check", "locked", null]],
+    "person-lookup": [["searching", "switch", null], ["cross-verify", "switch", null], ["active-status", "switch", null], ["crm-dates", "switch", null]],
     separations: [["kuali-extraction", "locked", "bound-read"], ["identity-check", "locked", "guard-read"], ["kronos-timecard", "switch", null], ["identity-review", "locked", "approval"],
       ["pending-termination", "locked", "form-action"], ["submit-termination", "locked", "form-action"], ["kuali-finalization", "locked", "form-action"]],
     onboarding: [["crm-data", "locked", "guard-read"], ["ucpath-search", "locked", "guard-read"], ["i9-search", "locked", "guard-read"], ["hire-review", "locked", "approval"], ["i9-creation", "locked", "form-action"], ["ucpath-hire", "locked", "form-action"], ["master-results", "locked", null]],

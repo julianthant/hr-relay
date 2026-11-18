@@ -193,7 +193,7 @@ export function factDraft(field: StepOmissionField, value: unknown): StepOmissio
   if (field.kind === "boolean") return value === true;
   if (value === null || value === undefined) return "";
   if (Array.isArray(value)) return value.map(String).join("\n");
-  const text = String(value);
+  const text = typeof value === "string" ? value : typeof value === "number" || typeof value === "boolean" ? String(value) : JSON.stringify(value);
   const iso = field.kind === "iso-date" ? /^(\d{4})-(\d{2})-(\d{2})$/u.exec(text) : null;
   return iso === null ? text : `${iso[2]}/${iso[3]}/${iso[1]}`;
 }

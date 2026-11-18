@@ -121,7 +121,7 @@ it("keeps the consuming task's own origin, never a read span, for a leaf forward
  const createTyped = () => createTaskProvenanceCollector({ descriptor: personLookupDescriptor, execution: consumer, observationSpanPath: consumerSpan,
    canonicalInput: PersonLookupInput.parse({ name: "Fictional Person" }), upstreamEvidence: { checkpoints: [asserted], skippedTasks: ["matching"] },
    clock: manualClock(new Date(assertedAt)), onRecord: batch => points.push(...batch.points) });
- const fromTyped = (field: string, recorded: unknown, aliases: NonNullable<DataPoint["aliases"]>) => createTyped().recordData({ direction: "read", field, value: recorded as DataPoint["value"], aliases });
+ const fromTyped = (field: string, recorded: unknown, aliases: NonNullable<DataPoint["aliases"]>) => createTyped().recordData({ direction: "read", field, value: recorded, aliases });
  // An operator-typed source is still checked: a contradicting value or overlapping targets refuse.
  expect(() => fromTyped("selected", "Someone Else", [{ path: [], source: { kind: "dependency", nodeId: "searching", path: ["results", 0, "name"] } }])).toThrow(/contradicts its exact source/u);
  expect(() => fromTyped("selected", { name: value.results[0].name }, [{ path: [], source: { kind: "dependency", nodeId: "searching", path: ["results", 0] } }])).toThrow(/contradicts its exact source/u);
