@@ -7,9 +7,9 @@ import { projectDecision, rowActionOption } from "../decisions/project-decision.
 import { availableSections } from "./run-detail/availability.js";
 import { buildRunGate } from "./run-detail/gate-park.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
-import { ocrChildRetryAvailable,readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
+import { ocrChildRetryAvailable } from "../lifecycle/ocr-review-authority.js";
 import { aggregateMemberRetryAvailable } from "./run-retry.js";
-import { hostedOcrRun } from "./ocr-record-members.js";
+import { endedUnfinished, hostedOcrRun, offeredOcrReview } from "./ocr-record-members.js";
 import {
   RunDetailWireSchema,
   TimelineStepWireSchema,
@@ -392,8 +392,8 @@ export function buildRunDetail(
         : requestedBy === "operator" ? "You cancelled this run." : "This run was cancelled." };
   }
   const review = canonical === undefined ? undefined : canonical.database.withAuthorityReadSnapshot(() => {
-    const ocrRunId = authority.envelope.workflow === "ocr" ? runId : hostedOcrRun(canonical.database.authority, authority)?.envelope.runId;
-    return ocrRunId === undefined ? undefined : readOcrReviewAuthority(canonical.database.authority, canonical.reader, ocrRunId);
+    const ocr = authority.envelope.workflow === "ocr" ? authority : hostedOcrRun(canonical.database.authority, authority);
+    return ocr === undefined || endedUnfinished(authority) ? undefined : offeredOcrReview(canonical.database.authority, canonical.reader, ocr);
   });
   const reviewAvailable = review !== undefined;
   const childRetry = canonical === undefined || !(ocrChildRetryAvailable(canonical.database.authority, canonical.reader, authority,

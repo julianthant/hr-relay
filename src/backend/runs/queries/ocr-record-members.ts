@@ -133,7 +133,7 @@ export function endedUnfinished(run: RunRecord): boolean {
   return run.lifecycle.state === "terminal" && ["cancelled", "discarded", "superseded"].includes(run.lifecycle.outcome);
 }
 
-/** The OCR review a queue read offers for this run. A run that ended without finishing offers none, so its retained
+/** The OCR review a queue or run summary read offers for this run. A run that ended without finishing offers none, so its retained
  * revision is re-verified only when its review is opened, and a refusal there never fails the queue. */
 export function offeredOcrReview(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
   ocr: RunRecord): ReturnType<typeof readOcrReviewAuthority> {
