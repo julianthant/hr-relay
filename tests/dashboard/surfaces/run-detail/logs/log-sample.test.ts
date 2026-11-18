@@ -53,7 +53,7 @@ describe('compact run headers', () => {
     try {
       window.history.replaceState(null, '', '/?logPreview=selected');
       const markup = renderToStaticMarkup(sample({ selection: { row, workflowLabel: 'Person lookup' } }));
-      assert.match(markup, /Relay could not load this run&#x27;s logs\./);
+      assert.match(markup, /Couldn&#x27;t load logs\./);
       assert.doesNotMatch(markup, /served logs unavailable/);
       assert.equal(useRunWiring.mock.calls.length, 1);
     } finally { window.history.replaceState(null, '', locationBefore); }
