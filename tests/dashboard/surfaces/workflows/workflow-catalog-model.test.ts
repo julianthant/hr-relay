@@ -1,12 +1,8 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act,createElement } from "react";
-import { createRoot,type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterAll,afterEach,beforeAll,describe,expect,it } from "vitest";
+import { describe,expect,it } from "vitest";
 import { PRODUCT_WORKFLOW_COMPOSITION,WORKFLOW_SOURCES,workflowComposition,workflowSource } from "../../../../src/dashboard/app/workflow-sources.js";
-import { explorerRecoveryWorkflow,explorerWorkflowOptions } from "../../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
-import { WorkflowExplorer } from "../../../../src/dashboard/surfaces/explorer/explorer.js";
 import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { RunWorkflowPicker } from "../../../../src/dashboard/surfaces/run-start/run-start-picker.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
@@ -18,48 +14,10 @@ import { workflowDryRunSupport } from "../../../../src/workflow-kit/workflow.js"
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
 import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
 
-Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-let root: Root | undefined;
-const originalScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
-beforeAll(() => Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => undefined }));
-afterAll(() => {
-  if (originalScroll) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScroll);
-  else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
-});
-afterEach(async () => {
-  if (root) await act(async () => root?.unmount());
-  root = undefined;
-  document.body.replaceChildren();
-});
 
 const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
 const catalog = buildWorkflowCatalog(served, WORKFLOW_SOURCES);
 const noop = () => {};
-
-describe("Explorer over the served catalog", () => {
-  it("opens the first served workflow on its registered definition instead of a mock timeline", async () => {
-    const host = document.createElement("div");
-    document.body.append(host);
-    root = createRoot(host);
-    await act(async () => root?.render(createElement(WorkflowExplorer, { catalog })));
-    const select = document.querySelector('[aria-label="Explorer workflow"]');
-    assert.ok(select instanceof HTMLButtonElement);
-    assert.equal(select.getAttribute("data-value"), explorerRecoveryWorkflow(catalog));
-    assert.equal(select.getAttribute("data-value"), "person-lookup");
-    assert.match(document.body.textContent ?? "", /Registered workflow data is unavailable because the dashboard client is not connected/);
-    assert.equal(document.body.textContent?.includes("Separation filed and Kuali document verified"), false);
-  });
-});
-
-describe("Explorer and hidden workflows", () => {
-  it("offers no workflow the sources policy hides, CRM Document Download included", () => {
-    expect(WORKFLOW_SOURCES["crm-doc-download"]).toBe("hidden");
-    const hidden = { ...served[0], workflowId: "crm-doc-download", label: "CRM Document Download" };
-    const entries = buildWorkflowCatalog([hidden, ...served], { ...servedFixtureSources(served), "crm-doc-download": "hidden" });
-    expect(explorerWorkflowOptions(entries).some(option => option.id === "crm-doc-download")).toBe(false);
-    expect(explorerWorkflowOptions(entries).length).toBe(served.length);
-  });
-});
 
 describe("frontend workflow catalog", () => {
   it("offers a served saved-row Onboarding declaration unless an explicit restriction applies", () => {
@@ -106,7 +64,6 @@ describe("frontend workflow catalog", () => {
     expect(workflowSource("i9-lookup")).toBe("hidden");
     expect(Object.hasOwn(WORKFLOW_SOURCES, "i9-check")).toBe(false);
     expect(served.every(flow => Object.hasOwn(WORKFLOW_SOURCES, flow.workflowId))).toBe(true);
-    expect(explorerRecoveryWorkflow(catalog)).toBe("person-lookup");
     expect(PRODUCT_WORKFLOW_COMPOSITION.dataSources).toBeUndefined();
     expect(workflowSource("person-lookup")).toBe("served");
     expect(() => workflowSource("unknown-workflow")).toThrow("WORKFLOW_SOURCE_UNDECLARED");
@@ -146,7 +103,6 @@ describe("frontend workflow catalog", () => {
       expect(rail).toContain(`aria-label="${entry.label}"`);
       expect(picker).toContain(`aria-label="${entry.label}"`);
     }
-    expect(explorerWorkflowOptions(catalog).map(entry => [entry.id, entry.title])).toEqual(catalog.map(entry => [entry.id, entry.label]));
     expect(picker.match(/disabled=""/gu) ?? []).toHaveLength(0);
     expect(picker).not.toContain("Started by a parent workflow.");
   });

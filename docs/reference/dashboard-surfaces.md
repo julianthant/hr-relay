@@ -28,7 +28,7 @@ All source paths in this table are relative to `src/dashboard/`.
 | Spreadsheets | `surfaces/spreadsheets/spreadsheets.tsx` | Served library and versioned Save through `state/spreadsheet-wiring-adapter.ts`; the mock library lives in `tests/support/fixtures/dashboard/spreadsheet-mock-model.ts` |
 | Intake | `surfaces/intake/intake.tsx` | Typed intake session and command client |
 | Analytics | `surfaces/activity/activity.tsx`, `activity-view.tsx` | AP1 population and selected browse through `state/activity-wiring-adapter.ts`; the harness supplies `useActivitySampleReport` |
-| Explorer | `surfaces/explorer/explorer.tsx`, `explorer-flow.tsx` | Local workflow definitions, choices, and source models |
+| Explorer | `surfaces/explorer/explorer.tsx`, `explorer-spec-view.tsx` | The served review spec, options and source drawer |
 | Design-system specimen | `kit/main.tsx`, `kit/kit-page.tsx` | Real `ds/` primitives, no service data |
 
 ## Startup and persistent shell

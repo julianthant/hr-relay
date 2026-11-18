@@ -13,7 +13,7 @@ afterAll(world.releaseTemplates);
 it("serves a native admitted failed-member Retry and withdraws it after replacement", async () => {
   const f = await world.fixture();
   const projection = createOperatorProjection({ database: f.database, reader: f.canonical.lifecycle,
-    stateRoot: f.stateRoot, clock: f.clock, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
+    stateRoot: f.admission.stateRoot, clock: f.clock, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
     ledger: createTransactionHistory(f.database.authority), descriptors: { resolve: f.resolve } });
   const failed = f.children().find(run => run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed");
   const successful = f.children().find(run => run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
@@ -46,7 +46,7 @@ for (const unknown of [false, true]) it(`withholds member Retry after ${unknown 
   const intents = f.database.authority.writeIntents.listByRun(target.envelope.runId);
   assert.deepEqual(intents.map(intent => intent.status), [unknown ? "parked" : "committed"]);
   const projection = createOperatorProjection({ database: f.database, reader: f.canonical.lifecycle,
-    stateRoot: f.stateRoot, clock: f.clock, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
+    stateRoot: f.admission.stateRoot, clock: f.clock, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
     ledger: createTransactionHistory(f.database.authority), descriptors: { resolve: f.resolve } });
   const row = projection.queueSurface(target.envelope.runId);
   assert.ok(row);

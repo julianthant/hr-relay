@@ -119,8 +119,8 @@ it("uses saved rows only, requires a common explicit mode and preserves duplicat
   assert.deepEqual(planned.workbookReferences?.map(reference => [reference.entry, reference.libraryId, reference.versionId, reference.selectedRow]), [
     [1, "roster", "version", { sheetId: "first", rowId: "same-row" }], [2, "roster", "version", { sheetId: "first", rowId: "next-row" }],
   ]);
-  assert.match(dialog.text(), /Entry 2/u);
-  assert.match(dialog.text(), /First · Row 3: duplicate@example.test/u); assert.match(dialog.text(), /Duplicate email refused/u);
+  assert.match(dialog.text(), /First · Row 3: duplicate@example\.test already has a run in progress\./u);
+  assert.doesNotMatch(dialog.text(), /Duplicate email refused/u, "the refusal notice is one plain sentence, never the server text");
 });
 
 it("retains the original issued envelope after an unknown result and later mode edits", async () => {

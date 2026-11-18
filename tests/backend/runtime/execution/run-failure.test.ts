@@ -127,8 +127,11 @@ it.each(["not-attempted", "unknown"] as const)("shows the registered delegation 
   const original = FIXTURE_FAILURE_SECTIONS[FIXTURE_IDS.failedRun].failure;
   assert.ok(original.section === "failure" && original.payload.state === "available");
   const source = original.payload.value;
+  // Only an unwritten failure serves a retry; an unknown write drops it and the decision option that names it.
+  const retryable = writeState === "not-attempted" ? source : { ...source, retry: undefined, decision: source.decision === undefined ? undefined
+    : { ...source.decision, options: source.decision.options.filter(option => option.send.via !== "action" || option.send.actionKey !== source.retry?.key) } };
   const section = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: {
-    ...source, code: "DELEGATION_CONFIG_UNAVAILABLE", writeState, summary: "private retained snapshot details",
+    ...retryable, code: "DELEGATION_CONFIG_UNAVAILABLE", writeState, summary: "private retained snapshot details",
   } } });
   const detail = FIXTURE_RUN_DETAILS[FIXTURE_IDS.failedRun]; assert.ok(detail);
   const logs = NotePageSchema.parse({ runId: detail.runId, rows: [], notes: [], nextCursor: { state: "absent", reason: "end-of-page" } });

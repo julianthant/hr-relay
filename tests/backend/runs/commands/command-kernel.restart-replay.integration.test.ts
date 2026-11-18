@@ -56,7 +56,7 @@ const descriptor = defineWorkflowDescriptor({
   identity: { matchKey: (input) => `eid:${input.eid}` },
   presentation: { title: (input) => `Kernel ${input.eid}` },
   scenarios: ["fixture-graph/happy"],
-  timeline: [{ key: "probing", label: "Probing", nodes: ["probe"], omission: { form: { fields: [{ key: "present", label: "Present", kind: "boolean" }] }, produces: { probe: ({ facts, scope }) => ({ eid: (scope.input as { eid: string }).eid, present: facts.present === true }) } } },
+  timeline: [{ key: "probing", label: "Probing", nodes: ["probe"], manual: { skips: [], form: { fields: [{ key: "present", label: "Present", kind: "boolean" }] }, produces: { probe: ({ facts, scope }) => ({ eid: (scope.input as { eid: string }).eid, present: facts.present === true }) } } },
     { key: "filing", label: "Filing", nodes: ["submit"] }],
   flow: flow(KernelInput)
     .step("probe", FixtureReadReceipt, {

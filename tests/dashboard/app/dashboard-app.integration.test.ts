@@ -5,7 +5,6 @@ import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-mode
 import { FIXTURE_EXPLORER_WIRE } from "../../mocks/helpers/fixture-explorer.js";
 import { servedFixtureSources } from "../../mocks/helpers/workflow-composition.js";
 import { workflowComposition as servedWorkflowComposition } from "../../../src/dashboard/app/workflow-sources.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
 import { vi } from "vitest";
 import { NotificationWireSchema } from "../../../src/models/dashboard/projection.js";
 import { disposeHttpRouteHarness, harness as backendHarness, type Harness as BackendHarness } from "../../support/helpers/backend/http-route-harness.js";
@@ -435,8 +434,10 @@ try {
   assert_m1.match(document.body.textContent ?? "", /Archive page removed/u);
   assert_m1.equal(document.querySelector('[aria-label="Archive"]'), null);
   assert_m1.equal(document.querySelector('a[href="?settings=archive"]'), null);
-  assert_m1.equal(document.querySelectorAll('nav[aria-label="Settings sections"] a').length, 7);
-  assert_m1.ok(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]'));
+  // Subscription folded into General (1f9149b4fe); Archive is retired.
+  assert_m1.deepEqual([...document.querySelectorAll('nav[aria-label="Settings sections"] a')].map(link => link.getAttribute("href")),
+    ["general", "account", "spreadsheets", "explorer", "activity", "keyboard"].map(id => `?settings=${id}`));
+  assert_m1.equal(document.querySelector('nav[aria-label="Settings sections"] a[href="?settings=subscription"]'), null);
   await click(button("Return to dashboard"));
   assert_m1.equal(parseRoute_m1(location.search).archive, undefined);
   assert_m1.equal(parseRoute_m1(location.search).settings, undefined);
@@ -547,7 +548,7 @@ it_m1("passes the app client to a served Explorer read", async () => {
     }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.equal(calls, 1);
     assert_m1.ok(document.body.textContent?.includes("Search UCPath by employee ID or name and read the matching person records."), document.body.textContent ?? "");
-    assert_m1.ok(document.body.textContent?.includes("No run values are available."));
+    assert_m1.ok(document.body.textContent?.includes("Anything not listed stops the run with a failure card."));
     assert_m1.equal(document.body.textContent?.includes("Separation filed and Kuali document verified"), false);
   } finally { await _afterEachFixture0(); }
 });

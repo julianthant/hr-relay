@@ -60,11 +60,8 @@ for (const family of ["protected"] as const) {
     const h = await setup();
     let settle: ((value: unknown) => void) | undefined;
     h.ports.execute = () => new Promise<unknown>(resolve => { settle = resolve; });
-    const control = () => family === "ordinary" ? h.controller() : h.controller().protectedEditor;
-    await settingsAction(() => {
-      if (family === "ordinary") h.controller().update("actor.label", "retained");
-      else if (family === "protected") h.controller().protectedEditor.update("ucpathUserId", "retained");
-    });
+    const control = () => h.controller().protectedEditor;
+    await settingsAction(() => control().update("ucpathUserId", "retained"));
     await settingsAction(() => control().submit());
     assert.equal(control().save.state, "saving"); const original = structuredClone(h.commands[0]);
     await h.render("general", true, 1);

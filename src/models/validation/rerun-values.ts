@@ -2,27 +2,13 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import type { JsonValue } from "../../rules/validation/canonical-json.js";
 import type { RerunValueMapping, RerunValueMappingSpec } from "../workflow/rerun-values.js";
-import { RerunValueMappingsSchema } from "../workflow/rerun-values.js";
+import { RerunValueMappingsSchema, valueLeafSchemas } from "../workflow/rerun-values.js";
 import type { RuntimeFlowNode } from "../workflow/graph.js";
 import type { StepOmissionSpec } from "../workflow/step-omission.js";
 import { stepOmissionFactsSchema } from "../workflow/step-omission.js";
-import { assertSchemaOffersPath } from "./contract-boundary.js";
 
 /** Resolve declared leaves only. Preserve leaf wrappers and union alternatives. */
-function leafSchemas(schema: z.core.$ZodType, path: readonly string[]): readonly z.core.$ZodType[] {
-  if (path.length === 0) return [schema];
-  if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable || schema instanceof z.ZodReadonly
-    || schema instanceof z.ZodDefault || schema instanceof z.ZodCatch || schema instanceof z.ZodNonOptional) {
-    return leafSchemas(schema.unwrap(), path);
-  }
-  if (schema instanceof z.ZodUnion) return schema.options.flatMap((option) => leafSchemas(option, path));
-  if (!(schema instanceof z.ZodObject)) return [];
-  const [key, ...rest] = path;
-  if (key === undefined || !Object.hasOwn(schema.shape, key)) return [];
-  const child: unknown = schema.shape[key];
-  if (!(child instanceof z.ZodType)) throw new Error("RERUN_MAPPING_TARGET_SCHEMA_INVALID");
-  return leafSchemas(child, rest);
-}
+const leafSchemas = valueLeafSchemas;
 
 export interface RerunMappingView {
   readonly input: z.ZodType;
@@ -68,7 +54,9 @@ export function validateRerunValueMappings(view: RerunMappingView & {
     const node = view.nodes.find(({ id }) => id === mapping.nodeId);
     if (node === undefined) throw new Error("RERUN_MAPPING_SOURCE_NODE_MISSING");
     const source = rerunSourceFieldSchema(node, mapping.fieldPath);
-    assertSchemaOffersPath(source.schema, source.path, "Rerun source field");
+    if (valueLeafSchemas(source.schema, source.path.split(".")).length === 0) {
+      throw new Error(`Rerun source field references unknown schema field ${source.path}`);
+    }
     const target = rerunTargetSchema(view, mapping);
     if (leafSchemas(target, mapping.targetFieldPath.split(".")).length === 0) throw new Error("RERUN_MAPPING_TARGET_FIELD_MISSING");
     if (mapping.targetFieldPath.split(".").some(part => part === "timekeeperName" || part === "timekeeperInitials")

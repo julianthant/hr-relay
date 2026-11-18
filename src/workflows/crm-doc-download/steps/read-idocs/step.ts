@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { CrmDownloadedPeopleSchema, CrmDocumentRecordsSchema } from "../../../../models/systems/crm/documents.js";
 import { CrmDocDownloadInput } from "../../../../models/workflows/crm-doc-download/input.js";
+import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import { defineStep, inheritStepProof, reuseTask, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { CrmReadIdocs } from "../../../../models/systems/crm/read-idocs.js";
@@ -10,7 +11,7 @@ import type { buildReference } from "../reference/step.js";
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "read-idocs", label: "Download CRM documents" }), system: "crm",
   operatorFields: [
-    { label: "Employee ID", sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.identity.eid" }] },
+    { label: "Employee ID", example: PERSON_LOOKUP_EXAMPLE_EID, sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.identity.eid" }] },
     { label: "Available documents", sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.totalDocuments" }] },
     { label: "Downloaded PDF", sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.documents.fileName" }] },
   ],
