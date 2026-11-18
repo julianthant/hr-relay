@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { assistantConfirmRefusal, assistantReducer } from '../../../../src/dashboard/surfaces/assistant/assistant-model.js';
-import { ASSISTANT_MOCK_PROMPT, ASSISTANT_MOCK_REVISION, assistantMockProposal, assistantMockState } from '../../../../src/dashboard/surfaces/assistant/assistant-mock-model.js';
+import { ASSISTANT_MOCK_PROMPT, ASSISTANT_MOCK_REVISION, assistantMockProposal, assistantMockState } from '../../../support/fixtures/dashboard/assistant-proposal-sample.js';
 
 describe('assistant mock proposal', () => {
   it('shows exact values, read-only mode, effects and stop points', () => {

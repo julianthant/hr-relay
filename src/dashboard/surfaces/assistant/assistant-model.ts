@@ -20,7 +20,7 @@ export interface AssistantMessage {
   readonly attachments?: readonly { readonly id: string; readonly name: string }[];
 }
 
-export interface AssistantMockProposal {
+export interface AssistantProposal {
   /** The exact served proposal; its digest is the Confirm evidence. */
   readonly issued?: AssistantActionProposal;
   readonly action?: AssistantActionIdentity;
@@ -38,7 +38,7 @@ export interface AssistantMockProposal {
 export type AssistantTurn =
   | { readonly state: 'idle' }
   | { readonly state: 'waiting' | 'failed' | 'cancelled' | 'unknown'; readonly requestId: number; readonly prompt: string; readonly staged?: readonly string[] }
-  | { readonly state: 'proposal'; readonly proposal: AssistantMockProposal; readonly disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown' };
+  | { readonly state: 'proposal'; readonly proposal: AssistantProposal; readonly disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown' };
 
 export interface AssistantState {
   readonly draft: string;
@@ -52,8 +52,8 @@ export type AssistantAction =
   | { readonly type: 'edit'; readonly value: string }
   | { readonly type: 'send'; readonly attachments?: readonly { readonly id: string; readonly name: string }[]; /** Staged attachment ids the request names. */ readonly staged?: readonly string[] }
   | { readonly type: 'retry' | 'cancel' | 'confirm' | 'new-chat' }
-  | { readonly type: 'reply'; readonly requestId: number; readonly proposal: AssistantMockProposal; readonly message: AssistantMessage }
-  | { readonly type: 'settle'; readonly requestId: number; readonly message: AssistantMessage; readonly proposal?: AssistantMockProposal; readonly disposition?: 'unknown' }
+  | { readonly type: 'reply'; readonly requestId: number; readonly proposal: AssistantProposal; readonly message: AssistantMessage }
+  | { readonly type: 'settle'; readonly requestId: number; readonly message: AssistantMessage; readonly proposal?: AssistantProposal; readonly disposition?: 'unknown' }
   | { readonly type: 'fail' | 'uncertain'; readonly requestId: number }
   | { readonly type: 'action-state'; readonly id: string; readonly disposition: 'confirming' | 'confirmed' | 'cancelled' | 'stale' | 'unknown'; readonly message?: AssistantMessage };
 
