@@ -49,6 +49,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const [draft, setDraft] = useState<SettingsDraft>({});
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
+  /** Toggles and choices save without the typing wait; the last change decides. */
+  const saveAtOnce = useRef(false);
   const readReady = acceptedRequest.current === request && observation.state === "loaded";
   const readProblem = reportedReadProblem;
   const { preflight, rerunPreflight } = useSettingsPreflight(editor, input);
@@ -88,8 +90,9 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     const leaf = leaves.find(candidate => candidate.path === path);
     return [path, leaf === undefined ? "This setting is no longer served. Reset its draft." : draftError(leaf, operation)];
   }));
-  const update = (path: string, raw: SettingsDraftInput): void => {
+  const update = (path: string, raw: SettingsDraftInput, immediate = false): void => {
     if (!readReady || readProblem !== undefined) return;
+    saveAtOnce.current = immediate;
     const leaf = leaves.find(candidate => candidate.path === path); if (leaf === undefined) return;
     setDraft(previous => {
       const next = { ...previous };
@@ -171,6 +174,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   useEffect(() => {
     if (!readReady || editor.state !== "loaded" || saving || readProblem !== undefined
       || Object.keys(draft).length === 0 || invalid) return;
+    if (saveAtOnce.current) { autosave(); return; }
     const timer = window.setTimeout(() => autosave(), 700);
     return () => window.clearTimeout(timer);
   }, [draft, editor, invalid, readProblem, readReady, saving]);

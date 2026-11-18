@@ -131,7 +131,9 @@ export function useExplorerWiring(client: Pick<ExplorerQueries, "workflowExplore
   const result = useSyncExternalStore(resource.subscribe, resource.snapshot, resource.snapshot);
   useEffect(() => {
     if (workflowId === undefined || client === undefined) return;
-    void resource.read(() => client.workflowExplorer(), "DASHBOARD_READ_FAILED").catch(() => resource.snapshot());
+    const controller = new AbortController();
+    void resource.read(signal => client.workflowExplorer(signal), "DASHBOARD_READ_FAILED", undefined, controller.signal).catch(() => resource.snapshot());
+    return () => controller.abort();
   }, [client, workflowId, version, resource]);
   const projected = useMemo((): ExplorerWiringState => {
     const workflow = result.value?.workflows.find(workflow => workflow.id === workflowId);
