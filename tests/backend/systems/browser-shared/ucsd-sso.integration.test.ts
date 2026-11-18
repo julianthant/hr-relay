@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, it } from "vitest";
 import { probeSessionCookie } from "../../../../src/backend/systems/browser-shared/authenticated-application.js";
@@ -80,6 +81,49 @@ it("checks the submitted form after its fields are serialized", async () => {
     await assert.rejects(submitPinnedUcsdSsoCredentials(page, async () => ({ userId: "fixture", password: "" }),
       () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO"), /UCSD_SSO_FIELDS/);
     assert.equal(posts, 0);
+  } finally { await context.close(); }
+});
+
+it("accepts the committed landing reached by redirect from the pinned POST", async () => {
+  const context = await browser.newContext();
+  const server = createServer((_request, response) => response.end("Application"));
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const destination = SSO + "?execution=fixture";
+    const landing = `http://127.0.0.1:${address.port}/signed-in`;
+    await context.route("https://a5.ucsd.edu/**", route => {
+      const request = route.request();
+      if (request.method() === "POST" && request.url() === destination) {
+        return route.fulfill({ status: 303, headers: { location: landing } });
+      }
+      return route.fulfill({ contentType: "text/html", body: form(destination) });
+    });
+    const page = await context.newPage();
+    await page.goto(SSO);
+    await submitPinnedUcsdSsoCredentials(page, async () => ({ userId: "fixture", password: "" }),
+      () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO");
+    assert.equal(page.url(), landing);
+  } finally {
+    try { await context.close(); } finally { await server[Symbol.asyncDispose](); }
+  }
+});
+
+it("requires the pinned POST to complete before recording submission", async () => {
+  const context = await browser.newContext();
+  try {
+    await context.route("**/*", route => route.request().method() === "POST"
+      ? route.abort() : route.fulfill({ contentType: "text/html", body: form() }));
+    const page = await context.newPage();
+    await page.goto(SSO);
+    const actions: string[] = [];
+    await assert.rejects(submitPinnedUcsdSsoCredentials(page, async () => ({ userId: "fixture", password: "" }),
+      () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO", kind => actions.push(kind)));
+    assert.deepEqual(actions, ["typed", "typed"]);
   } finally { await context.close(); }
 });
 

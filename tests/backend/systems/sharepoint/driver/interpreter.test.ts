@@ -135,7 +135,11 @@ async function world(options: Options = {}) {
                 await original.context.page.locator(selector).fill(action.kind === "username" ? userElement.value : secretElement.value);
                 if (options.poison === "replacement" && action.kind === "username") userElement.isConnected = false;
               }
-              if (action.kind === "submit") await original.context.page.locator('button[name="_eventId_proceed"]').click();
+              if (action.kind === "submit") {
+                const destination = form.action;
+                await original.context.page.locator('button[name="_eventId_proceed"]').click();
+                return destination;
+              }
               return true;
             },
             dispose: async () => { cleanup.push("sso-disposed"); },

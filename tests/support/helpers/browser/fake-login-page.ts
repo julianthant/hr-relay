@@ -111,12 +111,13 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
     getByText: (text: string | RegExp) => makeLocator(classify("text", String(text))),
   };
   let navigationGeneration = 0;
-  const navigationListeners = new Set<() => void>();
+  const navigationListeners = new Set<(source: string, method: string) => void>();
   const frameObservers = new Set<(frame: typeof mainFrame) => void>();
-  const navigate = (url: string): void => {
+  const navigate = (url: string, method = "GET"): void => {
+    const source = current;
     current = url;
     navigationGeneration += 1;
-    for (const listener of navigationListeners) listener();
+    for (const listener of navigationListeners) listener(source, method);
     for (const observe of frameObservers) observe(mainFrame);
   };
 
@@ -146,7 +147,11 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
             const action = input.action;
             if (action.kind === "username") await (locator.fill as (value: string) => Promise<void>)(action.value);
             if (action.kind === "password") await input.password.fill(action.value);
-            if (action.kind === "submit") await input.button.click();
+            if (action.kind === "submit") {
+              const destination = current;
+              await input.button.click();
+              return destination;
+            }
             return true;
           },
           fill: async (value: string) => {
@@ -195,8 +200,8 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
           throw new Error(element.failWith ?? `fake page: ${name} is absent`);
         }
         actions.push(`click:${name}`);
-        if (element.navigatesTo !== undefined) navigate(element.navigatesTo);
-        else if (name === "sso-submit") navigate(current);
+        if (name === "sso-submit") navigate(element.navigatesTo ?? current, "POST");
+        else if (element.navigatesTo !== undefined) navigate(element.navigatesTo);
       },
       inputValue: async () => {
         if (name === undefined) throw new Error("fake page: inputValue on an unclassified locator");
@@ -230,6 +235,21 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
     frames: () => [mainFrame],
     on: (_event: "framenavigated", listener: (frame: typeof mainFrame) => void) => frameObservers.add(listener),
     off: (_event: "framenavigated", listener: (frame: typeof mainFrame) => void) => frameObservers.delete(listener),
+    waitForNavigation: (options: { timeout: number; signal: AbortSignal }) => new Promise((resolve, reject) => {
+      const listener = (source: string, method: string) => {
+        cleanup();
+        resolve({ request: () => ({ url: () => source, method: () => method, redirectedFrom: () => null }) });
+      };
+      const cancel = () => { cleanup(); reject(new Error("fake page: navigation did not commit")); };
+      const timer = setTimeout(cancel, options.timeout);
+      const cleanup = () => {
+        clearTimeout(timer);
+        navigationListeners.delete(listener);
+        options.signal.removeEventListener("abort", cancel);
+      };
+      navigationListeners.add(listener);
+      options.signal.addEventListener("abort", cancel, { once: true });
+    }),
     waitForEvent: async (_event: string, options: Readonly<{ predicate: (frame: unknown) => boolean; timeout: number }>) =>
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => {

@@ -136,7 +136,7 @@ function applyPinnedSsoAction(user: SVGElement | HTMLElement, input: {
   path: UcsdSsoPath;
   url: string;
   selectors: { user: string; password: string; button: string };
-}): boolean {
+}): boolean | string {
   const { password, button, form, action } = input;
   if (!(user instanceof HTMLInputElement) || !(password instanceof HTMLInputElement)
     || !(button instanceof HTMLButtonElement) || !(form instanceof HTMLFormElement)) return false;
@@ -195,6 +195,9 @@ function applyPinnedSsoAction(user: SVGElement | HTMLElement, input: {
     root.append(post);
     document.body.append(host);
     try { send.click(); } finally { host.remove(); }
+    const requestUrl = new URL(destination);
+    requestUrl.hash = "";
+    return requestUrl.href;
   }
   return true;
 }
@@ -234,12 +237,13 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
     formHandle = await pinnedUser.evaluateHandle(el => el instanceof HTMLInputElement ? el.form : null);
     check();
     const pinnedForm = formHandle;
-    const act = async (action: SsoFormAction): Promise<void> => {
+    const act = async (action: SsoFormAction) => {
       check();
       const valid = await pinnedUser.evaluate(applyPinnedSsoAction, { password: pinnedSecret, button: pinnedSubmit, form: pinnedForm, action, path, url,
         selectors: { user: SSO_USERNAME_SELECTOR, password: SSO_PASSWORD_SELECTOR, button: SSO_SUBMIT_SELECTOR } });
       assertCurrent();
       if (!valid) throw new Error("UCSD_SSO_FIELDS");
+      return valid;
     };
     await act({ kind: "prove" });
     check();
@@ -249,13 +253,15 @@ export async function submitPinnedUcsdSsoCredentials(page: Page,
     await act({ kind: "password", value: credentials.password });
     onAction?.("typed", "ucsd.sso.password");
     const stop = new AbortController();
-    const navigation = page.waitForEvent("framenavigated", {
-      predicate: frame => frame === page.mainFrame(), timeout, signal: stop.signal,
-    }).then(() => null, (error: unknown) => ({ error }));
+    const navigation = page.waitForNavigation({ waitUntil: "commit", timeout, signal: stop.signal })
+      .then(response => ({ response }), (error: unknown) => ({ error }));
     try {
-      await act({ kind: "submit" });
-      const failure = await navigation;
-      if (failure !== null) throw failure.error;
+      const destination = await act({ kind: "submit" });
+      const outcome = await navigation;
+      if ("error" in outcome) throw outcome.error;
+      let request = outcome.response?.request();
+      for (let prior = request?.redirectedFrom(); prior; prior = prior.redirectedFrom()) request = prior;
+      if (!request || request.method() !== "POST" || request.url() !== destination) throw new Error("UCSD_SSO_SUBMIT_UNPROVED");
     } finally { stop.abort(); }
     assertCurrent();
     onAction?.("clicked", "ucsd.sso.submit");

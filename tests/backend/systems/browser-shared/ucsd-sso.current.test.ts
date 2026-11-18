@@ -4,6 +4,7 @@ import { it } from "vitest";
 import { submitPinnedUcsdSsoCredentials } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
 
 it.each([false, true])("guards credential effects and retains element disposal after username fill revocation (%s)", async revoke => {
+  const url = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
   let current = true;
   const refusal = new Error("fixture session revoked");
   const effects: string[] = [], disposed: string[] = [];
@@ -15,14 +16,14 @@ it.each([false, true])("guards credential effects and retains element disposal a
         if (revoke) current = false;
       }
       if (input.action.kind === "password") effects.push("fill:ssopassword");
-      if (input.action.kind === "submit") effects.push("click:sso-submit");
+      if (input.action.kind === "submit") { effects.push("click:sso-submit"); return url; }
       return true;
     },
     dispose: async () => { disposed.push(name); },
   }]));
   const page = {
-    waitForEvent: async () => undefined,
-    url: () => "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO",
+    waitForNavigation: async () => ({ request: () => ({ method: () => "POST", url: () => url, redirectedFrom: () => null }) }),
+    url: () => url,
     locator: (selector: string) => {
       const key = [...handles.keys()].find(name => selector.includes(name === "sso-submit" ? "_eventId_proceed" : name));
       assert.ok(key);
