@@ -213,7 +213,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     const h = await harness();
     const first = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T222222" } });
+    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
     const outcome = await h.execute(
       contextFor(first.run, first.claim, writeFixtureSaveDescriptor),
     );
@@ -221,7 +221,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
       disposition: "committed",
       proofSource: "normal-output",
       output: { transactionId: "T123456" },
-      proof: { transactionId: "T222222" },
+      proof: { transactionId: "T123456" },
     });
     assert.ok(h.world.events.includes("verify"));
 
