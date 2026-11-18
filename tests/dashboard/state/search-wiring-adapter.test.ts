@@ -77,6 +77,8 @@ it("reports a pending library read as loading and keeps loaded rows through a fa
   await act(async () => reads[1].fail());
   assert.deepEqual(seen?.sheets.map(row => row.name), ["Roster"]); assert.equal(seen?.unavailable, searchMessage("SEARCH_LIBRARY_UNAVAILABLE"));
 });
+const pause = () => act(async () => { await new Promise(resolve => setTimeout(resolve, SEARCH_PAUSE_MS + 100)); });
+
 it("does no reads in mock/closed mode and suppresses a stale query result", async () => {
   const requests: { q: string; finish: (page: unknown) => void }[] = [];
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => new Promise<Response>(resolve => {
@@ -87,8 +89,7 @@ it("does no reads in mock/closed mode and suppresses a stale query result", asyn
   root = createRoot(document.createElement("div"));
   const render = async (query: string, enabled: boolean) => { await act(async () => root?.render(createElement(Probe, { query, enabled }))); };
   await render("old", false); assert.equal(requests.length, 0);
-  await render("old", true); await render("new", true);
-  await act(async () => { await new Promise(resolve => setTimeout(resolve, SEARCH_PAUSE_MS + 100)); });
+  await render("old", true); await pause(); await render("new", true); await pause();
   assert.equal(requests.length, 2);
   await act(async () => requests[1].finish(zeroMatchSearchPage()));
   assert.equal(data?.totalMatches, 0);
@@ -111,6 +112,7 @@ it.each([
   function Probe() { useSearchWiring({ client, enabled: true, query, today: "2026-08-03", epoch, workflows }); return null; }
   root = createRoot(document.createElement("div"));
   await act(async () => root?.render(createElement(Probe)));
+  await pause();
   assert.equal(requests.length, 1);
   assert.equal(requests[0].searchParams.get("q"), q);
   assert.equal(requests[0].searchParams.get("workflow"), workflow);
@@ -136,7 +138,9 @@ it("drops a settlement when bootstrap workflow metadata changes under the same s
   }
   root = createRoot(document.createElement("div"));
   await act(async () => root?.render(createElement(Probe, { workflows: [{ id: WorkflowIdSchema.parse("person-lookup"), label: "Lookup" }] })));
+  await pause();
   await act(async () => root?.render(createElement(Probe, { workflows: [{ id: WorkflowIdSchema.parse("separations"), label: "Lookup" }] })));
+  await pause();
   assert.deepEqual(pending.map(request => request.url.searchParams.get("workflow")), ["person-lookup", "separations"]);
   await act(async () => pending[1].finish(zeroMatchSearchPage()));
   assert.equal(data?.totalMatches, 0);
@@ -176,11 +180,12 @@ it("sends one search after the operator pauses, not one per keystroke", async ()
   function Probe({ query }: { query: string }) { data = useSearchWiring({ client, enabled: true, query, today: "2026-08-03", epoch, workflows }); return null; }
   root = createRoot(document.createElement("div"));
   await act(async () => root?.render(createElement(Probe, { query: "" })));
-  assert.deepEqual(requests, [""]);
+  assert.deepEqual(requests, []); assert.equal(data?.loading, true);
   for (const typed of ["a", "ar", "arc", "arch", "arche", "archer"]) await act(async () => root?.render(createElement(Probe, { query: typed })));
-  assert.deepEqual(requests, [""]); assert.equal(data?.loading, true);
-  await act(async () => { await new Promise(resolve => setTimeout(resolve, SEARCH_PAUSE_MS + 100)); });
-  assert.deepEqual(requests, ["", "archer"]); assert.equal(data?.loading, undefined); assert.equal(data?.totalMatches, 0);
+  assert.deepEqual(requests, []);
+  await pause();
+  assert.deepEqual(requests, ["archer"]); assert.equal(data?.loading, undefined); assert.equal(data?.totalMatches, 0);
   await act(async () => root?.render(createElement(Probe, { query: "" })));
-  assert.deepEqual(requests, ["", "archer", ""]);
+  await pause();
+  assert.deepEqual(requests, ["archer", ""]);
 });
