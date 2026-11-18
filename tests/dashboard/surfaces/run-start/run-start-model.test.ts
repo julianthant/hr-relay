@@ -73,7 +73,7 @@ describe("canonical Person Lookup launch input", () => {
     parser.spec.split = { kind: "delimited", delimiters: ["|"] };
     const preview = previewRunInput({ ...surface, typedInput: declaration }, "10000001|10000002", { mode: "identify" });
     assert.equal(preview.problem, null);
-    assert.deepEqual(preview.submissions, ["10000001", "10000002"].map(emplId => ({ mode: "identify", emplId, crmCheck: true, keepNonHdh: false, includeCrmDates: false })));
+    assert.deepEqual(preview.submissions, ["10000001", "10000002"].map(emplId => ({ mode: "identify", emplId, crmCheck: true, keepNonHdh: false, includeCrmDates: true })));
   });
   it("refuses malformed source modes and identity fields and clears dependent options", () => {
     assert.ok(surface.typedInput);

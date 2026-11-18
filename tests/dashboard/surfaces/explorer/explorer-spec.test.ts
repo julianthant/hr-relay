@@ -11,16 +11,17 @@ const cards = (stepId: string) => spec.steps.find(step => step.id === stepId)!.b
 
 describe("Explorer spec resolution", () => {
   it("shows the steps and session chips the run options select, and renumbers by dropping hidden steps", () => {
-    assert.deepEqual(ids(), ["searching", "cross-verify", "active-status", "reference-check"]);
+    assert.deepEqual(ids(), ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"]);
+    assert.deepEqual(ids({ includeCrmDates: "false" }), ["searching", "cross-verify", "active-status", "reference-check"]);
     assert.deepEqual(ids({ includeCrmDates: "true" }), ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"]);
     assert.deepEqual(ids({ crmCheck: "false" }), ["searching", "active-status", "reference-check"]);
     assert.deepEqual(resolveExplorer(spec, { crmCheck: "false" }, {}).sessions, ["ucpath"]);
     assert.deepEqual(resolveExplorer(spec, {}, {}).sessions, ["ucpath", "crm"]);
   });
   it("hides an option whose gate no longer holds and follows an option's initial value", () => {
-    assert.deepEqual(resolveExplorer(spec, {}, {}).options.map(option => option.id), ["mode", "search-by", "crmCheck", "includeCrmDates"]);
+    assert.deepEqual(resolveExplorer(spec, {}, {}).options.map(option => option.id), ["mode", "search-by", "crmCheck", "includeCrmDates", "skip-searching", "skip-cross-verify", "skip-active-status", "skip-crm-dates"]);
     const match = resolveExplorer(spec, { mode: "match" }, {});
-    assert.deepEqual(match.options.map(option => option.id), ["mode", "crmCheck"]);
+    assert.deepEqual(match.options.map(option => option.id), ["mode", "crmCheck", "skip-searching", "skip-cross-verify", "skip-active-status", "skip-crm-dates"]);
     assert.equal(match.values.crmCheck, "false");
   });
   it("falls back to the initial value when a chosen option is no choice of it", () => {

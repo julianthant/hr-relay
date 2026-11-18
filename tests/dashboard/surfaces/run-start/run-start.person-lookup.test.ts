@@ -77,7 +77,7 @@ describe("served Person Lookup Run and Rerun", () => {
     assert.match(dialog.text(), /Cross-check CRM records/u);
     assert.equal(dialog.typedInput().placeholder, "10000001|10000002");
     await dialog.type("10000001|10000002"); await dialog.press("Continue"); await dialog.press("Start run");
-    assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, ["10000001", "10000002"].map(emplId => ({ mode: "search", emplId, crmCheck: true, keepNonHdh: false, includeCrmDates: false })));
+    assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, ["10000001", "10000002"].map(emplId => ({ mode: "search", emplId, crmCheck: true, keepNonHdh: false, includeCrmDates: true })));
   });
   it("sends canonical Search inputs with merged duplicates through the existing planner", async () => {
     let request: unknown;
@@ -88,10 +88,10 @@ describe("served Person Lookup Run and Rerun", () => {
     await dialog.press("Continue"); await dialog.press("Start run");
     const planned = StartPlanRequestSchema.parse(request);
     assert.deepEqual(planned.submissions, [
-      { mode: "search", emplId: "10000001", crmCheck: true, keepNonHdh: false, includeCrmDates: false },
-      { mode: "search", name: "Example, Person", crmCheck: true, keepNonHdh: false, includeCrmDates: false },
+      { mode: "search", emplId: "10000001", crmCheck: true, keepNonHdh: false, includeCrmDates: true },
+      { mode: "search", name: "Example, Person", crmCheck: true, keepNonHdh: false, includeCrmDates: true },
     ]);
-    assert.deepEqual(planned.selectedStepKeys, ["searching", "cross-verify", "active-status", "reference-check"]);
+    assert.deepEqual(planned.selectedStepKeys, ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"]);
   });
   it("switches to Match defaults, rejects missing identifiers and masks confirmation", async () => {
     let request: unknown;

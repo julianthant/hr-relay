@@ -15,6 +15,7 @@ import { hireReviewChoices } from "../../../../rules/onboarding/match-hire-subje
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "i9-search", label: "Search I-9 profiles" }),
+  locked: "guard-read" as const,
   operatorFields: [
     { label: "I-9 lookup", visibility: "logs", sources: [{ nodeId: "i9-lookup", kind: "output", fieldPath: "state" }],
       display: { cases: [{ value: "checked", text: "Checked" }, { value: "not-required", text: "Not required" }] } },

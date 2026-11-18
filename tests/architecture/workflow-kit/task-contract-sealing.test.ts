@@ -297,6 +297,7 @@ describe("task contract sealing architecture", () => {
       "src/models/workflows/i9-check-start/read-publication.ts",
       "src/models/workflows/i9-check-start/read-requests.ts",
       "src/models/workflows/i9-check-start/read-rows.ts",
+      "src/models/workflows/i9-check/read-employment-candidates.ts",
       "src/models/workflows/i9-check/read-match-outcome.ts",
       "src/models/workflows/i9-check/read-retention-row.ts",
       "src/models/workflows/i9-lookup/read-result.ts",
