@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it, vi } from 'vitest';
-import { SavedWorkbookSchema, type SavedWorkbook } from '../../../../src/models/dashboard/workbooks.js';
+import { SavedWorkbookSchema, type SavedWorkbook, type WorkbookSummary } from '../../../../src/models/dashboard/workbooks.js';
 import { createSpreadsheetWiringAdapter } from '../../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
 import { createSpreadsheetChatRegistrationPort } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-chat-registration-model.js';
 import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
@@ -10,6 +10,10 @@ import type { WorkbookLibraryQueries } from '../../../../src/dashboard/client/qu
 import { WorkbookCompatibilitySchema } from '../../../../src/models/dashboard/workbook-library.js';
 vi.mock('../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js', () => ({ exportSheetInWorker: vi.fn(async () => 'Name,ID\r\nAlex,10000001'), exportSpreadsheetInWorker: vi.fn(async () => new ArrayBuffer(4)) }));
 beforeEach(() => vi.clearAllMocks());
+const summaryOf = (record: SavedWorkbook): WorkbookSummary => ({ libraryId: record.libraryId, name: record.workbook.name, typeId: 'general', version: record.version, createdAt: record.createdAt, savedAt: record.savedAt,
+  rowCount: record.workbook.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0),
+  sheets: record.workbook.sheets.map(sheet => ({ name: sheet.name, headerRow: sheet.sourceHeaderRow ?? sheet.headerRow ?? 1, columns: sheet.rows[(sheet.headerRow ?? 1) - 1].cells.map(cell => String(cell.value ?? '')),
+    ...(sheet.columnBindings === undefined ? {} : { columnBindings: sheet.columnBindings }) })) });
 function world() {
   const versions: SavedWorkbook[] = [];
   const record = (workbook: unknown, version: number) => SavedWorkbookSchema.parse({ libraryId: 'library-id', version, createdAt: '2026-10-01T00:00:00Z', savedAt: '2026-10-01T00:00:00Z', workbook: { ...workbook as EditableWorkbook, libraryId: 'library-id' } });
@@ -18,7 +22,7 @@ function world() {
     workbookImport: vi.fn<WorkbookLibraryQueries['workbookImport']>(async () => { throw new Error('Unexpected workbookImport call'); }),
     workbookClone: vi.fn<WorkbookLibraryQueries['workbookClone']>(async () => { throw new Error('Unexpected workbookClone call'); }),
     workbookImportSharePoint: vi.fn<WorkbookLibraryQueries['workbookImportSharePoint']>(async () => { throw new Error('Unexpected workbookImportSharePoint call'); }),
-    workbookList: vi.fn(async () => versions.length ? [versions.at(-1)!] : []),
+    workbookList: vi.fn(async () => versions.length ? [summaryOf(versions.at(-1)!)] : []),
     workbookOpen: vi.fn(async () => { const saved = versions.at(-1); if (!saved) throw new Error('not found'); return saved; }),
     workbookCreate: vi.fn(async (workbook: unknown) => { const saved = record(workbook, 1); versions.push(saved); return saved; }),
     workbookSave: vi.fn(async (_id: string, expected: number, workbook: unknown) => { assert.equal(expected, versions.at(-1)?.version); const saved = record(workbook, expected + 1); versions.push(saved); return saved; }),
