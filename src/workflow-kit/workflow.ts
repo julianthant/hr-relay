@@ -38,8 +38,9 @@ import {
   type RunResultRecord,
   type TerminalDependencyRecord,
 } from "../models/run/result.js";
-import { StepOmissionFormSchema } from "../models/workflow/step-omission.js";
-import type { StepOmissionDeclaration, StepOmissionSpec } from "../models/workflow/step-omission.js";
+import { StartRowDeclarationSchema, StepLockReasonSchema, StepOmissionFormSchema, stepManualFieldFitsLeaf, stepManualFiniteFacts } from "../models/workflow/step-omission.js";
+import type { StartRowDeclaration, StepLockReason, StepManualDeclaration, StepOmissionSpec } from "../models/workflow/step-omission.js";
+import { schemaAcceptsUnchanged, valueLeafSchemaForManual, valueLeafSchemas } from "../models/workflow/rerun-values.js";
 import { SecretNameSchema } from "../models/config/secret-names.js";
 import { deriveSchemaHash } from "../models/validation/schema-bound-value.js";
 import { assertAuditedCanonicalInput, canonicalInputSamples } from "../models/workflow/canonical-input.js";
@@ -230,10 +231,16 @@ export interface WorkflowDescriptor<
     ? SealedCompletionProgram<Completion>
     : undefined;
   readonly capabilities?: WorkflowCapabilitiesSpec;
-  /** Explicit optional candidates for new Run input/omission assertions. */
+  /** Run input candidates plus the step values derived from each manual field's `replaces`. */
   readonly rerunValues?: readonly RerunValueMappingSpec[];
   readonly failureCorrections?: readonly FailureCorrection[];
   readonly gateCorrections?: readonly GateCorrection[];
+  /** The Start run rows the workflow declares; absent = one row per timeline step. */
+  readonly rows?: readonly StartRowDeclaration[];
+  /** The rows Start run shows, DERIVED: the declared rows, or one per timeline step. */
+  readonly startRows: readonly StartRowDeclaration[];
+  /** The reading locks the step folders declare. */
+  readonly stepLocks: readonly Readonly<{ step: string; reason: StepLockReason }>[];
   readonly details: readonly DetailProjectionSpec<S>[];
   /** Ref dashboard-surfaces: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: SubjectProjectionSpec<S>;
@@ -287,10 +294,13 @@ export interface AnyWorkflowDescriptor {
   readonly verdicts?: readonly VerdictDefinition[];
   readonly completion?: Readonly<{ kind: "sealed-completion-program"; mode: string; gate: string }>;
   readonly capabilities?: WorkflowCapabilitiesSpec;
-  /** Explicit optional candidates for new Run input/omission assertions. */
+  /** Run input candidates plus the step values derived from each manual field's `replaces`. */
   readonly rerunValues?: readonly RerunValueMappingSpec[];
   readonly failureCorrections?: readonly FailureCorrection[];
   readonly gateCorrections?: readonly GateCorrection[];
+  readonly rows?: readonly StartRowDeclaration[];
+  readonly startRows: readonly StartRowDeclaration[];
+  readonly stepLocks: readonly Readonly<{ step: string; reason: StepLockReason }>[];
   readonly details: readonly z.input<typeof DetailProjectionSpecRuntimeSchema>[];
    /** Plain data, so it rides the BROAD view (unlike `presentation`, whose title/subtitle are
     * functions of the exact input type). The run/queue projection reads it. */
@@ -311,7 +321,7 @@ export interface AnyWorkflowDescriptor {
   }>[];
   /** DECLARED or DERIVED; the composition root's role audit is the reader. */
   readonly timelineDeclared: boolean;
-  /** Omittable steps with their forms and producers; empty when none. */
+  /** Steps with manual entry, their forms, producers and skipped nodes; empty when none. */
   readonly stepOmissions: readonly StepOmissionSpec[];
   /** The descriptor's own prose; plain data, so it rides the broad view. */
   readonly summary?: string;
@@ -340,7 +350,7 @@ export interface WorkflowDescriptorSpec<
 > extends Omit<
   WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>,
   "id" | "contractFingerprint" | "input" | "result" | "nodes" | "scenarios" | "timeline"
-  | "timelineDeclared" | "nodePurposes" | "stepOmissions" | "requiredWorkbookFields" | "workbookReference"
+  | "timelineDeclared" | "nodePurposes" | "stepOmissions" | "startRows" | "stepLocks" | "requiredWorkbookFields" | "workbookReference"
 > {
   readonly id: string;
   readonly contractFingerprint: string;
@@ -358,8 +368,9 @@ export interface WorkflowDescriptorSpec<
     operatorFields?: readonly WorkflowOperatorField[];
     system?: z.input<typeof BrowserSystemIdSchema> | "local";
     selection?: Readonly<{ inputField: string; selectedWhen: boolean }>;
-    /** Present iff the step folder declared the step omittable. */
-    omission?: StepOmissionDeclaration;
+    /** Present iff the step folder declared manual entry. */
+    manual?: StepManualDeclaration;
+    locked?: StepLockReason;
   }>[];
    /** The authored prose: one sentence per node, keyed by node id. Optional, and EXHAUSTIVE
     * when declared — a partial list would leave nodes silently prose-less. */
@@ -461,6 +472,7 @@ export function bindWorkflowDelegationTargets(descriptors: readonly AnyWorkflowD
         || workflowTerminalResultExecution(target).schemaHash !== deriveSchemaHash(node.target.result, "output")) throw new Error("delegation-target-contract-mismatch");
       targets.set(String(node.id), target);
     }
+    checkChildStartRows(descriptor, targets);
     return [descriptor, targets] as const;
   }));
   const qualified = new Map<AnyWorkflowDescriptor, Readonly<{ support: WorkflowDryRunSupport; depth: number }>>();
@@ -499,6 +511,73 @@ export function bindWorkflowDelegationTargets(descriptors: readonly AnyWorkflowD
   for (const [descriptor, targets] of bindings) {
     const state = projectionStateOf(descriptor);
     state.targets = targets; state.support = visit(descriptor).support;
+  }
+}
+
+/** The bound descriptor of a workflow this one delegates to, as its start rows name it. */
+export function workflowDelegatedDescriptor(descriptor: AnyWorkflowDescriptor, workflow: string): AnyWorkflowDescriptor {
+  const targets = projectionStateOf(descriptor).targets;
+  if (targets === undefined) throw new Error(`${descriptor.id} delegation targets are not bound`);
+  const found = [...targets.values()].find((target) => String(target.id) === workflow);
+  if (found === undefined) throw new Error(`${descriptor.id} does not delegate to ${workflow}`);
+  return found;
+}
+
+/** Child members show every node of each named child's steps exactly once; a child target is a whole child step with manual entry, targeted once. */
+function checkChildStartRows(descriptor: AnyWorkflowDescriptor, targets: ReadonlyMap<string, AnyWorkflowDescriptor>): void {
+  const id = String(descriptor.id);
+  const children = new Map([...targets.values()].map((target) => [String(target.id), target]));
+  const covered = new Map<string, string>();
+  const targeted = new Set<string>();
+  const named = new Set<string>();
+  const childOf = (workflow: string): AnyWorkflowDescriptor => {
+    const child = children.get(workflow);
+    if (child === undefined) throw new Error(`${id}: start rows name child workflow "${workflow}", which is not bound`);
+    return child;
+  };
+  for (const row of descriptor.startRows) {
+    for (const member of row.members) {
+      if (member.workflow === undefined) continue;
+      const child = childOf(member.workflow);
+      named.add(member.workflow);
+      const step = child.timeline.find(({ key }) => key === member.step);
+      if (step === undefined) throw new Error(`${id}: start row "${row.key}" names step "${member.step}", which is not on the timeline of child workflow "${member.workflow}"`);
+      const childNodes = descriptorRuntimeNodes(child);
+      for (const nodeId of member.nodes ?? step.nodes.map((node) => String(node.id))) {
+        if (!step.nodes.some((node) => String(node.id) === nodeId)) throw new Error(`${id}: start row "${row.key}" names node "${nodeId}", which is not in step "${member.step}" of child workflow "${member.workflow}"`);
+        const node = nodeByIdOrThrow(String(child.id), childNodes, NodeIdSchema.parse(nodeId), `start row "${row.key}"`);
+        if (member.phase !== undefined && node.kind !== "transaction") throw new Error(`${id}: start row "${row.key}" names the ${member.phase} phase of ${node.kind} node "${nodeId}" of child workflow "${member.workflow}"`);
+        const phases = node.kind === "transaction" ? member.phase === undefined ? ["prepare", "commit"] : [member.phase] : [undefined];
+        for (const phase of phases) {
+          const unit = `${phase === undefined ? "" : `the ${phase} phase of `}node "${nodeId}" of child workflow "${member.workflow}"`;
+          const other = covered.get(unit);
+          if (other !== undefined) throw new Error(`${id}: start rows "${other}" and "${row.key}" both show ${unit}`);
+          covered.set(unit, row.key);
+        }
+      }
+    }
+    if (row.target?.workflow === undefined) continue;
+    const child = childOf(row.target.workflow);
+    if (!child.stepOmissions.some(({ step }) => step === row.target?.step)) {
+      throw new Error(`${id}: start row "${row.key}" targets step "${row.target.step}" of child workflow "${row.target.workflow}", which declares no manual entry`);
+    }
+    targeted.add(`${row.target.workflow}/${row.target.step}`);
+  }
+  for (const workflow of named) {
+    const child = childOf(workflow);
+    const childNodes = descriptorRuntimeNodes(child);
+    for (const step of child.timeline) {
+      for (const { id: nodeId } of step.nodes) {
+        const node = nodeByIdOrThrow(String(child.id), childNodes, NodeIdSchema.parse(String(nodeId)), "start rows");
+        const units = node.kind === "transaction" ? ["the prepare phase of ", "the commit phase of "] : [""];
+        for (const unit of units) if (!covered.has(`${unit}node "${nodeId}" of child workflow "${workflow}"`)) {
+          throw new Error(`${id}: no start row shows ${unit}node "${nodeId}" of step "${step.key}" of child workflow "${workflow}"`);
+        }
+      }
+    }
+    for (const { step } of child.stepOmissions) {
+      if (!targeted.has(`${workflow}/${step}`)) throw new Error(`${id}: step "${step}" of child workflow "${workflow}" takes typed values, but no start row targets it`);
+    }
   }
 }
 
@@ -795,32 +874,174 @@ function deriveSteps(nodes: readonly RuntimeFlowNode[]): readonly StepProjection
   return Object.freeze(steps);
 }
 
-// Omission producers cannot mint gate or transaction authority.
+// The Start run projection's inferred switch: every member a task under one boolean condition on a top-level input field.
+function selectedByOneInputCondition(id: string, nodes: readonly RuntimeFlowNode[], members: readonly string[], owner: string): boolean {
+  const memberNodes = members.map((member) => nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), owner));
+  const condition = memberNodes[0]?.kind === "task" ? memberNodes[0].when : undefined;
+  return condition !== undefined
+    && (condition.kind === "is-true" || condition.kind === "is-false")
+    && condition.of.from === "input"
+    && !String(condition.of.path).includes(".")
+    && memberNodes.every((node) => node.kind === "task" && JSON.stringify(node.when) === JSON.stringify(condition));
+}
+
+// Manual producers cannot mint gate or transaction authority, typed values stand for exactly the leaves they replace,
+// and a step whose gate, publishing task or transaction keeps running cannot also be switched off.
 function deriveStepOmissions(
   id: string,
   nodes: readonly RuntimeFlowNode[],
-  declared: readonly Readonly<{ key: string; nodes: readonly string[]; omission?: StepOmissionDeclaration }>[] | undefined,
+  declared: readonly Readonly<{ key: string; nodes: readonly string[]; selection?: Readonly<{ inputField: string; selectedWhen: boolean }>; manual?: StepManualDeclaration }>[] | undefined,
 ): readonly StepOmissionSpec[] {
   const specs: StepOmissionSpec[] = [];
   for (const category of declared ?? []) {
-    if (category.omission === undefined) continue;
-    const form = StepOmissionFormSchema.parse(category.omission.form);
+    const manual = category.manual;
+    if (manual === undefined) continue;
+    const owner = `step "${category.key}" omission`;
+    const form = StepOmissionFormSchema.parse(manual.form);
     const members = new Set(category.nodes);
-    for (const produced of Object.keys(category.omission.produces)) {
+    for (const produced of Object.keys(manual.produces)) {
       if (!members.has(produced)) {
-        throw new Error(`${id}: step "${category.key}" omission produces node "${produced}", which is not a member of that step`);
+        throw new Error(`${id}: ${owner} produces node "${produced}", which is not a member of that step`);
       }
-      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(produced), `step "${category.key}" omission`);
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(produced), owner);
       if (node.kind !== "task") {
-        throw new Error(`${id}: step "${category.key}" omission produces ${node.kind} node "${produced}"; only task nodes are ever asserted`);
+        throw new Error(`${id}: ${owner} produces ${node.kind} node "${produced}"; only task nodes are ever asserted`);
       }
-      if (typeof category.omission.produces[produced] !== "function") {
-        throw new Error(`${id}: step "${category.key}" omission producer for "${produced}" is not a function`);
+      if (node.dryRun === "stop-before-publish") {
+        throw new Error(`${id}: ${owner} produces publishing task "${produced}"; a publishing task always runs`);
+      }
+      if (typeof manual.produces[produced] !== "function") {
+        throw new Error(`${id}: ${owner} producer for "${produced}" is not a function`);
       }
     }
-    specs.push(Object.freeze({ step: category.key, form, produces: Object.freeze({ ...category.omission.produces }) }));
+    const skips = manual.skips ?? [];
+    if (new Set(skips).size !== skips.length) throw new Error(`${id}: ${owner} skips a node twice`);
+    for (const skipped of skips) {
+      if (!members.has(skipped)) throw new Error(`${id}: ${owner} skips node "${skipped}", which is not a member of that step`);
+      if (Object.hasOwn(manual.produces, skipped)) throw new Error(`${id}: ${owner} both produces and skips node "${skipped}"`);
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(skipped), owner);
+      if (node.kind !== "task") {
+        throw new Error(`${id}: ${owner} skips ${node.kind} node "${skipped}"; a gate or transaction always runs`);
+      }
+      if (node.kind === "task" && node.dryRun === "stop-before-publish") {
+        throw new Error(`${id}: ${owner} skips publishing task "${skipped}"; a publishing task always runs`);
+      }
+    }
+    const skipped = new Set(skips);
+    const switchable = category.selection !== undefined || selectedByOneInputCondition(id, nodes, category.nodes, owner);
+    for (const member of category.nodes) {
+      if (skipped.has(member) || Object.hasOwn(manual.produces, member)) continue;
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), owner);
+      const read = node.dependsOn.find((dependency) => skipped.has(String(dependency)));
+      if (read !== undefined) throw new Error(`${id}: ${owner} runs node "${member}", which reads skipped node "${String(read)}"`);
+      if (switchable && (isPreviewBoundary(node) || node.kind === "gate")) {
+        throw new Error(`${id}: ${owner} keeps ${node.kind} node "${member}" running, so the step cannot also be switched off`);
+      }
+    }
+    for (const field of form.fields) {
+      if (field.replaces === undefined) continue;
+      const fieldOwner = `${id}: ${owner} field "${field.key}"`;
+      if (!Object.hasOwn(manual.produces, field.replaces.nodeId)) {
+        throw new Error(`${fieldOwner} replaces a value of node "${field.replaces.nodeId}", which the declaration does not produce`);
+      }
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(field.replaces.nodeId), owner);
+      if (node.kind !== "task") throw new Error(`${fieldOwner} replaces a value of ${node.kind} node "${field.replaces.nodeId}"`);
+      const leaves = valueLeafSchemas(node.uses.output, field.replaces.path.split("."));
+      if (leaves.length === 0) throw new Error(`${fieldOwner} replaces "${field.replaces.path}", which node "${field.replaces.nodeId}"'s output does not offer`);
+      const target = `"${field.replaces.nodeId}.${field.replaces.path}"`;
+      const leaf = valueLeafSchemaForManual(node.uses.output, field.replaces.path.split("."));
+      if (leaf === undefined) throw new Error(`${fieldOwner} replaces ${target}, which a union, check or transform above it keeps from being proven`);
+      const finite = stepManualFiniteFacts(field);
+      const refused = finite?.find((fact) => !schemaAcceptsUnchanged(leaf, fact));
+      if (refused !== undefined) throw new Error(`${fieldOwner} stores ${JSON.stringify(refused)}, which ${target} does not accept unchanged`);
+      if (finite === undefined && !stepManualFieldFitsLeaf(field, leaf)) {
+        throw new Error(`${fieldOwner} stores ${field.kind} facts, which ${target} does not provably accept unchanged`);
+      }
+      if (field.optional === true && !schemaAcceptsUnchanged(leaf, null) && !z.core.safeParse(leaf, undefined).success) {
+        throw new Error(`${fieldOwner} is optional, but "${field.replaces.nodeId}.${field.replaces.path}" accepts neither null nor absence`);
+      }
+    }
+    specs.push(Object.freeze({
+      step: category.key, form, produces: Object.freeze({ ...manual.produces }),
+      ...(manual.skips === undefined ? {} : { skips: Object.freeze([...manual.skips]) }),
+      ...(manual.refine === undefined ? {} : { refine: manual.refine }),
+    }));
   }
   return Object.freeze(specs);
+}
+
+/** One row per timeline step unless the workflow declares rows; declared rows cover every node of the served workflow's own steps exactly once.
+ * A child member or target names a workflow this definition delegates to; its steps are checked once the child is bound. */
+function deriveStartRows(
+  id: string,
+  nodes: readonly RuntimeFlowNode[],
+  timeline: readonly Readonly<{ key: string; label: string; nodes: readonly Readonly<{ id: string }>[] }>[],
+  switchable: ReadonlySet<string>,
+  declared: readonly StartRowDeclaration[] | undefined,
+): readonly StartRowDeclaration[] {
+  if (declared === undefined) {
+    return Object.freeze(timeline.map((step): StartRowDeclaration => deepFreeze({
+      key: step.key, label: step.label, members: [{ step: step.key }],
+      ...(switchable.has(step.key) ? { target: { step: step.key } } : {}),
+    })));
+  }
+  const rows = declared.map((row) => StartRowDeclarationSchema.parse(row));
+  const stepByKey = new Map(timeline.map((step) => [step.key, step]));
+  const covered = new Map<string, string>();
+  const targeted = new Map<string, string>();
+  const cover = (row: string, unit: string): void => {
+    const other = covered.get(unit);
+    if (other !== undefined) throw new Error(`${id}: start rows "${other}" and "${row}" both show ${unit}`);
+    covered.set(unit, row);
+  };
+  const keys = new Set<string>();
+  const labels = new Set<string>();
+  const delegated = new Set(nodes.flatMap((node) => node.kind === "child-run" ? [String(node.target.id)] : []));
+  const delegatedOrThrow = (row: string, workflow: string, role: "names" | "targets"): void => {
+    if (!delegated.has(workflow)) throw new Error(`${id}: start row "${row}" ${role} child workflow "${workflow}", which this workflow does not delegate to`);
+  };
+  for (const row of rows) {
+    if (keys.has(row.key)) throw new Error(`${id}: start row key "${row.key}" is declared twice`);
+    if (labels.has(row.label)) throw new Error(`${id}: start row label "${row.label}" is declared twice`);
+    keys.add(row.key);
+    labels.add(row.label);
+    for (const member of row.members) {
+      if (member.workflow !== undefined) {
+        delegatedOrThrow(row.key, member.workflow, "names");
+        continue;
+      }
+      const step = stepByKey.get(member.step);
+      if (step === undefined) throw new Error(`${id}: start row "${row.key}" names step "${member.step}", which is not on the timeline`);
+      const memberNodes = member.nodes ?? step.nodes.map((node) => node.id);
+      for (const nodeId of memberNodes) {
+        if (!step.nodes.some((node) => node.id === nodeId)) throw new Error(`${id}: start row "${row.key}" names node "${nodeId}", which is not in step "${member.step}"`);
+        const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(nodeId), `start row "${row.key}"`);
+        if (member.phase !== undefined && node.kind !== "transaction") throw new Error(`${id}: start row "${row.key}" names the ${member.phase} phase of ${node.kind} node "${nodeId}"`);
+        const phases = node.kind === "transaction" ? member.phase === undefined ? ["prepare", "commit"] : [member.phase] : [undefined];
+        for (const phase of phases) cover(row.key, phase === undefined ? `node "${nodeId}"` : `the ${phase} phase of node "${nodeId}"`);
+      }
+    }
+    if (row.target === undefined) continue;
+    const { workflow, step: target } = row.target;
+    if (workflow !== undefined) delegatedOrThrow(row.key, workflow, "targets");
+    if (!row.members.some((member) => member.workflow === workflow && member.step === target && member.nodes === undefined && member.phase === undefined)) {
+      throw new Error(`${id}: start row "${row.key}" targets step "${target}", which is not one of its whole-step members`);
+    }
+    if (workflow === undefined && !switchable.has(target)) throw new Error(`${id}: start row "${row.key}" targets step "${target}", which declares neither a selection nor manual entry`);
+    const unit = workflow === undefined ? `step "${target}"` : `step "${target}" of child workflow "${workflow}"`;
+    const other = targeted.get(unit);
+    if (other !== undefined) throw new Error(`${id}: start rows "${other}" and "${row.key}" both target ${unit}`);
+    targeted.set(unit, row.key);
+  }
+  for (const step of timeline) {
+    for (const { id: nodeId } of step.nodes) {
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(nodeId), "start rows");
+      const units = node.kind === "transaction" ? [`the prepare phase of node "${nodeId}"`, `the commit phase of node "${nodeId}"`] : [`node "${nodeId}"`];
+      for (const unit of units) if (!covered.has(unit)) throw new Error(`${id}: no start row shows ${unit} of step "${step.key}"`);
+    }
+    if (switchable.has(step.key) && !targeted.has(`step "${step.key}"`)) throw new Error(`${id}: step "${step.key}" can be switched off, but no start row targets it`);
+  }
+  return Object.freeze(rows.map((row) => deepFreeze(row)));
 }
 
 // A declared timeline is exhaustive and assigns each node one category.
@@ -1334,7 +1555,6 @@ export function defineWorkflowDescriptor<
     if (constant?.value.kind !== "boolean") throw new Error(`${id}: start step ${step.key} selection requires a boolean default`);
     assertBooleanSelectionField(spec.flow.input, inputField, `${id}: start step ${step.key} ingress`);
     assertBooleanSelectionField(spec.canonicalInput, inputField, `${id}: start step ${step.key} canonical`);
-    if (step.omission !== undefined) throw new Error(`${id}: start step ${step.key} has both selection and omission`);
     for (const member of step.nodes) {
       const node = nodes.find(node => node.id === member);
       if (node?.kind === "task" && node.when?.of.from === "input" && String(node.when.of.path) === inputField
@@ -1344,19 +1564,28 @@ export function defineWorkflowDescriptor<
   const stepOmissions = deriveStepOmissions(id, nodes, spec.timeline);
   const failureCorrections = spec.failureCorrections === undefined ? undefined : validateFailureCorrections(spec.flow.input, nodes, spec.failureCorrections);
   const gateCorrections = spec.gateCorrections === undefined ? undefined : validateGateCorrections(spec.flow.input, nodes, spec.gateCorrections);
-  const rerunValues = spec.rerunValues === undefined ? undefined : validateRerunValueMappings({
+  if (spec.rerunValues?.some((mapping) => mapping.targetStepKey !== undefined) === true) {
+    throw new Error(`${id}: step Rerun values are derived from each manual field's replaces; declare only input mappings`);
+  }
+  const derivedRerunValues = stepOmissions.flatMap((omission) => omission.form.fields.flatMap((field) => field.replaces === undefined ? [] : [{
+    nodeId: field.replaces.nodeId, fieldPath: field.replaces.path, label: field.label, targetStepKey: omission.step, targetFieldPath: field.key,
+  }]));
+  const declaredRerunValues = [...spec.rerunValues ?? [], ...derivedRerunValues];
+  const rerunValues = declaredRerunValues.length === 0 ? undefined : validateRerunValueMappings({
     input: spec.flow.input, nodes, stepOmissions,
     ...(spec.protectedInputs === undefined ? {} : { protectedInputs: spec.protectedInputs }),
-  }, spec.rerunValues);
+  }, declaredRerunValues);
   const omissionOfNode = new Map<string, Readonly<{ step: string; produced: boolean }>>();
-  for (const declared of spec.timeline ?? []) {
-    if (declared.omission === undefined) continue;
-    for (const member of declared.nodes) {
-      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), `step "${declared.key}" omission`);
+  for (const omission of stepOmissions) {
+    for (const member of [...Object.keys(omission.produces), ...omission.skips ?? []]) {
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), `step "${omission.step}" manual entry`);
       if (node.kind === "gate") continue;
-      omissionOfNode.set(member, Object.freeze({ step: declared.key, produced: Object.hasOwn(declared.omission.produces, member) }));
+      omissionOfNode.set(member, Object.freeze({ step: omission.step, produced: Object.hasOwn(omission.produces, member) }));
     }
   }
+  const timeline = deriveTimeline(id, nodes, spec.timeline?.map(({ key, label, description, system, selection, operatorFields, nodes: members }) => ({ key, label, ...(description === undefined ? {} : { description }), ...(system === undefined ? {} : { system }), ...(operatorFields === undefined ? {} : { operatorFields }), ...(selection === undefined ? {} : { selection }), nodes: members })));
+  const stepLocks = Object.freeze((spec.timeline ?? []).flatMap((step) =>
+    step.locked === undefined ? [] : [Object.freeze({ step: step.key, reason: StepLockReasonSchema.parse(step.locked) })]));
   const surfaces = Object.freeze({
     ...spec.surfaces,
     ...(spec.surfaces.inputRun === undefined
@@ -1379,9 +1608,14 @@ export function defineWorkflowDescriptor<
     result: spec.flow.result,
     nodes: spec.flow.nodes,
     scenarios: declaredScenarios,
-    timeline: deriveTimeline(id, nodes, spec.timeline?.map(({ key, label, description, system, selection, operatorFields, nodes: members }) => ({ key, label, ...(description === undefined ? {} : { description }), ...(system === undefined ? {} : { system }), ...(operatorFields === undefined ? {} : { operatorFields }), ...(selection === undefined ? {} : { selection }), nodes: members }))),
+    timeline,
     timelineDeclared: spec.timeline !== undefined,
     stepOmissions,
+    stepLocks,
+    startRows: deriveStartRows(id, nodes, timeline, new Set([
+      ...stepOmissions.map(({ step }) => step),
+      ...(spec.timeline ?? []).flatMap((step) => step.selection === undefined ? [] : [step.key]),
+    ]), spec.rows),
     ...(rerunValues === undefined ? {} : { rerunValues }),
     ...(failureCorrections === undefined ? {} : { failureCorrections }),
     ...(gateCorrections === undefined ? {} : { gateCorrections }),

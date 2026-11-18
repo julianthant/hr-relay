@@ -71,7 +71,6 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await mount(h, h.fresh(source)); assert.equal(checkbox("Read employee").checked, true);
     assert.equal(checkbox("File transaction").checked, true);
     assert.equal(checkbox("Check employee").checked, outcome !== "failed");
-    await act(async () => checkbox("File transaction").click()); assert.equal(checkbox("File transaction").checked, false);
     await press("Continue"); assert.ok(document.querySelector('[aria-label="Values"]')); assert.match(text(), /Unavailable/u);
   });
 

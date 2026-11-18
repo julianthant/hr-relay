@@ -66,7 +66,7 @@ export const personLookupWorkflow = defineWorkflow({
         modes: [
           {
             value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or Shift+Enter.", placeholder: "10000001; Lee, Jordan",
-            defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+            defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: true } }],
             parser: { kind: "entries", spec: SEARCH_ENTRIES },
             display: { kind: "first-present", fields: ["emplId", "name"] }, identityFields: ["emplId", "name"],
           },
@@ -84,7 +84,7 @@ export const personLookupWorkflow = defineWorkflow({
         ],
       }, placeholder: "Enter employee IDs or names separated by a semicolon or Shift+Enter", parser: {
         ...SEARCH_ENTRIES,
-        constants: [{ field: "mode", value: { kind: "text", text: "search" } }, { field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+        constants: [{ field: "mode", value: { kind: "text", text: "search" } }, { field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: true } }],
       }, examples: [{ key: "one-eid", label: "One employee ID", text: "10000001", note: "Search one employee ID" }]
     }
   },
@@ -97,6 +97,13 @@ export const personLookupWorkflow = defineWorkflow({
   input: PersonLookupInput,
   intake: personLookupIntake,
   role: defineWorkflowRole({ kind: "composition" }),
+  // The reference check reads the Employee ID the search resolved, so it shows under Search for person.
+  rows: [
+    { key: "searching", label: "Search for person", members: [{ step: "searching" }, { step: "reference-check" }], target: { step: "searching" } },
+    { key: "cross-verify", label: "Cross-check identity", members: [{ step: "cross-verify" }], target: { step: "cross-verify" } },
+    { key: "active-status", label: "Read employment status", members: [{ step: "active-status" }], target: { step: "active-status" } },
+    { key: "crm-dates", label: "Read CRM dates", members: [{ step: "crm-dates" }], target: { step: "crm-dates" } },
+  ],
   scenarios: ["person-lookup/s1", ...Array.from({ length: 15 }, (_, index) => `person-lookup/s${index + 2}`), "person-lookup/m1b", ...Array.from({ length: 5 }, (_, index) => `person-lookup/m${index + 1}`), ...Array.from({ length: 5 }, (_, index) => `person-lookup/f${index + 1}`)],
   steps: author => {
     const searching = personLookupSearchingDefinition.build(author);

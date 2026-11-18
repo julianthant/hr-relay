@@ -30,6 +30,17 @@ export const i9CheckStartWorkflow = defineWorkflow({
   ],
   nodePurposes: [...i9CheckStartDocumentsDefinition.nodePurposes, ...i9CheckStartRosterReferenceDefinition.nodePurposes, ...i9CheckStartRetentionDefinition.nodePurposes],
   artifactProjections: [{ id: "i9-check-tracker", source: { nodeId: "publish-results", fieldPath: "tracker" }, keyFields: ["batchKey"], sink: "xlsx-retention", blocking: true }],
+  rows: [
+    { key: "read-forms", label: "Read I-9 forms", members: [{ step: "documents", nodes: ["read-documents"] },
+      { workflow: "ocr", step: "source-pages" }, { workflow: "ocr", step: "page-readings" }] },
+    { key: "match-people", label: "Match extracted people", members: [{ step: "documents", nodes: ["read-approved-records", "read-people"] },
+      { workflow: "ocr", step: "review-records" }, { workflow: "ocr", step: "identity-lookups" }, { workflow: "ocr", step: "signer-lookups" }] },
+    { key: "review-records", label: "Review extracted records", members: [{ workflow: "ocr", step: "approval" }] },
+    { key: "ucpath-match", label: "Match person in UCPath", members: [{ workflow: "i9-check", step: "person-match" },
+      { workflow: "i9-check", step: "reference-check" }], target: { workflow: "i9-check", step: "person-match" } },
+    { key: "ucpath-dates", label: "Read employment dates", members: [{ workflow: "i9-check", step: "person-lookup" }], target: { workflow: "i9-check", step: "person-lookup" } },
+    { key: "tracker-row", label: "Append retention tracker row", members: [{ step: "roster-reference" }, { workflow: "i9-check", step: "roster-match" }, { step: "retention" }] },
+  ],
   steps: author => {
     const documents = i9CheckStartDocumentsDefinition.build(author), reference = i9CheckStartRosterReferenceDefinition.build(author, documents);
     const retention = i9CheckStartRetentionDefinition.build(author, reference);

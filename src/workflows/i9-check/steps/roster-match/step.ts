@@ -64,11 +64,12 @@ const roster = defineStepEntries(rosterMatch);
 
 export function buildStep(author: I9Author, matched: ReturnType<typeof personMatchEntries>, looked: ReturnType<typeof personLookupEntries>) {
   const { task, result } = author;
-  const search = looked;
-  const row = task(roster.task("retention-row", ReadRetentionRow, { replay: "always-rerun" }), [matched.initial, matched.initialSearch, search], ({ input, outputs }) => ({
-    input, initial: outputs["match-outcome"].identity, search: input.person.useMatch ? outputs["name-search"] : outputs["initial-name-search"],
+  const row = task(roster.task("retention-row", ReadRetentionRow, { replay: "always-rerun" }), [matched.initial, matched.candidates, looked.candidates], ({ input, outputs }) => ({
+    input, initial: outputs["match-outcome"].identity, candidates: input.person.useMatch ? outputs["employment-candidates"]?.candidates
+      : (outputs["employment-candidates"] ?? outputs["initial-candidates"])?.candidates,
   }));
-  return { row, steps: [[rosterMatch, [row]]] as const, result: result(ReadRetentionRow.output, [row], ({ outputs }) => outputs["retention-row"]) };
+  return { row, steps: [[rosterMatch, [row]]] as const,
+    result: result(ReadRetentionRow.output, [row, matched.initial, matched.candidates, looked.candidates], ({ outputs }) => outputs["retention-row"]) };
 }
 export const i9CheckRosterMatchDefinition = defineStep({
   group: rosterMatch, build: buildStep,
@@ -80,7 +81,7 @@ export const i9CheckRosterMatchDefinition = defineStep({
       details: parent.details,
       steps: (author: I9Author) => {
         const matched = i9CheckPersonMatchDefinition.build(author), looked = i9CheckPersonLookupDefinition.build(author, matched);
-        const roster = buildStep(author, matched, looked.search);
+        const roster = buildStep(author, matched, looked);
         return { steps: [...matched.steps, ...looked.steps, ...roster.steps], result: roster.result };
       },
     }),

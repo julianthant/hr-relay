@@ -360,6 +360,47 @@ const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
 
 const SEPARATIONS = Object.freeze({ workflows: SEPARATIONS_WORKFLOWS, panelWorkflowId: "separations" });
 
+// The served Separations write steps always run, so these Steps-screen tests supply their own omittable controls.
+const SEPARATIONS_OMITTABLE_WRITES = Object.freeze({
+  panelWorkflowId: "separations",
+  workflows: SEPARATIONS_WORKFLOWS.map((workflow): RunStartWorkflow => workflow.workflowId !== "separations"
+    ? workflow
+    : {
+      ...workflow,
+      steps: workflow.steps.map((step): RunStartWorkflow["steps"][number] => {
+        if (step.key === "ucpath-transaction") {
+          return {
+            ...step,
+            control: {
+              state: "omittable",
+              forces: [],
+              form: {
+                fields: [
+                  {
+                    key: "transactionNumber",
+                    label: "UCPath transaction number",
+                    kind: "text",
+                    help: "The T-number of the termination already filed in UCPath (T followed by 6–12 digits). This run files nothing in UCPath.",
+                  },
+                  {
+                    key: "approvalStatus",
+                    label: "Approval status",
+                    kind: "enum",
+                    values: ["Approved", "Manually Processed", "Pending"],
+                    help: "The transaction's approval status as UCPath shows it now. Only a status that means the termination took effect can be asserted.",
+                    replaces: { nodeId: "receipt", path: "approvalStatus" },
+                  },
+                ],
+              },
+            },
+          };
+        }
+        if (step.key === "kuali-finalization") return { ...step, control: { state: "omittable", forces: [], form: { fields: [] } } };
+        return step;
+      }),
+    }),
+});
+
 const DOCUMENT = "4502";
 
 function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
@@ -412,8 +453,8 @@ it("keeps staging's dry-run sentence for a typed workflow", async () => {
   assert.equal((row.textContent ?? "").includes("or saving"), false);
 });
 
-async function openSteps(client: DashboardClient, typed: string = DOCUMENT): Promise<OpenDialog> {
-  const dialog = await openDialog(client, SEPARATIONS);
+async function openSteps(client: DashboardClient, typed: string = DOCUMENT, scenario: typeof SEPARATIONS = SEPARATIONS): Promise<OpenDialog> {
+  const dialog = await openDialog(client, scenario);
   await dialog.type(typed);
   await dialog.press("Continue");
   await dialog.press("Customize steps");
@@ -434,12 +475,13 @@ describe("an omittable step draws its own form when it is left out", () => {
     assert.ok(dialog.text().includes("Last day worked"), "omitting the step drew no form");
     assert.ok(dialog.text().includes("Separation date"));
 
-    assert.ok(dialog.text().includes("The employee's last physical day of work, MM/DD/YYYY"));
+    assert.ok(dialog.text().includes("Enter last day worked for kronos timecard."), "the first missing field drew no error in place of its help");
+    assert.ok(dialog.text().includes("The last day on pay status, MM/DD/YYYY"), "a field without an error drew no help line");
     assert.ok(dialog.text().includes("6 of 7 included"));
   });
 
   it("says so when the omitted step asks for nothing at all", async () => {
-    const dialog = await openSteps(stubClient({}));
+    const dialog = await openSteps(stubClient({}), DOCUMENT, SEPARATIONS_OMITTABLE_WRITES);
     await dialog.press("Kuali finalization");
     assert.ok(
       dialog.text().includes("This step asks for nothing"),
@@ -449,7 +491,7 @@ describe("an omittable step draws its own form when it is left out", () => {
 
   it("draws an enum as a choice with NO pre-selected value", async () => {
 
-    const dialog = await openSteps(stubClient({}));
+    const dialog = await openSteps(stubClient({}), DOCUMENT, SEPARATIONS_OMITTABLE_WRITES);
     await dialog.press("UCPath transaction");
     const label = [...document.body.querySelectorAll("label")]
       .find((candidate) => (candidate.textContent ?? "").trim() === "Approval status");
@@ -482,12 +524,12 @@ describe("Start is not sent while an omitted step's form does not parse", () => 
     await dialog.press("Kronos timecard");
     await dialog.fill("Last day worked", "6/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
-    await dialog.press("Continue");
 
+    assert.equal(dialog.disabled("Continue"), true, "Continue stayed on with an unparsable fact");
     assert.equal(dialog.stage(), "Steps", "an unparsable fact reached the server");
     assert.equal(asked, 0, "the dialog asked the server for a plan it knew would be refused");
-    assert.ok(dialog.text().includes("a date fact must be MM/DD/YYYY"), "the declared refusal was not drawn");
-    assert.ok(dialog.text().includes("Fill in Last day worked"), "the footer never named the value Next is waiting for");
+    assert.equal(document.body.querySelectorAll('[role="alert"]').length, 1, "the refusal was not drawn as one alert");
+    assert.ok(dialog.text().includes("Last day worked must be a valid date in MM/DD/YYYY format."), "the first failure was not drawn");
 
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.press("Start live run");
@@ -506,7 +548,7 @@ describe("the request carries the operator's omissions", () => {
         submitted = input;
         return separationsPlan(["kronos-timecard", "ucpath-transaction"]);
       },
-    }));
+    }), DOCUMENT, SEPARATIONS_OMITTABLE_WRITES);
     await dialog.press("UCPath transaction");
     await dialog.press("Kronos timecard");
     await dialog.fill("Last day worked", "06/30/2026");
@@ -595,7 +637,7 @@ describe("typed facts describe ONE subject", () => {
 
 const CASCADING_SEPARATIONS = Object.freeze({
   panelWorkflowId: "separations",
-  workflows: SEPARATIONS_WORKFLOWS.map((workflow): RunStartWorkflow => workflow.workflowId !== "separations"
+  workflows: SEPARATIONS_OMITTABLE_WRITES.workflows.map((workflow): RunStartWorkflow => workflow.workflowId !== "separations"
     ? workflow
     : {
       ...workflow,
