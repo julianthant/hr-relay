@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
+import { readOcrReviewAuthority } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
 import { ExtractFormPage } from "../../../../src/models/processing/ocr/extract-form-page.js";
 import { ReadManualOcrReading } from "../../../../src/models/workflows/ocr-page/read-manual-reading.js";
 import { ReadOcrPageReading } from "../../../../src/models/workflows/ocr-page/read-page-reading.js";
 import { OcrPageReadingSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
+import { ReadOcrResult } from "../../../../src/models/workflows/ocr/read-result.js";
+import { OcrApprovalReferenceSchema } from "../../../../src/models/workflows/ocr/result.js";
+import { hydrateOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
 import { compileWorkflow, composeWorkflowModule, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { ocrPageWorkflow } from "../../../../src/workflows/ocr-page/workflow.js";
+import { buildOcr } from "../../../../src/workflows/ocr/steps/source-pages/step.js";
+import { ocrWorkflow } from "../../../../src/workflows/ocr/workflow.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
-import { ocrPageModule } from "../../../support/helpers/registered-workflows.js";
+import { ocrModule, ocrPageModule } from "../../../support/helpers/registered-workflows.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -63,4 +69,37 @@ it("publishes the reading and parent review when the manual checkpoint node is r
   assert.deepEqual(authority.ocrExtractions.get(f.reading.extractionId), { ...f.reading, binding: "source-bound" });
   assert.equal(authority.ocrReviews.latest(f.run.envelope.runId)?.sourceRunId, f.run.envelope.runId);
   assert.ok(f.result.run?.lifecycle.state === "terminal" && f.result.run.lifecycle.outcome === "done");
+});
+
+it("reads the canonical review published by a renamed parent result node", async () => {
+  const ocr = composeWorkflowModule(compileWorkflow(defineWorkflow({ ...ocrWorkflow,
+    steps: author => {
+      const original = buildOcr(author);
+      const [sourcePages, pageReadings, reviewRecords, identityLookups, signerLookups, approvalStep] = original.steps;
+      const [pages] = pageReadings[1], [review] = reviewRecords[1], [identities] = identityLookups[1], [signers] = signerLookups[1];
+      const completed = author.task({ id: "collect-review-result", contract: ReadOcrResult, replay: "always-rerun" },
+        [review, pages, identities, signers], ({ input, outputs }) => ({
+          review: hydrateOcrReviewSeed(outputs["build-review"], extractionId => {
+            const page = outputs["read-pages"].find(entry => entry.state === "done" && entry.output.extractionId === extractionId);
+            return page?.state === "done" ? page.output : undefined;
+          }, input.roster),
+          outcomes: [...outputs["lookup-identities"], ...outputs["lookup-signers"]],
+        }));
+      const approval = author.gate({ id: "approve-records", label: "Approve selected records", resolvedBy: "operator",
+        result: OcrApprovalReferenceSchema, when: { kind: "equals", of: { from: "input", path: "approval" }, value: "release" },
+      }, [completed]);
+      return {
+        steps: [sourcePages, pageReadings, reviewRecords, identityLookups, [signerLookups[0], [signers, completed]], [approvalStep[0], [approval]]],
+        result: author.result(original.result.schema, [completed, approval, review], ({ input, outputs }) =>
+          original.result.derive({ input, outputs: { ...outputs, "read-result": outputs["collect-review-result"] } })),
+      };
+    },
+  })), ocrModule.stores);
+  const f = await world.fixture({ ocr });
+  const runId = f.run.envelope.runId;
+  const published = f.database.authority.ocrReviews.latest(runId);
+  assert.ok(published?.origin.kind === "checkpoint");
+  assert.equal(published.origin.checkpoint.nodeId, "collect-review-result");
+  const canonical = f.database.withAuthorityReadSnapshot(() => readOcrReviewAuthority(f.database.authority, f.canonical.lifecycle, runId));
+  assert.deepEqual(canonical?.revision, published);
 });
