@@ -117,7 +117,9 @@ describe('assistant attachments', () => {
     const controller = await mountServed(client);
     let attached: AssistantFile | null = null;
     await act(async () => { attached = await model.attachFile(upload('report.pdf', '%PDF-1.4')); });
-    expect(staged).toEqual([{ conversationId: expect.any(String), name: 'report.pdf', mediaType: 'application/pdf', bytes: 8 }]);
+    expect(staged).toHaveLength(1);
+    expect(staged[0]).toHaveProperty('conversationId', expect.any(String));
+    expect(staged).toEqual([{ conversationId: staged[0]?.conversationId, name: 'report.pdf', mediaType: 'application/pdf', bytes: 8 }]);
     expect(attached).toMatchObject({ name: 'report.pdf', stage: { state: 'staged' } });
     await act(async () => controller().onAction({ type: 'edit', value: 'Check this file' }));
     await act(async () => { await model.send(sendValue('Check this file', [attached!])); });
@@ -142,7 +144,8 @@ describe('assistant attachments', () => {
     const controller = await mountServed(client);
     let attached: AssistantFile | null = null;
     await act(async () => { attached = await model.attachFile(upload('report.pdf', '%PDF-1.4')); });
-    expect(attached).toMatchObject({ stage: { state: 'failed', message: expect.stringContaining('Try again') } });
+    expect(attached).toMatchObject({ stage: { state: 'failed' } });
+    expect(attached).toHaveProperty('stage.message', expect.stringContaining('Try again'));
     await act(async () => controller().onAction({ type: 'edit', value: 'Check this file' }));
     await act(async () => { expect(await model.send(sendValue('Check this file', [attached!]))).toBe(false); });
     expect(model.error).toContain('Retry or remove'); expect(requests).toHaveLength(0);
