@@ -13,7 +13,7 @@ import type { LinkedRunWire } from "../../queue/queue-model.js";
 import type { LogDecisionHandler } from "./log-feed.js";
 import { isCancelOption } from "./log-decision-model.js";
 import type { ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
-import type { LogSelection } from "./log-selection-model.js";
+import { rerunFooterAction, type LogSelection } from "./log-selection-model.js";
 import { pauseTimeline } from "./log-timeline-model.js";
 import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
@@ -27,18 +27,10 @@ import { batchMemberRetryAction } from "../../../app/commands/command-dispatch.j
 
 type ServedNavigation = Readonly<{ reviewOpen?: boolean; reviewFocus?: DelegatedRecordRef; onReview?: () => void; onLogs?: () => void; onAction?: DashboardActionHandler; onOpenLinked?: (target: LinkedRunWire) => void; onRetryLogs?: () => void }>;
 
-/** Rerun sits in the Logs footer when the row serves a rerun action. */
 function withoutConfirm(action: ActionDescriptorWire): ActionDescriptorWire {
   if (action.kind !== "command") return action;
   const { confirm: _confirm, ...direct } = action;
   return direct;
-}
-
-export function rerunFooterButton(selection: LogSelection | undefined, onAction?: DashboardActionHandler) {
-  const action = selection?.row.actions.find(candidate => candidate.kind === "navigation" && candidate.navigate.kind === "rerun");
-  if (selection === undefined || action === undefined || onAction === undefined) return undefined;
-  const target = { runId: selection.row.runId, expectedVersion: selection.row.rowRevision };
-  return <LogFooterButton label={action.label} icon={<RotateCw aria-hidden className="size-4" />} onClick={() => onAction(action, target)} />;
 }
 
 export function LogSample({ selection, initialStepId, confirm, ...navigation }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
@@ -96,7 +88,8 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
   }, [retry,onAction,selection.row.runId,selection.row.rowRevision]);
   const linkedRuns = useMemo(() => linkedRunEntries(selection.row), [selection.row]);
   const recordCount = resource.snapshot?.detail.ocrRecordCount;
-  const rerun = rerunFooterButton(selection, onAction);
+  const rerunAction = rerunFooterAction(selection, onAction);
+  const rerun = rerunAction === undefined ? undefined : <LogFooterButton label={rerunAction.label} icon={<RotateCw aria-hidden className="size-4" />} onClick={rerunAction.run} />;
   const footerActions = useMemo(() => {
     const records = reviewAvailable && recordCount !== undefined && onReview !== undefined;
     const members = selection.row.parent !== null && selection.row.status === "running";

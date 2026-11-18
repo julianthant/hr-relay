@@ -442,7 +442,7 @@ it("maps a cached ready card to fixed unavailable when the mounted catalog remov
   try {
     await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, binding, open: true, onOpenChange() {} })));
     assert.equal(document.querySelectorAll("article").length, 1);
-    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog: [], source: "served", binding, open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog: [], binding, open: true, onOpenChange() {} })));
     assert.equal(document.querySelectorAll("article").length, 0);
     assert.match(document.body.textContent ?? "", /Session information is unavailable/);
     assert.doesNotMatch(document.body.textContent ?? "", /SESSION_WORKFLOW_UNREGISTERED|person-lookup/);

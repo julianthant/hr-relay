@@ -1,6 +1,5 @@
 import type { PaletteSheet } from "../../../../src/dashboard/surfaces/shell/search/search-palette-model.js";
 import type { DashboardHarness } from "../../../../src/dashboard/app/workflow-sources.js";
-import type { CommandRecoveryEntry } from "../../../../src/dashboard/surfaces/shared/actions/command-recovery-model.js";
 import type { CommandResultFeedEntry } from "../../../../src/dashboard/surfaces/shared/actions/actions-model.js";
 import type { BulkBatchOutcome } from "../../../../src/dashboard/app/commands/bulk-dispatch.js";
 import { BulkRunCommandResponseSchema } from "../../../../src/rules/commands/commands.js";

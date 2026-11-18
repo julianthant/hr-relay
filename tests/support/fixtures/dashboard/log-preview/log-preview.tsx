@@ -3,11 +3,11 @@ import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 import type { DashboardActionHandler } from "../../../../../src/dashboard/surfaces/shared/actions/actions.js";
 import { LogPanel } from "../../../../../src/dashboard/surfaces/run-detail/log-panel.js";
 import { RunStateChips } from "../../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
-import { Pause, Square } from "lucide-react";
+import { Pause, RotateCw, Square } from "lucide-react";
 import { ConfirmDialog } from "../../../../../src/dashboard/ds/ui.js";
 import { queueRowTitle } from "../../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { LogFooterButton } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-action-button.js";
-import { rerunFooterButton } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
+import { rerunFooterAction } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
 import { answeredRow, type LogDecision } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-decision-model.js";
 import type { LogDecisionHandler } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed.js";
 import type { LogStep } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
@@ -43,7 +43,12 @@ export function LogPreview({ selection, onAction }: { selection?: LogSelection; 
     });
   };
   const cancelPreview = (id: string) => setEdited(current => ({ basis, timeline: current?.basis === basis ? current.timeline : scenario.timeline, steps: answerSteps(current, id, "cancel-run", "Cancel run") }));
-  return <LogPanel key={basis} status={selection === undefined ? undefined : <RunStateChips row={selection.row} />} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : cancelPreview} footerActions={scenarioId === "preview" || scenarioId === "selected" ? <>{selection && <PreviewMemberControls selection={selection} onAction={onAction} />}{rerunFooterButton(selection, onAction)}</> : undefined} />;
+  return <LogPanel key={basis} status={selection === undefined ? undefined : <RunStateChips row={selection.row} />} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} onCancelRun={scenarioId === "selected" ? undefined : cancelPreview} footerActions={scenarioId === "preview" || scenarioId === "selected" ? <>{selection && <PreviewMemberControls selection={selection} onAction={onAction} />}{previewRerun(selection, onAction)}</> : undefined} />;
+}
+
+function previewRerun(selection: LogSelection | undefined, onAction?: DashboardActionHandler) {
+  const rerun = rerunFooterAction(selection, onAction);
+  return rerun === undefined ? undefined : <LogFooterButton label={rerun.label} icon={<RotateCw aria-hidden className="size-4" />} onClick={rerun.run} />;
 }
 
 /** A fixture has no clock; the preview answer carries a fixed instant. */

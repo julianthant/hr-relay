@@ -127,9 +127,10 @@ export function activitySample(range: ActivityDateRange, scenario: ActivitySampl
 }
 
 /** The mock harness's report hook: the sample report for the `activityPreview` scenario, with export refused like a preview. */
-export const useActivitySampleReport: ActivityReportHook = (_client, range) => {
+export const useActivitySampleReport: ActivityReportHook = (_client, range, _browse, _sources, enabled) => {
   const [scenario] = useViewState("activityPreview", "normal");
-  const data = useMemo(() => activitySample(range, scenario), [range, scenario]);
+  // A refused range is not sampled: the view shows its own notice.
+  const data = useMemo(() => activitySample(enabled ? range : ACTIVITY_SAMPLE_RANGE, scenario), [enabled, range, scenario]);
   const exportCsv = useCallback(async () => { throw new Error("CSV export is unavailable in this preview."); }, []);
   return useMemo(() => ({ data, pending: false, exportReady: true, notice: "", exportCsv }), [data, exportCsv]);
 };

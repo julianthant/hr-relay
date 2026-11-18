@@ -37,10 +37,10 @@ describe('compact run headers', () => {
     const locationBefore = window.location.href;
     try {
       window.history.replaceState(null, '', '/?logPreview=separation');
-      const unrelated = renderToStaticMarkup(createElement(LogPreview, { selection: { row, workflowLabel: 'Person lookup' } }));
+      const unrelated = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(LogPreview, { selection: { row, workflowLabel: 'Person lookup' } })));
       assert.doesNotMatch(unrelated, /aria-label="Run context"/);
       window.history.replaceState(null, '', '/?logPreview=selected');
-      const selected = renderToStaticMarkup(createElement(LogPreview, { selection: { row, workflowLabel: 'Person lookup' } }));
+      const selected = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(LogPreview, { selection: { row, workflowLabel: 'Person lookup' } })));
       assert.doesNotMatch(selected, /aria-label="Run context"/); assert.match(selected, /aria-label="Selected run logs"/);
     } finally { window.history.replaceState(null, '', locationBefore); }
   });
@@ -158,7 +158,7 @@ describe('compact run headers', () => {
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
     const onReview = vi.fn(), onLogs = vi.fn();
     vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
-    const sample = (open?: boolean) => createElement(TooltipProvider, null, createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'OCR' }, reviewOpen: open, onReview, onLogs }));
+    const sample = (open?: boolean) => createElement(TooltipProvider, null, createElement(LogSample, { selection: { row, workflowLabel: 'OCR' }, reviewOpen: open, onReview, onLogs }));
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
     const records = () => host.querySelector<HTMLButtonElement>('button[aria-label="Records 2"]');
     try {

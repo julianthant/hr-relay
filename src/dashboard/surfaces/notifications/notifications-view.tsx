@@ -1,6 +1,6 @@
 import { Bell, Check, Mail, MailOpen, MoreHorizontal, X } from "lucide-react";
-import { forwardRef, useEffect, useRef, type ReactNode } from "react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, IconButton, Skeleton, Tooltip, dsFocus, dsIcon, useToasts } from "../../ds/ui.js";
+import { forwardRef, useEffect, type ReactNode } from "react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, IconButton, Skeleton, Tooltip, dsFocus, dsIcon } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { LoadingRegion } from "../shared/loading/loading.js";
 import { itemDay, itemPreview, itemSource, type NotificationControl, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";

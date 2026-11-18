@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,expect,it } from "vitest";
 import { PRODUCT_WORKFLOW_COMPOSITION,WORKFLOW_SOURCES,workflowComposition,workflowSource } from "../../../../src/dashboard/app/workflow-sources.js";

@@ -26,7 +26,7 @@ async function mount(read: () => Promise<AssistantActivityWire>) {
   const client = { ...base, assistantActivity };
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(TooltipProvider, null, createElement(ToastProvider, null,
-    createElement(HubShell, { settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {}, onRunWorkflow: async () => ({ state: "failed" as const, message: "Unused" }) }),
+    createElement(HubShell, { settingsOpen: false, logoutOpen: false, onLogoutOpenChange() {}, onLogout() {} }),
     createElement(AssistantLauncher))) })));
   const button = (label: string) => { const found = document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`); assert.ok(found, label); return found; };
   const openHistory = async () => {

@@ -10,7 +10,7 @@ import { activityRangeValue } from '../../../../src/dashboard/surfaces/activity/
 import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, useActivitySampleReport } from '../../../support/fixtures/dashboard/activity-sample.js';
 import { ActivityReport as ActivityReport_m0,ActivityReport as ActivityReport_m1 } from '../../../../src/dashboard/surfaces/activity/activity.js';
 import { WorkflowExplorer as WorkflowExplorer_m1 } from "../../../../src/dashboard/surfaces/explorer/explorer.js";
-import { LogSample as LogSample_m1 } from "../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
+import { LogPreview as LogSample_m1 } from "../../../support/fixtures/dashboard/log-preview/log-preview.js";
 
 
 {

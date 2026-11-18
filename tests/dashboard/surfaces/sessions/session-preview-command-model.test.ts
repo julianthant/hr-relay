@@ -25,7 +25,6 @@ import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1 } from 'v
 import { useSessionPreviewCommands as useSessionPreviewCommands_m1,type SessionPreviewCommandPort as SessionPreviewCommandPort_m1,type SessionPreviewRequest as SessionPreviewRequest_m1,type SessionPreviewResult as SessionPreviewResult_m1 } from '../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js';
 import { createFixtureSessionPort, previewSessionControl, sessionsSample as sessionsSample_m1 } from '../../../support/fixtures/dashboard/sessions-sample.js';
 import { SessionsView as SessionsView_m1 } from '../../../../src/dashboard/surfaces/sessions/sessions-view.js';
-import { buildWorkflowCatalog as buildWorkflowCatalog_m1 } from '../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js';
 // @vitest-environment jsdom
 import assert_m2 from 'node:assert/strict';
 import { act as act_m2,createElement as createElement_m2 } from 'react';

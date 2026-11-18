@@ -1065,7 +1065,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       });
     });
     return;
-  }, [client, commandScope, leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, commandResults, selectRun, workflowComposition]);
+  }, [client, commandScope, leaveSettings, setRoute, setLaunchOpen, exitQueueSelection, onFilter, commandResults, selectRun, workflowComposition]);
 
   const onInboxNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
     openNotification(destination, opened, refused);

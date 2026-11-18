@@ -78,7 +78,6 @@ it('retains the original held refresh across its own version move, cancels Remov
   const { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } = await import('../../../mocks/helpers/fixture-day.js');
   const { DashboardDayWireSchema } = await import('../../../../src/models/dashboard/projection.js');
   const { sessionsFromDay } = await import('../../../../src/dashboard/surfaces/sessions/sessions-view-model.js');
-  const { buildWorkflowCatalog } = await import('../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js');
   const base = FIXTURE_DAY_WIRE.workerCards[1];
   const basis = (lifetimeId: string, version: number) => ({ basis: { state: 'present' as const, value: { lifetimeId, version } } });
   const card = { ...base, controls: basis(uuidOf(970), 1),

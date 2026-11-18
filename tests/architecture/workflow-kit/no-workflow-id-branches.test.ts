@@ -44,7 +44,6 @@ const ALLOWED_SITES: readonly WorkflowIdSite[] = [
   { path: "src/backend/runs/queries/run-detail.ts", workflowIds: ["ocr"], reason: OCR_SERVICE },
   { path: "src/backend/runs/queries/ocr-record-members.ts", workflowIds: ["ocr", "person-lookup", "i9-lookup"],
     reason: `${OCR_SERVICE} Record members name the lookup child families OCR starts.` },
-  { path: "src/dashboard/app/dashboard-app.tsx", workflowIds: ["ocr"], reason: "a manual OCR start opens its record review." },
 ];
 
 function inScope(path: string): boolean {
