@@ -22,6 +22,8 @@ export type ReadTaskReference = z.infer<typeof ReadTaskReferenceSchema>;
 
 export interface ProofCheck<Output extends z.ZodType, Proof extends z.ZodType> {
   readonly proofSchema: CanonicalJsonSchema<Proof>;
+  /** When independent reads carry observation metadata, compare the saved effect they identify. */
+  readonly effectIdentity?: (proof: z.output<Proof>) => JsonValue;
   readonly proofFromOutput: (output: z.output<Output>) => z.input<Proof>;
   readonly proofFromPresentProbe: (
     verdict: Extract<ProbeVerdict<Proof>, { readonly state: "present" }>,
@@ -87,6 +89,7 @@ const RuntimeFunctionSchema = z.custom<(...args: never[]) => unknown>(
 const RuntimeExampleSchema = z.custom<unknown>(() => true);
 const RuntimeProofCheckShape = {
   proofSchema: RuntimeZodTypeSchema,
+  effectIdentity: RuntimeFunctionSchema.optional(),
   proofFromOutput: RuntimeFunctionSchema,
   proofFromPresentProbe: RuntimeFunctionSchema,
   outputFromProof: RuntimeFunctionSchema,

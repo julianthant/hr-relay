@@ -1,3 +1,4 @@
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { EidSchema } from "../../../../rules/identity/ids.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../models/ui/ucpath-emergency-contact.js";
 import type { UcpathContactPageSnapshot } from "../../../../models/ui/ucpath-emergency-contact.js";
@@ -100,8 +101,9 @@ export function createDeterministicContactPersistence(initial: UcpathContactPage
         demotePrimary: (index, effect) => editor.demotePrimary(index, effect),
       };
       const save: UcpathContactSavePort = {
-        async save() {
+        async save(capability) {
           const staged = await editor.snapshot();
+          assertMintedMutationCapability(capability);
           submissions.push(staged);
           persisted = UcpathContactPageSnapshotSchema.parse({ ...staged, observation: "persisted", observedAt: now() });
         },

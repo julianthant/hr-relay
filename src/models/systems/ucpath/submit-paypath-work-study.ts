@@ -1,4 +1,4 @@
-/** The COMMIT arm: the PayPath `Save and Submit` click alone, keyed on the person and the effective date. */
+/** The COMMIT arm for the reviewed person, effective date and position. */
 import { z } from "zod";
 import { ContractFieldPathSchema, defineTaskContract } from "../../task/task-contract.js";
 import { TaskIdSchema, taskId } from "../../../rules/identity/ids.js";
@@ -16,7 +16,7 @@ export const UcpathSubmitPayPathWorkStudy = defineTaskContract({
   effect: "commit",
   input: UcpathPayPathWorkStudyTargetSchema,
   output: UcpathSubmitPayPathWorkStudyOutputSchema,
-  errorCodes: ["paypath-submit-refused"],
+  errorCodes: ["paypath-position-mismatch", "paypath-submit-refused"],
   subject: {
     kind: "person",
     expected: { fromInput: ContractFieldPathSchema.parse("expectedName"), identity: "name" },
@@ -37,6 +37,10 @@ export const UcpathSubmitPayPathWorkStudy = defineTaskContract({
     idempotency: {
       probe: { taskId: TaskIdSchema.parse("ucpath/match-paypath-work-study"), effect: "read" },
       key: ucpathWorkStudyIdempotencyKey,
+      retiredKeys: [{
+        key: input => ["ucpath:paypath-work-study", input.emplId, input.effectiveDate].join("|"),
+        reason: "the earlier employee and date key did not identify the reviewed position",
+      }],
       recoveryAbsence: {
         kind: "operator-only",
         reason: "PayPath Save and Submit propagation to SS Smart HR search has no measured window; post-fence absence requires operator resolution.",

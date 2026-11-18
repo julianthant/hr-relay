@@ -11,7 +11,8 @@ import { RecordedDataPointSchema, type DataPoint } from "../../../../../src/rule
 
 const COMMENTS = "Updated pool id to F per work study award 08/03/2026";
 const TARGET = UcpathPayPathWorkStudyTargetSchema.parse({
-  emplId: "10000001", expectedName: "Lee, Jordan", effectiveDate: "08/03/2026", positionChangeReason: "JRL", positionPool: "F", comments: COMMENTS,
+  emplId: "10000001", expectedName: "Lee, Jordan", positionNumber: "40012345", effectiveDate: "08/03/2026",
+  positionChangeReason: "JRL", positionPool: "F", comments: COMMENTS,
 });
 
 class Failed extends Error {
