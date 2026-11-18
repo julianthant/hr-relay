@@ -14,7 +14,7 @@ const draft = (browser: object) => ProfileOnboardingStateSchema.parse({ state: "
 
 async function mount(onboarding: ReturnType<typeof draft>, over: Partial<ServedOnboardingPort> = {}) {
   const never = () => Promise.reject(new Error("unused"));
-  const port: ServedOnboardingPort = { source: "served", reenrol: true, onboarding, validate: () => ({}), complete: never, cancel: never, cancelDuo: never, showBrowser: never, reopenBrowser: never, openPortal: never, start: never, confirmDuo: never, resume: never, submit: never, ...over };
+  const port: ServedOnboardingPort = { reenrol: true, onboarding, validate: () => ({}), complete: never, cancel: never, cancelDuo: never, showBrowser: never, reopenBrowser: never, openPortal: never, start: never, confirmDuo: never, resume: never, submit: never, ...over };
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   await act(async () => root.render(createElement(OnboardingSetup, { page: "fast", port })));
   const button = (name: string) => [...host.querySelectorAll("button")].find(item => item.textContent === name);

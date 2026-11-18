@@ -77,7 +77,7 @@ async function mount(overrides: Partial<DashboardClient_m0> = {}) {
     ...overrides,
   };
   const host=document.createElement("div"); document.body.append(host); root=createRoot_m0(host);
-  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(DashboardApp_m0, { profileSource: "mock", workflowComposition: workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m0(workflows) }), previewPreferences: preview })})));
+  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(DashboardApp_m0, { workflowComposition: workflows => ({ ...MOCK_WORKFLOW_COMPOSITION_m0(workflows) }), previewPreferences: preview })})));
   await settle();
 }
 it_m0("command binding never renders implementation comment text", async () => {
@@ -214,7 +214,7 @@ async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}
     ...overrides,
   };
   const host = document.createElement("div"); document.body.append(host); root = createRoot_m1(host);
-  await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1,{client,children:createElement_m1(DashboardApp_m1, { profileSource: "mock", workflowComposition, previewPreferences: shellPreferences })})));
+  await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1,{client,children:createElement_m1(DashboardApp_m1, { workflowComposition, previewPreferences: shellPreferences })})));
   await settle();
   return client;
 }
@@ -516,7 +516,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     assert_m1.ok(reads > readsBeforeRetry, "Retry reads the logs again");
     const failedReads = reads;
     await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1, { key: "mock-composition", client,
-      children: createElement_m1(DashboardApp_m1, { profileSource: "mock", workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
+      children: createElement_m1(DashboardApp_m1, { workflowComposition: MOCK_WORKFLOW_COMPOSITION_m1 }) })));
     await settle();
     assert_m1.equal(reads, failedReads);
     assert_m1.match(document.body.textContent ?? "", /Is this the right person\?/);

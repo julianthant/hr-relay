@@ -36,7 +36,7 @@ async function mount(pause: "running" | "pause-pending" | "paused" = "running", 
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   await act(async () => root.render(createElement(DashboardClientProvider, { client,
-    children: createElement(DashboardApp, { profileSource: "mock", workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
+    children: createElement(DashboardApp, { workflowComposition: MOCK_WORKFLOW_COMPOSITION }) })));
   const button = (name: string) => {
     const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.getAttribute("aria-label") === name || button.textContent === name);
     assert.ok(button, `missing ${name}`); return button;

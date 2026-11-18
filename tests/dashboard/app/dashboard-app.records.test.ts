@@ -63,7 +63,7 @@ it("opens shared-lookup records through real routes and keyboard selection witho
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, {
-      profileSource: "mock", workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" }),
+      workflowComposition: MOCK_WORKFLOW_COMPOSITION, previewPreferences: createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" }),
     }) })));
     await vi.waitFor(() => assert.ok(host.querySelector(`[data-queue-record-id="${records[0].recordId}"]`)));
     await act(async () => host.querySelector<HTMLElement>(`[data-queue-record-id="${records[0].recordId}"]`)?.click());
