@@ -48,7 +48,8 @@ Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} di
 let root: Root_m0 | undefined;
 let library: BackendHarness | undefined;
 const libraryHeaders = { host: "localhost", origin: "http://localhost", "content-type": "application/json" };
-const savedWorkbooks = async () => (await library!.app.request("http://localhost/api/v1/workbooks/list", { headers: libraryHeaders })).json() as Promise<readonly { workbook: { name: string; sheets: readonly { rows: readonly { cells: readonly { value: unknown }[] }[] }[] } }[]>;
+const savedWorkbooks = async () => (await library!.app.request("http://localhost/api/v1/workbooks/list", { headers: libraryHeaders })).json() as Promise<readonly { libraryId: string; name: string }[]>;
+const openedWorkbook = async (libraryId: string) => (await library!.app.request(`http://localhost/api/v1/workbooks/${encodeURIComponent(libraryId)}`, { headers: libraryHeaders })).json() as Promise<{ workbook: { name: string; sheets: readonly { rows: readonly { cells: readonly { value: unknown }[] }[] }[] } }>;
 const _afterEachFixture0 = async () => {
   await act_m0(async () => root?.unmount()); root = undefined;
   await disposeHttpRouteHarness(); library = undefined;
@@ -147,8 +148,8 @@ try {
   await click(button("Add to library"));
   await settle();
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
-  const imported = (await savedWorkbooks()).find(record => record.workbook.name === "Focus roster"); assert_m0.ok(imported);
-  assert_m0.equal(imported.workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
+  const imported = (await savedWorkbooks()).find(record => record.name === "Focus roster"); assert_m0.ok(imported);
+  assert_m0.equal((await openedWorkbook(imported.libraryId)).workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
   assert_m0.equal(uploads, 0); assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
 } finally {
 await _afterEachFixture0();
@@ -159,12 +160,12 @@ try {
   let starts = 0;
   await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Settings"));
   const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link); await click(link);
-  const before = (await savedWorkbooks()).map(record => record.workbook.name);
+  const before = (await savedWorkbooks()).map(record => record.name);
   await click(button("Import"));
   await chooseSpreadsheet();
   if (dismissal === "Escape") await key("Escape"); else await click(button("Cancel"));
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
-  assert_m0.deepEqual((await savedWorkbooks()).map(record => record.workbook.name), before);
+  assert_m0.deepEqual((await savedWorkbooks()).map(record => record.name), before);
   assert_m0.equal(starts, 0);
   assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
 } finally {
