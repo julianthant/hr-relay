@@ -55,6 +55,26 @@ describe("typed Settings catalog controls", () => {
   }
 });
 
+describe("Settings autosave wait", () => {
+  const patchOf = (command: unknown): unknown => (command as { payload: { patch: unknown } }).payload.patch;
+  it("sends a toggle or choice save at once and keeps the wait for typed text", async () => {
+    const h = await setup();
+    await settingsAction(() => h.controller().update("actor.label", "typed"));
+    assert.equal(h.commands.length, 0, "typed text still waits");
+    await settingsAction(() => h.controller().update("actor.label", "chosen", true));
+    await settingsAction(() => undefined);
+    assert.equal(h.commands.length, 1, "an immediate change is sent without the 700 ms wait");
+  });
+  it("keeps the last of two quick immediate changes", async () => {
+    const h = await setup();
+    await settingsAction(() => { h.controller().update("actor.label", "first", true); h.controller().update("actor.label", "second", true); });
+    await settingsAction(() => undefined);
+    assert.equal(h.commands.length, 1);
+    assert.deepEqual(patchOf(h.commands[0]), { "actor.label": { set: "second" } });
+    assert.equal(labelValue(h), "second");
+  });
+});
+
 for (const family of ["protected"] as const) {
   it(`recovers ${family} after same-day scope refresh while its reply is pending`, async () => {
     const h = await setup();
