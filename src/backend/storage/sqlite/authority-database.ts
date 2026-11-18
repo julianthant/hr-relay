@@ -666,6 +666,7 @@ export type AuthorityRepositories = Readonly<{
 const JsonRowSchema = z.strictObject({ payload_json: z.string() });
 // Native diagnostics and notes are the timeline's high-volume streams; storage inspection never reads them.
 const INSPECTED_TIMELINE_KINDS = "kind NOT IN ('debug','note')";
+export type EarlierRunEvents = (runId: string, beforeCursor: number, each: (record: TimelineEventRecord) => void) => void;
 const RecordKeyRowSchema = z.strictObject({ id: z.string() });
 const ProtectedSettingsWriteIdLookupSchema = z.strictObject({
   writeId: z.uuid(),
@@ -3267,8 +3268,9 @@ export class AuthorityDatabase implements Disposable {
    * Visits, in cursor order, every timeline record except native diagnostics and notes, with the
    * complete authority identity of the same read-only snapshot. Records are read a page at a time,
    * so the inspection holds no more than one page however long ordinary retention lets the timeline grow.
+   * `earlier` re-reads, from the same snapshot, one run's span events before a cursor.
    */
-  static inspectTimelineReadOnly(admission: RuntimeAdmission, path: string, visit: (record: TimelineEventRecord) => void,
+  static inspectTimelineReadOnly(admission: RuntimeAdmission, path: string, visit: (record: TimelineEventRecord, earlier: EarlierRunEvents) => void,
     busyTimeoutMs = 250, includeRecoveryEvidence = false) {
     requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
     let visited = false;
@@ -3289,6 +3291,19 @@ export class AuthorityDatabase implements Disposable {
       const confirmationsByRun = new Map<string, string[]>();
       const fenced = new Set<string>();
       const page = database.prepare(`SELECT * FROM timeline_events WHERE cursor > ? AND ${INSPECTED_TIMELINE_KINDS} ORDER BY cursor LIMIT 500`);
+      const runPage = database.prepare(`SELECT * FROM timeline_events WHERE cursor > ? AND cursor < ? AND ${INSPECTED_TIMELINE_KINDS}
+        AND kind <> 'run.queued' AND json_extract(payload_json,'$.payload.event.runId') = ? ORDER BY cursor LIMIT 500`);
+      const earlier: EarlierRunEvents = (runId, before, each) => {
+        for (let after = 0; ;) {
+          const rows = runPage.all(after, before, runId);
+          for (const raw of rows) {
+            const record = timelineEventFromRow(raw);
+            after = record.cursor;
+            each(record);
+          }
+          if (rows.length < 500) return;
+        }
+      };
       for (let after = 0; ;) {
         const rows = page.all(after);
         for (const raw of rows) {
@@ -3300,7 +3315,7 @@ export class AuthorityDatabase implements Disposable {
             if (owned === undefined) confirmationsByRun.set(record.scope.runId, [digest]);
             else owned.push(digest);
           } else if (record.payload.kind === "span" && record.payload.event.t === "transaction.fenced") fenced.add(record.payload.event.runId);
-          visit(record);
+          visit(record, earlier);
         }
         if (rows.length < 500) break;
       }

@@ -24,7 +24,7 @@ import { type RuntimeAdmission } from "../admission/admission.js";
 import { withOperationProof } from "../configuration/credential-safe-file.js";
 import { observeCredentialPresence } from "../configuration/credential-store.js";
 import { hasUnprovedSourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
-import { AuthorityDatabase } from "./authority-database.js";
+import { AuthorityDatabase, type EarlierRunEvents } from "./authority-database.js";
 import { verifyBackupManifestAtPath } from "./backup-service.js";
 import { isAuthoritySourceChanged, withActiveAuthorityObservation, type AuthorityImageOwner } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
@@ -362,19 +362,20 @@ function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: str
   const roots: MutableSpanAuthorityRoot[] = [];
   const firstRoot = new Map<string, MutableSpanAuthorityRoot>();
   const attempts = new Map<string, number>();
-  const pending = new Map<string, TimelineEventRecord[]>();
+  // Last cursor of each run's events seen before its root; the events themselves are re-read from the snapshot.
+  const pending = new Map<string, number>();
   const validate = (root: MutableSpanAuthorityRoot, row: TimelineEventRecord): void => {
     if (row.payload.kind !== "span" || row.payload.event.t === "run.queued") return;
     validateRunEventAgainstRoot(root, row.payload.event, `timeline:${row.workflow}:${row.retentionDate}`,
       row.cursor, attempts, row.source.kind === "native");
   };
-  const visit = (row: TimelineEventRecord): void => {
+  const visit = (row: TimelineEventRecord, earlier: EarlierRunEvents): void => {
     if (row.payload.kind !== "span" || !("runId" in row.payload.event)) return;
     const event = row.payload.event;
     if (event.t !== "run.queued") {
       const root = firstRoot.get(event.runId);
       if (root !== undefined) validate(root, row);
-      else pending.set(event.runId, [...(pending.get(event.runId) ?? []), row]);
+      else pending.set(event.runId, row.cursor);
       return;
     }
     const root: MutableSpanAuthorityRoot = { queued: event, finalAttempt: event.attempt, possibleExternalWrite: false,
@@ -395,16 +396,15 @@ function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: str
       addStreamIssue(root, `run.queued item attempt ${String(event.attempt)} did not strictly increase after ${String(previous)}`);
     }
     attempts.set(key, event.attempt);
-    const prior = pending.get(event.runId) ?? [];
+    const lastPrior = pending.get(event.runId);
     pending.delete(event.runId);
-    if (prior.length > 0) {
+    if (lastPrior !== undefined) {
       if (event.repair !== undefined) {
         const repair = event.repair;
-        if (repair.kind === "timeline-authority-reconstruction"
-          && prior.some((entry) => entry.cursor > repair.priorCursor)) {
+        if (repair.kind === "timeline-authority-reconstruction" && lastPrior > repair.priorCursor) {
           addStreamIssue(root, "timeline repair does not cover the preceding event cursor");
         }
-        for (const entry of prior) validate(root, entry);
+        earlier(event.runId, row.cursor, (entry) => validate(root, entry));
       } else addStreamIssue(root, "run.queued appears after prior run event(s) without authority-reconstruction repair");
     }
   };
