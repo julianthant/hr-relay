@@ -1,7 +1,9 @@
 import { PNG } from "pngjs";
-import type { Frame, Locator, Page } from "playwright";
+import type { ElementHandle, Frame, Locator, Page } from "playwright";
 import type { BrowserCaptureFailure } from "../../../workflow-kit/session.js";
 
+/** A control named like an SSN field must sit under a capture mask while it paints. */
+const SSN_CONTROL_NAME = /social security|national id|\bssn\b/iu;
 const CAPTURE = { width: 1280, maxWidth: 6000, sliceHeight: 1200, sliceOverlap: 120, maxSlices: 30, maxPixels: 40_000_000 };
 
 export class FullPageCaptureRestoreError extends AggregateError {
@@ -53,16 +55,33 @@ function stitchCaptureBands(bands: CaptureBand[]): { bytes: Uint8Array; width: n
   return { bytes: new Uint8Array(PNG.sync.write(out)), width, height };
 }
 
-async function observeSecrets(frame: Frame, selector: string): Promise<void> {
-  await frame.evaluate(selector => {
+async function observeSecrets(frame: Frame, selector: string, masks: readonly Locator[]): Promise<void> {
+  const covered = (await Promise.all(masks.map(mask => mask.elementHandles()))).flat();
+  try { await observeFrame(frame, selector, covered); }
+  finally { await Promise.all(covered.map(handle => handle.dispose())); }
+}
+
+async function observeFrame(frame: Frame, selector: string, covered: readonly ElementHandle[]): Promise<void> {
+  await frame.evaluate(({ selector, ssnName, covered }) => {
+    const ssnPattern = new RegExp(ssnName.source, ssnName.flags);
+    const masked = new Set<Node>(covered);
     // Matches Playwright's visible filter: a never-painted control cannot reach the pixels.
     // An object method: tsx wraps a named inner function in a __name helper the page realm lacks.
-    const controls = { painted(): boolean {
-      return [...document.querySelectorAll<HTMLElement>(selector)].some(el => {
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 && el.checkVisibility({ visibilityProperty: true });
-      });
-    } };
+    const controls = { shown(el: Element): boolean {
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && el.checkVisibility({ visibilityProperty: true });
+    }, painted(): boolean {
+      return [...document.querySelectorAll(selector)].some(el => controls.shown(el));
+    }, names(el: Element): (string | null)[] {
+      const labelledBy = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/u).filter(id => id !== "").map(id => document.getElementById(id)?.textContent ?? null);
+      const labels = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? [...el.labels ?? []].map(label => label.textContent) : [];
+      return [el.getAttribute("aria-label"), el.getAttribute("placeholder"), el.getAttribute("title"), ...labelledBy, ...labels];
+    },
+    // Read from the DOM, not the accessibility tree: an ARIA-hidden control still paints its value.
+    unmaskedSsn(): boolean {
+      return [...document.querySelectorAll("input, textarea, [role=textbox], [role=spinbutton]")].some(el => !masked.has(el) && controls.shown(el)
+        && controls.names(el).some(name => name !== null && ssnPattern.test(name)));
+    }, exposed(): boolean { return controls.painted() || controls.unmaskedSsn(); } };
     const positions = [...document.querySelectorAll<HTMLElement>("*")].map(el => ({ el, x: el.scrollLeft, y: el.scrollTop }));
     const originalScroll = { x: window.scrollX, y: window.scrollY };
     const state = { restore() {
@@ -71,17 +90,18 @@ async function observeSecrets(frame: Frame, selector: string): Promise<void> {
       try { window.scrollTo({ left: originalScroll.x, top: originalScroll.y, behavior: "instant" }); } catch (error) { errors.push(error); }
       if (errors.length) throw new AggregateError(errors, "Full-page capture scroll restoration failed");
     }, observer: new MutationObserver(records => {
-      if (controls.painted()) state.seen = true;
+      if (controls.exposed()) state.seen = true;
       for (const record of records) {
         if (record.type === "attributes" && record.target instanceof HTMLInputElement && ((record.attributeName === "type" && record.oldValue?.toLowerCase() === "password")
           || (record.attributeName === "autocomplete" && record.oldValue !== null && ["one-time-code", "current-password", "new-password"].includes(record.oldValue)))) state.seen = true;
         // A secret control that left this document (removed, or moved into a shadow tree or another frame) is no longer watched.
         for (const node of record.removedNodes) if (node instanceof Element && [...(node.matches(selector) ? [node] : []), ...node.querySelectorAll(selector)].some(el => !document.contains(el))) state.seen = true;
       }
-    }), seen: controls.painted() };
+    }), seen: controls.exposed() };
     (window as CaptureWindow).__relayCaptureSecrets = state;
-    state.observer.observe(document, { subtree: true, childList: true, attributes: true, attributeOldValue: true, attributeFilter: ["type", "autocomplete", "class", "style", "hidden", "open"] });
-  }, selector);
+    state.observer.observe(document, { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true,
+      attributeFilter: ["type", "autocomplete", "class", "style", "hidden", "open", "aria-label", "aria-labelledby", "placeholder", "title", "for", "role"] });
+  }, { selector, ssnName: { source: SSN_CONTROL_NAME.source, flags: SSN_CONTROL_NAME.flags }, covered });
 }
 
 async function setCaptureWidth(page: Page, assertCurrent: () => void): Promise<void> {
@@ -232,7 +252,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
   assertCurrent: () => void;
   assertSafe: () => Promise<void>;
   sampleLabels?: readonly string[];
-  mask: () => Locator[];
+  mask: (frame: Frame) => Locator[];
   secretControls: string;
   afterCapture: () => Promise<void>;
 }>): Promise<Readonly<{ bytes: Uint8Array; width: number; height: number }>> {
@@ -259,7 +279,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
   };
   try {
     assertCurrent();
-    for (const frame of page.frames()) { assertCurrent(); frames.push(frame); await observeSecrets(frame, options.secretControls); }
+    for (const frame of page.frames()) { assertCurrent(); frames.push(frame); await observeSecrets(frame, options.secretControls, options.mask(frame)); }
     await assertSafe();
     await setCaptureWidth(page, assertCurrent);
     assertCurrent();
@@ -298,7 +318,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
         coveredX = Math.max(coveredX, offsetX + rect.width);
         rowHeight = rect.height;
         assertCurrent();
-        const buffer = await page.screenshot({ type: "png", clip: rect, mask: options.mask() });
+        const buffer = await page.screenshot({ type: "png", clip: rect, mask: page.frames().flatMap(frame => options.mask(frame)) });
         await assertSafe();
         bands.push({ buffer, offsetCss: actualOffset, offsetXCss: offsetX, clipHeightCss: rect.height });
       }

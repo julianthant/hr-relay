@@ -197,6 +197,31 @@ describe("whole-page factory screenshots", () => {
       assert.equal(evidence.reason, "secret-controls-present");
     });
   });
+  it("refuses a painted SSN control left out of the accessibility tree, which no role recipe masks", async () => {
+    await withPage(`<div aria-hidden="true"><label for="hidden-ssn">U.S. Social Security Number</label><input id="hidden-ssn" value="fixture-value"></div>${content}`, async (_page, resource) => {
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal("bytes" in evidence, false);
+    });
+  });
+  it("refuses an unmasked SSN control painted only during a band", async () => {
+    await withPage(`${content}<input id="transient-ssn" aria-label="Employee SSN" value="fixture-value" style="display:none">`, async (page, resource) => {
+      const screenshot = page.screenshot.bind(page);
+      let bands = 0;
+      page.screenshot = async options => {
+        if (++bands !== 2) return screenshot(options);
+        await page.locator("#transient-ssn").evaluate(el => { el.style.display = "block"; });
+        try { return await screenshot(options); }
+        finally { await page.locator("#transient-ssn").evaluate(el => { el.style.display = "none"; }); }
+      };
+      const evidence = await resource.screenshot?.();
+      assert.ok(evidence?.state === "unavailable");
+      assert.equal(evidence.reason, "secret-controls-present");
+      assert.equal("bytes" in evidence, false);
+      assert.equal(bands, 2);
+    });
+  });
   it("captures a page whose unmasked SSN control is never painted", async () => {
     await withPage(`${content}<input aria-label="Employee SSN" value="fixture-value" hidden>`, async (_page, resource) => {
       assert.equal((await image(resource)).height, 3000);
