@@ -14,10 +14,10 @@ export const AssistantWorkflowFactSchema = z.strictObject({
     placeholder: z.string(), entries: z.string(), fields: z.array(z.string()),
     examples: z.array(z.strictObject({ label: z.string(), text: z.string(), note: z.string() })),
   }).nullable(),
-  start: z.enum(["dry-run", "live-read", "unavailable"]),
+  start: z.enum(["dry-run", "live-read", "dashboard-upload", "dashboard-input", "unavailable"]),
   steps: z.array(z.strictObject({ label: z.string(), description: z.string().nullable() })),
   omittableSteps: z.array(z.string()),
-  rerun: z.boolean(),
+  rerun: z.enum(["check-run", "unavailable"]),
 });
 export type AssistantWorkflowFact = z.infer<typeof AssistantWorkflowFactSchema>;
 
@@ -30,8 +30,25 @@ export class AssistantWorkflowFactsError extends Error {
   }
 }
 
+export function assistantWorkflowRunMode(descriptor: AnyWorkflowDescriptor): "dry-run" | "live-read" | "unavailable" {
+  const support = workflowDryRunSupport(descriptor);
+  if (support.state === "supported") return "dry-run";
+  return "reason" in support && support.reason === "no-transaction-node" ? "live-read" : "unavailable";
+}
+
+function freshStart(descriptor: AnyWorkflowDescriptor, mode: ReturnType<typeof assistantWorkflowRunMode>): AssistantWorkflowFact["start"] {
+  const { inputRun, uploadRun } = descriptor.surfaces;
+  if (inputRun === undefined) return uploadRun === undefined ? "unavailable" : "dashboard-upload";
+  if (mode === "unavailable") return mode;
+  const typed = inputRun.typedInput;
+  const needsDate = typed?.submitsMode === false && typed.controls.some(control => "kind" in control && control.kind === "date"
+    && control.required && control.requires.length === 0 && control.modes.includes(typed.modes[0].value)
+    && !inputRun.parser.rules.some(rule => rule.emit === control.field));
+  return descriptor.workbookReference !== undefined || needsDate ? "dashboard-input" : mode;
+}
+
 function fact(descriptor: AnyWorkflowDescriptor): AssistantWorkflowFact {
-  const inputRun = descriptor.surfaces.inputRun, support = workflowDryRunSupport(descriptor);
+  const inputRun = descriptor.surfaces.inputRun, mode = assistantWorkflowRunMode(descriptor);
   const split = inputRun?.parser.split;
   return AssistantWorkflowFactSchema.parse({
     id: descriptor.id, label: descriptor.label, summary: descriptor.summary ?? null, category: descriptor.category,
@@ -41,10 +58,10 @@ function fact(descriptor: AnyWorkflowDescriptor): AssistantWorkflowFact {
       fields: [...new Set(inputRun.parser.rules.map(rule => rule.emit))],
       examples: (inputRun.examples ?? []).map(({ label, text, note }) => ({ label, text, note })),
     },
-    start: support.state === "supported" ? "dry-run" : "reason" in support && support.reason === "no-transaction-node" ? "live-read" : "unavailable",
+    start: freshStart(descriptor, mode),
     steps: descriptor.timeline.map(step => ({ label: step.label, description: step.description ?? null })),
     omittableSteps: descriptor.stepOmissions.map(omission => descriptor.timeline.find(step => step.key === omission.step)?.label ?? omission.step),
-    rerun: (descriptor.rerunValues?.length ?? 0) > 0,
+    rerun: mode === "unavailable" || descriptor.workbookReference !== undefined ? "unavailable" : "check-run",
   });
 }
 

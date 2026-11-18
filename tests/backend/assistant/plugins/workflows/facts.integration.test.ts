@@ -7,6 +7,8 @@ import { z } from "zod";
 import configuredSources from "../../../../../config/dashboard-workflow-sources.json";
 import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { ASSISTANT_WORKFLOW_FACTS_PATH, AssistantWorkflowFactsError, assistantWorkflowFacts, loadAssistantWorkflowFacts } from "../../../../../src/backend/assistant/plugins/workflows/facts.js";
+import { workflowsPlugin } from "../../../../../src/backend/assistant/plugins/workflows/index.js";
+import { createAssistantReferenceTable } from "../../../../../src/backend/assistant/references.js";
 
 const served = () => {
   const sources = z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredSources);
@@ -15,6 +17,24 @@ const served = () => {
 
 it("loads the committed workflow facts for every served workflow", () => {
   assert.equal(loadAssistantWorkflowFacts(resolve(import.meta.dirname, "../../../../.."), served()).sha256, assistantWorkflowFacts(served()).sha256);
+});
+
+it.each([
+  ["i9-check-start", "dashboard-upload", "unavailable"],
+  ["emergency-contact", "dashboard-upload", "unavailable"],
+  ["onboarding", "dashboard-input", "unavailable"],
+  ["work-study", "dashboard-input", "check-run"],
+  ["person-lookup", "live-read", "check-run"],
+  ["separations", "dry-run", "check-run"],
+])("describes %s fresh-start and rerun capability for chat", async (workflow, start, rerun) => {
+  const facts = assistantWorkflowFacts(served());
+  const [describe] = workflowsPlugin(() => facts).tools;
+  assert.ok(describe?.kind === "read");
+  const result = z.object({ start: z.unknown(), rerun: z.unknown() }).parse(await describe.invoke({ workflow }, {
+    signal: new AbortController().signal, references: createAssistantReferenceTable(1), actorId: "local-operator", conversationId: "chat",
+    operatorText: "", assertCurrent() {}, assertRetainedCurrent() {},
+  }));
+  assert.deepEqual(result, { start, rerun });
 });
 
 it("names the served workflow whose committed facts are stale", () => {
