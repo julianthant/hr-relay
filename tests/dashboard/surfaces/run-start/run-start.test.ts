@@ -1,4 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
@@ -17,7 +17,6 @@ import { ViewNavigationProvider } from "../../../../src/dashboard/app/navigation
 import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { seedMockRuns } from "../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 
 {
 const { cleanup, openDialog, stubClient, WORKFLOW_ID, TYPED, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName } = createRunStartDialogHarness();
@@ -662,7 +661,7 @@ describe('mounted frontend reliability contracts', () => {
   it('keeps mock rerun stages under the mock form when its routed dialog mounts or restores', async () => {
     vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
     const runs = seedMockRuns(), source = runs.find(run => run.workflowId === 'onboarding'); assert(source);
-    const previewLaunch = { workflowId: source.workflowId, source }, catalog = buildWorkflowCatalog([], true, previewFixtureSources([]));
+    const previewLaunch = { workflowId: source.workflowId, source }, catalog = buildPreviewCatalog([], previewFixtureSources([]));
     const requests: string[] = [];
     const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: async url => { requests.push(String(url)); throw new Error('Unexpected backend request'); } });
     let current: AppRouteState;

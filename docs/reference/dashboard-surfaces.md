@@ -63,7 +63,7 @@ It keeps stable ID, label, category, start capability, availability, and source 
 Preview capability does not establish executable registration. An unknown workflow source throws
 rather than picking a default.
 
-`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and I-9 Check are `served`. OCR, I-9 Lookup and OnBase are `hidden`; the other configured values are `mock`. Emergency Contact members start OnBase to file each person's page. The I-9 Check person child has no source entry. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
+`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations, Onboarding, Work-Study, Emergency Contact and I-9 Check are `served`. OCR, I-9 Lookup and OnBase are `hidden`; no other workflow is declared. Emergency Contact members start OnBase to file each person's page. The I-9 Check person child has no source entry. Workflow
 selection determines Queue heading, visible rows, launcher target, and Logs context. Exact run
 selection may identify its own workflow. Counts come from the producer corresponding to the
 rows rather than a second browser status authority.

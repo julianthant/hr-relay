@@ -5,10 +5,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it, vi } from "vitest";
 import { ToastProvider, TooltipProvider } from "../../../../src/dashboard/ds/ui.js";
 import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
-import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
 
-const catalog = buildWorkflowCatalog([], true, servedFixtureSources([]));
+const catalog = buildPreviewCatalog([], servedFixtureSources([]));
 let root: Root | undefined;
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 afterEach(async () => {

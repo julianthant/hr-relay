@@ -198,7 +198,6 @@ export function RunStartDialog({
   previewLaunch,
   previewRuns,
   onSubmitPreview,
-  previewStartable,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -221,8 +220,6 @@ export function RunStartDialog({
   previewLaunch?: Readonly<{ workflowId: MockWorkflowId; source?: MockRun }>;
   previewRuns?: readonly MockRun[];
   onSubmitPreview?: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
-  /** True only where a previewed workflow may start a local run (the design-mock harness); the served dashboard opens it for viewing. */
-  previewStartable?: boolean;
 }) {
   const workflows = useMemo(() => servedLaunchWorkflows(catalog), [catalog]);
   if (catalog.some(entry => entry.launch.state === "preview") && onSubmitPreview === undefined) throw new Error("RUN_PREVIEW_CAPABILITY_INCOMPLETE");
@@ -774,12 +771,12 @@ export function RunStartDialog({
         size="xl"
         band
         title={previewSelection?.source || isRerun ? "Rerun" : "Start run"}
-        description={previewFlow ? `${previewFlow.label} · ${previewStartable === true ? "Workflow preview" : "Not available yet"}` : isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `${workflow.label} · Workflow preview` : "Choose a workflow to begin"}
+        description={previewFlow ? `${previewFlow.label} · Workflow preview` : isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `${workflow.label} · Workflow preview` : "Choose a workflow to begin"}
         className={cn("launch-design launch-dialog", (previewSelection?.source || isRerun) && "launch-rerun")}
       >
           {!previewSelection?.source && !isRerun && picker}
 
-          {launchRefusal ? <><DialogBody><EmptyState title="Workflow unavailable" description={launchRefusal} /></DialogBody><DialogFooter><Button onClick={() => closeAndReset(false)}>Close</Button></DialogFooter></> : previewSelection && onSubmitPreview && previewRuns ? <WorkflowMockRunForm key={`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`} workflowId={previewSelection.workflowId} source={previewSelection.source} runs={previewRuns} initialDraft={previewDrafts.current.get(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`)} onDraftChange={draft => previewDrafts.current.set(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`, draft)} onClose={() => closeAndReset(false)} onSubmit={onSubmitPreview} startable={previewStartable === true} /> : <>
+          {launchRefusal ? <><DialogBody><EmptyState title="Workflow unavailable" description={launchRefusal} /></DialogBody><DialogFooter><Button onClick={() => closeAndReset(false)}>Close</Button></DialogFooter></> : previewSelection && onSubmitPreview && previewRuns ? <WorkflowMockRunForm key={`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`} workflowId={previewSelection.workflowId} source={previewSelection.source} runs={previewRuns} initialDraft={previewDrafts.current.get(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`)} onDraftChange={draft => previewDrafts.current.set(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`, draft)} onClose={() => closeAndReset(false)} onSubmit={onSubmitPreview} /> : <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ol aria-label="Run configuration path" className="launch-stagebar">
               {launchStages.map((stage, index) => {
@@ -1035,7 +1032,6 @@ export function RunStartSurfaces({
   previewLaunch,
   previewRuns,
   onSubmitPreview,
-  previewStartable,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1052,8 +1048,6 @@ export function RunStartSurfaces({
   previewLaunch?: Readonly<{ workflowId: MockWorkflowId; source?: MockRun }>;
   previewRuns?: readonly MockRun[];
   onSubmitPreview?: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
-  /** True only where a previewed workflow may start a local run (the design-mock harness); the served dashboard opens it for viewing. */
-  previewStartable?: boolean;
 }) {
   return (
     <RunStartDialog
@@ -1072,7 +1066,6 @@ export function RunStartSurfaces({
       previewLaunch={previewLaunch}
       previewRuns={previewRuns}
       onSubmitPreview={onSubmitPreview}
-      previewStartable={previewStartable}
     />
   );
 }

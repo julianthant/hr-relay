@@ -5,8 +5,9 @@ import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/ru
 import { runPickerGroups } from "../../../../src/dashboard/surfaces/run-start/run-start-picker-model.js";
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { workflowNavigationGroups } from "../../../../src/dashboard/surfaces/shell/workflow-rail-model.js";
-import { buildWorkflowCatalog, servedLaunchWorkflows } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { servedLaunchWorkflows } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../mocks/helpers/fixture-start.js";
+import { buildPreviewCatalog, DESIGN_HIDDEN_WORKFLOWS } from "../../../mocks/helpers/workflow-composition.js";
 
 /** The approved mock's order of every listed workflow: category groups as the rail shows them,
  * the mock catalog's order inside each group. Hidden workflows (I-9 Lookup, OCR, OnBase when hidden) are not listed. */
@@ -26,7 +27,7 @@ const MOCK_ORDER = [
 ] as const;
 
 const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
-const catalog = buildWorkflowCatalog(served, true, WORKFLOW_SOURCES);
+const catalog = buildPreviewCatalog(served, WORKFLOW_SOURCES);
 const listed = MOCK_ORDER.filter(id => catalog.some(entry => entry.id === id));
 const flat = <T extends { entry: { id: string }; members: readonly { entry: { id: string } }[] }>(groups: readonly { entries: readonly T[] }[]) =>
   groups.flatMap(group => group.entries.flatMap(node => [node.entry.id, ...node.members.map(member => member.entry.id)]));
@@ -41,7 +42,7 @@ describe("workflow order across every list", () => {
   });
 
   it("keeps hidden workflows out of every list", () => {
-    for (const id of Object.entries(WORKFLOW_SOURCES).filter(([, source]) => source === "hidden").map(([hidden]) => hidden)) {
+    for (const id of DESIGN_HIDDEN_WORKFLOWS) {
       expect(catalog.map(entry => entry.id)).not.toContain(id);
     }
     expect(catalog.map(entry => entry.id)).not.toContain("ocr");

@@ -8,7 +8,7 @@ const file: AssistantFile = { id: 'people', name: 'People.csv', status: 'Attache
   { id: 'one', cells: ['Alex Rivera', '2026-10-19', '2230001'].map(value => ({ value })) },
   { id: 'two', cells: ['Morgan Vega', '', '2230002'].map(value => ({ value })) },
 ] }] } };
-const composition = workflowComposition({ separations: 'mock', onboarding: 'mock' });
+const composition = { ...workflowComposition({}), assistant: 'mock' as const };
 const request: AssistantWorkflowRequest = { workflowId: 'separations', source: 'mock', dryRun: true, conversationId: 'chat', file, rows: assistantWorkflowRows(file, 'separations').filter(row => row.issue === null) };
 describe('integrated assistant sample runs', () => {
   it('starts only reviewed rows through the existing mock launch path and preserves held cells', () => {

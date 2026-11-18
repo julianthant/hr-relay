@@ -1,17 +1,17 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources as previewFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
 import assert_m0 from "node:assert/strict";
 import { describe as describe_m0,describe as describe_m1,expect as expect_m1,it as it_m0,it as it_m1 } from "vitest";
 import { launchWorkflows as launchWorkflows_m1 } from "../../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { previewSessionAdd as previewSessionAdd_m0,previewSessionAdd as previewSessionAdd_m1,previewSessionControl as previewSessionControl_m0,sessionsSample as sessionsSample_m0 } from "../../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
 import { sessionTallies as sessionTallies_m0 } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { parseWorkflows as parseWorkflows_m1 } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
-import { buildWorkflowCatalog as buildWorkflowCatalog_m0,buildWorkflowCatalog as buildWorkflowCatalog_m1 } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP as FIXTURE_START_PICKER_BOOTSTRAP_m1 } from "../../../mocks/helpers/fixture-start.js";
+import { WORKFLOW_SOURCES } from "../../../../src/dashboard/app/workflow-sources.js";
 
 
 {
 
-const catalog = buildWorkflowCatalog_m0([], true, previewFixtureSources([]));
+const catalog = buildPreviewCatalog([], previewFixtureSources([]));
 
 describe_m0("frontend timeline and sessions", () => {
   it_m0("local worker controls preserve peers and input fixtures; invalid transitions fail loud", () => {
@@ -86,7 +86,7 @@ describe_m0("frontend timeline and sessions", () => {
 
 
 const served = launchWorkflows_m1(parseWorkflows_m1(FIXTURE_START_PICKER_BOOTSTRAP_m1.workflows), FIXTURE_START_PICKER_BOOTSTRAP_m1.workbookCompatibility);
-const catalog = buildWorkflowCatalog_m1(served);
+const catalog = buildPreviewCatalog(served, WORKFLOW_SOURCES);
 
 describe_m1("frontend workflow catalog", () => {
   it_m1("adds local workers for every registration without inventing a UCPath browser or a claimed run", () => {

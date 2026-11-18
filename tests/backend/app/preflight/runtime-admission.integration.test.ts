@@ -51,9 +51,8 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { sessionsFromDay } from "../../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { sessionCommandEffect } from "../../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
-import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { servedFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
+import { servedFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
 import { AuthorityBackupService, AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase as StoreDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
@@ -1074,7 +1073,7 @@ try {
     descriptors: { resolve: id => id === personLookupDescriptor.id ? personLookupDescriptor : undefined },
     stateRoot: h.f.input.config.paths.stateRoot, clock: h.clock, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
     ledger: { foldActivityRange: () => { throw new Error("unrequested activity"); } } });
-  const catalog = buildWorkflowCatalog([], true, servedFixtureSources([]));
+  const catalog = buildPreviewCatalog([], servedFixtureSources([]));
   const served = () => { projection.rebuildFromTimeline(); return projection.buildDashboardDayWire(h.clock.now().toISOString().slice(0, 10)); };
   const envelope = (commandId: string) => ({ commandId, requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "worker-browser" });
   const plan = (commandId: string, desiredWorkers: number) => kernel.executeWorkerPool({ ...envelope(commandId), type: "plan-worker-count",

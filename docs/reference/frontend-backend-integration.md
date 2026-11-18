@@ -90,17 +90,15 @@ Bootstrap projects the admitted person registry name as the actor label. Appeara
 ## Static workflow source policy
 
 `app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json` into `WORKFLOW_SOURCES`.
-Every declared value is `mock`, `served` or `hidden`. `workflowSource` throws `WORKFLOW_SOURCE_UNDECLARED`
+Every declared value is `served` or `hidden`. `workflowSource` throws `WORKFLOW_SOURCE_UNDECLARED`
 for an absent ID. `PRODUCT_WORKFLOW_COMPOSITION` supplies the static product policy;
-`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup, Separations, Onboarding, Work-Study and the public I-9 Check PDF parent use `served`. OCR and I-9 Lookup are `hidden`: their admitted child runs use served data without public catalog or assistant entries. The I-9 Check person child has no source entry. Other configured workflows use `mock`.
-Product mock queues start empty. `WorkflowComposition.initialMockRuns` supplies initial rows; the product supplies none, while the mock composition supplies `seedMockRuns`. The mock composition starts from an explicit mock policy and opts fixture workflows into served capability tests. There is no runtime served-to-mock fallback.
+`DashboardApp` receives `productWorkflowComposition` by default. Person Lookup, Separations, Onboarding, Work-Study and the public I-9 Check PDF parent use `served`. OCR and I-9 Lookup are `hidden`: their admitted child runs use served data without public catalog or assistant entries. The I-9 Check person child has no source entry. A workflow that is not built and ready for testing is not declared, so it appears nowhere in the product. The design-mock harness composes its own surfaces in `tests/mocks/helpers/workflow-composition.ts`. There is no runtime served-to-mock fallback.
 
-`WorkflowComposition.sources` controls workflow presentation; `explorerSources`, `logsSources`,
-`dataSources`, `catalogIncludesMocks`, and `servedDay` allow explicit fixture composition.
+`WorkflowComposition.sources` controls workflow presentation; `explorerCatalog`, `logs`,
+`dataSources` and `servedDay` allow explicit fixture composition.
 The independent `inbox` and `search` sources are served in the product and mock in the mock composition.
-`sessions` selects its existing served or fixture producer. `sourceForRoute` chooses the
-route's producer. `buildWorkflowCatalog` combines served registration with the preview catalog,
-keeping availability, executable registration, and preview capability separate. Only a workflow's
+`sessions` selects its existing served or fixture producer. `buildWorkflowCatalog` lists the
+served registrations the policy marks `served`; it never adds a preview entry. Only a workflow's
 own wiring task changes its source policy after its accepted behavior is implemented across
 Run, Rerun, Queue, Logs, Explorer, Records, notifications, and Analytics where applicable.
 

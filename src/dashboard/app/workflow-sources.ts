@@ -1,17 +1,15 @@
 import { z } from "zod";
 import configuredSources from "../../../config/dashboard-workflow-sources.json";
-import type { MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
+import type { RunStartWorkflow } from "../surfaces/run-start/run-start.js";
+import type { WorkflowCatalogEntry } from "../surfaces/workflows/workflow-catalog-model.js";
 
+/** Where a surface (sessions, activity, inbox, search, assistant) reads from; the design-mock harness composes "mock" surfaces, the product only "served". */
 export type SurfaceSource = "mock" | "served";
 /** "hidden" workflows run and serve data for their host but have no catalog, queue or assistant entry. */
-export type WorkflowSource = SurfaceSource | "hidden";
+export type WorkflowSource = "served" | "hidden";
 export type WorkflowSourcePolicy = Readonly<Record<string, WorkflowSource>>;
 
-export const WORKFLOW_SOURCES = Object.freeze(z.record(z.string(), z.enum(["mock", "served", "hidden"])).parse(configuredSources));
-
-export function surfaceSource(id: string, policy: WorkflowSourcePolicy = WORKFLOW_SOURCES): SurfaceSource {
-  return workflowSource(id, policy) === "mock" ? "mock" : "served";
-}
+export const WORKFLOW_SOURCES = Object.freeze(z.record(z.string(), z.enum(["served", "hidden"])).parse(configuredSources));
 
 export function workflowSource(id: string, policy: WorkflowSourcePolicy = WORKFLOW_SOURCES): WorkflowSource {
   const source = policy[id];
@@ -19,33 +17,22 @@ export function workflowSource(id: string, policy: WorkflowSourcePolicy = WORKFL
   return source;
 }
 
-/** A mock run stays when its workflow is a mock; a hidden workflow's run stays only as the child of a mock host. */
-export function keepsMockRun(composition: WorkflowComposition, run: MockRun): boolean {
-  const source = composition.sourceForRoute(run.workflowId, true);
-  if (source !== "hidden") return source === "mock";
-  return run.parentId !== undefined && run.parentWorkflowId !== undefined && composition.sourceForRoute(run.parentWorkflowId, true) === "mock";
-}
-
 export interface WorkflowComposition {
   readonly sources: WorkflowSourcePolicy;
-  readonly initialMockRuns: () => readonly MockRun[];
-  readonly explorerSources?: WorkflowSourcePolicy;
-  readonly logsSources?: WorkflowSourcePolicy;
+  /** The design-mock harness supplies its own Explorer catalog; the product uses the served catalog. */
+  readonly explorerCatalog?: (served: readonly RunStartWorkflow[]) => readonly WorkflowCatalogEntry[];
+  readonly logs?: SurfaceSource;
   readonly dataSources?: WorkflowSourcePolicy;
-  readonly catalogIncludesMocks?: boolean;
-  /** The design-mock harness lets a previewed workflow start local preview runs; the product never does. */
-  readonly previewStarts?: boolean;
   readonly servedDay?: boolean;
   readonly sessions?: SurfaceSource;
   readonly activity?: SurfaceSource;
   readonly inbox: SurfaceSource;
   readonly search: SurfaceSource;
   readonly assistant?: SurfaceSource;
-  readonly sourceForRoute: (id: string, requestedPreview: boolean) => WorkflowSource;
 }
 
 export function workflowComposition(sources: WorkflowSourcePolicy): WorkflowComposition {
-  return Object.freeze({ sources, initialMockRuns: () => [], sessions: "served" as const, activity: "served" as const, inbox: "served" as const, search: "served" as const, sourceForRoute: (id: string) => workflowSource(id, sources) });
+  return Object.freeze({ sources, sessions: "served" as const, activity: "served" as const, inbox: "served" as const, search: "served" as const });
 }
 
 export const PRODUCT_WORKFLOW_COMPOSITION = workflowComposition(WORKFLOW_SOURCES);

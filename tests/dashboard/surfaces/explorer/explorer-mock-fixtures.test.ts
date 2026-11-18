@@ -1,5 +1,4 @@
-import { servedFixtureSources as previewFixtureSources } from "../../../mocks/helpers/workflow-composition.js";
-import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { servedFixtureSources as previewFixtureSources, buildPreviewCatalog } from "../../../mocks/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act,createElement } from "react";
@@ -26,7 +25,7 @@ async function render(): Promise<void> {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await act(async () => root?.render(createElement(WorkflowExplorer, { catalog: buildWorkflowCatalog([], true, previewFixtureSources([])) })));
+  await act(async () => root?.render(createElement(WorkflowExplorer, { catalog: buildPreviewCatalog([], previewFixtureSources([])) })));
 }
 function button(name: string): HTMLButtonElement {
   const found = [...document.querySelectorAll("button")].find((node) => node.getAttribute("aria-label") === name || node.textContent?.trim() === name);
