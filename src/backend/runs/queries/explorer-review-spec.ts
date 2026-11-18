@@ -313,7 +313,10 @@ export function buildExplorerReviewSpec(module: ExplorerModuleView, modules: rea
         const id = `${group.key}/${page.id}/${field.id}`;
         sources[id] = { origin: field.source.origin, detail: field.source.detail, reads: [field.source.read, ...field.source.chain.map(link => link.read)]
           .flatMap(read => read === undefined ? [] : [{ ...(systemOf(read.stepKey) === undefined ? {} : { system: systemOf(read.stepKey) }), step: read.stepKey, page: read.page, field: read.field }]) };
-        const row = (label: string, value: ExplorerSpecValue | undefined, when: When | undefined) => ({ id: field.id, label, ...(value === undefined ? {} : { value }), source: id, ...gated(when) });
+        const row = (label: string, value: ExplorerSpecValue | undefined, when: When | undefined) => {
+          if (value === undefined && page.mode === "Read only") throw new Error(`workflow ${descriptor.id} review field ${field.id} on read page ${page.id} has no example value`);
+          return { id: field.id, label, ...(value === undefined ? {} : { value }), source: id, ...gated(when) };
+        };
         if ("operatorField" in field) {
           const operator = group.operatorFields?.find(candidate => candidate.label === field.operatorField && candidate.visibility !== "logs");
           if (operator === undefined) throw new Error(`workflow ${descriptor.id} review field ${field.id} has no visible operator field ${field.operatorField}`);

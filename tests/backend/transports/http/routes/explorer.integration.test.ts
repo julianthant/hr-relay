@@ -195,6 +195,12 @@ it("serves a valid review spec for every readable workflow", async () => {
   }
 });
 
+it("serves a value for every Read row of every readable workflow", async () => {
+  const missing = (await served()).flatMap(workflow => workflow.reviewSpec.steps.flatMap(entry => entry.blocks.flatMap(block =>
+    block.kind === "card" && block.mode === "read" ? block.rows.filter(row => row.value === undefined).map(row => `${workflow.id}/${entry.id}/${block.id}/${row.id}`) : [])));
+  assert.deepEqual(missing, []);
+});
+
 /** The longest label that stays on one line in the Explorer's w-80 outcome select at 1280 px. */
 const LABEL_LIMIT = 38;
 const decisionsOf = (spec: ExplorerReviewSpec) => spec.steps.flatMap(entry => entry.blocks.flatMap(block => block.kind === "decision" ? [block] : []));

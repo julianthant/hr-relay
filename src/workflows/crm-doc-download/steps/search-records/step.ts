@@ -7,9 +7,9 @@ import { CrmSearchDocumentRecords } from "../../../../models/systems/crm/search-
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "search-records", label: "Find latest CRM records" }), system: "crm",
   operatorFields: [
-    { label: "Employee ID", sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.eid" }] },
+    { label: "Employee ID", example: "10000001", sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.eid" }] },
     { label: "Work email", sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.workEmail" }] },
-    { label: "Personal email", sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.personalEmail" }] },
+    { label: "Personal email", example: "fixture.personal@example.test", sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.personalEmail" }] },
     { label: "CRM record", sources: [{ nodeId: "document-records", kind: "output", fieldPath: "records.identity.recordId" }] },
   ],
   review: {
