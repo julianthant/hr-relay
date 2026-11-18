@@ -269,7 +269,7 @@ export function RunStartDialog({
   const { text, sourceInputUnchanged, stepDrafts, touchedFacts, factsAttempted, priority: priorityChoice, dryRunRequested, browserMode,
     referenceSelections, referenceDrafts, checkPicks, selectedWorkbookRows, valueDrafts, copiedOmissions } = draft;
   const typedDraft = launchDraft.typedDraftOf(draft, workflowId);
-  const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && (workflow.workbookReference !== undefined || workflow.workbookCheck !== undefined)), null, true);
+  const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && (workflow.workbookReference !== undefined || workflow.workbookCheck !== undefined)), null, true, false);
   const selectedWorkflow = workflows.find(workflow => workflow.workflowId === workflowId);
   const workbookReference = selectedWorkflow?.workbookReference;
   const requiredTypes = useMemo(() => workbookReference === undefined ? [] : [workbookReference.id], [workbookReference]);

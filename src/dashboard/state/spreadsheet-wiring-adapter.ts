@@ -4,7 +4,7 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { DashboardClient } from '../client/index.js';
 import { DashboardClientError } from '../client/errors.js';
 import { useDashboardClient, useDashboardCommandBinding } from './client-context.js';
-import { encodeEditableWorkbook, type SavedWorkbook, type WorkbookType } from '../../models/dashboard/workbooks.js';
+import { encodeEditableWorkbook, type SavedWorkbook, type WorkbookSummary, type WorkbookType } from '../../models/dashboard/workbooks.js';
 import type { WorkbookCompatibility, WorkbookLibraryEntry, WorkbookLibraryAction, WorkbookLibraryActionResult } from '../../models/dashboard/workbook-library.js';
 import { canonicalJsonStringify } from '../../rules/validation/canonical-json.js';
 import { spreadsheetSaveMatches, type SpreadsheetSaveResult } from '../surfaces/spreadsheets/spreadsheet-editor-model.js';
@@ -29,6 +29,12 @@ function libraryRow(id: string, document: EditableWorkbook, addedAt?: string, ve
   return { id, name: document.name, typeId: 'local', addedAt, version, rowCount: document.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0), status: version !== undefined && version > 1 ? 'Updated' : undefined, sheets: document.sheets.map(sheet => ({ name: sheet.name, headerRow: sheet.sourceHeaderRow ?? sheet.headerRow ?? 1,
     columns: sheet.rows[(sheet.headerRow ?? 1) - 1].cells.map(cellText), mapping: sheet.columnBindings?.map((binding, column) => binding.fieldId ? spreadsheetEditorField(binding.fieldId,
       binding.sourceHeader || cellText(sheet.rows[(sheet.headerRow ?? 1) - 1].cells[column])).label : NOT_MAPPED) ?? [], bindings: sheet.columnBindings })) };
+}
+
+function summaryRow(id: string, summary: WorkbookSummary): RegisteredSpreadsheet {
+  return { id, name: summary.name, typeId: 'local', addedAt: summary.createdAt, version: summary.version, rowCount: summary.rowCount, status: summary.version > 1 ? 'Updated' : undefined,
+    sheets: summary.sheets.map(sheet => ({ name: sheet.name, headerRow: sheet.headerRow, columns: [...sheet.columns],
+      mapping: sheet.columnBindings?.map((binding, column) => binding.fieldId ? spreadsheetEditorField(binding.fieldId, binding.sourceHeader || sheet.columns[column]).label : NOT_MAPPED) ?? [], bindings: sheet.columnBindings })) };
 }
 
 export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
@@ -206,7 +212,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         try {
           const records = await readWithDeadline(() => client.workbookList(), "DASHBOARD_READ_FAILED");
           if (request !== listing) return;
-          const files = records.map(record => { const key = keyFor(record.libraryId); const draft = drafts.get(key); return draft ? rowFor(key, draft) : withOrigin(libraryRow(key, record.workbook, record.createdAt, record.version), record.libraryId); });
+          const files = records.map(record => { const key = keyFor(record.libraryId); const draft = drafts.get(key); return draft ? rowFor(key, draft) : withOrigin(summaryRow(key, record), record.libraryId); });
           for (const [key, draft] of drafts) if (!files.some(file => file.id === key)) files.unshift(rowFor(key, draft));
           listed = true; readReady = true; publish({ files, loading: false, refreshing: false });
         } catch { if (request === listing) publish({ loading: false, refreshing: false, error: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }); }
@@ -317,14 +323,14 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
 }
 
 const sessions = new WeakMap<WorkbookLibraryQueries, ReturnType<typeof createSpreadsheetWiringAdapter>>();
-export function useSpreadsheetWiringAdapter(enabled: boolean, selectedId: string | null, loadCatalog = false) {
+export function useSpreadsheetWiringAdapter(enabled: boolean, selectedId: string | null, loadCatalog = false, loadList = true) {
   const client = useDashboardClient();
   const adapter = useMemo(() => { let value = sessions.get(client); if (!value) { value = createSpreadsheetWiringAdapter(client); sessions.set(client, value); } return value; }, [client]);
   const binding = useDashboardCommandBinding();
   const authority = binding?.authority.epoch ?? client;
   adapter.setReadAuthority(authority);
   const snapshot = useSyncExternalStore(adapter.subscribe, adapter.snapshot, adapter.snapshot);
-  useEffect(() => { if (enabled) void adapter.list(); }, [adapter, enabled, authority]);
+  useEffect(() => { if (enabled && loadList) void adapter.list(); }, [adapter, enabled, loadList, authority]);
   useEffect(() => { if (enabled && loadCatalog) void adapter.refreshCatalog(); }, [adapter, enabled, loadCatalog, authority]);
   useEffect(() => { if (enabled) void adapter.open(selectedId); }, [adapter, enabled, selectedId, authority]);
   return { ...snapshot, adapter, key: selectedId === null ? null : adapter.key(selectedId), draft: adapter.draft(selectedId) };
