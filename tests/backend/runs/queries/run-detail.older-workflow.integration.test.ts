@@ -68,13 +68,23 @@ it.each([0, 1])("loads older run detail and Logs with current names after a fing
   assert.match(JSON.stringify(projected.steps[0].entries), /Quillan, Petra A\./u);
 });
 
-it.each([false, true])("refuses a recorded task absent from the current timeline (changed fingerprint %s)", async changed => {
+it.each(["version", "fingerprint", "current"] as const)("reads removed task membership only for retained runs (%s)", async drift => {
   const { w, run, descriptor, deps } = await fixture();
-  if (changed) descriptor.contractFingerprint = FingerprintSchema.parse(HASH_B);
-  else descriptor.version++;
+  if (drift === "fingerprint") descriptor.contractFingerprint = FingerprintSchema.parse(HASH_B);
+  if (drift === "version") descriptor.version++;
   taskEventsOf(w, 81, "searching", "done");
   descriptor.timeline[0].nodes = descriptor.timeline[0].nodes.filter(node => node.id !== "searching");
-  assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
+  if (drift === "current") {
+    assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
+    return;
+  }
+  const detail = buildRunDetail(deps, run.envelope.runId);
+  const historical = detail.timeline.steps?.find(step => step.label === "Historical steps");
+  assert.ok(historical?.key);
+  assert.deepEqual(historical.members.map(({ nodeId, label, state }) => ({ nodeId, label, state })),
+    [{ nodeId: "searching", label: "searching", state: "done" }]);
+  assert.equal(detail.timeline.events[0]?.categoryKey, historical.key);
+  assert.equal(detail.timeline.events[0]?.native?.nodeId, "searching");
 });
 
 it.each([false, true])("still refuses a current timeline category without a key (changed fingerprint %s)", async changed => {
@@ -86,7 +96,7 @@ it.each([false, true])("still refuses a current timeline category without a key 
   assert.throws(() => buildRunDetail(missingKey, run.envelope.runId), LogIdentityRefusedError);
 });
 
-it("refuses an unmapped checkpoint-only node when no task span exists", async () => {
+it("retains the identity of an unmapped checkpoint-only node when no task span exists", async () => {
   const { w, run, descriptor, deps } = await fixture();
   descriptor.version++;
   const at = w.clock.now().toISOString();
@@ -98,10 +108,12 @@ it("refuses an unmapped checkpoint-only node when no task span exists", async ()
   w.authority.putCheckpoint(checkpoint);
   assert.equal(w.database.authority.runCheckpoints.insert(checkpoint).state, "inserted");
   assert.equal(descriptor.contractFingerprint, run.envelope.contractFingerprint);
-  assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
+  const detail = buildRunDetail(deps, run.envelope.runId);
+  assert.equal(detail.timeline.steps?.find(step => step.label === "Historical steps")?.members[0]?.nodeId, "removed-node");
+  assert.deepEqual(detail.timeline.events, []);
 });
 
-it.each([false, true])("refuses an unmapped action-only node (declared operation %s)", async declared => {
+it.each([false, true])("retains an unmapped action-only node (declared operation %s)", async declared => {
   const { w, run, descriptor, deps } = await fixture();
   descriptor.version++;
   const at = w.clock.now().toISOString();
@@ -114,7 +126,9 @@ it.each([false, true])("refuses an unmapped action-only node (declared operation
           nodeId: "removed-node", taskId: "ucpath/search-person-org", attempt: 1, claimGeneration: 1, taskAttempt: 1,
           invocationId: "search", occurrencePath: ["search"], logicalActionId: "search", occurrence: 1,
           logicalSessionId: "ucpath" } } : {}) } } } }));
-  assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
+  const detail = buildRunDetail(deps, run.envelope.runId);
+  assert.equal(detail.timeline.steps?.find(step => step.label === "Historical steps")?.members[0]?.nodeId, "removed-node");
+  assert.deepEqual(detail.timeline.events, []);
 });
 
 it("refuses ambiguous recorded membership while preserving the explicit no-timeline mode", async () => {
@@ -237,9 +251,11 @@ it.each(["version", "fingerprint", "missing-version", "missing-fingerprint"] as 
       points: [{ direction: "read", field: "results", values: [{ key: "results", state: "allowed",
         classification: "safe-diagnostic", transform: "allow", value: [] }] }] } } }));
   let timelineReads = 0;
-  assert.throws(() => buildRunDetail({ ...deps, descriptors: { resolve: () => current }, timeline: { ...deps.timeline, page(input) {
+  const readDetail = () => buildRunDetail({ ...deps, descriptors: { resolve: () => current }, timeline: { ...deps.timeline, page(input) {
     timelineReads++;
     return deps.timeline.page(input);
-  } } }, run.envelope.runId), LogIdentityRefusedError);
+  } } }, run.envelope.runId);
+  if (drift === "missing-version" || drift === "missing-fingerprint") assert.throws(readDetail, LogIdentityRefusedError);
+  else assert.equal(readDetail().timeline.steps?.find(step => step.label === "Historical steps")?.members[0]?.nodeId, "outside-timeline");
   assert.equal(timelineReads, 1);
 });
