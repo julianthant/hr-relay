@@ -4,7 +4,7 @@ import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backen
 import * as stack from "../../../../src/models/ocr/stack.js";
 import * as extraction from "../../../../src/models/ocr/extraction.js";
 import { afterEach, it, vi } from "vitest";
-import { publishOcrReview, readOcrReviewAuthority } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
+import { publishOcrReview, readOcrReviewAuthority, requireCurrentOcrSnapshot } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
 import { OcrReviewRefusedError } from "../../../../src/backend/processing/ocr/review-authority.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import * as reviewRecords from "../../../../src/models/ocr/review.js";
@@ -144,12 +144,14 @@ it("hydrates the saved grouping after the duplicate classifier changes", async (
   } finally { rule.mockRestore(); }
 });
 
-it("replays the admitted correction without renormalizing it, and checks new corrections under the current rule", async () => {
+it.each(["fresh approval", "snapshot consumption"] as const)("opens an admitted correction but enforces current admission for %s", async action => {
   const f = await world.fixture({ record: true, release: true });
   assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
   const repositories = f.database.authority, runId = f.run.envelope.runId;
   const saved = repositories.ocrReviews.latest(runId); assert.ok(saved);
   const corrected = saved.records[0].fields;
+  const approval = f.approval();
+  if (action === "snapshot consumption") assert.equal(f.canonical.kernel.execute(approval).state, "applied");
   const admit = extraction.admitOcrExtraction;
   const rule = vi.spyOn(extraction, "admitOcrExtraction").mockImplementation(input => {
     const verdict = admit(input);
@@ -160,6 +162,12 @@ it("replays the admitted correction without renormalizing it, and checks new cor
   });
   try {
     assert.deepEqual(readOcrReviewAuthority(repositories, f.canonical.lifecycle, runId)?.revision, saved);
-    assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 2)).state, "rejected");
+    if (action === "fresh approval") {
+      assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 2)).state, "rejected");
+      assert.equal(f.canonical.kernel.execute(approval).state, "rejected");
+      assert.deepEqual(repositories.ocrReviews.snapshots(runId), []);
+    } else {
+      assert.throws(() => requireCurrentOcrSnapshot(repositories, f.canonical.lifecycle, approval.payload.result.value, f.resolve), OcrReviewRefusedError);
+    }
   } finally { rule.mockRestore(); }
 });
