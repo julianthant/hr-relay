@@ -200,15 +200,26 @@ describe('confirmed Settings feedback through the current editor', () => {
   });
   it('withholds success when the acknowledgement and field readback disagree', async () => {
     const { controller, ports, authority, notices, problems } = await setup();
+    let reads = 0;
     ports.read = () => {
+      reads += 1;
       const document = authority.read();
       return { ...document, sections: document.sections.map(section => ({ ...section,
         leaves: section.leaves.map(leaf => leaf.path === 'actor.label' ? { ...leaf, settingsValue: 'Other operator', effectiveValue: 'Other operator' } : leaf) })) };
     };
     await act(async () => controller().update('actor.label', 'Intended operator'));
     await act(async () => vi.advanceTimersByTimeAsync(701));
-    assert.equal(controller().dirtyCount, 0); assert.equal(controller().locked, false);
+    assert.equal(controller().dirtyCount, 0);
     assert.deepEqual(notices, []); assert.deepEqual(problems, [FAILURE]);
+    // The failed save re-reads the backend; the page unlocks only once that fresh read is held.
+    for (let flush = 0; flush < 20 && controller().locked; flush++) await act(async () => vi.advanceTimersByTimeAsync(0));
+    assert.equal(reads, 2, 'one readback for the save and one fresh read after the failure');
+    assert.equal(controller().locked, false);
+    const editor = controller().editor;
+    assert.equal(editor.state, 'loaded');
+    if (editor.state !== 'loaded') throw new Error('expected a loaded editor');
+    assert.equal(editor.document.sections.flatMap(section => section.leaves).find(leaf => leaf.path === 'actor.label')?.settingsValue, 'Other operator');
+    assert.deepEqual(notices, []);
   });
   it('confirms a protected typed field without disclosing its value', async () => {
     const { controller, notices, commands, render } = await setup();

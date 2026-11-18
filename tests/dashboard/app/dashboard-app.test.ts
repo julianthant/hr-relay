@@ -186,6 +186,8 @@ function appClient(): DashboardClient_m1 {
 
     intakeSession: () => new Promise<never>(() => undefined),
     editableSettings: () => Promise.resolve(EDITABLE_SETTINGS),
+    // Settings saves stay in flight, so an edit remains the page-owned draft the exit guard protects.
+    executeCommand: () => new Promise<never>(() => undefined),
   } as unknown as DashboardClient_m1;
   return new Proxy(served, {
     get(target, property, receiver) {
