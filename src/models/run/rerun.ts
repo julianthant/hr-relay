@@ -85,5 +85,9 @@ export function repeatEvidenceDigest(intent: Readonly<{ status: string; completi
   bindings?: readonly ProtectedInputBinding[]): string {
   const proof = intent.status === "committed" ? intent.completionProof : intent.status === "observed-present" ? intent.observedProof : undefined;
   if (proof === undefined) throw new Error("repeat warning requires settled evidence");
+  return repeatProofDigest(proof, bindings);
+}
+
+export function repeatProofDigest(proof: SchemaBoundCanonicalValue, bindings?: readonly ProtectedInputBinding[]): string {
   return sha256Hex(canonicalJsonStringify(valueFreeProtectedData(proof, bindings)));
 }

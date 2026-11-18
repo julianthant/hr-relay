@@ -81,9 +81,9 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     const h = await harness({ emitterThrowsOn: "verify-start" });
     const { run, claim } = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T222222" } });
+    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
     const outcome = await h.execute(contextFor(run, claim, writeFixtureSaveDescriptor));
-    assert.deepEqual(outcome, { disposition: "committed", proofSource: "normal-output", output: { transactionId: "T123456" }, proof: { transactionId: "T222222" } });
+    assert.deepEqual(outcome, { disposition: "committed", proofSource: "normal-output", output: { transactionId: "T123456" }, proof: { transactionId: "T123456" } });
     assert.equal(intentByKey(h.database)?.status, "committed");
     assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "running");
     const checkpoint = h.database.authority.runCheckpoints.latest(
@@ -92,7 +92,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     assert.deepEqual(checkpoint.output.value, { disposition: "committed", proofSource: "normal-output",
       confirmedAt: WRITE_FIXTURE_NOW,
       output: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T123456" } },
-      proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T222222" } } });
+      proof: { schemaHash: deriveSchemaHash(WriteFixtureProofSchema, "output"), value: { transactionId: "T123456" } } });
     assert.ok(h.world.events.includes("emitter-throw:verify-start"));
     assert.ok(h.world.events.includes("verify"));
   });

@@ -6,6 +6,7 @@ import type { Clock } from "../../../../rules/time/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
 import type { ElementId, ObservationId } from "../../../../rules/identity/ids.js";
 import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import {
   KUALI_ACTION_LIST_DOCUMENT_LINK,
@@ -1633,7 +1634,7 @@ export function createKualiRrssDocumentDriver(assertCurrent: () => void, page: P
       await route.fallback({ postData }).catch(refused.reject);
     };
     try {
-      await save.click({ timeout: FIELD_TIMEOUT_MS });
+      await clickWithMutationCapability(capability, save, FIELD_TIMEOUT_MS);
       assertCurrent();
       recordBrowserAction("clicked", KUALI_RRSS_SAVE_BUTTON);
       const response = await settled;

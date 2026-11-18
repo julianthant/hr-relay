@@ -1,3 +1,4 @@
+import { clickWithMutationCapability } from "../../browser-shared/mutation-click.js";
 import { assertContactSubject } from "../../../../rules/ucpath/emergency-contact.js";
 import type { Locator, Page } from "playwright";
 import type { Clock } from "../../../../rules/time/clock.js";
@@ -209,7 +210,7 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
   }
 
   return createContactOperations(open, {
-    async save() {
+    async save(capability) {
       const save = page.locator(recipes.save).filter({ visible: true });
       if (await current(() => save.count()) !== 1) throw new UcpathContactRefusedError("unexpected-contact-page");
       const editor = new URL(page.url());
@@ -226,7 +227,7 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
       });
       // The click can refuse before this bounded observer is awaited.
       void answered.catch(() => undefined);
-      await current(() => save.click());
+      await current(() => clickWithMutationCapability(capability, save));
       await current(async () => {
         const response = await (await answered).response();
         if (response === null) throw new Error("UCPath contact Save response is missing");
