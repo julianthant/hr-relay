@@ -7,7 +7,7 @@ export function workflowsPlugin(facts: () => AssistantWorkflowFacts): AssistantP
   const parameters = z.strictObject({ workflow: z.string().min(1).max(80) });
   return { domain: "workflows", tools: [{
     kind: "read", tier: "read", name: "describe_workflow",
-    description: "Describe one served workflow: what it does, what input it takes (entry format and examples), its steps, whether an assistant start is a dry run or a read, which steps can be omitted, and whether it supports rerun. Use the workflow id from the served workflow list.",
+    description: "Describe one served workflow, its input format, examples, steps and Dashboard step omissions. The start fact is for fresh input: a chat dry run or live read, a Dashboard upload or other Dashboard input, or unavailable. For chat reruns, check-run means eligibility must be checked for the selected run. Use the workflow id from the served workflow list.",
     parameters, output: AssistantWorkflowFactSchema,
     privacy: ["id", "label", "summary", "category", "input.placeholder", "input.entries", "input.fields[]", "input.examples[].label", "input.examples[].text",
       "input.examples[].note", "steps[].label", "steps[].description", "omittableSteps[]"].map(path => ({ path, origin: "repository-authored" as const })),

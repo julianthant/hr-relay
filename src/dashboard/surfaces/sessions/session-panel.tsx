@@ -1,27 +1,23 @@
 import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.js";
 import { useMemo, useRef } from "react";
 import { SessionsView } from "./sessions-view.js";
-import { createFixtureSessionPort, sessionsSample } from "./sessions-fixture.js";
-import { createSessionPreviewPort, useSessionAddFeedback, useSessionPreviewCommands, type SessionCommandBinding } from "./session-preview-command-model.js";
+import { createSessionPreviewPort, useSessionAddFeedback, useSessionPreviewCommands, type SessionCommandBinding, type SessionPreviewCommandPort } from "./session-preview-command-model.js";
 import { sessionsFromDay, sessionsUnavailable, type SessionsViewState } from "./sessions-view-model.js";
 import { useToasts } from "../../ds/ui.js";
 
-export function SessionPanel({ catalog, open, onOpenChange, source = "served", binding, account }: { catalog: readonly WorkflowCatalogEntry[]; open: boolean; onOpenChange: (open: boolean) => void; source?: "served" | "mock"; binding?: SessionCommandBinding; account?: { onSettings: () => void; onLogout: () => void } }) {
+/** A harness supplies the first state and the command port in place of the served day and its commands. */
+export type SessionsHarness = (catalog: readonly WorkflowCatalogEntry[]) => Readonly<{ initial: SessionsViewState; port: SessionPreviewCommandPort }>;
+
+export function SessionPanel({ catalog, open, onOpenChange, harness, binding, account }: { catalog: readonly WorkflowCatalogEntry[]; open: boolean; onOpenChange: (open: boolean) => void; harness?: SessionsHarness; binding?: SessionCommandBinding; account?: { onSettings: () => void; onLogout: () => void } }) {
   const { toast } = useToasts();
-  const fixture = useMemo(() => source === "mock" ? sessionsSample(typeof window === "undefined" ? "active" : new URLSearchParams(window.location.search).get("sessionsPreview") ?? "active") : undefined, [source]);
-  const initial = useMemo((): SessionsViewState => source === "mock" ? fixture! : binding?.dayState.day.state === "loaded"
+  const harnessed = useMemo(() => harness?.(catalog), [harness, catalog]);
+  const initial = useMemo((): SessionsViewState => harnessed ? harnessed.initial : binding?.dayState.day.state === "loaded"
     ? sessionsFromDay(binding.dayState.day.value, catalog, binding.nowIso) : binding === undefined ? sessionsUnavailable() : binding.dayState.day.state === "failed"
-      ? sessionsUnavailable(binding.dayState.day.error) : { state: "loading" }, [source, fixture, binding, catalog]);
+      ? sessionsUnavailable(binding.dayState.day.error) : { state: "loading" }, [harnessed, binding, catalog]);
   const current = useMemo(() => ({ binding, catalog }), [binding, catalog]);
   const currentRef = useRef(current); currentRef.current = current;
   const servedPort = useMemo(() => createSessionPreviewPort(() => currentRef.current), []);
-  const fixturePort = useMemo(() => {
-    if (source !== "mock") return undefined;
-    const scenario = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('workerCommandPreview');
-    if (scenario !== null && scenario !== 'refused' && scenario !== 'uncertain') throw new Error('SESSION_COMMAND_SCENARIO_INVALID');
-    return createFixtureSessionPort(fixture!, catalog, scenario ?? 'normal');
-  }, [source, fixture, catalog]);
-  const commands = useSessionPreviewCommands(initial, catalog, source === "served" ? servedPort : fixturePort!, binding === undefined || source === "mock" ? undefined : { snapshot: binding.dayState.day, scope: binding.scope, actorId: binding.scope.actorId,
+  const commands = useSessionPreviewCommands(initial, catalog, harnessed ? harnessed.port : servedPort, binding === undefined || harnessed ? undefined : { snapshot: binding.dayState.day, scope: binding.scope, actorId: binding.scope.actorId,
     onRefused: title => toast({ tone: "danger", title, duration: 6000 }) });
   useSessionAddFeedback(commands.operations.add);
   const data = commands.data;

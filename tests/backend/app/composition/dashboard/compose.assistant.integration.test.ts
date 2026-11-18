@@ -773,7 +773,7 @@ it('refuses a CRM document download while it is not served and confirms an attac
 
     const plans = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), raw => raw.prepare('SELECT id FROM run_requests').all().length);
     const plansBefore = plans();
-    assert.equal(configuredSources['crm-doc-download'], 'mock');
+    assert.equal(configuredSources['crm-doc-download'], 'hidden');
     const refusedStart = await respond('Download CRM documents for fixture@example.test', { name: 'note.txt', mediaType: 'text/plain', bytes: new TextEncoder().encode('fixture@example.test\n') },
       () => ['propose_workflow_start', { workflow: 'crm-doc-download', entries: ['fixture@example.test'] }]);
     assert.equal(refusedStart.kind === 'result' ? refusedStart.result.state === 'refused' && refusedStart.result.code : refusedStart.kind, 'ASSISTANT_PROPOSAL_REFUSED', 'a workflow that is not served is never proposed');

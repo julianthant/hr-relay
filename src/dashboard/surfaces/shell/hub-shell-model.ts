@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 
 export interface HubChat { readonly id: string; readonly title: string; readonly minutes: number; readonly group: "Today" | "Yesterday" | "Earlier" }
 export interface HubChatsPort {
-  readonly source: "mock" | "local";
+  readonly source: "local";
   read(this: void): readonly HubChat[];
   rename(id: string, title: string): Promise<void>;
   remove(id: string): Promise<void>;
@@ -10,16 +10,11 @@ export interface HubChatsPort {
   selectedId?(): string | undefined;
   select?(id: string): Promise<void>;
 }
-export function createMockHubChatsPort(preview = true): HubChatsPort {
+export function createLocalHubChatsPort(): HubChatsPort {
   let sequence = 0;
-  let chats: readonly HubChat[] = preview ? [
-    { id: "a", title: "Update Alex Rivera work email", minutes: 0, group: "Today" },
-    { id: "b", title: "Check employment details", minutes: 1, group: "Today" },
-    { id: "c", title: "Review onboarding records", minutes: 1440, group: "Yesterday" },
-    { id: "d", title: "Compare this very long work study record with the earlier employment and payroll information", minutes: 4320, group: "Earlier" },
-  ] : [{ id: "initial", title: "New chat", minutes: 0, group: "Today" }];
+  let chats: readonly HubChat[] = [{ id: "initial", title: "New chat", minutes: 0, group: "Today" }];
   return {
-    source: preview ? "mock" : "local", read: () => chats,
+    source: "local", read: () => chats,
     async rename(id, title) {
       if (!chats.some(chat => chat.id === id)) throw new Error("HUB_CHAT_UNAVAILABLE");
       if (!title.trim() || title.trim().length > 200) throw new Error("HUB_CHAT_TITLE_INVALID");
@@ -37,7 +32,7 @@ export function chatAge(minutes: number): string {
   return `${days} ${days === 1 ? "day" : "days"} ago`;
 }
 export function useHubChats(supplied?: HubChatsPort) {
-  const port = useMemo(() => supplied ?? createMockHubChatsPort(), [supplied]);
+  const port = useMemo(() => supplied ?? createLocalHubChatsPort(), [supplied]);
   const [chats, setChats] = useState(port.read);
   const [currentId, setCurrentId] = useState<string | undefined>(() => port.selectedId?.() ?? chats[0]?.id);
   const [error, setError] = useState('');

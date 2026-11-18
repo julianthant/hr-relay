@@ -14,7 +14,7 @@ export function ExplorerSource({ label, destination, source, onClose, onJump }: 
     <div className="flex items-center gap-2 border-b border-ui-stroke px-4 py-3"><h2 className="min-w-0 flex-1 text-heading">{label}</h2><IconButton ref={close} label="Close field source" size="sm" onClick={onClose} icon={<X aria-hidden className="size-4" />} /></div>
     <div className="overflow-y-auto px-4 pb-4 text-body">
       <p className="my-3 flex items-start gap-2 text-caption text-ui-muted"><PencilLine aria-hidden className="mt-0.5 size-3.5 shrink-0" />{destination}</p>
-      {!source ? <p>Source mapping is unavailable in this preview.</p> : <>
+      {!source ? <p>No source mapping is recorded for this field.</p> : <>
         {source.origin && <section className="mt-4"><h3 className="mb-2 text-caption font-semibold text-ui-secondary">{source.origin}</h3><p className="rounded-md border border-ui-stroke bg-ui-table p-3 leading-relaxed">{source.detail}</p></section>}
         {source.reads?.map((read, index) => <section key={`${read.step}-${read.page}-${read.field}`} className="mt-4">
           <h3 className="mb-2 text-caption font-semibold text-ui-secondary">{index === 0 ? "Read from" : "Also uses"}</h3>

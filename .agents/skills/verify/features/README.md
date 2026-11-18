@@ -1,6 +1,6 @@
 # Verify feature map
 
-One file per feature. Each gives the entry point, how to drive it and what a passing dry run shows. Source status is `config/dashboard-workflow-sources.json`: a `mock` workflow has nothing to prove in the served app; verify its UI only through unit tests and `/ui-mock` frames.
+One file per feature. Each gives the entry point, how to drive it and what a passing dry run shows. Source status is `config/dashboard-workflow-sources.json`: a workflow absent from it does not appear in the served app and has nothing to prove there.
 
 | Feature | Source | File |
 | --- | --- | --- |
