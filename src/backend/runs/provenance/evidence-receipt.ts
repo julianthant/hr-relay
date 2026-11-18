@@ -403,6 +403,20 @@ function deriveReceipt(
     gateResultsByNode.set(String(row.gateId), row);
   }
   const delegations = (input.delegations ?? []).map(row => DelegationTerminalEvidenceSchema.parse(row));
+  for (const row of gateResults) {
+    const approval = findSnapshotApprovalDecision(envelope.workflow, row.gateId);
+    if (approval === undefined) continue;
+    if ("source" in row || input.authenticateSnapshotApproval === undefined) throw new OcrReviewRefusedError();
+    const reference = approval.result.safeParse(row.result.value);
+    if (!reference.success || String(row.nodeId) !== String(row.gateId)
+      || row.result.schemaHash !== deriveSchemaHash(approval.result, "output")
+      || row.runId !== reference.data.sourceRunId || row.commandId !== reference.data.snapshotId
+      || row.resolvedBy !== "local-operator") throw new OcrReviewRefusedError();
+    const snapshot = OcrApprovedSnapshotSchema.parse(input.authenticateSnapshotApproval(row));
+    if (snapshot.snapshotId !== reference.data.snapshotId || snapshot.sourceRunId !== reference.data.sourceRunId
+      || snapshot.revision !== reference.data.revision || ocrSnapshotDigest(snapshot) !== reference.data.digest
+      || snapshot.approvedBy !== row.resolvedBy || snapshot.approvedAt !== row.resolvedAt) throw new OcrReviewRefusedError();
+  }
 
 
   const binding = evaluateReceiptDerivationBinding({
@@ -587,7 +601,6 @@ function deriveReceipt(
           decisions,
           verification,
           composition,
-          ...(input.authenticateSnapshotApproval === undefined ? {} : { authenticateSnapshotApproval: input.authenticateSnapshotApproval }),
         });
         continue;
       }
@@ -1054,7 +1067,7 @@ export interface EvidenceReceiptStore {
 
   listGateResultsByRun(runId: string): readonly unknown[];
   listContinuedGateResultsByRun?(runId: string): readonly unknown[];
-  readonly listDelegationsByRun?: (runId: string) => readonly unknown[];
+  readonly listDelegationsByRun?: (runId: string, retained?: RunResultRecord) => readonly unknown[];
   readonly authenticateSnapshotApproval?: ReceiptBuildInput["authenticateSnapshotApproval"];
   findReceiptByRun(runId: string): unknown;
   insertReceipt(receipt: unknown): Readonly<{ state: "inserted" | "existing"; record: RunEvidenceReceipt }>;
@@ -1081,19 +1094,20 @@ export function ensureRunEvidenceReceipt(
   const existing = existingRaw === undefined || existingRaw === null
     ? undefined
     : RunEvidenceReceiptSchema.parse(existingRaw);
-  const composition = LATEST_RECEIPT_COMPOSITION;
+  const result = store.getResult(runId);
+  const composition = existing?.composition ?? LATEST_RECEIPT_COMPOSITION;
   const { receipt: derived, checks } = deriveReceipt({
     ...(store.schemaReader === undefined ? {} : { schemaReader: store.schemaReader }),
     descriptor,
     run,
-    result: store.getResult(runId),
+    result,
     ...(store.refreshedSettlementVersion === undefined ? {} : { settlementVersion: store.refreshedSettlementVersion(runId) }),
     ...(lifecycle.failureId === undefined ? {} : { failure: store.getFailure(lifecycle.failureId) }),
     checkpoints: store.listCheckpointsByRun(runId),
     writes: store.listWritesByRun(runId),
     gateResults: store.listGateResultsByRun(runId),
     continuedGateResults: store.listContinuedGateResultsByRun?.(runId),
-    ...(store.listDelegationsByRun === undefined ? {} : { delegations: store.listDelegationsByRun(runId) }),
+    ...(store.listDelegationsByRun === undefined ? {} : { delegations: store.listDelegationsByRun(runId, existing === undefined ? undefined : RunResultRecordSchema.parse(result)) }),
     ...(store.authenticateSnapshotApproval === undefined ? {} : { authenticateSnapshotApproval: store.authenticateSnapshotApproval }),
   }, composition, existing);
   if (existing !== undefined) {
@@ -1129,7 +1143,6 @@ interface GateEvidenceInput {
   readonly decisions: Decision[];
   readonly verification: Verification[];
   readonly composition: ReceiptComposition;
-  readonly authenticateSnapshotApproval?: ReceiptBuildInput["authenticateSnapshotApproval"];
 }
 
 
@@ -1137,16 +1150,7 @@ function emitGateEvidence(input: GateEvidenceInput): void {
   const { stored, nodeId, entryId, evidence } = input;
   const snapshotDecision = findSnapshotApprovalDecision(input.workflowId, nodeId);
   if (snapshotDecision !== undefined) {
-    if ("source" in stored || input.authenticateSnapshotApproval === undefined) throw new OcrReviewRefusedError();
-    const reference = snapshotDecision.result.safeParse(stored.result.value);
-    if (!reference.success || stored.nodeId !== nodeId || stored.gateId !== snapshotDecision.gateId
-      || stored.result.schemaHash !== deriveSchemaHash(snapshotDecision.result, "output")
-      || stored.runId !== reference.data.sourceRunId || stored.commandId !== reference.data.snapshotId
-      || stored.resolvedBy !== "local-operator") throw new OcrReviewRefusedError();
-    const snapshot = OcrApprovedSnapshotSchema.parse(input.authenticateSnapshotApproval(stored));
-    if (snapshot.snapshotId !== reference.data.snapshotId || snapshot.sourceRunId !== reference.data.sourceRunId
-      || snapshot.revision !== reference.data.revision || ocrSnapshotDigest(snapshot) !== reference.data.digest
-      || snapshot.approvedBy !== stored.resolvedBy || snapshot.approvedAt !== stored.resolvedAt) throw new OcrReviewRefusedError();
+    if ("source" in stored) throw new OcrReviewRefusedError();
     const scope: EvidenceValueScope = { kind: "gate-result", workflowId: input.workflowId, gateId: stored.gateId };
     for (const leaf of evidenceLeaves(stored.result.value)) {
       const factId = entryId("observation", `${nodeId}.${leaf.path}`);

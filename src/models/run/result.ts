@@ -1,6 +1,7 @@
 import type { EvidenceSchemaReader } from "../storage/evidence-schema-admission.js";
 import { RunContinuationSchema } from "./continuation.js";
-import { DryRunCoverageSchema, DryRunStepSchema, PublicationPreviewStepSchema } from "../workflow/dry-run.js";
+import { DRY_RUN_TRANSACTION_NUMBER, DryRunCoverageSchema, DryRunStepSchema, PublicationPreviewStepSchema } from "../workflow/dry-run.js";
+import { TransactionDryRunPreviewSchema } from "../../rules/write-safety/write-safety-primitives.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { DeclaredActionIdentitySchema, OperationInputLineageSchema } from "../workflow/operation-action-identity.js";
 import { valueFreeProtectedData } from "../write-safety/protected-input.js";
@@ -229,7 +230,29 @@ export type RunPreviewStep = RunPreviewResult["steps"][number];
 /** Every step any preview kind can carry; the result schema chosen at build time narrows it. */
 export const AnyRunPreviewStepSchema = z.union([RunPreviewStepSchema, PublicationPreviewStepSchema]);
 
-const previewResultSchemas = new Map<Fingerprint, z.ZodType<RunPreviewResult>>([
+const firstTransactionPreviewSchema = z.strictObject({
+  kind: z.literal("dry-run-preview"),
+  stoppedAtNodeId: NodeIdSchema,
+  externalCommit: z.literal("none"),
+  preview: TransactionDryRunPreviewSchema,
+}).refine(({ stoppedAtNodeId, preview }) => stoppedAtNodeId === preview.nodeId
+  && !(preview.probe.state === "not-required" && preview.probe.reason === "preview-only-sample"),
+{ message: "first-transaction preview does not match its recorded boundary" })
+  .transform(({ stoppedAtNodeId, preview, kind, externalCommit }): RunDryRunPreviewResult => ({
+    kind, externalCommit,
+    coverage: { state: "partial", boundaryNodeId: stoppedAtNodeId, reason: "historical-first-transaction-only" },
+    steps: [{ nodeId: stoppedAtNodeId, state: "transaction-preview", preview, samples: [] }],
+  }));
+
+const transactionNumberPreviewSchema = RunDryRunPreviewResultSchema.refine(result =>
+  result.steps.every(step => step.state !== "transaction-preview"
+    || step.samples.every(sample => sample.value === DRY_RUN_TRANSACTION_NUMBER)),
+{ message: "sample unavailable under the retained preview contract" });
+
+const previewResultSchemas = new Map<string, z.ZodType<RunPreviewResult>>([
+  ["f738e4b4f4f486242d97892b7927f1e5605823b687c59af9da799e83b2b6797b", firstTransactionPreviewSchema],
+  ["328c2ad1f69a1425501408231a9f6cf22ec35a0abec986c98fdc7cba10e41077", transactionNumberPreviewSchema],
+  ["aa91aab7f1fc10d775a82949af2ab3a7610f6c799dfc7c8678443a183f4776ff", transactionNumberPreviewSchema],
   [deriveSchemaHash(RunDryRunPreviewResultSchema, "output"), RunDryRunPreviewResultSchema],
   [deriveSchemaHash(RunDelegatedDryRunPreviewResultSchema, "output"), RunDelegatedDryRunPreviewResultSchema],
   [deriveSchemaHash(RunPublicationDryRunPreviewResultSchema, "output"), RunPublicationDryRunPreviewResultSchema],
@@ -240,7 +263,10 @@ export function isRunPreviewSchemaHash(schemaHash: string): boolean {
 }
 
 export function readRunPreviewResult(result: Pick<RunResultRecord, "resultSchemaHash" | "result">): RunPreviewResult | undefined {
-  return previewResultSchemas.get(result.resultSchemaHash)?.parse(result.result.value);
+  const decoder = previewResultSchemas.get(result.resultSchemaHash);
+  if (decoder === undefined) return undefined;
+  if (result.result.schemaHash !== result.resultSchemaHash) throw new Error("preview-result-schema-identity-mismatch");
+  return decoder.parse(result.result.value);
 }
 
 
@@ -262,12 +288,17 @@ export const RunTerminalEvidenceResultSchema = z.discriminatedUnion("kind", [
 export const RUN_TERMINAL_EVIDENCE_SCHEMA_HASH = deriveSchemaHash(RunTerminalEvidenceResultSchema, "output");
 export type RunTerminalEvidenceResult = z.infer<typeof RunTerminalEvidenceResultSchema>;
 
+const terminalEvidenceSchemaHashes: ReadonlySet<string> = new Set([
+  "491980e23e4128e69e199f95f6a56ef735cc08e5419b2c5d587143e2621d18ec",
+  RUN_TERMINAL_EVIDENCE_SCHEMA_HASH,
+]);
+
 export function deriveTerminalFailureDigest(failure: FailureRecord): Fingerprint {
   return FingerprintSchema.parse(sha256Hex(`hrauto:terminal-failure:v1\0${canonicalJsonStringify(FailureRecordSchema.parse(failure))}`));
 }
 
 export function terminalEvidenceResult(record: RunResultRecord): RunTerminalEvidenceResult | undefined {
-  return record.resultSchemaHash === RUN_TERMINAL_EVIDENCE_SCHEMA_HASH
+  return terminalEvidenceSchemaHashes.has(record.resultSchemaHash)
     ? RunTerminalEvidenceResultSchema.parse(record.result.value) : undefined;
 }
 
@@ -336,7 +367,7 @@ export const RunResultRecordSchema = z.strictObject({
   dependencyDigest: FingerprintSchema,
   createdAt: IsoInstantSchema,
 }).superRefine((record, context) => {
-  if (record.resultSchemaHash === RUN_TERMINAL_EVIDENCE_SCHEMA_HASH) {
+  if (terminalEvidenceSchemaHashes.has(record.resultSchemaHash)) {
     const evidence = RunTerminalEvidenceResultSchema.safeParse(record.result.value);
     if (!evidence.success || record.dependencies.length !== 0 || record.operationSources !== undefined
       || record.operationLineage !== undefined || record.result.protectedBindings !== undefined) {
