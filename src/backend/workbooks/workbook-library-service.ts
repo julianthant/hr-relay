@@ -253,6 +253,7 @@ function receiptOutcome(receipt: WorkbookOperationReceipt): SyncOutcome {
 export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; sync: WorkbookSyncDownload;
   resultRun?: (runId: string) => Readonly<{ workflowId: string; enqueuedAt: string }> | undefined;
 }>) {
+  const encoded = new WeakMap<SavedWorkbook, ReturnType<typeof encodeSavedWorkbook>>();
   const read = (libraryId: string): SavedWorkbook => {
     const record = deps.repository.read(input(WorkbookIdSchema, libraryId));
     if (record === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
@@ -264,7 +265,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     const link = deps.repository.metadata(libraryId).sharePoint;
     if (link === null) return work();
     const finish = (result: SyncOutcome) =>
-      deps.repository.recordSync(libraryId, { url: link.url, finishedAt: deps.clock.now().toISOString(), ...result });
+      deps.repository.recordSync(libraryId, { url: link.url, finishedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()), ...result });
     running.set(libraryId, (running.get(libraryId) ?? 0) + 1);
     try {
       let value: T;
@@ -336,7 +337,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
           deps.clock.now().toISOString(), encodeEditableWorkbook({ ...workbook, name: request.name, libraryId }));
         apply({ kind: 'link', url: request.url });
         apply({ kind: 'sync' });
-        deps.repository.recordSync(libraryId, { url: request.url, finishedAt: deps.clock.now().toISOString(), result: 'ok' });
+        deps.repository.recordSync(libraryId, { url: request.url, finishedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()), result: 'ok' });
         return WorkbookImportResultSchema.parse({ workbook: encodeSavedWorkbook(read(libraryId)) });
       });
     },
@@ -379,6 +380,13 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
     read,
     revision: (libraryId: string, version: number) => deps.repository.revision(input(WorkbookIdSchema, libraryId), input(WorkbookRevisionSchema, version)),
     list: () => deps.repository.list(),
+    listWire: () => deps.repository.list().map(record => {
+      const cached = encoded.get(record);
+      if (cached !== undefined) return cached;
+      const wire = deepFreeze(encodeSavedWorkbook(record));
+      encoded.set(record, wire);
+      return wire;
+    }),
     save(libraryId: string, expectedVersion: number, value: unknown): SavedWorkbook {
       const workbook = input(EditableWorkbookSchema, value);
       input(z.number().int().positive(), expectedVersion);

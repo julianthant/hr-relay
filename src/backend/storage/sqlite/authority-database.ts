@@ -5428,6 +5428,7 @@ export class AuthorityDatabase implements Disposable {
       assistantHistory: createAssistantHistoryRepository({ database: this.#database, read: work => this.#withReadSnapshot(work), mutate: (table, work) => this.#authorityWrite(table, work),
         profileId: () => z.object({ profile_id: z.uuid() }).parse(this.#database.prepare("SELECT profile_id FROM database_states WHERE id=1").get()).profile_id }),
       workbooks: createWorkbookLibraryRepository({ database: this.#database,
+        changeKey: () => this.#transactionDepth > 0 && this.#transactionMode !== "read" ? undefined : this.changeKey(),
         mutate: work => this.#authorityWrite("workbook_library", work),
         read: work => this.#withReadSnapshot(work) }),
       timelineEvents: createTimelineRepository({

@@ -20,7 +20,7 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
     if (deps.workbooks === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_FAILED");
     return deps.workbooks;
   };
-  app.get("/api/v1/workbooks/list", c => c.json(service().library.list().map(encodeSavedWorkbook)));
+  app.get("/api/v1/workbooks/list", c => c.json(service().library.listWire()));
   app.get("/api/v1/workbooks/catalog", c => c.json(service().library.catalog()));
   app.get("/api/v1/workbooks/compatibility", c => c.json(service().library.compatibility(service().workflows)));
   app.get("/api/v1/workbooks/results", c => c.json(service().library.results()));
