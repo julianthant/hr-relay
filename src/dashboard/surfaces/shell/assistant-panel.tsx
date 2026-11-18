@@ -92,6 +92,9 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
   const accountLoading = served !== undefined && !served.accountAvailable && served.accountAction === undefined;
   const turn = served?.state.turn;
   const historyFailed = historyNotice === ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE;
+  const lastMessage = served?.state.messages.at(-1);
+  // Only the newest failed reply is shown, as one notice; it is never a chat bubble and an older failure is not repeated.
+  const lastRefusal = lastMessage?.role === 'assistant' && lastMessage.code !== undefined ? { text: lastMessage.text, code: lastMessage.code } : undefined;
   const proposal = turn?.state === 'proposal' ? turn.proposal : undefined;
   const phase: AssistantTurnPhase = turn?.state === 'waiting' || !served && model.busy ? 'waiting' : turn?.state === 'proposal' && turn.disposition === 'confirming' ? 'confirming' : turn?.state === 'failed' || turn?.state === 'unknown' ? 'failed' : 'settled';
   useEffect(() => { assistantActivity.report(phase); }, [phase]);
@@ -103,22 +106,22 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
         {frame && <AssistantMockThread frame={frame} />}{loading ? <TranscriptSkeleton /> : <>
         {historyFailed && <FailureNotice sentence="Chat history did not load." stillWorks="You can still use Relay without it." action={{ label: 'Reload', onClick: () => window.location.reload() }} />}
         {!loading && !frame && !historyFailed && (served ? served.state.messages.length === 0 : conversation.scene === 'new') ? <div className="hub-empty"><strong>How can I help?</strong>Ask about a record or describe what you want to do.</div> : null}
-        {(served?.state.messages ?? conversation.messages).map((message, index, all) => message.role === 'assistant' && 'code' in message && message.code !== undefined && served ? <FailureNotice key={index} sentence={message.text} stillWorks="Your message is kept."
-          action={index !== all.length - 1 || turn?.state !== 'idle' ? undefined : accountRefusal(message.code) ? onOpenSettings && { label: 'Open Settings', onClick: () => onOpenSettings('general', 'chatgpt.account') }
-            : keptPrompt(all, index) === undefined ? undefined : { label: 'Retry', onClick: () => { onSendMessage?.(); served.onAction({ type: 'edit', value: keptPrompt(all, index)! }); served.onAction({ type: 'send' }); } }} />
+        {(served?.state.messages ?? conversation.messages).map((message, index) => message.role === 'assistant' && 'code' in message && message.code !== undefined && served ? null
           : message.role === 'assistant' && turn?.state === 'proposal' && turn.disposition === 'unknown' && message.text === ASSISTANT_UNKNOWN_NOTICE ? null : message.role === 'operator' ? <div className="hub-message operator" key={index}>{message.text}{message.attachments?.map(file => <span className="hub-sent-file" key={file.id}><Paperclip aria-hidden />{file.name}</span>)}</div> : <AssistantReply key={index}>{served ? <AssistantText text={message.text} served /> : message.text}</AssistantReply>)}
         {conversation.files.filter(file => file.status !== 'Attached').map(file => <AssistantFileChip key={file.id} file={file} />)}
         {served && proposal && turn?.state === 'proposal' && <ProposalCard proposal={proposal} disposition={turn.disposition} refusal={assistantConfirmRefusal(served.state, served.revision, served.accountAvailable) ?? served.confirmRefusal}
           onCancel={() => { served.onAction({ type: 'cancel' }); model.transcript.current?.closest('section')?.querySelector<HTMLTextAreaElement>('textarea')?.focus(); }}
           onConfirm={() => { served.onAction({ type: 'confirm' }); model.transcript.current?.closest('section')?.querySelector<HTMLTextAreaElement>('textarea')?.focus(); }} />}
         {served && turn?.state === 'waiting' && <AssistantReply><div className="hub-typing" role="status"><span className="hub-typing-dots" aria-hidden><i /><i /><i /></span><span>Preparing a reply…</span><button className="hub-btn" type="button" onClick={() => served.onAction({ type: 'cancel' })}>Cancel</button></div></AssistantReply>}
+        {served && lastRefusal !== undefined && <FailureNotice sentence={lastRefusal.text} stillWorks="Your message is kept."
+          action={turn?.state !== 'idle' ? undefined : accountRefusal(lastRefusal.code) ? onOpenSettings && { label: 'Open Settings', onClick: () => onOpenSettings('general', 'chatgpt.account') }
+            : keptPrompt(served.state.messages, served.state.messages.length - 1) === undefined ? undefined : { label: 'Retry', onClick: () => { onSendMessage?.(); served.onAction({ type: 'edit', value: keptPrompt(served.state.messages, served.state.messages.length - 1)! }); served.onAction({ type: 'send' }); } }} />}
         {served && turn?.state === 'failed' && <FailureNotice sentence="Reply unavailable. Your request is kept." stillWorks="Nothing was started."
           action={accountReady && served.state.draft === turn.prompt ? { label: 'Retry', onClick: () => served.onAction({ type: 'retry' }) } : undefined} />}
         {served && turn?.state === 'proposal' && turn.disposition === 'unknown' && <FailureNotice sentence={ASSISTANT_UNKNOWN_NOTICE} stillWorks={`${turn.proposal.workflow.label} may already have started. Relay will not try it again.`}
           action={onClose ? { label: 'Check Queue', onClick: onClose } : undefined} />}
         {served && turn?.state === 'unknown' && <p className="hub-footer-status" role="alert">{ASSISTANT_UNKNOWN_NOTICE}</p>}
         {served && turn?.state === 'cancelled' && <p className="hub-caption" role="status">Reply cancelled. Your request is kept; send it again when ready.</p>}
-        {served?.state.restored && <p className="hub-caption">Restored chat. Previous proposals cannot be confirmed.</p>}
         {historyNotice && !historyFailed && <p role="status" className="hub-caption">{historyNotice}</p>}
         {model.error ? <p role="alert" className="hub-footer-status">{model.error}</p> : null}
         {frame || fresh ? null : !served && !model.account ? <p role="status" className="hub-caption">{model.error ? 'ChatGPT account unavailable.' : 'Loading ChatGPT account…'}</p> : !served && !accountReady ? <p role="status" className="hub-caption">ChatGPT is unavailable. Open Settings to review your account.</p> : null}
