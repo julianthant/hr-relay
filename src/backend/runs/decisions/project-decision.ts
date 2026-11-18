@@ -13,7 +13,7 @@ export type ServedOption = Readonly<{
   confirm?: z.infer<typeof ActionConfirmWireSchema>;
 }>;
 
-/** Orders served options by the catalog, takes catalog text unless the owner declared its own, and preselects the first recommended one served. */
+/** Orders served options by the catalog, takes catalog text unless the owner declared its own (a hint only where the label needs one), and preselects the first recommended one served. */
 export function projectDecision(type: RunDecisionType, served: readonly ServedOption[],
   extra: Readonly<{ title?: string; context?: string; answer?: DecisionAnswerWire; /** Preselected instead of the catalog's first served recommendation, when served. */ recommend?: string }> = {}): RunDecisionWire {
   const declaration = DECISION_CATALOG[type];
@@ -31,9 +31,9 @@ export function projectDecision(type: RunDecisionType, served: readonly ServedOp
     ...(extra.context === undefined ? {} : { context: extra.context }),
     ...(declaration.choiceLabel === undefined ? {} : { choiceLabel: declaration.choiceLabel }),
     options: ordered.map(option => {
-      if (option.label === undefined || option.hint === undefined) throw new Error(`decision ${type} option ${option.id} has no text`);
+      if (option.label === undefined) throw new Error(`decision ${type} option ${option.id} has no label`);
       return {
-        id: option.id, label: option.label, hint: option.hint, send: option.send,
+        id: option.id, label: option.label, ...(option.hint === undefined ? {} : { hint: option.hint }), send: option.send,
         ...(option.id === recommended ? { recommended: true } : {}),
         ...(option.input === undefined ? {} : { input: option.input }),
         ...(option.confirm === undefined ? {} : { confirm: option.confirm }),

@@ -86,10 +86,8 @@ function placementOf(command: ServedCommand): ActionDescriptorWire["placement"] 
 }
 
 function cancelBody(facts: QueueRowActionFacts): string {
-  const scope = facts.memberCount > 0
-    ? `This cancels the group and every one of its ${String(facts.memberCount)} delegated members. `
-    : "This stops the run where it is and settles it cancelled. ";
-  return `${scope}Cancelling is final: a cancelled run is never resumed, only run again.`;
+  const scope = facts.memberCount > 0 ? `Cancels the group and its ${String(facts.memberCount)} delegated members. ` : "";
+  return `${scope}Final: a cancelled run is never resumed.`;
 }
 
 function describe(command: ServedCommand, facts: QueueRowActionFacts): unknown {
@@ -161,7 +159,7 @@ export function queueRowActions(
     && policyEnables(policy, "recover-run", facts)
     ? [ActionDescriptorWireSchema.parse({ key: "recover-run", label: facts.crashed ? "Rerun" : "Recover completed steps", kind: "command",
       command: "recover-run", expectedVersion: facts.rowRevision, intent: "neutral", icon: facts.crashed ? "retry" : "resume", placement: ["footer", "menu"],
-      confirm: { title: "Recover completed steps", body: "Continue using authenticated completed steps. Unfinished work runs again. Uncertain writes require their own resolution.",
+      confirm: { title: "Recover completed steps", body: "Unfinished steps run again; uncertain writes stay parked.",
         confirmLabel: "Recover", tone: "neutral" } })] : [];
   const rerun = (!facts.crashed || recover.length === 0) && !facts.isChild && !facts.parkedWrite
     && ["done", "failed", "partial"].includes(facts.status)

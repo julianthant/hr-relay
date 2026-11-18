@@ -452,7 +452,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       ["saved", { via: "action", actionKey: "recheck-write" }],
       ["not-saved", { via: "action", actionKey: "resolve-write-absent" }],
     ]);
-    assert.equal(payload.decision?.context, "UCPath accepted the submit, but Relay could not read its status. Check Smart HR Transactions in UCPath.");
+    assert.equal(payload.decision?.context, "UCPath accepted the submit; status unreadable. Check Smart HR Transactions in UCPath.");
     const serialized = JSON.stringify(payload);
     assert.ok(!serialized.includes(idempotencyKey));
     assert.ok(!serialized.includes("hrauto-repeat"));
@@ -465,7 +465,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     it("names the document in the context", async () => {
       const w = await world();
       seed(w, { intent: kualiIntent() });
-      assert.equal(parkedSection(w).decision?.context, "Kuali accepted the save, but Relay could not read its status. Check document 3170001 in Kuali.");
+      assert.equal(parkedSection(w).decision?.context, "Kuali accepted the save; status unreadable. Check document 3170001 in Kuali.");
     });
 
     it("withholds the document number, key and digest from the whole payload when the run input is protected", async () => {
@@ -482,7 +482,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       const served = JSON.stringify(payload);
       for (const secret of ["3170001", KEY, digest, digest.slice(0, 12)]) assert.ok(!served.includes(secret), secret);
       assert.equal(payload.idempotencyKeyDigest, "withheld-protected-input");
-      assert.equal(payload.decision?.context, "Kuali accepted the save, but Relay could not read its status. Check the separation document in Kuali.");
+      assert.equal(payload.decision?.context, "Kuali accepted the save; status unreadable. Check the separation document in Kuali.");
     });
   });
 });
